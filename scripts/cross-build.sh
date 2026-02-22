@@ -10,7 +10,7 @@ STAGE_ROOT="${STAGE_ROOT:-/opt/stage}"
 BUILD_ROOT="${BUILD_ROOT:-/opt/build}"
 BUILD_TARGET="${BUILD_TARGET:-x86_64}"
 
-ZLIB_VERSION="${ZLIB_VERSION:-1.3.1}"
+ZLIB_VERSION="${ZLIB_VERSION:-1.3.2}"
 JSON_C_VERSION="${JSON_C_VERSION:-0.17}"
 MBEDTLS_VERSION="${MBEDTLS_VERSION:-2.28.5}"
 LIBUV_VERSION="${LIBUV_VERSION:-1.44.2}"
@@ -20,7 +20,7 @@ build_zlib() {
     echo "=== Building zlib-${ZLIB_VERSION} (${TARGET})..."
     curl -fSsLo- "https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" | tar xz -C "${BUILD_DIR}"
     pushd "${BUILD_DIR}"/zlib-"${ZLIB_VERSION}"
-        env CHOST="${TARGET}" ./configure --static --archs="-fPIC" --prefix="${STAGE_DIR}"
+        env CHOST="${TARGET}" ./configure --static --archs="-fPIC" --prefix="${STAGE_DIR}" --disable-crcvx
         make -j"$(nproc)" install
     popd
 }
