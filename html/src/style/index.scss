@@ -87,6 +87,39 @@ body {
   overflow: hidden;
 }
 
+.resizer {
+  flex-shrink: 0;
+  width: 5px;
+  height: 100vh;
+  position: relative;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background 0.15s;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    height: 100%;
+    background: var(--border-color);
+    transition: background 0.15s, width 0.15s;
+  }
+
+  &:hover::after,
+  &:active::after {
+    width: 2px;
+    background: var(--accent-color);
+  }
+
+  &:hover {
+    background: rgba(var(--accent-color), 0.05);
+  }
+}
+
 /* ==========================================================================
    LEFT COLUMN: WORKSPACES SIDEBAR (Straight 100vh to top, sleek Slate-dark)
    ========================================================================== */
