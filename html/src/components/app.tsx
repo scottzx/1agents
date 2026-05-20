@@ -90,70 +90,17 @@ interface WorkspaceFolder {
     }>;
 }
 
-interface ProjectFile {
-    path: string;
+/** A single file or directory entry returned by /api/fs/list */
+interface FsEntry {
     name: string;
-    size: string;
-    type: 'file' | 'folder';
-    indent: number;
-    content: string;
+    path: string; // relative to workdir root
+    isDir: boolean;
+    size: number;
+    modTime: number;
+    // client-only: children loaded on expand
+    children?: FsEntry[];
+    expanded?: boolean;
 }
-
-const projectFiles: ProjectFile[] = [
-    {
-        path: 'README.md',
-        name: 'README.md',
-        size: '5.4 KB',
-        type: 'file',
-        indent: 0,
-        content:
-            '# ttyd - Share your terminal over the web\n\nttyd is a simple command-line tool for sharing terminal over the web.\n\n## Features\n- Built on top of libuv and WebGL2 for speed\n- Fully-featured terminal with CJK and IME support\n- ZMODEM / trzsz file transfer support\n- Sixel image output support\n- SSL support based on OpenSSL / Mbed TLS\n- Run any custom command with options',
-    },
-    {
-        path: 'package.json',
-        name: 'package.json',
-        size: '2.1 KB',
-        type: 'file',
-        indent: 0,
-        content:
-            '{\n  "private": true,\n  "name": "ttyd",\n  "version": "1.0.0",\n  "description": "Share your terminal over the web",\n  "scripts": {\n    "start": "webpack serve",\n    "build": "webpack && gulp",\n    "fix": "gts fix"\n  },\n  "dependencies": {\n    "@xterm/xterm": "^5.5.0",\n    "preact": "^10.19.6",\n    "trzsz": "^1.1.5"\n  }\n}',
-    },
-    {
-        path: 'CMakeLists.txt',
-        name: 'CMakeLists.txt',
-        size: '4.4 KB',
-        type: 'file',
-        indent: 0,
-        content:
-            'cmake_minimum_required(VERSION 3.10)\nproject(ttyd C)\n\nset(CMAKE_C_STANDARD 99)\nset(CMAKE_C_STANDARD_REQUIRED ON)\n\nfind_package(Libwebsockets REQUIRED)\nfind_package(Libuv REQUIRED)\nfind_package(OpenSSL REQUIRED)\n\nadd_executable(ttyd src/main.c src/utils.c)\ntarget_link_libraries(ttyd Libwebsockets::websockets Libuv::uv OpenSSL::SSL)',
-    },
-    {
-        path: 'html/src/components',
-        name: 'html/src/components',
-        size: '',
-        type: 'folder',
-        indent: 0,
-        content: '',
-    },
-    {
-        path: 'html/src/components/app.tsx',
-        name: 'app.tsx',
-        size: '25.9 KB',
-        type: 'file',
-        indent: 1,
-        content:
-            'import { h, Component } from \'preact\';\nimport { Terminal } from \'./terminal\';\n\nexport class App extends Component {\n    render() {\n        return (\n            <div class="app-container">\n                <header class="global-header">...</header>\n                <main class="workspace-body">...</main>\n            </div>\n        );\n    }\n}',
-    },
-    {
-        path: 'html/src/style/index.scss',
-        name: 'index.scss',
-        size: '8.2 KB',
-        type: 'file',
-        indent: 1,
-        content:
-            'html, body {\n  height: 100%;\n  margin: 0;\n  overflow: hidden;\n}\n\n.app-container {\n  display: flex;\n  flex-direction: column;\n  height: 100vh;\n}',
-    },
-];
 
 type RightDrawerTab = 'files' | 'tasks' | 'settings' | 'none';
 
@@ -164,7 +111,15 @@ interface AppState {
     hostname: string;
     leftSidebarOpen: boolean;
     folders: WorkspaceFolder[];
-    selectedFile: ProjectFile | null;
+    // ── File system state ──────────────────────────────────────────
+    fsEntries: FsEntry[]; // root-level entries from /api/fs/list
+    fsLoading: boolean; // loading root directory
+    selectedFsEntry: FsEntry | null; // currently opened file
+    fileContent: string; // raw content of the opened file
+    editedContent: string; // content in the editor (may differ from saved)
+    fileLoading: boolean; // reading file content
+    fileSaving: boolean; // write request in-flight
+    fileSaveMsg: string; // brief feedback ('Saved!' / error)
 }
 
 export class App extends Component<{}, AppState> {
@@ -176,7 +131,14 @@ export class App extends Component<{}, AppState> {
             theme: 'light',
             hostname: 'Ashley Walker',
             leftSidebarOpen: true,
-            selectedFile: projectFiles[0],
+            fsEntries: [],
+            fsLoading: false,
+            selectedFsEntry: null,
+            fileContent: '',
+            editedContent: '',
+            fileLoading: false,
+            fileSaving: false,
+            fileSaveMsg: '',
             folders: [
                 {
                     id: 'remote-agents',
@@ -223,8 +185,106 @@ export class App extends Component<{}, AppState> {
         const theme = savedTheme || 'light';
         this.setState({ theme });
         document.documentElement.setAttribute('data-theme', theme);
-        this.setState({ hostname: window.location.hostname || 'Ashley Walker' });
+        this.setState({ hostname: window.location.hostname || 'localhost' });
+        // Load the root file tree on mount
+        this.loadDir('', null);
+        // Global Ctrl+S handler for saving the open file
+        document.addEventListener('keydown', this.handleKeyDown);
     }
+
+    componentWillUnmount() {
+        document.removeEventListener('keydown', this.handleKeyDown);
+    }
+
+    handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            this.saveFile();
+        }
+    };
+
+    // ── File system API helpers ──────────────────────────────────────────────
+
+    /** Fetch directory entries from /api/fs/list and merge into the tree */
+    loadDir = async (relPath: string, parent: FsEntry | null) => {
+        if (!parent) {
+            this.setState({ fsLoading: true });
+        }
+        try {
+            const res = await fetch(`/api/fs/list?path=${encodeURIComponent(relPath || '.')}`);
+            if (!res.ok) throw new Error(await res.text());
+            const entries: FsEntry[] = await res.json();
+
+            if (!parent) {
+                this.setState({ fsEntries: entries, fsLoading: false });
+            } else {
+                // Merge children into the existing tree
+                this.setState(prev => ({
+                    fsEntries: mergeChildren(prev.fsEntries, parent.path, entries),
+                }));
+            }
+        } catch (err) {
+            console.error('[fs] list error:', err);
+            if (!parent) this.setState({ fsLoading: false });
+        }
+    };
+
+    /** Toggle expand/collapse of a directory entry */
+    toggleFsDir = (entry: FsEntry) => {
+        if (!entry.isDir) return;
+        const willExpand = !entry.expanded;
+        this.setState(prev => ({
+            fsEntries: setExpanded(prev.fsEntries, entry.path, willExpand),
+        }));
+        // Lazy-load children only on first expand
+        if (willExpand && (!entry.children || entry.children.length === 0)) {
+            this.loadDir(entry.path, entry);
+        }
+    };
+
+    /** Open a file and load its content from /api/fs/read */
+    selectFsFile = async (entry: FsEntry) => {
+        if (entry.isDir) {
+            this.toggleFsDir(entry);
+            return;
+        }
+        this.setState({
+            selectedFsEntry: entry,
+            fileLoading: true,
+            fileContent: '',
+            editedContent: '',
+            fileSaveMsg: '',
+        });
+        try {
+            const res = await fetch(`/api/fs/read?path=${encodeURIComponent(entry.path)}`);
+            if (!res.ok) throw new Error(await res.text());
+            const text = await res.text();
+            this.setState({ fileContent: text, editedContent: text, fileLoading: false });
+        } catch (err) {
+            console.error('[fs] read error:', err);
+            this.setState({ fileContent: `Error loading file: ${err}`, editedContent: '', fileLoading: false });
+        }
+    };
+
+    /** Write editedContent back to the server via /api/fs/write */
+    saveFile = async () => {
+        const { selectedFsEntry, editedContent, fileSaving } = this.state;
+        if (!selectedFsEntry || selectedFsEntry.isDir || fileSaving) return;
+        this.setState({ fileSaving: true, fileSaveMsg: '' });
+        try {
+            const res = await fetch(`/api/fs/write?path=${encodeURIComponent(selectedFsEntry.path)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+                body: editedContent,
+            });
+            if (!res.ok) throw new Error(await res.text());
+            this.setState({ fileContent: editedContent, fileSaving: false, fileSaveMsg: '已保存 ✓' });
+            setTimeout(() => this.setState({ fileSaveMsg: '' }), 2000);
+        } catch (err) {
+            console.error('[fs] write error:', err);
+            this.setState({ fileSaving: false, fileSaveMsg: `保存失败: ${err}` });
+        }
+    };
 
     toggleTheme = (themeMode?: 'light' | 'dark') => {
         const targetTheme = themeMode || (this.state.theme === 'light' ? 'dark' : 'light');
@@ -269,55 +329,49 @@ export class App extends Component<{}, AppState> {
         });
     };
 
-    selectFile = (file: ProjectFile) => {
-        if (file.type === 'file') {
-            this.setState({ selectedFile: file });
-        }
-    };
-
-    renderHighlightedCode(content: string) {
-        const lines = content.split('\n');
-        return lines.map((line, idx) => {
-            const renderedText: Array<h.JSX.Element | string> = [];
-            const parts = line.split(/(\s+)/);
-            parts.forEach((part, pIdx) => {
-                if (
-                    /^(import|export|class|const|return|function|public|private|type|interface|void|async|await|let|var|set)$/.test(
-                        part
-                    )
-                ) {
-                    renderedText.push(
-                        <span key={pIdx} class="kw">
-                            {part}
-                        </span>
-                    );
-                } else if (/^("[^"]*"|'[^']*'|`[^`]*`)$/.test(part)) {
-                    renderedText.push(
-                        <span key={pIdx} class="str">
-                            {part}
-                        </span>
-                    );
-                } else if (/^\/\/.*$/.test(part) || /^\/\*.*$/.test(part) || /^#.*$/.test(part)) {
-                    renderedText.push(
-                        <span key={pIdx} class="cm">
-                            {part}
-                        </span>
-                    );
-                } else if (/^(<[^>]+>)$/.test(part)) {
-                    renderedText.push(
-                        <span key={pIdx} class="tag">
-                            {part}
-                        </span>
-                    );
-                } else {
-                    renderedText.push(part);
-                }
-            });
-
+    /** Recursively render the file tree from FsEntry nodes */
+    renderFsTree(entries: FsEntry[], depth: number): h.JSX.Element[] {
+        return entries.map(entry => {
+            const isSelected = this.state.selectedFsEntry?.path === entry.path;
             return (
-                <div key={idx} class="code-line">
-                    <span class="line-number">{idx + 1}</span>
-                    <span class="line-text">{renderedText}</span>
+                <div key={entry.path}>
+                    <div
+                        class={`file-node${isSelected ? ' active' : ''}`}
+                        style={`padding-left: ${12 + depth * 16}px`}
+                        onClick={() => this.selectFsFile(entry)}
+                    >
+                        {entry.isDir ? (
+                            <svg
+                                class={`folder-icon${entry.expanded ? ' expanded' : ''}`}
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                            </svg>
+                        ) : (
+                            <svg
+                                class="file-icon"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+                                <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+                            </svg>
+                        )}
+                        <span class="file-name">{entry.name}</span>
+                        {!entry.isDir && entry.size > 0 && <span class="file-size">{formatBytes(entry.size)}</span>}
+                    </div>
+                    {entry.isDir && entry.expanded && entry.children && entry.children.length > 0 && (
+                        <div>{this.renderFsTree(entry.children, depth + 1)}</div>
+                    )}
                 </div>
             );
         });
@@ -337,7 +391,7 @@ export class App extends Component<{}, AppState> {
     }
 
     render() {
-        const { activeTab, activeDrawerTab, theme, leftSidebarOpen, folders, selectedFile } = this.state;
+        const { activeTab, activeDrawerTab, theme, leftSidebarOpen, folders } = this.state;
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
         const termOptions = {
             ...baseTermOptions,
@@ -757,71 +811,69 @@ export class App extends Component<{}, AppState> {
                             <div class="panel-body-scroll">
                                 {activeDrawerTab === 'files' && (
                                     <div style="display: flex; flex-direction: column; gap: 16px;">
+                                        {/* ── File tree ── */}
                                         <div class="file-tree-container">
-                                            {projectFiles.map(file => (
-                                                <div
-                                                    key={file.path}
-                                                    class={`file-node indent-${file.indent} ${
-                                                        selectedFile?.path === file.path ? 'active' : ''
-                                                    }`}
-                                                    onClick={() => this.selectFile(file)}
-                                                >
-                                                    {file.type === 'folder' ? (
-                                                        <svg
-                                                            class="folder-icon"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg
-                                                            class="file-icon"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-                                                            <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-                                                        </svg>
-                                                    )}
-                                                    <span class="file-name">{file.name}</span>
-                                                    {file.size && <span class="file-size">{file.size}</span>}
-                                                </div>
-                                            ))}
+                                            {this.state.fsLoading && <div class="fs-loading">加载中…</div>}
+                                            {this.renderFsTree(this.state.fsEntries, 0)}
                                         </div>
 
-                                        {selectedFile && (
+                                        {/* ── File editor / preview ── */}
+                                        {this.state.selectedFsEntry && (
                                             <div class="code-preview-card">
                                                 <div class="preview-header">
-                                                    <span class="preview-title">{selectedFile.path}</span>
-                                                    <div
-                                                        class="preview-close"
-                                                        onClick={() => this.setState({ selectedFile: null })}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
+                                                    <span class="preview-title" title={this.state.selectedFsEntry.path}>
+                                                        {this.state.selectedFsEntry.name}
+                                                    </span>
+                                                    <div class="preview-actions">
+                                                        {this.state.fileSaveMsg && (
+                                                            <span class="save-msg">{this.state.fileSaveMsg}</span>
+                                                        )}
+                                                        <button
+                                                            class="preview-save-btn"
+                                                            onClick={this.saveFile}
+                                                            disabled={this.state.fileSaving}
+                                                            title="保存文件 (Ctrl+S)"
                                                         >
-                                                            <line x1="18" x2="6" y1="6" y2="18" />
-                                                            <line x1="6" x2="18" y1="6" y2="18" />
-                                                        </svg>
+                                                            {this.state.fileSaving ? '保存中…' : '保存'}
+                                                        </button>
+                                                        <div
+                                                            class="preview-close"
+                                                            onClick={() =>
+                                                                this.setState({
+                                                                    selectedFsEntry: null,
+                                                                    fileContent: '',
+                                                                    editedContent: '',
+                                                                })
+                                                            }
+                                                        >
+                                                            <svg
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2"
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                            >
+                                                                <line x1="18" x2="6" y1="6" y2="18" />
+                                                                <line x1="6" x2="18" y1="6" y2="18" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <pre class="preview-content">
-                                                    {this.renderHighlightedCode(selectedFile.content)}
-                                                </pre>
+                                                {this.state.fileLoading ? (
+                                                    <div class="fs-loading">读取文件中…</div>
+                                                ) : (
+                                                    <textarea
+                                                        class="file-editor"
+                                                        spellcheck={false}
+                                                        value={this.state.editedContent}
+                                                        onInput={e =>
+                                                            this.setState({
+                                                                editedContent: (e.target as HTMLTextAreaElement).value,
+                                                            })
+                                                        }
+                                                    />
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -960,4 +1012,45 @@ export class App extends Component<{}, AppState> {
             </div>
         );
     }
+}
+
+// ── Module-level helpers for immutable FsEntry tree manipulation ──────────────
+
+/**
+ * Walk the tree and set `children` on the node whose path matches `targetPath`.
+ * Returns a new array (immutable update).
+ */
+function mergeChildren(entries: FsEntry[], targetPath: string, children: FsEntry[]): FsEntry[] {
+    return entries.map(e => {
+        if (e.path === targetPath) {
+            return { ...e, children };
+        }
+        if (e.children) {
+            return { ...e, children: mergeChildren(e.children, targetPath, children) };
+        }
+        return e;
+    });
+}
+
+/**
+ * Walk the tree and toggle `expanded` on the node whose path matches `targetPath`.
+ * Returns a new array (immutable update).
+ */
+function setExpanded(entries: FsEntry[], targetPath: string, expanded: boolean): FsEntry[] {
+    return entries.map(e => {
+        if (e.path === targetPath) {
+            return { ...e, expanded };
+        }
+        if (e.children) {
+            return { ...e, children: setExpanded(e.children, targetPath, expanded) };
+        }
+        return e;
+    });
+}
+
+/** Format a byte count as a human-readable string (e.g. 12.3 KB) */
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

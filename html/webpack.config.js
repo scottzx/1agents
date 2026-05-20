@@ -79,9 +79,16 @@ const devConfig = {
         },
         proxy: [
             {
+                // Terminal WebSocket — proxy directly to ttyd
                 context: ['/token', '/ws'],
                 target: 'http://localhost:7681',
                 ws: true,
+            },
+            {
+                // File system API — proxy to the Go backend
+                context: ['/api'],
+                target: 'http://localhost:8081',
+                changeOrigin: true,
             },
         ],
         webSocketServer: {
