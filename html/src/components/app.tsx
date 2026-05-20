@@ -720,7 +720,10 @@ export class App extends Component<{}, AppState> {
         return (
             <div class="app-container">
                 {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar (直通顶部 100vh) */}
-                <aside class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}>
+                <aside
+                    class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}
+                    style={leftSidebarOpen ? `width: ${this.state.leftSidebarWidth}px` : ''}
+                >
                     <div class="sidebar-header">
                         <div class="coze-brand">
                             <div class="brand-left">
@@ -870,6 +873,15 @@ export class App extends Component<{}, AppState> {
                         </div>
                     </div>
                 </aside>
+
+                {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
+                {leftSidebarOpen && (
+                    <div
+                        class="resizer resizer-left"
+                        onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
+                        title="拖动调整左侧栏宽度"
+                    />
+                )}
 
                 {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
                 <div class="workspace-main-content">
@@ -1104,8 +1116,20 @@ export class App extends Component<{}, AppState> {
                             </div>
                         </main>
 
+                        {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                        {activeDrawerTab !== 'none' && (
+                            <div
+                                class="resizer resizer-right"
+                                onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
+                                title="拖动调整右侧栏宽度"
+                            />
+                        )}
+
                         {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                        <aside class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}>
+                        <aside
+                            class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}
+                            style={activeDrawerTab !== 'none' ? `width: ${this.state.rightPanelWidth}px` : ''}
+                        >
                             <div class="panel-tabs-header">
                                 <span class="panel-tab-title">{this.renderDrawerTitle(activeDrawerTab)}</span>
                                 <div
