@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"io/fs"
@@ -127,6 +128,73 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write(data)
+}
+
+// Image handles GET /api/fs/image?path=<relative-path>
+// Returns the file as a base64-encoded data URL for image preview.
+// Supported formats: gif, png, jpg, jpeg, webp, bmp, svg
+func (h *Handler) Image(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rel := r.URL.Query().Get("path")
+	abs, ok := h.safeAbs(rel)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	const maxBytes = 10 << 20 // 10 MB
+	if info.Size() > maxBytes {
+		http.Error(w, "file too large (>10 MB)", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	mimeType := getImageMimeType(abs)
+	encoded := base64.StdEncoding.EncodeToString(data)
+	dataURL := "data:" + mimeType + ";base64," + encoded
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(dataURL))
+}
+
+// getImageMimeType returns the MIME type for common image formats
+func getImageMimeType(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".gif":
+		return "image/gif"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".svg":
+		return "image/svg+xml"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // Write handles POST /api/fs/write?path=<relative-path>

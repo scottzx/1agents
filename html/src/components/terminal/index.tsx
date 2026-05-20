@@ -7,6 +7,7 @@ import { Modal } from '../modal';
 
 interface Props extends XtermOptions {
     id: string;
+    onBottomNavFocus?: (focused: boolean) => void;
 }
 
 interface State {
@@ -133,6 +134,8 @@ export class Terminal extends Component<Props, State> {
                                 value={mobileInput}
                                 onInput={this.handleMobileInput}
                                 onKeyDown={this.handleMobileKeyDown}
+                                onFocus={() => this.props.onBottomNavFocus?.(true)}
+                                onBlur={() => this.props.onBottomNavFocus?.(false)}
                                 placeholder="在此输入以同步到终端..."
                                 class="mobile-terminal-input"
                                 autocorrect="off"
