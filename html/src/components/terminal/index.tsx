@@ -32,6 +32,17 @@ export class Terminal extends Component<Props, State> {
         this.xterm.dispose();
     }
 
+    componentDidUpdate(prevProps: Props) {
+        if (
+            prevProps.termOptions &&
+            this.props.termOptions &&
+            prevProps.termOptions.theme !== this.props.termOptions.theme &&
+            this.props.termOptions.theme
+        ) {
+            this.xterm.setTheme(this.props.termOptions.theme);
+        }
+    }
+
     render({ id }: Props, { modal }: State) {
         return (
             <div id={id} ref={c => (this.container = c as HTMLElement)}>

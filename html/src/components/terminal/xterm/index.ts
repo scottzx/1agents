@@ -1,5 +1,5 @@
 import { bind } from 'decko';
-import type { IDisposable, ITerminalOptions } from '@xterm/xterm';
+import type { IDisposable, ITerminalOptions, ITheme } from '@xterm/xterm';
 import { Terminal } from '@xterm/xterm';
 import { CanvasAddon } from '@xterm/addon-canvas';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
@@ -114,6 +114,13 @@ export class Xterm {
             d.dispose();
         }
         this.disposables.length = 0;
+    }
+
+    @bind
+    public setTheme(theme?: ITheme) {
+        if (this.terminal) {
+            this.terminal.options.theme = theme;
+        }
     }
 
     @bind
