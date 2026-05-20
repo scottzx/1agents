@@ -90,6 +90,13 @@ interface WorkspaceFolder {
     }>;
 }
 
+/** Workspace data returned by /api/workspace/list */
+interface WorkspaceAPI {
+    id: string;
+    name: string;
+    path: string;
+}
+
 /** A single file or directory entry returned by /api/fs/list */
 interface FsEntry {
     name: string;
@@ -110,6 +117,8 @@ interface AppState {
     theme: 'light' | 'dark';
     hostname: string;
     leftSidebarOpen: boolean;
+    leftSidebarWidth: number; // px
+    rightPanelWidth: number; // px
     folders: WorkspaceFolder[];
     // ── File system state ──────────────────────────────────────────
     fsEntries: FsEntry[]; // root-level entries from /api/fs/list
@@ -122,6 +131,11 @@ interface AppState {
     fileSaveMsg: string; // brief feedback ('Saved!' / error)
 }
 
+// Drag resizer state (module-level, not in React state for perf)
+let _resizerActive: 'left' | 'right' | null = null;
+let _resizerStartX = 0;
+let _resizerStartWidth = 0;
+
 export class App extends Component<{}, AppState> {
     constructor() {
         super();
@@ -131,6 +145,8 @@ export class App extends Component<{}, AppState> {
             theme: 'light',
             hostname: 'Ashley Walker',
             leftSidebarOpen: true,
+            leftSidebarWidth: 260,
+            rightPanelWidth: 320,
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -139,44 +155,7 @@ export class App extends Component<{}, AppState> {
             fileLoading: false,
             fileSaving: false,
             fileSaveMsg: '',
-            folders: [
-                {
-                    id: 'remote-agents',
-                    name: 'remote-agents',
-                    expanded: true,
-                    children: [
-                        { id: 'f-custom', title: 'Frontend Customization G...', time: '2m', active: false },
-                        { id: 'a-terminal', title: 'Analyzing Web Terminal...', time: '11m', active: true },
-                    ],
-                },
-                {
-                    id: 'bee-write-back',
-                    name: 'bee-write-back',
-                    expanded: false,
-                    children: [{ id: 'a-bee', title: 'Analyzing Bee Write Back', time: '3h' }],
-                },
-                {
-                    id: 'cc-connect',
-                    name: 'cc-connect',
-                    expanded: false,
-                    children: [{ id: 'a-cc', title: '帮我分析一下这个项目。理...', time: '4h' }],
-                },
-                {
-                    id: 'html-slides',
-                    name: 'html-slides',
-                    expanded: false,
-                    children: [
-                        { id: 'a-slide-1', title: 'Designing Agent Collabor...', time: '18h' },
-                        { id: 'a-slide-2', title: 'Designing Agent Collabor...', time: '18h' },
-                    ],
-                },
-                {
-                    id: 'html-anything',
-                    name: 'html-anything',
-                    expanded: false,
-                    children: [{ id: 'a-anything', title: 'Querying LLM Usage', time: '1d' }],
-                },
-            ],
+            folders: [],
         };
     }
 
@@ -188,18 +167,45 @@ export class App extends Component<{}, AppState> {
         this.setState({ hostname: window.location.hostname || 'localhost' });
         // Load the root file tree on mount
         this.loadDir('', null);
+        // Load workspaces from API
+        this.loadWorkspaces();
         // Global Ctrl+S handler for saving the open file
         document.addEventListener('keydown', this.handleKeyDown);
+        // Resizer drag events
+        document.addEventListener('mousemove', this.handleResizerMove);
+        document.addEventListener('mouseup', this.handleResizerUp);
     }
 
     componentWillUnmount() {
         document.removeEventListener('keydown', this.handleKeyDown);
+        document.removeEventListener('mousemove', this.handleResizerMove);
+        document.removeEventListener('mouseup', this.handleResizerUp);
     }
 
     handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             this.saveFile();
+        }
+    };
+
+    // ── Workspace API helpers ──────────────────────────────────────────────
+
+    /** Fetch workspaces from /api/workspace/list and map to folders state */
+    loadWorkspaces = async () => {
+        try {
+            const res = await fetch('/api/workspace/list');
+            if (!res.ok) throw new Error(await res.text());
+            const workspaces: WorkspaceAPI[] = await res.json();
+            const folders: WorkspaceFolder[] = workspaces.map(ws => ({
+                id: ws.id,
+                name: ws.name,
+                expanded: false,
+                children: [],
+            }));
+            this.setState({ folders });
+        } catch (err) {
+            console.error('[workspace] list error:', err);
         }
     };
 
@@ -319,7 +325,46 @@ export class App extends Component<{}, AppState> {
     };
 
     toggleLeftSidebar = () => {
-        this.setState({ leftSidebarOpen: !this.state.leftSidebarOpen });
+        const opening = !this.state.leftSidebarOpen;
+        // If reopening and width got zeroed somehow, restore default
+        const leftSidebarWidth = opening
+            ? this.state.leftSidebarWidth > 40
+                ? this.state.leftSidebarWidth
+                : 260
+            : this.state.leftSidebarWidth;
+        this.setState({ leftSidebarOpen: opening, leftSidebarWidth });
+        this.triggerTerminalFit();
+    };
+
+    // ── Resizer drag handlers ──────────────────────────────────────────────
+
+    handleResizerDown = (side: 'left' | 'right', e: MouseEvent) => {
+        e.preventDefault();
+        _resizerActive = side;
+        _resizerStartX = e.clientX;
+        _resizerStartWidth = side === 'left' ? this.state.leftSidebarWidth : this.state.rightPanelWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    };
+
+    handleResizerMove = (e: MouseEvent) => {
+        if (!_resizerActive) return;
+        const dx = e.clientX - _resizerStartX;
+        if (_resizerActive === 'left') {
+            const w = Math.max(160, Math.min(480, _resizerStartWidth + dx));
+            this.setState({ leftSidebarWidth: w });
+        } else {
+            const w = Math.max(200, Math.min(600, _resizerStartWidth - dx));
+            this.setState({ rightPanelWidth: w });
+        }
+        this.triggerTerminalFit();
+    };
+
+    handleResizerUp = () => {
+        if (!_resizerActive) return;
+        _resizerActive = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
         this.triggerTerminalFit();
     };
 
@@ -398,16 +443,21 @@ export class App extends Component<{}, AppState> {
             theme: currentTheme,
         } as ITerminalOptions;
 
+        const { leftSidebarWidth, rightPanelWidth } = this.state;
+
         return (
             <div class="app-container">
                 {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar (直通顶部 100vh) */}
-                <aside class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}>
+                <aside
+                    class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}
+                    style={leftSidebarOpen ? `width: ${leftSidebarWidth}px` : ''}
+                >
                     <div class="sidebar-header">
                         <div class="coze-brand">
                             <div class="brand-left">
                                 <img
                                     class="brand-logo-img"
-                                    src="data:image/jpeg;base64,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"
+                                    src="data:image/jpeg;base64,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"
                                 />
                                 <span>1agents</span>
                             </div>
@@ -551,6 +601,15 @@ export class App extends Component<{}, AppState> {
                         </div>
                     </div>
                 </aside>
+
+                {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
+                {leftSidebarOpen && (
+                    <div
+                        class="resizer resizer-left"
+                        onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
+                        title="拖动调整左侧栏宽度"
+                    />
+                )}
 
                 {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
                 <div class="workspace-main-content">
@@ -785,8 +844,20 @@ export class App extends Component<{}, AppState> {
                             </div>
                         </main>
 
+                        {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                        {activeDrawerTab !== 'none' && (
+                            <div
+                                class="resizer resizer-right"
+                                onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
+                                title="拖动调整右侧栏宽度"
+                            />
+                        )}
+
                         {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                        <aside class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}>
+                        <aside
+                            class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}
+                            style={activeDrawerTab !== 'none' ? `width: ${rightPanelWidth}px` : ''}
+                        >
                             <div class="panel-tabs-header">
                                 <span class="panel-tab-title">{this.renderDrawerTitle(activeDrawerTab)}</span>
                                 <div

@@ -6,6 +6,7 @@ import (
 	"github.com/scottzx/remote-agents/agent/internal/config"
 	"github.com/scottzx/remote-agents/agent/internal/fs"
 	"github.com/scottzx/remote-agents/agent/internal/gateway"
+	"github.com/scottzx/remote-agents/agent/internal/workspace"
 )
 
 // NewRouter builds and returns the main HTTP request multiplexer.
@@ -13,6 +14,7 @@ import (
 // Route hierarchy (evaluated top-to-bottom):
 //
 //	/api/fs/*         → File system CRUD handlers (Go, local I/O)
+//	/api/workspace/*  → Workspace CRUD handlers (Go, JSON file storage)
 //	/ws               → Reverse-proxy to ttyd WebSocket endpoint
 //	/token            → Reverse-proxy to ttyd auth-token endpoint
 //	/                 → Static file server (compiled frontend assets)
@@ -26,6 +28,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/fs/write", fsHandler.Write)   // POST ?path=./main.go
 	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)   // POST ?path=./newdir
 	mux.HandleFunc("/api/fs/delete", fsHandler.Delete) // DELETE ?path=./main.go
+
+	// ── Workspace API ────────────────────────────────────────────────────────
+	wsHandler := workspace.NewHandler()
+	mux.HandleFunc("/api/workspace/list", wsHandler.List)     // GET
+	mux.HandleFunc("/api/workspace/create", wsHandler.Create) // POST
+	mux.HandleFunc("/api/workspace/update", wsHandler.Update) // POST
+	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete) // DELETE ?id=xxx
 
 	// ── ttyd reverse proxy ───────────────────────────────────────────────────
 	// All WebSocket and HTTP traffic destined for ttyd is forwarded here.

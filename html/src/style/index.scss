@@ -88,6 +88,43 @@ body {
 }
 
 /* ==========================================================================
+   RESIZER: Draggable dividers between columns
+   ========================================================================== */
+.resizer {
+  flex-shrink: 0;
+  width: 5px;
+  height: 100vh;
+  position: relative;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background 0.15s;
+
+  /* Visible center line */
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    height: 100%;
+    background: var(--border-color);
+    transition: background 0.15s, width 0.15s;
+  }
+
+  &:hover::after,
+  &:active::after {
+    width: 2px;
+    background: var(--accent-color);
+  }
+
+  &:hover {
+    background: rgba(var(--accent-color), 0.05);
+  }
+}
+
+/* ==========================================================================
    LEFT COLUMN: WORKSPACES SIDEBAR (Straight 100vh to top, sleek Slate-dark)
    ========================================================================== */
 .left-sidebar {
@@ -98,7 +135,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s;
+  /* No width transition here — width is controlled by inline style during drag.
+     Collapse animation is handled by the .collapsed class below. */
+  transition: opacity 0.2s;
   z-index: 10;
   color: var(--text-sidebar);
 
@@ -515,6 +554,53 @@ body {
 }
 
 /* ==========================================================================
+   MOBILE BOTTOM NAVIGATION (header-right transforms on mobile)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .header-right {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    min-height: 56px;
+    padding: 8px 16px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    background-color: var(--bg-header);
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: 4px;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+
+    .shortcut-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+
+      svg {
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .divider {
+      height: 20px;
+      margin: 0 2px;
+    }
+
+    &.hidden {
+      transform: translateY(100%);
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+}
+
+/* ==========================================================================
    WORKSPACE BODY (Flex container below header)
    ========================================================================== */
 .workspace-body-container {
@@ -648,7 +734,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  /* No width transition — controlled by inline style during drag */
+  transition: opacity 0.25s, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 5;
   transform: translateX(0);
 
