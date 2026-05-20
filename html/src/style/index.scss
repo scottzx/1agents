@@ -7,17 +7,17 @@
   --bg-page: #f5f6f8;
   --bg-header: #ffffff;
   --bg-card: #ffffff;
-  --bg-sidebar: #1e1f22;       /* Slate dark workspace sidebar matching reference */
-  --bg-sidebar-hover: #2b2d31;
+  --bg-sidebar: #fafafa;       /* Light sidebar unified with terminal inner background */
+  --bg-sidebar-hover: #eaeef2;
   --bg-panel: #ffffff;         /* Right dynamic function panel background */
   --bg-terminal-inner: #fafafa;
   --text-main: #1f2328;
   --text-secondary: #57606a;
   --text-muted: #8c959f;
-  --text-sidebar: #dbded8;
-  --text-sidebar-muted: #8c959f;
+  --text-sidebar: #1f2328;     /* Light sidebar text unified with theme main text */
+  --text-sidebar-muted: #57606a;
   --border-color: #d0d7de;
-  --border-sidebar: #2b2d31;
+  --border-sidebar: #d0d7de;
   --accent-color: #0969da;
   --accent-light: #ddf4ff;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -128,7 +128,7 @@ body {
         font-size: 16px;
         font-weight: 700;
         letter-spacing: 0.5px;
-        color: #ffffff;
+        color: var(--text-sidebar);
         
         .brand-icon {
           display: flex;
@@ -141,6 +141,14 @@ body {
           color: #ffffff;
           font-weight: 800;
           font-size: 13px;
+        }
+
+        .brand-logo-img {
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          object-fit: cover;
+          border: 1px solid rgba(255, 255, 255, 0.15);
         }
       }
 
@@ -157,7 +165,7 @@ body {
         
         &:hover {
           background-color: var(--bg-sidebar-hover);
-          color: #ffffff;
+          color: var(--text-sidebar);
         }
         
         svg {
@@ -185,7 +193,7 @@ body {
 
       &:hover {
         background-color: var(--bg-sidebar-hover);
-        border-color: #ffffff;
+        border-color: var(--text-sidebar);
       }
       
       svg {
