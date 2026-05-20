@@ -99,7 +99,6 @@ interface ProjectFile {
     content: string;
 }
 
-// Built-in actual project source files for dynamic and highly responsive frontend previews
 const projectFiles: ProjectFile[] = [
     {
         path: 'README.md',
@@ -156,13 +155,14 @@ const projectFiles: ProjectFile[] = [
     },
 ];
 
+type RightDrawerTab = 'files' | 'tasks' | 'settings' | 'none';
+
 interface AppState {
-    activeTab: 'terminal' | 'agents' | 'console' | 'folders' | 'settings';
-    rightPanelTab: 'files' | 'tasks';
+    activeTab: 'terminal' | 'agents' | 'console' | 'folders';
+    activeDrawerTab: RightDrawerTab;
     theme: 'light' | 'dark';
     hostname: string;
     leftSidebarOpen: boolean;
-    rightSidebarOpen: boolean;
     folders: WorkspaceFolder[];
     selectedFile: ProjectFile | null;
 }
@@ -172,12 +172,11 @@ export class App extends Component<{}, AppState> {
         super();
         this.state = {
             activeTab: 'terminal',
-            rightPanelTab: 'files',
+            activeDrawerTab: 'none', // Collapsed right drawer panel by default
             theme: 'light',
             hostname: 'Ashley Walker',
             leftSidebarOpen: true,
-            rightSidebarOpen: true,
-            selectedFile: projectFiles[0], // Pre-select README.md by default
+            selectedFile: projectFiles[0],
             folders: [
                 {
                     id: 'remote-agents',
@@ -227,40 +226,40 @@ export class App extends Component<{}, AppState> {
         this.setState({ hostname: window.location.hostname || 'Ashley Walker' });
     }
 
-    toggleTheme = () => {
-        const newTheme = this.state.theme === 'light' ? 'dark' : 'light';
-        this.setState({ theme: newTheme });
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('remote-agents-theme', newTheme);
+    toggleTheme = (themeMode?: 'light' | 'dark') => {
+        const targetTheme = themeMode || (this.state.theme === 'light' ? 'dark' : 'light');
+        this.setState({ theme: targetTheme });
+        document.documentElement.setAttribute('data-theme', targetTheme);
+        localStorage.setItem('remote-agents-theme', targetTheme);
         this.triggerTerminalFit();
     };
 
     triggerTerminalFit = () => {
         setTimeout(() => {
-            if (window.term && window.term.fit) {
-                window.term.fit();
+            const term = (window as unknown as { term?: { fit?: () => void } }).term;
+            if (term && term.fit) {
+                term.fit();
             }
         }, 150);
     };
 
-    setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'settings') => {
+    setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders') => {
         this.setState({ activeTab: tab });
-        if (tab === 'terminal') {
-            this.triggerTerminalFit();
-        }
+        this.triggerTerminalFit();
     };
 
-    setRightPanelTab = (tab: 'files' | 'tasks') => {
-        this.setState({ rightPanelTab: tab });
+    // Coze click shortcut toggle dynamic drawer logic
+    toggleDrawerTab = (tab: RightDrawerTab) => {
+        if (this.state.activeDrawerTab === tab) {
+            this.setState({ activeDrawerTab: 'none' });
+        } else {
+            this.setState({ activeDrawerTab: tab });
+        }
+        this.triggerTerminalFit();
     };
 
     toggleLeftSidebar = () => {
         this.setState({ leftSidebarOpen: !this.state.leftSidebarOpen });
-        this.triggerTerminalFit();
-    };
-
-    toggleRightSidebar = () => {
-        this.setState({ rightSidebarOpen: !this.state.rightSidebarOpen });
         this.triggerTerminalFit();
     };
 
@@ -276,13 +275,10 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    // Sophisticated JSX-based token parser for syntax-highlighting files inside dynamic previews
     renderHighlightedCode(content: string) {
         const lines = content.split('\n');
         return lines.map((line, idx) => {
             const renderedText: Array<h.JSX.Element | string> = [];
-
-            // Standard light regex-based tokenization for presentation styling
             const parts = line.split(/(\s+)/);
             parts.forEach((part, pIdx) => {
                 if (
@@ -327,9 +323,21 @@ export class App extends Component<{}, AppState> {
         });
     }
 
+    renderDrawerTitle(tab: RightDrawerTab) {
+        switch (tab) {
+            case 'files':
+                return '文件浏览器 (Files)';
+            case 'tasks':
+                return '任务调试看板 (Tasks)';
+            case 'settings':
+                return '系统终端设置 (Settings)';
+            default:
+                return '';
+        }
+    }
+
     render() {
-        const { activeTab, rightPanelTab, theme, hostname, leftSidebarOpen, rightSidebarOpen, folders, selectedFile } =
-            this.state;
+        const { activeTab, activeDrawerTab, theme, hostname, leftSidebarOpen, folders, selectedFile } = this.state;
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
         const termOptions = {
             ...baseTermOptions,
@@ -338,190 +346,45 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container">
-                {/* 1. Global Header Bar */}
-                <header class="global-header">
-                    <div class="header-left">
-                        <div class="home-btn" title="返回首页">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                                <polyline points="9 22 9 12 15 12 15 22" />
-                            </svg>
-                        </div>
-                        <div class="divider" />
-                        <span class="project-title" title={`${hostname}的智能体`}>
-                            {hostname}的智能体
-                        </span>
-                        <div class="badge-ops">
-                            <div class="pulse-dot" />
-                            <svg
-                                width="10"
-                                height="10"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                            </svg>
-                            <span>AI 运维</span>
-                        </div>
-                    </div>
-
-                    <div class="header-center">
-                        <div
-                            class={`nav-tab ${activeTab === 'agents' ? 'active' : ''}`}
-                            onClick={() => this.setActiveTab('agents')}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M12 8V4H8" />
-                                <rect width="16" height="12" x="4" y="8" rx="2" />
-                                <path d="M2 14h2" />
-                                <path d="M20 14h2" />
-                                <path d="M15 13v2" />
-                                <path d="M9 13v2" />
-                            </svg>
-                            <span>智能体</span>
-                        </div>
-                        <div
-                            class={`nav-tab ${activeTab === 'console' ? 'active' : ''}`}
-                            onClick={() => this.setActiveTab('console')}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect width="20" height="14" x="2" y="5" rx="2" />
-                                <line x1="2" x2="22" y1="10" y2="10" />
-                            </svg>
-                            <span>控制台</span>
-                        </div>
-                        <div
-                            class={`nav-tab ${activeTab === 'folders' ? 'active' : ''}`}
-                            onClick={() => this.setActiveTab('folders')}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                            </svg>
-                            <span>文件夹</span>
-                        </div>
-                        <div
-                            class={`nav-tab ${activeTab === 'terminal' ? 'active' : ''}`}
-                            onClick={() => this.setActiveTab('terminal')}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect width="20" height="16" x="2" y="4" rx="2" />
-                                <path d="m7 8 3 2-3 2" />
-                                <path d="M12 12h4" />
-                            </svg>
-                            <span>终端</span>
-                        </div>
-                        <div
-                            class={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
-                            onClick={() => this.setActiveTab('settings')}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                                <circle cx="12" cy="12" r="3" />
-                            </svg>
-                            <span>设置</span>
-                        </div>
-                    </div>
-
-                    <div class="header-right">
-                        <button
-                            class="theme-toggle-btn"
-                            onClick={this.toggleTheme}
-                            title={theme === 'light' ? '深色模式' : '浅色模式'}
-                        >
-                            {theme === 'light' ? (
+                {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar (直通顶部 100vh) */}
+                <aside class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}>
+                    <div class="sidebar-header">
+                        <div class="coze-brand">
+                            <div class="brand-left">
+                                <div class="brand-icon">扣</div>
+                                <span>扣子终端</span>
+                            </div>
+                            <div class="sidebar-close-btn" onClick={this.toggleLeftSidebar} title="折叠侧边栏">
                                 <svg
-                                    width="14"
-                                    height="14"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
-                                    stroke-width="2"
+                                    stroke-width="2.5"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                 >
-                                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                                    <polyline points="15 18 9 12 15 6" />
                                 </svg>
-                            ) : (
-                                <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="4" />
-                                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-                                </svg>
-                            )}
-                        </button>
-                        <button class="btn-primary">
+                            </div>
+                        </div>
+
+                        <button class="new-conv-btn">
                             <svg
-                                width="12"
-                                height="12"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
-                                stroke-width="2.5"
+                                stroke-width="2"
                                 stroke-linecap="round"
                                 stroke-linejoin="round"
                             >
                                 <path d="M5 12h14M12 5v14" />
                             </svg>
-                            <span>新建智能体</span>
+                            <span>新建会话</span>
                         </button>
-                        <div class="more-options-btn">
+
+                        <div class="history-title-container">
+                            <span>历史会话</span>
                             <svg
-                                width="16"
-                                height="16"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -529,57 +392,49 @@ export class App extends Component<{}, AppState> {
                                 stroke-linecap="round"
                                 stroke-linejoin="round"
                             >
-                                <circle cx="12" cy="12" r="1" />
-                                <circle cx="19" cy="12" r="1" />
-                                <circle cx="5" cy="12" r="1" />
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
                             </svg>
                         </div>
-                        <div class="user-avatar" title="个人主页">
-                            <div class="avatar-placeholder" />
-                        </div>
                     </div>
-                </header>
 
-                {/* 3. Three-Column Grid Workspace Area */}
-                <div class="workspace-body">
-                    {/* [COLUMN 1]: LEFT Side workspaces Tree sidebar */}
-                    <aside class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}>
-                        <div class="sidebar-header">
-                            <button class="new-conv-btn">
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M5 12h14M12 5v14" />
-                                </svg>
-                                <span>新建会话</span>
-                            </button>
-                            <div class="history-title-container">
-                                <span>历史会话</span>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <polyline points="12 6 12 12 16 14" />
-                                </svg>
+                    <div class="sidebar-scroll">
+                        <div class="workspace-section">
+                            <div class="section-header">
+                                <span>工作空间 Workspaces</span>
+                                <div class="header-actions">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M3 16h10M3 12h18M3 8h18" />
+                                    </svg>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="sidebar-scroll">
-                            <div class="workspace-section">
-                                <div class="section-header">
-                                    <span>工作空间 Workspaces</span>
-                                    <div class="header-actions">
+                            {folders.map(folder => (
+                                <div key={folder.id} class="project-node">
+                                    <div
+                                        class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
+                                        onClick={() => this.toggleFolder(folder.id)}
+                                    >
                                         <svg
+                                            class="chevron"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="9 18 15 12 9 6" />
+                                        </svg>
+                                        <svg
+                                            class="folder-icon"
                                             viewBox="0 0 24 24"
                                             fill="none"
                                             stroke="currentColor"
@@ -587,64 +442,132 @@ export class App extends Component<{}, AppState> {
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                         >
-                                            <path d="M3 16h10M3 12h18M3 8h18" />
+                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                                         </svg>
+                                        <span>{folder.name}</span>
                                     </div>
-                                </div>
 
-                                {folders.map(folder => (
-                                    <div key={folder.id} class="project-node">
-                                        <div
-                                            class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
-                                            onClick={() => this.toggleFolder(folder.id)}
-                                        >
-                                            <svg
-                                                class="chevron"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <polyline points="9 18 15 12 9 6" />
-                                            </svg>
-                                            <svg
-                                                class="folder-icon"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                            </svg>
-                                            <span>{folder.name}</span>
+                                    {folder.expanded && (
+                                        <div class="project-children">
+                                            {folder.children.map(child => (
+                                                <div key={child.id} class={`chat-item ${child.active ? 'active' : ''}`}>
+                                                    <span class="chat-title" title={child.title}>
+                                                        {child.title}
+                                                    </span>
+                                                    <span class="chat-time">{child.time}</span>
+                                                </div>
+                                            ))}
                                         </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
 
-                                        {folder.expanded && (
-                                            <div class="project-children">
-                                                {folder.children.map(child => (
-                                                    <div
-                                                        key={child.id}
-                                                        class={`chat-item ${child.active ? 'active' : ''}`}
-                                                    >
-                                                        <span class="chat-title" title={child.title}>
-                                                            {child.title}
-                                                        </span>
-                                                        <span class="chat-time">{child.time}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+                    <div class="sidebar-footer">
+                        <div class="footer-item" onClick={() => this.toggleDrawerTab('settings')}>
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="12" cy="12" r="3" />
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                            </svg>
+                            <span>Settings</span>
+                        </div>
+                        <div class="footer-item">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                            <span>Feedback</span>
+                        </div>
+                    </div>
+                </aside>
+
+                {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
+                <div class="workspace-main-content">
+                    {/* [COZE PAGE HEADER]: Replaces top global header */}
+                    <header class="workspace-header">
+                        <div class="header-left">
+                            {!leftSidebarOpen && (
+                                <button
+                                    class="sidebar-toggle-btn"
+                                    onClick={this.toggleLeftSidebar}
+                                    style="margin-right: 4px;"
+                                    title="展开左侧栏"
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </button>
+                            )}
+                            <div class="header-title-group">
+                                <span class="title">{hostname}的智能体</span>
+                                <div class="status-indicator">
+                                    <div class="pulse-dot" />
+                                    <span>运行中</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="sidebar-footer">
-                            <div class="footer-item">
+                        {/* Coze right shortcut buttons in red box */}
+                        <div class="header-right">
+                            <button
+                                class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
+                                onClick={() => this.toggleDrawerTab('files')}
+                                title="文件浏览器"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                </svg>
+                            </button>
+                            <button
+                                class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
+                                onClick={() => this.toggleDrawerTab('tasks')}
+                                title="任务追踪与调试"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+                                    <path d="m9 12 2 2 4-4" />
+                                </svg>
+                            </button>
+                            <button
+                                class={`shortcut-btn ${activeDrawerTab === 'settings' ? 'active' : ''}`}
+                                onClick={() => this.toggleDrawerTab('settings')}
+                                title="系统设置"
+                            >
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -656,63 +579,14 @@ export class App extends Component<{}, AppState> {
                                     <circle cx="12" cy="12" r="3" />
                                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                                 </svg>
-                                <span>Settings</span>
-                            </div>
-                            <div class="footer-item">
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                                </svg>
-                                <span>Provide Feedback</span>
-                            </div>
-                        </div>
-                    </aside>
-
-                    {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                    <main class="middle-canvas">
-                        {/* Terminal specific subheader toolbar */}
-                        <div class="terminal-toolbar">
-                            <div class="toolbar-left">
-                                <button
-                                    class="sidebar-toggle-btn"
-                                    onClick={this.toggleLeftSidebar}
-                                    title={leftSidebarOpen ? '收起左侧栏' : '展开左侧栏'}
-                                >
-                                    {leftSidebarOpen ? (
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <polyline points="15 18 9 12 15 6" />
-                                        </svg>
-                                    ) : (
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <polyline points="9 18 15 12 9 6" />
-                                        </svg>
-                                    )}
-                                </button>
-                                <h2 class="page-title">终端</h2>
-                            </div>
-
-                            <div class="toolbar-right">
-                                <div class="shell-selector" title="选择 Shell 终端">
+                            </button>
+                            <div class="divider" />
+                            <button
+                                class="shortcut-btn"
+                                onClick={() => this.toggleTheme()}
+                                title={theme === 'light' ? '深色主题' : '浅色主题'}
+                            >
+                                {theme === 'light' ? (
                                     <svg
                                         viewBox="0 0 24 24"
                                         fill="none"
@@ -721,13 +595,149 @@ export class App extends Component<{}, AppState> {
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
                                     >
-                                        <polyline points="4 17 10 11 4 5" />
-                                        <line x1="12" x2="20" y1="19" y2="19" />
+                                        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
                                     </svg>
-                                    <span>bash</span>
+                                ) : (
                                     <svg
-                                        width="10"
-                                        height="10"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <circle cx="12" cy="12" r="4" />
+                                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
+                    <div class="workspace-body-container">
+                        {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
+                        <main class="middle-canvas">
+                            <div class="terminal-toolbar">
+                                <div class="toolbar-left">
+                                    <h2 class="page-title">系统主控制终端</h2>
+                                </div>
+
+                                <div class="toolbar-right">
+                                    <div class="shell-selector" title="选择 Shell 终端">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="4 17 10 11 4 5" />
+                                            <line x1="12" x2="20" y1="19" y2="19" />
+                                        </svg>
+                                        <span>bash</span>
+                                        <svg
+                                            width="10"
+                                            height="10"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="6 9 12 15 18 9" />
+                                        </svg>
+                                    </div>
+                                    <button class="tool-btn" title="添加新标签页">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="M5 12h14M12 5v14" />
+                                        </svg>
+                                    </button>
+                                    <button class="tool-btn" title="分屏显示">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <rect width="18" height="18" x="3" y="3" rx="2" />
+                                            <line x1="12" x2="12" y1="3" y2="21" />
+                                        </svg>
+                                    </button>
+                                    <button class="tool-btn btn-danger" title="终止并清理当前终端">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                                            <line x1="10" x2="10" y1="11" y2="17" />
+                                            <line x1="14" x2="14" y1="11" y2="17" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Card wrapper containing the actual Web terminal canvas */}
+                            <div class="terminal-card">
+                                {activeTab === 'terminal' ? (
+                                    <Terminal
+                                        id="terminal-container"
+                                        wsUrl={wsUrl}
+                                        tokenUrl={tokenUrl}
+                                        clientOptions={clientOptions}
+                                        termOptions={termOptions}
+                                        flowControl={flowControl}
+                                    />
+                                ) : (
+                                    <div
+                                        class="placeholder-view"
+                                        style="margin: 0; border: none; border-radius: 0; height: 100%;"
+                                    >
+                                        <svg
+                                            class="placeholder-icon"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <rect width="20" height="16" x="2" y="4" rx="2" />
+                                            <path d="m7 8 3 2-3 2" />
+                                            <path d="M12 12h4" />
+                                        </svg>
+                                        <h3 class="placeholder-title">终端就绪</h3>
+                                        <p class="placeholder-desc">在全局导航栏中点击【终端】以开始交互会话。</p>
+                                    </div>
+                                )}
+                            </div>
+                        </main>
+
+                        {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
+                        <aside class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}>
+                            <div class="panel-tabs-header">
+                                <span class="panel-tab-title">{this.renderDrawerTitle(activeDrawerTab)}</span>
+                                <div
+                                    class="panel-close-btn"
+                                    onClick={() => this.setState({ activeDrawerTab: 'none' })}
+                                    title="收起面板"
+                                >
+                                    <svg
                                         viewBox="0 0 24 24"
                                         fill="none"
                                         stroke="currentColor"
@@ -735,188 +745,177 @@ export class App extends Component<{}, AppState> {
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
                                     >
-                                        <polyline points="6 9 12 15 18 9" />
+                                        <line x1="18" x2="6" y1="6" y2="18" />
+                                        <line x1="6" x2="18" y1="6" y2="18" />
                                     </svg>
                                 </div>
-                                <button class="tool-btn" title="添加新标签页">
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M5 12h14M12 5v14" />
-                                    </svg>
-                                </button>
-                                <button class="tool-btn" title="分屏显示">
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <rect width="18" height="18" x="3" y="3" rx="2" />
-                                        <line x1="12" x2="12" y1="3" y2="21" />
-                                    </svg>
-                                </button>
-                                <button class="tool-btn btn-danger" title="终止并清理当前终端">
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                                        <line x1="10" x2="10" y1="11" y2="17" />
-                                        <line x1="14" x2="14" y1="11" y2="17" />
-                                    </svg>
-                                </button>
-                                <button
-                                    class="tool-btn"
-                                    onClick={this.toggleRightSidebar}
-                                    title={rightSidebarOpen ? '收起右侧栏' : '展开右侧栏'}
-                                >
-                                    {rightSidebarOpen ? (
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <polyline points="9 18 15 12 9 6" />
-                                        </svg>
-                                    ) : (
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <polyline points="15 18 9 12 15 6" />
-                                        </svg>
-                                    )}
-                                </button>
                             </div>
-                        </div>
 
-                        {/* Card wrapper containing the actual Web terminal canvas */}
-                        <div class="terminal-card">
-                            {activeTab === 'terminal' ? (
-                                <Terminal
-                                    id="terminal-container"
-                                    wsUrl={wsUrl}
-                                    tokenUrl={tokenUrl}
-                                    clientOptions={clientOptions}
-                                    termOptions={termOptions}
-                                    flowControl={flowControl}
-                                />
-                            ) : (
-                                <div
-                                    class="placeholder-view"
-                                    style="margin: 0; border: none; border-radius: 0; height: 100%;"
-                                >
-                                    <svg
-                                        class="placeholder-icon"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="1.5"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <rect width="20" height="16" x="2" y="4" rx="2" />
-                                        <path d="m7 8 3 2-3 2" />
-                                        <path d="M12 12h4" />
-                                    </svg>
-                                    <h3 class="placeholder-title">终端就绪</h3>
-                                    <p class="placeholder-desc">在全局导航栏中点击【终端】以开始交互会话。</p>
-                                </div>
-                            )}
-                        </div>
-                    </main>
-
-                    {/* [COLUMN 3]: RIGHT Side dynamic panel */}
-                    <aside class={`right-panel ${rightSidebarOpen ? '' : 'collapsed'}`}>
-                        <div class="panel-tabs-header">
-                            <span
-                                class={`panel-tab-btn ${rightPanelTab === 'files' ? 'active' : ''}`}
-                                onClick={() => this.setRightPanelTab('files')}
-                            >
-                                文件预览 (Files)
-                            </span>
-                            <span
-                                class={`panel-tab-btn ${rightPanelTab === 'tasks' ? 'active' : ''}`}
-                                onClick={() => this.setRightPanelTab('tasks')}
-                            >
-                                任务追踪 (Tasks)
-                            </span>
-                        </div>
-
-                        <div class="panel-body-scroll">
-                            {rightPanelTab === 'files' && (
-                                <div style="display: flex; flex-direction: column; gap: 16px;">
-                                    {/* Project File Tree Browser */}
-                                    <div class="file-tree-container">
-                                        {projectFiles.map(file => (
-                                            <div
-                                                key={file.path}
-                                                class={`file-node indent-${file.indent} ${
-                                                    selectedFile?.path === file.path ? 'active' : ''
-                                                }`}
-                                                onClick={() => this.selectFile(file)}
-                                            >
-                                                {file.type === 'folder' ? (
-                                                    <svg
-                                                        class="folder-icon"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                    >
-                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                    </svg>
-                                                ) : (
-                                                    <svg
-                                                        class="file-icon"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                    >
-                                                        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-                                                        <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-                                                    </svg>
-                                                )}
-                                                <span class="file-name">{file.name}</span>
-                                                {file.size && <span class="file-size">{file.size}</span>}
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    {/* High fidelity syntax preview card */}
-                                    {selectedFile && (
-                                        <div class="code-preview-card">
-                                            <div class="preview-header">
-                                                <span class="preview-title">{selectedFile.path}</span>
+                            <div class="panel-body-scroll">
+                                {activeDrawerTab === 'files' && (
+                                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                                        <div class="file-tree-container">
+                                            {projectFiles.map(file => (
                                                 <div
-                                                    class="preview-close"
-                                                    onClick={() => this.setState({ selectedFile: null })}
+                                                    key={file.path}
+                                                    class={`file-node indent-${file.indent} ${
+                                                        selectedFile?.path === file.path ? 'active' : ''
+                                                    }`}
+                                                    onClick={() => this.selectFile(file)}
+                                                >
+                                                    {file.type === 'folder' ? (
+                                                        <svg
+                                                            class="folder-icon"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg
+                                                            class="file-icon"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+                                                            <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+                                                        </svg>
+                                                    )}
+                                                    <span class="file-name">{file.name}</span>
+                                                    {file.size && <span class="file-size">{file.size}</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {selectedFile && (
+                                            <div class="code-preview-card">
+                                                <div class="preview-header">
+                                                    <span class="preview-title">{selectedFile.path}</span>
+                                                    <div
+                                                        class="preview-close"
+                                                        onClick={() => this.setState({ selectedFile: null })}
+                                                    >
+                                                        <svg
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <line x1="18" x2="6" y1="6" y2="18" />
+                                                            <line x1="6" x2="18" y1="6" y2="18" />
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                                <pre class="preview-content">
+                                                    {this.renderHighlightedCode(selectedFile.content)}
+                                                </pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeDrawerTab === 'tasks' && (
+                                    <div class="task-list-container">
+                                        <div class="task-item completed">
+                                            <svg
+                                                class="check-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="12 8 12 12 14 14" />
+                                            </svg>
+                                            <span>移除了顶部全局导航栏以呈现 Coze 极简风格</span>
+                                        </div>
+                                        <div class="task-item completed">
+                                            <svg
+                                                class="check-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="12 8 12 12 14 14" />
+                                            </svg>
+                                            <span>整合会话头部标题栏，引入运行中动态绿色脉冲灯</span>
+                                        </div>
+                                        <div class="task-item completed">
+                                            <svg
+                                                class="check-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="12 8 12 12 14 14" />
+                                            </svg>
+                                            <span>引入 Coze 右上角快捷功能按钮栏 (文件树、任务控制、系统设置)</span>
+                                        </div>
+                                        <div class="task-item completed">
+                                            <svg
+                                                class="check-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="12 8 12 12 14 14" />
+                                            </svg>
+                                            <span>实现右侧滑出式抽屉面板 (Quick Drawer System) 及其缓动过渡</span>
+                                        </div>
+                                        <div class="task-item completed">
+                                            <svg
+                                                class="check-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="12 8 12 12 14 14" />
+                                            </svg>
+                                            <span>完全兼容并无损保留移动端快捷同步键盘及输入面板</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeDrawerTab === 'settings' && (
+                                    <div class="settings-container">
+                                        <div class="setting-group">
+                                            <span class="setting-label">色彩主题样式 (Color Theme)</span>
+                                            <div class="theme-options">
+                                                <button
+                                                    class={`theme-btn ${theme === 'light' ? 'active' : ''}`}
+                                                    onClick={() => this.toggleTheme('light')}
                                                 >
                                                     <svg
+                                                        width="12"
+                                                        height="12"
                                                         viewBox="0 0 24 24"
                                                         fill="none"
                                                         stroke="currentColor"
@@ -924,100 +923,36 @@ export class App extends Component<{}, AppState> {
                                                         stroke-linecap="round"
                                                         stroke-linejoin="round"
                                                     >
-                                                        <line x1="18" x2="6" y1="6" y2="18" />
-                                                        <line x1="6" x2="18" y1="6" y2="18" />
+                                                        <circle cx="12" cy="12" r="4" />
+                                                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
                                                     </svg>
-                                                </div>
+                                                    <span>浅色模式</span>
+                                                </button>
+                                                <button
+                                                    class={`theme-btn ${theme === 'dark' ? 'active' : ''}`}
+                                                    onClick={() => this.toggleTheme('dark')}
+                                                >
+                                                    <svg
+                                                        width="12"
+                                                        height="12"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                                                    </svg>
+                                                    <span>深色模式</span>
+                                                </button>
                                             </div>
-                                            <pre class="preview-content">
-                                                {this.renderHighlightedCode(selectedFile.content)}
-                                            </pre>
                                         </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {rightPanelTab === 'tasks' && (
-                                <div class="task-list-container">
-                                    <div class="task-item completed">
-                                        <svg
-                                            class="check-icon"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 8 12 12 14 14" />
-                                        </svg>
-                                        <span>分析终端页面布局并制定三栏式重构方案</span>
                                     </div>
-                                    <div class="task-item completed">
-                                        <svg
-                                            class="check-icon"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 8 12 12 14 14" />
-                                        </svg>
-                                        <span>构建极简 Workspaces 侧边栏文件树架构</span>
-                                    </div>
-                                    <div class="task-item completed">
-                                        <svg
-                                            class="check-icon"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 8 12 12 14 14" />
-                                        </svg>
-                                        <span>设计右侧三栏动态面板，集成代码高亮预览器</span>
-                                    </div>
-                                    <div class="task-item completed">
-                                        <svg
-                                            class="check-icon"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 8 12 12 14 14" />
-                                        </svg>
-                                        <span>支持终端左右侧边栏的响应式折叠逻辑系统</span>
-                                    </div>
-                                    <div class="task-item completed">
-                                        <svg
-                                            class="check-icon"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 8 12 12 14 14" />
-                                        </svg>
-                                        <span>完成 TypeScript 全局构建与本地交付验证</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </aside>
+                                )}
+                            </div>
+                        </aside>
+                    </div>
                 </div>
             </div>
         );
