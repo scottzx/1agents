@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useRef } from 'preact/hooks';
 import { WorkspaceFolder, Workspace, RightDrawerTab, getStatusLabel } from '../types';
 
 interface LeftSidebarProps {
@@ -34,22 +34,24 @@ export function LeftSidebar({
     onSelectWorkspace,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
-    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handleDeleteClick = (e: MouseEvent, id: string) => {
-        e.stopPropagation();
-        setConfirmDeleteId(id);
+    const handleMouseDown = (e: MouseEvent, id: string) => {
+        if ((e.target as HTMLElement).closest('.ws-actions')) return;
+        longPressTimer.current = setTimeout(() => {
+            const ws = workspaces.find(w => w.id === id);
+            if (ws && window.confirm(`是否移除工作空间 "${ws.name}"？`)) {
+                onDeleteWorkspace(id);
+            }
+            longPressTimer.current = null;
+        }, 600);
     };
 
-    const confirmDelete = (e: MouseEvent, id: string) => {
-        e.stopPropagation();
-        setConfirmDeleteId(null);
-        onDeleteWorkspace(id);
-    };
-
-    const cancelDelete = (e: MouseEvent) => {
-        e.stopPropagation();
-        setConfirmDeleteId(null);
+    const handleMouseUp = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
     };
 
     return (
@@ -181,7 +183,6 @@ export function LeftSidebar({
                         folders.map(folder => {
                             const ws = workspaces.find(w => w.id === folder.id);
                             const isHovered = hoveredId === folder.id;
-                            const isConfirmingDelete = confirmDeleteId === folder.id;
                             const isActive = ws?.id === activeWorkspaceId;
 
                             return (
@@ -191,27 +192,14 @@ export function LeftSidebar({
                                     onMouseEnter={() => setHoveredId(folder.id)}
                                     onMouseLeave={() => {
                                         setHoveredId(null);
-                                        if (confirmDeleteId === folder.id) setConfirmDeleteId(null);
+                                        handleMouseUp();
                                     }}
+                                    onMouseDown={(e: MouseEvent) => handleMouseDown(e, folder.id)}
+                                    onMouseUp={handleMouseUp}
                                 >
-                                    {isConfirmingDelete ? (
-                                        /* Delete confirm inline */
-                                        <div class="ws-delete-confirm">
-                                            <span>删除 "{folder.name}"？</span>
-                                            <button
-                                                class="ws-del-yes"
-                                                onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
-                                            >
-                                                删除
-                                            </button>
-                                            <button class="ws-del-no" onClick={cancelDelete}>
-                                                取消
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            class={`project-folder ${folder.expanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
-                                        >
+                                    <div
+                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
+                                    >
                                             <div
                                                 class="folder-click-area"
                                                 onClick={() => toggleFolder(folder.id)}
@@ -248,24 +236,12 @@ export function LeftSidebar({
                                                 )}
                                             </div>
 
-                                            {/* Action buttons: select (always), edit/delete (on hover) */}
+                                            {/* Action buttons: edit (hover), select (always, rightmost) */}
                                             {ws && (
                                                 <div
                                                     class="ws-actions"
                                                     onClick={(e: MouseEvent) => e.stopPropagation()}
                                                 >
-                                                    {ws.path && (
-                                                        <button
-                                                            class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
-                                                            title={isActive ? '当前工作空间' : '点击切换工作空间'}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                onSelectWorkspace(ws);
-                                                            }}
-                                                        >
-                                                            {isActive ? '✓' : '→'}
-                                                        </button>
-                                                    )}
                                                     <button
                                                         class="ws-action-btn ws-action-edit"
                                                         title="编辑"
@@ -286,29 +262,21 @@ export function LeftSidebar({
                                                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                                         </svg>
                                                     </button>
-                                                    <button
-                                                        class="ws-action-btn ws-action-delete"
-                                                        title="删除"
-                                                        onClick={(e: MouseEvent) => handleDeleteClick(e, folder.id)}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
+                                                    {ws.path && (
+                                                        <button
+                                                            class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
+                                                            title={isActive ? '当前工作空间' : '点击切换工作空间'}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onSelectWorkspace(ws);
+                                                            }}
                                                         >
-                                                            <polyline points="3 6 5 6 21 6" />
-                                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                            <path d="M10 11v6M14 11v6" />
-                                                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                        </svg>
-                                                    </button>
+                                                            {isActive ? '✓' : '→'}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
-                                    )}
 
                                     {folder.expanded && (
                                         <div class="project-children">

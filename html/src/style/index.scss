@@ -490,7 +490,7 @@ body {
           border-radius: 6px;
         }
 
-        /* Action buttons: select (always), edit/delete (on hover) */
+        /* Action buttons: edit (hover), select (always, rightmost) */
         .ws-actions {
           display: flex;
           align-items: center;
@@ -539,77 +539,15 @@ body {
             }
 
             /* Edit button: only visible on hover */
-            &.ws-action-edit,
-            &.ws-action-delete {
+            &.ws-action-edit {
               display: none;
             }
-
-            &.ws-action-delete:hover {
-              background-color: rgba(207, 34, 46, 0.12);
-              color: #cf222e;
-            }
           }
 
           &:hover {
-            .ws-action-edit,
-            .ws-action-delete {
+            .ws-action-edit {
               display: flex;
             }
-          }
-        }
-      }
-
-      /* Inline delete confirmation */
-      .ws-delete-confirm {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
-        border-radius: 6px;
-        background-color: rgba(207, 34, 46, 0.06);
-        border: 1px solid rgba(207, 34, 46, 0.2);
-        font-size: 12px;
-        color: var(--text-sidebar);
-
-        span {
-          flex: 1;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .ws-del-yes {
-          padding: 2px 8px;
-          border-radius: 4px;
-          border: 1px solid rgba(207, 34, 46, 0.5);
-          background: rgba(207, 34, 46, 0.1);
-          color: #cf222e;
-          font-size: 11px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-          white-space: nowrap;
-
-          &:hover {
-            background: #cf222e;
-            color: white;
-          }
-        }
-
-        .ws-del-no {
-          padding: 2px 8px;
-          border-radius: 4px;
-          border: 1px solid var(--border-sidebar);
-          background: transparent;
-          color: var(--text-sidebar-muted);
-          font-size: 11px;
-          cursor: pointer;
-          transition: all 0.15s;
-          white-space: nowrap;
-
-          &:hover {
-            background-color: var(--bg-sidebar-hover);
-            color: var(--text-sidebar);
           }
         }
       }
