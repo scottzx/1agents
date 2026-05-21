@@ -283,15 +283,21 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    /** Open the modal for creating a new workspace */
-    openCreateWorkspaceModal = () => {
-        this.setState({
-            wsModalOpen: true,
-            wsModalMode: 'create',
-            wsModalTarget: null,
-            wsModalName: '',
-            wsModalPath: '',
-        });
+    /** Open native folder picker and create workspace from selected directory */
+    openCreateWorkspacePicker = async () => {
+        try {
+            const res = await fetch('/api/workspace/pick-directory', { method: 'POST' });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            const pickedPath = (data.path || '').trim();
+            if (!pickedPath) return; // user cancelled
+
+            const sep = pickedPath.includes('\\') ? '\\' : '/';
+            const dirName = pickedPath.split(sep).filter(Boolean).pop() || pickedPath;
+            await this.createWorkspace(dirName, pickedPath);
+        } catch (err) {
+            this.showToast(`选取目录失败: ${err}`);
+        }
     };
 
     /** Open the modal for renaming/editing an existing workspace */
@@ -719,7 +725,7 @@ export class App extends Component<{}, AppState> {
                     toggleLeftSidebar={this.toggleLeftSidebar}
                     toggleFolder={this.toggleFolder}
                     toggleDrawerTab={this.toggleDrawerTab}
-                    onCreateWorkspace={this.openCreateWorkspaceModal}
+                    onCreateWorkspace={this.openCreateWorkspacePicker}
                     onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
                     onDeleteWorkspace={this.deleteWorkspace}
                 />

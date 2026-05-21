@@ -36,7 +36,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/list", wsHandler.List)     // GET
 	mux.HandleFunc("/api/workspace/create", wsHandler.Create) // POST
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update) // POST
-	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete) // DELETE ?id=xxx
+	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)           // DELETE ?id=xxx
+	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)

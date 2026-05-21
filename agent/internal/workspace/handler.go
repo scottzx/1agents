@@ -2,10 +2,14 @@ package workspace
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 const configDir = "/Users/scott/.remote-agents"
@@ -184,6 +188,68 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]interface{}{"ok": true})
+}
+
+// PickDirectory handles POST /api/workspace/pick-directory.
+// It opens a native OS folder picker dialog and returns the selected path.
+func (h *Handler) PickDirectory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path, err := pickDirectory()
+	if err != nil {
+		if isUserCancel(err) {
+			writeJSON(w, map[string]string{"path": ""})
+			return
+		}
+		log.Printf("[workspace] pick-directory error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"path": path})
+}
+
+func pickDirectory() (string, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		return pickDirectoryDarwin()
+	case "linux":
+		return pickDirectoryLinux()
+	default:
+		return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+}
+
+func pickDirectoryDarwin() (string, error) {
+	script := `try
+		POSIX path of (choose folder with prompt "选择工作空间目录")
+	end try`
+	cmd := exec.Command("osascript", "-e", script)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func pickDirectoryLinux() (string, error) {
+	cmd := exec.Command("zenity", "--file-selection", "--directory", "--title=选择工作空间目录")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func isUserCancel(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "User canceled") ||
+		strings.Contains(s, "canceled") ||
+		strings.Contains(s, "exit status 1")
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
