@@ -2,8 +2,8 @@ import { h } from 'preact';
 import { FsEntry, RightDrawerTab } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
-import { TaskList } from './TaskList';
 import { ThemeSettings } from './ThemeSettings';
+import { GitPanel } from './GitPanel';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -103,8 +103,8 @@ export function RightPanel({
         switch (tab) {
             case 'files':
                 return '文件浏览器 (Files)';
-            case 'tasks':
-                return '任务调试看板 (Tasks)';
+            case 'git':
+                return '版本控制 (Git)';
             case 'settings':
                 return '系统终端设置 (Settings)';
             default:
@@ -179,7 +179,7 @@ export function RightPanel({
                         )
                     ))}
 
-                {activeDrawerTab === 'tasks' && <TaskList />}
+                {activeDrawerTab === 'git' && <GitPanel workdir="." />}
 
                 {activeDrawerTab === 'settings' && <ThemeSettings theme={theme} toggleTheme={toggleTheme} />}
             </div>

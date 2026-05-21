@@ -144,7 +144,7 @@ export class App extends Component<{}, AppState> {
             activeDrawerTab: 'none',
             theme: 'light',
             hostname: 'Ashley Walker',
-            leftSidebarOpen: true,
+            leftSidebarOpen: window.innerWidth > 768,
             leftSidebarWidth: 260,
             rightPanelWidth: 320,
             bottomNavHidden: false,

@@ -31,7 +31,7 @@ export interface FsEntry {
     expanded?: boolean;
 }
 
-export type RightDrawerTab = 'files' | 'tasks' | 'settings' | 'none';
+export type RightDrawerTab = 'files' | 'git' | 'settings' | 'none';
 
 export function getFileTag(name: string): 'doc' | 'img' | 'code' | 'other' {
     const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
