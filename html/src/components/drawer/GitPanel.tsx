@@ -436,7 +436,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             );
         }
 
-        const stagedCount = status.staged.length;
+        const staged = status.staged || [];
+        const unstaged = status.unstaged || [];
+        const untracked = status.untracked || [];
+        const stagedCount = staged.length;
         const hasStaged = stagedCount > 0;
 
         return (
@@ -498,15 +501,15 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 </div>
 
                 {/* Changes sections */}
-                {status.staged.length === 0 && status.unstaged.length === 0 && status.untracked.length === 0 && (
+                {staged.length === 0 && unstaged.length === 0 && untracked.length === 0 && (
                     <div class="git-clean-state">
                         <span>✓ 工作区干净</span>
                     </div>
                 )}
 
-                {this.renderSection('暂存的更改', status.staged, 'staged', () => this.unstage(null), '全部取消')}
-                {this.renderSection('更改', status.unstaged, 'unstaged', () => this.stage(null), '全部暂存 +')}
-                {this.renderSection('未跟踪', status.untracked, 'untracked', () => this.stage(null), '全部暂存 +')}
+                {this.renderSection('暂存的更改', staged, 'staged', () => this.unstage(null), '全部取消')}
+                {this.renderSection('更改', unstaged, 'unstaged', () => this.stage(null), '全部暂存 +')}
+                {this.renderSection('未跟踪', untracked, 'untracked', () => this.stage(null), '全部暂存 +')}
 
                 {/* Commit log */}
                 <div class="git-section git-log-section">

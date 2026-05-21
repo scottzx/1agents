@@ -364,6 +364,10 @@ func (h *Handler) aheadBehind() (ahead, behind int) {
 
 // changedFiles parses `git status --porcelain=v1` into three buckets.
 func (h *Handler) changedFiles() (staged, unstaged, untracked []FileStatus) {
+	staged = []FileStatus{}
+	unstaged = []FileStatus{}
+	untracked = []FileStatus{}
+
 	out, err := h.git("status", "--porcelain=v1")
 	if err != nil || out == "" {
 		return
