@@ -8,6 +8,7 @@ import { GitPanel } from './GitPanel';
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
     activeWorkspaceId: string;
+    activeWorkspacePath: string;
     rightPanelWidth: number;
     closeDrawer: () => void;
 
@@ -58,6 +59,7 @@ interface RightPanelProps {
 export function RightPanel({
     activeDrawerTab,
     activeWorkspaceId,
+    activeWorkspacePath,
     rightPanelWidth,
     closeDrawer,
 
@@ -181,7 +183,9 @@ export function RightPanel({
                         )
                     ))}
 
-                {activeDrawerTab === 'git' && <GitPanel workdir="." activeWorkspaceId={activeWorkspaceId} />}
+                {activeDrawerTab === 'git' && (
+                    <GitPanel workdir={activeWorkspacePath} activeWorkspaceId={activeWorkspaceId} />
+                )}
 
                 {activeDrawerTab === 'settings' && <ThemeSettings theme={theme} toggleTheme={toggleTheme} />}
             </div>

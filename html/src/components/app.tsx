@@ -36,6 +36,8 @@ const lightTermTheme = {
     foreground: '#1f2328',
     background: '#fafafa',
     cursor: '#1f2328',
+    selectionBackground: '#add6ff',
+    selectionInactiveBackground: '#e2e8f0',
     black: '#1f2328',
     red: '#cf222e',
     green: '#1a7f37',
@@ -105,6 +107,7 @@ interface AppState {
     // ── Terminal / tmux state ──
     terminalWindows: TmuxWindow[];
     terminalWindowsLoading: boolean;
+    tmuxMouseOn: boolean;
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -163,6 +166,7 @@ export class App extends Component<{}, AppState> {
             wsModalPath: '',
             terminalWindows: [],
             terminalWindowsLoading: false,
+            tmuxMouseOn: true,
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -195,6 +199,7 @@ export class App extends Component<{}, AppState> {
         this.loadFlatFiles();
         this.loadWorkspaces();
         this.loadTerminals();
+        this.loadTmuxMouse();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
@@ -420,15 +425,89 @@ export class App extends Component<{}, AppState> {
         }
     };
 
+    /** Fetch current tmux mouse mode state */
+    loadTmuxMouse = async () => {
+        try {
+            const res = await fetch('/api/terminal/mouse');
+            if (res.ok) {
+                const data = await res.json();
+                this.setState({ tmuxMouseOn: !!data.mouse });
+            }
+        } catch (err) {
+            console.error('[terminal] load mouse state error:', err);
+        }
+    };
+
+    /** Toggle tmux mouse mode state */
+    toggleTmuxMouse = async () => {
+        const nextState = !this.state.tmuxMouseOn;
+        try {
+            const res = await fetch('/api/terminal/mouse', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mouse: nextState }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            const actualState = !!data.mouse;
+            this.setState({ tmuxMouseOn: actualState });
+            if (actualState) {
+                this.showToast('已开启滚轮滑动模式 (可通过方向键选择历史命令) ✓');
+            } else {
+                this.showToast('已开启鼠标选择复制模式 (可直接拖拽选中复制) ✓');
+            }
+        } catch (err) {
+            this.showToast(`切换鼠标模式失败: ${err}`);
+        }
+    };
+
+    /**
+     * Core workspace context switch — tells the backend to change its fs+git roots,
+     * then resets all file-browser state and triggers a reload.
+     * Called by both selectWorkspace() and selectSession().
+     */
+    switchWorkspaceContext = async (ws: Workspace) => {
+        // Tell backend to update fs + git roots atomically
+        try {
+            await fetch('/api/context/set', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: ws.path }),
+            });
+        } catch (err) {
+            console.error('[context] set error:', err);
+        }
+
+        // Reset file-browser state, then reload from new root
+        this.setState({
+            fsEntries: [],
+            selectedFsEntry: null,
+            fileContent: '',
+            editedContent: '',
+        });
+        this.loadDir('', null);
+        this.loadFlatFiles();
+    };
+
     /** Switch to a session from sidebar click — also activates its workspace. */
-    selectSession = (session: Session) => {
-        const { activeWorkspaceId } = this.state;
+    selectSession = async (session: Session) => {
+        const { activeWorkspaceId, workspaces } = this.state;
+        // Always switch the tmux window first
         this.switchTerminal(session.index);
+
         if (session.workspaceId !== activeWorkspaceId) {
+            // Expand the folder and mark it active
             this.setState({
                 activeWorkspaceId: session.workspaceId,
                 folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
             });
+
+            // Switch backend context and reload file browser / git panel
+            const ws = workspaces.find(w => w.id === session.workspaceId);
+            if (ws) {
+                await this.switchWorkspaceContext(ws);
+                this.showToast(`已切换到 "${ws.name}" ✓`);
+            }
         }
     };
 
@@ -439,21 +518,18 @@ export class App extends Component<{}, AppState> {
 
         this.setState({ activeWorkspaceId: ws.id });
 
-        // Find an existing window for this workspace
+        // Find an existing window for this workspace, or create one
         const win =
             terminalWindows.find(w => w.workspaceId === ws.id && w.active) ||
             terminalWindows.find(w => w.workspaceId === ws.id);
         if (win) {
             await this.switchTerminal(win.index);
         } else {
-            // Create a new terminal for this workspace
             await this.createTerminal(ws.id, ws.path);
         }
 
-        // Reload file browser for the new root
-        this.setState({ fsEntries: [], selectedFsEntry: null, fileContent: '', editedContent: '' });
-        this.loadDir('', null);
-        this.loadFlatFiles();
+        // Switch backend context (fs + git roots) and reload file browser
+        await this.switchWorkspaceContext(ws);
         this.showToast(`已切换到 "${ws.name}" ✓`);
     };
 
@@ -811,6 +887,7 @@ export class App extends Component<{}, AppState> {
             theme,
             leftSidebarOpen,
             leftSidebarWidth,
+            tmuxMouseOn,
             rightPanelWidth,
             folders,
             workspaces,
@@ -844,6 +921,9 @@ export class App extends Component<{}, AppState> {
             ...baseTermOptions,
             theme: currentTheme,
         } as ITerminalOptions;
+
+        // Derive the filesystem path of the currently active workspace
+        const activeWorkspacePath = workspaces.find(w => w.id === activeWorkspaceId)?.path || '.';
 
         return (
             <div class="app-container">
@@ -949,6 +1029,8 @@ export class App extends Component<{}, AppState> {
                             clientOptions={clientOptions}
                             termOptions={termOptions}
                             flowControl={flowControl}
+                            tmuxMouseOn={tmuxMouseOn}
+                            onTmuxMouseToggle={this.toggleTmuxMouse}
                         />
 
                         {/* Resizer: between MIDDLE canvas and RIGHT panel */}
@@ -964,6 +1046,7 @@ export class App extends Component<{}, AppState> {
                         <RightPanel
                             activeDrawerTab={activeDrawerTab}
                             activeWorkspaceId={activeWorkspaceId}
+                            activeWorkspacePath={activeWorkspacePath}
                             rightPanelWidth={rightPanelWidth}
                             closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
                             theme={theme}

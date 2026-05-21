@@ -11,6 +11,8 @@ interface MiddleCanvasProps {
     termOptions: ITerminalOptions;
     flowControl: FlowControl;
     onMobileDetect?: (isMobile: boolean) => void;
+    tmuxMouseOn: boolean;
+    onTmuxMouseToggle: () => void;
 }
 
 export function MiddleCanvas({
@@ -21,6 +23,8 @@ export function MiddleCanvas({
     termOptions,
     flowControl,
     onMobileDetect,
+    tmuxMouseOn,
+    onTmuxMouseToggle,
 }: MiddleCanvasProps) {
     return (
         <main class="middle-canvas">
@@ -30,6 +34,30 @@ export function MiddleCanvas({
                     <h2 class="page-title">系统主控制终端</h2>
                 </div>
                 <div class="toolbar-right">
+                    <button
+                        class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
+                        onClick={onTmuxMouseToggle}
+                        title={
+                            tmuxMouseOn
+                                ? '当前模式：滚轮滑动（点击切换为选择复制）'
+                                : '当前模式：选择复制（点击切换为滚轮滑动）'
+                        }
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <rect x="5" y="2" width="14" height="20" rx="7" />
+                            <path d="M12 2v6" />
+                            <path d="M5 10h14" />
+                        </svg>
+                        <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
+                    </button>
+
                     <div class="shell-selector" title="当前 Shell: tmux">
                         <svg
                             viewBox="0 0 24 24"

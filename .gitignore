@@ -57,3 +57,4 @@ src/html.h
 !init.d
 node_modules
 .playwright-mcp
+src/html.h

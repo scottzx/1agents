@@ -1023,6 +1023,46 @@ body {
       align-items: center;
       gap: 6px;
 
+      .tmux-mouse-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10.5px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-card);
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-family: inherit;
+        transition: all 0.2s ease;
+        outline: none;
+
+        &:hover {
+          border-color: var(--text-secondary);
+          color: var(--text-main);
+          background-color: var(--btn-hover);
+        }
+
+        &.active {
+          border-color: rgba(9, 105, 218, 0.25);
+          background-color: var(--accent-light);
+          color: var(--accent-color);
+          
+          &:hover {
+            border-color: rgba(9, 105, 218, 0.4);
+            background-color: var(--accent-light);
+            filter: brightness(0.98);
+          }
+        }
+
+        svg {
+          width: 12px;
+          height: 12px;
+        }
+      }
+
       .shell-selector {
         display: flex;
         align-items: center;

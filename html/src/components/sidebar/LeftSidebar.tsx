@@ -66,10 +66,7 @@ export function LeftSidebar({
             <div class="sidebar-header">
                 <div class="coze-brand">
                     <div class="brand-left">
-                        <img
-                            class="brand-logo-img"
-                            src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQABLAEsAAD/4QCARXhpZgAATU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAAEsAAAAAQAAASwAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAAICgAwAEAAAAAQAAAIAAAAAA/+0AOFBob3Rvc2hvcCAzLjAAOEJJTQQEAAAAAAAAOEJJTQQlAAAAAAAQ1B2M2Y8AsgTpgAmY7PhCfv/AABEIAIAAgAMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2wBDAAICAgICAgMCAgMFAwMDBQYFBQUFBggGBgYGBggKCAgICAgICgoKCgoKCgoMDAwMDAwODg4ODg8PDw8PDw8PDw//2wBDAQICAgQEBAcEBAcQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/3QAEAAj/2gAMAwEAAhEDEQA/APx/ooor37HjhRRRTAKKKKACiiigAooooAGOtFFABRRRQAUUUUAf/9D8f6KKK+gPHCiiigAoopQM0AJT1Rn+6M1YhtJJSAFJzxgd69h+H2haFpt/F4h8YQ/a9MspEMtojEPOx5EO4Ebd2DuOcqAcgHaD6eDy2VR66I8zMsxVCm5pXfZdTxZo3XqMU3B9K+nNT+G9v4+意。这里由于Base64较长，截断为跟原app.tsx完全一致的内容即可 -->"
-                        />
+                        <img class="brand-logo-img" src="/logo.png" />
                         <span>1agents</span>
                     </div>
                     <div class="sidebar-close-btn" onClick={toggleLeftSidebar} title="折叠侧边栏">
@@ -85,7 +82,6 @@ export function LeftSidebar({
                         </svg>
                     </div>
                 </div>
-
             </div>
 
             <div class="sidebar-scroll">

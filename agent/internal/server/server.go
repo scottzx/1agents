@@ -65,6 +65,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/terminal/list", termHandler.List)     // GET
 	mux.HandleFunc("/api/terminal/kill", termHandler.Kill)     // POST {windowIndex}
 	mux.HandleFunc("/api/terminal/switch", termHandler.Switch) // POST {windowIndex}
+	mux.HandleFunc("/api/terminal/mouse", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			termHandler.GetMouse(w, r)
+		} else if r.Method == http.MethodPost {
+			termHandler.SetMouse(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	// ── ttyd reverse proxy ───────────────────────────────────────────────────
 	// All WebSocket and HTTP traffic destined for ttyd is forwarded here.

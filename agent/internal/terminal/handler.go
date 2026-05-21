@@ -217,11 +217,17 @@ func (h *Handler) sessionExists() bool {
 // This is needed because ttyd only spawns tmux inside its PTY when a WebSocket
 // client connects, but the API needs the session available before that.
 func (h *Handler) ensureSession() {
+	// Enable mouse mode globally first so any session inherits it
+	_ = exec.Command("tmux", "set-option", "-g", "mouse", "on").Run()
+
 	if h.sessionExists() {
+		// Just in case, ensure mouse mode is on for this session
+		_ = exec.Command("tmux", "set-option", "-t", h.session, "mouse", "on").Run()
 		return
 	}
 	log.Printf("[terminal] creating tmux session '%s' in detached mode", h.session)
-	exec.Command("tmux", "new-session", "-d", "-s", h.session, "-n", "p").Run()
+	_ = exec.Command("tmux", "new-session", "-d", "-s", h.session, "-n", "p").Run()
+	_ = exec.Command("tmux", "set-option", "-t", h.session, "mouse", "on").Run()
 }
 
 // nextWindowNum finds the next available N for workspace_<N> naming.
@@ -304,6 +310,60 @@ func (h *Handler) selectWindow(index int) error {
 		return fmt.Errorf("select-window: %s (output: %s)", err, string(out))
 	}
 	return nil
+}
+
+// MouseRequest is the request body for POST /api/terminal/mouse.
+type MouseRequest struct {
+	Mouse bool `json:"mouse"`
+}
+
+// GetMouse returns whether the tmux session currently has mouse mode enabled.
+func (h *Handler) GetMouse(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	h.ensureSession()
+
+	cmd := exec.Command("tmux", "show-options", "-t", h.session, "mouse")
+	out, err := cmd.Output()
+	enabled := false
+	if err == nil {
+		outStr := strings.TrimSpace(string(out))
+		if strings.Contains(outStr, "on") {
+			enabled = true
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"mouse": enabled})
+}
+
+// SetMouse configures the tmux session to enable or disable mouse mode.
+func (h *Handler) SetMouse(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req MouseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	h.ensureSession()
+
+	val := "off"
+	if req.Mouse {
+		val = "on"
+	}
+
+	// Set specifically on the session and globally so new windows inherit it
+	_ = exec.Command("tmux", "set-option", "-t", h.session, "mouse", val).Run()
+	_ = exec.Command("tmux", "set-option", "-g", "mouse", val).Run()
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "mouse": req.Mouse})
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
