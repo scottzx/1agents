@@ -877,23 +877,28 @@ body {
 
   /* ── Workspace main content: fills width, no horizontal overflow ── */
   .workspace-main-content {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100dvh;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  /* ── Body container: full width, height minus header + bottom nav ── */
+  /* ── Body container: full width, height dynamically set by visualViewport ── */
   .workspace-body-container {
-    height: calc(100dvh - 48px - 56px) !important;
+    height: var(--mobile-body-height, calc(100dvh - 48px - 56px));
     width: 100%;
     overflow: hidden;
-    position: relative;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  /* ── Middle canvas: take full width ── */
+  /* ── Middle canvas: height dynamically calculated to leave room for input bar ── */
   .middle-canvas {
     width: 100%;
-    flex: 1;
+    height: var(--mobile-term-height, auto);
+    flex: none !important;
+    min-height: 0;
     min-width: 0;
 
     /* Tighten the toolbar padding on mobile */
@@ -908,46 +913,23 @@ body {
     }
   }
 
-  /* ── Right panel: becomes a bottom sheet ── */
+  /* ── Right panel: full-width inline content replacing terminal (single-panel mode) ── */
   .right-panel {
-    position: fixed !important;
-    bottom: 56px; /* above bottom nav */
-    left: 0;
-    right: 0;
+    position: relative !important;
     width: 100% !important;
-    height: 65vh !important;
+    height: 100% !important;
     border-left: none !important;
-    border-top: 1px solid var(--border-color);
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
-    z-index: 200;
-    transform: translateY(0);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    z-index: auto;
 
     &.collapsed {
-      transform: translateY(100%) !important;
-      width: 100% !important;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    /* Bottom sheet drag handle */
-    .panel-tabs-header::before {
-      content: '';
-      display: block;
-      position: absolute;
-      top: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 36px;
-      height: 4px;
-      background-color: var(--border-color);
-      border-radius: 2px;
+      display: none;
     }
 
     .panel-tabs-header {
       position: relative;
-      padding-top: 20px;
+      padding-top: 0;
     }
   }
 }
@@ -1492,6 +1474,7 @@ body {
   border-top: 1px solid var(--border-color);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
   z-index: 20;
 
   .mobile-quick-keys {
@@ -1506,12 +1489,14 @@ body {
     }
 
     .key-btn {
-      padding: 6px 14px;
+      padding: 6px 12px;
+      min-width: 40px;
+      text-align: center;
       background-color: var(--bg-page);
       border: 1px solid var(--border-color);
       border-radius: 8px;
       color: var(--text-main);
-      font-size: 12px;
+      font-size: 13px;
       font-family: 'JetBrains Mono', monospace;
       font-weight: 500;
       cursor: pointer;

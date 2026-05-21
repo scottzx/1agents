@@ -22,6 +22,8 @@ struct endpoints {
   char *index;
   char *token;
   char *parent;
+  char *sw;
+  char *manifest;
 };
 
 extern volatile bool force_exit;
