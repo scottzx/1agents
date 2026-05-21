@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState, useRef } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { WorkspaceFolder, Workspace, RightDrawerTab, getStatusLabel } from '../types';
 
 interface LeftSidebarProps {
@@ -33,7 +33,6 @@ export function LeftSidebar({
     onDeleteWorkspace,
     onSelectWorkspace,
 }: LeftSidebarProps) {
-    const [hoveredId, setHoveredId] = useState<string | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleMouseDown = (e: MouseEvent, id: string) => {
@@ -188,16 +187,14 @@ export function LeftSidebar({
                                 <div
                                     key={folder.id}
                                     class={`project-node ${isActive ? 'ws-active' : ''}`}
-                                    onMouseEnter={() => setHoveredId(folder.id)}
-                                    onMouseLeave={() => {
-                                        setHoveredId(null);
-                                        handleMouseUp();
-                                    }}
+                                    onMouseLeave={handleMouseUp}
                                     onMouseDown={(e: MouseEvent) => handleMouseDown(e, folder.id)}
                                     onMouseUp={handleMouseUp}
                                 >
                                     <div
-                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
+                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
+                                            isActive ? 'active' : ''
+                                        }`}
                                     >
                                         <div class="folder-click-area" onClick={() => toggleFolder(folder.id)}>
                                             <svg
