@@ -77,7 +77,7 @@ const darkTermTheme = {
 } as ITheme;
 
 const baseTermOptions = {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: 'JetBrains Mono, Consolas, Liberation Mono, Menlo, monospace',
     allowProposedApi: true,
 } as ITerminalOptions;
