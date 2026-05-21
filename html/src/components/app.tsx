@@ -91,6 +91,8 @@ interface AppState {
     leftSidebarWidth: number;
     rightPanelWidth: number;
     bottomNavHidden: boolean;
+    isMobile: boolean;
+    mobileInput: string;
     // ── Workspace state (from API) ──
     workspaces: Workspace[];
     workspacesLoading: boolean;
@@ -148,6 +150,8 @@ export class App extends Component<{}, AppState> {
             leftSidebarWidth: 260,
             rightPanelWidth: 320,
             bottomNavHidden: false,
+            isMobile: false,
+            mobileInput: '',
             workspaces: [],
             workspacesLoading: false,
             folders: [],
@@ -179,6 +183,11 @@ export class App extends Component<{}, AppState> {
     }
 
     componentDidMount() {
+        const isMobile =
+            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+            window.innerWidth <= 768;
+        this.setState({ isMobile });
+
         const savedTheme = localStorage.getItem('remote-agents-theme') as 'light' | 'dark' | null;
         const theme = savedTheme || 'light';
         this.setState({ theme });
@@ -190,13 +199,33 @@ export class App extends Component<{}, AppState> {
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
+
+        if (isMobile) {
+            this.updateTerminalHeight = () => {
+                const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                const headerH = 48;   // workspace-header
+                const navH = 56;      // mobile-bottom-nav
+                const inputH = 108;   // mobile-input-bar (quick-keys + input row + padding)
+                const bodyH = vh - headerH - navH;
+                const termH = bodyH - inputH;
+                document.documentElement.style.setProperty('--mobile-body-height', `${bodyH}px`);
+                document.documentElement.style.setProperty('--mobile-term-height', `${termH}px`);
+            };
+            window.visualViewport?.addEventListener('resize', this.updateTerminalHeight);
+            this.updateTerminalHeight();
+        }
     }
 
     componentWillUnmount() {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
+        if (this.updateTerminalHeight) {
+            window.visualViewport?.removeEventListener('resize', this.updateTerminalHeight);
+        }
     }
+
+    private updateTerminalHeight?: () => void;
 
     handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -673,6 +702,66 @@ export class App extends Component<{}, AppState> {
         }
     };
 
+    // ── Mobile input handlers ──────────────────────────────────────────────
+
+    handleMobileInput = (event: Event) => {
+        this.setState({ mobileInput: (event.target as HTMLInputElement).value });
+    };
+
+    handleMobileKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            this.sendMobileInput();
+        }
+    };
+
+    sendMobileInput = () => {
+        const { mobileInput } = this.state;
+        if (mobileInput && window.xterm) {
+            window.xterm.sendData(mobileInput + '\r');
+            this.setState({ mobileInput: '' });
+        }
+    };
+
+    sendQuickKey = (key: string) => {
+        const xt = window.xterm;
+        if (!xt) return;
+        switch (key) {
+            case 'Paste':
+                navigator.clipboard.readText().then(text => {
+                    if (text) xt.sendData(text);
+                }).catch(() => {});
+                break;
+            case '↑':
+                xt.sendData('\x1b[A');
+                break;
+            case '↓':
+                xt.sendData('\x1b[B');
+                break;
+            case '←':
+                xt.sendData('\x1b[D');
+                break;
+            case '→':
+                xt.sendData('\x1b[C');
+                break;
+            case 'Esc':
+                xt.sendData('\x1b');
+                break;
+            case '⌫':
+                xt.sendData('\x7f');
+                break;
+            case '↵':
+                xt.sendData('\r');
+                break;
+        }
+    };
+
+    handleMobileDetect = (isMobile: boolean) => {
+        if (this.state.isMobile !== isMobile) {
+            this.setState({ isMobile });
+        }
+    };
+
     render() {
         const {
             activeTab,
@@ -705,6 +794,8 @@ export class App extends Component<{}, AppState> {
             isImagePreview,
             imageDataUrl,
             toastMsg,
+            isMobile,
+            mobileInput,
         } = this.state;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -804,18 +895,63 @@ export class App extends Component<{}, AppState> {
 
                     {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
                     <div class="workspace-body-container">
-                        {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                        <MiddleCanvas
-                            activeTab={activeTab}
-                            wsUrl={wsUrl}
-                            tokenUrl={tokenUrl}
-                            clientOptions={clientOptions}
-                            termOptions={termOptions}
-                            flowControl={flowControl}
-                        />
+                        {isMobile && activeDrawerTab !== 'none' ? (
+                            /* Mobile single-panel: right drawer replaces terminal */
+                            <RightPanel
+                                activeDrawerTab={activeDrawerTab}
+                                rightPanelWidth={rightPanelWidth}
+                                closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                                theme={theme}
+                                toggleTheme={this.toggleTheme}
+                                flatFiles={flatFiles}
+                                flatFilesLoading={flatFilesLoading}
+                                searchQuery={searchQuery}
+                                selectedFilterTag={selectedFilterTag}
+                                viewMode={viewMode}
+                                favoriteFiles={favoriteFiles}
+                                detailFullscreen={detailFullscreen}
+                                isEditingDetail={isEditingDetail}
+                                selectedFsEntry={selectedFsEntry}
+                                fileContent={fileContent}
+                                editedContent={editedContent}
+                                fileLoading={fileLoading}
+                                fileSaving={fileSaving}
+                                fileSaveMsg={fileSaveMsg}
+                                isImagePreview={isImagePreview}
+                                imageDataUrl={imageDataUrl}
+                                onSearchQueryChange={query => this.setState({ searchQuery: query })}
+                                onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
+                                onRefreshFlatFiles={this.loadFlatFiles}
+                                onOpenFileDetail={this.openFileDetail}
+                                onBackToList={() => this.setState({ viewMode: 'list' })}
+                                onToggleFavorite={this.toggleFavorite}
+                                onCopyContent={this.copyFileContent}
+                                onDuplicateFile={this.duplicateFile}
+                                onDownloadFile={this.downloadFile}
+                                onRenameFile={this.renameFile}
+                                onToggleFullscreen={() => this.setState(s => ({ detailFullscreen: !s.detailFullscreen }))}
+                                onSaveFile={this.saveFile}
+                                onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
+                                onEditedContentChange={content => this.setState({ editedContent: content })}
+                                fsEntries={this.state.fsEntries}
+                                fsLoading={this.state.fsLoading}
+                                onToggleFsDir={this.toggleFsDir}
+                            />
+                        ) : (
+                            /* Desktop dual-panel or mobile terminal view */
+                            <MiddleCanvas
+                                activeTab={activeTab}
+                                wsUrl={wsUrl}
+                                tokenUrl={tokenUrl}
+                                clientOptions={clientOptions}
+                                termOptions={termOptions}
+                                flowControl={flowControl}
+                                onMobileDetect={this.handleMobileDetect}
+                            />
+                        )}
 
-                        {/* Resizer: between MIDDLE canvas and RIGHT panel */}
-                        {activeDrawerTab !== 'none' && (
+                        {/* Resizer & Right panel: desktop only */}
+                        {!isMobile && activeDrawerTab !== 'none' && (
                             <div
                                 class="resizer resizer-right"
                                 onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
@@ -823,18 +959,18 @@ export class App extends Component<{}, AppState> {
                             />
                         )}
 
-                        {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                        <RightPanel
-                            activeDrawerTab={activeDrawerTab}
-                            rightPanelWidth={rightPanelWidth}
-                            closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                            theme={theme}
-                            toggleTheme={this.toggleTheme}
-                            flatFiles={flatFiles}
-                            flatFilesLoading={flatFilesLoading}
-                            searchQuery={searchQuery}
-                            selectedFilterTag={selectedFilterTag}
-                            viewMode={viewMode}
+                        {!isMobile && (
+                            <RightPanel
+                                activeDrawerTab={activeDrawerTab}
+                                rightPanelWidth={rightPanelWidth}
+                                closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                                theme={theme}
+                                toggleTheme={this.toggleTheme}
+                                flatFiles={flatFiles}
+                                flatFilesLoading={flatFilesLoading}
+                                searchQuery={searchQuery}
+                                selectedFilterTag={selectedFilterTag}
+                                viewMode={viewMode}
                             favoriteFiles={favoriteFiles}
                             detailFullscreen={detailFullscreen}
                             isEditingDetail={isEditingDetail}
@@ -864,6 +1000,38 @@ export class App extends Component<{}, AppState> {
                             fsLoading={this.state.fsLoading}
                             onToggleFsDir={this.toggleFsDir}
                         />
+                        )}
+                    {/* Mobile terminal input bar — sits at bottom of body container */}
+                    {isMobile && activeTab === 'terminal' && activeDrawerTab === 'none' && (
+                        <div class="mobile-input-bar">
+                            <div class="mobile-quick-keys">
+                                {['Paste', '↑', '↓', '←', '→', 'Esc', '⌫', '↵'].map(key => (
+                                    <button key={key} class="key-btn" onClick={() => this.sendQuickKey(key)}>
+                                        {key}
+                                    </button>
+                                ))}
+                            </div>
+                            <div class="mobile-input-row">
+                                <input
+                                    type="text"
+                                    value={mobileInput}
+                                    onInput={this.handleMobileInput}
+                                    onKeyDown={this.handleMobileKeyDown}
+                                    onFocus={() => this.setState({ bottomNavHidden: true })}
+                                    onBlur={() => this.setState({ bottomNavHidden: false })}
+                                    placeholder="在此输入以同步到终端..."
+                                    class="mobile-terminal-input"
+                                    autocorrect="off"
+                                    autocapitalize="none"
+                                    autocomplete="off"
+                                    spellcheck={false}
+                                />
+                                <button class="mobile-terminal-send" onClick={this.sendMobileInput}>
+                                    发送
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     </div>
                 </div>
 

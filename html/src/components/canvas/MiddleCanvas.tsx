@@ -10,6 +10,7 @@ interface MiddleCanvasProps {
     clientOptions: ClientOptions;
     termOptions: ITerminalOptions;
     flowControl: FlowControl;
+    onMobileDetect?: (isMobile: boolean) => void;
 }
 
 export function MiddleCanvas({
@@ -19,6 +20,7 @@ export function MiddleCanvas({
     clientOptions,
     termOptions,
     flowControl,
+    onMobileDetect,
 }: MiddleCanvasProps) {
     return (
         <main class="middle-canvas">
@@ -106,6 +108,7 @@ export function MiddleCanvas({
                         clientOptions={clientOptions}
                         termOptions={termOptions}
                         flowControl={flowControl}
+                        onMobileDetect={onMobileDetect}
                     />
                 ) : (
                     <div class="placeholder-view" style="margin: 0; border: none; border-radius: 0; height: 100%;">
