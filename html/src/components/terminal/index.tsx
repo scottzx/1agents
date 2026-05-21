@@ -111,7 +111,13 @@ export class Terminal extends Component<Props, State> {
                 class="terminal-wrapper"
                 style="display: flex; flex-direction: column; height: 100%; width: 100%; position: relative;"
             >
-                <div id={id} style="flex: 1; min-height: 0;" ref={(c: HTMLDivElement | null) => { this.container = c as HTMLElement; }}>
+                <div
+                    id={id}
+                    style="flex: 1; min-height: 0;"
+                    ref={(c: HTMLDivElement | null) => {
+                        this.container = c as HTMLElement;
+                    }}
+                >
                     <Modal show={modal}>
                         <label class="file-label">
                             <input onChange={this.sendFile} class="file-input" type="file" multiple />

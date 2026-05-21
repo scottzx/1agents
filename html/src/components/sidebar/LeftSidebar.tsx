@@ -231,10 +231,7 @@ export function LeftSidebar({
 
                                         {/* Action buttons: edit (hover), select (always, rightmost) */}
                                         {ws && (
-                                            <div
-                                                class="ws-actions"
-                                                onClick={(e: MouseEvent) => e.stopPropagation()}
-                                            >
+                                            <div class="ws-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
                                                 <button
                                                     class="ws-action-btn ws-action-edit"
                                                     title="编辑"
@@ -257,7 +254,9 @@ export function LeftSidebar({
                                                 </button>
                                                 {ws.path && (
                                                     <button
-                                                        class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
+                                                        class={`ws-action-btn ws-action-select ${
+                                                            isActive ? 'selected' : ''
+                                                        }`}
                                                         title={isActive ? '当前工作空间' : '点击切换工作空间'}
                                                         onClick={(e: MouseEvent) => {
                                                             e.stopPropagation();
