@@ -66,8 +66,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]FileEntry, 0, len(entries))
 	for _, e := range entries {
-		// Skip hidden files (dot-files) like .git, .DS_Store, etc.
-		if strings.HasPrefix(e.Name(), ".") {
+		// Skip OS/editor noise files only – dot-directories like .github, .claude, .env etc. are kept.
+		name := e.Name()
+		if name == ".DS_Store" || name == ".Spotlight-V100" || name == ".Trashes" || name == ".fseventsd" {
 			continue
 		}
 

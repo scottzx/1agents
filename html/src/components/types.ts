@@ -12,6 +12,13 @@ export interface WorkspaceFolder {
     children: WorkspaceFolderChild[];
 }
 
+/** Mirrors the backend Workspace struct stored in workspaces_dir.json */
+export interface Workspace {
+    id: string;
+    name: string;
+    path: string;
+}
+
 /** A single file or directory entry returned by /api/fs/list */
 export interface FsEntry {
     name: string;

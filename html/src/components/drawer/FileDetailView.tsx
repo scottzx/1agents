@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { marked } from 'marked';
 import { FsEntry, getFileTag } from '../types';
 
 interface FileDetailViewProps {
@@ -201,11 +202,11 @@ export function FileDetailView({
                         onInput={e => onEditedContentChange((e.target as HTMLTextAreaElement).value)}
                     />
                 ) : isMd ? (
-                    <div class="fb-md-preview">
-                        <pre class="fb-md-raw" onClick={() => onToggleEditing(true)}>
-                            {fileContent}
-                        </pre>
-                    </div>
+                    <div
+                        class="fb-md-render"
+                        dangerouslySetInnerHTML={{ __html: marked(fileContent) as string }}
+                        onClick={() => onToggleEditing(true)}
+                    />
                 ) : (
                     <pre class="fb-code-preview" onClick={() => onToggleEditing(true)}>
                         {fileContent}
