@@ -57,7 +57,13 @@ export class Terminal extends Component<Props, State> {
     render({ id }: Props, { modal }: State) {
         return (
             <Fragment>
-                <div id={id} style="flex: 1; min-height: 0;" ref={(c: HTMLDivElement | null) => { this.container = c as HTMLElement; }}>
+                <div
+                    id={id}
+                    style="flex: 1; min-height: 0;"
+                    ref={(c: HTMLDivElement | null) => {
+                        this.container = c as HTMLElement;
+                    }}
+                >
                     <Modal show={modal}>
                         <label class="file-label">
                             <input onChange={this.sendFile} class="file-input" type="file" multiple />

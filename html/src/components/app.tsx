@@ -246,7 +246,7 @@ export class App extends Component<{}, AppState> {
             .toLowerCase()
             .replace(/\s+/g, '-')
             .replace(/[^a-z0-9-]/g, '');
-        const ws: Workspace = { id, name, path };
+        const ws: Workspace = { id, name, path, status: 'active' };
         try {
             const res = await fetch('/api/workspace/create', {
                 method: 'POST',
@@ -963,6 +963,7 @@ export class App extends Component<{}, AppState> {
                         {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
                         <RightPanel
                             activeDrawerTab={activeDrawerTab}
+                            activeWorkspaceId={activeWorkspaceId}
                             rightPanelWidth={rightPanelWidth}
                             closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
                             theme={theme}
