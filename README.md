@@ -1,97 +1,76 @@
-![backend](https://github.com/tsl0922/ttyd/workflows/backend/badge.svg)
-![frontend](https://github.com/tsl0922/ttyd/workflows/frontend/badge.svg)
-[![GitHub Releases](https://img.shields.io/github/downloads/tsl0922/ttyd/total)](https://github.com/tsl0922/ttyd/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/tsl0922/ttyd)](https://hub.docker.com/r/tsl0922/ttyd)
-[![Packaging status](https://repology.org/badge/tiny-repos/ttyd.svg)](https://repology.org/project/ttyd/versions)
-![GitHub](https://img.shields.io/github/license/tsl0922/ttyd)
+# Remote Agent
 
-# ttyd - Share your terminal over the web
+随时随地，通过浏览器远程访问你的 AI 智能体和开发工作台。
 
-ttyd is a simple command-line tool for sharing terminal over the web.
+Remote Agent 是一个基于 Web 的远程工作台平台，让你打破必须在电脑前才能与 AI 交互的限制。它集成了终端访问、文件管理、Git 操作等功能，只需一个浏览器就能从任何地方连接到你的工作环境，继续对话、编辑代码、管理文件、查看仓库状态 —— 就像你正坐在它面前一样。
 
-![screenshot](https://github.com/tsl0922/ttyd/raw/main/screenshot.gif)
+终端访问能力基于 [ttyd](https://github.com/tsl0922/ttyd) 构建，继承了其高性能的 Web 终端体验。
 
-# Features
+## 核心功能
 
-- Built on top of [libuv](https://libuv.org) and [WebGL2](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API) for speed
-- Fully-featured terminal with [CJK](https://en.wikipedia.org/wiki/CJK_characters) and IME support
-- [ZMODEM](https://en.wikipedia.org/wiki/ZMODEM) ([lrzsz](https://ohse.de/uwe/software/lrzsz.html)) / [trzsz](https://trzsz.github.io) file transfer support
-- [Sixel](https://en.wikipedia.org/wiki/Sixel) image output support ([img2sixel](https://saitoha.github.io/libsixel) / [lsix](https://github.com/hackerb9/lsix))
-- SSL support based on [OpenSSL](https://www.openssl.org) / [Mbed TLS](https://github.com/Mbed-TLS/mbedtls)
-- Run any custom command with options
-- Basic authentication support and many other custom options
-- Cross platform: macOS, Linux, FreeBSD/OpenBSD, [OpenWrt](https://openwrt.org), Windows
+- **Web 终端** —— 基于 xterm.js 和 WebSocket，支持 CJK、IME、文件传输（ZMODEM / trzsz）、Sixel 图像输出
+- **文件管理器** —— 树形目录浏览 + 平铺列表视图，支持搜索、筛选、收藏
+- **在线编辑器** —— 浏览器内直接查看和编辑文件，支持语法高亮、保存、重命名、下载
+- **工作区管理** —— 多工作区切换，CRUD 管理，支持本地文件夹导入
+- **Git 面板** —— 快速查看仓库变更状态和分支信息
+- **任务列表** —— 实时追踪后台运行的任务
+- **主题切换** —— 亮色 / 暗色主题，终端同步适配
 
-# Installation
+## 跨平台
 
-## Install on macOS
+macOS、Linux、Windows 全面支持。
 
-- Install with [Homebrew](http://brew.sh): `brew install ttyd`
-- Install with [MacPorts](https://www.macports.org): `sudo port install ttyd`
+## 快速开始
 
-## Install on Linux
+### macOS
 
-- Install on Debian/Ubuntu: `sudo apt install ttyd`
-- Install the snap: `sudo snap install ttyd --classic`
-- Install on OpenWrt: `opkg install ttyd`
-- Install on Gentoo: clone the [repo](https://bitbucket.org/mgpagano/ttyd/src/master) and follow the directions [here](https://wiki.gentoo.org/wiki/Custom_repository#Creating_a_local_repository).
-- Install with [Homebrew](https://docs.brew.sh/Homebrew-on-Linux) : `brew install ttyd`
-- Precompiled static binaries: download from the [releases](https://github.com/tsl0922/ttyd/releases) page
-
-## Install on Windows
-
-- Binary version (recommended): download from the [releases](https://github.com/tsl0922/ttyd/releases) page
-- Install with [WinGet](https://github.com/microsoft/winget-cli): `winget install tsl0922.ttyd`
-- Install with [Scoop](https://scoop.sh/#/apps?q=ttyd&s=2&d=1&o=true): `scoop install ttyd`
-- [Compile on Windows](https://github.com/tsl0922/ttyd/wiki/Compile-on-Windows)
-
-# Usage
-
-## Command-line Options
-
-```
-USAGE:
-    ttyd [options] <command> [<arguments...>]
-
-OPTIONS:
-    -p, --port              Port to listen (default: 7681, use `0` for random port)
-    -i, --interface         Network interface to bind (eg: eth0), or UNIX domain socket path (eg: /var/run/ttyd.sock)
-    -U, --socket-owner      User owner of the UNIX domain socket file, when enabled (eg: user:group)
-    -c, --credential        Credential for basic authentication (format: username:password)
-    -H, --auth-header       HTTP Header name for auth proxy, this will configure ttyd to let a HTTP reverse proxy handle authentication
-    -u, --uid               User id to run with
-    -g, --gid               Group id to run with
-    -s, --signal            Signal to send to the command when exit it (default: 1, SIGHUP)
-    -w, --cwd               Working directory to be set for the child program
-    -a, --url-arg           Allow client to send command line arguments in URL (eg: http://localhost:7681?arg=foo&arg=bar)
-    -W, --writable          Allow clients to write to the TTY (readonly by default)
-    -t, --client-option     Send option to client (format: key=value), repeat to add more options
-    -T, --terminal-type     Terminal type to report, default: xterm-256color
-    -O, --check-origin      Do not allow websocket connection from different origin
-    -m, --max-clients       Maximum clients to support (default: 0, no limit)
-    -o, --once              Accept only one client and exit on disconnection
-    -q, --exit-no-conn      Exit on all clients disconnection
-    -B, --browser           Open terminal with the default system browser
-    -I, --index             Custom index.html path
-    -b, --base-path         Expected base path for requests coming from a reverse proxy (eg: /mounted/here, max length: 128)
-    -P, --ping-interval     Websocket ping interval(sec) (default: 5)
-    -6, --ipv6              Enable IPv6 support
-    -S, --ssl               Enable SSL
-    -C, --ssl-cert          SSL certificate file path
-    -K, --ssl-key           SSL key file path
-    -A, --ssl-ca            SSL CA file path for client certificate verification
-    -d, --debug             Set log level (default: 7)
-    -v, --version           Print the version and exit
-    -h, --help              Print this text and exit
+```bash
+brew install ttyd
 ```
 
-Read the example usage on the [wiki](https://github.com/tsl0922/ttyd/wiki/Example-Usage).
+### Linux (Debian/Ubuntu)
 
-## Browser Support
+```bash
+sudo apt install ttyd
+```
 
-Modern browsers, See [Browser Support](https://github.com/xtermjs/xterm.js#browser-support).
+你也可以从 [Releases](https://github.com/scottzx/remote-agents/releases) 页面下载预编译的静态二进制文件。
 
-## Alternatives
+## 使用方式
 
-* [Wetty](https://github.com/krishnasrinivas/wetty): [Node](https://nodejs.org) based web terminal (SSH/login)
-* [GoTTY](https://github.com/yudai/gotty): [Go](https://golang.org) based web terminal
+```bash
+# 启动终端服务
+ttyd -p 8080 bash
+
+# 带密码保护
+ttyd -p 8080 -c user:pass bash
+
+# 启用 SSL
+ttyd -p 8080 -S -C cert.pem -K key.pem bash
+```
+
+浏览器打开 `http://localhost:8080` 即可访问完整工作台。
+
+## 从源码构建
+
+```bash
+git clone https://github.com/scottzx/remote-agents.git
+cd remote-agents
+mkdir build && cd build
+cmake ..
+make
+```
+
+## Docker
+
+```bash
+docker run -p 8080:8080 scottzx/remote-agents
+```
+
+## 许可
+
+本项目基于 [MIT License](LICENSE) 开源。
+
+---
+
+**致谢**：本项目终端能力基于 [ttyd](https://github.com/tsl0922/ttyd) 构建，感谢原作者的卓越工作。
