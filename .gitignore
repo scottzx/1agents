@@ -55,3 +55,4 @@ src/html.h
 
 # Project files
 !init.d
+node_modules

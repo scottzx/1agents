@@ -43,6 +43,11 @@ const baseConfig = {
             patterns: [
                 { from: './favicon.png', to: '.' },
                 { from: './logo.png', to: '.' },
+                { from: './manifest.json', to: '.' },
+                { from: './sw.js', to: '.' },
+                { from: './pwa-192.png', to: '.' },
+                { from: './pwa-512.png', to: '.' },
+                { from: './apple-touch-icon.png', to: '.' },
             ],
         }),
         new MiniCssExtractPlugin({
