@@ -50,5 +50,8 @@ build
 # VSCode files
 .vscode/
 
+# Generated build artifacts
+src/html.h
+
 # Project files
 !init.d
