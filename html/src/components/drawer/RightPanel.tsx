@@ -47,6 +47,11 @@ interface RightPanelProps {
     onSaveFile: () => void;
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
+
+    // Tree system props
+    fsEntries: FsEntry[];
+    fsLoading: boolean;
+    onToggleFsDir: (entry: FsEntry) => void;
 }
 
 export function RightPanel({
@@ -88,6 +93,11 @@ export function RightPanel({
     onSaveFile,
     onToggleEditing,
     onEditedContentChange,
+
+    // Tree props
+    fsEntries,
+    fsLoading,
+    onToggleFsDir,
 }: RightPanelProps) {
     const getDrawerTitle = (tab: RightDrawerTab) => {
         switch (tab) {
@@ -137,6 +147,9 @@ export function RightPanel({
                             onFilterTagChange={onFilterTagChange}
                             onRefresh={onRefreshFlatFiles}
                             onOpenFileDetail={onOpenFileDetail}
+                            fsEntries={fsEntries}
+                            fsLoading={fsLoading}
+                            onToggleFsDir={onToggleFsDir}
                         />
                     ) : (
                         selectedFsEntry && (
