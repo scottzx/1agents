@@ -78,34 +78,6 @@ export function LeftSidebar({
                     </div>
                 </div>
 
-                <button class="new-conv-btn">
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <path d="M5 12h14M12 5v14" />
-                    </svg>
-                    <span>新建会话</span>
-                </button>
-
-                <div class="history-title-container">
-                    <span>历史会话</span>
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <circle cx="12" cy="12" r="10" />
-                        <polyline points="12 6 12 12 16 14" />
-                    </svg>
-                </div>
             </div>
 
             <div class="sidebar-scroll">
