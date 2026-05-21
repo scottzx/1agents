@@ -908,6 +908,7 @@ export class App extends Component<{}, AppState> {
                         {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
                         <RightPanel
                             activeDrawerTab={activeDrawerTab}
+                            activeWorkspaceId={activeWorkspaceId}
                             rightPanelWidth={rightPanelWidth}
                             closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
                             theme={theme}
