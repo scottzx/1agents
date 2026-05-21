@@ -20,6 +20,7 @@ interface TtydTerminal extends Terminal {
 declare global {
     interface Window {
         term: TtydTerminal;
+        xterm?: Xterm;
     }
 }
 

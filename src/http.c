@@ -80,7 +80,9 @@ static bool uncompress_html(char **output, size_t *output_len) {
 }
 
 static void pss_buffer_free(struct pss_http *pss) {
-  if (pss->buffer != (char *)index_html && pss->buffer != html_cache) free(pss->buffer);
+  if (pss->buffer != (char *)index_html && pss->buffer != html_cache &&
+      pss->buffer != (char *)sw_js && pss->buffer != (char *)manifest_json)
+    free(pss->buffer);
 }
 
 static void access_log(struct lws *wsi, const char *path) {
@@ -139,6 +141,36 @@ int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void *user,
             lws_write(wsi, buffer + LWS_PRE, p - (buffer + LWS_PRE), LWS_WRITE_HTTP_HEADERS) < 0)
           return 1;
         goto try_to_reuse;
+      }
+
+      if (strcmp(pss->path, endpoints.sw) == 0) {
+        if (lws_add_http_header_status(wsi, HTTP_STATUS_OK, &p, end) ||
+            lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE,
+                                         (unsigned char *)"application/javascript;charset=utf-8", 37, &p, end) ||
+            lws_add_http_header_content_length(wsi, sw_js_len, &p, end) ||
+            lws_finalize_http_header(wsi, &p, end) ||
+            lws_write(wsi, buffer + LWS_PRE, p - (buffer + LWS_PRE), LWS_WRITE_HTTP_HEADERS) < 0)
+          return 1;
+
+        pss->buffer = pss->ptr = (char *)sw_js;
+        pss->len = sw_js_len;
+        lws_callback_on_writable(wsi);
+        break;
+      }
+
+      if (strcmp(pss->path, endpoints.manifest) == 0) {
+        if (lws_add_http_header_status(wsi, HTTP_STATUS_OK, &p, end) ||
+            lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE,
+                                         (unsigned char *)"application/manifest+json;charset=utf-8", 40, &p, end) ||
+            lws_add_http_header_content_length(wsi, manifest_json_len, &p, end) ||
+            lws_finalize_http_header(wsi, &p, end) ||
+            lws_write(wsi, buffer + LWS_PRE, p - (buffer + LWS_PRE), LWS_WRITE_HTTP_HEADERS) < 0)
+          return 1;
+
+        pss->buffer = pss->ptr = (char *)manifest_json;
+        pss->len = manifest_json_len;
+        lws_callback_on_writable(wsi);
+        break;
       }
 
       if (strcmp(pss->path, endpoints.index) != 0) {

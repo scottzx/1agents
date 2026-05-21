@@ -21,7 +21,7 @@
 volatile bool force_exit = false;
 struct lws_context *context;
 struct server *server;
-struct endpoints endpoints = {"/ws", "/", "/token", ""};
+struct endpoints endpoints = {"/ws", "/", "/token", "", "/sw.js", "/manifest.json"};
 
 extern int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
 extern int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
@@ -453,7 +453,7 @@ int main(int argc, char **argv) {
 #define sc(f)                                  \
   strncpy(path + len, endpoints.f, 128 - len); \
   endpoints.f = strdup(path);
-        sc(ws) sc(index) sc(token) sc(parent)
+        sc(ws) sc(index) sc(token) sc(parent) sc(sw) sc(manifest)
 #undef sc
       } break;
 #if LWS_LIBRARY_VERSION_NUMBER >= 4000000
