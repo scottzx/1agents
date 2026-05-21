@@ -182,7 +182,6 @@ export function LeftSidebar({
                     {!workspacesLoading &&
                         folders.map(folder => {
                             const ws = workspaces.find(w => w.id === folder.id);
-                            const isHovered = hoveredId === folder.id;
                             const isActive = ws?.id === activeWorkspaceId;
 
                             return (
@@ -200,83 +199,80 @@ export function LeftSidebar({
                                     <div
                                         class={`project-folder ${folder.expanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
                                     >
-                                            <div
-                                                class="folder-click-area"
-                                                onClick={() => toggleFolder(folder.id)}
+                                        <div class="folder-click-area" onClick={() => toggleFolder(folder.id)}>
+                                            <svg
+                                                class="chevron"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
                                             >
-                                                <svg
-                                                    class="chevron"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2.5"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                >
-                                                    <polyline points="9 18 15 12 9 6" />
-                                                </svg>
-                                                <svg
-                                                    class="folder-icon"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                >
-                                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                </svg>
-                                                <span class="ws-name" title={ws?.path || folder.name}>
-                                                    {folder.name}
+                                                <polyline points="9 18 15 12 9 6" />
+                                            </svg>
+                                            <svg
+                                                class="folder-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                            </svg>
+                                            <span class="ws-name" title={ws?.path || folder.name}>
+                                                {folder.name}
+                                            </span>
+                                            {ws?.status && (
+                                                <span class={`ws-status-badge ws-status-${ws.status}`}>
+                                                    {getStatusLabel(ws.status)}
                                                 </span>
-                                                {ws?.status && (
-                                                    <span class={`ws-status-badge ws-status-${ws.status}`}>
-                                                        {getStatusLabel(ws.status)}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* Action buttons: edit (hover), select (always, rightmost) */}
-                                            {ws && (
-                                                <div
-                                                    class="ws-actions"
-                                                    onClick={(e: MouseEvent) => e.stopPropagation()}
-                                                >
-                                                    <button
-                                                        class="ws-action-btn ws-action-edit"
-                                                        title="编辑"
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onRenameWorkspace(ws);
-                                                        }}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                                        </svg>
-                                                    </button>
-                                                    {ws.path && (
-                                                        <button
-                                                            class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
-                                                            title={isActive ? '当前工作空间' : '点击切换工作空间'}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                onSelectWorkspace(ws);
-                                                            }}
-                                                        >
-                                                            {isActive ? '✓' : '→'}
-                                                        </button>
-                                                    )}
-                                                </div>
                                             )}
                                         </div>
+
+                                        {/* Action buttons: edit (hover), select (always, rightmost) */}
+                                        {ws && (
+                                            <div
+                                                class="ws-actions"
+                                                onClick={(e: MouseEvent) => e.stopPropagation()}
+                                            >
+                                                <button
+                                                    class="ws-action-btn ws-action-edit"
+                                                    title="编辑"
+                                                    onClick={(e: MouseEvent) => {
+                                                        e.stopPropagation();
+                                                        onRenameWorkspace(ws);
+                                                    }}
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                    </svg>
+                                                </button>
+                                                {ws.path && (
+                                                    <button
+                                                        class={`ws-action-btn ws-action-select ${isActive ? 'selected' : ''}`}
+                                                        title={isActive ? '当前工作空间' : '点击切换工作空间'}
+                                                        onClick={(e: MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            onSelectWorkspace(ws);
+                                                        }}
+                                                    >
+                                                        {isActive ? '✓' : '→'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
 
                                     {folder.expanded && (
                                         <div class="project-children">
