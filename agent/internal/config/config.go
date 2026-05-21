@@ -20,6 +20,9 @@ type Config struct {
 	// Example: []string{"bash"}
 	TtydArgs []string
 
+	// TmuxSession is the tmux session name used for terminal persistence.
+	TmuxSession string
+
 	// WorkDir is the root directory exposed by the file system API.
 	// The API will refuse to serve files outside this directory.
 	WorkDir string
@@ -43,7 +46,8 @@ func Default() *Config {
 		ListenAddr:     ":8080",
 		TtydAddr:       "127.0.0.1:7681",
 		TtydBinaryPath: "./ttyd",
-		TtydArgs:       []string{"bash"},
+		TtydArgs:       []string{"tmux", "new-session", "-A", "-s", "remote-agents"},
+			TmuxSession:    "remote-agents",
 		WorkDir:        ".",
 		StaticDir:      "./html/dist",
 		RestartDelay:   3 * time.Second,

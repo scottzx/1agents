@@ -34,7 +34,9 @@ func main() {
 		"Directory containing compiled frontend assets (html/dist)")
 	flag.DurationVar(&cfg.RestartDelay, "restart-delay", cfg.RestartDelay,
 		"How long to wait before restarting ttyd after an unexpected exit")
-	flag.IntVar(&cfg.MaxRestarts, "max-restarts", cfg.MaxRestarts,
+	flag.StringVar(&cfg.TmuxSession, "tmux-session", cfg.TmuxSession,
+			"tmux session name for terminal persistence")
+		flag.IntVar(&cfg.MaxRestarts, "max-restarts", cfg.MaxRestarts,
 		"Maximum number of consecutive ttyd restarts before giving up")
 
 	flag.Parse()

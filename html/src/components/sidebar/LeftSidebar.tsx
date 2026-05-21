@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
-import { WorkspaceFolder, Workspace, RightDrawerTab } from '../types';
+import { WorkspaceFolder, Workspace, RightDrawerTab, Session } from '../types';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -8,12 +8,15 @@ interface LeftSidebarProps {
     workspacesLoading: boolean;
     leftSidebarOpen: boolean;
     leftSidebarWidth: number;
+    activeWorkspaceId: string;
     toggleLeftSidebar: () => void;
     toggleFolder: (id: string) => void;
     toggleDrawerTab: (tab: RightDrawerTab) => void;
     onCreateWorkspace: () => void;
     onRenameWorkspace: (ws: Workspace) => void;
     onDeleteWorkspace: (id: string) => void;
+    onSelectWorkspace: (ws: Workspace) => void;
+    onSelectSession: (session: Session) => void;
 }
 
 export function LeftSidebar({
@@ -22,12 +25,15 @@ export function LeftSidebar({
     workspacesLoading,
     leftSidebarOpen,
     leftSidebarWidth,
+    activeWorkspaceId,
     toggleLeftSidebar,
     toggleFolder,
     toggleDrawerTab,
     onCreateWorkspace,
     onRenameWorkspace,
     onDeleteWorkspace,
+    onSelectWorkspace,
+    onSelectSession,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -178,11 +184,12 @@ export function LeftSidebar({
                             const ws = workspaces.find(w => w.id === folder.id);
                             const isHovered = hoveredId === folder.id;
                             const isConfirmingDelete = confirmDeleteId === folder.id;
+                            const isActive = folder.id === activeWorkspaceId;
 
                             return (
                                 <div
                                     key={folder.id}
-                                    class="project-node"
+                                    class={`project-node${isActive ? ' ws-active' : ''}`}
                                     onMouseEnter={() => setHoveredId(folder.id)}
                                     onMouseLeave={() => {
                                         setHoveredId(null);
@@ -206,7 +213,10 @@ export function LeftSidebar({
                                     ) : (
                                         <div
                                             class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
-                                            onClick={() => toggleFolder(folder.id)}
+                                            onClick={() => {
+                                                toggleFolder(folder.id);
+                                                if (ws) onSelectWorkspace(ws);
+                                            }}
                                         >
                                             <svg
                                                 class="chevron"
@@ -286,18 +296,22 @@ export function LeftSidebar({
 
                                     {folder.expanded && (
                                         <div class="project-children">
-                                            {folder.children.length === 0 ? (
-                                                <div class="ws-no-sessions">暂无会话</div>
+                                            {folder.sessions.length === 0 ? (
+                                                <div class="ws-no-sessions">暂无会话 — 在终端中点击 + 创建</div>
                                             ) : (
-                                                folder.children.map(child => (
+                                                folder.sessions.map(session => (
                                                     <div
-                                                        key={child.id}
-                                                        class={`chat-item ${child.active ? 'active' : ''}`}
+                                                        key={session.id}
+                                                        class={`chat-item ${session.active ? 'active' : ''}`}
+                                                        onClick={(e: MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            onSelectSession(session);
+                                                        }}
                                                     >
-                                                        <span class="chat-title" title={child.title}>
-                                                            {child.title}
+                                                        <span class="chat-title" title={session.name}>
+                                                            {session.name}
                                                         </span>
-                                                        <span class="chat-time">{child.time}</span>
+                                                        <span class="chat-time">{session.workspaceId}</span>
                                                     </div>
                                                 ))
                                             )}

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
 )
 
 // NewTtydProxy creates an http.Handler that transparently reverse-proxies
@@ -20,18 +19,10 @@ func NewTtydProxy(ttydAddr string) http.Handler {
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
-	// Wrap the default Director so we can fix up headers that are required
-	// for a successful WebSocket upgrade through a reverse proxy.
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
 		req.Host = targetURL.Host
-
-		// httputil.ReverseProxy strips the Upgrade header by default.
-		// For WebSocket connections we must explicitly re-add it.
-		if isWebSocket(req) {
-			req.URL.Scheme = "ws"
-		}
 	}
 
 	// Log proxy errors without crashing the server.
@@ -41,10 +32,4 @@ func NewTtydProxy(ttydAddr string) http.Handler {
 	}
 
 	return proxy
-}
-
-// isWebSocket returns true when the request contains an HTTP Upgrade header
-// with value "websocket" (case-insensitive, as required by RFC 6455).
-func isWebSocket(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }

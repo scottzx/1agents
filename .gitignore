@@ -52,3 +52,4 @@ build
 
 # Project files
 !init.d
+.playwright-mcp

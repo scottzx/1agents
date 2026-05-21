@@ -113,6 +113,7 @@ func (s *Supervisor) startProcess(ctx context.Context) error {
 	args := []string{
 		"-p", port,      // port
 		"-i", "127.0.0.1", // bind to loopback only
+			"-W",               // writable mode
 	}
 	args = append(args, s.cfg.TtydArgs...)
 

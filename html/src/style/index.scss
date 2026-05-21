@@ -9,6 +9,7 @@
   --bg-card: #ffffff;
   --bg-sidebar: #fafafa;       /* Light sidebar unified with terminal inner background */
   --bg-sidebar-hover: #eaeef2;
+  --bg-sidebar-active: rgba(9, 105, 218, 0.08);
   --bg-panel: #ffffff;         /* Right dynamic function panel background */
   --bg-terminal-inner: #fafafa;
   --text-main: #1f2328;
@@ -39,6 +40,7 @@
   --bg-card: #161b22;
   --bg-sidebar: #0d1117;       /* Very sleek black sidebar */
   --bg-sidebar-hover: #21262d;
+  --bg-sidebar-active: rgba(56, 139, 253, 0.1);
   --bg-panel: #161b22;
   --bg-terminal-inner: #0d1117;
   --text-main: #e6edf3;
@@ -386,7 +388,14 @@ body {
 
     .project-node {
       margin-bottom: 4px;
-      
+
+      &.ws-active .project-folder {
+        background-color: var(--bg-sidebar-active);
+        color: var(--text-main);
+        border-left: 3px solid var(--tab-active-border);
+        padding-left: 5px;
+      }
+
       .project-folder {
         display: flex;
         align-items: center;
@@ -982,6 +991,107 @@ body {
   overflow: hidden;
   background-color: var(--bg-page);
   padding: 0;
+
+  // ── Terminal tab bar (tmux window tabs) ──────────────────────────────
+  .terminal-tab-bar {
+    height: 32px;
+    padding: 0 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+
+    .tab-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      flex: 1;
+
+      &::-webkit-scrollbar {
+        height: 0;
+      }
+    }
+
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 4px 4px 0 0;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: all 0.15s;
+
+      &:hover {
+        background: var(--btn-hover);
+        color: var(--text-main);
+      }
+
+      &.tab-active {
+        color: var(--text-main);
+        background: var(--bg-page);
+        border-color: var(--border-color);
+        border-bottom-color: var(--tab-active-border);
+        font-weight: 600;
+      }
+
+      .tab-ws-badge {
+        max-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .tab-num {
+        opacity: 0.6;
+        font-size: 10px;
+      }
+    }
+
+    .tab-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 8px;
+
+      .tab-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s;
+
+        &:hover:not(:disabled) {
+          background: var(--btn-hover);
+          color: var(--text-main);
+          border-color: var(--border-color);
+        }
+
+        &:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+        }
+
+        &.tab-btn-danger:hover:not(:disabled) {
+          color: #ff4d4f;
+          background: rgba(255, 77, 79, 0.08);
+          border-color: rgba(255, 77, 79, 0.2);
+        }
+      }
+    }
+  }
 
   .terminal-toolbar {
     height: 40px;

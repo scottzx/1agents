@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { Terminal } from '../terminal';
 import type { ITerminalOptions } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from '../terminal/xterm';
+import type { TmuxWindow, Workspace } from '../types';
 
 interface MiddleCanvasProps {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
@@ -10,6 +11,13 @@ interface MiddleCanvasProps {
     clientOptions: ClientOptions;
     termOptions: ITerminalOptions;
     flowControl: FlowControl;
+    terminalWindows: TmuxWindow[];
+    terminalWindowsLoading: boolean;
+    activeWorkspaceId: string;
+    workspaces: Workspace[];
+    onTerminalCreate: (workspaceId: string, cwd: string) => void;
+    onTerminalSwitch: (windowIndex: number) => void;
+    onTerminalKill: (windowIndex: number) => void;
 }
 
 export function MiddleCanvas({
@@ -19,16 +27,94 @@ export function MiddleCanvas({
     clientOptions,
     termOptions,
     flowControl,
+    terminalWindows,
+    activeWorkspaceId,
+    workspaces,
+    onTerminalCreate,
+    onTerminalSwitch,
+    onTerminalKill,
 }: MiddleCanvasProps) {
+    // Find the active workspace to get its path for new terminal creation
+    const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
+
+    const handleAddTab = () => {
+        if (!activeWorkspaceId) return;
+        onTerminalCreate(activeWorkspaceId, activeWs?.path || '');
+    };
+
+    const handleKillActive = () => {
+        const activeWin = terminalWindows.find(w => w.active);
+        if (activeWin) {
+            onTerminalKill(activeWin.index);
+        }
+    };
+
     return (
         <main class="middle-canvas">
+            {/* ── Session bar (tmux windows) ─────────────────────────────────── */}
+            <div class="terminal-tab-bar">
+                <div class="tab-tabs">
+                    {terminalWindows.map(win => (
+                        <div
+                            key={win.index}
+                            class={`tab-item${win.active ? ' tab-active' : ''}`}
+                            onClick={() => onTerminalSwitch(win.index)}
+                            title={`${win.workspaceId} — 会话 #${win.index}`}
+                        >
+                            <span class="tab-ws-badge">{win.workspaceId}</span>
+                            <span class="tab-num">#{win.index}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div class="tab-actions">
+                    <button
+                        class="tab-btn"
+                        onClick={handleAddTab}
+                        disabled={!activeWorkspaceId}
+                        title="在当前工作空间新建会话"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                        >
+                            <path d="M5 12h14M12 5v14" />
+                        </svg>
+                    </button>
+                    <button
+                        class="tab-btn tab-btn-danger"
+                        onClick={handleKillActive}
+                        disabled={terminalWindows.length <= 1}
+                        title="关闭当前活跃会话"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                        >
+                            <line x1="18" x2="6" y1="6" y2="18" />
+                            <line x1="6" x2="18" y1="6" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Toolbar ────────────────────────────────────────────────────── */}
             <div class="terminal-toolbar">
                 <div class="toolbar-left">
                     <h2 class="page-title">系统主控制终端</h2>
                 </div>
-
                 <div class="toolbar-right">
-                    <div class="shell-selector" title="选择 Shell 终端">
+                    <div class="shell-selector" title="当前 Shell: tmux">
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -40,7 +126,7 @@ export function MiddleCanvas({
                             <polyline points="4 17 10 11 4 5" />
                             <line x1="12" x2="20" y1="19" y2="19" />
                         </svg>
-                        <span>bash</span>
+                        <span>tmux</span>
                         <svg
                             width="10"
                             height="10"
@@ -54,49 +140,10 @@ export function MiddleCanvas({
                             <polyline points="6 9 12 15 18 9" />
                         </svg>
                     </div>
-                    <button class="tool-btn" title="添加新标签页">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M5 12h14M12 5v14" />
-                        </svg>
-                    </button>
-                    <button class="tool-btn" title="分屏显示">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <rect width="18" height="18" x="3" y="3" rx="2" />
-                            <line x1="12" x2="12" y1="3" y2="21" />
-                        </svg>
-                    </button>
-                    <button class="tool-btn btn-danger" title="终止并清理当前终端">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                            <line x1="10" x2="10" y1="11" y2="17" />
-                            <line x1="14" x2="14" y1="11" y2="17" />
-                        </svg>
-                    </button>
                 </div>
             </div>
 
-            {/* Card wrapper containing the actual Web terminal canvas */}
+            {/* ── Terminal canvas ─────────────────────────────────────────────── */}
             <div class="terminal-card">
                 {activeTab === 'terminal' ? (
                     <Terminal

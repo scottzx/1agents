@@ -1,15 +1,17 @@
-export interface WorkspaceFolderChild {
+/** A terminal session — mirrors a tmux window, belongs to a workspace. */
+export interface Session {
     id: string;
-    title: string;
-    time: string;
-    active?: boolean;
+    workspaceId: string;
+    index: number;
+    name: string;
+    active: boolean;
 }
 
 export interface WorkspaceFolder {
     id: string;
     name: string;
     expanded: boolean;
-    children: WorkspaceFolderChild[];
+    sessions: Session[];
 }
 
 /** Mirrors the backend Workspace struct stored in workspaces_dir.json */
@@ -29,6 +31,14 @@ export interface FsEntry {
     // client-only: children loaded on expand
     children?: FsEntry[];
     expanded?: boolean;
+}
+
+/** A tmux window returned by GET /api/terminal/list — unified Session model */
+export interface TmuxWindow {
+    index: number;
+    name: string;
+    active: boolean;
+    workspaceId: string;
 }
 
 export type RightDrawerTab = 'files' | 'git' | 'settings' | 'none';

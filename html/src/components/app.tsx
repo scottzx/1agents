@@ -3,7 +3,7 @@ import { h, Component } from 'preact';
 import type { ITerminalOptions, ITheme } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from './terminal/xterm';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab } from './types';
+import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session } from './types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
@@ -95,12 +95,16 @@ interface AppState {
     workspaces: Workspace[];
     workspacesLoading: boolean;
     folders: WorkspaceFolder[];
+    activeWorkspaceId: string;
     // ── Workspace modal state ──
     wsModalOpen: boolean;
     wsModalMode: 'create' | 'rename';
     wsModalTarget: Workspace | null;
     wsModalName: string;
     wsModalPath: string;
+    // ── Terminal / tmux state ──
+    terminalWindows: TmuxWindow[];
+    terminalWindowsLoading: boolean;
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -151,11 +155,14 @@ export class App extends Component<{}, AppState> {
             workspaces: [],
             workspacesLoading: false,
             folders: [],
+            activeWorkspaceId: '',
             wsModalOpen: false,
             wsModalMode: 'create',
             wsModalTarget: null,
             wsModalName: '',
             wsModalPath: '',
+            terminalWindows: [],
+            terminalWindowsLoading: false,
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -187,6 +194,7 @@ export class App extends Component<{}, AppState> {
         this.loadDir('', null);
         this.loadFlatFiles();
         this.loadWorkspaces();
+        this.loadTerminals();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
@@ -222,7 +230,7 @@ export class App extends Component<{}, AppState> {
                     id: ws.id,
                     name: ws.name,
                     expanded: prev ? prev.expanded : false,
-                    children: prev ? prev.children : [],
+                    sessions: prev ? prev.sessions : [],
                 };
             });
             this.setState({ workspaces, folders, workspacesLoading: false });
@@ -324,6 +332,122 @@ export class App extends Component<{}, AppState> {
         } else if (wsModalMode === 'rename' && wsModalTarget) {
             await this.updateWorkspace({ ...wsModalTarget, name: wsModalName.trim(), path: wsModalPath.trim() });
         }
+    };
+
+    // ── Terminal (tmux) API helpers ────────────────────────────────────────────
+
+    /** Fetch all tmux windows from GET /api/terminal/list and sync to folders */
+    loadTerminals = async () => {
+        this.setState({ terminalWindowsLoading: true });
+        try {
+            const res = await fetch('/api/terminal/list');
+            if (!res.ok) {
+                this.setState({ terminalWindowsLoading: false });
+                return;
+            }
+            const data = await res.json();
+            const windows: TmuxWindow[] = data.windows || [];
+            this.mergeSessionsIntoFolders(windows);
+            this.setState({ terminalWindows: windows, terminalWindowsLoading: false });
+        } catch (err) {
+            console.error('[terminal] list error:', err);
+            this.setState({ terminalWindowsLoading: false });
+        }
+    };
+
+    /** Sync tmux windows into workspace folders as sessions */
+    mergeSessionsIntoFolders(windows: TmuxWindow[]) {
+        this.setState(prev => ({
+            folders: prev.folders.map(f => ({
+                ...f,
+                sessions: windows
+                    .filter(w => w.workspaceId === f.id)
+                    .map(w => ({
+                        id: w.name,
+                        workspaceId: w.workspaceId,
+                        index: w.index,
+                        name: `会话 #${w.index}`,
+                        active: w.active,
+                    })),
+            })),
+        }));
+    }
+
+    /** Create a new terminal tab via POST /api/terminal/create */
+    createTerminal = async (workspaceId: string, cwd: string) => {
+        try {
+            const res = await fetch('/api/terminal/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId, cwd }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await this.loadTerminals();
+            this.showToast('新会话已创建 ✓');
+        } catch (err) {
+            this.showToast(`创建会话失败: ${err}`);
+        }
+    };
+
+    /** Switch to a tmux window via POST /api/terminal/switch */
+    switchTerminal = async (windowIndex: number) => {
+        try {
+            const res = await fetch('/api/terminal/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ windowIndex }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await this.loadTerminals();
+        } catch (err) {
+            console.error('[terminal] switch error:', err);
+        }
+    };
+
+    /** Kill a terminal tab via POST /api/terminal/kill */
+    killTerminal = async (windowIndex: number) => {
+        try {
+            const res = await fetch('/api/terminal/kill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ windowIndex }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await this.loadTerminals();
+            this.showToast('会话已关闭 ✓');
+        } catch (err) {
+            this.showToast(`关闭会话失败: ${err}`);
+        }
+    };
+
+    /** Switch to a session from sidebar click */
+    selectSession = (session: Session) => {
+        this.switchTerminal(session.index);
+    };
+
+    /** Switch active workspace and cd into it in a matching tmux window */
+    selectWorkspace = async (ws: Workspace) => {
+        const { activeWorkspaceId, terminalWindows } = this.state;
+        if (ws.id === activeWorkspaceId) return;
+
+        this.setState({ activeWorkspaceId: ws.id });
+
+        // Find an existing window for this workspace
+        const win =
+            terminalWindows.find(w => w.workspaceId === ws.id && w.active) ||
+            terminalWindows.find(w => w.workspaceId === ws.id);
+        if (win) {
+            await this.switchTerminal(win.index);
+        } else {
+            // Create a new terminal for this workspace
+            await this.createTerminal(ws.id, ws.path);
+        }
+
+        // Reload file browser for the new root
+        this.setState({ fsEntries: [], selectedFsEntry: null, fileContent: '', editedContent: '' });
+        this.loadDir('', null);
+        this.loadFlatFiles();
+        this.showToast(`已切换到 "${ws.name}" ✓`);
     };
 
     // ── File system API helpers ──────────────────────────────────────────────
@@ -684,10 +808,13 @@ export class App extends Component<{}, AppState> {
             folders,
             workspaces,
             workspacesLoading,
+            activeWorkspaceId,
             wsModalOpen,
             wsModalMode,
             wsModalName,
             wsModalPath,
+            terminalWindows,
+            terminalWindowsLoading,
             flatFiles,
             flatFilesLoading,
             searchQuery,
@@ -722,12 +849,15 @@ export class App extends Component<{}, AppState> {
                     workspacesLoading={workspacesLoading}
                     leftSidebarOpen={leftSidebarOpen}
                     leftSidebarWidth={leftSidebarWidth}
+                    activeWorkspaceId={activeWorkspaceId}
                     toggleLeftSidebar={this.toggleLeftSidebar}
                     toggleFolder={this.toggleFolder}
                     toggleDrawerTab={this.toggleDrawerTab}
                     onCreateWorkspace={this.openCreateWorkspacePicker}
                     onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
                     onDeleteWorkspace={this.deleteWorkspace}
+                    onSelectWorkspace={ws => this.selectWorkspace(ws)}
+                    onSelectSession={s => this.selectSession(s)}
                 />
 
                 {/* Workspace create/rename modal */}
@@ -812,6 +942,13 @@ export class App extends Component<{}, AppState> {
                             clientOptions={clientOptions}
                             termOptions={termOptions}
                             flowControl={flowControl}
+                            terminalWindows={terminalWindows}
+                            terminalWindowsLoading={terminalWindowsLoading}
+                            activeWorkspaceId={activeWorkspaceId}
+                            workspaces={workspaces}
+                            onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
+                            onTerminalSwitch={idx => this.switchTerminal(idx)}
+                            onTerminalKill={idx => this.killTerminal(idx)}
                         />
 
                         {/* Resizer: between MIDDLE canvas and RIGHT panel */}
