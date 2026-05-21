@@ -330,7 +330,13 @@ export class App extends Component<{}, AppState> {
     };
 
     closeWsModal = () => {
-        this.setState({ wsModalOpen: false, wsModalTarget: null, wsModalName: '', wsModalPath: '', wsModalStatus: 'active' });
+        this.setState({
+            wsModalOpen: false,
+            wsModalTarget: null,
+            wsModalName: '',
+            wsModalPath: '',
+            wsModalStatus: 'active',
+        });
     };
 
     submitWsModal = async () => {
@@ -340,7 +346,12 @@ export class App extends Component<{}, AppState> {
         if (wsModalMode === 'create') {
             await this.createWorkspace(wsModalName.trim(), wsModalPath.trim(), wsModalStatus);
         } else if (wsModalMode === 'rename' && wsModalTarget) {
-            await this.updateWorkspace({ ...wsModalTarget, name: wsModalName.trim(), path: wsModalPath.trim(), status: wsModalStatus });
+            await this.updateWorkspace({
+                ...wsModalTarget,
+                name: wsModalName.trim(),
+                path: wsModalPath.trim(),
+                status: wsModalStatus,
+            });
         }
     };
 
@@ -832,7 +843,9 @@ export class App extends Component<{}, AppState> {
                                     }
                                 >
                                     {WORKSPACE_STATUSES.map(s => (
-                                        <option key={s.value} value={s.value}>{s.label}</option>
+                                        <option key={s.value} value={s.value}>
+                                            {s.label}
+                                        </option>
                                     ))}
                                 </select>
                             </div>
