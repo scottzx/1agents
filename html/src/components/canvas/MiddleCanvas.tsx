@@ -2,7 +2,6 @@ import { h } from 'preact';
 import { Terminal } from '../terminal';
 import type { ITerminalOptions } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from '../terminal/xterm';
-import type { TmuxWindow, Workspace } from '../types';
 
 interface MiddleCanvasProps {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
@@ -11,13 +10,6 @@ interface MiddleCanvasProps {
     clientOptions: ClientOptions;
     termOptions: ITerminalOptions;
     flowControl: FlowControl;
-    terminalWindows: TmuxWindow[];
-    terminalWindowsLoading: boolean;
-    activeWorkspaceId: string;
-    workspaces: Workspace[];
-    onTerminalCreate: (workspaceId: string, cwd: string) => void;
-    onTerminalSwitch: (windowIndex: number) => void;
-    onTerminalKill: (windowIndex: number) => void;
 }
 
 export function MiddleCanvas({
@@ -27,87 +19,9 @@ export function MiddleCanvas({
     clientOptions,
     termOptions,
     flowControl,
-    terminalWindows,
-    activeWorkspaceId,
-    workspaces,
-    onTerminalCreate,
-    onTerminalSwitch,
-    onTerminalKill,
 }: MiddleCanvasProps) {
-    // Find the active workspace to get its path for new terminal creation
-    const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
-
-    const handleAddTab = () => {
-        if (!activeWorkspaceId) return;
-        onTerminalCreate(activeWorkspaceId, activeWs?.path || '');
-    };
-
-    const handleKillActive = () => {
-        const activeWin = terminalWindows.find(w => w.active);
-        if (activeWin) {
-            onTerminalKill(activeWin.index);
-        }
-    };
-
     return (
         <main class="middle-canvas">
-            {/* ── Session bar (tmux windows) ─────────────────────────────────── */}
-            <div class="terminal-tab-bar">
-                <div class="tab-tabs">
-                    {terminalWindows.map(win => (
-                        <div
-                            key={win.index}
-                            class={`tab-item${win.active ? ' tab-active' : ''}`}
-                            onClick={() => onTerminalSwitch(win.index)}
-                            title={`${win.workspaceId} — 会话 #${win.index}`}
-                        >
-                            <span class="tab-ws-badge">{win.workspaceId}</span>
-                            <span class="tab-num">#{win.index}</span>
-                        </div>
-                    ))}
-                </div>
-
-                <div class="tab-actions">
-                    <button
-                        class="tab-btn"
-                        onClick={handleAddTab}
-                        disabled={!activeWorkspaceId}
-                        title="在当前工作空间新建会话"
-                    >
-                        <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                        >
-                            <path d="M5 12h14M12 5v14" />
-                        </svg>
-                    </button>
-                    <button
-                        class="tab-btn tab-btn-danger"
-                        onClick={handleKillActive}
-                        disabled={terminalWindows.length <= 1}
-                        title="关闭当前活跃会话"
-                    >
-                        <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                        >
-                            <line x1="18" x2="6" y1="6" y2="18" />
-                            <line x1="6" x2="18" y1="6" y2="18" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
             {/* ── Toolbar ────────────────────────────────────────────────────── */}
             <div class="terminal-toolbar">
                 <div class="toolbar-left">

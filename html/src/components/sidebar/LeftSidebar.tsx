@@ -17,6 +17,8 @@ interface LeftSidebarProps {
     onDeleteWorkspace: (id: string) => void;
     onSelectWorkspace: (ws: Workspace) => void;
     onSelectSession: (session: Session) => void;
+    onTerminalCreate: (workspaceId: string, cwd: string) => void;
+    onTerminalKill: (windowIndex: number) => void;
 }
 
 export function LeftSidebar({
@@ -34,6 +36,8 @@ export function LeftSidebar({
     onDeleteWorkspace,
     onSelectWorkspace,
     onSelectSession,
+    onTerminalCreate,
+    onTerminalKill,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -244,60 +248,80 @@ export function LeftSidebar({
                                                 {folder.name}
                                             </span>
 
-                                            {/* Action buttons - only shown on hover */}
-                                            {isHovered && ws && (
-                                                <div
-                                                    class="ws-actions"
-                                                    onClick={(e: MouseEvent) => e.stopPropagation()}
-                                                >
+                                            {/* Action buttons */}
+                                            <div class="ws-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                                                {/* Add session button — always visible */}
+                                                {ws && (
                                                     <button
-                                                        class="ws-action-btn"
-                                                        title="编辑"
+                                                        class="ws-action-btn ws-action-add"
+                                                        title="新建会话"
                                                         onClick={(e: MouseEvent) => {
                                                             e.stopPropagation();
-                                                            onRenameWorkspace(ws);
+                                                            onTerminalCreate(ws.id, ws.path);
                                                         }}
                                                     >
                                                         <svg
                                                             viewBox="0 0 24 24"
                                                             fill="none"
                                                             stroke="currentColor"
-                                                            stroke-width="2"
+                                                            stroke-width="2.5"
                                                             stroke-linecap="round"
                                                             stroke-linejoin="round"
                                                         >
-                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                            <path d="M5 12h14M12 5v14" />
                                                         </svg>
                                                     </button>
-                                                    <button
-                                                        class="ws-action-btn ws-action-delete"
-                                                        title="删除"
-                                                        onClick={(e: MouseEvent) => handleDeleteClick(e, folder.id)}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
+                                                )}
+                                                {isHovered &&
+                                                    ws && [
+                                                        <button
+                                                            class="ws-action-btn"
+                                                            title="编辑"
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onRenameWorkspace(ws);
+                                                            }}
                                                         >
-                                                            <polyline points="3 6 5 6 21 6" />
-                                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                            <path d="M10 11v6M14 11v6" />
-                                                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            )}
+                                                            <svg
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2"
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                            >
+                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                            </svg>
+                                                        </button>,
+                                                        <button
+                                                            class="ws-action-btn ws-action-delete"
+                                                            title="删除"
+                                                            onClick={(e: MouseEvent) => handleDeleteClick(e, folder.id)}
+                                                        >
+                                                            <svg
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2"
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                            >
+                                                                <polyline points="3 6 5 6 21 6" />
+                                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                                                <path d="M10 11v6M14 11v6" />
+                                                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                                            </svg>
+                                                        </button>,
+                                                    ]}
+                                            </div>
                                         </div>
                                     )}
 
                                     {folder.expanded && (
                                         <div class="project-children">
                                             {folder.sessions.length === 0 ? (
-                                                <div class="ws-no-sessions">暂无会话 — 在终端中点击 + 创建</div>
+                                                <div class="ws-no-sessions">暂无会话 — 点击工作空间旁的 + 创建</div>
                                             ) : (
                                                 folder.sessions.map(session => (
                                                     <div
@@ -312,6 +336,27 @@ export function LeftSidebar({
                                                             {session.name}
                                                         </span>
                                                         <span class="chat-time">{session.workspaceId}</span>
+                                                        <button
+                                                            class="session-kill-btn"
+                                                            title="关闭会话"
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onTerminalKill(session.index);
+                                                            }}
+                                                        >
+                                                            <svg
+                                                                width="12"
+                                                                height="12"
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2"
+                                                                stroke-linecap="round"
+                                                            >
+                                                                <line x1="18" x2="6" y1="6" y2="18" />
+                                                                <line x1="6" x2="18" y1="6" y2="18" />
+                                                            </svg>
+                                                        </button>
                                                     </div>
                                                 ))
                                             )}

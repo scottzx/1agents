@@ -71,6 +71,21 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	nextNum := h.nextWindowNum(req.WorkspaceID)
 	winName := fmt.Sprintf("%s_%d", req.WorkspaceID, nextNum)
 
+	// If the only window is the placeholder, rename it instead of creating new one
+	windows, _ := h.listWindows()
+	if len(windows) == 1 && !strings.Contains(windows[0].Name, "_") {
+		renameCmd := exec.Command("tmux", "rename-window", "-t", h.session+":0", winName)
+		if out, err := renameCmd.CombinedOutput(); err != nil {
+			log.Printf("[terminal] rename placeholder error: %v (output: %s)", err, string(out))
+		} else {
+			// Switch to the renamed window
+			h.selectWindow(0)
+			win := &TmuxWindow{Index: 0, Name: winName, Active: true, WorkspaceID: req.WorkspaceID}
+			writeJSON(w, http.StatusCreated, win)
+			return
+		}
+	}
+
 	args := []string{"new-window", "-a", "-t", h.session, "-n", winName}
 	if req.Cwd != "" {
 		args = append(args, "-c", req.Cwd)
@@ -206,7 +221,7 @@ func (h *Handler) ensureSession() {
 		return
 	}
 	log.Printf("[terminal] creating tmux session '%s' in detached mode", h.session)
-	exec.Command("tmux", "new-session", "-d", "-s", h.session, "-n", "default").Run()
+	exec.Command("tmux", "new-session", "-d", "-s", h.session, "-n", "p").Run()
 }
 
 // nextWindowNum finds the next available N for workspace_<N> naming.

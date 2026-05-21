@@ -420,9 +420,16 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    /** Switch to a session from sidebar click */
+    /** Switch to a session from sidebar click — also activates its workspace. */
     selectSession = (session: Session) => {
+        const { activeWorkspaceId } = this.state;
         this.switchTerminal(session.index);
+        if (session.workspaceId !== activeWorkspaceId) {
+            this.setState({
+                activeWorkspaceId: session.workspaceId,
+                folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
+            });
+        }
     };
 
     /** Switch active workspace and cd into it in a matching tmux window */
@@ -813,8 +820,6 @@ export class App extends Component<{}, AppState> {
             wsModalMode,
             wsModalName,
             wsModalPath,
-            terminalWindows,
-            terminalWindowsLoading,
             flatFiles,
             flatFilesLoading,
             searchQuery,
@@ -858,6 +863,8 @@ export class App extends Component<{}, AppState> {
                     onDeleteWorkspace={this.deleteWorkspace}
                     onSelectWorkspace={ws => this.selectWorkspace(ws)}
                     onSelectSession={s => this.selectSession(s)}
+                    onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
+                    onTerminalKill={idx => this.killTerminal(idx)}
                 />
 
                 {/* Workspace create/rename modal */}
@@ -942,13 +949,6 @@ export class App extends Component<{}, AppState> {
                             clientOptions={clientOptions}
                             termOptions={termOptions}
                             flowControl={flowControl}
-                            terminalWindows={terminalWindows}
-                            terminalWindowsLoading={terminalWindowsLoading}
-                            activeWorkspaceId={activeWorkspaceId}
-                            workspaces={workspaces}
-                            onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
-                            onTerminalSwitch={idx => this.switchTerminal(idx)}
-                            onTerminalKill={idx => this.killTerminal(idx)}
                         />
 
                         {/* Resizer: between MIDDLE canvas and RIGHT panel */}
