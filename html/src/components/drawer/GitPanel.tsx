@@ -27,6 +27,7 @@ interface CommitEntry {
 
 interface GitPanelProps {
     workdir: string;
+    activeWorkspaceId: string;
 }
 
 interface GitPanelState {
@@ -191,6 +192,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     componentDidMount() {
         this.refresh();
         this._refreshTimer = setInterval(() => this.refresh(), 15000);
+    }
+
+    componentDidUpdate(prevProps: GitPanelProps) {
+        if (prevProps.activeWorkspaceId !== this.props.activeWorkspaceId) {
+            this.setState({ logExpanded: false, diffFile: null, diffContent: '' });
+            this.refresh();
+        }
     }
 
     componentWillUnmount() {
