@@ -1218,7 +1218,7 @@ export class App extends Component<{}, AppState> {
                             imageDataUrl={imageDataUrl}
                             onSearchQueryChange={query => this.setState({ searchQuery: query })}
                             onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
-                            onRefreshFlatFiles={this.loadFlatFiles}
+                            onRefreshFlatFiles={() => { this.loadDir('', null); this.loadFlatFiles(); }}
                             onOpenFileDetail={this.openFileDetail}
                             onBackToList={() => this.setState({ viewMode: 'list' })}
                             onToggleFavorite={this.toggleFavorite}
