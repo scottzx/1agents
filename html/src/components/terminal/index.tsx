@@ -15,6 +15,8 @@ interface State {
     modal: boolean;
     isMobile: boolean;
     hiddenInputValue: string;
+    inputLeft?: string;
+    inputTop?: string;
 }
 
 export class Terminal extends Component<Props, State> {
@@ -33,6 +35,8 @@ export class Terminal extends Component<Props, State> {
             modal: false,
             isMobile: false,
             hiddenInputValue: ' ',
+            inputLeft: '0px',
+            inputTop: '0px',
         };
     }
 
@@ -96,15 +100,28 @@ export class Terminal extends Component<Props, State> {
     }
 
     @bind
-    handleOverlayClick() {
+    handleOverlayClick(e: MouseEvent) {
         if (this.hasScrolled) return;
-        if (this.hiddenInput) {
-            if (document.activeElement === this.hiddenInput) {
-                this.hiddenInput.blur();
-            } else {
-                this.hiddenInput.focus();
+
+        const rect = e.currentTarget ? (e.currentTarget as HTMLElement).getBoundingClientRect() : { left: 0, top: 0 };
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        this.setState(
+            {
+                inputLeft: `${x}px`,
+                inputTop: `${y}px`,
+            },
+            () => {
+                if (this.hiddenInput) {
+                    if (document.activeElement === this.hiddenInput) {
+                        this.hiddenInput.blur();
+                    } else {
+                        this.hiddenInput.focus({ preventScroll: true });
+                    }
+                }
             }
-        }
+        );
     }
 
     @bind
@@ -155,6 +172,13 @@ export class Terminal extends Component<Props, State> {
     @bind
     handleHiddenInputFocus() {
         this.props.onKeyboardStateChange?.(true);
+        setTimeout(() => {
+            window.scrollTo(0, 0);
+            document.body.scrollTop = 0;
+            if (document.documentElement) {
+                document.documentElement.scrollTop = 0;
+            }
+        }, 30);
     }
 
     @bind
@@ -203,7 +227,7 @@ export class Terminal extends Component<Props, State> {
         }
     }
 
-    render({ id }: Props, { modal, isMobile, hiddenInputValue }: State) {
+    render({ id }: Props, { modal, isMobile, hiddenInputValue, inputLeft, inputTop }: State) {
         return (
             <div style="display: flex; flex-direction: column; height: 100%; width: 100%; position: relative;">
                 <div
@@ -226,6 +250,10 @@ export class Terminal extends Component<Props, State> {
                                     this.hiddenInput = el;
                                 }}
                                 class="hidden-terminal-input"
+                                style={{
+                                    left: inputLeft || '0px',
+                                    top: inputTop || '0px',
+                                }}
                                 value={hiddenInputValue}
                                 onInput={this.handleHiddenInput}
                                 onFocus={this.handleHiddenInputFocus}
