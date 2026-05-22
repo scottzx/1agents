@@ -3,15 +3,20 @@ package ccconnect
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/BurntSushi/toml"
 	_ "github.com/chenhg5/cc-connect"
@@ -470,14 +475,171 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) {
 		if bridgeSrv != nil {
 			mgmtSrv.SetBridgeServer(bridgeSrv)
 		}
+		mgmtSrv.SetSetupFeishuSave(func(req core.FeishuSetupSaveRequest) error {
+			platType := req.PlatformType
+			if platType == "" {
+				platType = "feishu"
+			}
+			_, err := config.EnsureProjectWithFeishuPlatform(config.EnsureProjectWithFeishuOptions{
+				ProjectName:  req.ProjectName,
+				PlatformType: platType,
+				WorkDir:      req.WorkDir,
+				AgentType:    req.AgentType,
+			})
+			if err != nil {
+				return fmt.Errorf("ensure project: %w", err)
+			}
+			_, err = config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
+				ProjectName:       req.ProjectName,
+				PlatformType:      platType,
+				AppID:             req.AppID,
+				AppSecret:         req.AppSecret,
+				OwnerOpenID:       req.OwnerOpenID,
+				SetAllowFromEmpty: true,
+			})
+			return err
+		})
+		mgmtSrv.SetSetupWeixinSave(func(req core.WeixinSetupSaveRequest) error {
+			_, err := config.EnsureProjectWithWeixinPlatform(config.EnsureProjectWithWeixinOptions{
+				ProjectName: req.ProjectName,
+				WorkDir:     req.WorkDir,
+				AgentType:   req.AgentType,
+			})
+			if err != nil {
+				return fmt.Errorf("ensure project: %w", err)
+			}
+			_, err = config.SaveWeixinPlatformCredentials(config.WeixinCredentialUpdateOptions{
+				ProjectName:       req.ProjectName,
+				Token:             req.Token,
+				BaseURL:           req.BaseURL,
+				AccountID:         req.IlinkBotID,
+				ScannedUserID:     req.IlinkUserID,
+				SetAllowFromEmpty: true,
+			})
+			return err
+		})
+		mgmtSrv.SetAddPlatformToProject(func(projectName, platType string, opts map[string]any, workDir, agentType string) error {
+			if opts == nil {
+				opts = map[string]any{}
+			}
+			return config.AddPlatformToProject(projectName, config.PlatformConfig{Type: platType, Options: opts}, workDir, agentType)
+		})
+		mgmtSrv.SetRemoveProject(config.RemoveProject)
+		mgmtSrv.SetSaveProjectSettings(func(name string, u core.ProjectSettingsUpdate) error {
+			return config.SaveProjectSettings(name, config.ProjectSettingsUpdate{
+				Language:             u.Language,
+				AdminFrom:            u.AdminFrom,
+				DisabledCommands:     u.DisabledCommands,
+				WorkDir:              u.WorkDir,
+				Mode:                 u.Mode,
+				AgentType:            u.AgentType,
+				ShowContextIndicator: u.ShowContextIndicator,
+				ReplyFooter:          u.ReplyFooter,
+				InjectSender:         u.InjectSender,
+				PlatformAllowFrom:    u.PlatformAllowFrom,
+			})
+		})
+		mgmtSrv.SetGetProjectConfig(config.GetProjectConfigDetails)
+		mgmtSrv.SetSaveProviderRefs(config.SaveProviderRefs)
 		mgmtSrv.SetConfigFilePath(configPath)
+		mgmtSrv.SetGetGlobalSettings(config.GetGlobalSettings)
+		mgmtSrv.SetSaveGlobalSettings(func(updates map[string]any) error {
+			u := config.GlobalSettingsUpdate{}
+			if v, ok := updates["language"].(string); ok {
+				u.Language = &v
+			}
+			if v, ok := updates["attachment_send"].(string); ok {
+				u.AttachmentSend = &v
+			}
+			if v, ok := updates["log_level"].(string); ok {
+				u.LogLevel = &v
+			}
+			if v, ok := updates["idle_timeout_mins"].(float64); ok {
+				iv := int(v)
+				u.IdleTimeoutMins = &iv
+			}
+			if v, ok := updates["thinking_messages"].(bool); ok {
+				u.ThinkingMessages = &v
+			}
+			if v, ok := updates["thinking_max_len"].(float64); ok {
+				iv := int(v)
+				u.ThinkingMaxLen = &iv
+			}
+			if v, ok := updates["tool_messages"].(bool); ok {
+				u.ToolMessages = &v
+			}
+			if v, ok := updates["tool_max_len"].(float64); ok {
+				iv := int(v)
+				u.ToolMaxLen = &iv
+			}
+			if v, ok := updates["stream_preview_enabled"].(bool); ok {
+				u.StreamPreviewOn = &v
+			}
+			if v, ok := updates["stream_preview_interval_ms"].(float64); ok {
+				iv := int(v)
+				u.StreamPreviewIntMs = &iv
+			}
+			if v, ok := updates["rate_limit_max_messages"].(float64); ok {
+				iv := int(v)
+				u.RateLimitMax = &iv
+			}
+			if v, ok := updates["rate_limit_window_secs"].(float64); ok {
+				iv := int(v)
+				u.RateLimitWindow = &iv
+			}
+			return config.SaveGlobalSettings(u)
+		})
+		mgmtSrv.SetListGlobalProviders(func() ([]core.GlobalProviderInfo, error) {
+			providers, err := config.ListGlobalProviders()
+			if err != nil {
+				return nil, err
+			}
+			out := make([]core.GlobalProviderInfo, len(providers))
+			for i, p := range providers {
+				out[i] = configProviderToGlobal(p)
+			}
+			return out, nil
+		})
+		mgmtSrv.SetAddGlobalProvider(func(info core.GlobalProviderInfo) error {
+			return config.AddGlobalProvider(globalProviderToConfig(info))
+		})
+		mgmtSrv.SetUpdateGlobalProvider(func(name string, info core.GlobalProviderInfo) error {
+			return config.UpdateGlobalProvider(name, globalProviderToConfig(info))
+		})
+		mgmtSrv.SetRemoveGlobalProvider(func(name string) error {
+			return config.RemoveGlobalProvider(name)
+		})
+		mgmtSrv.SetFetchPresets(core.FetchProviderPresets)
+		mgmtSrv.SetFetchSkillPresets(core.FetchSkillPresets)
+		if cfg.ProviderPresetsURL != "" {
+			core.SetPresetsURL(cfg.ProviderPresetsURL)
+		}
+		mgmtSrv.SetListCCSwitchProviders(listCCSwitchProvidersForWeb)
 		mgmtSrv.Start()
 	}
 
 	slog.Info("cc-connect is running inside Remote Agent", "projects", len(engines))
 
-	// Block until context is done, then stop servers
-	<-ctx.Done()
+	if notify := core.ConsumeRestartNotify(cfg.DataDir); notify != nil {
+		slog.Info("post-restart: sending success notification", "platform", notify.Platform, "session", notify.SessionKey)
+		for _, e := range engines {
+			e.SendRestartNotification(notify.Platform, notify.SessionKey)
+		}
+	}
+
+	// Block until context is done or restart requested, then stop servers
+	var restartReq *core.RestartRequest
+	select {
+	case <-ctx.Done():
+	case req := <-core.RestartCh:
+		restartReq = &req
+		slog.Info("restart requested via cc-connect management API", "session", req.SessionKey, "platform", req.Platform)
+	}
+
+	if restartReq != nil {
+		// Allow the HTTP server to flush the successful response back to the client
+		time.Sleep(300 * time.Millisecond)
+	}
 
 	slog.Info("shutting down cc-connect engines...")
 	if mgmtSrv != nil {
@@ -492,6 +654,22 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) {
 	}
 	for _, e := range engines {
 		e.Stop()
+	}
+
+	if restartReq != nil {
+		if err := core.SaveRestartNotify(cfg.DataDir, *restartReq); err != nil {
+			slog.Error("restart: save notify failed", "error", err)
+		}
+		execPath, err := os.Executable()
+		if err != nil {
+			slog.Error("restart: cannot determine executable path", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("restarting...", "path", execPath, "args", os.Args)
+		if err := restartProcess(execPath); err != nil {
+			slog.Error("restart: failed", "error", err)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -746,3 +924,278 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 
 	return result, nil
 }
+
+func configProviderToGlobal(p config.ProviderConfig) core.GlobalProviderInfo {
+	info := core.GlobalProviderInfo{
+		Name:        p.Name,
+		APIKey:      p.APIKey,
+		BaseURL:     p.BaseURL,
+		Model:       p.Model,
+		Thinking:    p.Thinking,
+		Env:         p.Env,
+		AgentTypes:  p.AgentTypes,
+		Endpoints:   p.Endpoints,
+		AgentModels: p.AgentModels,
+	}
+	for _, m := range p.Models {
+		info.Models = append(info.Models, struct {
+			Model string `json:"model"`
+			Alias string `json:"alias,omitempty"`
+		}{Model: m.Model, Alias: m.Alias})
+	}
+	if len(p.AgentModelLists) > 0 {
+		info.AgentModelLists = make(map[string][]core.GlobalModelEntry, len(p.AgentModelLists))
+		for at, ml := range p.AgentModelLists {
+			entries := make([]core.GlobalModelEntry, len(ml))
+			for i, m := range ml {
+				entries[i] = core.GlobalModelEntry{Model: m.Model, Alias: m.Alias}
+			}
+			info.AgentModelLists[at] = entries
+		}
+	}
+	if p.Codex != nil {
+		info.Codex = &core.GlobalCodexConfig{
+			WireAPI:     p.Codex.WireAPI,
+			HTTPHeaders: p.Codex.HTTPHeaders,
+		}
+	}
+	return info
+}
+
+func globalProviderToConfig(info core.GlobalProviderInfo) config.ProviderConfig {
+	p := config.ProviderConfig{
+		Name:        info.Name,
+		APIKey:      info.APIKey,
+		BaseURL:     info.BaseURL,
+		Model:       info.Model,
+		Thinking:    info.Thinking,
+		Env:         info.Env,
+		AgentTypes:  info.AgentTypes,
+		Endpoints:   info.Endpoints,
+		AgentModels: info.AgentModels,
+	}
+	for _, m := range info.Models {
+		p.Models = append(p.Models, config.ProviderModelConfig{Model: m.Model, Alias: m.Alias})
+	}
+	if len(info.AgentModelLists) > 0 {
+		p.AgentModelLists = make(map[string][]config.ProviderModelConfig, len(info.AgentModelLists))
+		for at, ml := range info.AgentModelLists {
+			entries := make([]config.ProviderModelConfig, len(ml))
+			for i, m := range ml {
+				entries[i] = config.ProviderModelConfig{Model: m.Model, Alias: m.Alias}
+			}
+			p.AgentModelLists[at] = entries
+		}
+	}
+	if info.Codex != nil {
+		p.Codex = &config.CodexProviderConfig{
+			WireAPI:     info.Codex.WireAPI,
+			HTTPHeaders: info.Codex.HTTPHeaders,
+		}
+	}
+	return p
+}
+
+type ccSwitchRow struct {
+	ID             string `json:"id"`
+	AppType        string `json:"app_type"`
+	Name           string `json:"name"`
+	SettingsConfig string `json:"settings_config"`
+	IsCurrent      int    `json:"is_current"`
+}
+
+func queryCCSwitchDB(dbPath, appTypeFilter string) ([]ccSwitchRow, error) {
+	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open cc-switch db: %w", err)
+	}
+	defer db.Close()
+
+	query := "SELECT id, app_type, name, settings_config, is_current FROM providers"
+	var args []any
+	if appTypeFilter != "" {
+		query += " WHERE app_type = ?"
+		args = append(args, appTypeFilter)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query cc-switch db: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ccSwitchRow
+	for rows.Next() {
+		var r ccSwitchRow
+		if err := rows.Scan(&r.ID, &r.AppType, &r.Name, &r.SettingsConfig, &r.IsCurrent); err != nil {
+			continue
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func convertCCSwitchProvider(row ccSwitchRow) (config.ProviderConfig, error) {
+	var sc map[string]any
+	if err := json.Unmarshal([]byte(row.SettingsConfig), &sc); err != nil {
+		return config.ProviderConfig{}, fmt.Errorf("invalid settings_config JSON: %w", err)
+	}
+
+	p := config.ProviderConfig{
+		Name: strings.ToLower(strings.ReplaceAll(strings.TrimSpace(row.Name), " ", "-")),
+	}
+
+	switch row.AppType {
+	case "claude":
+		return convertClaudeProvider(p, sc)
+	case "codex":
+		return convertCodexProvider(p, sc)
+	default:
+		return config.ProviderConfig{}, fmt.Errorf("unsupported app_type %q (only claude and codex are supported)", row.AppType)
+	}
+}
+
+func convertClaudeProvider(p config.ProviderConfig, sc map[string]any) (config.ProviderConfig, error) {
+	env, _ := sc["env"].(map[string]any)
+	if env == nil {
+		return p, fmt.Errorf("no env in settings_config")
+	}
+
+	if key, ok := env["ANTHROPIC_AUTH_TOKEN"].(string); ok && key != "" {
+		p.APIKey = key
+	}
+	if url, ok := env["ANTHROPIC_BASE_URL"].(string); ok && url != "" {
+		p.BaseURL = url
+	}
+	if model, ok := env["ANTHROPIC_MODEL"].(string); ok && model != "" {
+		p.Model = model
+	}
+
+	extra := make(map[string]string)
+	known := map[string]bool{"ANTHROPIC_AUTH_TOKEN": true, "ANTHROPIC_BASE_URL": true, "ANTHROPIC_MODEL": true}
+	for k, v := range env {
+		if !known[k] {
+			if s, ok := v.(string); ok && s != "" {
+				extra[k] = s
+			}
+		}
+	}
+	if len(extra) > 0 {
+		p.Env = extra
+	}
+
+	if p.APIKey == "" && len(p.Env) == 0 {
+		return p, fmt.Errorf("no API key or env found")
+	}
+	return p, nil
+}
+
+func convertCodexProvider(p config.ProviderConfig, sc map[string]any) (config.ProviderConfig, error) {
+	if auth, ok := sc["auth"].(map[string]any); ok {
+		if key, ok := auth["OPENAI_API_KEY"].(string); ok && key != "" {
+			p.APIKey = key
+		}
+	}
+
+	if cfgStr, ok := sc["config"].(string); ok && cfgStr != "" {
+		p.BaseURL, p.Model = parseCodexConfigTOML(cfgStr)
+	}
+
+	if p.APIKey == "" {
+		return p, fmt.Errorf("no OPENAI_API_KEY found")
+	}
+	return p, nil
+}
+
+func parseCodexConfigTOML(cfgStr string) (baseURL, model string) {
+	for _, line := range strings.Split(cfgStr, "\n") {
+		line = strings.TrimSpace(line)
+		if k, v, ok := parseTOMLKV(line); ok {
+			switch k {
+			case "base_url":
+				if baseURL == "" {
+					baseURL = v
+				}
+			case "model":
+				if model == "" {
+					model = v
+				}
+			}
+		}
+	}
+	return
+}
+
+func parseTOMLKV(line string) (key, value string, ok bool) {
+	idx := strings.Index(line, "=")
+	if idx < 0 || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
+		return "", "", false
+	}
+	key = strings.TrimSpace(line[:idx])
+	value = strings.TrimSpace(line[idx+1:])
+	value = strings.Trim(value, "\"'")
+	return key, value, true
+}
+
+func findCCSwitchDB() string {
+	for _, p := range ccSwitchDBCandidates() {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func ccSwitchDBCandidates() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	candidates := []string{
+		filepath.Join(home, ".cc-switch", "cc-switch.db"),
+	}
+
+	switch runtime.GOOS {
+	case "linux":
+		dataHome := os.Getenv("XDG_DATA_HOME")
+		if dataHome == "" {
+			dataHome = filepath.Join(home, ".local", "share")
+		}
+		candidates = append(candidates, filepath.Join(dataHome, "cc-switch", "cc-switch.db"))
+	case "darwin":
+		candidates = append(candidates, filepath.Join(home, "Library", "Application Support", "cc-switch", "cc-switch.db"))
+	}
+
+	return candidates
+}
+
+func listCCSwitchProvidersForWeb() ([]core.CCSwitchProviderInfo, error) {
+	dbPath := findCCSwitchDB()
+	if dbPath == "" {
+		return nil, fmt.Errorf("cc-switch database not found")
+	}
+
+	rows, err := queryCCSwitchDB(dbPath, "")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]core.CCSwitchProviderInfo, 0, len(rows))
+	for _, row := range rows {
+		p, err := convertCCSwitchProvider(row)
+		if err != nil {
+			continue
+		}
+		result = append(result, core.CCSwitchProviderInfo{
+			Name:      p.Name,
+			AppType:   row.AppType,
+			APIKey:    p.APIKey,
+			BaseURL:   p.BaseURL,
+			Model:     p.Model,
+			IsCurrent: row.IsCurrent == 1,
+		})
+	}
+	return result, nil
+}
+
