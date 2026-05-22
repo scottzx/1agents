@@ -77,6 +77,18 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(abs)
 	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "directory not found", http.StatusNotFound)
+			return
+		}
+		if os.IsPermission(err) {
+			http.Error(w, "permission denied", http.StatusForbidden)
+			return
+		}
+		if strings.Contains(err.Error(), "not a directory") {
+			http.Error(w, "path is not a directory", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

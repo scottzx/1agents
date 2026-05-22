@@ -827,7 +827,10 @@ export class App extends Component<{}, AppState> {
     // ── Flat file crawler ──────────────────────────────────────────────────
 
     /** Dirs to skip during recursive crawl */
-    private readonly IGNORE_DIRS = new Set(['node_modules', 'dist', 'build', '__pycache__', 'vendor']);
+    private readonly IGNORE_DIRS = new Set([
+        'node_modules', 'dist', 'build', '__pycache__', 'vendor',
+        '.git', '.bun', '.yarn', '.pnpm', '.cache', '.vscode', '.idea'
+    ]);
 
     /** Recursively fetch all files under relPath, ignoring heavy dirs */
     crawlDirRecursive = async (relPath: string): Promise<FsEntry[]> => {
