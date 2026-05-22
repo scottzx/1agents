@@ -79,10 +79,13 @@ const darkTermTheme = {
 } as ITheme;
 
 const baseTermOptions = {
-    fontSize: 15,
     fontFamily: 'JetBrains Mono, Consolas, Liberation Mono, Menlo, monospace',
     allowProposedApi: true,
 } as ITerminalOptions;
+
+const isMobileDevice = () =>
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.innerWidth <= 768;
 
 interface AppState {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
@@ -1026,6 +1029,7 @@ export class App extends Component<{}, AppState> {
         const termOptions = {
             ...baseTermOptions,
             theme: currentTheme,
+            fontSize: isMobileDevice() ? 12 : 13,
         } as ITerminalOptions;
 
         // Derive the filesystem path of the currently active workspace
