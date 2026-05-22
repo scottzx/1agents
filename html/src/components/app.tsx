@@ -594,27 +594,50 @@ export class App extends Component<{}, AppState> {
     /** Switch to a session from sidebar click — also activates its workspace. */
     selectSession = async (session: Session) => {
         const { activeWorkspaceId, workspaces } = this.state;
-        // Always switch the tmux window first
-        this.switchTerminal(session.index);
 
-        if (session.workspaceId !== activeWorkspaceId) {
-            // Expand the folder and mark it active
-            this.setState(
-                {
-                    activeWorkspaceId: session.workspaceId,
-                    folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
-                },
-                () => {
-                    this.loadCcConnectUrl(session.workspaceId);
+        // 1. Optimistic UI update: Immediately mark the session as active and expand/set workspace ID
+        this.setState(prev => {
+            const updatedFolders = prev.folders.map(f => ({
+                ...f,
+                sessions: f.sessions.map(s => ({
+                    ...s,
+                    active: s.index === session.index,
+                })),
+            }));
+            return {
+                activeSession: { ...session, active: true },
+                folders:
+                    session.workspaceId !== activeWorkspaceId
+                        ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
+                        : updatedFolders,
+                activeWorkspaceId: session.workspaceId,
+            };
+        });
+
+        // Helper to perform the actual terminal window and workspace context switching
+        const performSwitch = async () => {
+            // Always switch the tmux window first
+            await this.switchTerminal(session.index);
+
+            if (session.workspaceId !== activeWorkspaceId) {
+                this.loadCcConnectUrl(session.workspaceId);
+                // Switch backend context and reload file browser / git panel
+                const ws = workspaces.find(w => w.id === session.workspaceId);
+                if (ws) {
+                    await this.switchWorkspaceContext(ws);
+                    this.showToast(`已切换到 "${ws.name}" ✓`);
                 }
-            );
-
-            // Switch backend context and reload file browser / git panel
-            const ws = workspaces.find(w => w.id === session.workspaceId);
-            if (ws) {
-                await this.switchWorkspaceContext(ws);
-                this.showToast(`已切换到 "${ws.name}" ✓`);
             }
+        };
+
+        if (this.state.isMobile) {
+            // Close sidebar immediately on mobile for instant visual response
+            this.setState({ leftSidebarOpen: false });
+            // Delay the heavy backend connection operations by 200ms to let the slide-out CSS transition finish smoothly without main-thread jank
+            setTimeout(performSwitch, 200);
+        } else {
+            // Desktop: switch immediately
+            await performSwitch();
         }
     };
 

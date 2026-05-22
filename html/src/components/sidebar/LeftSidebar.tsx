@@ -62,6 +62,12 @@ export function LeftSidebar({
         <aside
             class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}
             style={leftSidebarOpen ? `width: ${leftSidebarWidth}px` : ''}
+            onClick={(e: MouseEvent) => {
+                // If on mobile and clicking the backdrop (outside the sidebar container which is 280px wide on mobile)
+                if (window.innerWidth <= 768 && e.clientX > 280) {
+                    toggleLeftSidebar();
+                }
+            }}
         >
             <div class="sidebar-header">
                 <div class="coze-brand">

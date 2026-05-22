@@ -83,9 +83,10 @@ export class Terminal extends Component<Props, State> {
         if (!this.isScrolling || e.touches.length !== 1) return;
         const currentY = e.touches[0].clientY;
         const deltaY = currentY - this.touchStartY;
-        const lineThreshold = 12;
+        const lineThreshold = 24; // 触控移动 24px 触发一次滚动
         if (Math.abs(deltaY) >= lineThreshold) {
-            const lines = Math.round(deltaY / lineThreshold);
+            // 每次滚动精准挪动 2 行，实现非常可控和平滑的阅读体验
+            const lines = deltaY > 0 ? 2 : -2;
             if (this.xterm) {
                 this.xterm.scrollLines(-lines);
             }
