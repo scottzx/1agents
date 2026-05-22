@@ -132,7 +132,18 @@ export class Xterm {
 
     @bind
     public scrollLines(n: number) {
-        this.terminal?.scrollLines(n);
+        if (!this.terminal) return;
+
+        if (this.terminal.buffer.active.type === 'alternate') {
+            const isScrollUp = n < 0;
+            const count = Math.abs(n);
+            const seq = isScrollUp ? '\x1b[<64;1;1M' : '\x1b[<65;1;1M';
+            for (let i = 0; i < count; i++) {
+                this.sendData(seq);
+            }
+        } else {
+            this.terminal.scrollLines(n);
+        }
     }
 
     @bind
