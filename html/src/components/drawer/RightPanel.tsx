@@ -156,7 +156,10 @@ export function RightPanel({
             </div>
 
             {activeDrawerTab === 'channels' ? (
-                <div class="panel-body-iframe" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; height: 100%;">
+                <div
+                    class="panel-body-iframe"
+                    style="flex: 1; overflow: hidden; display: flex; flex-direction: column; height: 100%;"
+                >
                     <iframe
                         id="cc-connect-iframe"
                         src={getCcConnectIframeUrl(ccConnectUrl)}

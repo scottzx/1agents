@@ -131,6 +131,11 @@ export class Xterm {
     }
 
     @bind
+    public scrollLines(n: number) {
+        this.terminal?.scrollLines(n);
+    }
+
+    @bind
     public sendFile(files: FileList) {
         this.zmodemAddon?.sendFile(files);
     }

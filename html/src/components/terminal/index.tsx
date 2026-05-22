@@ -14,12 +14,17 @@ interface Props extends XtermOptions {
 interface State {
     modal: boolean;
     isMobile: boolean;
-    mobileInput: string;
+    hiddenInputValue: string;
 }
 
 export class Terminal extends Component<Props, State> {
     private container: HTMLElement;
     private xterm: Xterm;
+    private hiddenInput: HTMLTextAreaElement | null = null;
+    private touchStartY = 0;
+    private isScrolling = false;
+    private hasScrolled = false;
+    private isComposing = false;
 
     constructor(props: Props) {
         super();
@@ -27,7 +32,7 @@ export class Terminal extends Component<Props, State> {
         this.state = {
             modal: false,
             isMobile: false,
-            mobileInput: '',
+            hiddenInputValue: ' ',
         };
     }
 
@@ -61,26 +66,102 @@ export class Terminal extends Component<Props, State> {
     }
 
     @bind
-    handleMobileInput(event: Event) {
-        const value = (event.target as HTMLInputElement).value;
-        this.setState({ mobileInput: value });
-    }
-
-    @bind
-    handleMobileKeyDown(event: KeyboardEvent) {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            this.sendMobileInput();
+    handleTouchStart(e: TouchEvent) {
+        if (e.touches.length === 1) {
+            this.touchStartY = e.touches[0].clientY;
+            this.isScrolling = true;
+            this.hasScrolled = false;
         }
     }
 
     @bind
-    sendMobileInput() {
-        const { mobileInput } = this.state;
-        if (mobileInput) {
-            this.xterm.sendData(mobileInput + '\r');
-            this.setState({ mobileInput: '' });
+    handleTouchMove(e: TouchEvent) {
+        if (!this.isScrolling || e.touches.length !== 1) return;
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - this.touchStartY;
+        const lineThreshold = 12;
+        if (Math.abs(deltaY) >= lineThreshold) {
+            const lines = Math.round(deltaY / lineThreshold);
+            if (this.xterm) {
+                this.xterm.scrollLines(-lines);
+            }
+            this.touchStartY = currentY;
+            this.hasScrolled = true;
         }
+    }
+
+    @bind
+    handleTouchEnd() {
+        this.isScrolling = false;
+    }
+
+    @bind
+    handleOverlayClick() {
+        if (this.hasScrolled) return;
+        if (this.hiddenInput) {
+            if (document.activeElement === this.hiddenInput) {
+                this.hiddenInput.blur();
+            } else {
+                this.hiddenInput.focus();
+            }
+        }
+    }
+
+    @bind
+    handleCompositionStart() {
+        this.isComposing = true;
+    }
+
+    @bind
+    handleCompositionEnd(e: CompositionEvent) {
+        this.isComposing = false;
+        const text = e.data;
+        if (text) {
+            this.xterm.sendData(text);
+        }
+        this.setState({ hiddenInputValue: ' ' });
+    }
+
+    @bind
+    handleHiddenInput(e: Event) {
+        if (this.isComposing) {
+            const value = (e.target as HTMLTextAreaElement).value;
+            this.setState({ hiddenInputValue: value });
+            return;
+        }
+
+        const value = (e.target as HTMLTextAreaElement).value;
+        if (value.length === 0) {
+            this.xterm.sendData('\x7f'); // Backspace
+            this.setState({ hiddenInputValue: ' ' });
+            return;
+        }
+
+        let typedText = '';
+        if (value.startsWith(' ')) {
+            typedText = value.substring(1);
+        } else {
+            typedText = value;
+        }
+
+        if (typedText.length > 0) {
+            const processedText = typedText.replace(/\n/g, '\r');
+            this.xterm.sendData(processedText);
+        }
+
+        this.setState({ hiddenInputValue: ' ' });
+    }
+
+    @bind
+    handleHiddenInputFocus() {
+        this.props.onKeyboardStateChange?.(true);
+    }
+
+    @bind
+    handleHiddenInputBlur() {
+        setTimeout(() => {
+            this.props.onKeyboardStateChange?.(false);
+        }, 100);
     }
 
     @bind
@@ -122,28 +203,42 @@ export class Terminal extends Component<Props, State> {
         }
     }
 
-    @bind
-    handleInputFocus() {
-        this.props.onKeyboardStateChange?.(true);
-    }
-
-    @bind
-    handleInputBlur() {
-        setTimeout(() => {
-            this.props.onKeyboardStateChange?.(false);
-        }, 100);
-    }
-
-    render({ id }: Props, { modal, isMobile, mobileInput }: State) {
+    render({ id }: Props, { modal, isMobile, hiddenInputValue }: State) {
         return (
             <div style="display: flex; flex-direction: column; height: 100%; width: 100%; position: relative;">
                 <div
                     id={id}
-                    style="flex: 1; min-height: 0;"
+                    style="flex: 1; min-height: 0; position: relative;"
                     ref={(c: HTMLDivElement | null) => {
                         this.container = c as HTMLElement;
                     }}
                 >
+                    {isMobile && (
+                        <div
+                            class="mobile-terminal-overlay"
+                            onTouchStart={this.handleTouchStart}
+                            onTouchMove={this.handleTouchMove}
+                            onTouchEnd={this.handleTouchEnd}
+                            onClick={this.handleOverlayClick}
+                        >
+                            <textarea
+                                ref={el => {
+                                    this.hiddenInput = el;
+                                }}
+                                class="hidden-terminal-input"
+                                value={hiddenInputValue}
+                                onInput={this.handleHiddenInput}
+                                onFocus={this.handleHiddenInputFocus}
+                                onBlur={this.handleHiddenInputBlur}
+                                onCompositionStart={this.handleCompositionStart}
+                                onCompositionEnd={this.handleCompositionEnd}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                            />
+                        </div>
+                    )}
                     <Modal show={modal}>
                         <label class="file-label">
                             <input onChange={this.sendFile} class="file-input" type="file" multiple />
@@ -156,23 +251,70 @@ export class Terminal extends Component<Props, State> {
                         <div class="mobile-quick-keys">
                             {/* Arrow Up */}
                             <button class="key-btn" title="↑" onClick={() => this.sendQuickKey('↑')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="18 15 12 9 6 15" />
+                                </svg>
                             </button>
                             {/* Arrow Down */}
                             <button class="key-btn" title="↓" onClick={() => this.sendQuickKey('↓')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
                             </button>
                             {/* Arrow Left */}
                             <button class="key-btn" title="←" onClick={() => this.sendQuickKey('←')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="15 18 9 12 15 6" />
+                                </svg>
                             </button>
                             {/* Arrow Right */}
                             <button class="key-btn" title="→" onClick={() => this.sendQuickKey('→')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="9 18 15 12 9 6" />
+                                </svg>
                             </button>
                             {/* Paste */}
                             <button class="key-btn" title="粘贴" onClick={() => this.sendQuickKey('粘贴')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="4" width="12" height="16" rx="2"/><path d="M8 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2"/><path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1z"/></svg>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect x="8" y="4" width="12" height="16" rx="2" />
+                                    <path d="M8 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2" />
+                                    <path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1z" />
+                                </svg>
                             </button>
                             {/* Esc — keep text, it's clear */}
                             <button class="key-btn key-btn-text" title="Esc" onClick={() => this.sendQuickKey('Esc')}>
@@ -180,30 +322,32 @@ export class Terminal extends Component<Props, State> {
                             </button>
                             {/* Backspace / Delete */}
                             <button class="key-btn" title="Backspace" onClick={() => this.sendQuickKey('Backspace')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
+                                    <line x1="18" y1="9" x2="12" y2="15" />
+                                    <line x1="12" y1="9" x2="18" y2="15" />
+                                </svg>
                             </button>
                             {/* Enter / Return */}
                             <button class="key-btn" title="Enter" onClick={() => this.sendQuickKey('Enter')}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
-                            </button>
-                        </div>
-                        <div class="mobile-input-row">
-                            <input
-                                type="text"
-                                value={mobileInput}
-                                onInput={this.handleMobileInput}
-                                onKeyDown={this.handleMobileKeyDown}
-                                onFocus={this.handleInputFocus}
-                                onBlur={this.handleInputBlur}
-                                placeholder="在此输入以同步到终端..."
-                                class="mobile-terminal-input"
-                                autocorrect="off"
-                                autocapitalize="none"
-                                autocomplete="off"
-                                spellcheck={false}
-                            />
-                            <button class="mobile-terminal-send" onClick={this.sendMobileInput}>
-                                发送
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="9 10 4 15 9 20" />
+                                    <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+                                </svg>
                             </button>
                         </div>
                     </div>
