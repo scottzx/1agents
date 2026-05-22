@@ -1,4 +1,5 @@
 import { h, Fragment } from 'preact';
+import { useState } from 'preact/hooks';
 import { RightDrawerTab } from '../types';
 
 interface WorkspaceHeaderProps {
@@ -16,7 +17,14 @@ interface WorkspaceHeaderProps {
 }
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
-    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab, keyboardVisible, sessionId, sessionPath } = props;
+    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab, sessionId, sessionPath } = props;
+
+    // Mobile hamburger menu open state
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    const toggleMobileMenu = () => setMobileMenuOpen(v => !v);
+    const closeMobileMenu = () => setMobileMenuOpen(false);
+
     // ── Shared SVG icons ──────────────────────────────────────────────────
     const IconFiles = (
         <svg
@@ -87,6 +95,35 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         </svg>
     );
 
+    // Hamburger / Close icon
+    const IconHamburger = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+    );
+    const IconClose = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+    );
+
     // session tab is "active" when terminal is shown and right panel is closed
     const sessionActive = activeTab === 'terminal' && activeDrawerTab === 'none';
 
@@ -96,6 +133,13 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         if (activeDrawerTab !== 'none') {
             toggleDrawerTab(activeDrawerTab);
         }
+        closeMobileMenu();
+    };
+
+    // Helper: toggle a drawer tab and close the mobile menu
+    const handleDrawerToggle = (tab: RightDrawerTab) => {
+        toggleDrawerTab(tab);
+        closeMobileMenu();
     };
 
     return (
@@ -165,51 +209,77 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         {IconSettings}
                     </button>
                 </div>
+
+                {/* Mobile: hamburger button (only visible on mobile via CSS) */}
+                <button
+                    id="mob-hamburger-btn"
+                    class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
+                    onClick={toggleMobileMenu}
+                    title="菜单"
+                    aria-label="打开功能菜单"
+                    aria-expanded={mobileMenuOpen}
+                >
+                    {mobileMenuOpen ? IconClose : IconHamburger}
+                </button>
             </header>
 
-            {/* Mobile: fixed bottom navigation bar — 终端 / AI 渠道 / 文件 / 任务 / 设置 */}
-            <nav class={`mobile-bottom-nav ${keyboardVisible ? 'keyboard-visible' : ''}`}>
+            {/* Mobile: slide-down drawer menu */}
+            {mobileMenuOpen && (
+                <div class="mobile-menu-backdrop" onClick={closeMobileMenu} />
+            )}
+            <div class={`mobile-menu-drawer ${mobileMenuOpen ? 'open' : ''}`}>
+                <div class="mobile-menu-section-title">切换视图</div>
+
                 <button
-                    id="mob-btn-session"
-                    class={`mob-nav-btn ${sessionActive ? 'active' : ''}`}
+                    id="mob-menu-terminal"
+                    class={`mobile-menu-item ${sessionActive ? 'active' : ''}`}
                     onClick={handleSessionClick}
                 >
-                    {IconSession}
-                    <span>终端</span>
+                    <span class="mob-menu-icon">{IconSession}</span>
+                    <span class="mob-menu-label">终端</span>
+                    {sessionActive && <span class="mob-menu-badge">当前</span>}
                 </button>
+
                 <button
-                    id="mob-btn-channels"
-                    class={`mob-nav-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                    onClick={() => toggleDrawerTab('channels')}
+                    id="mob-menu-channels"
+                    class={`mobile-menu-item ${activeDrawerTab === 'channels' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('channels')}
                 >
-                    {IconChannels}
-                    <span>AI 渠道</span>
+                    <span class="mob-menu-icon">{IconChannels}</span>
+                    <span class="mob-menu-label">AI 渠道</span>
+                    {activeDrawerTab === 'channels' && <span class="mob-menu-badge">打开中</span>}
                 </button>
+
                 <button
-                    id="mob-btn-files"
-                    class={`mob-nav-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
-                    onClick={() => toggleDrawerTab('files')}
+                    id="mob-menu-files"
+                    class={`mobile-menu-item ${activeDrawerTab === 'files' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('files')}
                 >
-                    {IconFiles}
-                    <span>文件</span>
+                    <span class="mob-menu-icon">{IconFiles}</span>
+                    <span class="mob-menu-label">文件浏览器</span>
+                    {activeDrawerTab === 'files' && <span class="mob-menu-badge">打开中</span>}
                 </button>
+
                 <button
-                    id="mob-btn-git"
-                    class={`mob-nav-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
-                    onClick={() => toggleDrawerTab('git')}
+                    id="mob-menu-git"
+                    class={`mobile-menu-item ${activeDrawerTab === 'git' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('git')}
                 >
-                    {IconGit}
-                    <span>Git</span>
+                    <span class="mob-menu-icon">{IconGit}</span>
+                    <span class="mob-menu-label">版本控制 (Git)</span>
+                    {activeDrawerTab === 'git' && <span class="mob-menu-badge">打开中</span>}
                 </button>
+
                 <button
-                    id="mob-btn-settings"
-                    class={`mob-nav-btn ${activeDrawerTab === 'settings' ? 'active' : ''}`}
-                    onClick={() => toggleDrawerTab('settings')}
+                    id="mob-menu-settings"
+                    class={`mobile-menu-item ${activeDrawerTab === 'settings' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('settings')}
                 >
-                    {IconSettings}
-                    <span>设置</span>
+                    <span class="mob-menu-icon">{IconSettings}</span>
+                    <span class="mob-menu-label">设置</span>
+                    {activeDrawerTab === 'settings' && <span class="mob-menu-badge">打开中</span>}
                 </button>
-            </nav>
+            </div>
         </Fragment>
     );
 }

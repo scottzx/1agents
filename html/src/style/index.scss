@@ -656,6 +656,7 @@ body {
    COZE INTEGRATED PAGE HEADER (Replaces top global header)
    ========================================================================== */
 .workspace-header {
+  position: relative;
   height: 48px;
   background-color: var(--bg-header);
   border-bottom: 1px solid var(--border-color);
@@ -820,78 +821,151 @@ body {
 }
 
 /* ==========================================================================
-   MOBILE BOTTOM NAVIGATION BAR
-   Hidden on desktop; displayed only on mobile (≤768px)
+   MOBILE HAMBURGER BUTTON (hidden on desktop, shown on mobile)
    ========================================================================== */
-.mobile-bottom-nav {
-  display: none; /* hidden by default on desktop */
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 56px;
-  background-color: var(--bg-header);
-  border-top: 1px solid var(--border-color);
-  z-index: 100;
-  padding: 0;
-  margin: 0;
-  align-items: stretch;
-  justify-content: space-around;
-  /* Safe area for iPhone notch */
-  padding-bottom: env(safe-area-inset-bottom, 0);
+.mobile-hamburger-btn {
+  display: none; /* hidden on desktop by default */
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 
-  .mob-nav-btn {
+  &:hover {
+    background-color: var(--btn-hover);
+    color: var(--text-main);
+  }
+
+  &.open {
+    background-color: var(--accent-light);
+    color: var(--accent-color);
+    border-color: rgba(9, 105, 218, 0.3);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+/* ==========================================================================
+   MOBILE MENU DRAWER (slide-down from top-right, shown on mobile)
+   ========================================================================== */
+.mobile-menu-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background: transparent;
+}
+
+.mobile-menu-drawer {
+  display: none;
+  position: absolute;
+  top: 48px; /* below the header */
+  right: 12px;
+  width: 220px;
+  background-color: var(--bg-header);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 200;
+  padding: 8px 6px;
+  flex-direction: column;
+  gap: 2px;
+  transform-origin: top right;
+  transform: scale(0.9) translateY(-8px);
+  opacity: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease;
+  pointer-events: none;
+
+  &.open {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .mobile-menu-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    padding: 4px 10px 6px;
+  }
+
+  .mobile-menu-item {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 3px;
-    flex: 1;
-    height: 100%;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 8px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 500;
     font-family: var(--font-sans);
-    transition: color 0.2s, background-color 0.2s;
-    border-radius: 0;
-    padding: 6px 4px 4px;
+    text-align: left;
+    transition: all 0.15s ease;
     position: relative;
 
-    svg {
-      width: 20px;
-      height: 20px;
-      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    .mob-menu-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background-color: var(--bg-page);
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+
+      svg {
+        width: 14px;
+        height: 14px;
+      }
     }
 
-    span {
-      line-height: 1;
+    .mob-menu-label {
+      flex: 1;
+    }
+
+    .mob-menu-badge {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--accent-color);
+      background-color: var(--accent-light);
+      padding: 2px 6px;
+      border-radius: 10px;
       letter-spacing: 0.2px;
     }
 
     &:hover {
+      background-color: var(--bg-sidebar-hover);
       color: var(--text-main);
-      background-color: var(--btn-hover);
+
+      .mob-menu-icon {
+        background-color: var(--bg-card);
+      }
     }
 
     &.active {
       color: var(--accent-color);
+      background-color: var(--accent-light);
 
-      &::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 20%;
-        right: 20%;
-        height: 2px;
-        background-color: var(--accent-color);
-        border-radius: 0 0 2px 2px;
-      }
-
-      svg {
-        transform: scale(1.08);
+      .mob-menu-icon {
+        background-color: rgba(9, 105, 218, 0.12);
+        color: var(--accent-color);
       }
     }
   }
@@ -911,7 +985,7 @@ body {
 /* ==========================================================================
    RESPONSIVE: MOBILE (≤768px)
    Key changes:
-   - Hide header-right → show bottom nav bar
+   - Hide header-right → show hamburger button top-right
    - Left sidebar becomes a full-height overlay drawer
    - Right panel becomes a bottom sheet (slides up from bottom)
    - Middle canvas takes full width
@@ -923,18 +997,23 @@ body {
     position: relative;
   }
 
-  /* ── Header: hide desktop right buttons ── */
+  /* ── Header: hide desktop right buttons, show hamburger ── */
   .workspace-header .header-right {
     display: none;
   }
 
-  /* ── Bottom nav: show ── */
-  .mobile-bottom-nav {
+  /* ── Hamburger button: show on mobile ── */
+  .mobile-hamburger-btn {
     display: flex;
+  }
 
-    &.keyboard-visible {
-      display: none !important;
-    }
+  /* ── Mobile menu backdrop + drawer: activate display ── */
+  .mobile-menu-backdrop {
+    display: block;
+  }
+
+  .mobile-menu-drawer {
+    display: flex;
   }
 
   /* ── Left sidebar: becomes a slide-in overlay ── */
@@ -976,15 +1055,14 @@ body {
     display: none !important;
   }
 
-  /* ── Workspace main content: fills width, pads bottom for fixed nav bar ── */
+  /* ── Workspace main content: fills width, no bottom nav bar to reserve ── */
   .workspace-main-content {
     width: 100%;
     height: 100dvh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    /* Reserve space for the fixed bottom nav bar so content isn't hidden under it */
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
   }
 
   /* ── Body container: fills remaining height via flex, no hard-coded height needed ── */

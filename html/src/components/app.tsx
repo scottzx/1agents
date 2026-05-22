@@ -1142,10 +1142,7 @@ export class App extends Component<{}, AppState> {
                 <div
                     class="workspace-main-content"
                     style={this.state.isMobile ? {
-                        // When keyboard is visible: nav bar hides, so remove its padding
-                        // When keyboard is hidden: CSS static padding-bottom handles it
-                        paddingBottom: this.state.keyboardVisible ? '0' : undefined,
-                        // Also constrain height to visual viewport when keyboard is open
+                        // Constrain height to visual viewport when keyboard is open
                         height: this.state.keyboardVisible
                             ? `${this.state.viewportHeight}px`
                             : undefined,
