@@ -122,7 +122,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.ensureSession()
+	// Do NOT auto-create tmux session — only list if session already exists.
+	// User must manually create a session via /api/terminal/create first.
+	if !h.sessionExists() {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"windows": []TmuxWindow{},
+			"session": h.session,
+		})
+		return
+	}
+
 	windows, err := h.listWindows()
 	if err != nil {
 		log.Printf("[terminal] list error: %v", err)
@@ -325,7 +334,10 @@ func (h *Handler) GetMouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.ensureSession()
+	if !h.sessionExists() {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"mouse": false})
+		return
+	}
 
 	cmd := exec.Command("tmux", "show-options", "-t", h.session, "mouse")
 	out, err := cmd.Output()
