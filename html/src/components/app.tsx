@@ -1038,8 +1038,6 @@ export class App extends Component<{}, AppState> {
         // Derive the filesystem path of the currently active workspace
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
-        const sessionId = activeWorkspace?.name || '';
-        const sessionPath = activeWorkspace?.path || '';
 
         return (
             <div class="app-container">
@@ -1166,8 +1164,8 @@ export class App extends Component<{}, AppState> {
                         theme={theme}
                         toggleTheme={this.toggleTheme}
                         keyboardVisible={this.state.keyboardVisible}
-                        sessionId={activeSession?.id || ''}
-                        sessionPath={activeSession?.cwd || ''}
+                        workspaceName={activeWorkspace?.name || ''}
+                        sessionName={activeSession?.name || ''}
                     />
 
                     {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}

@@ -698,30 +698,19 @@ body {
 
     .header-title-group {
       display: flex;
-      align-items: center;
+      align-items: baseline;
       gap: 8px;
-      
-      .title {
-        font-size: 14px;
+
+      .ws-name {
+        font-size: 15px;
         font-weight: 600;
         color: var(--text-main);
       }
 
-      .status-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 11px;
-        color: #2da44e;
+      .session-name {
+        font-size: 12px;
         font-weight: 500;
-        
-        .pulse-dot {
-          width: 6px;
-          height: 6px;
-          background-color: #2da44e;
-          border-radius: 50%;
-          animation: pulse 1.8s infinite;
-        }
+        color: var(--text-secondary);
       }
     }
   }

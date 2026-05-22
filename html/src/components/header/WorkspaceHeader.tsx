@@ -12,12 +12,12 @@ interface WorkspaceHeaderProps {
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
     keyboardVisible?: boolean;
-    sessionId: string;
-    sessionPath: string;
+    workspaceName: string;
+    sessionName: string;
 }
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
-    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab, sessionId, sessionPath } = props;
+    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab, workspaceName, sessionName } = props;
 
     // Mobile hamburger menu open state
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -166,11 +166,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         </button>
                     )}
                     <div class="header-title-group">
-                        <span class="title">{sessionId || '无会话'}</span>
-                        <div class="status-indicator">
-                            <div class="pulse-dot" />
-                            <span title={sessionPath}>{sessionPath ? sessionPath.split('/').pop() : '未连接'}</span>
-                        </div>
+                        <span class="ws-name">{workspaceName || '未选择工作空间'}</span>
+                        <span class="session-name">{sessionName || '无会话'}</span>
                     </div>
                 </div>
 
