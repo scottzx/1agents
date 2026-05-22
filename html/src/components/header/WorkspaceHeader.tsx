@@ -17,7 +17,16 @@ interface WorkspaceHeaderProps {
 }
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
-    const { leftSidebarOpen, toggleLeftSidebar, activeDrawerTab, toggleDrawerTab, activeTab, setActiveTab, workspaceName, sessionName } = props;
+    const {
+        leftSidebarOpen,
+        toggleLeftSidebar,
+        activeDrawerTab,
+        toggleDrawerTab,
+        activeTab,
+        setActiveTab,
+        workspaceName,
+        sessionName,
+    } = props;
 
     // Mobile hamburger menu open state
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -221,9 +230,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             </header>
 
             {/* Mobile: slide-down drawer menu */}
-            {mobileMenuOpen && (
-                <div class="mobile-menu-backdrop" onClick={closeMobileMenu} />
-            )}
+            {mobileMenuOpen && <div class="mobile-menu-backdrop" onClick={closeMobileMenu} />}
             <div class={`mobile-menu-drawer ${mobileMenuOpen ? 'open' : ''}`}>
                 <div class="mobile-menu-section-title">切换视图</div>
 

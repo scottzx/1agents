@@ -292,7 +292,11 @@ export class App extends Component<{}, AppState> {
         const wsId = workspaceId || this.state.activeWorkspaceId;
         if (!wsId) return;
         try {
-            const res = await fetch(`/api/cc-connect/url?workspace=${encodeURIComponent(wsId)}&theme=${encodeURIComponent(this.state.theme)}`);
+            const res = await fetch(
+                `/api/cc-connect/url?workspace=${encodeURIComponent(wsId)}&theme=${encodeURIComponent(
+                    this.state.theme
+                )}`
+            );
             if (res.ok) {
                 const data = await res.json();
                 this.setState({ ccConnectUrl: data.url });
@@ -402,11 +406,17 @@ export class App extends Component<{}, AppState> {
     };
 
     submitWsModal = async () => {
-        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalTerminalDir, wsModalChatChannel } = this.state;
+        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalTerminalDir, wsModalChatChannel } =
+            this.state;
         if (!wsModalName.trim()) return;
         this.closeWsModal();
         if (wsModalMode === 'create') {
-            await this.createWorkspace(wsModalName.trim(), wsModalPath.trim(), wsModalTerminalDir.trim(), wsModalChatChannel.trim());
+            await this.createWorkspace(
+                wsModalName.trim(),
+                wsModalPath.trim(),
+                wsModalTerminalDir.trim(),
+                wsModalChatChannel.trim()
+            );
         } else if (wsModalMode === 'rename' && wsModalTarget) {
             await this.updateWorkspace({
                 ...wsModalTarget,
@@ -457,14 +467,16 @@ export class App extends Component<{}, AppState> {
             })),
         }));
         const activeWin = windows.find(w => w.active);
-        const activeSession: Session | null = activeWin ? {
-            id: activeWin.name,
-            workspaceId: activeWin.workspaceId,
-            index: activeWin.index,
-            name: `会话 #${activeWin.index}`,
-            active: true,
-            cwd: activeWin.cwd,
-        } : null;
+        const activeSession: Session | null = activeWin
+            ? {
+                  id: activeWin.name,
+                  workspaceId: activeWin.workspaceId,
+                  index: activeWin.index,
+                  name: `会话 #${activeWin.index}`,
+                  active: true,
+                  cwd: activeWin.cwd,
+              }
+            : null;
         this.setState({ activeSession });
     }
 
@@ -587,12 +599,15 @@ export class App extends Component<{}, AppState> {
 
         if (session.workspaceId !== activeWorkspaceId) {
             // Expand the folder and mark it active
-            this.setState({
-                activeWorkspaceId: session.workspaceId,
-                folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
-            }, () => {
-                this.loadCcConnectUrl(session.workspaceId);
-            });
+            this.setState(
+                {
+                    activeWorkspaceId: session.workspaceId,
+                    folders: this.state.folders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f)),
+                },
+                () => {
+                    this.loadCcConnectUrl(session.workspaceId);
+                }
+            );
 
             // Switch backend context and reload file browser / git panel
             const ws = workspaces.find(w => w.id === session.workspaceId);
@@ -768,9 +783,7 @@ export class App extends Component<{}, AppState> {
             this.setState({ activeDrawerTab: 'none' });
         } else {
             // Expand drawer with smart width: wider for channels chat panel
-            const smartWidth = tab === 'channels'
-                ? Math.max(this.state.rightPanelWidth, 450)
-                : 320;
+            const smartWidth = tab === 'channels' ? Math.max(this.state.rightPanelWidth, 450) : 320;
             this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth });
         }
         this.triggerTerminalFit();
@@ -828,8 +841,18 @@ export class App extends Component<{}, AppState> {
 
     /** Dirs to skip during recursive crawl */
     private readonly IGNORE_DIRS = new Set([
-        'node_modules', 'dist', 'build', '__pycache__', 'vendor',
-        '.git', '.bun', '.yarn', '.pnpm', '.cache', '.vscode', '.idea'
+        'node_modules',
+        'dist',
+        'build',
+        '__pycache__',
+        'vendor',
+        '.git',
+        '.bun',
+        '.yarn',
+        '.pnpm',
+        '.cache',
+        '.vscode',
+        '.idea',
     ]);
 
     /** Recursively fetch all files under relPath, ignoring heavy dirs */
@@ -1146,12 +1169,14 @@ export class App extends Component<{}, AppState> {
                 {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
                 <div
                     class="workspace-main-content"
-                    style={this.state.isMobile ? {
-                        // Constrain height to visual viewport when keyboard is open
-                        height: this.state.keyboardVisible
-                            ? `${this.state.viewportHeight}px`
-                            : undefined,
-                    } : undefined}
+                    style={
+                        this.state.isMobile
+                            ? {
+                                  // Constrain height to visual viewport when keyboard is open
+                                  height: this.state.keyboardVisible ? `${this.state.viewportHeight}px` : undefined,
+                              }
+                            : undefined
+                    }
                 >
                     {/* [COZE PAGE HEADER]: Replaces top global header */}
                     <WorkspaceHeader
@@ -1169,9 +1194,7 @@ export class App extends Component<{}, AppState> {
                     />
 
                     {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
-                    <div
-                        class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}
-                    >
+                    <div class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}>
                         {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
                         <MiddleCanvas
                             activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
@@ -1223,7 +1246,10 @@ export class App extends Component<{}, AppState> {
                             imageDataUrl={imageDataUrl}
                             onSearchQueryChange={query => this.setState({ searchQuery: query })}
                             onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
-                            onRefreshFlatFiles={() => { this.loadDir('', null); this.loadFlatFiles(); }}
+                            onRefreshFlatFiles={() => {
+                                this.loadDir('', null);
+                                this.loadFlatFiles();
+                            }}
                             onOpenFileDetail={this.openFileDetail}
                             onBackToList={() => this.setState({ viewMode: 'list' })}
                             onToggleFavorite={this.toggleFavorite}
