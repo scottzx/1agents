@@ -120,6 +120,19 @@ export function RightPanel({
         }
     };
 
+    const getCcConnectIframeUrl = (url?: string) => {
+        if (!url) return '';
+        try {
+            const parsed = new URL(url);
+            if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+                parsed.hostname = window.location.hostname;
+            }
+            return parsed.toString();
+        } catch (e) {
+            return url;
+        }
+    };
+
     return (
         <aside
             class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}
@@ -146,7 +159,7 @@ export function RightPanel({
                 <div class="panel-body-iframe" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; height: 100%;">
                     <iframe
                         id="cc-connect-iframe"
-                        src={ccConnectUrl}
+                        src={getCcConnectIframeUrl(ccConnectUrl)}
                         style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
                     />
                 </div>
