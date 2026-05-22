@@ -50,6 +50,9 @@ build
 # VSCode files
 .vscode/
 
+# Claude worktrees
+.claude/worktrees/
+
 # Generated build artifacts
 src/html.h
 
@@ -57,4 +60,4 @@ src/html.h
 !init.d
 node_modules
 .playwright-mcp
-src/html.h
+.DS_Store
