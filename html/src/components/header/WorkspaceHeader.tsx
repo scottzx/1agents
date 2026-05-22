@@ -167,10 +167,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     )}
                     <div class="header-title-group">
                         <span class="title">{sessionId || '无会话'}</span>
-                        <div class="status-indicator">
-                            <div class="pulse-dot" />
-                            <span title={sessionPath}>{sessionPath ? sessionPath.split('/').pop() : '未连接'}</span>
-                        </div>
                     </div>
                 </div>
 
