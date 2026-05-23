@@ -1,5 +1,5 @@
 {
-  "name": "@scottzx/remote-agent",
+  "name": "@scottzx/remote-agents",
   "version": "20260523.1.0",
   "description": "Browser-based remote workbench integrating terminal access, file management, and AI agent communication",
   "keywords": [

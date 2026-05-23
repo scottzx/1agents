@@ -61,3 +61,4 @@ src/html.h
 node_modules
 .playwright-mcp
 .DS_Store
+npm/npm_recover_code.md
