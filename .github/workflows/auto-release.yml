@@ -72,6 +72,12 @@ jobs:
           name: html-dist
           path: html/dist
 
+      - name: Upload html.h
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-header
+          path: src/html.h
+
   build-linux:
     runs-on: ubuntu-24.04
     needs: [prepare, build-frontend]
@@ -98,6 +104,12 @@ jobs:
         with:
           name: html-dist
           path: html-dist
+
+      - name: Download html.h artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: html-header
+          path: src
 
       - name: Install cross-build packages
         run: |
@@ -154,6 +166,12 @@ jobs:
         with:
           name: html-dist
           path: html-dist
+
+      - name: Download html.h artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: html-header
+          path: src
 
       - name: Install build dependencies via Homebrew
         run: brew install cmake libuv json-c openssl libwebsockets
