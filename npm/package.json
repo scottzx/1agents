@@ -24,6 +24,9 @@
   "scripts": {
     "postinstall": "node install.js"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "install.js",
     "run.js",
