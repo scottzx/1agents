@@ -102,6 +102,11 @@ jobs:
           go-version: '1.26.1'
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
       - name: Download html-dist artifact
         uses: actions/download-artifact@v8
         with:
@@ -172,6 +177,11 @@ jobs:
         with:
           go-version: '1.26.1'
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
 
       - name: Download html-dist artifact
         uses: actions/download-artifact@v8
