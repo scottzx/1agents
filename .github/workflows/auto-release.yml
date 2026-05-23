@@ -168,17 +168,8 @@ jobs:
           path: remote-agent-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
 
   build-macos:
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     needs: [prepare, build-frontend]
-    strategy:
-      matrix:
-        include:
-          - os: macos-13
-            arch: amd64
-            goarch: amd64
-          - os: macos-latest
-            arch: arm64
-            goarch: arm64
     steps:
       - uses: actions/checkout@v6
         with:
@@ -238,7 +229,7 @@ jobs:
       - name: Build Go remote-agent
         run: |
           cd agent
-          GOOS=darwin GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w" -o ../build-ttyd/remote-agent ./cmd/agent
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../build-ttyd/remote-agent ./cmd/agent
 
       - name: Package Release Archive
         run: |
@@ -246,13 +237,13 @@ jobs:
           cp build-ttyd/remote-agent release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp -r html-dist release-pkg/dist
-          tar -czf remote-agent-${{ needs.prepare.outputs.tag }}-darwin-${{ matrix.arch }}.tar.gz -C release-pkg .
+          tar -czf remote-agent-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
 
       - name: Upload macOS Archive
         uses: actions/upload-artifact@v7
         with:
-          name: remote-agent-darwin-${{ matrix.arch }}
-          path: remote-agent-${{ needs.prepare.outputs.tag }}-darwin-${{ matrix.arch }}.tar.gz
+          name: remote-agent-darwin-arm64
+          path: remote-agent-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
 
   release:
     runs-on: ubuntu-latest
