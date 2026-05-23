@@ -59,6 +59,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          cache: 'yarn'
+          cache-dependency-path: html/yarn.lock
 
       - name: Install and Build Frontend
         working-directory: html
@@ -131,6 +133,16 @@ jobs:
             exit 1
           fi
 
+      - name: Cache cross-compilation stage
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/cross
+            /opt/stage
+          key: cross-stage-${{ matrix.target }}-${{ hashFiles('scripts/cross-build.sh') }}
+          restore-keys: |
+            cross-stage-${{ matrix.target }}-
+
       - name: Install cross-build packages
         run: |
           sudo apt-get update
@@ -140,6 +152,14 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: ./scripts/cross-build.sh
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('cc-connect/web/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
 
       - name: Build cc-connect Web Assets
         run: |
@@ -218,6 +238,14 @@ jobs:
           mkdir build-ttyd && cd build-ttyd
           cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ..
           make
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('cc-connect/web/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
 
       - name: Build cc-connect Web Assets
         run: |
