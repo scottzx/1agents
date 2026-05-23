@@ -13,7 +13,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       npm_version: ${{ steps.version.outputs.npm_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -53,12 +53,12 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install and Build Frontend
         working-directory: html
@@ -68,13 +68,13 @@ jobs:
           yarn build
 
       - name: Upload html/dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: html-dist
           path: html/dist
 
       - name: Upload html.h
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: html-header
           path: src/html.h
@@ -92,7 +92,7 @@ jobs:
             target: arm64
             goarch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -103,13 +103,13 @@ jobs:
           cache: true
 
       - name: Download html-dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: html-dist
           path: html-dist
 
       - name: Download html.h artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: html-header
           path: src
@@ -123,6 +123,13 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: ./scripts/cross-build.sh
+
+      - name: Build cc-connect Web Assets
+        run: |
+          npm install -g pnpm
+          cd cc-connect/web
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - name: Build Go remote-agent
         run: |
@@ -138,7 +145,7 @@ jobs:
           tar -czf remote-agent-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
 
       - name: Upload Linux Archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: remote-agent-linux-${{ matrix.arch }}
           path: remote-agent-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
@@ -156,7 +163,7 @@ jobs:
             arch: arm64
             goarch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -167,13 +174,13 @@ jobs:
           cache: true
 
       - name: Download html-dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: html-dist
           path: html-dist
 
       - name: Download html.h artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: html-header
           path: src
@@ -186,6 +193,13 @@ jobs:
           mkdir build-ttyd && cd build-ttyd
           cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ..
           make
+
+      - name: Build cc-connect Web Assets
+        run: |
+          npm install -g pnpm
+          cd cc-connect/web
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - name: Build Go remote-agent
         run: |
@@ -201,7 +215,7 @@ jobs:
           tar -czf remote-agent-${{ needs.prepare.outputs.tag }}-darwin-${{ matrix.arch }}.tar.gz -C release-pkg .
 
       - name: Upload macOS Archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: remote-agent-darwin-${{ matrix.arch }}
           path: remote-agent-${{ needs.prepare.outputs.tag }}-darwin-${{ matrix.arch }}.tar.gz
@@ -210,10 +224,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prepare, build-linux, build-macos]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
@@ -228,9 +242,9 @@ jobs:
             remote-agent-*.tar.gz
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Publish to NPM
         env:
