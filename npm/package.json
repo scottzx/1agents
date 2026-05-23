@@ -1,0 +1,32 @@
+{
+  "name": "@scottzx/remote-agent",
+  "version": "20260523.1.0",
+  "description": "Browser-based remote workbench integrating terminal access, file management, and AI agent communication",
+  "keywords": [
+    "remote-agent",
+    "terminal",
+    "xterm",
+    "ttyd",
+    "file-manager",
+    "ai-agent",
+    "workbench"
+  ],
+  "homepage": "https://github.com/scottzx/remote-agents",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scottzx/remote-agents.git"
+  },
+  "license": "MIT",
+  "author": "scottzx",
+  "bin": {
+    "remote-agent": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js",
+    "README.md"
+  ]
+}

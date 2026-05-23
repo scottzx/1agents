@@ -1,0 +1,236 @@
+name: auto-release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      npm_version: ${{ steps.version.outputs.npm_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version tag
+        id: version
+        run: |
+          DATE_STR=$(date +'%Y%m%d')
+          echo "Current date: $DATE_STR"
+          
+          git fetch --tags --force
+          
+          TAGS=$(git tag -l "v${DATE_STR}-*")
+          if [ -z "$TAGS" ]; then
+            NEXT_NO=1
+          else
+            MAX_NO=$(echo "$TAGS" | sed "s/^v${DATE_STR}-//" | sort -n | tail -n 1)
+            NEXT_NO=$((MAX_NO + 1))
+          fi
+          
+          TAG="v${DATE_STR}-${NEXT_NO}"
+          NPM_VERSION="${DATE_STR}.${NEXT_NO}.0"
+          
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "npm_version=$NPM_VERSION" >> $GITHUB_OUTPUT
+          
+          echo "Calculated Tag: $TAG"
+          echo "Calculated NPM Version: $NPM_VERSION"
+
+      - name: Create and push Git tag
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install and Build Frontend
+        working-directory: html
+        run: |
+          corepack enable
+          yarn install
+          yarn build
+
+      - name: Upload html/dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-dist
+          path: html/dist
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    needs: [prepare, build-frontend]
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            target: amd64
+            goarch: amd64
+          - arch: arm64
+            target: arm64
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache: true
+
+      - name: Download html-dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: html-dist
+          path: html-dist
+
+      - name: Install cross-build packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake build-essential cmake curl file libtool
+
+      - name: Build static ttyd
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: ./scripts/cross-build.sh
+
+      - name: Build Go remote-agent
+        run: |
+          cd agent
+          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w" -o ../build/remote-agent ./cmd/agent
+
+      - name: Package Release Archive
+        run: |
+          mkdir -p release-pkg/bin
+          cp build/remote-agent release-pkg/bin/
+          cp build/ttyd release-pkg/bin/
+          cp -r html-dist release-pkg/dist
+          tar -czf remote-agent-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
+
+      - name: Upload Linux Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-agent-linux-${{ matrix.arch }}
+          path: remote-agent-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
+
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    needs: [prepare, build-frontend]
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            arch: amd64
+            goarch: amd64
+          - os: macos-latest
+            arch: arm64
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache: true
+
+      - name: Download html-dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: html-dist
+          path: html-dist
+
+      - name: Install build dependencies via Homebrew
+        run: brew install cmake libuv json-c openssl libwebsockets
+
+      - name: Build ttyd natively
+        run: |
+          mkdir build-ttyd && cd build-ttyd
+          cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ..
+          make
+
+      - name: Build Go remote-agent
+        run: |
+          cd agent
+          GOOS=darwin GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w" -o ../build-ttyd/remote-agent ./cmd/agent
+
+      - name: Package Release Archive
+        run: |
+          mkdir -p release-pkg/bin
+          cp build-ttyd/remote-agent release-pkg/bin/
+          cp build-ttyd/ttyd release-pkg/bin/
+          cp -r html-dist release-pkg/dist
+          tar -czf remote-agent-${{ needs.prepare.outputs.tag }}-darwin-${{ matrix.arch }}.tar.gz -C release-pkg .
+
+      - name: Upload macOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-agent-darwin-${{ matrix.arch }}
+          path: remote-agent-${{ needs.prepare.outputs.tag }}-darwin-${{ matrix.arch }}.tar.gz
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [prepare, build-linux, build-macos]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Release ${{ needs.prepare.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: |
+            remote-agent-*.tar.gz
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Publish to NPM
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "NPM_TOKEN secret is not set. Skipping NPM publishing step."
+            echo "To publish automatically, add NPM_TOKEN to your repository secrets."
+            exit 0
+          fi
+          
+          cd npm
+          
+          # Update the version in package.json to NPM SemVer
+          node -e "
+            const fs = require('fs');
+            const pkg = require('./package.json');
+            pkg.version = '${{ needs.prepare.outputs.npm_version }}';
+            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          
+          # Configure NPM auth and publish
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+          npm publish --access public
+          
+          echo "Successfully published version ${{ needs.prepare.outputs.npm_version }} to NPM registry!"
