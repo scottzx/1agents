@@ -55,15 +55,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Enable Corepack
-        run: corepack enable
-
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: 'yarn'
-          cache-dependency-path: html/yarn.lock
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            html/.yarn/cache
+            html/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ hashFiles('html/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
       - name: Install and Build Frontend
         working-directory: html
