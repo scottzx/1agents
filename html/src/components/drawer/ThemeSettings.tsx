@@ -3,9 +3,11 @@ import { h } from 'preact';
 interface ThemeSettingsProps {
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
+    language: 'zh-CN' | 'en-US';
+    toggleLanguage: (lang: 'zh-CN' | 'en-US') => void;
 }
 
-export function ThemeSettings({ theme, toggleTheme }: ThemeSettingsProps) {
+export function ThemeSettings({ theme, toggleTheme, language, toggleLanguage }: ThemeSettingsProps) {
     return (
         <div class="settings-container">
             <div class="setting-group">
@@ -44,6 +46,24 @@ export function ThemeSettings({ theme, toggleTheme }: ThemeSettingsProps) {
                             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
                         </svg>
                         <span>深色模式</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="setting-group" style="margin-top: 20px;">
+                <span class="setting-label">语音识别语言 (Dictation Language)</span>
+                <div class="theme-options">
+                    <button
+                        class={`theme-btn ${language === 'zh-CN' ? 'active' : ''}`}
+                        onClick={() => toggleLanguage('zh-CN')}
+                    >
+                        <span>中文 (Chinese)</span>
+                    </button>
+                    <button
+                        class={`theme-btn ${language === 'en-US' ? 'active' : ''}`}
+                        onClick={() => toggleLanguage('en-US')}
+                    >
+                        <span>English</span>
                     </button>
                 </div>
             </div>

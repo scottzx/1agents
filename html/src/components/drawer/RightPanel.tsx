@@ -16,6 +16,8 @@ interface RightPanelProps {
     // Theme settings props
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
+    language: 'zh-CN' | 'en-US';
+    toggleLanguage: (lang: 'zh-CN' | 'en-US') => void;
 
     // File Browser / Detail State
     flatFiles: FsEntry[];
@@ -67,6 +69,8 @@ export function RightPanel({
 
     theme,
     toggleTheme,
+    language,
+    toggleLanguage,
 
     flatFiles,
     flatFilesLoading,
@@ -216,7 +220,14 @@ export function RightPanel({
                         <GitPanel workdir={activeWorkspacePath} activeWorkspaceId={activeWorkspaceId} />
                     )}
 
-                    {activeDrawerTab === 'settings' && <ThemeSettings theme={theme} toggleTheme={toggleTheme} />}
+                    {activeDrawerTab === 'settings' && (
+                        <ThemeSettings
+                            theme={theme}
+                            toggleTheme={toggleTheme}
+                            language={language}
+                            toggleLanguage={toggleLanguage}
+                        />
+                    )}
                 </div>
             )}
         </aside>

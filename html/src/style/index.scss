@@ -1814,6 +1814,89 @@ body {
 }
 
 /* ==========================================================================
+   SPEECH RECOGNITION VOTE INPUT STYLES (Glassmorphic and Premium)
+   ========================================================================== */
+.speech-inline-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--bg-page);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-main);
+  animation: slideDownIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 34px;
+  word-break: break-all;
+  width: 100%;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+
+  .preview-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #ff4d4f;
+    box-shadow: 0 0 8px #ff4d4f;
+    animation: recordingPulse 1.2s infinite alternate;
+    flex-shrink: 0;
+  }
+
+  .speech-text {
+    color: var(--text-main);
+    font-weight: 500;
+  }
+
+  .placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+}
+
+.speech-toast {
+  background-color: #ff4d4f !important;
+  color: #ffffff !important;
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(255, 77, 79, 0.3) !important;
+  z-index: 1100 !important;
+}
+
+.key-btn-mic {
+  &.recording {
+    background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%) !important;
+    border-color: #ff4d4f !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(255, 77, 79, 0.5);
+    animation: micButtonPulse 1.5s infinite ease-in-out;
+
+    svg {
+      animation: wiggle 0.6s infinite alternate;
+    }
+  }
+}
+
+@keyframes recordingPulse {
+  from { opacity: 0.4; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes slideDownIn {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes micButtonPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes wiggle {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+
+/* ==========================================================================
    WORKSPACE MODAL (Create / Rename workspace)
    ========================================================================== */
 .ws-modal-overlay {

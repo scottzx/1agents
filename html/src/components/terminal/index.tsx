@@ -11,12 +11,44 @@ interface Props extends XtermOptions {
     onKeyboardStateChange?: (visible: boolean) => void;
 }
 
+interface SpeechResultEvent {
+    resultIndex: number;
+    results: {
+        length: number;
+        [index: number]: {
+            isFinal: boolean;
+            [index: number]: {
+                transcript: string;
+            };
+        };
+    };
+}
+
+interface SpeechErrorEvent {
+    error: string;
+}
+
+interface SpeechRecognitionInstance {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onstart: () => void;
+    onresult: (event: SpeechResultEvent) => void;
+    onerror: (event: SpeechErrorEvent) => void;
+    onend: () => void;
+    start: () => void;
+    abort: () => void;
+}
+
 interface State {
     modal: boolean;
     isMobile: boolean;
     hiddenInputValue: string;
     inputLeft?: string;
     inputTop?: string;
+    isRecording: boolean;
+    speechText: string;
+    speechError: string;
 }
 
 export class Terminal extends Component<Props, State> {
@@ -27,6 +59,7 @@ export class Terminal extends Component<Props, State> {
     private isScrolling = false;
     private hasScrolled = false;
     private isComposing = false;
+    private recognition: SpeechRecognitionInstance | null = null;
 
     constructor(props: Props) {
         super();
@@ -37,6 +70,9 @@ export class Terminal extends Component<Props, State> {
             hiddenInputValue: ' ',
             inputLeft: '0px',
             inputTop: '0px',
+            isRecording: false,
+            speechText: '',
+            speechError: '',
         };
     }
 
@@ -54,6 +90,7 @@ export class Terminal extends Component<Props, State> {
     }
 
     componentWillUnmount() {
+        this.cleanupSpeech();
         this.xterm.dispose();
         delete window.xterm;
     }
@@ -228,7 +265,130 @@ export class Terminal extends Component<Props, State> {
         }
     }
 
-    render({ id }: Props, { modal, isMobile, hiddenInputValue, inputLeft, inputTop }: State) {
+    @bind
+    toggleSpeech() {
+        if (this.state.isRecording) {
+            this.stopAndSendSpeech();
+            return;
+        }
+
+        const SpeechRecognition =
+            (
+                window as unknown as {
+                    SpeechRecognition?: new () => SpeechRecognitionInstance;
+                    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+                }
+            ).SpeechRecognition ||
+            (
+                window as unknown as {
+                    SpeechRecognition?: new () => SpeechRecognitionInstance;
+                    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+                }
+            ).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            this.setState({ speechError: '当前浏览器不支持语音识别 API，请使用 iOS Safari / Chrome。' });
+            setTimeout(() => this.setState({ speechError: '' }), 4000);
+            return;
+        }
+
+        try {
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = true;
+
+            const lang = localStorage.getItem('remote-agents-language') || 'zh-CN';
+            this.recognition.lang = lang;
+
+            this.recognition.onstart = () => {
+                this.setState({
+                    isRecording: true,
+                    speechText: '',
+                    speechError: '',
+                });
+            };
+
+            this.recognition.onresult = (event: SpeechResultEvent) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                const currentText = finalTranscript || interimTranscript;
+                this.setState({ speechText: currentText });
+            };
+
+            this.recognition.onerror = (event: SpeechErrorEvent) => {
+                console.error('Speech recognition error:', event.error);
+                let errMsg = '语音识别出错，请重试。';
+                if (event.error === 'not-allowed') {
+                    errMsg = '麦克风权限被拒绝，请在系统设置中允许浏览器访问麦克风。';
+                } else if (event.error === 'no-speech') {
+                    this.cleanupSpeech();
+                    return;
+                } else if (event.error === 'network') {
+                    errMsg = '网络连接失败，请检查是否处于内网或代理拦截。';
+                }
+                this.setState({ speechError: errMsg });
+                setTimeout(() => this.setState({ speechError: '' }), 4000);
+                this.cleanupSpeech();
+            };
+
+            this.recognition.onend = () => {
+                if (this.state.isRecording) {
+                    this.stopAndSendSpeech();
+                }
+            };
+
+            this.recognition.start();
+        } catch (err) {
+            console.error('Failed to start speech recognition:', err);
+            this.setState({ speechError: '启动语音识别失败，请检查麦克风权限。' });
+            setTimeout(() => this.setState({ speechError: '' }), 4000);
+            this.cleanupSpeech();
+        }
+    }
+
+    private cleanupSpeech() {
+        if (this.recognition) {
+            try {
+                this.recognition.abort();
+            } catch (e) {
+                // Ignore abort errors
+            }
+            this.recognition = null;
+        }
+        this.setState({ isRecording: false });
+    }
+
+    @bind
+    cancelSpeech() {
+        this.cleanupSpeech();
+        this.setState({ speechText: '', speechError: '' });
+    }
+
+    @bind
+    stopAndSendSpeech() {
+        const textToSend = this.state.speechText ? this.state.speechText.trim() : '';
+        this.cleanupSpeech();
+
+        if (textToSend) {
+            this.xterm.sendData(textToSend);
+        }
+
+        this.setState({ speechText: '', speechError: '' });
+    }
+
+    render(
+        { id }: Props,
+        { modal, isMobile, hiddenInputValue, inputLeft, inputTop, isRecording, speechText, speechError }: State
+    ) {
         return (
             <div style="display: flex; flex-direction: column; height: 100%; width: 100%; position: relative;">
                 <div
@@ -277,6 +437,16 @@ export class Terminal extends Component<Props, State> {
                 </div>
                 {isMobile && (
                     <div class="mobile-input-bar">
+                        {isRecording && (
+                            <div class="speech-inline-preview">
+                                <span class="preview-dot"></span>
+                                {speechText ? (
+                                    <span class="speech-text">{speechText}</span>
+                                ) : (
+                                    <span class="placeholder">正在倾听，请开始说话...</span>
+                                )}
+                            </div>
+                        )}
                         <div class="mobile-quick-keys">
                             {/* Arrow Up */}
                             <button class="key-btn" title="↑" onClick={() => this.sendQuickKey('↑')}>
@@ -345,6 +515,26 @@ export class Terminal extends Component<Props, State> {
                                     <path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1z" />
                                 </svg>
                             </button>
+                            {/* Speech Recognition Mic Button */}
+                            <button
+                                class={`key-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
+                                title="语音输入"
+                                onClick={this.toggleSpeech}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                            </button>
                             {/* Esc — keep text, it's clear */}
                             <button class="key-btn key-btn-text" title="Esc" onClick={() => this.sendQuickKey('Esc')}>
                                 Esc
@@ -379,6 +569,28 @@ export class Terminal extends Component<Props, State> {
                                 </svg>
                             </button>
                         </div>
+                    </div>
+                )}
+
+                {/* Toast speech error if any */}
+                {speechError && (
+                    <div class="fb-toast speech-toast">
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="16"
+                            height="16"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            style="flex-shrink: 0;"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        <span>{speechError}</span>
                     </div>
                 )}
             </div>

@@ -62,3 +62,8 @@ node_modules
 .playwright-mcp
 .DS_Store
 npm/npm_recover_code.md
+certs/cert.pem
+certs/key.pem
+certs/san.cnf
+.antigravitycli/a2a53cfd-663e-4188-90cf-bc07773ee0df.json
+.antigravitycli/abf20559-4aae-490f-97a9-edbf88a64c98.json

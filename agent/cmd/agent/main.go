@@ -36,9 +36,12 @@ func main() {
 	flag.DurationVar(&cfg.RestartDelay, "restart-delay", cfg.RestartDelay,
 		"How long to wait before restarting ttyd after an unexpected exit")
 	flag.StringVar(&cfg.TmuxSession, "tmux-session", cfg.TmuxSession,
-			"tmux session name for terminal persistence")
-		flag.IntVar(&cfg.MaxRestarts, "max-restarts", cfg.MaxRestarts,
+		"tmux session name for terminal persistence")
+	flag.IntVar(&cfg.MaxRestarts, "max-restarts", cfg.MaxRestarts,
 		"Maximum number of consecutive ttyd restarts before giving up")
+	var sslCert, sslKey string
+	flag.StringVar(&sslCert, "ssl-cert", "", "Path to the SSL certificate for HTTPS")
+	flag.StringVar(&sslKey, "ssl-key", "", "Path to the SSL private key for HTTPS")
 
 	flag.Parse()
 
@@ -78,7 +81,16 @@ func main() {
 		log.Printf("[main] Remote Agent listening on %s", cfg.ListenAddr)
 		log.Printf("[main] Working directory  : %s", cfg.WorkDir)
 		log.Printf("[main] Dev mode (no-ttyd) : %v", noTtyd)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		
+		var err error
+		if sslCert != "" && sslKey != "" {
+			log.Printf("[main] HTTPS / SSL enabled (using cert: %s)", sslCert)
+			err = httpServer.ListenAndServeTLS(sslCert, sslKey)
+		} else {
+			err = httpServer.ListenAndServe()
+		}
+		
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[main] HTTP server fatal error: %v", err)
 		}
 	}()

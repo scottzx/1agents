@@ -140,6 +140,7 @@ interface AppState {
     keyboardVisible: boolean;
     viewportHeight: number;
     activeSession: Session | null;
+    language: 'zh-CN' | 'en-US';
 }
 
 // Drag resizer state (module-level for perf)
@@ -203,6 +204,7 @@ export class App extends Component<{}, AppState> {
             isMobile: window.innerWidth <= 768,
             keyboardVisible: false,
             viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
+            language: (localStorage.getItem('remote-agents-language') || 'zh-CN') as 'zh-CN' | 'en-US',
         };
     }
 
@@ -785,6 +787,12 @@ export class App extends Component<{}, AppState> {
         this.triggerTerminalFit();
     };
 
+    toggleLanguage = (lang: 'zh-CN' | 'en-US') => {
+        this.setState({ language: lang });
+        localStorage.setItem('remote-agents-language', lang);
+        this.showToast(`默认识别语言已切换为: ${lang === 'zh-CN' ? '中文' : 'English'} ✓`);
+    };
+
     triggerTerminalFit = () => {
         setTimeout(() => {
             const term = (window as unknown as { term?: { fit?: () => void } }).term;
@@ -1072,6 +1080,7 @@ export class App extends Component<{}, AppState> {
             imageDataUrl,
             toastMsg,
             activeSession,
+            language,
         } = this.state;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -1251,6 +1260,8 @@ export class App extends Component<{}, AppState> {
                             ccConnectUrl={ccConnectUrl}
                             theme={theme}
                             toggleTheme={this.toggleTheme}
+                            language={language}
+                            toggleLanguage={this.toggleLanguage}
                             flatFiles={flatFiles}
                             flatFilesLoading={flatFilesLoading}
                             searchQuery={searchQuery}
