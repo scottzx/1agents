@@ -11,8 +11,6 @@ interface MiddleCanvasProps {
     termOptions: ITerminalOptions;
     flowControl: FlowControl;
     onMobileDetect?: (isMobile: boolean) => void;
-    tmuxMouseOn: boolean;
-    onTmuxMouseToggle: () => void;
     onKeyboardStateChange?: (visible: boolean) => void;
 }
 
@@ -24,78 +22,10 @@ export function MiddleCanvas({
     termOptions,
     flowControl,
     onMobileDetect,
-    tmuxMouseOn,
-    onTmuxMouseToggle,
     onKeyboardStateChange,
 }: MiddleCanvasProps) {
-    const isMobile =
-        typeof window !== 'undefined' &&
-        (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-            window.innerWidth <= 768);
-
     return (
         <main class="middle-canvas">
-            {/* ── Toolbar ────────────────────────────────────────────────────── */}
-            <div class="terminal-toolbar">
-                <div class="toolbar-left">
-                    <h2 class="page-title">系统主控制终端</h2>
-                </div>
-                <div class="toolbar-right">
-                    {!isMobile && (
-                        <button
-                            class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
-                            onClick={onTmuxMouseToggle}
-                            title={
-                                tmuxMouseOn
-                                    ? '当前模式：滚轮滑动（点击切换为选择复制）'
-                                    : '当前模式：选择复制（点击切换为滚轮滑动）'
-                            }
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect x="5" y="2" width="14" height="20" rx="7" />
-                                <path d="M12 2v6" />
-                                <path d="M5 10h14" />
-                            </svg>
-                            <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
-                        </button>
-                    )}
-
-                    <div class="shell-selector" title="当前 Shell: tmux">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <polyline points="4 17 10 11 4 5" />
-                            <line x1="12" x2="20" y1="19" y2="19" />
-                        </svg>
-                        <span>tmux</span>
-                        <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
             {/* ── Terminal canvas ─────────────────────────────────────────────── */}
             <div class="terminal-card">
                 {activeTab === 'terminal' ? (

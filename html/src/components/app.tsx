@@ -110,6 +110,13 @@ interface AppState {
     wsModalTerminalDir: string;
     wsModalChatChannel: string;
     ccConnectUrl: string;
+    // ── Directory picker modal state ──
+    dirPickerOpen: boolean;
+    dirPickerPath: string;
+    dirPickerDirs: { name: string; path: string }[];
+    dirPickerParentPath: string;
+    dirPickerLoading: boolean;
+    dirPickerOnSelect: ((path: string) => void) | null;
     // ── Terminal / tmux state ──
     terminalWindows: TmuxWindow[];
     terminalWindowsLoading: boolean;
@@ -179,6 +186,12 @@ export class App extends Component<{}, AppState> {
             wsModalTerminalDir: '',
             wsModalChatChannel: '',
             ccConnectUrl: '',
+            dirPickerOpen: false,
+            dirPickerPath: '',
+            dirPickerDirs: [],
+            dirPickerParentPath: '',
+            dirPickerLoading: false,
+            dirPickerOnSelect: null,
             terminalWindows: [],
             terminalWindowsLoading: false,
             tmuxMouseOn: true,
@@ -366,21 +379,64 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    /** Open native folder picker and create workspace from selected directory */
-    openCreateWorkspacePicker = async () => {
-        try {
-            const res = await fetch('/api/workspace/pick-directory', { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            const pickedPath = (data.path || '').trim();
-            if (!pickedPath) return; // user cancelled
-
+    /** Open custom directory picker and create workspace from selected directory */
+    openCreateWorkspacePicker = () => {
+        this.openDirPicker(pickedPath => {
             const sep = pickedPath.includes('\\') ? '\\' : '/';
             const dirName = pickedPath.split(sep).filter(Boolean).pop() || pickedPath;
-            await this.createWorkspace(dirName, pickedPath);
+
+            // Open standard workspace create modal with prefilled data!
+            this.setState({
+                wsModalOpen: true,
+                wsModalMode: 'create',
+                wsModalTarget: null,
+                wsModalName: dirName,
+                wsModalPath: pickedPath,
+                wsModalTerminalDir: '',
+                wsModalChatChannel: '',
+            });
+        });
+    };
+
+    openDirPicker = (onSelect: (path: string) => void) => {
+        this.setState(
+            {
+                dirPickerOpen: true,
+                dirPickerPath: '',
+                dirPickerDirs: [],
+                dirPickerParentPath: '',
+                dirPickerLoading: true,
+                dirPickerOnSelect: onSelect,
+            },
+            () => {
+                this.loadDirPickerDirs('');
+            }
+        );
+    };
+
+    loadDirPickerDirs = async (path: string) => {
+        this.setState({ dirPickerLoading: true });
+        try {
+            const url = `/api/workspace/list-directories?path=${encodeURIComponent(path)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            this.setState({
+                dirPickerPath: data.currentPath,
+                dirPickerParentPath: data.parentPath || '',
+                dirPickerDirs: data.directories || [],
+                dirPickerLoading: false,
+            });
         } catch (err) {
-            this.showToast(`选取目录失败: ${err}`);
+            this.showToast(`加载目录失败: ${err}`);
+            this.setState({ dirPickerLoading: false });
         }
+    };
+
+    openDirPickerForModal = () => {
+        this.openDirPicker(path => {
+            this.setState({ wsModalPath: path });
+        });
     };
 
     /** Open the modal for renaming/editing an existing workspace */
@@ -1062,6 +1118,12 @@ export class App extends Component<{}, AppState> {
             wsModalTerminalDir,
             wsModalChatChannel,
             ccConnectUrl,
+            dirPickerOpen,
+            dirPickerPath,
+            dirPickerDirs,
+            dirPickerParentPath,
+            dirPickerLoading,
+            dirPickerOnSelect,
             flatFiles,
             flatFilesLoading,
             searchQuery,
@@ -1141,17 +1203,27 @@ export class App extends Component<{}, AppState> {
                                     autoFocus
                                 />
                                 <label class="ws-modal-label">路径</label>
-                                <input
-                                    class="ws-modal-input"
-                                    placeholder="/path/to/project  (可选)"
-                                    value={wsModalPath}
-                                    onInput={(e: Event) =>
-                                        this.setState({ wsModalPath: (e.target as HTMLInputElement).value })
-                                    }
-                                    onKeyDown={(e: KeyboardEvent) => {
-                                        if (e.key === 'Enter') this.submitWsModal();
-                                    }}
-                                />
+                                <div style="display: flex; gap: 8px; width: 100%;">
+                                    <input
+                                        class="ws-modal-input"
+                                        placeholder="/path/to/project  (可选)"
+                                        value={wsModalPath}
+                                        onInput={(e: Event) =>
+                                            this.setState({ wsModalPath: (e.target as HTMLInputElement).value })
+                                        }
+                                        onKeyDown={(e: KeyboardEvent) => {
+                                            if (e.key === 'Enter') this.submitWsModal();
+                                        }}
+                                        style="flex: 1;"
+                                    />
+                                    <button
+                                        class="ws-modal-cancel"
+                                        onClick={this.openDirPickerForModal}
+                                        style="height: 38px; flex-shrink: 0; padding: 0 12px; margin: 0; font-size: 12px; display: flex; align-items: center; justify-content: center;"
+                                    >
+                                        浏览...
+                                    </button>
+                                </div>
                                 <label class="ws-modal-label">终端文件夹 (可选)</label>
                                 <input
                                     class="ws-modal-input"
@@ -1183,6 +1255,106 @@ export class App extends Component<{}, AppState> {
                                 </button>
                                 <button class="ws-modal-confirm" onClick={this.submitWsModal}>
                                     {wsModalMode === 'create' ? '创建' : '保存'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Remote Directory Picker Modal */}
+                {dirPickerOpen && (
+                    <div class="dp-modal-overlay" onClick={() => this.setState({ dirPickerOpen: false })}>
+                        <div class="dp-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                            <div class="dp-modal-header">
+                                <span>选择远程目录</span>
+                                <button class="dp-modal-close" onClick={() => this.setState({ dirPickerOpen: false })}>
+                                    ✕
+                                </button>
+                            </div>
+                            <div class="dp-modal-body">
+                                <div class="dp-path-row">
+                                    {dirPickerParentPath && (
+                                        <button
+                                            class="dp-up-btn"
+                                            onClick={() => this.loadDirPickerDirs(dirPickerParentPath)}
+                                            title="返回上一级"
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="15 18 9 12 15 6" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                    <input
+                                        class="dp-path-input"
+                                        value={dirPickerPath}
+                                        onInput={(e: Event) =>
+                                            this.setState({ dirPickerPath: (e.target as HTMLInputElement).value })
+                                        }
+                                        onKeyDown={(e: KeyboardEvent) => {
+                                            if (e.key === 'Enter') this.loadDirPickerDirs(dirPickerPath);
+                                        }}
+                                        placeholder="远程路径"
+                                    />
+                                    <button class="dp-go-btn" onClick={() => this.loadDirPickerDirs(dirPickerPath)}>
+                                        进入
+                                    </button>
+                                </div>
+
+                                <div class="dp-dir-list-wrap">
+                                    {dirPickerLoading ? (
+                                        <div class="dp-loading">
+                                            <div class="dp-spinner" />
+                                            <span>正在读取远程目录...</span>
+                                        </div>
+                                    ) : dirPickerDirs.length === 0 ? (
+                                        <div class="dp-empty">当前目录下无子目录</div>
+                                    ) : (
+                                        <div class="dp-dir-list">
+                                            {dirPickerDirs.map(dir => (
+                                                <div
+                                                    key={dir.path}
+                                                    class="dp-dir-item"
+                                                    onClick={() => this.loadDirPickerDirs(dir.path)}
+                                                >
+                                                    <svg
+                                                        class="dp-folder-icon"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                    </svg>
+                                                    <span class="dp-dir-name" title={dir.path}>
+                                                        {dir.name}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div class="dp-modal-footer">
+                                <button class="dp-modal-cancel" onClick={() => this.setState({ dirPickerOpen: false })}>
+                                    取消
+                                </button>
+                                <button
+                                    class="dp-modal-confirm"
+                                    onClick={() => {
+                                        if (dirPickerOnSelect) dirPickerOnSelect(dirPickerPath);
+                                        this.setState({ dirPickerOpen: false });
+                                    }}
+                                >
+                                    选择当前目录
                                 </button>
                             </div>
                         </div>
@@ -1223,6 +1395,8 @@ export class App extends Component<{}, AppState> {
                         keyboardVisible={this.state.keyboardVisible}
                         workspaceName={activeWorkspace?.name || ''}
                         sessionName={activeSession?.name || ''}
+                        tmuxMouseOn={tmuxMouseOn}
+                        onTmuxMouseToggle={this.toggleTmuxMouse}
                     />
 
                     {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
@@ -1235,8 +1409,6 @@ export class App extends Component<{}, AppState> {
                             clientOptions={clientOptions}
                             termOptions={termOptions}
                             flowControl={flowControl}
-                            tmuxMouseOn={tmuxMouseOn}
-                            onTmuxMouseToggle={this.toggleTmuxMouse}
                             onMobileDetect={isMobile => this.setState({ isMobile })}
                             onKeyboardStateChange={this.handleKeyboardStateChange}
                         />

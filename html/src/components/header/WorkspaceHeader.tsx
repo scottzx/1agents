@@ -14,6 +14,8 @@ interface WorkspaceHeaderProps {
     keyboardVisible?: boolean;
     workspaceName: string;
     sessionName: string;
+    tmuxMouseOn?: boolean;
+    onTmuxMouseToggle?: () => void;
 }
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
@@ -26,6 +28,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         setActiveTab,
         workspaceName,
         sessionName,
+        tmuxMouseOn,
+        onTmuxMouseToggle,
     } = props;
 
     // Mobile hamburger menu open state
@@ -182,6 +186,34 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                 {/* Desktop: right shortcut buttons — channels, files, git, settings */}
                 <div class="header-right">
+                    {onTmuxMouseToggle && (
+                        <button
+                            class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
+                            onClick={onTmuxMouseToggle}
+                            title={
+                                tmuxMouseOn
+                                    ? '当前模式：滚轮滑动（点击切换为选择复制）'
+                                    : '当前模式：选择复制（点击切换为滚轮滑动）'
+                            }
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect x="5" y="2" width="14" height="20" rx="7" />
+                                <path d="M12 2v6" />
+                                <path d="M5 10h14" />
+                            </svg>
+                            <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
+                        </button>
+                    )}
+
+                    {onTmuxMouseToggle && <div class="divider" />}
+
                     <button
                         id="hdr-btn-channels"
                         class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}

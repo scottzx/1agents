@@ -293,7 +293,7 @@ export class Terminal extends Component<Props, State> {
 
         try {
             this.recognition = new SpeechRecognition();
-            this.recognition.continuous = false;
+            this.recognition.continuous = true;
             this.recognition.interimResults = true;
 
             const lang = localStorage.getItem('remote-agents-language') || 'zh-CN';
@@ -308,19 +308,48 @@ export class Terminal extends Component<Props, State> {
             };
 
             this.recognition.onresult = (event: SpeechResultEvent) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
+                const finalParts: string[] = [];
+                let interimText = '';
 
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcript;
+                const lang = localStorage.getItem('remote-agents-language') || 'zh-CN';
+                const isChinese = lang.toLowerCase().startsWith('zh');
+                const period = isChinese ? '。' : '.';
+
+                for (let i = 0; i < event.results.length; ++i) {
+                    const result = event.results[i];
+                    const transcript = result[0].transcript.trim();
+                    if (result.isFinal) {
+                        if (transcript) {
+                            if (finalParts.length > 0) {
+                                const prev = finalParts[finalParts.length - 1];
+                                const endsWithPunct = /[.,!?;:。，？！、：；\s]$/.test(prev);
+                                if (!endsWithPunct) {
+                                    finalParts[finalParts.length - 1] = prev + period;
+                                }
+                            }
+                            finalParts.push(transcript);
+                        }
                     } else {
-                        interimTranscript += transcript;
+                        interimText += transcript;
                     }
                 }
 
-                const currentText = finalTranscript || interimTranscript;
+                if (interimText.trim() && finalParts.length > 0) {
+                    const lastFinal = finalParts[finalParts.length - 1];
+                    const endsWithPunct = /[.,!?;:。，？！、：；\s]$/.test(lastFinal);
+                    if (!endsWithPunct) {
+                        finalParts[finalParts.length - 1] = lastFinal + period;
+                    }
+                }
+
+                let currentText = finalParts.join(' ');
+                if (interimText.trim()) {
+                    if (currentText) {
+                        currentText += ' ' + interimText.trim();
+                    } else {
+                        currentText = interimText.trim();
+                    }
+                }
                 this.setState({ speechText: currentText });
             };
 
