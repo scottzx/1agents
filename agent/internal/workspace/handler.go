@@ -321,8 +321,31 @@ func (h *Handler) ListDirectories(w http.ResponseWriter, r *http.Request) {
 	if pathParam == "" || pathParam == "~" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			http.Error(w, "cannot get home directory: "+err.Error(), http.StatusInternalServerError)
-			return
+			log.Printf("[workspace] os.UserHomeDir failed: %v", err)
+			// Try manual environment lookups as a fallback for user home directory
+			if h := os.Getenv("HOME"); h != "" {
+				home = h
+			} else if u := os.Getenv("USER"); u != "" {
+				candidate := "/home/" + u
+				if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
+					home = candidate
+				}
+			}
+
+			// If still empty or failed to find a valid directory, fall back to system root
+			if home == "" {
+				if runtime.GOOS == "windows" {
+					drive := os.Getenv("SystemDrive")
+					if drive != "" {
+						home = drive + "\\"
+					} else {
+						home = "C:\\"
+					}
+				} else {
+					home = "/"
+				}
+				log.Printf("[workspace] Falling back to system root directory: %s", home)
+			}
 		}
 		targetPath = home
 	} else {

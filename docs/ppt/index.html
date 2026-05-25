@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remote Agents · AI 终端智能体的完美 Web 伴侣</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=Noto+Serif+SC:wght@300;400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ============ 主题色: 🌊 靛蓝瓷 (Indigo Porcelain) ============ */
+    --ink:#0a1f3d;
+    --ink-rgb:10,31,61;
+    --paper:#f1f3f5;
+    --paper-rgb:241,243,245;
+    --paper-tint:#e4e8ec;
+    --ink-tint:#152a4a;
+
+    /* ============ 字体 ============ */
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --serif-en:"Playfair Display","Source Serif 4",Georgia,serif;
+    --serif-body-en:"Source Serif 4",Georgia,serif;
+    --serif-zh:"Noto Serif SC",source-han-serif-sc,serif;
+    --sans-zh:"Noto Sans SC",source-han-sans-sc,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--paper);font-family:var(--sans-zh);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+  /* ============ WebGL 双背景 ============ */
+  canvas.bg{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block;transition:opacity 1.2s ease}
+  canvas#bg-light{opacity:0}
+  canvas#bg-dark{opacity:1}
+  body.light-bg canvas#bg-light{opacity:1}
+  body.light-bg canvas#bg-dark{opacity:0}
+  body.low-power canvas.bg{display:none!important}
+
+  /* ============ Deck 容器 + 翻页 ============ */
+  #deck{position:fixed;inset:0;width:10000vw;height:100vh;display:flex;flex-wrap:nowrap;transition:transform .9s cubic-bezier(.77,0,.175,1);z-index:10;will-change:transform}
+  .slide{width:100vw;height:100vh;flex:0 0 100vw;position:relative;padding:6vh 6vw 10vh 6vw;display:flex;flex-direction:column;overflow:hidden}
+  .slide.light{color:var(--ink);background:var(--paper)}
+  .slide.dark{color:var(--paper);background:var(--ink)}
+
+  /* 遮罩与渐变 */
+  .slide::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;transition:background .7s ease}
+  .slide.light::before{background:rgba(var(--paper-rgb),.78);backdrop-filter:blur(3px)}
+  .slide.dark::before{background:rgba(var(--ink-rgb),.78);backdrop-filter:blur(3px)}
+  .slide.hero.light::before{background:rgba(var(--paper-rgb),.16);backdrop-filter:none}
+  .slide.hero.dark::before{background:rgba(var(--ink-rgb),.12);backdrop-filter:none}
+  .slide.hero::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none}
+  .slide.hero.light::after{background:linear-gradient(180deg,rgba(var(--paper-rgb),.28) 0%,rgba(var(--paper-rgb),0) 14%,rgba(var(--paper-rgb),0) 86%,rgba(var(--paper-rgb),.28) 100%)}
+  .slide.hero.dark::after{background:linear-gradient(180deg,rgba(var(--ink-rgb),.32) 0%,rgba(var(--ink-rgb),0) 14%,rgba(var(--ink-rgb),0) 86%,rgba(var(--ink-rgb),.32) 100%)}
+
+  /* ============ Chrome顶部 / Foot底部 ============ */
+  .chrome{display:flex;justify-content:space-between;align-items:flex-start;font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.7}
+  .chrome .left,.chrome .right{display:flex;gap:2.4em;align-items:center}
+  .chrome .sep{width:40px;height:1px;background:currentColor;opacity:.4}
+  .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.55}
+  .foot .title{font-family:var(--serif-zh);font-weight:400;letter-spacing:.05em;text-transform:none;opacity:.75;font-size:13px}
+
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;padding:6px 14px;border:1px solid currentColor;opacity:.85}
+  .rule{width:100%;height:1px;background:currentColor;opacity:.25;margin:3vh 0}
+
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.3em;text-transform:uppercase;opacity:.6;margin-bottom:2.6vh}
+  .display{font-family:var(--serif-en);font-weight:700;font-size:11vw;line-height:.92;letter-spacing:-.025em}
+  .display-zh{font-family:var(--serif-zh);font-weight:700;font-size:7.8vw;line-height:1.04;letter-spacing:-.005em}
+  .h1-zh{font-family:var(--serif-zh);font-weight:700;font-size:4.6vw;line-height:1.12;letter-spacing:-.005em}
+  .h2-zh{font-family:var(--serif-zh);font-weight:600;font-size:3.2vw;line-height:1.2;letter-spacing:0}
+  .h3-zh{font-family:var(--serif-zh);font-weight:500;font-size:1.9vw;line-height:1.35}
+  .body-zh{font-family:var(--sans-zh);font-weight:400;font-size:max(15px,1.22vw);line-height:1.75;opacity:.82;letter-spacing:.01em}
+  .lead{font-family:var(--serif-zh);font-weight:400;font-size:1.9vw;line-height:1.4;opacity:.85}
+  .meta{font-family:var(--mono);font-size:max(11px,.88vw);letter-spacing:.16em;text-transform:uppercase;opacity:.6}
+  .en{font-family:var(--serif-en);font-style:italic;font-weight:500}
+
+  /* ============ 布局工具 ============ */
+  .col{display:flex;flex-direction:column;gap:2.4vh}
+  .row{display:flex;align-items:center;gap:3vw}
+  .grid-6{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4vw 6vw;flex:1;align-content:center;padding:2vh 0}
+  .grid-4{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:4vh 6vw;flex:1;align-content:center}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:4vw;flex:1;align-content:center}
+
+  /* ============ Callout（引用框） ============ */
+  .callout{padding:3vh 2.4vw;border-left:3px solid currentColor;position:relative;font-family:var(--serif-zh);font-size:max(15px,1.2vw);line-height:1.55;opacity:.92}
+  .slide.light .callout{background:rgba(var(--ink-rgb),.05)}
+  .slide.dark .callout{background:rgba(var(--paper-rgb),.06)}
+  .callout .cite{display:block;margin-top:1.6vh;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.6}
+
+  /* ============ 图片实填框 ============ */
+  .frame-img{overflow:hidden;position:relative;background:rgba(0,0,0,.04);box-sizing:border-box;width:100%;border-radius:4px}
+  .slide.dark .frame-img{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12)}
+  .frame-img > img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}
+  .frame-img.r-16x10{aspect-ratio:16/10;max-height:56vh}
+  .frame-img.r-3x4{aspect-ratio:3/4;max-height:60vh}
+  .frame-img.h-22{height:22vh}
+  .frame-cap{display:flex;justify-content:space-between;align-items:baseline;gap:1vw;margin-top:.8vh;font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.72}
+  .frame-cap .pf{font-family:var(--serif-zh);font-weight:600;font-size:max(13px,1vw);letter-spacing:.04em;text-transform:none;opacity:.94}
+  .frame-cap .nb{font-family:var(--serif-en);font-style:italic;font-size:max(15px,1.2vw);letter-spacing:.02em;text-transform:none;opacity:.88}
+  .frame-cap .idx{font-family:var(--mono);opacity:.5}
+
+  /* ============ 导航 ============ */
+  #nav{position:fixed;left:50%;bottom:2.6vh;transform:translateX(-50%);z-index:30;display:flex;gap:10px;padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  #nav .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3);cursor:pointer;transition:all .3s ease;border:0;padding:0}
+  #nav .dot:hover{background:rgba(255,255,255,.5);transform:scale(1.15)}
+  #nav .dot.active{background:rgba(255,255,255,.95);width:22px;border-radius:999px}
+  body.light-bg #nav{background:rgba(255,255,255,.25)}
+  body.light-bg #nav .dot{background:rgba(var(--ink-rgb),.25)}
+  body.light-bg #nav .dot.active{background:rgba(var(--ink-rgb),.9)}
+  #hint{position:fixed;bottom:3vh;right:3vw;z-index:30;font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;opacity:.4;mix-blend-mode:difference;color:#aaa}
+  body.low-power #hint{opacity:.72;color:var(--paper);mix-blend-mode:normal}
+  body.light-bg.low-power #hint{color:var(--ink)}
+
+  /* ============ LAYOUTS API ============ */
+  .frame{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .frame.grid-2-7-5,
+  .frame.grid-2-6-6,
+  .frame.grid-2-8-4,
+  .frame.grid-6{display:grid}
+
+  .h-hero{font-family:var(--serif-zh);font-weight:900;font-size:10vw;line-height:.96;letter-spacing:-.02em}
+  .h-xl{font-family:var(--serif-zh);font-weight:700;font-size:6.2vw;line-height:1.08;letter-spacing:-.01em}
+  .h-sub{font-family:var(--serif-zh);font-weight:500;font-size:3.1vw;line-height:1.25;letter-spacing:0;opacity:.7}
+  .h-md{font-family:var(--serif-zh);font-weight:600;font-size:2.3vw;line-height:1.3}
+
+  .lead{font-family:var(--serif-zh);font-weight:400;font-size:1.75vw;line-height:1.5;opacity:.86}
+
+  .meta-row{display:flex;gap:1.2em;align-items:baseline;flex-wrap:wrap;font-family:var(--mono);font-size:max(12px,.92vw);letter-spacing:.16em;text-transform:uppercase;opacity:.6}
+
+  .stat-card{display:flex;flex-direction:column;gap:.8vh;align-items:flex-start;padding-top:1.6vh;border-top:1px solid currentColor;border-color:rgba(127,127,127,.3)}
+  .stat-card .stat-label{font-family:var(--mono);font-size:max(10px,.78vw);letter-spacing:.24em;text-transform:uppercase;opacity:.55}
+  .stat-card .stat-nb{font-family:var(--serif-en);font-weight:800;font-size:5.8vw;line-height:.9;letter-spacing:-.03em;font-feature-settings:"tnum";margin-top:.4vh}
+  .stat-card .stat-nb .stat-unit{font-family:var(--serif-zh);font-weight:500;font-size:.38em;letter-spacing:0;opacity:.72;margin-left:.14em}
+  .stat-card .stat-note{font-family:var(--sans-zh);font-weight:400;font-size:max(13px,1.05vw);line-height:1.5;opacity:.72;margin-top:.6vh}
+  .grid-4 .stat-card .stat-nb{font-size:5vw}
+  .grid-6 .stat-card .stat-nb{font-family:var(--serif-zh),var(--serif-en);font-size:min(2.4vw,4vh);line-height:1.2;margin-bottom:.5vh}
+
+  .pipeline-section{margin-top:4.4vh;padding-top:2.8vh;border-top:1px dashed rgba(127,127,127,.32)}
+  .pipeline-section:first-of-type{border-top:0;padding-top:0;margin-top:3vh}
+  .pipeline-label{font-family:var(--mono);font-size:max(11px,.85vw);letter-spacing:.24em;text-transform:uppercase;opacity:.62;margin-bottom:2.2vh}
+  .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2vw}
+  .step{display:flex;flex-direction:column;gap:.8vh;padding-top:1.4vh;border-top:1px solid currentColor;border-color:rgba(127,127,127,.35)}
+  .step-nb{font-family:var(--serif-en);font-style:italic;font-weight:500;font-size:1.15vw;opacity:.45}
+  .step-title{font-family:var(--sans-zh);font-weight:700;font-size:1.55vw;letter-spacing:.01em;line-height:1.2}
+  .step-desc{font-family:var(--sans-zh);font-weight:400;font-size:max(12px,.95vw);line-height:1.45;opacity:.72}
+
+  .grid-2-7-5{display:grid;grid-template-columns:7fr 5fr;gap:3vw 4vh;align-items:start}
+  .grid-2-6-6{display:grid;grid-template-columns:1fr 1fr;gap:3vw 4vh;align-items:start}
+  .grid-2-8-4{display:grid;grid-template-columns:8fr 4fr;gap:3vw 4vh;align-items:start}
+
+  .chrome{font-family:var(--mono);font-size:max(11px,.78vw);letter-spacing:.2em;text-transform:uppercase;opacity:.62}
+  .foot{font-family:var(--mono);font-size:max(11px,.78vw);letter-spacing:.18em;text-transform:uppercase;opacity:.5}
+
+  [data-anim]{opacity:1}
+  body.motion-ready [data-anim]{opacity:0}
+  body.motion-ready [data-anim="left"]{transform:translateX(-24px)}
+  body.motion-ready [data-anim="right"]{transform:translateX(24px)}
+  body.motion-ready [data-anim="line"]{opacity:0;transform:translateY(10px)}
+  body.motion-ready [data-animate="pipeline"] [data-anim]{opacity:.15}
+  body.low-power #deck{transition:none!important}
+  body.low-power *,
+  body.low-power *::before,
+  body.low-power *::after{animation:none!important;transition:none!important}
+  body.low-power.motion-ready [data-anim],
+  body.low-power [data-anim]{opacity:1!important;transform:none!important}
+
+  @media (max-width:900px){
+    .display{font-size:16vw}
+    .display-zh{font-size:12vw}
+    .h1-zh{font-size:7vw}
+    .h-hero{font-size:14vw}
+    .h-xl{font-size:9vw}
+    .pipeline{grid-template-columns:repeat(2,1fr)}
+    .grid-2-7-5,.grid-2-6-6,.grid-2-8-4{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<script>
+  (function(){
+    const KEY = 'guizang-ppt-low-power';
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const stored = localStorage.getItem(KEY);
+    window.__lowPowerMode = stored === '1' || (stored === null && reduced);
+    function updateHint(){
+      const hint = document.getElementById('hint');
+      if(hint) hint.textContent = `← → 翻页 · B ${window.__lowPowerMode ? '动态' : '静态'} · ESC 索引`;
+    }
+    window.__setLowPowerMode = function(on, opts={}){
+      window.__lowPowerMode = !!on;
+      document.body.classList.toggle('low-power', window.__lowPowerMode);
+      if(opts.persist !== false) localStorage.setItem(KEY, window.__lowPowerMode ? '1' : '0');
+      if(window.__lowPowerMode && document.getAnimations){
+        document.getAnimations().forEach(a=>a.cancel());
+      }
+      updateHint();
+      dispatchEvent(new CustomEvent('ppt-low-power-change', {detail:{on:window.__lowPowerMode}}));
+      if(window.__playSlide) window.__playSlide(window.__currentSlideIndex || 0);
+    };
+    document.body.classList.toggle('low-power', window.__lowPowerMode);
+    addEventListener('DOMContentLoaded', updateHint, {once:true});
+  })();
+</script>
+
+<canvas id="bg-dark" class="bg"></canvas>
+<canvas id="bg-light" class="bg"></canvas>
+<div id="hint">← → 翻页 · B 静态 · ESC 索引</div>
+
+<div id="deck">
+
+  <!-- ==================== Slide 1: Cover (hero dark) ==================== -->
+  <section class="slide hero dark">
+    <div class="chrome">
+      <div>Project Overview · 破题定位</div>
+      <div>Act I · 01 / 08</div>
+    </div>
+    <div class="frame" style="display:grid; gap:4vh; align-content:center; min-height:80vh">
+      <div class="kicker" data-anim>为 AI 终端智能体量身定制</div>
+      <h1 class="h-hero" data-anim>Remote Agents</h1>
+      <h2 class="h-sub" data-anim>Claude Code 的完美 Web 伴侣</h2>
+      <p class="lead" style="max-width:60vw" data-anim>
+        自主性命令行 Agent 虽然强悍，却易受制于本地物理设备与弱网络。Remote Agents 为其搭建了安全、自适应的多端 Web 容器，让 Agent 在后台随时随地安稳调度。
+      </p>
+      <div class="meta-row" data-anim>
+        <span>CLI AGENT COMPANION</span><span>·</span><span>NPM @scottzx/remote-agents</span><span>·</span><span>MIT LICENSE</span>
+      </div>
+    </div>
+    <div class="foot">
+      <div>让 Agent 从孤立的黑窗口蜕变为触手可及的云端工作台</div>
+      <div>— 2026 —</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 2: Pain Points (light) ==================== -->
+  <section class="slide light" data-animate="directional">
+    <div class="chrome">
+      <div>Pain Points · 痛点与范式转变</div>
+      <div>Act I · 02 / 08</div>
+    </div>
+    <div class="frame" style="padding-top:5vh">
+      <div class="kicker" data-anim>The Paradigm Shift</div>
+      <h2 class="h-xl" style="margin-bottom:4vh" data-anim>解除对物理终端的强绑定</h2>
+
+      <div class="grid-2-6-6" style="gap:5vw 4vh">
+        <!-- 左列：痛点 -->
+        <div data-anim="left" style="padding:3vh 2vw; border-left:3px solid #e07a5f; opacity:.65">
+          <div class="kicker" style="opacity:.9">Before · 痛点与限制</div>
+          <h3 class="h-md" style="margin-top:2vh">孤立的本地 CLI 运行</h3>
+          <ul style="margin-top:3vh; padding-left:1.2em; display:flex; flex-direction:column; gap:1.4vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+            <li><strong>连接易断</strong>：电脑休眠或断网，长耗时 Agent 任务中途报废。</li>
+            <li><strong>产出难看</strong>：Agent 生成的 HTML/PDF，在终端黑窗口无法核对。</li>
+            <li><strong>多端受阻</strong>：外出时，在手机/平板上无法优雅唤起或监督 Agent。</li>
+          </ul>
+        </div>
+        <!-- 右列: 解法 -->
+        <div data-anim="right" style="padding:3vh 2vw; border-left:3px solid currentColor">
+          <div class="kicker" style="opacity:.9">After · 赋能解法</div>
+          <h3 class="h-md" style="margin-top:2vh">自适应 Web 智能工作空间</h3>
+          <ul style="margin-top:3vh; padding-left:1.2em; display:flex; flex-direction:column; gap:1.4vh; font-family:var(--sans-zh); font-size:max(14px,1.1vw); line-height:1.55">
+            <li><strong>进程持久</strong>：tmux 状态托管于 Go 后端，断线不终止，毫秒级接管。</li>
+            <li><strong>即时预览</strong>：文件管理新增 HTML/PDF 高清 16:9 全屏新页面预览。</li>
+            <li><strong>掌心控制</strong>：针对移动端大幅折叠键盘优化，直供 `claude` 极速指令。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <div>让 Agent 的长时执行与可视化能力得到质的提升</div>
+      <div>Before / After</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 3: Core Features (light) ==================== -->
+  <section class="slide light">
+    <div class="chrome">
+      <div>Metrics & Capabilities · 功能总览</div>
+      <div>Act I · 03 / 08</div>
+    </div>
+    <div class="frame" style="padding-top:6vh">
+      <div class="kicker" data-anim>Full Feature Matrix</div>
+      <h2 class="h-xl" data-anim>专为 AI 协同重构的工作空间</h2>
+      <p class="lead" style="margin-bottom:4.5vh" data-anim>打通远程终端、文件管理和安全网络，全面释放 Claude Code 生产力。</p>
+
+      <div class="grid-6" style="margin-top:3.5vh">
+        <div class="stat-card" data-anim>
+          <div class="stat-label">01 / PERSISTENCE</div>
+          <div class="stat-nb">会话持久化</div>
+          <div class="stat-note">Go 守护进程深度融合 tmux，Agent 编译或检索中途永不断线。</div>
+        </div>
+        <div class="stat-card" data-anim>
+          <div class="stat-label">02 / PREVIEW</div>
+          <div class="stat-nb">HTML & PDF</div>
+          <div class="stat-note">实时高清核对 Agent 代码生成结果，支持 16:9 独立窗口预览。</div>
+        </div>
+        <div class="stat-card" data-anim>
+          <div class="stat-label">03 / CONTEXT</div>
+          <div class="stat-nb">Folder Picker</div>
+          <div class="stat-note">唤起原生系统级文件夹选择，零延迟并行秒级切换项目上下文。</div>
+        </div>
+        <div class="stat-card" data-anim>
+          <div class="stat-label">04 / ENCRYPTION</div>
+          <div class="stat-nb">安全绿锁 🔒</div>
+          <div class="stat-note">支持 HTTPS 安全上下文，提供自签 ECDSA 证书或一键加载 Tailscale。</div>
+        </div>
+        <div class="stat-card" data-anim>
+          <div class="stat-label">05 / INPUT METHOD</div>
+          <div class="stat-nb">语音听写</div>
+          <div class="stat-note">麦克风语音转文字（Speech-to-Text），移动端轻松“声控”智能体。</div>
+        </div>
+        <div class="stat-card" data-anim>
+          <div class="stat-label">06 / AI GATEWAY</div>
+          <div class="stat-nb">cc-connect</div>
+          <div class="stat-note">工作区动态项目注册与反向代理，打通飞书、Telegram 消息通路。</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <div>以 Web 为媒介，打通本地文件系统与远程 Agent</div>
+      <div>Page 03</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 4: Terminal Persistence (dark) ==================== -->
+  <section class="slide dark">
+    <div class="chrome">
+      <div>Terminal Persistence · 终端持久化</div>
+      <div>Act I · 04 / 08</div>
+    </div>
+    <div class="frame grid-2-7-5" style="padding-top:6vh">
+      <div style="display:flex; flex-direction:column; justify-content:space-between; gap:3vh">
+        <div>
+          <div class="kicker" data-anim>PERSISTENT WORKFLOW</div>
+          <h2 class="h-xl" style="font-size:5.8vw" data-anim>
+            别让你的 Agent 任务死于断线。
+          </h2>
+          <p class="lead" style="margin-top:3vh" data-anim>
+            Claude Code 执行大规模代码修改、依赖检索和项目测试，往往需要持续数分钟。
+          </p>
+          <p class="body-zh" style="margin-top:2.5vh; opacity:.75" data-anim>
+            Remote Agents 将 xterm.js 与 Go 守护监视的 ttyd/tmux 深度绑定。您可以在手机上语音唤起任务，合上浏览器，Agent 将在后台稳健推进。随时连回，进度完好如初。
+          </p>
+        </div>
+        <div class="callout" data-anim>
+          "内置的守护进程让 tmux 会话获得了云端生命力，<br>
+          每一次重新接管，都在 1 毫秒内瞬间发生。"
+          <div class="callout-src">— 会话持久化机制</div>
+        </div>
+      </div>
+      <figure class="frame-img r-16x10" style="margin-top:6vh" data-anim>
+        <img src="images/terminal-working.png" alt="终端界面截图">
+        <div class="frame-cap">
+          <span class="pf">高性能 Web 终端与 tmux 状态持久</span>
+          <span class="nb">Fig 01</span>
+          <span class="idx">04 / 08</span>
+        </div>
+      </figure>
+    </div>
+    <div class="foot">
+      <div>ttyd + tmux 会话生命周期由 Go 后端完全接管</div>
+      <div>Page 04</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 5: Real-time Preview (light) ==================== -->
+  <section class="slide light">
+    <div class="chrome">
+      <div>Instant Verification · HTML/PDF 实时预览</div>
+      <div>Act I · 05 / 08</div>
+    </div>
+    <div class="frame grid-2-8-4" style="padding-top:6vh">
+      <div>
+        <div class="kicker" data-anim>VISUAL CONFIRMATION</div>
+        <h2 class="h-xl" style="margin-top:1vh; margin-bottom:3vh" data-anim>眼见为实，实时验收 Agent 产出</h2>
+
+        <p class="lead" style="margin-bottom:3vh" data-anim>
+          当 Agent 自动重写了您的 HTML slide 页面、前端视觉稿或产出了 PDF 说明报告时。
+        </p>
+
+        <p class="body-zh" data-anim style="opacity:.78; margin-bottom:2.4vh">
+          您无需再繁琐地把文件下载到本地，也无需专门在服务器上开启临时的临时服务。直接在 Remote Agents 的左侧树状目录或右侧卡片区点击文件，支持极速载入内置预览器，更能一键以 16:9 比例新标签页全屏渲染，进行原汁原味的视觉校验。
+        </p>
+
+        <div class="callout" style="margin-top:3vh" data-anim>
+          "这是 AI 编程时代的闭环交互：<br>终端编写代码 → 后台持续运行 → 网页直接预览。"
+          <div class="callout-src">— 开发者验收体验</div>
+        </div>
+      </div>
+      <figure class="frame-img r-3x4" data-anim>
+        <img src="images/screenshot.gif" alt="自适应布局与预览动图">
+        <div class="frame-cap">
+          <span class="pf">多端响应式文件浏览与效果呈现</span>
+          <span class="nb">Fig 02</span>
+          <span class="idx">05 / 08</span>
+        </div>
+      </figure>
+    </div>
+    <div class="foot">
+      <div>HTML & PDF 高清无码预览，打通最后 1 米的验收体验</div>
+      <div>Page 05</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 6: SSL Pipeline (light) ==================== -->
+  <section class="slide light" data-animate="pipeline">
+    <div class="chrome">
+      <div>Security Context · 局域网 HTTPS 部署</div>
+      <div>Act II · 06 / 08</div>
+    </div>
+    <div class="frame" style="padding-top:5vh">
+      <div class="kicker">SECURE BY DEFAULT</div>
+      <h2 class="h-xl">四步配置安全绿锁，解锁完整 Web API 🔒</h2>
+      <p class="lead" style="margin-bottom:3vh">高级 API（麦克风语音听写、Service Worker 缓存）强制要求安全上下文（HTTPS）。</p>
+
+      <div class="pipeline-section">
+        <div class="pipeline-label">自动生成与高级域名申请 · Setup Pipeline</div>
+        <div class="pipeline" data-cols="4">
+          <div class="step" data-anim="step">
+            <div class="step-nb">01</div>
+            <div class="step-title">启用 --ssl</div>
+            <div class="step-desc">启动参数中直接加 --ssl，后台若没有找到证书，会自动生成 10 年期高强度 ECDSA P-256 自签名证书。</div>
+          </div>
+          <div class="step" data-anim="step">
+            <div class="step-nb">02</div>
+            <div class="step-title">Tailscale 自动识别</div>
+            <div class="step-desc">系统会自动检测是否运行了 Tailscale，将节点 IP 和域名（*.ts.net）自动注入证书 SubjectNames。</div>
+          </div>
+          <div class="step" data-anim="step">
+            <div class="step-nb">03</div>
+            <div class="step-title">官方权威证书</div>
+            <div class="step-desc">亦可执行 tailscale cert 申请由 Let's Encrypt 签发的权威证书，将其移至默认 ~/.remote-agents/certs 目录。</div>
+          </div>
+          <div class="step" data-anim="step">
+            <div class="step-nb">04</div>
+            <div class="step-title">全球无警告绿锁</div>
+            <div class="step-desc">重新运行直接适配，全球设备通过节点域名访问直接绿锁通过，完美支持浏览器原生麦克风录音权限！</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <div>支持局域网自签名与 Tailscale Let's Encrypt 的自适应加载</div>
+      <div>Page 06</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 7: Mobile (hero dark) ==================== -->
+  <section class="slide hero dark">
+    <div class="chrome">
+      <div>Mobile Interaction · 移动掌舵</div>
+      <div>Act II · 07 / 08</div>
+    </div>
+    <div class="frame" style="display:grid; gap:6vh; align-content:center; min-height:80vh">
+      <div class="kicker" data-anim>ACT II · MOBILE OPTIMIZATION</div>
+      <h1 class="h-hero" style="font-size:7vw; line-height:1.2" data-anim>极致的单手掌舵</h1>
+      <p class="lead" style="max-width:55vw" data-anim>
+        彻底移除臃肿的小屏工具栏，重新设计 Quick Keys 虚拟键盘为双行折叠子菜单，收纳了方向键与退格键，并**直供 claude 命令一键执行**。切换会话时，侧边栏能够自动优雅缩回，留出最大的终端阅读视野。
+      </p>
+    </div>
+    <div class="foot">
+      <div>让 AI 开发在手机和平板上获得如原生 App 般丝滑的掌心触感</div>
+      <div>— · —</div>
+    </div>
+  </section>
+
+  <!-- ==================== Slide 8: Gold Quote (light) ==================== -->
+  <section class="slide light" data-animate="quote">
+    <div class="chrome">
+      <div>Takeaway · 总结寄语</div>
+      <div>08 / 08</div>
+    </div>
+    <div class="frame" style="display:grid; gap:5vh; align-content:center; min-height:80vh">
+      <div class="kicker" data-anim>Conclusion</div>
+      <blockquote style="font-family:var(--serif-zh); font-weight:700; font-size:5.8vw; line-height:1.2; letter-spacing:-.01em; max-width:72vw">
+        <span data-anim="line" style="display:block">"给你的 CLI Agent 创造一个家，</span>
+        <span data-anim="line" style="display:block">让它从孤立黑窗口，</span>
+        <span data-anim="line" style="display:block">蜕变为触手可及的 Web 容器。"</span>
+      </blockquote>
+      <p class="lead" style="max-width:55vw; opacity:.65" data-anim>
+        Make a home for your CLI Agents.<br>
+        Turn them from dark command lines into fully-adaptive Web spaces.
+      </p>
+      <div class="meta-row" data-anim>
+        <span>🌊 靛蓝瓷风格 PPT</span><span>·</span><span>NPM 全局极速安装</span><span>·</span><span>Thank You</span>
+      </div>
+    </div>
+    <div class="foot">
+      <div>PPT 制作基于 guizang-ppt-skill 精准生成</div>
+      <div>— 08 / 08 —</div>
+    </div>
+  </section>
+
+</div>
+
+<div id="nav"></div>
+
+<script>
+/* =============== WebGL 双背景 =============== */
+const VS = `attribute vec2 position;void main(){gl_Position=vec4(position,0.0,1.0);}`;
+
+const FS_DARK = `precision highp float;
+uniform vec2 u_resolution;uniform float u_time;uniform vec2 u_mouse;
+vec3 palette(float t,vec3 a,vec3 b,vec3 c,vec3 d){return a+b*cos(6.28318*(c*t+d));}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_resolution.xy;
+  vec2 p=uv*2.0-1.0;p.x*=u_resolution.x/u_resolution.y;
+  vec2 m=u_mouse*2.0-1.0;m.x*=u_resolution.x/u_resolution.y;
+  float md=length(p-m);
+  float mr=sin(md*15.0-u_time*4.0)*exp(-md*3.0);p+=mr*0.08;
+  vec2 p0=p;
+  for(float i=1.0;i<4.0;i++){
+    p.x+=0.1/i*sin(i*3.0*p.y+u_time*0.4)+0.05;
+    p.y+=0.1/i*cos(i*2.0*p.x+u_time*0.3)-0.05;
+  }
+  float r=length(p);float ang=atan(p.y,p.x);
+  vec3 a=vec3(0.05,0.12,0.22);
+  vec3 b=vec3(0.03,0.04,0.06);
+  vec3 c=vec3(1.0,1.0,1.0);
+  vec3 d=vec3(0.1,0.2,0.45);
+  vec3 col=palette(r*1.5+p0.x*0.5+u_time*0.1,a,b,c,d);
+  float disp=sin(r*25.0-u_time*1.5+ang*2.0)*0.5+0.5;
+  col+=vec3(disp*0.015,disp*0.01,disp*0.02);
+  float hi=pow(sin(p.x*4.0+p.y*3.0+u_time)*0.5+0.5,8.0);
+  col+=hi*0.08;
+  vec3 base=vec3(0.04,0.08,0.16);
+  col=mix(base,col,0.85);
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+const FS_LIGHT = `precision highp float;
+uniform vec2 u_resolution;uniform float u_time;uniform vec2 u_mouse;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+  vec2 i=floor(p),f=fract(p);
+  float a=hash(i),b=hash(i+vec2(1,0));
+  float c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));
+  vec2 u=f*f*(3.0-2.0*f);
+  return mix(a,b,u.x)+(c-a)*u.y*(1.0-u.x)+(d-b)*u.x*u.y;
+}
+float fbm(vec2 p){
+  float v=0.0,a=0.5;
+  mat2 m=mat2(0.80,0.60,-0.60,0.80);
+  for(int i=0;i<5;i++){v+=a*noise(p);p=m*p*2.02;a*=0.5;}
+  return v;
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_resolution.xy;
+  vec2 p=uv;p.x*=u_resolution.x/u_resolution.y;
+  vec2 m=u_mouse;m.x*=u_resolution.x/u_resolution.y;
+  vec2 md=p-m;float dl=length(md);
+  p+=normalize(md+vec2(0.0001))*exp(-dl*5.0)*0.03;
+  vec2 q=vec2(fbm(p*1.8+u_time*0.07),fbm(p*1.8+vec2(5.2,1.3)+u_time*0.06));
+  vec2 r=vec2(fbm(p*2.0+q*1.3+vec2(1.7,9.2)+u_time*0.05),
+              fbm(p*2.0+q*1.3+vec2(8.3,2.8)+u_time*0.04));
+  float f=fbm(p*2.2+r*1.5);
+  vec3 silverDark=vec3(0.82,0.85,0.88);
+  vec3 paper=vec3(0.94,0.95,0.96);
+  vec3 col=mix(silverDark,paper,f);
+  float ph=r.x*2.2+u_time*0.35;
+  col+=vec3(0.68,0.72,0.92)*sin(ph)*0.055;
+  col+=vec3(0.55,0.72,0.95)*sin(ph*0.8+2.0)*0.05;
+  float hl=smoothstep(0.48,0.92,f);
+  col+=hl*0.06;
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+const mouse={x:0.5,y:0.5};
+addEventListener('mousemove',e=>{mouse.x=e.clientX/innerWidth;mouse.y=e.clientY/innerHeight});
+
+function bootGL(canvasId, fsSrc){
+  const canvas=document.getElementById(canvasId);
+  const gl=canvas.getContext('webgl',{alpha:false,antialias:true});
+  if(!gl) return ()=>false;
+  const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);return sh};
+  const prog=gl.createProgram();
+  gl.attachShader(prog,mk(gl.VERTEX_SHADER,VS));
+  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fsSrc));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  const buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+  const pos=gl.getAttribLocation(prog,'position');
+  gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
+  const lRes=gl.getUniformLocation(prog,'u_resolution');
+  const lT=gl.getUniformLocation(prog,'u_time');
+  const lM=gl.getUniformLocation(prog,'u_mouse');
+  const resize=()=>{
+    const d=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=innerWidth*d;canvas.height=innerHeight*d;
+    gl.viewport(0,0,canvas.width,canvas.height);
+  };
+  addEventListener('resize',resize);resize();
+  return (tSec)=>{
+    gl.uniform2f(lRes,canvas.width,canvas.height);
+    gl.uniform1f(lT,tSec);
+    gl.uniform2f(lM,mouse.x,1-mouse.y);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    return true;
+  };
+}
+let drawDark=null, drawLight=null, glRAF=0, glT0=Date.now();
+function startGL(){
+  if(window.__lowPowerMode || glRAF) return;
+  if(!drawDark) drawDark=bootGL('bg-dark',FS_DARK);
+  if(!drawLight) drawLight=bootGL('bg-light',FS_LIGHT);
+  glT0=Date.now();
+  function loop(){
+    if(window.__lowPowerMode){glRAF=0;return;}
+    const t=(Date.now()-glT0)/1000;
+    drawDark(t);drawLight(t);
+    glRAF=requestAnimationFrame(loop);
+  }
+  glRAF=requestAnimationFrame(loop);
+}
+function stopGL(){
+  if(glRAF) cancelAnimationFrame(glRAF);
+  glRAF=0;
+}
+startGL();
+addEventListener('ppt-low-power-change', e=>{e.detail.on ? stopGL() : startGL();});
+
+// =============== 导航 ===============
+const deck=document.getElementById('deck');
+const slides=deck.querySelectorAll('.slide');
+const nav=document.getElementById('nav');
+let idx=0,total=slides.length,lock=false;
+
+deck.style.width=(total*100)+'vw';
+
+slides.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='dot';b.dataset.i=i;b.setAttribute('aria-label','Page '+(i+1));
+  b.onclick=()=>go(i);
+  nav.appendChild(b);
+});
+
+function go(n){
+  if(lock)return;
+  idx=Math.max(0,Math.min(total-1,n));
+  window.__currentSlideIndex = idx;
+  deck.style.transform=`translateX(${-idx*100}vw)`;
+  nav.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
+  const el=slides[idx];
+  const th=el.dataset.theme || (el.classList.contains('light')?'light':'dark');
+  document.body.classList.toggle('light-bg',th==='light');
+  if(window.__playSlide) setTimeout(()=>window.__playSlide(idx), 450);
+  lock=true;setTimeout(()=>lock=false,700);
+}
+
+/* =============== ESC 索引视图 =============== */
+let overviewOn=false;
+const ov=document.createElement('div');
+ov.id='overview';
+ov.style.cssText='position:fixed;inset:0;z-index:100;background:rgba(var(--ink-rgb),.92);backdrop-filter:blur(12px);display:none;overview-y:auto;padding:4vh 4vw';
+document.body.appendChild(ov);
+
+function buildOverview(){
+  ov.innerHTML='';
+  const grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:2vh 1.6vw;max-width:90vw;margin:0 auto';
+  slides.forEach((s,i)=>{
+    const card=document.createElement('div');
+    card.style.cssText='cursor:pointer;border-radius:6px;overflow:hidden;border:2px solid '+(i===idx?'rgba(var(--paper-rgb),.8)':'rgba(var(--paper-rgb),.15)')+';transition:border-color .2s';
+    card.onmouseenter=()=>card.style.borderColor='rgba(var(--paper-rgb),.6)';
+    card.onmouseleave=()=>card.style.borderColor=i===idx?'rgba(var(--paper-rgb),.8)':'rgba(var(--paper-rgb),.15)';
+    const wrap=document.createElement('div');
+    wrap.style.cssText='width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;pointer-events:none;background:'+(s.classList.contains('light')?'var(--paper)':'var(--ink)');
+    const clone=s.cloneNode(true);
+    clone.style.cssText='width:100vw;height:100vh;transform:scale('+(1/4.5)+');transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none';
+    wrap.appendChild(clone);
+    const label=document.createElement('div');
+    label.style.cssText='padding:6px 10px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--paper);opacity:.7';
+    label.textContent=(i+1)+' / '+total;
+    card.appendChild(wrap);
+    card.appendChild(label);
+    card.onclick=()=>{toggleOverview();go(i)};
+    grid.appendChild(card);
+  });
+  ov.appendChild(grid);
+}
+
+function toggleOverview(){
+  overviewOn=!overviewOn;
+  if(overviewOn){buildOverview();ov.style.display='block';}
+  else{ov.style.display='none';}
+}
+
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'){e.preventDefault();toggleOverview();return;}
+  if(e.key && e.key.toLowerCase()==='b' && !e.metaKey && !e.ctrlKey && !e.altKey){
+    e.preventDefault();
+    window.__setLowPowerMode(!window.__lowPowerMode);
+    return;
+  }
+  if(overviewOn)return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '||e.key==='ArrowDown'){
+    if(window.__pipeAdvance && window.__pipeAdvance()) return;
+    go(idx+1);
+    return;
+  }
+  if(e.key==='ArrowLeft'||e.key==='PageUp'||e.key==='ArrowUp')go(idx-1);
+  if(e.key==='Home')go(0);
+  if(e.key==='End')go(total-1);
+});
+
+let wheelTO=null,wheelAcc=0;
+addEventListener('wheel',e=>{
+  wheelAcc+=e.deltaY+e.deltaX;
+  if(Math.abs(wheelAcc)>50){
+    if(wheelAcc>0 && window.__pipeAdvance && window.__pipeAdvance()){
+      wheelAcc=0;
+    }else{
+      go(idx+(wheelAcc>0?1:-1));wheelAcc=0;
+    }
+  }
+  clearTimeout(wheelTO);wheelTO=setTimeout(()=>wheelAcc=0,150);
+},{passive:true});
+
+let tx=0,ty=0;
+addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+addEventListener('touchend',e=>{
+  const dx=(e.changedTouches[0].clientX-tx);
+  const dy=(e.changedTouches[0].clientY-ty);
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){
+    if(dx<0 && window.__pipeAdvance && window.__pipeAdvance()) return;
+    go(idx+(dx<0?1:-1));
+  }
+},{passive:true});
+
+go(0);
+</script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
+
+<script type="module">
+let motion;
+try {
+  motion = await import('./assets/motion.min.js');
+} catch(e1) {
+  try {
+    motion = await import('https://cdn.jsdelivr.net/npm/motion@11.11.17/+esm');
+  } catch(e2) {
+    console.warn('[motion] local + CDN both failed, disabling animations', e1, e2);
+    document.querySelectorAll('[data-anim]').forEach(el=>{el.style.opacity='1';el.style.transform='none'});
+    document.querySelectorAll('[data-animate="pipeline"] [data-anim]').forEach(el=>el.style.opacity='1');
+  }
+}
+
+if(motion){
+  const { animate, stagger } = motion;
+  document.body.classList.add('motion-ready');
+  const EASE = [.22, 1, .36, 1];
+  const slides = [...document.querySelectorAll('.slide')];
+  let pipeStep = -1;
+  let lastIdx = -1;
+
+  function resetAnims(slide){
+    slide.querySelectorAll('[data-anim]').forEach(el=>{
+      el.style.opacity='';
+      el.style.transform='';
+    });
+  }
+
+  function revealStatic(slide){
+    resetAnims(slide);
+    document.getAnimations?.().forEach(a=>a.cancel());
+    slide.querySelectorAll('[data-anim]').forEach(el=>{
+      el.style.opacity='1';
+      el.style.transform='none';
+    });
+  }
+
+  function playSlide(i){
+    const slide = slides[i];
+    if(!slide) return;
+    lastIdx = i;
+    const recipe = slide.dataset.animate || (slide.classList.contains('hero') ? 'hero' : 'cascade');
+
+    if(window.__lowPowerMode){
+      revealStatic(slide);
+      return;
+    }
+
+    if(recipe === 'pipeline'){
+      pipeStep = -1;
+      slide.querySelectorAll('[data-anim]').forEach(el=>{
+        el.style.opacity='0.15';
+        el.style.transform='none';
+      });
+      return;
+    }
+
+    resetAnims(slide);
+    const all = [...slide.querySelectorAll('[data-anim]')];
+    if(!all.length) return;
+
+    if(recipe === 'directional'){
+      const lefts  = all.filter(el=>el.dataset.anim==='left');
+      const divs   = all.filter(el=>el.dataset.anim==='divider');
+      const rights = all.filter(el=>el.dataset.anim==='right');
+      const others = all.filter(el=>!['left','right','divider'].includes(el.dataset.anim));
+      if(others.length) animate(others, {opacity:[0,1], y:[12,0]}, {duration:.6, delay:stagger(.1, {start:.15}), easing:EASE});
+      if(lefts.length)  animate(lefts,  {opacity:[0,1], x:[-24,0]}, {duration:.8, delay:.35, easing:EASE});
+      if(divs.length)   animate(divs,   {opacity:[0,.25]},          {duration:.5, delay:.9});
+      if(rights.length) animate(rights, {opacity:[0,1], x:[24,0]},  {duration:.8, delay:1.0, easing:EASE});
+      return;
+    }
+
+    if(recipe === 'quote'){
+      const lines = all.filter(el=>el.dataset.anim==='line');
+      const others = all.filter(el=>el.dataset.anim!=='line');
+      if(others.length) animate(others, {opacity:[0,1], y:[8,0]},    {duration:.6, delay:stagger(.12, {start:.2}), easing:EASE});
+      if(lines.length)  animate(lines,  {opacity:[.35,1], y:[10,0]}, {duration:.8, delay:stagger(.55, {start:.5}), easing:EASE});
+      return;
+    }
+
+    if(recipe === 'hero'){
+      animate(all, {opacity:[0,1], y:[14,0]}, {duration:.9, delay:stagger(.16, {start:.2}), easing:EASE});
+      return;
+    }
+
+    // default: cascade
+    animate(all, {opacity:[0,1], y:[16,0]}, {duration:.75, delay:stagger(.1, {start:.15}), easing:EASE});
+  }
+
+  function pipeAdvance(){
+    if(window.__lowPowerMode) return false;
+    const slide = slides[lastIdx];
+    if(!slide || slide.dataset.animate !== 'pipeline') return false;
+    const steps  = [...slide.querySelectorAll('[data-anim="step"]')];
+    const arrows = [...slide.querySelectorAll('[data-anim="arrow"]')];
+    if(pipeStep >= steps.length - 1) return false;
+    pipeStep++;
+    animate(steps[pipeStep], {opacity:[0.15,1], y:[8,0]}, {duration:.5, easing:EASE});
+    if(pipeStep > 0 && arrows[pipeStep-1]){
+      animate(arrows[pipeStep-1], {opacity:[0.15,.7]}, {duration:.3, delay:.15});
+    }
+    return true;
+  }
+
+  window.__playSlide = playSlide;
+  window.__pipeAdvance = pipeAdvance;
+
+  playSlide(0);
+}
+</script>
+</body>
+</html>
