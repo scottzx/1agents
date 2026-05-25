@@ -1609,6 +1609,84 @@ body {
   flex-shrink: 0;
   z-index: 20;
 
+  .mobile-quick-submenu {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 6px;
+    background-color: var(--bg-terminal-inner);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 2px;
+    animation: slideDownIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .submenu-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .key-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 32px;
+      flex-shrink: 0;
+      padding: 0;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+
+      svg {
+        width: 15px;
+        height: 15px;
+        pointer-events: none;
+      }
+
+      &:hover {
+        background-color: var(--btn-hover);
+        border-color: var(--text-secondary);
+      }
+
+      &:active {
+        background-color: var(--border-color);
+        transform: scale(0.91);
+      }
+
+      &.key-btn-command {
+        width: auto;
+        padding: 0 10px;
+        height: 32px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--accent-color);
+        background-color: var(--accent-light);
+        border-color: var(--accent-color);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+
+        &:hover {
+          opacity: 0.9;
+          background-color: var(--accent-light);
+        }
+      }
+    }
+  }
+
   .mobile-quick-keys {
     display: flex;
     gap: 6px;
@@ -1653,6 +1731,13 @@ body {
         transform: scale(0.91);
       }
 
+      &.active {
+        background-color: var(--accent-light);
+        border-color: var(--accent-color);
+        color: var(--accent-color);
+        box-shadow: 0 0 8px var(--badge-glow);
+      }
+
       // Esc keeps text label — slightly wider
       &.key-btn-text {
         width: 44px;
@@ -1660,6 +1745,16 @@ body {
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
         letter-spacing: 0.3px;
+      }
+
+      &.key-btn-submenu-toggle {
+        &.key-btn-text {
+          width: 58px;
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          padding: 0 4px;
+        }
       }
     }
   }

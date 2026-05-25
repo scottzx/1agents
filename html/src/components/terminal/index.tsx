@@ -49,6 +49,7 @@ interface State {
     isRecording: boolean;
     speechText: string;
     speechError: string;
+    activeSubMenu: 'commands' | 'directions' | null;
 }
 
 export class Terminal extends Component<Props, State> {
@@ -73,6 +74,7 @@ export class Terminal extends Component<Props, State> {
             isRecording: false,
             speechText: '',
             speechError: '',
+            activeSubMenu: null,
         };
     }
 
@@ -266,6 +268,13 @@ export class Terminal extends Component<Props, State> {
     }
 
     @bind
+    toggleSubMenu(menu: 'commands' | 'directions') {
+        this.setState(prevState => ({
+            activeSubMenu: prevState.activeSubMenu === menu ? null : menu,
+        }));
+    }
+
+    @bind
     toggleSpeech() {
         if (this.state.isRecording) {
             this.stopAndSendSpeech();
@@ -416,8 +425,20 @@ export class Terminal extends Component<Props, State> {
 
     render(
         { id }: Props,
-        { modal, isMobile, hiddenInputValue, inputLeft, inputTop, isRecording, speechText, speechError }: State
+        {
+            modal,
+            isMobile,
+            hiddenInputValue,
+            inputLeft,
+            inputTop,
+            isRecording,
+            speechText,
+            speechError,
+            activeSubMenu,
+        }: State
     ) {
+        const isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
+
         return (
             <div style="display: flex; flex-direction: column; height: 100%; width: 100%; position: relative;">
                 <div
@@ -476,9 +497,119 @@ export class Terminal extends Component<Props, State> {
                                 )}
                             </div>
                         )}
+                        {/* Secondary commands submenu rendered above the bottom row */}
+                        {activeSubMenu && (
+                            <div class="mobile-quick-submenu">
+                                {activeSubMenu === 'commands' && (
+                                    <div class="submenu-group">
+                                        <button
+                                            class="key-btn key-btn-command"
+                                            title="运行 claude"
+                                            onClick={() => {
+                                                this.xterm.sendData('claude\r');
+                                            }}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="4 17 10 11 4 5" />
+                                                <line x1="12" y1="19" x2="20" y2="19" />
+                                            </svg>
+                                            claude
+                                        </button>
+                                    </div>
+                                )}
+                                {activeSubMenu === 'directions' && (
+                                    <div class="submenu-group">
+                                        {/* Arrow Up */}
+                                        <button class="key-btn" title="↑" onClick={() => this.sendQuickKey('↑')}>
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="18 15 12 9 6 15" />
+                                            </svg>
+                                        </button>
+                                        {/* Arrow Down */}
+                                        <button class="key-btn" title="↓" onClick={() => this.sendQuickKey('↓')}>
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="6 9 12 15 18 9" />
+                                            </svg>
+                                        </button>
+                                        {/* Arrow Left */}
+                                        <button class="key-btn" title="←" onClick={() => this.sendQuickKey('←')}>
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="15 18 9 12 15 6" />
+                                            </svg>
+                                        </button>
+                                        {/* Arrow Right */}
+                                        <button class="key-btn" title="→" onClick={() => this.sendQuickKey('→')}>
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="9 18 15 12 9 6" />
+                                            </svg>
+                                        </button>
+                                        {/* Backspace / Delete */}
+                                        <button
+                                            class="key-btn"
+                                            title="Backspace"
+                                            onClick={() => this.sendQuickKey('Backspace')}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
+                                                <line x1="18" y1="9" x2="12" y2="15" />
+                                                <line x1="12" y1="9" x2="18" y2="15" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <div class="mobile-quick-keys">
-                            {/* Arrow Up */}
-                            <button class="key-btn" title="↑" onClick={() => this.sendQuickKey('↑')}>
+                            {/* Toggle 快捷命令 (Quick Commands Toggle) */}
+                            <button
+                                class={`key-btn key-btn-text key-btn-submenu-toggle ${
+                                    activeSubMenu === 'commands' ? 'active' : ''
+                                }`}
+                                title="快捷命令"
+                                onClick={() => this.toggleSubMenu('commands')}
+                            >
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -487,46 +618,32 @@ export class Terminal extends Component<Props, State> {
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                 >
-                                    <polyline points="18 15 12 9 6 15" />
+                                    <polyline points="4 17 10 11 4 5" />
+                                    <line x1="12" y1="19" x2="20" y2="19" />
                                 </svg>
+                                命令
                             </button>
-                            {/* Arrow Down */}
-                            <button class="key-btn" title="↓" onClick={() => this.sendQuickKey('↓')}>
+                            {/* Toggle 方向键/D-Pad (Direction Keys Toggle) */}
+                            <button
+                                class={`key-btn key-btn-submenu-toggle ${
+                                    activeSubMenu === 'directions' ? 'active' : ''
+                                }`}
+                                title="方向与删除"
+                                onClick={() => this.toggleSubMenu('directions')}
+                            >
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
-                                    stroke-width="2.5"
+                                    stroke-width="2"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                 >
-                                    <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                            </button>
-                            {/* Arrow Left */}
-                            <button class="key-btn" title="←" onClick={() => this.sendQuickKey('←')}>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2.5"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <polyline points="15 18 9 12 15 6" />
-                                </svg>
-                            </button>
-                            {/* Arrow Right */}
-                            <button class="key-btn" title="→" onClick={() => this.sendQuickKey('→')}>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2.5"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <polyline points="9 18 15 12 9 6" />
+                                    <path d="M12 3v18M3 12h18" />
+                                    <polyline points="8 7 12 3 16 7" />
+                                    <polyline points="8 17 12 21 16 17" />
+                                    <polyline points="7 8 3 12 7 16" />
+                                    <polyline points="17 8 21 12 17 16" />
                                 </svg>
                             </button>
                             {/* Paste */}
@@ -544,44 +661,31 @@ export class Terminal extends Component<Props, State> {
                                     <path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1z" />
                                 </svg>
                             </button>
-                            {/* Speech Recognition Mic Button */}
-                            <button
-                                class={`key-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
-                                title="语音输入"
-                                onClick={this.toggleSpeech}
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
+                            {/* Speech Recognition Mic Button (HTTPS only) */}
+                            {isHttps && (
+                                <button
+                                    class={`key-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
+                                    title="语音输入"
+                                    onClick={this.toggleSpeech}
                                 >
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                </svg>
-                            </button>
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                                        <line x1="12" y1="19" x2="12" y2="23" />
+                                        <line x1="8" y1="23" x2="16" y2="23" />
+                                    </svg>
+                                </button>
+                            )}
                             {/* Esc — keep text, it's clear */}
                             <button class="key-btn key-btn-text" title="Esc" onClick={() => this.sendQuickKey('Esc')}>
                                 Esc
-                            </button>
-                            {/* Backspace / Delete */}
-                            <button class="key-btn" title="Backspace" onClick={() => this.sendQuickKey('Backspace')}>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
-                                    <line x1="18" y1="9" x2="12" y2="15" />
-                                    <line x1="12" y1="9" x2="18" y2="15" />
-                                </svg>
                             </button>
                             {/* Enter / Return */}
                             <button class="key-btn" title="Enter" onClick={() => this.sendQuickKey('Enter')}>
