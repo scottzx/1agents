@@ -307,11 +307,17 @@ export class App extends Component<{}, AppState> {
         const wsId = workspaceId || this.state.activeWorkspaceId;
         if (!wsId) return;
         try {
-            const res = await fetch(
-                `/api/cc-connect/url?workspace=${encodeURIComponent(wsId)}&theme=${encodeURIComponent(
-                    this.state.theme
-                )}`
-            );
+            const res = await fetch('/api/cc-connect/url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    workspace: wsId,
+                    theme: this.state.theme,
+                    lang: this.state.language || 'zh-CN',
+                }),
+            });
             if (res.ok) {
                 const data = await res.json();
                 this.setState({ ccConnectUrl: data.url });
@@ -829,6 +835,38 @@ export class App extends Component<{}, AppState> {
         }
     };
 
+    updateCcConnectUrlParams = (theme: 'light' | 'dark', lang: 'zh-CN' | 'en-US') => {
+        const urlStr = this.state.ccConnectUrl;
+        if (!urlStr) return;
+        try {
+            const dummyBase = 'http://dummy.com';
+            const parsed = new URL(urlStr, dummyBase);
+            parsed.searchParams.set('theme', theme);
+
+            // Map BCP-47 to CC-Connect codes
+            let normalLang = 'zh';
+            const langLower = (lang || '').toLowerCase();
+            if (langLower.startsWith('en')) {
+                normalLang = 'en';
+            } else if (langLower.startsWith('zh-tw') || langLower.startsWith('zh-hk')) {
+                normalLang = 'zh-TW';
+            } else if (langLower.startsWith('ja')) {
+                normalLang = 'ja';
+            } else if (langLower.startsWith('es')) {
+                normalLang = 'es';
+            }
+            parsed.searchParams.set('lang', normalLang);
+
+            let newUrl = parsed.pathname + parsed.search;
+            if (!urlStr.startsWith('/')) {
+                newUrl = parsed.toString();
+            }
+            this.setState({ ccConnectUrl: newUrl });
+        } catch (e) {
+            console.error('[ccconnect] failed to update url params:', e);
+        }
+    };
+
     toggleTheme = (themeMode?: 'light' | 'dark') => {
         const targetTheme = themeMode || (this.state.theme === 'light' ? 'dark' : 'light');
         this.setState({ theme: targetTheme }, () => {
@@ -837,6 +875,7 @@ export class App extends Component<{}, AppState> {
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
             }
+            this.updateCcConnectUrlParams(targetTheme, this.state.language);
         });
         document.documentElement.setAttribute('data-theme', targetTheme);
         localStorage.setItem('remote-agents-theme', targetTheme);
@@ -844,7 +883,14 @@ export class App extends Component<{}, AppState> {
     };
 
     toggleLanguage = (lang: 'zh-CN' | 'en-US') => {
-        this.setState({ language: lang });
+        this.setState({ language: lang }, () => {
+            // Also notify the CC-Connect iframe of the language change
+            const iframe = document.getElementById('cc-connect-iframe') as HTMLIFrameElement | null;
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
+            }
+            this.updateCcConnectUrlParams(this.state.theme, lang);
+        });
         localStorage.setItem('remote-agents-language', lang);
         this.showToast(`默认识别语言已切换为: ${lang === 'zh-CN' ? '中文' : 'English'} ✓`);
     };

@@ -170,6 +170,13 @@ export function RightPanel({
                     <iframe
                         id="cc-connect-iframe"
                         src={getCcConnectIframeUrl(ccConnectUrl)}
+                        onLoad={e => {
+                            const iframe = e.target as HTMLIFrameElement;
+                            if (iframe && iframe.contentWindow) {
+                                iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme }, '*');
+                                iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: language }, '*');
+                            }
+                        }}
                         style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
                     />
                 </div>

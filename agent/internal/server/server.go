@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
 	"github.com/scottzx/remote-agents/agent/internal/config"
@@ -46,14 +48,21 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
 	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
 
-	// ── CC-Connect Integration API ───────────────────────────────────────────
 	mux.HandleFunc("/api/cc-connect/url", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		wsID := r.URL.Query().Get("workspace")
-		theme := r.URL.Query().Get("theme")
+
+		var body struct {
+			Workspace string `json:"workspace"`
+			Theme     string `json:"theme"`
+			Lang      string `json:"lang"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
 
 		wsConfig, err := wsHandler.LoadWorkspacesConfig()
 		if err != nil {
@@ -63,7 +72,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 		var foundWS *workspace.Workspace
 		for i := range wsConfig.Workspaces {
-			if wsConfig.Workspaces[i].ID == wsID {
+			if wsConfig.Workspaces[i].ID == body.Workspace {
 				foundWS = &wsConfig.Workspaces[i]
 				break
 			}
@@ -85,10 +94,24 @@ func NewRouter(cfg *config.Config) http.Handler {
 			redirectPath = "/projects/" + projName
 		}
 
-		url := fmt.Sprintf("/cc-connect/login?token=%s&redirect=%s&theme=%s",
+		// Normalize language codes from BCP-47 to CC-Connect codes
+		normalLang := "zh"
+		langLower := strings.ToLower(body.Lang)
+		if strings.HasPrefix(langLower, "en") {
+			normalLang = "en"
+		} else if strings.HasPrefix(langLower, "zh-tw") || strings.HasPrefix(langLower, "zh-hk") {
+			normalLang = "zh-TW"
+		} else if strings.HasPrefix(langLower, "ja") {
+			normalLang = "ja"
+		} else if strings.HasPrefix(langLower, "es") {
+			normalLang = "es"
+		}
+
+		url := fmt.Sprintf("/cc-connect/login?token=%s&redirect=%s&theme=%s&lang=%s",
 			ccconnect.ManagementToken,
-			redirectPath,
-			theme,
+			url.QueryEscape(redirectPath),
+			body.Theme,
+			normalLang,
 		)
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
