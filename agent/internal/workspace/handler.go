@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/chenhg5/cc-connect/config"
+	"github.com/chenhg5/cc-connect/core"
 )
 
 var configDir string
@@ -135,6 +138,31 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Dynamically register this workspace as a CC-Connect project
+	projName := ws.Name
+	if projName == "" {
+		projName = ws.ID
+	}
+	if config.ConfigPath != "" {
+		err = config.AddPlatformToProject(projName, config.PlatformConfig{
+			Type: "bridge",
+		}, ws.Path, "claudecode")
+		if err != nil {
+			log.Printf("[workspace] ccconnect add project error: %v", err)
+		} else {
+			log.Printf("[workspace] Dynamically registered CC-Connect project %s at path %s", projName, ws.Path)
+			
+			// Trigger cc-connect to hot restart itself and reload the configuration!
+			select {
+			case core.RestartCh <- core.RestartRequest{}:
+				log.Println("[workspace] Successfully requested CC-Connect process hot restart for configuration reload")
+			default:
+				log.Println("[workspace] CC-Connect hot restart already pending")
+			}
+		}
+	}
+
 	writeJSON(w, map[string]interface{}{"ok": true, "workspace": ws})
 }
 
@@ -280,3 +308,66 @@ func writeJSON(w http.ResponseWriter, v any) {
 		log.Printf("[workspace] json encode error: %v", err)
 	}
 }
+
+// ListDirectories handles GET /api/workspace/list-directories
+func (h *Handler) ListDirectories(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	pathParam := r.URL.Query().Get("path")
+	var targetPath string
+
+	if pathParam == "" || pathParam == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "cannot get home directory: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		targetPath = home
+	} else {
+		abs, err := filepath.Abs(pathParam)
+		if err != nil {
+			http.Error(w, "invalid path: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		targetPath = abs
+	}
+
+	entries, err := os.ReadDir(targetPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type DirEntry struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+
+	directories := []DirEntry{}
+	for _, e := range entries {
+		if e.IsDir() {
+			name := e.Name()
+			if name == "." || name == ".." {
+				continue
+			}
+			directories = append(directories, DirEntry{
+				Name: name,
+				Path: filepath.Join(targetPath, name),
+			})
+		}
+	}
+
+	parentPath := filepath.Dir(targetPath)
+	if parentPath == targetPath {
+		parentPath = ""
+	}
+
+	writeJSON(w, map[string]any{
+		"currentPath": targetPath,
+		"parentPath":  parentPath,
+		"directories": directories,
+	})
+}
+

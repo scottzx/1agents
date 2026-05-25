@@ -44,6 +44,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update) // POST
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)           // DELETE ?id=xxx
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
+	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
 
 	// ── CC-Connect Integration API ───────────────────────────────────────────
 	mux.HandleFunc("/api/cc-connect/url", func(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +85,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 			redirectPath = "/projects/" + projName
 		}
 
-		url := fmt.Sprintf("http://localhost:%d/login?token=%s&redirect=%s&theme=%s",
-			ccconnect.ManagementPort,
+		url := fmt.Sprintf("/cc-connect/login?token=%s&redirect=%s&theme=%s",
 			ccconnect.ManagementToken,
 			redirectPath,
 			theme,
@@ -134,6 +134,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 	ttydProxy := gateway.NewTtydProxy(cfg.TtydAddr)
 	mux.Handle("/ws", ttydProxy)      // terminal WebSocket stream
 	mux.Handle("/token", ttydProxy)   // ttyd auth token endpoint
+
+	// ── CC-Connect reverse proxy ─────────────────────────────────────────────
+	// Transparently reverse-proxies requests to the local CC-Connect management server
+	// under the main HTTPS gateway, resolving LAN protocol security and Mixed Content.
+	mux.Handle("/cc-connect/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
+	mux.Handle("/assets/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
+	mux.Handle("/api/v1/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 
 	// ── Static frontend assets ───────────────────────────────────────────────
 	// This catch-all must be registered last so it does not shadow the routes

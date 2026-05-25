@@ -89,6 +89,8 @@ type providerWiringResult struct {
 
 // Start boots the cc-connect supervisor, dynamic port allocator, configuration synchronization,
 // and engine listeners.
+// Start boots the cc-connect supervisor, dynamic port allocator, configuration synchronization,
+// and engine listeners.
 func Start(ctx context.Context) {
 	log.Println("[ccconnect] Starting cc-connect integration runner...")
 
@@ -117,11 +119,30 @@ func Start(ctx context.Context) {
 	configPath := filepath.Join(ccDir, "config.toml")
 	config.ConfigPath = configPath
 
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		ManagementToken = core.GenerateToken(16)
-		BridgeToken = core.GenerateToken(16)
+	enabledTrue := true
 
-		defaultTOML := fmt.Sprintf(`# cc-connect config bootstrapped by remote-agents IDE
+	// Boot cc-connect core engines & servers in a background supervisor loop
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[ccconnect] Recovered from panic in engine startup: %v", r)
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			runCtx, runCancel := context.WithCancel(ctx)
+
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				ManagementToken = core.GenerateToken(16)
+				BridgeToken = core.GenerateToken(16)
+
+				defaultTOML := fmt.Sprintf(`# cc-connect config bootstrapped by remote-agents IDE
 
 language = "zh"
 
@@ -141,126 +162,167 @@ token = "%s"
 insecure = true
 `, ManagementPort, ManagementToken, BridgePort, BridgeToken)
 
-		if err := os.WriteFile(configPath, []byte(defaultTOML), 0o644); err != nil {
-			log.Printf("[ccconnect] Error writing bootstrapped config: %v", err)
-		} else {
-			log.Printf("[ccconnect] Bootstrapped default cc-connect config at %s", configPath)
-		}
-	}
-
-	cfg := &config.Config{}
-	if _, err := toml.DecodeFile(configPath, cfg); err != nil {
-		log.Printf("[ccconnect] Error decoding config TOML (%s): %v", configPath, err)
-	}
-
-	// Always ensure management and bridge are properly configured in memory
-	if cfg.Management.Token == "" {
-		ManagementToken = core.GenerateToken(16)
-		cfg.Management.Token = ManagementToken
-	} else {
-		ManagementToken = cfg.Management.Token
-	}
-	enabledTrue := true
-	cfg.Management.Enabled = &enabledTrue
-	cfg.Management.Port = ManagementPort
-	cfg.Management.CORSOrigins = []string{"*"} // Ensure absolute access from any client/iframe origin
-
-	if cfg.Bridge.Token == "" {
-		BridgeToken = core.GenerateToken(16)
-		cfg.Bridge.Token = BridgeToken
-	} else {
-		BridgeToken = cfg.Bridge.Token
-	}
-	cfg.Bridge.Enabled = &enabledTrue
-	cfg.Bridge.Port = BridgePort
-	cfg.Bridge.Insecure = &enabledTrue // Allow local connections
-
-	// Sync Workspaces configurations as Projects
-	wsHandler := workspace.NewHandler()
-	wsCfg, err := wsHandler.LoadWorkspacesConfig()
-	if err != nil {
-		log.Printf("[ccconnect] Error loading workspaces config: %v", err)
-	} else {
-		existingProjects := make(map[string]*config.ProjectConfig)
-		for i := range cfg.Projects {
-			existingProjects[cfg.Projects[i].Name] = &cfg.Projects[i]
-		}
-
-		var updatedProjects []config.ProjectConfig
-
-		for _, ws := range wsCfg.Workspaces {
-			projName := ws.Name
-			if projName == "" {
-				projName = ws.ID
+				if err := os.WriteFile(configPath, []byte(defaultTOML), 0o644); err != nil {
+					log.Printf("[ccconnect] Error writing bootstrapped config: %v", err)
+				} else {
+					log.Printf("[ccconnect] Bootstrapped default cc-connect config at %s", configPath)
+				}
 			}
 
-			if p, ok := existingProjects[projName]; ok {
-				if p.Agent.Options == nil {
-					p.Agent.Options = make(map[string]any)
-				}
-				p.Agent.Options["work_dir"] = ws.Path
+			cfg := &config.Config{}
+			if _, err := toml.DecodeFile(configPath, cfg); err != nil {
+				log.Printf("[ccconnect] Error decoding config TOML (%s): %v", configPath, err)
+			}
 
-				// Ensure bridge platform exists
-				hasBridge := false
-				for _, plat := range p.Platforms {
-					if plat.Type == "bridge" {
-						hasBridge = true
-						break
+			// Always ensure management and bridge are properly configured in memory
+			if cfg.Management.Token == "" {
+				ManagementToken = core.GenerateToken(16)
+				cfg.Management.Token = ManagementToken
+			} else {
+				ManagementToken = cfg.Management.Token
+			}
+			cfg.Management.Enabled = &enabledTrue
+			cfg.Management.Port = ManagementPort
+			cfg.Management.CORSOrigins = []string{"*"} // Ensure absolute access from any client/iframe origin
+
+			if cfg.Bridge.Token == "" {
+				BridgeToken = core.GenerateToken(16)
+				cfg.Bridge.Token = BridgeToken
+			} else {
+				BridgeToken = cfg.Bridge.Token
+			}
+			cfg.Bridge.Enabled = &enabledTrue
+			cfg.Bridge.Port = BridgePort
+			cfg.Bridge.Insecure = &enabledTrue // Allow local connections
+
+			// Sync Workspaces configurations as Projects
+			wsHandler := workspace.NewHandler()
+			wsCfg, err := wsHandler.LoadWorkspacesConfig()
+			if err != nil {
+				log.Printf("[ccconnect] Error loading workspaces config: %v", err)
+			} else {
+				// 1. Two-way sync: CC-Connect projects -> Workspaces
+				wsMap := make(map[string]bool)
+				for _, ws := range wsCfg.Workspaces {
+					wsMap[ws.Path] = true
+					wsMap[ws.ID] = true
+				}
+
+				wsModified := false
+				for _, proj := range cfg.Projects {
+					workDir, _ := proj.Agent.Options["work_dir"].(string)
+					if workDir == "" {
+						continue
+					}
+
+					projID := sanitizeID(proj.Name)
+					if !wsMap[workDir] && !wsMap[projID] {
+						newWS := workspace.Workspace{
+							ID:     projID,
+							Name:   proj.Name,
+							Path:   workDir,
+							Status: "active",
+						}
+						wsCfg.Workspaces = append(wsCfg.Workspaces, newWS)
+						wsMap[workDir] = true
+						wsMap[projID] = true
+						wsModified = true
+						log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", proj.Name, workDir)
 					}
 				}
-				if !hasBridge {
-					p.Platforms = append(p.Platforms, config.PlatformConfig{
-						Type: "bridge",
-					})
+
+				if wsModified {
+					if err := wsHandler.SaveWorkspacesConfig(wsCfg); err != nil {
+						log.Printf("[ccconnect] Error saving imported workspaces: %v", err)
+					}
 				}
-				updatedProjects = append(updatedProjects, *p)
-			} else {
-				newProj := config.ProjectConfig{
-					Name: projName,
-					Agent: config.AgentConfig{
-						Type: "claudecode",
-						Options: map[string]any{
-							"work_dir": ws.Path,
-							"mode":     "default",
-						},
-					},
-					Platforms: []config.PlatformConfig{
-						{
-							Type: "bridge",
-						},
-					},
+
+				// 2. Sync Workspaces to CC-Connect projects
+				existingProjects := make(map[string]*config.ProjectConfig)
+				for i := range cfg.Projects {
+					existingProjects[cfg.Projects[i].Name] = &cfg.Projects[i]
 				}
-				updatedProjects = append(updatedProjects, newProj)
+
+				var updatedProjects []config.ProjectConfig
+
+				for _, ws := range wsCfg.Workspaces {
+					projName := ws.Name
+					if projName == "" {
+						projName = ws.ID
+					}
+
+					if p, ok := existingProjects[projName]; ok {
+						if p.Agent.Options == nil {
+							p.Agent.Options = make(map[string]any)
+						}
+						p.Agent.Options["work_dir"] = ws.Path
+
+						// Ensure bridge platform exists
+						hasBridge := false
+						for _, plat := range p.Platforms {
+							if plat.Type == "bridge" {
+								hasBridge = true
+								break
+							}
+						}
+						if !hasBridge {
+							p.Platforms = append(p.Platforms, config.PlatformConfig{
+								Type: "bridge",
+							})
+						}
+						updatedProjects = append(updatedProjects, *p)
+					} else {
+						newProj := config.ProjectConfig{
+							Name: projName,
+							Agent: config.AgentConfig{
+								Type: "claudecode",
+								Options: map[string]any{
+									"work_dir": ws.Path,
+									"mode":     "default",
+								},
+							},
+							Platforms: []config.PlatformConfig{
+								{
+									Type: "bridge",
+								},
+							},
+						}
+						updatedProjects = append(updatedProjects, newProj)
+					}
+				}
+
+				cfg.Projects = updatedProjects
 			}
+
+			// Write the merged configuration back to disk
+			if err := saveConfig(cfg, configPath); err != nil {
+				log.Printf("[ccconnect] Error saving config back to disk: %v", err)
+			}
+
+			// Now load and validate the fully populated configuration officially
+			finalCfg, err := config.Load(configPath)
+			if err != nil {
+				log.Printf("[ccconnect] Error loading final validated config: %v", err)
+				runCancel()
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			log.Printf("[ccconnect] Active Management Port: %d", ManagementPort)
+			log.Printf("[ccconnect] Active Bridge Port: %d", BridgePort)
+
+			// Run the engines and servers synchronously in this background loop,
+			// blocking until reload/restart is requested or context is cancelled.
+			shouldRestart := runEngine(runCtx, finalCfg, configPath)
+			runCancel()
+
+			if !shouldRestart {
+				return // Context was cancelled or clean exit, do not restart
+			}
+
+			log.Println("[ccconnect] CC-Connect engines restarting/reloading in-process...")
+			time.Sleep(300 * time.Millisecond) // Short delay to let sockets clean up
 		}
-
-		cfg.Projects = updatedProjects
-	}
-
-	// Write the merged configuration back to disk
-	if err := saveConfig(cfg, configPath); err != nil {
-		log.Printf("[ccconnect] Error saving config back to disk: %v", err)
-	}
-
-	// Now load and validate the fully populated configuration officially
-	finalCfg, err := config.Load(configPath)
-	if err != nil {
-		log.Printf("[ccconnect] Error loading final validated config: %v", err)
-		return
-	}
-
-	log.Printf("[ccconnect] Active Management Port: %d", ManagementPort)
-	log.Printf("[ccconnect] Active Bridge Port: %d", BridgePort)
-
-	// Boot cc-connect core engines & servers
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[ccconnect] Recovered from panic in engine startup: %v", r)
-			}
-		}()
-
-		runEngine(ctx, finalCfg, configPath)
 	}()
 }
 
@@ -284,10 +346,11 @@ func saveConfig(cfg *config.Config, path string) error {
 	return toml.NewEncoder(file).Encode(cfg)
 }
 
-func runEngine(ctx context.Context, cfg *config.Config, configPath string) {
+func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool {
 	if len(cfg.Projects) == 0 {
 		log.Println("[ccconnect] No projects configured in cc-connect, skipping engine boot.")
-		return
+		<-ctx.Done()
+		return false
 	}
 
 	// Setup log levels
@@ -419,7 +482,6 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) {
 	}
 	if len(startErrors) > 0 && len(startErrors) == len(engines) {
 		slog.Error("all engines failed to start")
-		return
 	}
 
 	if cronSched != nil {
@@ -660,17 +722,9 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) {
 		if err := core.SaveRestartNotify(cfg.DataDir, *restartReq); err != nil {
 			slog.Error("restart: save notify failed", "error", err)
 		}
-		execPath, err := os.Executable()
-		if err != nil {
-			slog.Error("restart: cannot determine executable path", "error", err)
-			os.Exit(1)
-		}
-		slog.Info("restarting...", "path", execPath, "args", os.Args)
-		if err := restartProcess(execPath); err != nil {
-			slog.Error("restart: failed", "error", err)
-			os.Exit(1)
-		}
+		return true
 	}
+	return false
 }
 
 // ── In-Process Helper Functions (Copied/Adapted from main.go) ────────────────
@@ -1198,4 +1252,17 @@ func listCCSwitchProvidersForWeb() ([]core.CCSwitchProviderInfo, error) {
 	}
 	return result, nil
 }
+
+func sanitizeID(name string) string {
+	id := strings.ToLower(name)
+	id = strings.ReplaceAll(id, " ", "-")
+	var sb strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
 

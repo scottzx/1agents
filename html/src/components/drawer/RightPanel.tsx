@@ -126,6 +126,9 @@ export function RightPanel({
 
     const getCcConnectIframeUrl = (url?: string) => {
         if (!url) return '';
+        if (url.startsWith('/')) {
+            return url;
+        }
         try {
             const parsed = new URL(url);
             if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
