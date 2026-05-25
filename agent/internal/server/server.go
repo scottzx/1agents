@@ -34,6 +34,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	fsHandler := fs.NewHandler(cfg.WorkDir)
 	mux.HandleFunc("/api/fs/list", fsHandler.List)     // GET  ?path=.
 	mux.HandleFunc("/api/fs/read", fsHandler.Read)     // GET  ?path=./main.go
+	mux.HandleFunc("/api/fs/view", fsHandler.View)     // GET  ?path=./page.html (serves with correct content-type)
 	mux.HandleFunc("/api/fs/image", fsHandler.Image)   // GET  ?path=./image.png (returns base64 data URL)
 	mux.HandleFunc("/api/fs/write", fsHandler.Write)   // POST ?path=./main.go
 	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)   // POST ?path=./newdir

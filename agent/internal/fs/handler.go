@@ -160,6 +160,35 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+// View handles GET /api/fs/view?path=<relative-path>
+// Serves the file with the appropriate content-type for direct browser rendering (e.g. HTML preview).
+func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rel := r.URL.Query().Get("path")
+	abs, ok := h.safeAbs(rel)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	http.ServeFile(w, r, abs)
+}
+
+
 // Image handles GET /api/fs/image?path=<relative-path>
 // Returns the file as a base64-encoded data URL for image preview.
 // Supported formats: gif, png, jpg, jpeg, webp, bmp, svg

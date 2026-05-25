@@ -55,6 +55,8 @@ export function FileDetailView({
     const tag = getFileTag(selectedFsEntry.name);
     const isImg = tag === 'img';
     const isMd = selectedFsEntry.name.endsWith('.md');
+    const isHtml = selectedFsEntry.name.endsWith('.html') || selectedFsEntry.name.endsWith('.htm');
+    const isPdf = selectedFsEntry.name.toLowerCase().endsWith('.pdf');
 
     return (
         <div class={`fb-detail-view ${detailFullscreen ? 'fullscreen' : ''}`}>
@@ -91,6 +93,48 @@ export function FileDetailView({
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                         </svg>
                     </button>
+                    {(isHtml || isPdf) && (
+                        <a
+                            class="fb-icon-btn"
+                            href={`/api/fs/view?path=${encodeURIComponent(selectedFsEntry.path)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="在新窗口打开预览"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" x2="21" y1="14" y2="3" />
+                            </svg>
+                        </a>
+                    )}
+                    {!isImg && !isPdf && !isEditingDetail && (
+                        <button
+                            class="fb-icon-btn"
+                            onClick={() => onToggleEditing(true)}
+                            title={isHtml ? '查看源码/编辑' : '编辑代码'}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                        </button>
+                    )}
                     <button class="fb-icon-btn" onClick={onCopyContent} title="复制内容">
                         <svg
                             viewBox="0 0 24 24"
@@ -201,6 +245,20 @@ export function FileDetailView({
                         value={editedContent}
                         onInput={e => onEditedContentChange((e.target as HTMLTextAreaElement).value)}
                     />
+                ) : isHtml ? (
+                    <div class="fb-html-preview-container">
+                        <iframe
+                            src={`/api/fs/view?path=${encodeURIComponent(selectedFsEntry.path)}`}
+                            class="fb-html-iframe"
+                        />
+                    </div>
+                ) : isPdf ? (
+                    <div class="fb-pdf-preview-container">
+                        <iframe
+                            src={`/api/fs/view?path=${encodeURIComponent(selectedFsEntry.path)}`}
+                            class="fb-pdf-iframe"
+                        />
+                    </div>
                 ) : isMd ? (
                     <div
                         class="fb-md-render"
