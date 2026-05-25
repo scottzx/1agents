@@ -12,7 +12,7 @@
 | :--- | :--- | :--- | :---: | :--- |
 | **Mac 电脑端** | **Safari** | `http://localhost:8086`<br>`https://localhost:8086` | **直接可用 (推荐) ✅** | 苹果 Safari 完美调用系统原生离线语音引擎，无网络限制。 |
 | **Mac 电脑端** | **Chrome** | `http://localhost:8086`<br>`https://localhost:8086` | **常报 `network` 错误 ❌** | Chrome 强依赖 Google 云端识别服务，国内直连被墙或因代理拦截导致报错。 |
-| **Mac 电脑端** | **Edge** | `http://localhost:8086`<br>`https://localhost:8086` | **视网络连通性而定 ⚠️** | 依赖微软云端识别服务，若网络连接较慢则易超时。 |
+| **Mac 电脑端** | **Edge** | `http://localhost:8086`<br>`https://localhost:8086` | **常报 `network` 错误 ❌** | 依赖云端识别服务，受国内网络环境或代理拦截影响同样会报错。 |
 | **移动端 (手机)** | **Safari** | `https://[域名或IP]` | **可用 ✅** | 强制要求 **HTTPS**（安全上下文），使用 HTTP 时麦克风权限会被浏览器禁用。 |
 | **移动端 (手机)** | **Edge** | `https://[域名或IP]` | **可用 ✅** | 同样强制要求 **HTTPS**。若用 HTTP 访问，界面无法调用麦克风。 |
 
