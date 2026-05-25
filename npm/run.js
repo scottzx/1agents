@@ -7,7 +7,7 @@ const path = require("path");
 const fs = require("fs");
 
 const PACKAGE = require("./package.json");
-const NAME = "remote-agent";
+const NAME = "remote-agents";
 const packageDir = __dirname;
 const binDir = path.join(packageDir, "bin");
 const ext = process.platform === "win32" ? ".exe" : "";

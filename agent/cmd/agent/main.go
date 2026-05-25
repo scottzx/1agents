@@ -4,12 +4,15 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/scottzx/remote-agents/agent/internal/cert"
 	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
 	"github.com/scottzx/remote-agents/agent/internal/config"
 	"github.com/scottzx/remote-agents/agent/internal/server"
@@ -40,6 +43,8 @@ func main() {
 	flag.IntVar(&cfg.MaxRestarts, "max-restarts", cfg.MaxRestarts,
 		"Maximum number of consecutive ttyd restarts before giving up")
 	var sslCert, sslKey string
+	var enableSSL bool
+	flag.BoolVar(&enableSSL, "ssl", false, "Enable HTTPS/SSL with auto-generated certificates if none exist")
 	flag.StringVar(&sslCert, "ssl-cert", "", "Path to the SSL certificate for HTTPS")
 	flag.StringVar(&sslKey, "ssl-key", "", "Path to the SSL private key for HTTPS")
 
@@ -83,6 +88,56 @@ func main() {
 		log.Printf("[main] Dev mode (no-ttyd) : %v", noTtyd)
 		
 		var err error
+		if enableSSL {
+			var tsDomain string
+			var tsIPs []net.IP
+
+			// Try to query Tailscale details
+			if domain, ips, err := cert.GetTailscaleInfo(); err == nil {
+				tsDomain = domain
+				tsIPs = ips
+				log.Printf("[main] Tailscale network detected: domain=%s, ips=%v", tsDomain, tsIPs)
+			} else {
+				log.Printf("[main] Tailscale network not detected or tailscale CLI not available (%v)", err)
+			}
+
+			// Try to auto-discover official Tailscale certs first
+			if sslCert == "" && sslKey == "" {
+				if c, k, found := cert.DiscoverTailscaleCerts(tsDomain); found {
+					sslCert = c
+					sslKey = k
+					log.Printf("[main] Discovered official Tailscale certificate files. Using: %s", sslCert)
+				}
+			}
+
+			// Fallback to default user home directory paths for self-signed certs
+			if sslCert == "" || sslKey == "" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					log.Printf("[main] WARNING: could not resolve user home directory (%v). Using current directory.", err)
+					home = "."
+				}
+				defaultCertDir := filepath.Join(home, ".remote-agents", "certs")
+				if sslCert == "" {
+					sslCert = filepath.Join(defaultCertDir, "cert.pem")
+				}
+				if sslKey == "" {
+					sslKey = filepath.Join(defaultCertDir, "key.pem")
+				}
+			}
+
+			// Generate if not present
+			if _, err := os.Stat(sslCert); os.IsNotExist(err) {
+				log.Printf("[main] SSL certificate files not found. Generating secure self-signed cert on-the-fly...")
+				if err := cert.GenerateSelfSignedCert(sslCert, sslKey, tsDomain, tsIPs); err != nil {
+					log.Fatalf("[main] FATAL: failed to auto-generate certificate: %v", err)
+				}
+				log.Printf("[main] Successfully generated TLS certificate at %s", sslCert)
+			} else {
+				log.Printf("[main] Using active SSL certificate: %s", sslCert)
+			}
+		}
+
 		if sslCert != "" && sslKey != "" {
 			log.Printf("[main] HTTPS / SSL enabled (using cert: %s)", sslCert)
 			err = httpServer.ListenAndServeTLS(sslCert, sslKey)

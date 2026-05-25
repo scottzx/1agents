@@ -19,7 +19,7 @@
   "license": "MIT",
   "author": "scottzx",
   "bin": {
-    "remote-agent": "run.js"
+    "remote-agents": "run.js"
   },
   "scripts": {
     "postinstall": "node install.js"

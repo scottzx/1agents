@@ -29,7 +29,7 @@ yarn fix            # gts auto-fix
 ```bash
 cd agent
 go build ./...       # Build main server
-./remote-agent       # Run the agent server
+./remote-agents      # Run the agent server
 ```
 
 ### cc-connect (used by agent/)
@@ -58,7 +58,7 @@ remote-agents/
 ├── agent/           # Go agent server (main entry point)
 │   ├── cmd/         # CLI entry points
 │   ├── internal/    # Core logic: server, terminal, gateway, ccconnect
-│   └── remote-agent # Compiled binary
+│   └── remote-agents # Compiled binary
 ├── cc-connect/      # Go bridge between AI agents and messaging platforms
 │   ├── agent/       # Claude Code, Codex, Cursor, Gemini, etc.
 │   ├── platform/    # Feishu, Telegram, Discord, Slack, etc.

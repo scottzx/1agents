@@ -16,7 +16,7 @@ if (versionParts.length < 2) {
   throw new Error(`[remote-agent] Invalid package version: ${PACKAGE.version}`);
 }
 const VERSION = `v${versionParts[0]}-${versionParts[1]}`;
-const NAME = "remote-agent";
+const NAME = "remote-agents";
 
 const GITHUB_REPO = "scottzx/remote-agents";
 
