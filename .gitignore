@@ -66,4 +66,4 @@ node_modules
 .DS_Store
 npm/npm_recover_code.md
 certs/
-agent/internal/tunnel/qr.go
+
