@@ -156,6 +156,8 @@ let _resizerStartX = 0;
 let _resizerStartWidth = 0;
 
 export class App extends Component<{}, AppState> {
+    private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
+
     constructor() {
         super();
         let favs: string[] = [];
@@ -251,6 +253,11 @@ export class App extends Component<{}, AppState> {
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
         }
+
+        // Tunnel idle heartbeat — polls /api/tunnel/status every 5 min to prevent auto-stop
+        this._tunnelHeartbeat = setInterval(() => {
+            fetch('/api/tunnel/status').catch(() => { /* best-effort */ });
+        }, 5 * 60 * 1000);
     }
 
     componentWillUnmount() {
@@ -259,6 +266,10 @@ export class App extends Component<{}, AppState> {
         document.removeEventListener('mouseup', this.handleResizerUp);
         if (window.visualViewport) {
             window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
+        }
+        if (this._tunnelHeartbeat) {
+            clearInterval(this._tunnelHeartbeat);
+            this._tunnelHeartbeat = null;
         }
     }
 

@@ -185,7 +185,6 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 		// Extract local port from ListenAddr
 		port := tunnel.PortFrom(cfg.ListenAddr)
-		
 		// Start the tunnel (blocks up to 15s until dynamic URL is captured)
 		publicURL, token, err := tunnel.DefaultSupervisor.Start(port)
 		if err != nil {
@@ -234,8 +233,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 			return
 		}
 
+		// Refresh idle timer — status polling acts as heartbeat
+		tunnel.DefaultSupervisor.RecordAccess()
+
 		isActive, publicURL, token := tunnel.DefaultSupervisor.GetStatus()
-		
+
 		var link string
 		if isActive {
 			link = fmt.Sprintf("%s/?token=%s", publicURL, token)
@@ -323,8 +325,10 @@ func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 			return
 		}
 
-		// 4. Authorized, proceed to the requested route
+		// 4. Refresh idle timer — only authenticated requests count as active
+		tunnel.DefaultSupervisor.RecordAccess()
+
+		// 5. Authorized, proceed to the requested route
 		next.ServeHTTP(w, r)
 	})
 }
-

@@ -50,8 +50,15 @@ func main() {
 	flag.StringVar(&sslCert, "ssl-cert", "", "Path to the SSL certificate for HTTPS")
 	flag.StringVar(&sslKey, "ssl-key", "", "Path to the SSL private key for HTTPS")
 	flag.BoolVar(&cfg.EnableTunnel, "tunnel", false, "Enable on-demand public Web Tunnel via Cloudflare on startup")
+	var tunnelIdleTimeout int
+	flag.IntVar(&tunnelIdleTimeout, "tunnel-idle-timeout", 15, "Auto-stop tunnel after N minutes of inactivity (0 to disable)")
 
 	flag.Parse()
+
+	// Configure tunnel idle timeout (applies to both --tunnel and API-started tunnels)
+	if tunnelIdleTimeout > 0 {
+		tunnel.DefaultSupervisor.SetIdleTimeout(time.Duration(tunnelIdleTimeout) * time.Minute)
+	}
 
 	// Remaining positional arguments are passed verbatim to ttyd.
 	if flag.NArg() > 0 {

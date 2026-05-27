@@ -20,6 +20,10 @@ type TunnelSupervisor struct {
 	isActive    bool
 	publicURL   string
 	activeToken string
+
+	idleTimeout time.Duration
+	lastAccess  time.Time
+	stopMonitor chan struct{}
 }
 
 // Global instance to allow access from HTTP server handlers.
@@ -30,6 +34,22 @@ func GenerateRandomToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// SetIdleTimeout configures the inactivity timeout before the tunnel auto-stops.
+func (s *TunnelSupervisor) SetIdleTimeout(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.idleTimeout = d
+}
+
+// RecordAccess updates the last-access timestamp to prevent idle timeout.
+func (s *TunnelSupervisor) RecordAccess() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.isActive {
+		s.lastAccess = time.Now()
+	}
 }
 
 // Start launches the cloudflared quick tunnel subprocess.
@@ -56,7 +76,7 @@ func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {
 	args := []string{"tunnel", "--url", localURL}
 
 	cmd := exec.Command(binaryPath, args...)
-	
+
 	// Cloudflared streams connection status and URL into stderr
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
@@ -108,8 +128,15 @@ func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {
 		s.isActive = true
 		s.publicURL = url
 		s.activeToken = token
+		s.lastAccess = time.Now()
 		log.Printf("[tunnel] Cloudflare tunnel established successfully: %s", url)
 		log.Printf("[tunnel] Active dynamic session token: %s", token)
+
+		// Start idle monitor if timeout is configured
+		if s.idleTimeout > 0 {
+			s.stopMonitor = make(chan struct{})
+			go s.idleMonitor(s.stopMonitor)
+		}
 		return url, token, nil
 
 	case err := <-errChan:
@@ -126,21 +153,30 @@ func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {
 // Stop terminates the running cloudflared process gracefully.
 func (s *TunnelSupervisor) Stop() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if !s.isActive {
+		s.mu.Unlock()
 		return nil
 	}
 
+	// Signal idle monitor to exit
+	if s.stopMonitor != nil {
+		close(s.stopMonitor)
+		s.stopMonitor = nil
+	}
+
+	s.mu.Unlock()
+
 	log.Println("[tunnel] Shutting down Cloudflare tunnel subprocess...")
 
+	// Kill subprocess (no lock held during wait to avoid deadlock)
 	var err error
 	if s.cmd != nil && s.cmd.Process != nil {
 		// Send SIGINT for clean disconnection on the edge, fallback to SIGKILL if it hangs
 		if runtimeOS := s.cmd.Process.Signal(syscall.SIGINT); runtimeOS != nil {
 			_ = s.cmd.Process.Kill()
 		}
-		
+
 		// Wait in a separate goroutine to release system process resource
 		done := make(chan error, 1)
 		go func() {
@@ -156,10 +192,13 @@ func (s *TunnelSupervisor) Stop() error {
 		}
 	}
 
+	s.mu.Lock()
 	s.cmd = nil
 	s.isActive = false
 	s.publicURL = ""
 	s.activeToken = ""
+	s.mu.Unlock()
+
 	log.Println("[tunnel] Public tunnel closed and session token revoked.")
 	return err
 }
@@ -171,6 +210,34 @@ func (s *TunnelSupervisor) GetStatus() (bool, string, string) {
 	return s.isActive, s.publicURL, s.activeToken
 }
 
+// idleMonitor periodically checks if the tunnel has been idle too long and auto-stops it.
+func (s *TunnelSupervisor) idleMonitor(stop chan struct{}) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			s.mu.Lock()
+			if !s.isActive {
+				s.mu.Unlock()
+				return
+			}
+			idle := time.Since(s.lastAccess)
+			timeout := s.idleTimeout
+			s.mu.Unlock()
+
+			if idle > timeout {
+				log.Printf("[tunnel] Idle timeout reached (%.0f min). Auto-stopping tunnel.", idle.Minutes())
+				_ = s.Stop()
+				return
+			}
+		}
+	}
+}
+
 // PortFrom extracts the port string from an "addr:port" string.
 func PortFrom(addr string) string {
 	for i := len(addr) - 1; i >= 0; i-- {
@@ -180,4 +247,3 @@ func PortFrom(addr string) string {
 	}
 	return addr
 }
-
