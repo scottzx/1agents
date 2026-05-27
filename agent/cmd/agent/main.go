@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"fmt"
@@ -63,10 +64,14 @@ func main() {
 	// ── tunnel subcommand (CLI client mode: talks to a running daemon) ─────────
 	if flag.NArg() > 0 && flag.Arg(0) == "tunnel" {
 		cmd := ""
+		port := ""
 		if flag.NArg() >= 2 {
 			cmd = flag.Arg(1)
 		}
-		handleTunnelCommand(cmd, cfg.ListenAddr)
+		if flag.NArg() >= 3 {
+			port = flag.Arg(2)
+		}
+		handleTunnelCommand(cmd, port)
 		return
 	}
 
@@ -104,6 +109,7 @@ func main() {
 
 	go func() {
 		log.Printf("[main] Remote Agent listening on %s", cfg.ListenAddr)
+		writeDaemonFile(cfg.ListenAddr)
 		log.Printf("[main] Working directory  : %s", cfg.WorkDir)
 		log.Printf("[main] Dev mode (no-ttyd) : %v", noTtyd)
 		
@@ -199,7 +205,7 @@ func main() {
 	log.Printf("[main] Received signal %s, shutting down gracefully...", sig)
 
 	// Stop public tunnel if active
-	_ = tunnel.DefaultSupervisor.Stop()
+	_ = tunnel.DefaultSupervisor.StopAll()
 
 	cancel()
 
@@ -212,4 +218,25 @@ func main() {
 
 	<-sup.Done()
 	log.Println("[main] Shutdown complete. Goodbye.")
+}
+
+// writeDaemonFile writes the daemon's listen address to a well-known location
+// so CLI subcommands (tunnel, etc.) can discover the port without flags.
+func writeDaemonFile(listenAddr string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	daemonDir := filepath.Join(home, ".remote-agents")
+	os.MkdirAll(daemonDir, 0700)
+
+	info := struct {
+		ListenAddr string `json:"listen_addr"`
+		PID        int    `json:"pid"`
+	}{
+		ListenAddr: listenAddr,
+		PID:        os.Getpid(),
+	}
+	data, _ := json.MarshalIndent(info, "", "  ")
+	os.WriteFile(filepath.Join(daemonDir, "daemon.json"), data, 0644)
 }

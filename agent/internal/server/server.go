@@ -172,24 +172,31 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.Handle("/assets/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 	mux.Handle("/api/v1/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 
-	// ── Tunnel API (on-demand dynamic tunnel control) ────────────────────────
+	// ── Tunnel API (on-demand multi-port tunnel control) ─────────────────────
+	tunnelAuth := func(r *http.Request) bool {
+		authHeader := r.Header.Get("Authorization")
+		expectedAuth := "Bearer " + ccconnect.ManagementToken
+		return authHeader == expectedAuth || r.URL.Query().Get("token") == ccconnect.ManagementToken
+	}
+
+	resolvePort := func(r *http.Request) string {
+		if p := r.URL.Query().Get("port"); p != "" {
+			return p
+		}
+		return tunnel.PortFrom(cfg.ListenAddr)
+	}
+
 	mux.HandleFunc("/api/tunnel/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
-		// Verify ManagementToken for security (from CC-Connector / AI Agent)
-		authHeader := r.Header.Get("Authorization")
-		expectedAuth := "Bearer " + ccconnect.ManagementToken
-		if authHeader != expectedAuth && r.URL.Query().Get("token") != ccconnect.ManagementToken {
+		if !tunnelAuth(r) {
 			http.Error(w, "unauthorized control command", http.StatusUnauthorized)
 			return
 		}
 
-		// Extract local port from ListenAddr
-		port := tunnel.PortFrom(cfg.ListenAddr)
-		// Start the tunnel (blocks up to 15s until dynamic URL is captured)
+		port := resolvePort(r)
 		publicURL, token, err := tunnel.DefaultSupervisor.Start(port)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -200,6 +207,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]string{
+			"port":  port,
 			"url":   publicURL,
 			"token": token,
 			"link":  fmt.Sprintf("%s/?token=%s", publicURL, token),
@@ -211,16 +219,18 @@ func NewRouter(cfg *config.Config) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
-		// Verify ManagementToken for security
-		authHeader := r.Header.Get("Authorization")
-		expectedAuth := "Bearer " + ccconnect.ManagementToken
-		if authHeader != expectedAuth && r.URL.Query().Get("token") != ccconnect.ManagementToken {
+		if !tunnelAuth(r) {
 			http.Error(w, "unauthorized control command", http.StatusUnauthorized)
 			return
 		}
 
-		if err := tunnel.DefaultSupervisor.Stop(); err != nil {
+		port := r.URL.Query().Get("port")
+		if port == "" {
+			http.Error(w, "port parameter is required to stop a specific tunnel", http.StatusBadRequest)
+			return
+		}
+
+		if err := tunnel.DefaultSupervisor.Stop(port); err != nil {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -228,7 +238,26 @@ func NewRouter(cfg *config.Config) http.Handler {
 		}
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "port": port})
+	})
+
+	mux.HandleFunc("/api/tunnel/stop-all", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !tunnelAuth(r) {
+			http.Error(w, "unauthorized control command", http.StatusUnauthorized)
+			return
+		}
+
+		stopped := tunnel.DefaultSupervisor.StopAll()
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "all_stopped",
+			"stopped_ports": stopped,
+		})
 	})
 
 	mux.HandleFunc("/api/tunnel/status", func(w http.ResponseWriter, r *http.Request) {
@@ -237,22 +266,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			return
 		}
 
-		// Refresh idle timer — status polling acts as heartbeat
 		tunnel.DefaultSupervisor.RecordAccess()
-
-		isActive, publicURL, token := tunnel.DefaultSupervisor.GetStatus()
-
-		var link string
-		if isActive {
-			link = fmt.Sprintf("%s/?token=%s", publicURL, token)
-		}
+		tunnels := tunnel.DefaultSupervisor.ListAll()
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"active": isActive,
-			"url":    publicURL,
-			"token":  token,
-			"link":   link,
+			"active":  len(tunnels) > 0,
+			"tunnels": tunnels,
 		})
 	})
 
@@ -279,25 +299,33 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 // authMiddleware enforces authentication in two layers:
 //
-//  1. Tunnel auth — when the Cloudflare tunnel is active, the ephemeral session
-//     token is required (existing behaviour, unchanged).
+//  1. Tunnel auth — when any Cloudflare tunnel is active, the ephemeral session
+//     token is required.
 //  2. Access token auth — when the user has generated a persistent access token
 //     file, all non-localhost requests must present it. Localhost always bypasses.
 func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ── Layer 1: Tunnel session auth (unchanged) ──────────────────────────
-		isActive, _, activeToken := tunnel.DefaultSupervisor.GetStatus()
-		if isActive && activeToken != "" {
+		// ── Layer 1: Tunnel session auth ────────────────────────────────────
+		if tunnel.DefaultSupervisor.HasAnyActive() {
 			// Bypass tunnel auth for tunnel control APIs
 			if !strings.HasPrefix(r.URL.Path, "/api/tunnel/") {
 				authenticated := false
+				var matchedToken string
+
+				checkToken := func(tok string) bool {
+					if tok != "" && tunnel.DefaultSupervisor.ValidateToken(tok) {
+						matchedToken = tok
+						return true
+					}
+					return false
+				}
 
 				if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
-					if tokenParam == activeToken {
+					if checkToken(tokenParam) {
 						authenticated = true
 						http.SetCookie(w, &http.Cookie{
 							Name:     "ra_session_token",
-							Value:    activeToken,
+							Value:    matchedToken,
 							Path:     "/",
 							HttpOnly: true,
 							Secure:   true,
@@ -309,7 +337,7 @@ func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 				if !authenticated {
 					authHeader := r.Header.Get("Authorization")
 					if strings.HasPrefix(authHeader, "Bearer ") {
-						if strings.TrimPrefix(authHeader, "Bearer ") == activeToken {
+						if checkToken(strings.TrimPrefix(authHeader, "Bearer ")) {
 							authenticated = true
 						}
 					}
@@ -317,7 +345,7 @@ func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 
 				if !authenticated {
 					if cookie, err := r.Cookie("ra_session_token"); err == nil {
-						if cookie.Value == activeToken {
+						if checkToken(cookie.Value) {
 							authenticated = true
 						}
 					}
@@ -329,12 +357,10 @@ func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 					_, _ = w.Write([]byte(`{"error": "Unauthorized: Ephemeral session token required. Please scan the authorized QR code or click the secure link."}`))
 					return
 				}
-
-				tunnel.DefaultSupervisor.RecordAccess()
 			}
 		}
 
-		// ── Layer 2: Access token auth (new) ─────────────────────────────────
+		// ── Layer 2: Access token auth ─────────────────────────────────────
 		if !auth.TokenExists() {
 			next.ServeHTTP(w, r)
 			return
