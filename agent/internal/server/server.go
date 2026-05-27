@@ -15,6 +15,7 @@ import (
 	"github.com/scottzx/remote-agents/agent/internal/fs"
 	"github.com/scottzx/remote-agents/agent/internal/gateway"
 	"github.com/scottzx/remote-agents/agent/internal/git"
+	"github.com/scottzx/remote-agents/agent/internal/system"
 	"github.com/scottzx/remote-agents/agent/internal/terminal"
 	"github.com/scottzx/remote-agents/agent/internal/tunnel"
 	"github.com/scottzx/remote-agents/agent/internal/workspace"
@@ -27,6 +28,7 @@ import (
 //	/api/fs/*         → File system CRUD handlers (Go, local I/O)
 //	/api/workspace/*  → Workspace CRUD handlers (Go, JSON file storage)
 //	/api/terminal/*   → Tmux terminal session management (create/list/kill/switch)
+//	/api/system/*     → System management: version info, OTA self-update
 //	/ws               → Reverse-proxy to ttyd WebSocket endpoint
 //	/token            → Reverse-proxy to ttyd auth-token endpoint
 //	/                 → Static file server (compiled frontend assets)
@@ -253,6 +255,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 			"link":   link,
 		})
 	})
+
+	// ── System management API (version check + OTA update) ──────────────────
+	sysHandler := system.NewHandler()
+	mux.HandleFunc("/api/system/version", sysHandler.Version)             // GET  — current & latest version, has_update flag
+	mux.HandleFunc("/api/system/update", sysHandler.Update)               // POST — trigger OTA update (non-blocking, returns 202)
+	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)  // GET  — real-time update progress log
 
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
