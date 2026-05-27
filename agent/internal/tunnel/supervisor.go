@@ -57,15 +57,6 @@ func (s *TunnelSupervisor) SetIdleTimeout(d time.Duration) {
 	s.idleTimeout = d
 }
 
-// RecordAccess updates the last-access timestamp for all active tunnels.
-func (s *TunnelSupervisor) RecordAccess() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, inst := range s.tunnels {
-		inst.lastAccess = time.Now()
-	}
-}
-
 // Start launches a cloudflared quick tunnel for the given local port.
 // Returns the existing tunnel info if one is already active for that port.
 func (s *TunnelSupervisor) Start(localPort string) (string, string, error) {

@@ -266,7 +266,6 @@ func NewRouter(cfg *config.Config) http.Handler {
 			return
 		}
 
-		tunnel.DefaultSupervisor.RecordAccess()
 		tunnels := tunnel.DefaultSupervisor.ListAll()
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
