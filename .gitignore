@@ -67,3 +67,5 @@ node_modules
 npm/npm_recover_code.md
 certs/
 
+npm/dist/
+npm/bin/
