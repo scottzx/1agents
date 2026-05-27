@@ -60,6 +60,16 @@ func main() {
 		tunnel.DefaultSupervisor.SetIdleTimeout(time.Duration(tunnelIdleTimeout) * time.Minute)
 	}
 
+	// ── tunnel subcommand (CLI client mode: talks to a running daemon) ─────────
+	if flag.NArg() > 0 && flag.Arg(0) == "tunnel" {
+		cmd := ""
+		if flag.NArg() >= 2 {
+			cmd = flag.Arg(1)
+		}
+		handleTunnelCommand(cmd, cfg.ListenAddr)
+		return
+	}
+
 	// Remaining positional arguments are passed verbatim to ttyd.
 	if flag.NArg() > 0 {
 		cfg.TtydArgs = flag.Args()
