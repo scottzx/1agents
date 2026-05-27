@@ -8,6 +8,7 @@ import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
 import { RightPanel } from './drawer/RightPanel';
+import { AccessTokenGate } from './auth/AccessTokenGate';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const path = window.location.pathname.replace(/[/]+$/, '');
@@ -148,6 +149,11 @@ interface AppState {
     viewportHeight: number;
     activeSession: Session | null;
     language: 'zh-CN' | 'en-US';
+    // ── Access token state ──
+    accessGateVisible: boolean;
+    accessAuthRequired: boolean;
+    accessAuthenticated: boolean;
+    accessTokenModalToken: string;
 }
 
 // Drag resizer state (module-level for perf)
@@ -220,6 +226,10 @@ export class App extends Component<{}, AppState> {
             keyboardVisible: false,
             viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
             language: (localStorage.getItem('remote-agents-language') || 'zh-CN') as 'zh-CN' | 'en-US',
+            accessGateVisible: false,
+            accessAuthRequired: false,
+            accessAuthenticated: true,
+            accessTokenModalToken: '',
         };
     }
 
@@ -229,6 +239,27 @@ export class App extends Component<{}, AppState> {
         this.setState({ theme });
         document.documentElement.setAttribute('data-theme', theme);
         this.setState({ hostname: window.location.hostname || 'localhost' });
+
+        // Check access token gate before loading any data
+        await this.checkAccessStatus();
+        if (this.state.accessGateVisible) {
+            document.addEventListener('keydown', this.handleKeyDown);
+            document.addEventListener('mousemove', this.handleResizerMove);
+            document.addEventListener('mouseup', this.handleResizerUp);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
+            }
+            this._tunnelHeartbeat = setInterval(
+                () => {
+                    fetch('/api/tunnel/status').catch(() => {
+                        /* best-effort */
+                    });
+                },
+                5 * 60 * 1000
+            );
+            return;
+        }
+
         this.loadDir('', null);
         this.loadFlatFiles();
 
@@ -255,9 +286,14 @@ export class App extends Component<{}, AppState> {
         }
 
         // Tunnel idle heartbeat — polls /api/tunnel/status every 5 min to prevent auto-stop
-        this._tunnelHeartbeat = setInterval(() => {
-            fetch('/api/tunnel/status').catch(() => { /* best-effort */ });
-        }, 5 * 60 * 1000);
+        this._tunnelHeartbeat = setInterval(
+            () => {
+                fetch('/api/tunnel/status').catch(() => {
+                    /* best-effort */
+                });
+            },
+            5 * 60 * 1000
+        );
     }
 
     componentWillUnmount() {
@@ -1049,6 +1085,109 @@ export class App extends Component<{}, AppState> {
         setTimeout(() => this.setState({ toastMsg: '' }), 2200);
     };
 
+    checkAccessStatus = async () => {
+        try {
+            const res = await fetch('/api/access/status');
+            if (res.ok) {
+                const data = await res.json();
+                const required = !!data.required;
+                const authenticated = !!data.authenticated;
+                this.setState({
+                    accessAuthRequired: required,
+                    accessAuthenticated: authenticated,
+                    accessGateVisible: required && !authenticated,
+                });
+            }
+        } catch {
+            this.setState({
+                accessAuthRequired: false,
+                accessAuthenticated: true,
+                accessGateVisible: false,
+            });
+        }
+    };
+
+    onAccessAuthenticated = async () => {
+        await this.checkAccessStatus();
+        if (!this.state.accessGateVisible) {
+            this.loadDir('', null);
+            this.loadFlatFiles();
+            await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+            this.mergeSessionsIntoFolders(this.state.terminalWindows);
+            const { workspaces, activeWorkspaceId } = this.state;
+            if (!activeWorkspaceId && workspaces.length > 0) {
+                await this.selectWorkspace(workspaces[0]);
+            } else if (activeWorkspaceId) {
+                await this.loadCcConnectUrl();
+            }
+            this.loadTmuxMouse();
+        }
+    };
+
+    generateAccessToken = async () => {
+        try {
+            const res = await fetch('/api/access/generate', { method: 'POST' });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                this.showToast(`生成令牌失败: ${data.error || res.statusText}`);
+                return;
+            }
+            const data = await res.json();
+            this.setState({ accessTokenModalToken: data.token, accessAuthRequired: true });
+        } catch (err) {
+            this.showToast(`生成令牌失败: ${err}`);
+        }
+    };
+
+    revokeAccessToken = async () => {
+        try {
+            const res = await fetch('/api/access/revoke', { method: 'POST' });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                this.showToast(`撤销失败: ${data.error || res.statusText}`);
+                return;
+            }
+            this.showToast('访问令牌已撤销');
+            await this.checkAccessStatus();
+        } catch (err) {
+            this.showToast(`撤销失败: ${err}`);
+        }
+    };
+
+    copyAccessToken = () => {
+        const { accessTokenModalToken } = this.state;
+        if (!accessTokenModalToken) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard
+                .writeText(accessTokenModalToken)
+                .then(() => {
+                    this.showToast('令牌已复制到剪贴板');
+                })
+                .catch(() => {
+                    this.showToast('复制失败，请手动复制');
+                });
+        } else {
+            // Fallback for non-HTTPS or older browsers
+            const textarea = document.createElement('textarea');
+            textarea.value = accessTokenModalToken;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                this.showToast('令牌已复制到剪贴板');
+            } catch {
+                this.showToast('复制失败，请手动复制');
+            }
+            document.body.removeChild(textarea);
+        }
+    };
+
+    closeAccessTokenModal = () => {
+        this.setState({ accessTokenModalToken: '' });
+    };
+
     openFileDetail = async (entry: FsEntry) => {
         this.setState({
             selectedFsEntry: entry,
@@ -1212,7 +1351,15 @@ export class App extends Component<{}, AppState> {
             toastMsg,
             activeSession,
             language,
+            accessGateVisible,
+            accessTokenModalToken,
+            accessAuthRequired,
         } = this.state;
+
+        // If access gate is visible, render only the gate
+        if (accessGateVisible) {
+            return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} />;
+        }
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
         const termOptions = {
@@ -1541,9 +1688,34 @@ export class App extends Component<{}, AppState> {
                             fsEntries={this.state.fsEntries}
                             fsLoading={this.state.fsLoading}
                             onToggleFsDir={this.toggleFsDir}
+                            accessTokenExists={accessAuthRequired}
+                            onGenerateAccessToken={this.generateAccessToken}
+                            onRevokeAccessToken={this.revokeAccessToken}
                         />
                     </div>
                 </div>
+
+                {/* Access Token Display Modal (one-time, shown after generation) */}
+                {accessTokenModalToken && (
+                    <div class="at-modal-overlay" onClick={this.closeAccessTokenModal}>
+                        <div class="at-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                            <div class="at-modal-header">访问令牌已生成</div>
+                            <div class="at-modal-warning">
+                                <strong>请立即保存此令牌！</strong>此令牌仅在本次展示，关闭后将无法再次查看。
+                                请将其妥善保管，非本地网络访问时需要提供此令牌。
+                            </div>
+                            <div class="at-modal-token-box">
+                                <span class="at-modal-token-text">{accessTokenModalToken}</span>
+                                <button class="at-modal-copy-btn" onClick={this.copyAccessToken}>
+                                    复制
+                                </button>
+                            </div>
+                            <button class="at-modal-close-btn" onClick={this.closeAccessTokenModal}>
+                                我已保存令牌
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Toast Notification */}
                 {toastMsg && (

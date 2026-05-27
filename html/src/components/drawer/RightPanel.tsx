@@ -53,6 +53,11 @@ interface RightPanelProps {
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
 
+    // Access token props
+    accessTokenExists: boolean;
+    onGenerateAccessToken: () => void;
+    onRevokeAccessToken: () => void;
+
     // Tree system props
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -103,6 +108,11 @@ export function RightPanel({
     onSaveFile,
     onToggleEditing,
     onEditedContentChange,
+
+    // Access token props
+    accessTokenExists,
+    onGenerateAccessToken,
+    onRevokeAccessToken,
 
     // Tree props
     fsEntries,
@@ -244,6 +254,9 @@ export function RightPanel({
                         toggleTheme={toggleTheme}
                         language={language}
                         toggleLanguage={toggleLanguage}
+                        accessTokenExists={accessTokenExists}
+                        onGenerateAccessToken={onGenerateAccessToken}
+                        onRevokeAccessToken={onRevokeAccessToken}
                     />
                 )}
             </div>

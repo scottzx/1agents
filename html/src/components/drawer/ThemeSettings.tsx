@@ -5,9 +5,20 @@ interface ThemeSettingsProps {
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
     language: 'zh-CN' | 'en-US';
     toggleLanguage: (lang: 'zh-CN' | 'en-US') => void;
+    accessTokenExists: boolean;
+    onGenerateAccessToken: () => void;
+    onRevokeAccessToken: () => void;
 }
 
-export function ThemeSettings({ theme, toggleTheme, language, toggleLanguage }: ThemeSettingsProps) {
+export function ThemeSettings({
+    theme,
+    toggleTheme,
+    language,
+    toggleLanguage,
+    accessTokenExists,
+    onGenerateAccessToken,
+    onRevokeAccessToken,
+}: ThemeSettingsProps) {
     return (
         <div class="settings-container">
             <div class="setting-group">
@@ -65,6 +76,29 @@ export function ThemeSettings({ theme, toggleTheme, language, toggleLanguage }: 
                     >
                         <span>English</span>
                     </button>
+                </div>
+            </div>
+
+            <div class="setting-group" style="margin-top: 20px;">
+                <span class="setting-label">访问令牌 (Access Token)</span>
+                <p
+                    class="setting-desc"
+                    style="font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0; line-height: 1.5;"
+                >
+                    {accessTokenExists
+                        ? '已设置访问令牌。非本地网络访问需要提供此令牌进行验证。'
+                        : '为远程访问添加额外的安全保护层。生成后，非本地访问将需要令牌验证。'}
+                </p>
+                <div class="theme-options">
+                    {accessTokenExists ? (
+                        <button class="theme-btn" onClick={onRevokeAccessToken}>
+                            撤销令牌 (Revoke)
+                        </button>
+                    ) : (
+                        <button class="theme-btn" onClick={onGenerateAccessToken}>
+                            生成访问令牌 (Generate)
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

@@ -3797,3 +3797,191 @@ body {
 
 
 
+
+/* ── Access Token Gate (full-page login screen) ────────────────────────────── */
+.access-gate-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-page);
+  z-index: 1000;
+
+  .access-gate-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 40px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .access-gate-icon {
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+  }
+
+  .access-gate-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 8px;
+  }
+
+  .access-gate-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  .access-gate-input {
+    width: 100%;
+    height: 42px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 14px;
+    font-size: 14px;
+    background: var(--bg-page);
+    color: var(--text-main);
+    font-family: var(--font-mono, monospace);
+    margin-bottom: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: var(--accent-color);
+    }
+  }
+
+  .access-gate-error {
+    font-size: 12px;
+    color: #cf222e;
+    margin-bottom: 12px;
+  }
+
+  .access-gate-btn {
+    width: 100%;
+    height: 40px;
+    background: var(--accent-color);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover {
+      background: #0056b3;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+}
+
+/* ── Access Token Display Modal ────────────────────────────────────────────── */
+.at-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(8px);
+  z-index: 110;
+
+  .at-modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .at-modal-header {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 12px;
+  }
+
+  .at-modal-warning {
+    font-size: 12px;
+    color: #9a6700;
+    background: #fff8c5;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+    border: 1px solid #d4a72c;
+  }
+
+  .at-modal-token-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-page);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+
+    .at-modal-token-text {
+      flex: 1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--text-main);
+      word-break: break-all;
+      user-select: all;
+    }
+
+    .at-modal-copy-btn {
+      flex-shrink: 0;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text-main);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        background: var(--btn-hover);
+      }
+    }
+  }
+
+  .at-modal-close-btn {
+    width: 100%;
+    height: 38px;
+    background: var(--accent-color);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: #0056b3;
+    }
+  }
+}

@@ -3,10 +3,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/scottzx/remote-agents/agent/internal/auth"
 	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
 	"github.com/scottzx/remote-agents/agent/internal/config"
 	ctxt "github.com/scottzx/remote-agents/agent/internal/context"
@@ -252,6 +254,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 		})
 	})
 
+	// ── Access Token API ─────────────────────────────────────────────────────
+	mux.HandleFunc("/api/access/status", handleAccessStatus)
+	mux.HandleFunc("/api/access/generate", handleAccessGenerate)
+	mux.HandleFunc("/api/access/verify", handleAccessVerify)
+	mux.HandleFunc("/api/access/revoke", handleAccessRevoke)
+
 	// ── Static frontend assets ───────────────────────────────────────────────
 	// This catch-all must be registered last so it does not shadow the routes
 	// above. html/dist must contain an index.html for SPA-style navigation.
@@ -261,74 +269,307 @@ func NewRouter(cfg *config.Config) http.Handler {
 	return authMiddleware(mux, cfg)
 }
 
-// authMiddleware intercepts all requests when the public tunnel is active,
-// enforcing session-token and secure HttpOnly cookie validation.
+// authMiddleware enforces authentication in two layers:
+//
+//  1. Tunnel auth — when the Cloudflare tunnel is active, the ephemeral session
+//     token is required (existing behaviour, unchanged).
+//  2. Access token auth — when the user has generated a persistent access token
+//     file, all non-localhost requests must present it. Localhost always bypasses.
 func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Retrieve the current active tunnel state
+		// ── Layer 1: Tunnel session auth (unchanged) ──────────────────────────
 		isActive, _, activeToken := tunnel.DefaultSupervisor.GetStatus()
-		if !isActive || activeToken == "" {
-			// If tunnel is not active, standard local/LAN access is unblocked
-			next.ServeHTTP(w, r)
-			return
-		}
+		if isActive && activeToken != "" {
+			// Bypass tunnel auth for tunnel control APIs
+			if !strings.HasPrefix(r.URL.Path, "/api/tunnel/") {
+				authenticated := false
 
-		// 2. Bypass authentication check for tunnel control APIs themselves
-		if strings.HasPrefix(r.URL.Path, "/api/tunnel/") {
-			next.ServeHTTP(w, r)
-			return
-		}
+				if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
+					if tokenParam == activeToken {
+						authenticated = true
+						http.SetCookie(w, &http.Cookie{
+							Name:     "ra_session_token",
+							Value:    activeToken,
+							Path:     "/",
+							HttpOnly: true,
+							Secure:   true,
+							SameSite: http.SameSiteLaxMode,
+						})
+					}
+				}
 
-		authenticated := false
+				if !authenticated {
+					authHeader := r.Header.Get("Authorization")
+					if strings.HasPrefix(authHeader, "Bearer ") {
+						if strings.TrimPrefix(authHeader, "Bearer ") == activeToken {
+							authenticated = true
+						}
+					}
+				}
 
-		// Mechanism A: Query token parameter in URL (?token=...)
-		if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
-			if tokenParam == activeToken {
-				authenticated = true
-				// Write secure HttpOnly session cookie to browser
-				http.SetCookie(w, &http.Cookie{
-					Name:     "ra_session_token",
-					Value:    activeToken,
-					Path:     "/",
-					HttpOnly: true,
-					Secure:   true, // Required by browsers for dynamic HTTPS tunnels
-					SameSite: http.SameSiteLaxMode,
-				})
+				if !authenticated {
+					if cookie, err := r.Cookie("ra_session_token"); err == nil {
+						if cookie.Value == activeToken {
+							authenticated = true
+						}
+					}
+				}
+
+				if !authenticated {
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.WriteHeader(http.StatusUnauthorized)
+					_, _ = w.Write([]byte(`{"error": "Unauthorized: Ephemeral session token required. Please scan the authorized QR code or click the secure link."}`))
+					return
+				}
+
+				tunnel.DefaultSupervisor.RecordAccess()
 			}
 		}
 
-		// Mechanism B: Bearer token in Authorization header
-		if !authenticated {
+		// ── Layer 2: Access token auth (new) ─────────────────────────────────
+		if !auth.TokenExists() {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Access token API endpoints manage their own auth
+		if strings.HasPrefix(r.URL.Path, "/api/access/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Localhost always bypasses
+		if isLocalhost(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		storedToken, _ := auth.LoadToken()
+		if storedToken == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		accessAuthenticated := false
+
+		// Mechanism A: ?access_token= query param
+		if t := r.URL.Query().Get("access_token"); t != "" && t == storedToken {
+			accessAuthenticated = true
+		}
+
+		// Mechanism B: Authorization: Bearer <token> (also checks access token)
+		if !accessAuthenticated {
 			authHeader := r.Header.Get("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
-				headerToken := strings.TrimPrefix(authHeader, "Bearer ")
-				if headerToken == activeToken {
-					authenticated = true
+				if strings.TrimPrefix(authHeader, "Bearer ") == storedToken {
+					accessAuthenticated = true
 				}
 			}
 		}
 
-		// Mechanism C: Session cookie
-		if !authenticated {
-			if cookie, err := r.Cookie("ra_session_token"); err == nil {
-				if cookie.Value == activeToken {
-					authenticated = true
+		// Mechanism C: ra_access_token cookie
+		if !accessAuthenticated {
+			if cookie, err := r.Cookie("ra_access_token"); err == nil {
+				if cookie.Value == storedToken {
+					accessAuthenticated = true
 				}
 			}
 		}
 
-		// 3. Reject unauthorized requests with a clean 401 response
-		if !authenticated {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error": "Unauthorized: Ephemeral session token required. Please scan the authorized QR code or click the secure link."}`))
+		if accessAuthenticated {
+			// Refresh long-lived cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:     "ra_access_token",
+				Value:    storedToken,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   r.TLS != nil,
+				SameSite: http.SameSiteLaxMode,
+				MaxAge:   365 * 24 * 3600,
+			})
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		// 4. Refresh idle timer — only authenticated requests count as active
-		tunnel.DefaultSupervisor.RecordAccess()
+		// Not authenticated — reject API calls, let page requests through
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"access_token_required","message":"An access token is required for non-localhost access."}`))
+			return
+		}
 
-		// 5. Authorized, proceed to the requested route
+		// Page request: let SPA load; it will call /api/access/status and show gate
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isLocalhost(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return host == "127.0.0.1" || host == "::1"
+}
+
+// ── Access Token Handlers ───────────────────────────────────────────────────────
+
+func handleAccessStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	required := auth.TokenExists()
+	authenticated := true
+
+	if required && !isLocalhost(r) {
+		storedToken, _ := auth.LoadToken()
+		if storedToken != "" {
+			authenticated = false
+
+			if t := r.URL.Query().Get("access_token"); t != "" && t == storedToken {
+				authenticated = true
+			}
+			if !authenticated {
+				authHeader := r.Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") {
+					if strings.TrimPrefix(authHeader, "Bearer ") == storedToken {
+						authenticated = true
+					}
+				}
+			}
+			if !authenticated {
+				if cookie, err := r.Cookie("ra_access_token"); err == nil {
+					if cookie.Value == storedToken {
+						authenticated = true
+					}
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(map[string]bool{
+		"required":      required,
+		"authenticated": authenticated,
+	})
+}
+
+func handleAccessGenerate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !isLocalhost(r) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Token generation is only allowed from localhost."})
+		return
+	}
+
+	token := tunnel.GenerateRandomToken()
+	if err := auth.SaveToken(token); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":   token,
+		"message": "Access token generated. Save it now — it will not be shown again.",
+	})
+}
+
+func handleAccessVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Invalid request body."})
+		return
+	}
+
+	if body.Token == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Token is required."})
+		return
+	}
+
+	storedToken, err := auth.LoadToken()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	if body.Token != storedToken {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "无效的访问令牌。"})
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ra_access_token",
+		Value:    storedToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   365 * 24 * 3600,
+	})
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+func handleAccessRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Allow localhost or already-authenticated callers
+	allowed := isLocalhost(r)
+	if !allowed {
+		storedToken, _ := auth.LoadToken()
+		if storedToken != "" {
+			if cookie, err := r.Cookie("ra_access_token"); err == nil && cookie.Value == storedToken {
+				allowed = true
+			}
+			if !allowed {
+				authHeader := r.Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") && strings.TrimPrefix(authHeader, "Bearer ") == storedToken {
+					allowed = true
+				}
+			}
+		}
+	}
+
+	if !allowed {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Token revocation requires localhost or authenticated access."})
+		return
+	}
+
+	if err := auth.DeleteToken(); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Access token revoked."})
 }
