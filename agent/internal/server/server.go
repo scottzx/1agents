@@ -172,6 +172,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.Handle("/assets/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 	mux.Handle("/api/v1/", gateway.NewCCConnectProxy(ccconnect.ManagementPort))
 
+	// ── Bridge WebSocket proxy ──────────────────────────────────────────────
+	// Proxies /bridge/ws to the CC-Connect bridge server (dynamic port).
+	mux.Handle("/bridge/", gateway.NewBridgeProxy(ccconnect.BridgePort))
+
 	// ── Tunnel API (on-demand multi-port tunnel control) ─────────────────────
 	tunnelAuth := func(r *http.Request) bool {
 		authHeader := r.Header.Get("Authorization")
