@@ -21,6 +21,22 @@ if(NOT "${GIT_COMMIT}" STREQUAL "")
     set(TTYD_VERSION "${TTYD_VERSION}-${GIT_COMMIT}")
 endif()
 
+# Get build hostname
+cmake_host_system_information(RESULT BUILD_HOSTNAME QUERY HOSTNAME)
+if(NOT BUILD_HOSTNAME)
+    set(BUILD_HOSTNAME "$ENV{HOSTNAME}")
+endif()
+if(NOT BUILD_HOSTNAME)
+    execute_process(COMMAND hostname OUTPUT_VARIABLE BUILD_HOSTNAME OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
+if(NOT BUILD_HOSTNAME)
+    set(BUILD_HOSTNAME "unknown")
+endif()
+
+# Append system name, processor, and hostname to distinguish binaries
+set(TTYD_VERSION "${TTYD_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}-${BUILD_HOSTNAME}")
+
+
 if(NOT MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_GNU_SOURCE")
     if(CMAKE_VERSION VERSION_LESS "3.1")

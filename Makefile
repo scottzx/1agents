@@ -1,0 +1,88 @@
+# Root Makefile for remote-agents project
+#
+# Provides a unified build, package, and deployment workflow for both Linux and macOS.
+
+APP          := remote-agents
+VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT       := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+BUILD_TIME   := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+HOSTNAME     := $(shell hostname 2>/dev/null || uname -n 2>/dev/null || echo "unknown")
+OS           := $(shell uname -s | tr '[:upper:]' '[:lower:]' 2>/dev/null || echo "unknown")
+ARCH         := $(shell uname -m 2>/dev/null || echo "unknown")
+
+# Lowercase OS and ARCH for filename consistency
+OS_LOWER     := $(shell echo $(OS) | tr '[:upper:]' '[:lower:]')
+ARCH_LOWER   := $(shell echo $(ARCH) | tr '[:upper:]' '[:lower:]')
+
+# Go LDFLAGS for injecting version, commit (including host details) and build time
+AGENT_LDFLAGS := -s -w \
+  -X main.version=$(VERSION) \
+  -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
+  -X main.buildTime=$(BUILD_TIME)
+
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb agent package clean help
+
+help:
+	@echo "Unified Build and Packaging System for Remote Agents"
+	@echo "Host: $(HOSTNAME) ($(OS)/$(ARCH))"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, agent)"
+	@echo "  make frontend          - Build frontend assets (html/) and generate src/html.h"
+	@echo "  make ttyd              - Compile native ttyd C server natively on the current host"
+	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
+	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
+	@echo "  make agent             - Compile remote-agents Go agent server with version ldflags"
+	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
+	@echo "  make clean             - Clean all intermediate and build outputs across components"
+
+all: frontend ttyd cc-connect agent
+
+frontend:
+	@echo "=== Building Frontend (html/)..."
+	cd html && corepack enable && yarn install && yarn build
+
+ttyd:
+	@echo "=== Building ttyd terminal server..."
+	@if [ "$(OS)" = "Darwin" ]; then \
+		cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S . ; \
+	else \
+		cmake -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S . ; \
+	fi
+	make -C build-ttyd
+	@mkdir -p build
+	cp build-ttyd/ttyd build/ttyd
+
+cc-connect:
+	@echo "=== Building cc-connect daemon..."
+	$(MAKE) -C cc-connect build
+	@mkdir -p build
+	cp cc-connect/cc-connect build/cc-connect
+
+cc-connect-noweb:
+	@echo "=== Building cc-connect daemon (no web build)..."
+	$(MAKE) -C cc-connect build-noweb
+	@mkdir -p build
+	cp cc-connect/cc-connect build/cc-connect
+
+agent:
+	@echo "=== Building remote-agents Go server..."
+	mkdir -p build
+	cd agent && go build -ldflags "$(AGENT_LDFLAGS)" -o ../build/remote-agents ./cmd/agent
+
+package: all
+	@echo "=== Packaging remote-agents for $(OS_LOWER)-$(ARCH_LOWER) on $(HOSTNAME)..."
+	@rm -rf dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
+	@mkdir -p dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin
+	cp build/remote-agents dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp build/ttyd dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp build/cc-connect dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp -r html/dist dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
+	cd dist && tar -czf remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
+	@echo "=== Created package: dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
+
+clean:
+	@echo "=== Cleaning build artifacts..."
+	rm -rf build build-ttyd dist
+	rm -rf html/dist src/html.h
+	$(MAKE) -C cc-connect clean

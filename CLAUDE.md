@@ -13,9 +13,25 @@ Remote Agent is a Web-based remote workbench integrating terminal access (xterm.
 - Yarn 3 is specified via `packageManager: yarn@3.6.3` in package.json
 - Enable Corepack: `corepack enable` if `yarn --version` doesn't show 3.6.3
 
-## Build Commands
+## Build & Package Workflow
 
-### Frontend (html/)
+### 1. Unified Root Build System (Recommended)
+The project features a root `Makefile` that orchestrates compilation and local deployment packaging for all components:
+```bash
+make help               # Display build target details and active host info
+make all                # Build all components (frontend, ttyd, cc-connect, agent)
+make frontend           # Build frontend assets (html/) & generate src/html.h
+make ttyd               # Compile terminal server natively on the current host
+make cc-connect         # Compile cc-connect bridge daemon (incl. web assets)
+make cc-connect-noweb   # Compile cc-connect (WITHOUT rebuilding web assets)
+make agent              # Compile remote-agents Go server with metadata ldflags
+make package            # Bundle binaries and assets into a target-named archive in dist/
+make clean              # Clean all intermediate and built assets across directories
+```
+
+### 2. Component Development Builds
+
+#### Frontend (html/)
 ```bash
 cd html
 yarn install        # Install dependencies (Yarn 3.6.3)
@@ -25,40 +41,52 @@ yarn check          # gts type checking
 yarn fix            # gts auto-fix
 ```
 
-### Backend (agent/)
+#### Backend (agent/)
 ```bash
 cd agent
-go build ./...       # Build main server
+go build ./cmd/agent # Build Go agent server
 ./remote-agents      # Run the agent server
 ```
 
-### cc-connect (used by agent/)
+#### cc-connect (daemon/)
 ```bash
 cd cc-connect
-go build ./...       # Build all packages
-go test ./...        # Run tests
-make build           # Full build with selective compilation
+make build           # Full build with selective compilation (incl. web)
+make build-noweb     # Build cc-connect daemon without web assets rebuild
+go test ./...        # Run unit tests
 ```
 
-### Terminal Server (src/)
+#### Terminal Server (src/)
 ```bash
-mkdir build && cd build
-cmake ..
-make                 # Builds ttyd native binary
+cmake -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S . # Configure build natively
+make -C build-ttyd                                  # Compile native ttyd C binary
 ```
+
+## Binary Versioning & Hostname Philosophy
+
+To ensure that binaries compiled on different environments (such as Mac vs Linux) are easily distinguishable even when using the same commit hash:
+1. **Metadata Injection**: Go components (`remote-agents`, `cc-connect`) and the C terminal server (`ttyd`) inject host details (`OS`, `Arch`, `Hostname`) during the compile phase.
+2. **Version Commands**:
+   - `remote-agents -version` prints standard version, commit with OS/Arch/Hostname, and build time.
+   - `cc-connect --version` prints matching version, commit, and build time.
+   - `ttyd --version` prints C server version with OS/Arch/Hostname details.
+3. **Packaging Names**: `make package` copies all compiled components into a structured directory named `dist/remote-agents-$(VERSION)-$(OS)-$(ARCH)-$(HOSTNAME)/` and compresses it to a target-named `.tar.gz` archive to guarantee distinct, self-describing build outputs.
 
 ## Architecture
 
 ```
 remote-agents/
+├── build/           # Centralized output directory for all compiled binaries
+│   ├── remote-agents# Go agent server binary (compiled)
+│   ├── ttyd         # Native C terminal server binary (compiled)
+│   └── cc-connect   # Go bridge daemon binary (compiled)
 ├── html/            # TypeScript/React frontend (xterm.js, preact)
 │   ├── src/         # Components: app.tsx, drawer/, sidebar/, terminal/
 │   ├── dist/        # Built assets (not committed)
 │   └── gulpfile.js  # Generates src/html.h via gzip compression
-├── agent/           # Go agent server (main entry point)
+├── agent/           # Go agent server (main entry point source code)
 │   ├── cmd/         # CLI entry points
-│   ├── internal/    # Core logic: server, terminal, gateway, ccconnect
-│   └── remote-agents # Compiled binary
+│   └── internal/    # Core logic: server, terminal, gateway, ccconnect
 ├── cc-connect/      # Go bridge between AI agents and messaging platforms
 │   ├── agent/       # Claude Code, Codex, Cursor, Gemini, etc.
 │   ├── platform/    # Feishu, Telegram, Discord, Slack, etc.

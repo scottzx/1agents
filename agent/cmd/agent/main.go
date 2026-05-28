@@ -22,6 +22,12 @@ import (
 	"github.com/scottzx/remote-agents/agent/internal/tunnel"
 )
 
+var (
+	version   = "dev"
+	commit    = "none"
+	buildTime = "unknown"
+)
+
 func main() {
 	cfg := config.Default()
 
@@ -54,7 +60,15 @@ func main() {
 	var tunnelIdleTimeout int
 	flag.IntVar(&tunnelIdleTimeout, "tunnel-idle-timeout", 15, "Auto-stop tunnel after N minutes of inactivity (0 to disable)")
 
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
+
 	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("remote-agents %s\ncommit:  %s\nbuilt:   %s\n", version, commit, buildTime)
+		return
+	}
 
 	// Configure tunnel idle timeout (applies to both --tunnel and API-started tunnels)
 	if tunnelIdleTimeout > 0 {
@@ -132,6 +146,9 @@ func main() {
 	go func() {
 		log.Printf("[main] Remote Agent listening on %s", cfg.ListenAddr)
 		writeDaemonFile(cfg.ListenAddr)
+		log.Printf("[main] Version            : %s", version)
+		log.Printf("[main] Commit             : %s", commit)
+		log.Printf("[main] Build Time         : %s", buildTime)
 		log.Printf("[main] Working directory  : %s", cfg.WorkDir)
 		log.Printf("[main] Dev mode (no-ttyd) : %v", noTtyd)
 		
