@@ -231,12 +231,36 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
+	wsToDelete := cfg.Workspaces[idx]
 	cfg.Workspaces = append(cfg.Workspaces[:idx], cfg.Workspaces[idx+1:]...)
 	if err := h.saveConfig(cfg); err != nil {
 		log.Printf("[workspace] save error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Dynamically remove this workspace from CC-Connect projects config
+	projName := wsToDelete.Name
+	if projName == "" {
+		projName = wsToDelete.ID
+	}
+	if config.ConfigPath != "" {
+		err = config.RemoveProject(projName)
+		if err != nil {
+			log.Printf("[workspace] ccconnect remove project error: %v", err)
+		} else {
+			log.Printf("[workspace] Dynamically removed CC-Connect project %s", projName)
+			
+			// Trigger cc-connect to hot restart itself and reload the configuration!
+			select {
+			case core.RestartCh <- core.RestartRequest{}:
+				log.Println("[workspace] Successfully requested CC-Connect process hot restart for configuration reload")
+			default:
+				log.Println("[workspace] CC-Connect hot restart already pending")
+			}
+		}
+	}
+
 	writeJSON(w, map[string]interface{}{"ok": true})
 }
 
