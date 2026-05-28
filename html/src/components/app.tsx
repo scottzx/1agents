@@ -163,6 +163,7 @@ let _resizerStartWidth = 0;
 
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
+    private _crawlCounter = 0;
 
     constructor() {
         super();
@@ -1048,16 +1049,19 @@ export class App extends Component<{}, AppState> {
     ]);
 
     /** Recursively fetch all files under relPath, ignoring heavy dirs */
-    crawlDirRecursive = async (relPath: string): Promise<FsEntry[]> => {
+    crawlDirRecursive = async (relPath: string, crawlId: number): Promise<FsEntry[]> => {
+        if (crawlId !== this._crawlCounter) return [];
         const res = await fetch(`/api/fs/list?path=${encodeURIComponent(relPath || '.')}`);
+        if (crawlId !== this._crawlCounter) return [];
         if (!res.ok) return [];
         const entries: FsEntry[] = await res.json();
         const results: FsEntry[] = [];
         await Promise.all(
             entries.map(async e => {
+                if (crawlId !== this._crawlCounter) return;
                 if (e.isDir) {
                     if (this.IGNORE_DIRS.has(e.name)) return;
-                    const sub = await this.crawlDirRecursive(e.path);
+                    const sub = await this.crawlDirRecursive(e.path, crawlId);
                     results.push(...sub);
                 } else {
                     results.push(e);
@@ -1068,13 +1072,19 @@ export class App extends Component<{}, AppState> {
     };
 
     loadFlatFiles = async () => {
+        this._crawlCounter++;
+        const currentCrawl = this._crawlCounter;
         this.setState({ flatFilesLoading: true });
         try {
-            const files = await this.crawlDirRecursive('');
-            this.setState({ flatFiles: files, flatFilesLoading: false });
+            const files = await this.crawlDirRecursive('', currentCrawl);
+            if (currentCrawl === this._crawlCounter) {
+                this.setState({ flatFiles: files, flatFilesLoading: false });
+            }
         } catch (err) {
-            console.error('[flat] crawl error:', err);
-            this.setState({ flatFilesLoading: false });
+            if (currentCrawl === this._crawlCounter) {
+                console.error('[flat] crawl error:', err);
+                this.setState({ flatFilesLoading: false });
+            }
         }
     };
 
