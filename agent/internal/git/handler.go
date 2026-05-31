@@ -407,7 +407,7 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Execute Claude Code non-interactively with empty stdin
-	prompt := "Write a concise, conventional git commit message based on the staged changes in this git repository. Output ONLY the raw commit message itself, without quotes, code blocks, or explanations."
+	prompt := "Write a concise, conventional git commit message in Chinese (中文) based on the staged changes in this git repository. The commit type prefix (e.g., feat, fix, docs, style, refactor) must be in English, but the actual message description MUST be written in clear, concise Chinese. Output ONLY the raw commit message itself, without quotes, code blocks, or explanations."
 	
 	var args []string
 	if len(cliExtraArgs) > 0 {
