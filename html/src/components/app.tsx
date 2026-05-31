@@ -37,7 +37,8 @@ const lightTermTheme = {
     foreground: '#1f2328',
     background: '#fafafa',
     cursor: '#1f2328',
-    selectionBackground: '#add6ff',
+    selectionBackground: '#0969da',
+    selectionForeground: '#ffffff',
     selectionInactiveBackground: '#e2e8f0',
     black: '#1f2328',
     red: '#cf222e',
@@ -46,7 +47,7 @@ const lightTermTheme = {
     blue: '#0969da',
     magenta: '#8250df',
     cyan: '#1b7c83',
-    white: '#ffffff',
+    white: '#57606a',
     brightBlack: '#6e7781',
     brightRed: '#d1242f',
     brightGreen: '#2da44e',
@@ -54,13 +55,15 @@ const lightTermTheme = {
     brightBlue: '#2188ff',
     brightMagenta: '#a371f7',
     brightCyan: '#31929a',
-    brightWhite: '#ffffff',
+    brightWhite: '#1f2328',
 } as ITheme;
 
 const darkTermTheme = {
     foreground: '#d2d2d2',
     background: '#0d1117',
     cursor: '#adadad',
+    selectionBackground: '#2f81f7',
+    selectionForeground: '#ffffff',
     black: '#000000',
     red: '#d81e00',
     green: '#5ea702',
@@ -82,6 +85,7 @@ const darkTermTheme = {
 const baseTermOptions = {
     fontFamily: 'JetBrains Mono, Consolas, Liberation Mono, Menlo, monospace',
     allowProposedApi: true,
+    minimumContrastRatio: 4.5,
 } as ITerminalOptions;
 
 const isMobileDevice = () =>

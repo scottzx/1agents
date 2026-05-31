@@ -354,6 +354,33 @@ func (h *Handler) Pull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out})
 }
 
+// Discard handles POST /api/git/discard?file=<path>
+func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	file := r.URL.Query().Get("file")
+	if file == "" {
+		http.Error(w, "must specify file", http.StatusBadRequest)
+		return
+	}
+
+	// Revert uncommitted changes in working directory
+	out, err := h.git("checkout", "--", file)
+	if err != nil {
+		// Fallback to git restore if checkout fails or is unsupported
+		out, err = h.git("restore", "--", file)
+	}
+
+	if err != nil {
+		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
 // --- Internal helpers ---
 
 func (h *Handler) git(args ...string) (string, error) {

@@ -131,6 +131,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/git/diff", gitHandler.Diff)         // GET  ?file=<path>&staged=<bool>
 	mux.HandleFunc("/api/git/stage", gitHandler.Stage)       // POST ?file=<path> or ?all=true
 	mux.HandleFunc("/api/git/unstage", gitHandler.Unstage)   // POST ?file=<path> or ?all=true
+	mux.HandleFunc("/api/git/discard", gitHandler.Discard)   // POST ?file=<path>
 	mux.HandleFunc("/api/git/commit", gitHandler.Commit)     // POST {message:"…"}
 	mux.HandleFunc("/api/git/log", gitHandler.Log)           // GET  ?limit=20
 	mux.HandleFunc("/api/git/branches", gitHandler.Branches) // GET

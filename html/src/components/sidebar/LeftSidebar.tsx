@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session } from '../types';
 
 interface LeftSidebarProps {
@@ -41,6 +41,13 @@ export function LeftSidebar({
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [killingSessionIndex, setKillingSessionIndex] = useState<number | null>(null);
+
+    useEffect(() => {
+        setDeletingId(null);
+        setKillingSessionIndex(null);
+    }, [folders]);
 
     const handleDeleteClick = (e: MouseEvent, id: string) => {
         e.stopPropagation();
@@ -50,7 +57,10 @@ export function LeftSidebar({
     const confirmDelete = (e: MouseEvent, id: string) => {
         e.stopPropagation();
         setConfirmDeleteId(null);
-        onDeleteWorkspace(id);
+        setDeletingId(id);
+        setTimeout(() => {
+            onDeleteWorkspace(id);
+        }, 300);
     };
 
     const cancelDelete = (e: MouseEvent) => {
@@ -153,11 +163,14 @@ export function LeftSidebar({
                             const isHovered = hoveredId === folder.id;
                             const isConfirmingDelete = confirmDeleteId === folder.id;
                             const isActive = folder.id === activeWorkspaceId;
+                            const isDeleting = deletingId === folder.id;
 
                             return (
                                 <div
                                     key={folder.id}
-                                    class={`project-node${isActive ? ' ws-active' : ''}`}
+                                    class={`project-node${isActive ? ' ws-active' : ''}${
+                                        isDeleting ? ' ws-deleting' : ''
+                                    }`}
                                     onMouseEnter={() => setHoveredId(folder.id)}
                                     onMouseLeave={() => {
                                         setHoveredId(null);
@@ -290,7 +303,11 @@ export function LeftSidebar({
                                                 folder.sessions.map(session => (
                                                     <div
                                                         key={session.id}
-                                                        class={`chat-item ${session.active ? 'active' : ''}`}
+                                                        class={`chat-item ${session.active ? 'active' : ''}${
+                                                            killingSessionIndex === session.index
+                                                                ? ' chat-item-killing'
+                                                                : ''
+                                                        }`}
                                                         onClick={(e: MouseEvent) => {
                                                             e.stopPropagation();
                                                             onSelectSession(session);
@@ -305,7 +322,10 @@ export function LeftSidebar({
                                                             title="关闭会话"
                                                             onClick={(e: MouseEvent) => {
                                                                 e.stopPropagation();
-                                                                onTerminalKill(session.index);
+                                                                setKillingSessionIndex(session.index);
+                                                                setTimeout(() => {
+                                                                    onTerminalKill(session.index);
+                                                                }, 300);
                                                             }}
                                                         >
                                                             <svg
