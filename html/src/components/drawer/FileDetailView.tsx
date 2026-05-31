@@ -26,6 +26,7 @@ interface FileDetailViewProps {
     onSaveFile: () => void;
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
+    isStandalone?: boolean;
 }
 
 export function FileDetailView({
@@ -52,6 +53,7 @@ export function FileDetailView({
     onToggleEditing,
     onEditedContentChange,
     onShareFile,
+    isStandalone,
 }: FileDetailViewProps) {
     const isFav = favoriteFiles.includes(selectedFsEntry.path);
     const tag = getFileTag(selectedFsEntry.name);
@@ -64,18 +66,20 @@ export function FileDetailView({
         <div class={`fb-detail-view ${detailFullscreen ? 'fullscreen' : ''}`}>
             {/* Detail Header */}
             <div class="fb-detail-header">
-                <button class="fb-detail-back" onClick={onBackToList} title="返回列表">
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <polyline points="15 18 9 12 15 6" />
-                    </svg>
-                </button>
+                {!isStandalone && (
+                    <button class="fb-detail-back" onClick={onBackToList} title="返回列表">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+                )}
                 <div class="fb-detail-title-wrap">
                     <span class="fb-detail-filename">{selectedFsEntry.name}</span>
                     <span class="fb-detail-path">{selectedFsEntry.path}</span>
@@ -205,35 +209,37 @@ export function FileDetailView({
                             <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                         </svg>
                     </button>
-                    <button
-                        class={`fb-icon-btn ${detailFullscreen ? 'active' : ''}`}
-                        onClick={onToggleFullscreen}
-                        title={detailFullscreen ? '退出全屏' : '全屏预览'}
-                    >
-                        {detailFullscreen ? (
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
-                            </svg>
-                        ) : (
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                            </svg>
-                        )}
-                    </button>
+                    {!isStandalone && (
+                        <button
+                            class={`fb-icon-btn ${detailFullscreen ? 'active' : ''}`}
+                            onClick={onToggleFullscreen}
+                            title={detailFullscreen ? '退出全屏' : '全屏预览'}
+                        >
+                            {detailFullscreen ? (
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
+                                </svg>
+                            ) : (
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                                </svg>
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
             {/* Save bar */}

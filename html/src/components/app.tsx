@@ -8,6 +8,7 @@ import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
 import { RightPanel } from './drawer/RightPanel';
+import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1327,10 +1328,17 @@ export class App extends Component<{}, AppState> {
     };
 
     shareFile = async () => {
-        const { selectedFsEntry } = this.state;
+        const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
         if (!selectedFsEntry) return;
+
+        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+        const activeWorkspacePath = activeWorkspace?.path || '.';
+        const absolutePath = selectedFsEntry.path.startsWith('/')
+            ? selectedFsEntry.path
+            : `${activeWorkspacePath}/${selectedFsEntry.path}`;
+
         const shareUrl = `${window.location.origin}${window.location.pathname}?preview=${encodeURIComponent(
-            selectedFsEntry.path
+            absolutePath
         )}`;
         try {
             await navigator.clipboard.writeText(shareUrl);
@@ -1415,6 +1423,68 @@ export class App extends Component<{}, AppState> {
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} />;
+        }
+
+        // Check if there is a preview query parameter in the URL
+        const params = new URLSearchParams(window.location.search);
+        const hasPreview = params.has('preview') || params.has('path') || params.has('file');
+        if (hasPreview) {
+            if (!selectedFsEntry) {
+                return (
+                    <div
+                        class="fb-detail-view fullscreen"
+                        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: var(--bg-panel);"
+                    >
+                        <div class="fb-loading" style="display: flex; flex-direction: column; align-items: center;">
+                            <div class="fb-loading-spinner" />
+                            <span style="color: var(--text-main); margin-top: 12px;">载入分享文件预览中…</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div
+                    class="fb-detail-view fullscreen"
+                    style="height: 100vh; padding: 20px 24px; box-sizing: border-box; background-color: var(--bg-panel);"
+                >
+                    <FileDetailView
+                        selectedFsEntry={selectedFsEntry}
+                        favoriteFiles={favoriteFiles}
+                        detailFullscreen={true}
+                        isEditingDetail={isEditingDetail}
+                        fileContent={fileContent}
+                        editedContent={editedContent}
+                        fileLoading={fileLoading}
+                        fileSaving={fileSaving}
+                        fileSaveMsg={fileSaveMsg}
+                        isImagePreview={isImagePreview}
+                        imageDataUrl={imageDataUrl}
+                        onBackToList={() => {
+                            // Go back to the main workspace by clearing URL params
+                            window.location.href = window.location.origin + window.location.pathname;
+                        }}
+                        onToggleFavorite={this.toggleFavorite}
+                        onCopyContent={this.copyFileContent}
+                        onDuplicateFile={this.duplicateFile}
+                        onDownloadFile={this.downloadFile}
+                        onRenameFile={this.renameFile}
+                        onToggleFullscreen={() => {
+                            window.location.href = window.location.origin + window.location.pathname;
+                        }}
+                        onShareFile={this.shareFile}
+                        onSaveFile={this.saveFile}
+                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
+                        onEditedContentChange={content => this.setState({ editedContent: content })}
+                        isStandalone={true}
+                    />
+                    {toastMsg && (
+                        <div class="fb-toast">
+                            <span>{toastMsg}</span>
+                        </div>
+                    )}
+                </div>
+            );
         }
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -1737,7 +1807,20 @@ export class App extends Component<{}, AppState> {
                             onDuplicateFile={this.duplicateFile}
                             onDownloadFile={this.downloadFile}
                             onRenameFile={this.renameFile}
-                            onToggleFullscreen={() => this.setState(s => ({ detailFullscreen: !s.detailFullscreen }))}
+                            onToggleFullscreen={() => {
+                                const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
+                                if (selectedFsEntry) {
+                                    const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+                                    const activeWorkspacePath = activeWorkspace?.path || '.';
+                                    const absolutePath = selectedFsEntry.path.startsWith('/')
+                                        ? selectedFsEntry.path
+                                        : `${activeWorkspacePath}/${selectedFsEntry.path}`;
+                                    const shareUrl = `${window.location.origin}${
+                                        window.location.pathname
+                                    }?preview=${encodeURIComponent(absolutePath)}`;
+                                    window.open(shareUrl, '_blank');
+                                }
+                            }}
                             onShareFile={this.shareFile}
                             onSaveFile={this.saveFile}
                             onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}

@@ -396,9 +396,36 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 // Returns the absolute path and true on success, or "" and false if the path
 // attempts to escape the sandbox.
 func (h *Handler) safeAbs(rel string) (string, bool) {
+	cleaned := filepath.Clean(filepath.FromSlash(rel))
+
+	// If the path is absolute, check if it starts with any of the registered workspaces for security
+	if filepath.IsAbs(cleaned) {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			configPath := filepath.Join(home, ".remote-agents", "workspaces_dir.json")
+			if data, err := os.ReadFile(configPath); err == nil {
+				var wsCfg struct {
+					Workspaces []struct {
+						Path string `json:"path"`
+					} `json:"workspaces"`
+				}
+				if json.Unmarshal(data, &wsCfg) == nil {
+					for _, ws := range wsCfg.Workspaces {
+						wsPath := filepath.Clean(ws.Path)
+						if cleaned == wsPath || strings.HasPrefix(cleaned, wsPath+string(os.PathSeparator)) {
+							return cleaned, true
+						}
+					}
+				}
+			}
+		}
+		log.Printf("[fs] absolute path traversal blocked: %q (not in any registered workspace)", cleaned)
+		return "", false
+	}
+
 	// filepath.Join cleans ".." components.
 	joined := filepath.Join(h.root, filepath.FromSlash(rel))
-	cleaned := filepath.Clean(joined)
+	cleaned = filepath.Clean(joined)
 
 	// The cleaned path must start with root + separator (or equal root).
 	if cleaned != h.root && !strings.HasPrefix(cleaned, h.root+string(os.PathSeparator)) {
