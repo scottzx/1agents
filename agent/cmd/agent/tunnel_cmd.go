@@ -40,7 +40,7 @@ func readDaemonListenAddr() string {
 	if err != nil {
 		return ":8080"
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".remote-agents", "daemon.json"))
+	data, err := os.ReadFile(filepath.Join(home, ".1agents", "daemon.json"))
 	if err != nil {
 		return ":8080"
 	}
@@ -58,7 +58,7 @@ func handleTunnelCommand(cmd string, port string, timeout string) {
 	token, err := readManagementToken()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  Failed to read management token: %v\n", err)
-		fmt.Fprintln(os.Stderr, "   Is remote-agents daemon running? A cc-connect config must exist.")
+		fmt.Fprintln(os.Stderr, "   Is 1agents daemon running? A cc-connect config must exist.")
 		os.Exit(1)
 	}
 
@@ -72,10 +72,10 @@ func handleTunnelCommand(cmd string, port string, timeout string) {
 
 	case "stop":
 		if port == "" {
-			fmt.Fprintln(os.Stderr, "Usage: remote-agents tunnel stop <port>")
-			fmt.Fprintln(os.Stderr, "       remote-agents tunnel stop-all")
+			fmt.Fprintln(os.Stderr, "Usage: 1agents tunnel stop <port>")
+			fmt.Fprintln(os.Stderr, "       1agents tunnel stop-all")
 			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "Run 'remote-agents tunnel status' to see active tunnels and their ports.")
+			fmt.Fprintln(os.Stderr, "Run '1agents tunnel status' to see active tunnels and their ports.")
 			os.Exit(1)
 		}
 		stopTunnel(client, baseURL, authHeader, port)
@@ -87,7 +87,7 @@ func handleTunnelCommand(cmd string, port string, timeout string) {
 		showTunnelStatus(client, baseURL)
 
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: remote-agents tunnel <start|stop|stop-all|status> [port] [timeout]\n")
+		fmt.Fprintf(os.Stderr, "Usage: 1agents tunnel <start|stop|stop-all|status> [port] [timeout]\n")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  start [port] [timeout]  Start a tunnel")
 		fmt.Fprintln(os.Stderr, "    port     Local port to expose (default: daemon port)")

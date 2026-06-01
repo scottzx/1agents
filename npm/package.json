@@ -1,9 +1,9 @@
 {
-  "name": "@scottzx/remote-agents",
+  "name": "@scottzx/1agents",
   "version": "20260526.2.0",
   "description": "Browser-based remote workbench integrating terminal access, file management, and AI agent communication",
   "keywords": [
-    "remote-agent",
+    "1agent",
     "terminal",
     "xterm",
     "ttyd",
@@ -11,15 +11,15 @@
     "ai-agent",
     "workbench"
   ],
-  "homepage": "https://github.com/scottzx/remote-agents",
+  "homepage": "https://github.com/scottzx/1Agents",
   "repository": {
     "type": "git",
-    "url": "https://github.com/scottzx/remote-agents.git"
+    "url": "https://github.com/scottzx/1Agents.git"
   },
   "license": "MIT",
   "author": "scottzx",
   "bin": {
-    "remote-agents": "run.js",
+    "1agents": "run.js",
     "cc-connect": "cc-run.js"
   },
   "scripts": {

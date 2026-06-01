@@ -12,7 +12,7 @@ import (
 )
 
 // EnsureBinary checks if cloudflared is available in the system PATH.
-// If not found, it checks ~/.remote-agents/bin/cloudflared, and downloads
+// If not found, it checks ~/.1agents/bin/cloudflared, and downloads
 // the correct binary for the host's OS and architecture if missing.
 func EnsureBinary() (string, error) {
 	// 1. Check if already available in the system PATH
@@ -21,13 +21,13 @@ func EnsureBinary() (string, error) {
 		return path, nil
 	}
 
-	// 2. Resolve default user directory: ~/.remote-agents/bin/
+	// 2. Resolve default user directory: ~/.1agents/bin/
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
-	binDir := filepath.Join(home, ".remote-agents", "bin")
+	binDir := filepath.Join(home, ".1agents", "bin")
 	binaryName := "cloudflared"
 	if runtime.GOOS == "windows" {
 		binaryName = "cloudflared.exe"

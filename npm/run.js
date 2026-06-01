@@ -8,7 +8,7 @@ const fs = require("fs");
 const os = require("os");
 
 const PACKAGE = require("./package.json");
-const NAME = "remote-agents";
+const NAME = "1agents";
 const packageDir = __dirname;
 const binDir = path.join(packageDir, "bin");
 const ext = process.platform === "win32" ? ".exe" : "";
@@ -22,14 +22,14 @@ function needsInstall() {
 }
 
 if (needsInstall()) {
-  console.log(`[remote-agent] Binaries missing, running installer...`);
+  console.log(`[1agent] Binaries missing, running installer...`);
   try {
     execSync("node " + JSON.stringify(path.join(packageDir, "install.js")), {
       stdio: "inherit",
       cwd: packageDir,
     });
   } catch (err) {
-    console.error("[remote-agent] Auto-install failed. Please run manually: npm rebuild");
+    console.error("[1agent] Auto-install failed. Please run manually: npm rebuild");
     process.exit(1);
   }
 }
@@ -40,9 +40,9 @@ async function main() {
   const userArgs = process.argv.slice(2);
   const command = userArgs[0];
 
-  const daemonDir = path.join(os.homedir(), ".remote-agents");
+  const daemonDir = path.join(os.homedir(), ".1agents");
   const daemonJson = path.join(daemonDir, "daemon.json");
-  const logFile = path.join(daemonDir, "remote-agents.log");
+  const logFile = path.join(daemonDir, "1agents.log");
 
   const isDaemonCommand = ["start", "stop", "status", "logs"].includes(command);
 
@@ -66,7 +66,7 @@ async function main() {
       }
 
       if (isRunning) {
-        console.log(`⚠️ remote-agents is already running in the background (PID: ${existingPid}) on ${existingAddr}.`);
+        console.log(`⚠️ 1agents is already running in the background (PID: ${existingPid}) on ${existingAddr}.`);
         process.exit(0);
       }
 
@@ -86,7 +86,7 @@ async function main() {
         fs.mkdirSync(daemonDir, { recursive: true });
       }
 
-      console.log("Starting remote-agents in the background...");
+      console.log("Starting 1agents in the background...");
       const logStream = fs.openSync(logFile, "a");
       const child = spawn(agentPath, finalArgs, {
         detached: true,
@@ -121,7 +121,7 @@ async function main() {
       }
 
       if (!started) {
-        console.error("❌ Failed to start remote-agents in the background.");
+        console.error("❌ Failed to start 1agents in the background.");
         try {
           if (fs.existsSync(logFile)) {
             const logs = fs.readFileSync(logFile, "utf8").split("\n").slice(-15).join("\n");
@@ -132,15 +132,15 @@ async function main() {
       }
 
       console.log("\n==================================================================");
-      console.log("🚀 remote-agents started successfully in the background!");
+      console.log("🚀 1agents started successfully in the background!");
       console.log(`● PID         : ${pid}`);
       console.log(`● Local Port  : ${listenAddr}`);
       console.log(`● Log File    : ${logFile}`);
       console.log("==================================================================");
       console.log("Commands to manage the daemon:");
-      console.log("  remote-agents status   - Check running status");
-      console.log("  remote-agents logs -f  - Follow log output");
-      console.log("  remote-agents stop     - Stop the background server\n");
+      console.log("  1agents status   - Check running status");
+      console.log("  1agents logs -f  - Follow log output");
+      console.log("  1agents stop     - Stop the background server\n");
       process.exit(0);
     }
 
@@ -154,7 +154,7 @@ async function main() {
       } catch (e) {}
 
       if (!pid) {
-        console.log("remote-agents is not running (no active daemon found).");
+        console.log("1agents is not running (no active daemon found).");
         process.exit(0);
       }
 
@@ -165,12 +165,12 @@ async function main() {
       } catch (e) {}
 
       if (!isAlive) {
-        console.log("remote-agents is not running (PID not active). Cleaning up...");
+        console.log("1agents is not running (PID not active). Cleaning up...");
         try { fs.unlinkSync(daemonJson); } catch (e) {}
         process.exit(0);
       }
 
-      console.log(`Stopping remote-agents (PID: ${pid})...`);
+      console.log(`Stopping 1agents (PID: ${pid})...`);
       try {
         process.kill(pid, "SIGTERM");
       } catch (e) {
@@ -196,7 +196,7 @@ async function main() {
       }
 
       try { fs.unlinkSync(daemonJson); } catch (e) {}
-      console.log("❇️ remote-agents stopped successfully.");
+      console.log("❇️ 1agents stopped successfully.");
       process.exit(0);
     }
 
@@ -222,7 +222,7 @@ async function main() {
       }
 
       if (isRunning) {
-        console.log("\nremote-agents daemon status:");
+        console.log("\n1agents daemon status:");
         console.log(`● Active     : running (since ${mtime ? mtime.toLocaleString() : "unknown"})`);
         console.log(`● PID        : ${pid}`);
         console.log(`● Address    : ${listenAddr}`);

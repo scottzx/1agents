@@ -22,7 +22,7 @@ func init() {
 	if err != nil {
 		home = "."
 	}
-	configDir = filepath.Join(home, ".remote-agents")
+	configDir = filepath.Join(home, ".1agents")
 }
 
 const configFile = "workspaces_dir.json"

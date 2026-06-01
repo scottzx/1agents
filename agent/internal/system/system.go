@@ -18,7 +18,7 @@ import (
 )
 
 // npmPackageName is the canonical NPM package for this agent.
-const npmPackageName = "@scottzx/remote-agents"
+const npmPackageName = "@scottzx/1agents"
 
 // ── Update state tracker ──────────────────────────────────────────────────────
 
@@ -188,9 +188,9 @@ func restartModeName(m restartMode) string {
 	}
 }
 
-// detectSystemdUnit checks for a running remote-agents systemd unit.
+// detectSystemdUnit checks for a running 1agents systemd unit.
 func detectSystemdUnit() string {
-	for _, unit := range []string{"remote-agents", "remote-agents.service"} {
+	for _, unit := range []string{"1agents", "1agents.service"} {
 		out, err := exec.Command("systemctl", "is-active", unit).Output()
 		if err == nil && strings.TrimSpace(string(out)) == "active" {
 			return unit
@@ -392,7 +392,7 @@ func runUpdate(pkgTarget string, mode restartMode, extra string) {
 
 	case restartExec:
 		// Find the new binary path from npm global bin
-		newBin := findNpmGlobalBin("remote-agents")
+		newBin := findNpmGlobalBin("1agents")
 		appendLog("In-place restart (exec): replacing process with %s", newBin)
 		appendLog("Connection will drop briefly — the service restarts with the same arguments.")
 

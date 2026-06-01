@@ -190,7 +190,7 @@ export class App extends Component<{}, AppState> {
             workspaces: [],
             workspacesLoading: false,
             folders: [],
-            activeWorkspaceId: localStorage.getItem('remote-agents-active-workspace') || '',
+            activeWorkspaceId: localStorage.getItem('1agents-active-workspace') || '',
             activeSession: null,
             wsModalOpen: false,
             wsModalMode: 'create',
@@ -231,7 +231,7 @@ export class App extends Component<{}, AppState> {
             isMobile: window.innerWidth <= 768,
             keyboardVisible: false,
             viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
-            language: (localStorage.getItem('remote-agents-language') || 'zh-CN') as 'zh-CN' | 'en-US',
+            language: (localStorage.getItem('1agents-language') || 'zh-CN') as 'zh-CN' | 'en-US',
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
@@ -240,7 +240,7 @@ export class App extends Component<{}, AppState> {
     }
 
     async componentDidMount() {
-        const savedTheme = localStorage.getItem('remote-agents-theme') as 'light' | 'dark' | null;
+        const savedTheme = localStorage.getItem('1agents-theme') as 'light' | 'dark' | null;
         const theme = savedTheme || 'light';
         this.setState({ theme });
         document.documentElement.setAttribute('data-theme', theme);
@@ -743,7 +743,7 @@ export class App extends Component<{}, AppState> {
                     active: s.index === session.index,
                 })),
             }));
-            localStorage.setItem('remote-agents-active-workspace', session.workspaceId);
+            localStorage.setItem('1agents-active-workspace', session.workspaceId);
             return {
                 activeSession: { ...session, active: true },
                 folders:
@@ -788,7 +788,7 @@ export class App extends Component<{}, AppState> {
 
         this.setState({ activeWorkspaceId: ws.id }, () => {
             this.loadCcConnectUrl(ws.id);
-            localStorage.setItem('remote-agents-active-workspace', ws.id);
+            localStorage.setItem('1agents-active-workspace', ws.id);
         });
 
         // Find an existing window for this workspace, or create one
@@ -954,7 +954,7 @@ export class App extends Component<{}, AppState> {
             }
         });
         document.documentElement.setAttribute('data-theme', targetTheme);
-        localStorage.setItem('remote-agents-theme', targetTheme);
+        localStorage.setItem('1agents-theme', targetTheme);
         this.triggerTerminalFit();
     };
 
@@ -966,7 +966,7 @@ export class App extends Component<{}, AppState> {
                 iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
             }
         });
-        localStorage.setItem('remote-agents-language', lang);
+        localStorage.setItem('1agents-language', lang);
         this.showToast(`默认识别语言已切换为: ${lang === 'zh-CN' ? '中文' : 'English'} ✓`);
     };
 

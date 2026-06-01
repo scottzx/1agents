@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Config holds all runtime configuration for the remote-agent daemon.
+// Config holds all runtime configuration for the 1agent daemon.
 type Config struct {
 	// ListenAddr is the address the Go gateway listens on externally.
 	// Example: ":8080"
@@ -54,8 +54,8 @@ func Default() *Config {
 		ListenAddr:     ":8080",
 		TtydAddr:       "127.0.0.1:7681",
 		TtydBinaryPath: "./ttyd",
-		TtydArgs:       []string{"tmux", "new-session", "-A", "-s", "remote-agents"},
-		TmuxSession:    "remote-agents",
+		TtydArgs:       []string{"tmux", "new-session", "-A", "-s", "1agents"},
+		TmuxSession:    "1agents",
 		WorkDir:        "~",
 		StaticDir:      "./html/dist",
 		RestartDelay:   3 * time.Second,

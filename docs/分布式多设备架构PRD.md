@@ -4,13 +4,13 @@
 
 ### 1.1 背景
 
-当前 `remote-agents` 项目已实现单机版的 AI 远程工作台，包含终端访问、文件管理、Git 操作、工作区管理等功能。
+当前 `1agents` 项目已实现单机版的 AI 远程工作台，包含终端访问、文件管理、Git 操作、工作区管理等功能。
 
 随着 AI Agent 工作负载增长，单机资源（CPU/内存/会话数）有限，需要将工作负载分布到多台设备上。
 
 ### 1.2 目标
 
-- 将 `remote-agents` 扩展为**分布式多设备协同平台**
+- 将 `1agents` 扩展为**分布式多设备协同平台**
 - 设备通过 **Tailscale 虚拟局域网** 互联（纯 Tailscale 直连，无需穿透 NAT）
 - 用户可在**母机**上管理多台**子设备**，将任务派发给子设备执行
 - 通过**飞书 Bot** 实现任务派发（艾特机器人），构建可观测的 Agent 排班与任务调度系统
@@ -18,13 +18,13 @@
 ### 1.3 网络拓扑
 
 ```
-用户浏览器 ←→ 母机 (remote-agent + cc-connect)
+用户浏览器 ←→ 母机 (1agent + cc-connect)
                     ↓ Tailscale 直连
         ┌───────────┼───────────┐
         ↓           ↓           ↓
    子设备 A      子设备 B      子设备 C
  (Linux)      (macOS)      (Windows)
- remote-agent  remote-agent  remote-agent
+ 1agent  1agent  1agent
  + 5 Bots      + 5 Bots     + 5 Bots
 ```
 
@@ -36,7 +36,7 @@
 
 | 组件 | 位置 | 职责 |
 |------|------|------|
-| remote-agent | 母机 + 每台子设备 | 终端、工作区、文件管理、HTTP API |
+| 1agent | 母机 + 每台子设备 | 终端、工作区、文件管理、HTTP API |
 | cc-connect | 母机 + 每台子设备 | 飞书 Bot 与消息通道集成 |
 | 飞书 | 消息层 | 任务派发（艾特 Bot）、状态通知 |
 | 排班系统 | 母机 | 管理所有 Bot 的注册与状态 |
@@ -46,12 +46,12 @@
 
 - **子设备 → 母机**：子设备启动后主动向母机注册自己的 Bot 列表（通过 HTTP）
 - **母机 → 子设备**：通过 Tailscale IP + 固定端口直接调用子设备的 REST API
-- **飞书 → 子设备**：cc-connect 监听飞书消息，转发给子设备的 remote-agent
+- **飞书 → 子设备**：cc-connect 监听飞书消息，转发给子设备的 1agent
 - **子设备 → 飞书**：cc-connect 将执行结果通过 Bot 发送回飞书群
 
 ### 2.3 固定端口约定
 
-所有 `remote-agent` 实例使用固定端口 `7681`，通过 Tailscale IP + 端口访问。
+所有 `1agent` 实例使用固定端口 `7681`，通过 Tailscale IP + 端口访问。
 
 ---
 
@@ -61,7 +61,7 @@
 
 #### 3.1.1 子设备启动流程
 
-1. 子设备启动 `remote-agent`，监听 `7681` 端口
+1. 子设备启动 `1agent`，监听 `7681` 端口
 2. 子设备读取本地配置（deviceId、token、母机地址）
 3. 子设备向母机发送注册请求：`POST /api/device/register`
 4. 母机验证 token，返回设备配置（包括该子设备上创建的飞书 Bot 列表）
@@ -220,7 +220,7 @@ POST   /api/tasks/{id}/unblock  # 人工介入后解阻塞
 2. 母机的 cc-connect 接收消息，解析任务内容
 3. 母机调度 Agent 选择空闲的子设备 Bot
 4. 母机的 cc-connect 向子设备的 Bot 发送任务指令
-5. 子设备的 cc-connect 将任务转给 remote-agent 执行
+5. 子设备的 cc-connect 将任务转给 1agent 执行
 6. 子设备的 Bot 在接收到任务时，调用 Hook 报告到排班系统（status: busy）
 7. 子设备的 Bot 在任务完成时，调用 Hook 报告到任务系统（status: completed）
 8. 结果通过子设备 Bot 回复到飞书群
@@ -271,7 +271,7 @@ Body: {
 
 存储格式：JSON 文件（与现有 `workspaces_dir.json` 一致）
 
-存储位置：`~/.remote-agents/`
+存储位置：`~/.1agents/`
 
 ### 4.2 数据文件
 

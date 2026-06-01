@@ -51,7 +51,7 @@ import (
 	_ "github.com/chenhg5/cc-connect/platform/wps-xiezuo"
 	_ "github.com/chenhg5/cc-connect/web"
 
-	"github.com/scottzx/remote-agents/agent/internal/workspace"
+	"github.com/scottzx/1Agents/agent/internal/workspace"
 )
 
 type dummyBridgePlatform struct{}
@@ -142,7 +142,7 @@ func Start(ctx context.Context) {
 				ManagementToken = core.GenerateToken(16)
 				BridgeToken = core.GenerateToken(16)
 
-				defaultTOML := fmt.Sprintf(`# cc-connect config bootstrapped by remote-agents IDE
+				defaultTOML := fmt.Sprintf(`# cc-connect config bootstrapped by 1agents IDE
 
 language = "zh"
 

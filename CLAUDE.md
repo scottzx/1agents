@@ -24,7 +24,7 @@ make frontend           # Build frontend assets (html/) & generate src/html.h
 make ttyd               # Compile terminal server natively on the current host
 make cc-connect         # Compile cc-connect bridge daemon (incl. web assets)
 make cc-connect-noweb   # Compile cc-connect (WITHOUT rebuilding web assets)
-make agent              # Compile remote-agents Go server with metadata ldflags
+make agent              # Compile 1agents Go server with metadata ldflags
 make package            # Bundle binaries and assets into a target-named archive in dist/
 make clean              # Clean all intermediate and built assets across directories
 ```
@@ -45,7 +45,7 @@ yarn fix            # gts auto-fix
 ```bash
 cd agent
 go build ./cmd/agent # Build Go agent server
-./remote-agents      # Run the agent server
+./1agents      # Run the agent server
 ```
 
 #### cc-connect (daemon/)
@@ -65,19 +65,19 @@ make -C build-ttyd                                  # Compile native ttyd C bina
 ## Binary Versioning & Hostname Philosophy
 
 To ensure that binaries compiled on different environments (such as Mac vs Linux) are easily distinguishable even when using the same commit hash:
-1. **Metadata Injection**: Go components (`remote-agents`, `cc-connect`) and the C terminal server (`ttyd`) inject host details (`OS`, `Arch`, `Hostname`) during the compile phase.
+1. **Metadata Injection**: Go components (`1agents`, `cc-connect`) and the C terminal server (`ttyd`) inject host details (`OS`, `Arch`, `Hostname`) during the compile phase.
 2. **Version Commands**:
-   - `remote-agents -version` prints standard version, commit with OS/Arch/Hostname, and build time.
+   - `1agents -version` prints standard version, commit with OS/Arch/Hostname, and build time.
    - `cc-connect --version` prints matching version, commit, and build time.
    - `ttyd --version` prints C server version with OS/Arch/Hostname details.
-3. **Packaging Names**: `make package` copies all compiled components into a structured directory named `dist/remote-agents-$(VERSION)-$(OS)-$(ARCH)-$(HOSTNAME)/` and compresses it to a target-named `.tar.gz` archive to guarantee distinct, self-describing build outputs.
+3. **Packaging Names**: `make package` copies all compiled components into a structured directory named `dist/1agents-$(VERSION)-$(OS)-$(ARCH)-$(HOSTNAME)/` and compresses it to a target-named `.tar.gz` archive to guarantee distinct, self-describing build outputs.
 
 ## Architecture
 
 ```
-remote-agents/
+1agents/
 ├── build/           # Centralized output directory for all compiled binaries
-│   ├── remote-agents# Go agent server binary (compiled)
+│   ├── 1agents# Go agent server binary (compiled)
 │   ├── ttyd         # Native C terminal server binary (compiled)
 │   └── cc-connect   # Go bridge daemon binary (compiled)
 ├── html/            # TypeScript/React frontend (xterm.js, preact)

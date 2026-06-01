@@ -1,8 +1,8 @@
-# Root Makefile for remote-agents project
+# Root Makefile for 1agents project
 #
 # Provides a unified build, package, and deployment workflow for both Linux and macOS.
 
-APP          := remote-agents
+APP          := 1agents
 VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT       := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 BUILD_TIME   := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -32,7 +32,7 @@ help:
 	@echo "  make ttyd              - Compile native ttyd C server natively on the current host"
 	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
 	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
-	@echo "  make agent             - Compile remote-agents Go agent server with version ldflags"
+	@echo "  make agent             - Compile 1agents Go agent server with version ldflags"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
 
@@ -66,20 +66,20 @@ cc-connect-noweb:
 	cp cc-connect/cc-connect build/cc-connect
 
 agent:
-	@echo "=== Building remote-agents Go server..."
+	@echo "=== Building 1agents Go server..."
 	mkdir -p build
-	cd agent && go build -ldflags "$(AGENT_LDFLAGS)" -o ../build/remote-agents ./cmd/agent
+	cd agent && go build -ldflags "$(AGENT_LDFLAGS)" -o ../build/1agents ./cmd/agent
 
 package: all
-	@echo "=== Packaging remote-agents for $(OS_LOWER)-$(ARCH_LOWER) on $(HOSTNAME)..."
-	@rm -rf dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
-	@mkdir -p dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin
-	cp build/remote-agents dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
-	cp build/ttyd dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
-	cp build/cc-connect dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
-	cp -r html/dist dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
-	cd dist && tar -czf remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
-	@echo "=== Created package: dist/remote-agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
+	@echo "=== Packaging 1agents for $(OS_LOWER)-$(ARCH_LOWER) on $(HOSTNAME)..."
+	@rm -rf dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
+	@mkdir -p dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin
+	cp build/1agents dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp build/ttyd dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp build/cc-connect dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp -r html/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
+	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
+	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
 
 clean:
 	@echo "=== Cleaning build artifacts..."

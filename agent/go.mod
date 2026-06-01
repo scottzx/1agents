@@ -1,4 +1,4 @@
-module github.com/scottzx/remote-agents/agent
+module github.com/scottzx/1Agents/agent
 
 go 1.26.1
 

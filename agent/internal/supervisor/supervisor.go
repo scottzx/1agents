@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scottzx/remote-agents/agent/internal/config"
+	"github.com/scottzx/1Agents/agent/internal/config"
 )
 
 // Supervisor manages the lifecycle of the ttyd child process.

@@ -28,14 +28,14 @@ try {
 
 // ── Fallback Execution ──
 if (!fs.existsSync(ccPath)) {
-  console.log(`[remote-agent] cc-connect CLI binary missing, running installer...`);
+  console.log(`[1agent] cc-connect CLI binary missing, running installer...`);
   try {
     execSync("node " + JSON.stringify(path.join(packageDir, "install.js")), {
       stdio: "inherit",
       cwd: packageDir,
     });
   } catch (err) {
-    console.error("[remote-agent] Auto-install failed. Please run manually: npm rebuild");
+    console.error("[1agent] Auto-install failed. Please run manually: npm rebuild");
     process.exit(1);
   }
 }

@@ -12,7 +12,7 @@ const devMode = process.env.NODE_ENV !== 'production';
 
 function getBackendPort() {
     try {
-        const daemonPath = path.join(process.env.HOME, '.remote-agents', 'daemon.json');
+        const daemonPath = path.join(process.env.HOME, '.1agents', 'daemon.json');
         const config = JSON.parse(fs.readFileSync(daemonPath, 'utf8'));
         return config.listen_addr.replace(':', '') || '8080';
     } catch {

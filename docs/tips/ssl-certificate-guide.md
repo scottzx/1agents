@@ -1,8 +1,8 @@
 # Remote Agents SSL/TLS 证书配置指南
 
-为了确保浏览器端的高级 Web 功能（如 Web Terminals 中的 Clipboard 剪贴板、Media 媒体设备、Service Workers 缓存等）能够顺利且安全地在局域网内运行，`remote-agents` 强制要求在安全上下文（HTTPS / WSS）下提供服务。
+为了确保浏览器端的高级 Web 功能（如 Web Terminals 中的 Clipboard 剪贴板、Media 媒体设备、Service Workers 缓存等）能够顺利且安全地在局域网内运行，`1agents` 强制要求在安全上下文（HTTPS / WSS）下提供服务。
 
-目前，`remote-agents` 完美支持以下 **两种** 灵活的 SSL/TLS 证书方案：
+目前，`1agents` 完美支持以下 **两种** 灵活的 SSL/TLS 证书方案：
 
 ---
 
@@ -11,20 +11,20 @@
 这是最简单的开箱即用方案。当你在启动命令中添加 `--ssl` 标志，且当前系统没有安装证书时，系统将**自动在后台利用 Go 标准库完成所有证书的生成和配置**。
 
 ### 1. 它是如何工作的？
-- **自动创建与存储**：自动在用户家目录创建 `~/.remote-agents/certs/` 并生成现代、高强度的 **ECDSA P-256** 证书文件（`cert.pem` 和 `key.pem`），有效期为 **10 年**。
+- **自动创建与存储**：自动在用户家目录创建 `~/.1agents/certs/` 并生成现代、高强度的 **ECDSA P-256** 证书文件（`cert.pem` 和 `key.pem`），有效期为 **10 年**。
 - **局域网多 IP 自动适配 (SAN)**：自动扫描本机的全部网络接口，将所有活跃的局域网 IP（如 `192.168.x.x`）写入证书的 Subject Alternative Names (SAN)。
 - **Tailscale 自动注入**：如果系统运行了 Tailscale，系统会通过本地查询，将你的 Tailscale 节点域名（如 `*.ts.net`）和 Tailscale IP 也自动注入到自签名证书中。
 
 ### 2. 使用方法
 只需在启动时增加 `--ssl` 标志：
 ```bash
-remote-agents --ssl
+1agents --ssl
 ```
 
 ### 3. 如何在浏览器中消除“不安全”警告？
 由于证书是本地自签名的，浏览器会拦截并提示“不受信任的根证书”。你可以：
 - **临时使用**：在浏览器拦截界面点击“高级” -> “继续前往（不安全）”。
-- **永久信任**：双击生成的 `~/.remote-agents/certs/cert.pem` 导入到你本机的系统证书链（如 macOS 钥匙串访问、Windows 受信任根证书）并将其信任关系设置为“始终信任”，即可绿锁通过。
+- **永久信任**：双击生成的 `~/.1agents/certs/cert.pem` 导入到你本机的系统证书链（如 macOS 钥匙串访问、Windows 受信任根证书）并将其信任关系设置为“始终信任”，即可绿锁通过。
 
 ---
 
@@ -38,7 +38,7 @@ remote-agents --ssl
 2. 找到 **“HTTPS Certificates”**，点击 **“Enable HTTPS Certificates...”** 开启此服务。
 
 ### 2. 在终端申请官方证书
-回到你需要运行 `remote-agents` 的机器终端，运行以下命令（将域名替换为你自己的节点域名，可通过 `tailscale status` 获得）：
+回到你需要运行 `1agents` 的机器终端，运行以下命令（将域名替换为你自己的节点域名，可通过 `tailscale status` 获得）：
 ```bash
 tailscale cert macbook-air-5.tailfb4720.ts.net
 ```
@@ -47,20 +47,20 @@ tailscale cert macbook-air-5.tailfb4720.ts.net
 - `macbook-air-5.tailfb4720.ts.net.key` (私钥)
 
 ### 3. 部署并启动
-我们将申请好的证书移动到 `remote-agents` 的持久化存储目录中，以便在任何位置启动都能被自动识别：
+我们将申请好的证书移动到 `1agents` 的持久化存储目录中，以便在任何位置启动都能被自动识别：
 ```bash
-mkdir -p ~/.remote-agents/certs/
-cp macbook-air-5.tailfb4720.ts.net.crt macbook-air-5.tailfb4720.ts.net.key ~/.remote-agents/certs/
+mkdir -p ~/.1agents/certs/
+cp macbook-air-5.tailfb4720.ts.net.crt macbook-air-5.tailfb4720.ts.net.key ~/.1agents/certs/
 ```
 
 现在直接运行：
 ```bash
-remote-agents --ssl
+1agents --ssl
 ```
 系统启动时将输出如下日志，表明已成功**自动检测并加载**你的官方证书：
 ```
-[main] Discovered official Tailscale certificate files. Using: /Users/scott/.remote-agents/certs/macbook-air-5.tailfb4720.ts.net.crt
-[main] HTTPS / SSL enabled (using cert: /Users/scott/.remote-agents/certs/macbook-air-5.tailfb4720.ts.net.crt)
+[main] Discovered official Tailscale certificate files. Using: /Users/scott/.1agents/certs/macbook-air-5.tailfb4720.ts.net.crt
+[main] HTTPS / SSL enabled (using cert: /Users/scott/.1agents/certs/macbook-air-5.tailfb4720.ts.net.crt)
 ```
 
 ---

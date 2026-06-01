@@ -2,9 +2,9 @@
 
 随时随地，通过浏览器远程访问你的 AI 智能体和开发工作台。
 
-[![NPM Version](https://img.shields.io/npm/v/@scottzx/remote-agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/remote-agents)
-[![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/remote-agents)
-[![License](https://img.shields.io/github/license/scottzx/remote-agents)](LICENSE)
+[![NPM Version](https://img.shields.io/npm/v/@scottzx/1agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/1agents)
+[![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/1Agents)
+[![License](https://img.shields.io/github/license/scottzx/1Agents)](LICENSE)
 
 `Remote Agents` 是一个为现代开发者与 AI 协同设计的**轻量级、安全、免配置的远程 Web 工作台**。无论你是在咖啡馆用平板、在交通工具上用手机，还是在另一台电脑前，只需一个浏览器，就能瞬间连回你的专属开发环境，继续对话、编辑代码、管理文件、执行命令，体验如同亲临现场。
 
@@ -53,7 +53,7 @@
 5. **⚙️ 快速工作区 Folder Picker**：抛弃了陈旧的文本路径输入框，在新建工作区时直接唤起操作系统原生的 Folder Picker 文件夹选择器。
 6. **🚀 并行加载与启动优化**：优化了组件的并发初始化逻辑，工作区与终端会话实现并行异步加载，大幅缩短首屏白屏时间，并支持智能记忆/默认工作区选择。
 7. **🤖 CC-Connect 跨域/反向代理升级**：支持工作区动态项目注册和 API POST 请求语言/主题同步，极大提升了 iframe 嵌入的整体感。
-8. **📦 自动化 NPM 发布与 Node 24 适配**：推出了 multi-platform release CI/CD 自动化构建与统一的 NPM 包装包 `@scottzx/remote-agents`。适配了最新的 Node 24 运行环境，并优化了 Github Actions 上的 Yarn 3 缓存。
+8. **📦 自动化 NPM 发布与 Node 24 适配**：推出了 multi-platform release CI/CD 自动化构建与统一的 NPM 包装包 `@scottzx/1agents`。适配了最新的 Node 24 运行环境，并优化了 Github Actions 上的 Yarn 3 缓存。
 9. **🌐 按需公网 Web 隧道与智能下载优化**：新增 `--tunnel` 启动参数与 cc-connect 聊天智能唤醒，支持在无公网 IP/无证书环境下瞬间发布临时互联网安全访问链接；内置 Go 自动下载云端引擎（带有细致的进度百分比展示与系统级 `PATH` 智能复用），首次拉起极速自动适配，二次闪电秒开。
 
 ---
@@ -65,11 +65,11 @@
 我们提供了预编译的 NPM 包包装器，会自动检测您的系统架构并从 GitHub 镜像高速下载最匹配的平台二进制程序。
 
 ```bash
-# 全局安装 (自动包含 remote-agents 守护进程、ttyd 静态后端和 Web 前端)
-npm install -g @scottzx/remote-agents
+# 全局安装 (自动包含 1agents 守护进程、ttyd 静态后端和 Web 前端)
+npm install -g @scottzx/1agents
 
 # 也可以直接免安装直接通过 npx 运行：
-npx @scottzx/remote-agents [参数]
+npx @scottzx/1agents [参数]
 ```
 
 > **系统要求**：Node.js >= 22 (完美兼容 Node 24)
@@ -77,7 +77,7 @@ npx @scottzx/remote-agents [参数]
 
 ### 方法二：手动下载预编译二进制
 
-您也可以直接访问 [GitHub Releases 页面](https://github.com/scottzx/remote-agents/releases) 下载适合您系统架构的静态二进制包，解压后即可开箱即用。
+您也可以直接访问 [GitHub Releases 页面](https://github.com/scottzx/1Agents/releases) 下载适合您系统架构的静态二进制包，解压后即可开箱即用。
 
 ### 方法三：使用 Docker 部署
 
@@ -85,8 +85,8 @@ npx @scottzx/remote-agents [参数]
 docker run -d \
   -p 8080:8080 \
   -v /path/to/your/workspaces:/workspace \
-  --name remote-agents \
-  scottzx/remote-agents:latest
+  --name 1agents \
+  scottzx/1Agents:latest
 ```
 
 ### 方法四：从源码编译构建
@@ -95,8 +95,8 @@ docker run -d \
 
 1. **编译 C 终端后端 (ttyd)**：
    ```bash
-   git clone --recursive https://github.com/scottzx/remote-agents.git
-   cd remote-agents
+   git clone --recursive https://github.com/scottzx/1Agents.git
+   cd 1agents
    mkdir build && cd build
    cmake ..
    make  # 产出 ttyd 二进制文件
@@ -111,21 +111,21 @@ docker run -d \
 3. **编译 Go 守护进程**：
    ```bash
    cd ../agent
-   go build -o remote-agents ./cmd/agent/main.go
+   go build -o 1agents ./cmd/agent/main.go
    ```
 
 ---
 
 ## 🛠️ 使用与命令行参数
 
-启动服务非常简单，直接在终端中运行 `remote-agents` 即可：
+启动服务非常简单，直接在终端中运行 `1agents` 即可：
 
 ```bash
 # 启动服务，默认监听 8080 端口，工作目录为用户根目录 (~)
-remote-agents
+1agents
 
 # 指定监听地址与暴露的工作目录
-remote-agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
+1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
 ```
 
 服务启动后，在本地或局域网浏览器中打开 `http://localhost:8080` (或对应的监听端口) 即可进入您的云端工作台！
@@ -136,7 +136,7 @@ remote-agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
 | :--- | :---: | :---: | :--- |
 | `-listen` | `string` | `":8080"` | 服务对外监听的地址与端口 (例: `0.0.0.0:8080` / `:9000`) |
 | `-workdir` | `string` | `"~"` | 工作台默认暴露的文件系统根目录。非在此目录下的文件不可被访问 |
-| `-tmux-session` | `string` | `"remote-agents"` | 默认绑定的 tmux 会话名称，用于实现 Web 终端断线重连与持久化运行 |
+| `-tmux-session` | `string` | `"1agents"` | 默认绑定的 tmux 会话名称，用于实现 Web 终端断线重连与持久化运行 |
 | `-ssl` | `bool` | `false` | 是否开启 HTTPS 协议。若为 true 且无证书，系统会自动生成 10 年期自签名证书 |
 | `-ssl-cert` | `string` | `""` | 外部指定的高级 SSL/TLS 证书路径 (PEM 格式) |
 | `-ssl-key` | `string` | `""` | 外部指定的高级 SSL/TLS 证书私钥路径 (PEM 格式) |
@@ -162,10 +162,10 @@ remote-agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
    ```bash
    tailscale cert <您的Tailscale节点域名.ts.net>
    ```
-3. **一键适配**：将生成的 `.crt` 和 `.key` 文件移入 `~/.remote-agents/certs/` 目录下。
+3. **一键适配**：将生成的 `.crt` 和 `.key` 文件移入 `~/.1agents/certs/` 目录下。
 4. **启动服务**：直接运行：
    ```bash
-   remote-agents --ssl
+   1agents --ssl
    ```
    *Go 守护进程会自动扫描并匹配 Tailscale 官方证书，全球任何设备访问您的节点域名时都将呈现安全的绿锁标识 🔒！*
    *(更多细节请查阅：[Tailscale 证书配置指南](docs/tips/ssl-certificate-guide.md))*
@@ -186,7 +186,7 @@ remote-agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
 #### 💡 工作原理与首次下载体验
 当您在启动命令中加上 `-tunnel` 参数，例如：
 ```bash
-remote-agents -tunnel
+1agents -tunnel
 ```
 系统会触发按需公网通道的智能拉起流程：
 1. **环境变量优先复用（智能跳过）**：
@@ -196,7 +196,7 @@ remote-agents -tunnel
    ```text
    [tunnel] cloudflared not found in PATH or local bin. Starting automatic download...
    [tunnel] Downloading cloudflared binary from: https://github.com/...
-   [tunnel] Successfully downloaded and installed cloudflared to: ~/.remote-agents/bin/cloudflared
+   [tunnel] Successfully downloaded and installed cloudflared to: ~/.1agents/bin/cloudflared
    ```
    - **海外网络/高速宽带**：下载 30MB 仅需 **2 ~ 5 秒**，直接输出二维码。
    - **国内普通网络**：受 GitHub 国际带宽限制，下载时间约 **15 ~ 30 秒**。

@@ -8,17 +8,17 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/scottzx/remote-agents/agent/internal/auth"
-	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
-	"github.com/scottzx/remote-agents/agent/internal/config"
-	ctxt "github.com/scottzx/remote-agents/agent/internal/context"
-	"github.com/scottzx/remote-agents/agent/internal/fs"
-	"github.com/scottzx/remote-agents/agent/internal/gateway"
-	"github.com/scottzx/remote-agents/agent/internal/git"
-	"github.com/scottzx/remote-agents/agent/internal/system"
-	"github.com/scottzx/remote-agents/agent/internal/terminal"
-	"github.com/scottzx/remote-agents/agent/internal/tunnel"
-	"github.com/scottzx/remote-agents/agent/internal/workspace"
+	"github.com/scottzx/1Agents/agent/internal/auth"
+	"github.com/scottzx/1Agents/agent/internal/ccconnect"
+	"github.com/scottzx/1Agents/agent/internal/config"
+	ctxt "github.com/scottzx/1Agents/agent/internal/context"
+	"github.com/scottzx/1Agents/agent/internal/fs"
+	"github.com/scottzx/1Agents/agent/internal/gateway"
+	"github.com/scottzx/1Agents/agent/internal/git"
+	"github.com/scottzx/1Agents/agent/internal/system"
+	"github.com/scottzx/1Agents/agent/internal/terminal"
+	"github.com/scottzx/1Agents/agent/internal/tunnel"
+	"github.com/scottzx/1Agents/agent/internal/workspace"
 )
 
 // NewRouter builds and returns the main HTTP request multiplexer.

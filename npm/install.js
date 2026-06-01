@@ -13,12 +13,12 @@ const PACKAGE = require("./package.json");
 // Map NPM version (e.g. 20260523.1.0) back to Git Tag (e.g. v20260523-1)
 const versionParts = PACKAGE.version.split(".");
 if (versionParts.length < 2) {
-  throw new Error(`[remote-agent] Invalid package version: ${PACKAGE.version}`);
+  throw new Error(`[1agent] Invalid package version: ${PACKAGE.version}`);
 }
 const VERSION = `v${versionParts[0]}-${versionParts[1]}`;
-const NAME = "remote-agents";
+const NAME = "1agents";
 
-const GITHUB_REPO = "scottzx/remote-agents";
+const GITHUB_REPO = "scottzx/1Agents";
 
 const PLATFORM_MAP = {
   darwin: "darwin",
@@ -56,7 +56,7 @@ function fetch(url, redirects = 5) {
     if (redirects <= 0) return reject(new Error("Too many redirects"));
     const mod = url.startsWith("https") ? https : http;
     mod
-      .get(url, { headers: { "User-Agent": "remote-agent-npm" } }, (res) => {
+      .get(url, { headers: { "User-Agent": "1agent-npm" } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           return resolve(fetch(res.headers.location, redirects - 1));
         }
@@ -76,16 +76,16 @@ function fetch(url, redirects = 5) {
 async function download(urls) {
   for (const url of urls) {
     try {
-      console.log(`[remote-agent] Downloading from ${url}`);
+      console.log(`[1agent] Downloading from ${url}`);
       const data = await fetch(url);
-      console.log(`[remote-agent] Downloaded ${(data.length / 1024 / 1024).toFixed(2)} MB`);
+      console.log(`[1agent] Downloaded ${(data.length / 1024 / 1024).toFixed(2)} MB`);
       return data;
     } catch (err) {
-      console.warn(`[remote-agent] Failed: ${err.message}, trying next source...`);
+      console.warn(`[1agent] Failed: ${err.message}, trying next source...`);
     }
   }
   throw new Error(
-    `[remote-agent] Could not download binary from any source.\n` +
+    `[1agent] Could not download binary from any source.\n` +
       `  Tried: ${urls.join(", ")}\n` +
       `  You can download manually from https://github.com/${GITHUB_REPO}/releases`
   );
@@ -123,7 +123,7 @@ function extractZip(buffer, destDir) {
 
 async function main() {
   const { platform, arch, ext, filename } = getPlatformInfo();
-  console.log(`[remote-agent] Platform: ${platform}/${arch}`);
+  console.log(`[1agent] Platform: ${platform}/${arch}`);
 
   const packageDir = __dirname;
   const binDir = path.join(packageDir, "bin");
@@ -133,7 +133,7 @@ async function main() {
 
   // Check if binaries already exist and match version
   if (fs.existsSync(agentPath) && fs.existsSync(ttydPath)) {
-    console.log(`[remote-agent] Binaries already exist in ${binDir}. Replacing with ${VERSION}...`);
+    console.log(`[1agent] Binaries already exist in ${binDir}. Replacing with ${VERSION}...`);
     try {
       fs.unlinkSync(agentPath);
       fs.unlinkSync(ttydPath);
@@ -148,7 +148,7 @@ async function main() {
   const urls = getDownloadURLs(filename);
   const data = await download(urls);
 
-  console.log(`[remote-agent] Extracting files into ${packageDir}...`);
+  console.log(`[1agent] Extracting files into ${packageDir}...`);
   if (ext === ".tar.gz") {
     extractTarGz(data, packageDir);
   } else {
@@ -174,19 +174,19 @@ async function main() {
       if (fs.existsSync(ttydPath)) {
         execSync(`xattr -d com.apple.quarantine "${ttydPath}"`, { stdio: "pipe" });
       }
-      console.log(`[remote-agent] Removed macOS quarantine attribute`);
+      console.log(`[1agent] Removed macOS quarantine attribute`);
     } catch {
       // xattr fails if attribute doesn't exist, which is fine
     }
   }
 
-  console.log(`[remote-agent] Successfully installed to ${packageDir}`);
+  console.log(`[1agent] Successfully installed to ${packageDir}`);
 }
 
 main().catch((err) => {
   console.error(err.message);
   console.error(
-    "[remote-agent] Installation failed. You can install manually:\n" +
+    "[1agent] Installation failed. You can install manually:\n" +
       `  https://github.com/${GITHUB_REPO}/releases/tag/${VERSION}`
   );
   process.exit(1);

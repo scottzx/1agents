@@ -1,34 +1,34 @@
 ---
-name: remote-agents-tunnel
-description: Expose local services to the public internet via Cloudflare Tunnel (cloudflared). Use when an AI agent or external service needs to access a local HTTP service running on the remote-agents host from the public internet. Supports starting tunnels on specific ports, stopping them, checking status, and multi-port concurrent tunnels with token-based access control.
+name: 1agents-tunnel
+description: Expose local services to the public internet via Cloudflare Tunnel (cloudflared). Use when an AI agent or external service needs to access a local HTTP service running on the 1agents host from the public internet. Supports starting tunnels on specific ports, stopping them, checking status, and multi-port concurrent tunnels with token-based access control.
 ---
 
 # Remote Agents Tunnel
 
 ## Overview
 
-Exposes local HTTP services running on the remote-agents host to the public internet using Cloudflare Quick Tunnels. Each tunnel creates a unique `trycloudflare.com` URL with a session token for access control.
+Exposes local HTTP services running on the 1agents host to the public internet using Cloudflare Quick Tunnels. Each tunnel creates a unique `trycloudflare.com` URL with a session token for access control.
 
 ## Quick Start
 
 ```bash
 # Start a tunnel on the default port (8087)
-./agent/remote-agents tunnel start
+./agent/1agents tunnel start
 
 # Start a tunnel on a specific port
-./agent/remote-agents tunnel start 7681
+./agent/1agents tunnel start 7681
 
 # Start with idle timeout (minutes, -1=never, 0=default)
-./agent/remote-agents tunnel start 8087 30
+./agent/1agents tunnel start 8087 30
 
 # Check tunnel status
-./agent/remote-agents tunnel status
+./agent/1agents tunnel status
 
 # Stop a tunnel
-./agent/remote-agents tunnel stop 8087
+./agent/1agents tunnel stop 8087
 
 # Stop all tunnels
-./agent/remote-agents tunnel stop-all
+./agent/1agents tunnel stop-all
 ```
 
 ## Core Capabilities
@@ -105,8 +105,8 @@ The session token from `/api/tunnel/start` response grants access. The token exp
 Multiple tunnels can run concurrently, each on a different local port:
 
 ```bash
-./agent/remote-agents tunnel start 8087   # Tunnel 1
-./agent/remote-agents tunnel start 7681   # Tunnel 2 (separate URL)
+./agent/1agents tunnel start 8087   # Tunnel 1
+./agent/1agents tunnel start 7681   # Tunnel 2 (separate URL)
 ```
 
 Each tunnel is independent with its own URL and token.

@@ -60,7 +60,7 @@ func DiscoverTailscaleCerts(domain string) (certPath, keyPath string, found bool
 	home, err := os.UserHomeDir()
 	searchPaths := []string{"."}
 	if err == nil {
-		searchPaths = append(searchPaths, home, filepath.Join(home, ".remote-agents", "certs"))
+		searchPaths = append(searchPaths, home, filepath.Join(home, ".1agents", "certs"))
 	}
 
 	for _, dir := range searchPaths {

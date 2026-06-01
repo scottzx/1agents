@@ -307,7 +307,7 @@ export class Terminal extends Component<Props, State> {
             this.recognition.continuous = true;
             this.recognition.interimResults = true;
 
-            const lang = localStorage.getItem('remote-agents-language') || 'zh-CN';
+            const lang = localStorage.getItem('1agents-language') || 'zh-CN';
             this.recognition.lang = lang;
 
             this.recognition.onstart = () => {
@@ -322,7 +322,7 @@ export class Terminal extends Component<Props, State> {
                 const finalParts: string[] = [];
                 let interimText = '';
 
-                const lang = localStorage.getItem('remote-agents-language') || 'zh-CN';
+                const lang = localStorage.getItem('1agents-language') || 'zh-CN';
                 const isChinese = lang.toLowerCase().startsWith('zh');
                 const period = isChinese ? '。' : '.';
 

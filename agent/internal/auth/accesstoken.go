@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-const configDirName = ".remote-agents"
+const configDirName = ".1agents"
 const tokenFileName = "access-token"
 
 func TokenFilePath() string {

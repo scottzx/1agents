@@ -17,7 +17,7 @@ func TestHandler_View(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a test HTML file
-	htmlContent := "<html><body><h1>Hello remote-agents</h1></body></html>"
+	htmlContent := "<html><body><h1>Hello 1agents</h1></body></html>"
 	testFile := "page.html"
 	absTestFile := filepath.Join(tempDir, testFile)
 	if err := os.WriteFile(absTestFile, []byte(htmlContent), 0644); err != nil {

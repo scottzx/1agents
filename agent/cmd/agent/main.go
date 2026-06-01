@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/scottzx/remote-agents/agent/internal/cert"
-	"github.com/scottzx/remote-agents/agent/internal/ccconnect"
-	"github.com/scottzx/remote-agents/agent/internal/config"
-	"github.com/scottzx/remote-agents/agent/internal/server"
-	"github.com/scottzx/remote-agents/agent/internal/supervisor"
-	"github.com/scottzx/remote-agents/agent/internal/tunnel"
+	"github.com/scottzx/1Agents/agent/internal/cert"
+	"github.com/scottzx/1Agents/agent/internal/ccconnect"
+	"github.com/scottzx/1Agents/agent/internal/config"
+	"github.com/scottzx/1Agents/agent/internal/server"
+	"github.com/scottzx/1Agents/agent/internal/supervisor"
+	"github.com/scottzx/1Agents/agent/internal/tunnel"
 )
 
 var (
@@ -66,7 +66,7 @@ func main() {
 	flag.Parse()
 
 	if showVersion {
-		fmt.Printf("remote-agents %s\ncommit:  %s\nbuilt:   %s\n", version, commit, buildTime)
+		fmt.Printf("1agents %s\ncommit:  %s\nbuilt:   %s\n", version, commit, buildTime)
 		return
 	}
 
@@ -182,7 +182,7 @@ func main() {
 					log.Printf("[main] WARNING: could not resolve user home directory (%v). Using current directory.", err)
 					home = "."
 				}
-				defaultCertDir := filepath.Join(home, ".remote-agents", "certs")
+				defaultCertDir := filepath.Join(home, ".1agents", "certs")
 				if sslCert == "" {
 					sslCert = filepath.Join(defaultCertDir, "cert.pem")
 				}
@@ -266,7 +266,7 @@ func writeDaemonFile(listenAddr string) {
 	if err != nil {
 		return
 	}
-	daemonDir := filepath.Join(home, ".remote-agents")
+	daemonDir := filepath.Join(home, ".1agents")
 	os.MkdirAll(daemonDir, 0700)
 
 	info := struct {

@@ -402,7 +402,7 @@ func (h *Handler) safeAbs(rel string) (string, bool) {
 	if filepath.IsAbs(cleaned) {
 		home, err := os.UserHomeDir()
 		if err == nil {
-			configPath := filepath.Join(home, ".remote-agents", "workspaces_dir.json")
+			configPath := filepath.Join(home, ".1agents", "workspaces_dir.json")
 			if data, err := os.ReadFile(configPath); err == nil {
 				var wsCfg struct {
 					Workspaces []struct {

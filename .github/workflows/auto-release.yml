@@ -176,27 +176,27 @@ jobs:
           pnpm install --frozen-lockfile --dangerously-allow-all-builds
           pnpm build
 
-      - name: Build Go remote-agents
+      - name: Build Go 1agents
         run: |
           cd agent
-          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w" -o ../build/remote-agents ./cmd/agent
+          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w" -o ../build/1agents ./cmd/agent
           cd ../cc-connect/cmd/cc-connect
           GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w" -o ../../../build/cc-connect .
 
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
-          cp build/remote-agents release-pkg/bin/
+          cp build/1agents release-pkg/bin/
           cp build/ttyd release-pkg/bin/
           cp build/cc-connect release-pkg/bin/
           cp -r html-dist release-pkg/dist
-          tar -czf remote-agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
+          tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
 
       - name: Upload Linux Archive
         uses: actions/upload-artifact@v7
         with:
-          name: remote-agents-linux-${{ matrix.arch }}
-          path: remote-agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
+          name: 1agents-linux-${{ matrix.arch }}
+          path: 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
 
   build-macos:
     runs-on: macos-latest
@@ -265,27 +265,27 @@ jobs:
           pnpm install --frozen-lockfile --dangerously-allow-all-builds
           pnpm build
 
-      - name: Build Go remote-agents
+      - name: Build Go 1agents
         run: |
           cd agent
-          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../build-ttyd/remote-agents ./cmd/agent
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../build-ttyd/1agents ./cmd/agent
           cd ../cc-connect/cmd/cc-connect
           GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ../../../build-ttyd/cc-connect .
 
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
-          cp build-ttyd/remote-agents release-pkg/bin/
+          cp build-ttyd/1agents release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp build-ttyd/cc-connect release-pkg/bin/
           cp -r html-dist release-pkg/dist
-          tar -czf remote-agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
+          tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
 
       - name: Upload macOS Archive
         uses: actions/upload-artifact@v7
         with:
-          name: remote-agents-darwin-arm64
-          path: remote-agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
+          name: 1agents-darwin-arm64
+          path: 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
 
   release:
     runs-on: ubuntu-latest
@@ -306,7 +306,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            remote-agents-*.tar.gz
+            1agents-*.tar.gz
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
