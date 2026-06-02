@@ -382,11 +382,7 @@ export class App extends Component<{}, AppState> {
         const wsId = workspaceId || this.state.activeWorkspaceId;
         if (!wsId) return;
         try {
-            const url = await workspaceService.getCcConnectUrl(
-                wsId,
-                this.state.theme,
-                this.state.language || 'zh-CN'
-            );
+            const url = await workspaceService.getCcConnectUrl(wsId, this.state.theme, this.state.language || 'zh-CN');
             this.setState({ ccConnectUrl: url });
         } catch (err) {
             console.error('[ccconnect] failed to load url:', err);
@@ -1041,8 +1037,6 @@ export class App extends Component<{}, AppState> {
             this.showToast(`撤销失败: ${err}`);
         }
     };
-
-
 
     closeAccessTokenModal = () => {
         this.setState({ accessTokenModalToken: '' });

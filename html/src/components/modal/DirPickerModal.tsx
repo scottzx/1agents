@@ -107,11 +107,7 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                             ) : (
                                 <div class="dp-dir-list">
                                     {dirPickerDirs.map(dir => (
-                                        <div
-                                            key={dir.path}
-                                            class="dp-dir-item"
-                                            onClick={() => this.loadDirs(dir.path)}
-                                        >
+                                        <div key={dir.path} class="dp-dir-item" onClick={() => this.loadDirs(dir.path)}>
                                             <svg
                                                 class="dp-folder-icon"
                                                 viewBox="0 0 24 24"
