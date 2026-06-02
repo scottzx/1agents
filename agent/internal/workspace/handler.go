@@ -67,25 +67,12 @@ func (h *Handler) getConfigPath() string {
 func (h *Handler) loadConfig() (*WorkspacesConfig, error) {
 	path := h.getConfigPath()
 	
-	// Dynamically resolve absolute path of 'temp' directory in current directory
-	tempDir, errDir := filepath.Abs("temp")
-	if errDir == nil {
-		_ = os.MkdirAll(tempDir, 0755)
-	}
-
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			defaultWS := Workspace{
-				ID:     "temp",
-				Name:   "temp",
-				Path:   tempDir,
-				Status: "active",
-			}
 			cfg := &WorkspacesConfig{
-				Workspaces: []Workspace{defaultWS},
+				Workspaces: []Workspace{},
 			}
-			_ = h.saveConfig(cfg)
 			return cfg, nil
 		}
 		return nil, err
@@ -95,16 +82,8 @@ func (h *Handler) loadConfig() (*WorkspacesConfig, error) {
 		return nil, err
 	}
 	
-	// If the file exists but contains 0 workspaces, pre-populate with the default 'temp' workspace
-	if len(cfg.Workspaces) == 0 {
-		defaultWS := Workspace{
-			ID:     "temp",
-			Name:   "temp",
-			Path:   tempDir,
-			Status: "active",
-		}
-		cfg.Workspaces = []Workspace{defaultWS}
-		_ = h.saveConfig(&cfg)
+	if cfg.Workspaces == nil {
+		cfg.Workspaces = []Workspace{}
 	}
 	return &cfg, nil
 }
@@ -161,6 +140,15 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[workspace] load error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if ws.ID == "temp" || ws.Path == "temp" {
+		homeDir, errHome := os.UserHomeDir()
+		if errHome == nil {
+			tempDir := filepath.Join(homeDir, "temp")
+			_ = os.MkdirAll(tempDir, 0755)
+			ws.Path = tempDir
+		}
 	}
 	// Check for duplicate ID
 	for _, existing := range cfg.Workspaces {

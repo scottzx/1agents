@@ -121,6 +121,60 @@ func Start(ctx context.Context) {
 
 	enabledTrue := true
 
+	// ── 1. Synchronously bootstrap config & tokens to avoid first-launch race condition ──
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		ManagementToken = core.GenerateToken(16)
+		BridgeToken = core.GenerateToken(16)
+
+		defaultTOML := fmt.Sprintf(`# cc-connect config bootstrapped by 1agents IDE
+
+language = "zh"
+
+[log]
+level = "info"
+
+[management]
+enabled = true
+port = %d
+token = "%s"
+cors_origins = ["*"]
+
+[bridge]
+enabled = true
+port = %d
+token = "%s"
+insecure = true
+`, ManagementPort, ManagementToken, BridgePort, BridgeToken)
+
+		if err := os.WriteFile(configPath, []byte(defaultTOML), 0o644); err != nil {
+			log.Printf("[ccconnect] Error writing bootstrapped config: %v", err)
+		} else {
+			log.Printf("[ccconnect] Bootstrapped default cc-connect config at %s", configPath)
+		}
+	}
+
+	cfgSync := &config.Config{}
+	if _, err := toml.DecodeFile(configPath, cfgSync); err == nil {
+		if cfgSync.Management.Token != "" {
+			ManagementToken = cfgSync.Management.Token
+		} else {
+			ManagementToken = core.GenerateToken(16)
+		}
+		if cfgSync.Bridge.Token != "" {
+			BridgeToken = cfgSync.Bridge.Token
+		} else {
+			BridgeToken = core.GenerateToken(16)
+		}
+	} else {
+		log.Printf("[ccconnect] Error decoding config TOML synchronously: %v", err)
+		if ManagementToken == "" {
+			ManagementToken = core.GenerateToken(16)
+		}
+		if BridgeToken == "" {
+			BridgeToken = core.GenerateToken(16)
+		}
+	}
+
 	// Boot cc-connect core engines & servers in a background supervisor loop
 	go func() {
 		defer func() {
@@ -202,38 +256,43 @@ insecure = true
 				log.Printf("[ccconnect] Error loading workspaces config: %v", err)
 			} else {
 				// 1. Two-way sync: CC-Connect projects -> Workspaces
-				wsMap := make(map[string]bool)
-				for _, ws := range wsCfg.Workspaces {
-					wsMap[ws.Path] = true
-					wsMap[ws.ID] = true
-				}
-
-				wsModified := false
-				for _, proj := range cfg.Projects {
-					workDir, _ := proj.Agent.Options["work_dir"].(string)
-					if workDir == "" {
-						continue
+				// Only perform this import sync if there is already at least one workspace.
+				// If workspaces are completely empty, we are in a clean first boot / onboarding,
+				// so we don't want to import any stale or placeholder projects.
+				if len(wsCfg.Workspaces) > 0 {
+					wsMap := make(map[string]bool)
+					for _, ws := range wsCfg.Workspaces {
+						wsMap[ws.Path] = true
+						wsMap[ws.ID] = true
 					}
 
-					projID := sanitizeID(proj.Name)
-					if !wsMap[workDir] && !wsMap[projID] {
-						newWS := workspace.Workspace{
-							ID:     projID,
-							Name:   proj.Name,
-							Path:   workDir,
-							Status: "active",
+					wsModified := false
+					for _, proj := range cfg.Projects {
+						workDir, _ := proj.Agent.Options["work_dir"].(string)
+						if workDir == "" {
+							continue
 						}
-						wsCfg.Workspaces = append(wsCfg.Workspaces, newWS)
-						wsMap[workDir] = true
-						wsMap[projID] = true
-						wsModified = true
-						log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", proj.Name, workDir)
-					}
-				}
 
-				if wsModified {
-					if err := wsHandler.SaveWorkspacesConfig(wsCfg); err != nil {
-						log.Printf("[ccconnect] Error saving imported workspaces: %v", err)
+						projID := sanitizeID(proj.Name)
+						if !wsMap[workDir] && !wsMap[projID] {
+							newWS := workspace.Workspace{
+								ID:     projID,
+								Name:   proj.Name,
+								Path:   workDir,
+								Status: "active",
+							}
+							wsCfg.Workspaces = append(wsCfg.Workspaces, newWS)
+							wsMap[workDir] = true
+							wsMap[projID] = true
+							wsModified = true
+							log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", proj.Name, workDir)
+						}
+					}
+
+					if wsModified {
+						if err := wsHandler.SaveWorkspacesConfig(wsCfg); err != nil {
+							log.Printf("[ccconnect] Error saving imported workspaces: %v", err)
+						}
 					}
 				}
 
@@ -292,6 +351,30 @@ insecure = true
 				}
 
 				cfg.Projects = updatedProjects
+			}
+
+			// 3. Fallback: if project list is empty, inject a default placeholder project to pass CC-Connect's validation.
+			if len(cfg.Projects) == 0 {
+				homeDir, _ := os.UserHomeDir()
+				tempDir := filepath.Join(homeDir, "temp")
+				_ = os.MkdirAll(tempDir, 0755)
+				cfg.Projects = []config.ProjectConfig{
+					{
+						Name: "temp",
+						Agent: config.AgentConfig{
+							Type: "claudecode",
+							Options: map[string]any{
+								"work_dir": tempDir,
+								"mode":     "default",
+							},
+						},
+						Platforms: []config.PlatformConfig{
+							{
+								Type: "bridge",
+							},
+						},
+					},
+				}
 			}
 
 			// Write the merged configuration back to disk

@@ -162,6 +162,7 @@ interface AppState {
     accessAuthenticated: boolean;
     accessTokenModalToken: string;
     onboarded: boolean;
+    hasLoadedWorkspaces: boolean;
 }
 
 // Drag resizer state (module-level for perf)
@@ -237,6 +238,7 @@ export class App extends Component<{}, AppState> {
             accessAuthenticated: true,
             accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
+            hasLoadedWorkspaces: false,
         };
     }
 
@@ -356,7 +358,7 @@ export class App extends Component<{}, AppState> {
                     sessions: prev ? prev.sessions : [],
                 };
             });
-            this.setState({ workspaces, folders, workspacesLoading: false }, () => {
+            this.setState({ workspaces, folders, workspacesLoading: false, hasLoadedWorkspaces: true }, () => {
                 if (skipAutoSelect) return;
                 const { activeWorkspaceId } = this.state;
                 const activeStillExists = workspaces.some(ws => ws.id === activeWorkspaceId);
@@ -374,7 +376,7 @@ export class App extends Component<{}, AppState> {
             });
         } catch (err) {
             console.error('[workspace] load error:', err);
-            this.setState({ workspacesLoading: false });
+            this.setState({ workspacesLoading: false, hasLoadedWorkspaces: true });
         }
     };
 
@@ -389,12 +391,24 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    onUseTempWorkspace = () => {
-        localStorage.setItem('1agents-onboarded', 'true');
-        this.setState({ onboarded: true });
-        const tempWs = this.state.workspaces.find(w => w.id === 'temp');
-        if (tempWs) {
-            this.selectWorkspace(tempWs);
+    onUseTempWorkspace = async () => {
+        try {
+            await workspaceService.create({
+                id: 'temp',
+                name: 'temp',
+                path: 'temp',
+                status: 'active',
+            });
+            localStorage.setItem('1agents-onboarded', 'true');
+            this.setState({ onboarded: true });
+            await this.loadWorkspaces(true);
+            const tempWs = this.state.workspaces.find(w => w.id === 'temp');
+            if (tempWs) {
+                await this.selectWorkspace(tempWs);
+            }
+        } catch (err) {
+            console.error('[workspace] failed to create temp workspace:', err);
+            this.showToast(`创建 temp 空间失败: ${err}`);
         }
     };
 
@@ -420,7 +434,15 @@ export class App extends Component<{}, AppState> {
             await workspaceService.create(ws);
             localStorage.setItem('1agents-onboarded', 'true');
             this.setState({ onboarded: true });
-            await this.loadWorkspaces();
+            await this.loadWorkspaces(true);
+            const newWs = this.state.workspaces.find(w => w.id === ws.id);
+            if (newWs) {
+                await this.selectWorkspace(newWs);
+            } else {
+                if (this.state.workspaces.length > 0) {
+                    await this.selectWorkspace(this.state.workspaces[0]);
+                }
+            }
             this.showToast(`工作空间 "${name}" 已创建 ✓`);
         } catch (err) {
             this.showToast(`创建失败: ${err}`);
@@ -1382,7 +1404,7 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container">
-                {!this.state.onboarded ? (
+                {this.state.hasLoadedWorkspaces && workspaces.length === 0 ? (
                     <WelcomeOnboarding
                         language={language}
                         onCreateWorkspace={this.openCreateWorkspacePicker}
