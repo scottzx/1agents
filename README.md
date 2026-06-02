@@ -93,6 +93,25 @@
 
 ---
 
+## ⚙️ 前置系统依赖 (Prerequisites)
+
+为了能够完美享受到终端会话自动持久化（断线重连）的优秀体验，本系统在运行时依赖于 **`tmux`** 命令行工具。由于 `tmux` 属于高度动态链接的 C 程序，为了保证运行的兼容性，它不支持直接预包在 NPM 体积中，需优先在你的宿主机上通过系统包管理器安装：
+
+* **macOS (通过 Homebrew 安装)**:
+  ```bash
+  brew install tmux
+  ```
+* **Linux (Ubuntu/Debian)**:
+  ```bash
+  sudo apt update && sudo apt install -y tmux
+  ```
+* **Linux (CentOS/RHEL/Fedora)**:
+  ```bash
+  sudo dnf install -y tmux
+  ```
+
+---
+
 ## 🚀 安装指南 (Installation)
 
 ### 方法一：通过 NPM 安装 (最简便 ⚡ 推荐)

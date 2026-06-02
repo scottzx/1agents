@@ -127,6 +127,25 @@ The project has recently undergone major optimizations and refactoring, bringing
 
 ---
 
+## ⚙️ System Prerequisites
+
+To ensure seamless terminal session persistence (auto-reconnects), this platform natively relies on the **`tmux`** command-line utility. Since `tmux` is a highly dynamically linked C binary, it cannot be pre-bundled portably inside the NPM package structure. Please install it on your host using your system's package manager first:
+
+* **macOS (via Homebrew)**:
+  ```bash
+  brew install tmux
+  ```
+* **Linux (Ubuntu/Debian)**:
+  ```bash
+  sudo apt update && sudo apt install -y tmux
+  ```
+* **Linux (CentOS/RHEL/Fedora)**:
+  ```bash
+  sudo dnf install -y tmux
+  ```
+
+---
+
 ## 🚀 Installation
 
 ### Method 1: Global NPM Install (Recommended ⚡)
