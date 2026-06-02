@@ -63,6 +63,7 @@ export class Terminal extends Component<Props, State> {
     private hasScrolled = false;
     private isComposing = false;
     private recognition: SpeechRecognitionInstance | null = null;
+    private isUnmounted = false;
 
     constructor(props: Props) {
         super();
@@ -88,12 +89,14 @@ export class Terminal extends Component<Props, State> {
         this.props.onMobileDetect?.(isMobile);
 
         await this.xterm.refreshToken();
+        if (this.isUnmounted || !this.container) return;
         this.xterm.open(this.container);
         this.xterm.connect();
         window.xterm = this.xterm;
     }
 
     componentWillUnmount() {
+        this.isUnmounted = true;
         this.cleanupSpeech();
         this.xterm.dispose();
         delete window.xterm;

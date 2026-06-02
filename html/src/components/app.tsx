@@ -191,7 +191,7 @@ export class App extends Component<{}, AppState> {
             rightPanelWidth: 320,
             bottomNavHidden: false,
             workspaces: [],
-            workspacesLoading: false,
+            workspacesLoading: true,
             folders: [],
             activeWorkspaceId: localStorage.getItem('1agents-active-workspace') || '',
             activeSession: null,
@@ -1269,6 +1269,23 @@ export class App extends Component<{}, AppState> {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} />;
         }
 
+        // If workspaces are empty and loading on initial load, show a loading spinner
+        if (workspaces.length === 0 && workspacesLoading) {
+            return (
+                <div
+                    class="app-container"
+                    style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: var(--bg-panel);"
+                >
+                    <div class="fb-loading" style="display: flex; flex-direction: column; align-items: center;">
+                        <div class="fb-loading-spinner" />
+                        <span style="color: var(--text-main); margin-top: 12px; font-family: var(--font-sans);">
+                            {language === 'zh-CN' ? '正在载入工作空间…' : 'Loading workspaces…'}
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+
         // Check if there is a preview query parameter in the URL
         const params = new URLSearchParams(window.location.search);
         const hasPreview = params.has('preview') || params.has('path') || params.has('file');
@@ -1343,7 +1360,7 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container">
-                {workspaces.length === 0 && !workspacesLoading ? (
+                {workspaces.length === 0 ? (
                     <WelcomeOnboarding language={language} onCreateWorkspace={this.openCreateWorkspacePicker} />
                 ) : (
                     <Fragment>
@@ -1366,38 +1383,6 @@ export class App extends Component<{}, AppState> {
                             onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
                             onTerminalKill={idx => this.killTerminal(idx)}
                         />
-
-                        {/* Workspace create/rename modal */}
-                        {wsModalOpen && (
-                            <WorkspaceModal
-                                mode={wsModalMode}
-                                name={wsModalName}
-                                path={wsModalPath}
-                                terminalDir={wsModalTerminalDir}
-                                chatChannel={wsModalChatChannel}
-                                onNameChange={val => this.setState({ wsModalName: val })}
-                                onPathChange={val => this.setState({ wsModalPath: val })}
-                                onTerminalDirChange={val => this.setState({ wsModalTerminalDir: val })}
-                                onChatChannelChange={val => this.setState({ wsModalChatChannel: val })}
-                                onClose={this.closeWsModal}
-                                onBrowse={this.openDirPickerForModal}
-                                onSubmit={this.submitWsModal}
-                            />
-                        )}
-
-                        {/* Remote Directory Picker Modal */}
-                        {dirPickerOpen && (
-                            <DirPickerModal
-                                onClose={() => this.setState({ dirPickerOpen: false })}
-                                onSelect={pickedPath => {
-                                    if (this.state.dirPickerOnSelect) {
-                                        this.state.dirPickerOnSelect(pickedPath);
-                                    }
-                                    this.setState({ dirPickerOpen: false });
-                                }}
-                                onShowToast={this.showToast}
-                            />
-                        )}
 
                         {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
                         {leftSidebarOpen && (
@@ -1548,6 +1533,38 @@ export class App extends Component<{}, AppState> {
                             </div>
                         </div>
                     </Fragment>
+                )}
+
+                {/* Workspace create/rename modal */}
+                {wsModalOpen && (
+                    <WorkspaceModal
+                        mode={wsModalMode}
+                        name={wsModalName}
+                        path={wsModalPath}
+                        terminalDir={wsModalTerminalDir}
+                        chatChannel={wsModalChatChannel}
+                        onNameChange={val => this.setState({ wsModalName: val })}
+                        onPathChange={val => this.setState({ wsModalPath: val })}
+                        onTerminalDirChange={val => this.setState({ wsModalTerminalDir: val })}
+                        onChatChannelChange={val => this.setState({ wsModalChatChannel: val })}
+                        onClose={this.closeWsModal}
+                        onBrowse={this.openDirPickerForModal}
+                        onSubmit={this.submitWsModal}
+                    />
+                )}
+
+                {/* Remote Directory Picker Modal */}
+                {dirPickerOpen && (
+                    <DirPickerModal
+                        onClose={() => this.setState({ dirPickerOpen: false })}
+                        onSelect={pickedPath => {
+                            if (this.state.dirPickerOnSelect) {
+                                this.state.dirPickerOnSelect(pickedPath);
+                            }
+                            this.setState({ dirPickerOpen: false });
+                        }}
+                        onShowToast={this.showToast}
+                    />
                 )}
 
                 {/* Access Token Display Modal (one-time, shown after generation) */}
