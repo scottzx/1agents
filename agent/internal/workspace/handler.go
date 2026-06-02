@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/chenhg5/cc-connect/config"
@@ -42,10 +43,16 @@ type WorkspacesConfig struct {
 	Workspaces []Workspace `json:"workspaces"`
 }
 
-type Handler struct{}
+type Handler struct {
+	tmuxSession string
+}
 
-func NewHandler() *Handler {
-	return &Handler{}
+func NewHandler(tmuxSession ...string) *Handler {
+	session := ""
+	if len(tmuxSession) > 0 {
+		session = tmuxSession[0]
+	}
+	return &Handler{tmuxSession: session}
 }
 
 func (h *Handler) ensureConfigDir() error {
@@ -257,6 +264,56 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 				log.Println("[workspace] Successfully requested CC-Connect process hot restart for configuration reload")
 			default:
 				log.Println("[workspace] CC-Connect hot restart already pending")
+			}
+		}
+	}
+
+	// Clean up tmux windows associated with this workspace
+	if h.tmuxSession != "" {
+		if exec.Command("tmux", "has-session", "-t", h.tmuxSession).Run() == nil {
+			cmd := exec.Command("tmux", "list-windows", "-t", h.tmuxSession, "-F", "#{window_index}|#{window_name}")
+			if out, err := cmd.Output(); err == nil {
+				lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+				var windowsToKill []int
+				var totalWindows int
+				for _, line := range lines {
+					if line == "" {
+						continue
+					}
+					totalWindows++
+					parts := strings.SplitN(line, "|", 2)
+					if len(parts) != 2 {
+						continue
+					}
+					idx, err1 := strconv.Atoi(parts[0])
+					name := parts[1]
+					if err1 != nil {
+						continue
+					}
+					
+					// Parse workspace ID from name: "{workspaceId}_{n}" or "{workspaceId}"
+					wsID := name
+					if lastUnderscore := strings.LastIndex(name, "_"); lastUnderscore > 0 {
+						wsID = name[:lastUnderscore]
+					}
+					
+					if wsID == id {
+						windowsToKill = append(windowsToKill, idx)
+					}
+				}
+				
+				if len(windowsToKill) > 0 {
+					// If we are about to kill all windows, create a placeholder "p" first to keep session alive
+					if len(windowsToKill) >= totalWindows {
+						_ = exec.Command("tmux", "new-window", "-t", h.tmuxSession, "-n", "p").Run()
+					}
+					
+					// Kill target windows
+					for _, idx := range windowsToKill {
+						log.Printf("[workspace] Killing tmux window %d for deleted workspace %s", idx, id)
+						_ = exec.Command("tmux", "kill-window", "-t", fmt.Sprintf("%s:%d", h.tmuxSession, idx)).Run()
+					}
+				}
 			}
 		}
 	}

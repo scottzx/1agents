@@ -279,7 +279,7 @@ export function RightPanel({
                         workdir={activeWorkspacePath}
                         activeWorkspaceId={activeWorkspaceId}
                         onLoadingChange={setGitLoading}
-                        onRegisterRefresh={setGitRefreshFn}
+                        onRegisterRefresh={fn => setGitRefreshFn(() => fn)}
                     />
                 )}
 

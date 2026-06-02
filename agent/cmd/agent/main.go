@@ -144,7 +144,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("[main] Remote Agent listening on %s", cfg.ListenAddr)
+		log.Printf("[main] 1Agent listening on %s", cfg.ListenAddr)
 		writeDaemonFile(cfg.ListenAddr)
 		log.Printf("[main] Version            : %s", version)
 		log.Printf("[main] Commit             : %s", commit)
@@ -216,7 +216,7 @@ func main() {
 				}
 
 				fmt.Println("\n==================================================================")
-				fmt.Println("🚀 REMOTE AGENT PUBLIC TUNNEL IS ACTIVE!")
+				fmt.Println("🚀 1AGENT PUBLIC TUNNEL IS ACTIVE!")
 				fmt.Printf("🔗 Secure Link: %s/?token=%s\n", publicURL, token)
 				fmt.Println("==================================================================")
 				fmt.Println("[main] Scan the high-contrast QR code below to connect instantly:")

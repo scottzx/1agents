@@ -47,7 +47,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/fs/delete", fsHandler.Delete) // DELETE ?path=./main.go
 
 	// ── Workspace API ────────────────────────────────────────────────────────
-	wsHandler := workspace.NewHandler()
+	wsHandler := workspace.NewHandler(cfg.TmuxSession)
 	mux.HandleFunc("/api/workspace/list", wsHandler.List)     // GET
 	mux.HandleFunc("/api/workspace/create", wsHandler.Create) // POST
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update) // POST

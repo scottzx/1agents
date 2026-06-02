@@ -695,7 +695,7 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		mgmtSrv.Start()
 	}
 
-	slog.Info("cc-connect is running inside Remote Agent", "projects", len(engines))
+	slog.Info("cc-connect is running inside 1Agent", "projects", len(engines))
 
 	if notify := core.ConsumeRestartNotify(cfg.DataDir); notify != nil {
 		slog.Info("post-restart: sending success notification", "platform", notify.Platform, "session", notify.SessionKey)
