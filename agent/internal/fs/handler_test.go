@@ -126,4 +126,66 @@ func TestHandler_View(t *testing.T) {
 			t.Errorf("expected status 403 (Forbidden) for path traversal, got %d", res.StatusCode)
 		}
 	})
+
+	t.Run("Serve index.html when path has collapsed leading slash and is inside registered workspace", func(t *testing.T) {
+		// Mock home directory by setting HOME/USERPROFILE env vars
+		origHome := os.Getenv("HOME")
+		origUserProfile := os.Getenv("USERPROFILE")
+
+		mockHome := tempDir
+		os.Setenv("HOME", mockHome)
+		os.Setenv("USERPROFILE", mockHome)
+		defer func() {
+			os.Setenv("HOME", origHome)
+			os.Setenv("USERPROFILE", origUserProfile)
+		}()
+
+		// Create the workspaces directory and workspaces_dir.json
+		wsDir := filepath.Join(mockHome, ".1agents")
+		if err := os.MkdirAll(wsDir, 0755); err != nil {
+			t.Fatalf("failed to create mock .1agents dir: %v", err)
+		}
+
+		// Registered workspaces configuration
+		// Let's register tempDir (which is our workspace root)
+		wsCfgContent := `{"workspaces": [{"path": "` + filepath.ToSlash(tempDir) + `"}]}`
+		if err := os.WriteFile(filepath.Join(wsDir, "workspaces_dir.json"), []byte(wsCfgContent), 0644); err != nil {
+			t.Fatalf("failed to write mock workspaces_dir.json: %v", err)
+		}
+
+		// Create a test file inside tempDir
+		nestedFile := "nested/page.html"
+		absNestedFile := filepath.Join(tempDir, nestedFile)
+		if err := os.MkdirAll(filepath.Dir(absNestedFile), 0755); err != nil {
+			t.Fatalf("failed to create nested dir: %v", err)
+		}
+		nestedContent := "<html>Nested page</html>"
+		if err := os.WriteFile(absNestedFile, []byte(nestedContent), 0644); err != nil {
+			t.Fatalf("failed to write nested test file: %v", err)
+		}
+
+		// Now make a request with absolute path but COLLAPSED leading slash
+		// Absolute path is tempDir + "/" + nestedFile
+		// E.g., /private/var/.../nested/page.html -> private/var/.../nested/page.html
+		absPathCleaned := filepath.Clean(absNestedFile)
+		collapsedPath := absPathCleaned
+		if len(collapsedPath) > 0 && (collapsedPath[0] == '/' || collapsedPath[0] == '\\') {
+			collapsedPath = collapsedPath[1:]
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/fs/view/"+collapsedPath, nil)
+		w := httptest.NewRecorder()
+
+		h.View(w, req)
+
+		res := w.Result()
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("expected status 200, got %d. Body: %s", res.StatusCode, w.Body.String())
+		}
+
+		bodyBytes := w.Body.Bytes()
+		if string(bodyBytes) != nestedContent {
+			t.Errorf("expected body %q, got %q", nestedContent, string(bodyBytes))
+		}
+	})
 }

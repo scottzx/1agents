@@ -133,6 +133,21 @@ The project has recently undergone major optimizations and refactoring, bringing
 
 We provide an automated wrapper packager. It auto-detects your platform architecture and downloads the optimized pre-compiled executable.
 
+To seamlessly utilize the zero-configuration Web Tunnel, we recommend installing `cloudflared` globally using npm:
+
+```bash
+# Install Cloudflare tunnel globally
+npm install -g cloudflared
+
+# Verify installation
+cloudflared --version
+
+# If the official npm registry is slow, you can use the domestic Taobao mirror:
+npm install -g cloudflared --registry=https://registry.npmmirror.com
+```
+
+Then, install and run `1agents` globally:
+
 ```bash
 # Install globally (includes daemon, ttyd terminal backend, and Web dashboard assets)
 npm install -g @scottzx/1agents

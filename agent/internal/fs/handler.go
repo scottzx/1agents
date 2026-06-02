@@ -398,31 +398,59 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) safeAbs(rel string) (string, bool) {
 	cleaned := filepath.Clean(filepath.FromSlash(rel))
 
+	// Helper to check if an absolute path starts with a registered workspace
+	checkWorkspaces := func(p string) bool {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		configPath := filepath.Join(home, ".1agents", "workspaces_dir.json")
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return false
+		}
+		var wsCfg struct {
+			Workspaces []struct {
+				Path string `json:"path"`
+			} `json:"workspaces"`
+		}
+		if json.Unmarshal(data, &wsCfg) != nil {
+			return false
+		}
+		pLower := strings.ToLower(p)
+		for _, ws := range wsCfg.Workspaces {
+			wsPath := filepath.Clean(ws.Path)
+			wsPathLower := strings.ToLower(wsPath)
+			if pLower == wsPathLower || strings.HasPrefix(pLower, wsPathLower+string(os.PathSeparator)) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// If the path is absolute, check if it starts with any of the registered workspaces for security
 	if filepath.IsAbs(cleaned) {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			configPath := filepath.Join(home, ".1agents", "workspaces_dir.json")
-			if data, err := os.ReadFile(configPath); err == nil {
-				var wsCfg struct {
-					Workspaces []struct {
-						Path string `json:"path"`
-					} `json:"workspaces"`
-				}
-				if json.Unmarshal(data, &wsCfg) == nil {
-					cleanedLower := strings.ToLower(cleaned)
-					for _, ws := range wsCfg.Workspaces {
-						wsPath := filepath.Clean(ws.Path)
-						wsPathLower := strings.ToLower(wsPath)
-						if cleanedLower == wsPathLower || strings.HasPrefix(cleanedLower, wsPathLower+string(os.PathSeparator)) {
-							return cleaned, true
-						}
-					}
-				}
-			}
+		if checkWorkspaces(cleaned) {
+			return cleaned, true
 		}
 		log.Printf("[fs] absolute path traversal blocked: %q (not in any registered workspace)", cleaned)
 		return "", false
+	}
+
+	// Fallback check: if the path is not absolute, see if prepending a slash/backslash
+	// makes it a valid absolute path inside a registered workspace.
+	// This covers cases like "/api/fs/view/Users/scott/..." where the leading slash is collapsed by the HTTP router.
+	if !filepath.IsAbs(cleaned) {
+		var candidate string
+		if os.PathSeparator == '/' {
+			candidate = "/" + cleaned
+		} else {
+			candidate = string(os.PathSeparator) + cleaned
+		}
+		cleanedCandidate := filepath.Clean(candidate)
+		if filepath.IsAbs(cleanedCandidate) && checkWorkspaces(cleanedCandidate) {
+			return cleanedCandidate, true
+		}
 	}
 
 	// filepath.Join cleans ".." components.
