@@ -295,6 +295,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Clean npm/bin/ before publishing
+        run: |
+          # Defensive cleanup: any tracked binary that escaped into npm/bin/
+          # would otherwise be published on top of the platform-specific ones.
+          rm -rf npm/bin
+          mkdir -p npm/bin
+
       - name: Download all archives
         uses: actions/download-artifact@v8
         with:

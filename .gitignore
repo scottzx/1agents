@@ -70,4 +70,7 @@ npm/npm_recover_code.md
 certs/
 
 npm/dist/
-npm/bin/docs/封面设计
+
+# Ignore stray binaries in npm/bin/ but keep the platform subdirs (linux-amd64/, etc.)
+npm/bin/*
+!npm/bin/*/
