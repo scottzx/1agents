@@ -3,7 +3,7 @@
   "version": "20260526.2.0",
   "description": "Browser-based remote workbench integrating terminal access, file management, and AI agent communication",
   "keywords": [
-    "1agent",
+    "1agents",
     "terminal",
     "xterm",
     "ttyd",

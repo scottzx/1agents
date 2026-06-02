@@ -26,7 +26,7 @@ let platformDir;
 try {
   platformDir = getPlatformDir();
 } catch (err) {
-  console.error(`❌ [1agent] ${err.message}`);
+  console.error(`❌ [1agents] ${err.message}`);
   process.exit(1);
 }
 
@@ -51,7 +51,7 @@ try {
 
 // ── Fallback Execution ──
 if (!fs.existsSync(ccPath)) {
-  console.error(`❌ [1agent] cc-connect CLI binary is missing in ${myBinDir}. Please make sure the package was installed correctly.`);
+  console.error(`❌ [1agents] cc-connect CLI binary is missing in ${myBinDir}. Please make sure the package was installed correctly.`);
   process.exit(1);
 }
 
