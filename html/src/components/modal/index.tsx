@@ -25,3 +25,8 @@ export class Modal extends Component<Props> {
         );
     }
 }
+
+export { WorkspaceModal } from './WorkspaceModal';
+export { DirPickerModal } from './DirPickerModal';
+export { AccessTokenModal } from './AccessTokenModal';
+

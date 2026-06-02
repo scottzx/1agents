@@ -90,24 +90,24 @@ const devConfig = {
         static: path.join(__dirname, 'dist'),
         compress: true,
         port: 9000,
-        hot: true,
-        liveReload: true,
-        client: {
-            overlay: {
-                errors: true,
-                warnings: false,
-            },
-        },
+        hot: false,
+        liveReload: false,
+        client: false,
+        webSocketServer: false,
         proxy: [
             {
-                // Terminal WebSocket — proxy directly to ttyd
-                context: ['/token', '/ws'],
-                target: 'http://localhost:7681',
+                // WebSocket endpoints (Terminal and Bridge) — proxy to the Go backend
+                context: ['/token', '/ws', '/bridge'],
+                target: `http://localhost:${backendPort}`,
                 ws: true,
+                changeOrigin: true,
+                headers: {
+                    Origin: `http://localhost:${backendPort}`,
+                },
             },
             {
-                // File system API — proxy to the Go backend
-                context: ['/api'],
+                // HTTP API & Asset endpoints — proxy to the Go backend
+                context: ['/api', '/cc-connect', '/assets'],
                 target: `http://localhost:${backendPort}`,
                 changeOrigin: true,
             },
