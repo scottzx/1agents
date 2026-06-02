@@ -37,6 +37,7 @@ const binDir = path.join(packageDir, "bin", platformDir);
 const ext = process.platform === "win32" ? ".exe" : "";
 const agentPath = path.join(binDir, NAME + ext);
 const ttydPath = path.join(binDir, "ttyd" + ext);
+const cloudflaredPath = path.join(binDir, "cloudflared" + ext);
 
 if (!fs.existsSync(agentPath) || !fs.existsSync(ttydPath)) {
   console.error(`❌ [1agents] Bundled binaries are missing in ${binDir}. Please make sure the package was installed correctly.`);
@@ -47,6 +48,9 @@ if (process.platform !== "win32") {
   try {
     fs.chmodSync(agentPath, 0o755);
     fs.chmodSync(ttydPath, 0o755);
+    if (fs.existsSync(cloudflaredPath)) {
+      fs.chmodSync(cloudflaredPath, 0o755);
+    }
   } catch (e) {}
 }
 

@@ -99,23 +99,12 @@
 
 我们提供了预编译的 NPM 包包装器，会自动检测您的系统架构并从 GitHub 镜像高速下载最匹配的平台二进制程序。
 
-为了能顺利使用免配置的公网安全隧道（Web Tunnel）功能，我们推荐你使用 npm **一键前置安装 `cloudflared`**：
+**🚀 离线开箱即用（全内置二进制）**：
+为了解决国内或部分服务器因网络限制无法访问 GitHub 的问题，**我们已经将 `ttyd` 以及 `cloudflared`（Cloudflare Tunnel）官方最新二进制文件直接完整预包（Pre-bundled）在 `@scottzx/1agents` NPM 包体中！**
+无需任何后置下载，无论是国内 NPM 镜像源还是官方源，直接安装即享 100% 离线开箱即用，免配置公网安全隧道秒开！
 
 ```bash
-# 全局前置安装 Cloudflare 隧道依赖
-npm install -g cloudflared
-
-# 安装后验证
-cloudflared --version
-
-# 如果官方 npm 源下载慢，可以使用国内淘宝镜像：
-npm install -g cloudflared --registry=https://registry.npmmirror.com
-```
-
-然后，直接全局安装并运行 `1agents`：
-
-```bash
-# 全局安装 1agents 主程序 (自动包含 1agents 守护进程、ttyd 静态后端和 Web 前端)
+# 全局安装 1agents 主程序 (自动包含 1agents 守护进程、ttyd 静态后端、Web 前端以及平台专属的 cloudflared 二进制程序)
 npm install -g @scottzx/1agents
 
 # 也可以直接免安装直接通过 npx 运行：

@@ -15,6 +15,20 @@ import (
 // If not found, it checks ~/.1agents/bin/cloudflared, and downloads
 // the correct binary for the host's OS and architecture if missing.
 func EnsureBinary() (string, error) {
+	// 0. Check if cloudflared is in the same directory as the running 1agents executable
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		binaryName := "cloudflared"
+		if runtime.GOOS == "windows" {
+			binaryName = "cloudflared.exe"
+		}
+		localPath := filepath.Join(exeDir, binaryName)
+		if _, err := os.Stat(localPath); err == nil {
+			log.Printf("[tunnel] Found bundled cloudflared in executable directory: %s", localPath)
+			return localPath, nil
+		}
+	}
+
 	// 1. Check if already available in the system PATH
 	if path, err := exec.LookPath("cloudflared"); err == nil {
 		log.Printf("[tunnel] Found system cloudflared in PATH: %s", path)

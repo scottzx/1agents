@@ -25,9 +25,6 @@
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {
-    "cloudflared": "^0.7.1"
-  },
   "files": [
     "bin/",
     "dist/",

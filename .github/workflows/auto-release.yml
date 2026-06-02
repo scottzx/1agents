@@ -184,12 +184,22 @@ jobs:
           cd ../cc-connect/cmd/cc-connect
           GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../build/cc-connect .
 
+      - name: Download cloudflared binary
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            curl -L -o build/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
+          else
+            curl -L -o build/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          fi
+          chmod +x build/cloudflared
+
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
           cp build/1agents release-pkg/bin/
           cp build/ttyd release-pkg/bin/
           cp build/cc-connect release-pkg/bin/
+          cp build/cloudflared release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
 
@@ -274,12 +284,18 @@ jobs:
           cd ../cc-connect/cmd/cc-connect
           GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../build-ttyd/cc-connect .
 
+      - name: Download cloudflared binary
+        run: |
+          curl -L -o build-ttyd/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+          chmod +x build-ttyd/cloudflared
+
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
           cp build-ttyd/1agents release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp build-ttyd/cc-connect release-pkg/bin/
+          cp build-ttyd/cloudflared release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
 

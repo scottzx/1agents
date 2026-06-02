@@ -133,23 +133,12 @@ The project has recently undergone major optimizations and refactoring, bringing
 
 We provide an automated wrapper packager. It auto-detects your platform architecture and downloads the optimized pre-compiled executable.
 
-To seamlessly utilize the zero-configuration Web Tunnel, we recommend installing `cloudflared` globally using npm:
+**🚀 Offline Out-of-the-Box (Pre-bundled Binaries)**:
+To bypass any GitHub network accessibility issues in certain restricted/isolated environments, **we have pre-bundled both `ttyd` and the official latest `cloudflared` (Cloudflare Tunnel) binaries directly inside the `@scottzx/1agents` package!**
+No post-install downloads or external GitHub network calls are required on your host machine. Simply install and run!
 
 ```bash
-# Install Cloudflare tunnel globally
-npm install -g cloudflared
-
-# Verify installation
-cloudflared --version
-
-# If the official npm registry is slow, you can use the domestic Taobao mirror:
-npm install -g cloudflared --registry=https://registry.npmmirror.com
-```
-
-Then, install and run `1agents` globally:
-
-```bash
-# Install globally (includes daemon, ttyd terminal backend, and Web dashboard assets)
+# Install globally (includes daemon, ttyd terminal backend, Web dashboard assets, and platform-specific cloudflared binary)
 npm install -g @scottzx/1agents
 
 # Or execute on-demand without installing:
