@@ -30,6 +30,7 @@
     "dist/",
     "run.js",
     "cc-run.js",
-    "README.md"
+    "README.md",
+    "skill.md"
   ]
 }
