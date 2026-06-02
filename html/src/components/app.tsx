@@ -1210,7 +1210,6 @@ export class App extends Component<{}, AppState> {
             wsModalChatChannel,
             ccConnectUrl,
             dirPickerOpen,
-            dirPickerOnSelect,
             flatFiles,
             flatFilesLoading,
             searchQuery,
