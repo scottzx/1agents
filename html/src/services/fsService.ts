@@ -35,5 +35,5 @@ export const fsService = {
             body: JSON.stringify({ path }),
         });
         if (!res.ok) throw new Error(await res.text());
-    }
+    },
 };

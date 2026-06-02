@@ -25,5 +25,5 @@ export const accessService = {
         await fetch('/api/tunnel/status').catch(() => {
             /* best-effort */
         });
-    }
+    },
 };

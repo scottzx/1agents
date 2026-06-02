@@ -51,5 +51,5 @@ export const workspaceService = {
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         return data.url;
-    }
+    },
 };

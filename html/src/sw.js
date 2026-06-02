@@ -1,5 +1,4 @@
-const CACHE_NAME = 'terminal-v1';
-
+/* eslint-env serviceworker */
 self.addEventListener('install', () => {
     self.skipWaiting();
 });

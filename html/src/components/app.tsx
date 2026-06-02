@@ -382,11 +382,7 @@ export class App extends Component<{}, AppState> {
         const wsId = workspaceId || this.state.activeWorkspaceId;
         if (!wsId) return;
         try {
-            const url = await workspaceService.getCcConnectUrl(
-                wsId,
-                this.state.theme,
-                this.state.language || 'zh-CN'
-            );
+            const url = await workspaceService.getCcConnectUrl(wsId, this.state.theme, this.state.language || 'zh-CN');
             this.setState({ ccConnectUrl: url });
         } catch (err) {
             console.error('[ccconnect] failed to load url:', err);
@@ -1042,8 +1038,6 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-
-
     closeAccessTokenModal = () => {
         this.setState({ accessTokenModalToken: '' });
     };
@@ -1216,7 +1210,6 @@ export class App extends Component<{}, AppState> {
             wsModalChatChannel,
             ccConnectUrl,
             dirPickerOpen,
-            dirPickerOnSelect,
             flatFiles,
             flatFilesLoading,
             searchQuery,
