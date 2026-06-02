@@ -1,6 +1,6 @@
 import { h, Component } from 'preact';
 import { marked } from 'marked';
-import { FsEntry, getFileTag } from '../types';
+import { FsEntry, getFileTag, formatBytes } from '../types';
 
 interface FileDetailViewProps {
     selectedFsEntry: FsEntry;
@@ -182,6 +182,8 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         const isMd = selectedFsEntry.name.endsWith('.md');
         const isHtml = selectedFsEntry.name.endsWith('.html') || selectedFsEntry.name.endsWith('.htm');
         const isPdf = selectedFsEntry.name.toLowerCase().endsWith('.pdf');
+        const isVideo = tag === 'video';
+        const isAudio = tag === 'audio';
 
         return (
             <div class={`fb-detail-view ${detailFullscreen ? 'fullscreen' : ''}`}>
@@ -260,7 +262,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 </svg>
                             </a>
                         )}
-                        {!isImg && !isPdf && isEditingDetail && (
+                        {!isImg && !isPdf && !isVideo && !isAudio && isEditingDetail && (
                             <button
                                 class="fb-icon-btn"
                                 onClick={onSaveFile}
@@ -282,7 +284,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 </svg>
                             </button>
                         )}
-                        {!isImg && !isPdf && isEditingDetail && (
+                        {!isImg && !isPdf && !isVideo && !isAudio && isEditingDetail && (
                             <button class="fb-icon-btn" onClick={this.handleStopEditing} title="退出编辑/预览">
                                 <svg
                                     viewBox="0 0 24 24"
@@ -297,7 +299,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 </svg>
                             </button>
                         )}
-                        {!isImg && !isPdf && !isEditingDetail && (
+                        {!isImg && !isPdf && !isVideo && !isAudio && !isEditingDetail && (
                             <button
                                 class="fb-icon-btn"
                                 onClick={this.handleStartEditing}
@@ -316,19 +318,21 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 </svg>
                             </button>
                         )}
-                        <button class="fb-icon-btn" onClick={onCopyContent} title="复制内容">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect width="14" height="14" x="8" y="8" rx="2" />
-                                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                            </svg>
-                        </button>
+                        {!isImg && !isPdf && !isVideo && !isAudio && (
+                            <button class="fb-icon-btn" onClick={onCopyContent} title="复制内容">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect width="14" height="14" x="8" y="8" rx="2" />
+                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                                </svg>
+                            </button>
+                        )}
 
                         <button class="fb-icon-btn" onClick={onDownloadFile} title="下载">
                             <svg
@@ -424,6 +428,46 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                     ) : isImg ? (
                         <div class="fb-img-preview">
                             <span class="fb-img-placeholder">🖼 {selectedFsEntry.name}</span>
+                        </div>
+                    ) : isVideo ? (
+                        <div class="fb-video-preview-container">
+                            <video
+                                class="fb-video-player"
+                                controls
+                                preload="metadata"
+                                src={`/api/fs/view/${selectedFsEntry.path
+                                    .split('/')
+                                    .map(encodeURIComponent)
+                                    .join('/')}`}
+                            >
+                                您的浏览器不支持播放该视频
+                            </video>
+                        </div>
+                    ) : isAudio ? (
+                        <div class="fb-audio-preview-container">
+                            <div class="fb-audio-card">
+                                <div class="fb-audio-vinyl"></div>
+                                <div class="fb-audio-wave">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <div class="fb-audio-title">{selectedFsEntry.name}</div>
+                                <div class="fb-audio-meta">{formatBytes(selectedFsEntry.size)}</div>
+                                <audio
+                                    class="fb-audio-player"
+                                    controls
+                                    preload="metadata"
+                                    src={`/api/fs/view/${selectedFsEntry.path
+                                        .split('/')
+                                        .map(encodeURIComponent)
+                                        .join('/')}`}
+                                >
+                                    您的浏览器不支持播放该音频
+                                </audio>
+                            </div>
                         </div>
                     ) : isEditingDetail ? (
                         <textarea

@@ -196,7 +196,14 @@ export function FlatFileBrowser({
                                 </div>
                             );
                         })}
-                        <div class="fb-list-footer">共 {filtered.length} 个搜索结果</div>
+                        <div class="fb-list-footer">
+                            共 {filtered.length} 个搜索结果
+                            {filtered.length >= 1000 && (
+                                <span class="fb-truncated-hint" style="color: var(--text-muted); margin-left: 8px;">
+                                    (仅显示前 1000 条，请提供更精确的搜索词)
+                                </span>
+                            )}
+                        </div>
                     </div>
                 )
             ) : // ── REGULAR FILE TREE MODE ──

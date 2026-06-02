@@ -62,10 +62,13 @@ export interface TmuxWindow {
 
 export type RightDrawerTab = 'files' | 'git' | 'channels' | 'settings' | 'none';
 
-export function getFileTag(name: string): 'doc' | 'img' | 'code' | 'other' {
+// NOTE: Keep in sync with getFileTagFromExt in agent/internal/fs/handler.go
+export function getFileTag(name: string): 'doc' | 'img' | 'code' | 'video' | 'audio' | 'other' {
     const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
     const docs = ['md', 'txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'];
     const imgs = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'];
+    const videos = ['mp4', 'webm', 'ogg', 'mov', 'm4v', '3gp'];
+    const audios = ['mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg', 'oga'];
     const code = [
         'js',
         'jsx',
@@ -90,6 +93,8 @@ export function getFileTag(name: string): 'doc' | 'img' | 'code' | 'other' {
     if (docs.includes(ext)) return 'doc';
     if (imgs.includes(ext)) return 'img';
     if (code.includes(ext)) return 'code';
+    if (videos.includes(ext)) return 'video';
+    if (audios.includes(ext)) return 'audio';
     return 'other';
 }
 

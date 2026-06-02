@@ -2699,6 +2699,18 @@ body {
           border: 1px solid rgba(155, 81, 224, 0.12);
         }
 
+        &.fb-ext-video {
+          background-color: rgba(187, 107, 217, 0.08);
+          color: #bb6bd9;
+          border: 1px solid rgba(187, 107, 217, 0.12);
+        }
+
+        &.fb-ext-audio {
+          background-color: rgba(45, 156, 219, 0.08);
+          color: #2d9cdb;
+          border: 1px solid rgba(45, 156, 219, 0.12);
+        }
+
         &.fb-ext-\? {
           background-color: rgba(140, 149, 159, 0.08);
           color: var(--text-secondary);
@@ -3085,6 +3097,156 @@ body {
       border: none;
       flex: 1;
       background-color: #ffffff;
+    }
+
+    /* ── Video Preview ─────────────────────────────────────────────────── */
+    .fb-video-preview-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      flex: 1;
+      background-color: #0b0c0f; // dark cinema background
+      min-height: 250px;
+      border-radius: 6px;
+      overflow: hidden;
+
+      .fb-video-player {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        border-radius: 8px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+        outline: none;
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+        &:hover {
+          transform: scale(1.005);
+        }
+      }
+    }
+
+    /* ── Audio Preview ─────────────────────────────────────────────────── */
+    .fb-audio-preview-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 32px 24px;
+      flex: 1;
+      background: radial-gradient(circle at center, var(--bg-card) 0%, var(--bg-terminal-inner) 100%);
+      min-height: 250px;
+
+      .fb-audio-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 380px;
+        padding: 32px 24px;
+        border-radius: 16px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        position: relative;
+        overflow: hidden;
+
+        &::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(45, 156, 219, 0.05) 0%, transparent 60%);
+          pointer-events: none;
+        }
+
+        .fb-audio-vinyl {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background: repeating-radial-gradient(circle, #222 0px, #111 4px, #333 8px);
+          border: 4px solid #000;
+          box-shadow: 0 8px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1);
+          margin-bottom: 20px;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          animation: fb-spin 20s linear infinite;
+          
+          &::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--bg-card);
+            border: 2px solid var(--accent-color);
+          }
+        }
+
+        .fb-audio-wave {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          height: 30px;
+          margin-bottom: 20px;
+
+          span {
+            display: inline-block;
+            width: 3px;
+            height: 8px;
+            background-color: var(--accent-color);
+            border-radius: 1.5px;
+            animation: fb-audio-pulse 1.2s ease-in-out infinite alternate;
+            
+            &:nth-child(2) { animation-delay: 0.15s; height: 16px; }
+            &:nth-child(3) { animation-delay: 0.30s; height: 24px; }
+            &:nth-child(4) { animation-delay: 0.45s; height: 12px; }
+            &:nth-child(5) { animation-delay: 0.60s; height: 6px; }
+          }
+        }
+
+        .fb-audio-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-main);
+          text-align: center;
+          margin-bottom: 6px;
+          width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .fb-audio-meta {
+          font-size: 11.5px;
+          color: var(--text-secondary);
+          margin-bottom: 24px;
+          opacity: 0.85;
+          font-weight: 500;
+        }
+
+        .fb-audio-player {
+          width: 100%;
+          height: 36px;
+          outline: none;
+          border-radius: 18px;
+          background-color: var(--bg-terminal-inner);
+          
+          &::-webkit-media-controls-enclosure {
+            background-color: var(--bg-terminal-inner);
+          }
+        }
+      }
+    }
+
+    @keyframes fb-audio-pulse {
+      0% { transform: scaleY(0.4); }
+      100% { transform: scaleY(1.2); }
     }
 
     .fb-img-preview {

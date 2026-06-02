@@ -3,7 +3,6 @@ package fs
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"io"
 	"io/fs"
 	"log"
@@ -455,8 +454,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
-var errLimitReached = errors.New("limit reached")
-
+// NOTE: Keep in sync with getFileTag in html/src/components/types.ts
 func getFileTagFromExt(ext string) string {
 	switch ext {
 	case "md", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv":
@@ -561,14 +559,13 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 
 		// Stop walking if limit is reached
 		if len(results) >= limit {
-			return errLimitReached
+			return filepath.SkipAll
 		}
 
 		return nil
 	})
 
-	// If walk returned our sentinel error or no error, write results
-	if err != nil && err != errLimitReached {
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

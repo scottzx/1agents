@@ -1496,7 +1496,10 @@ export class App extends Component<{}, AppState> {
                                     onFilterTagChange={this.handleFilterTagChange}
                                     onRefreshFlatFiles={async () => {
                                         this.loadDir('', null);
-                                        this.loadFlatFiles();
+                                        const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
+                                        if (isSearching) {
+                                            this.loadFlatFiles();
+                                        }
                                         try {
                                             await this.checkAccessStatus();
                                             await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
