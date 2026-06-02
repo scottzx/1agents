@@ -3,6 +3,7 @@ package fs
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"log"
@@ -453,3 +454,125 @@ func writeJSON(w http.ResponseWriter, v any) {
 		log.Printf("[fs] json encode error: %v", err)
 	}
 }
+
+var errLimitReached = errors.New("limit reached")
+
+func getFileTagFromExt(ext string) string {
+	switch ext {
+	case "md", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv":
+		return "doc"
+	case "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp":
+		return "img"
+	case "js", "jsx", "ts", "tsx", "html", "css", "scss", "json", "go", "py", "rs", "cpp", "c", "h", "sh", "yaml", "yml", "toml", "xml":
+		return "code"
+	default:
+		return "other"
+	}
+}
+
+// Search handles GET /api/fs/search?query=<search-term>&tag=all|doc|img|code
+// Performs a case-insensitive search on files recursively in the workspace.
+func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := strings.ToLower(r.URL.Query().Get("query"))
+	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		tag = "all"
+	}
+
+	var results []FileEntry
+	limit := 1000
+
+	// Common heavy directories to skip
+	ignoreDirs := map[string]bool{
+		"node_modules": true,
+		"dist":         true,
+		"build":        true,
+		"__pycache__":  true,
+		"vendor":       true,
+		".git":         true,
+		".bun":         true,
+		".yarn":        true,
+		".pnpm":        true,
+		".cache":       true,
+		".vscode":      true,
+		".idea":        true,
+	}
+
+	err := filepath.WalkDir(h.root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip problematic files/dirs
+		}
+
+		if d.IsDir() {
+			name := d.Name()
+			if ignoreDirs[name] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// It's a file. Get its relative path to root for matching and for returned field
+		rel, err := filepath.Rel(h.root, path)
+		if err != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		name := d.Name()
+
+		// Match query if provided
+		if query != "" {
+			nameLower := strings.ToLower(name)
+			relLower := strings.ToLower(relSlash)
+			if !strings.Contains(nameLower, query) && !strings.Contains(relLower, query) {
+				return nil
+			}
+		}
+
+		// Match tag if provided
+		if tag != "all" {
+			ext := strings.ToLower(filepath.Ext(name))
+			if ext != "" && ext[0] == '.' {
+				ext = ext[1:]
+			}
+			fileTag := getFileTagFromExt(ext)
+			if fileTag != tag {
+				return nil
+			}
+		}
+
+		// Fetch basic info
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+
+		results = append(results, FileEntry{
+			Name:    name,
+			Path:    relSlash,
+			IsDir:   false,
+			Size:    info.Size(),
+			ModTime: info.ModTime().Unix(),
+		})
+
+		// Stop walking if limit is reached
+		if len(results) >= limit {
+			return errLimitReached
+		}
+
+		return nil
+	})
+
+	// If walk returned our sentinel error or no error, write results
+	if err != nil && err != errLimitReached {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, results)
+}
+

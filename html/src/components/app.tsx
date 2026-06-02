@@ -16,7 +16,6 @@ import { workspaceService } from '../services/workspaceService';
 import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
-import { crawlDirRecursive } from '../utils/fileCrawler';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const path = window.location.pathname.replace(/[/]+$/, '');
@@ -172,6 +171,7 @@ let _resizerStartWidth = 0;
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
     private _crawlCounter = 0;
+    private _searchTimeout: number | null = null;
 
     constructor() {
         super();
@@ -279,11 +279,9 @@ export class App extends Component<{}, AppState> {
                 await this.switchWorkspaceContext(ws);
             } else {
                 this.loadDir('', null);
-                this.loadFlatFiles();
             }
         } else {
             this.loadDir('', null);
-            this.loadFlatFiles();
         }
 
         this.loadTmuxMouse();
@@ -648,7 +646,6 @@ export class App extends Component<{}, AppState> {
             editedContent: '',
         });
         this.loadDir('', null);
-        this.loadFlatFiles();
     };
 
     selectSession = async (session: Session) => {
@@ -960,21 +957,55 @@ export class App extends Component<{}, AppState> {
 
     // ── Flat file crawler ──────────────────────────────────────────────────
 
+    // ── Flat file crawler & search ──────────────────────────────────────────
+
     loadFlatFiles = async () => {
+        const { searchQuery, selectedFilterTag } = this.state;
+        const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
+        if (!isSearching) {
+            this.setState({ flatFiles: [], flatFilesLoading: false });
+            return;
+        }
+
         this._crawlCounter++;
         const currentCrawl = this._crawlCounter;
         this.setState({ flatFilesLoading: true });
         try {
-            const files = await crawlDirRecursive('', currentCrawl, () => this._crawlCounter);
+            const files = await fsService.search(searchQuery, selectedFilterTag);
             if (currentCrawl === this._crawlCounter) {
                 this.setState({ flatFiles: files, flatFilesLoading: false });
             }
         } catch (err) {
             if (currentCrawl === this._crawlCounter) {
-                console.error('[flat] crawl error:', err);
+                console.error('[search] error:', err);
                 this.setState({ flatFilesLoading: false });
             }
         }
+    };
+
+    handleSearchChange = (query: string) => {
+        this.setState({ searchQuery: query });
+        if (this._searchTimeout) {
+            clearTimeout(this._searchTimeout);
+            this._searchTimeout = null;
+        }
+        if (query === '' && this.state.selectedFilterTag === 'all') {
+            this.setState({ flatFiles: [], flatFilesLoading: false });
+            return;
+        }
+        this._searchTimeout = setTimeout(() => {
+            this.loadFlatFiles();
+        }, 300) as unknown as number;
+    };
+
+    handleFilterTagChange = (tag: 'all' | 'doc' | 'img' | 'code') => {
+        this.setState({ selectedFilterTag: tag }, () => {
+            if (this._searchTimeout) {
+                clearTimeout(this._searchTimeout);
+                this._searchTimeout = null;
+            }
+            this.loadFlatFiles();
+        });
     };
 
     // ── File detail action handlers ────────────────────────────────────────
@@ -1005,7 +1036,6 @@ export class App extends Component<{}, AppState> {
         await this.checkAccessStatus();
         if (!this.state.accessGateVisible) {
             this.loadDir('', null);
-            this.loadFlatFiles();
             await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
             this.mergeSessionsIntoFolders(this.state.terminalWindows);
             const { workspaces, activeWorkspaceId } = this.state;
@@ -1108,7 +1138,7 @@ export class App extends Component<{}, AppState> {
         try {
             await fsService.write(newPath, fileContent);
             this.showToast('已复制文件 ✓');
-            this.loadFlatFiles();
+            this.loadDir('', null);
         } catch (err) {
             this.showToast(`复制失败: ${err}`);
         }
@@ -1140,7 +1170,7 @@ export class App extends Component<{}, AppState> {
             await fsService.write(newPath, fileContent);
             this.showToast('重命名成功 ✓');
             this.setState({ selectedFsEntry: { ...selectedFsEntry, name: newName, path: newPath }, viewMode: 'list' });
-            this.loadFlatFiles();
+            this.loadDir('', null);
         } catch (err) {
             this.showToast(`重命名失败: ${err}`);
         }
@@ -1462,8 +1492,8 @@ export class App extends Component<{}, AppState> {
                                     fileSaveMsg={fileSaveMsg}
                                     isImagePreview={isImagePreview}
                                     imageDataUrl={imageDataUrl}
-                                    onSearchQueryChange={query => this.setState({ searchQuery: query })}
-                                    onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
+                                    onSearchQueryChange={this.handleSearchChange}
+                                    onFilterTagChange={this.handleFilterTagChange}
                                     onRefreshFlatFiles={async () => {
                                         this.loadDir('', null);
                                         this.loadFlatFiles();

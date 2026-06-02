@@ -28,6 +28,12 @@ export const fsService = {
         if (!res.ok) throw new Error(await res.text());
     },
 
+    async search(query: string, tag: string): Promise<FsEntry[]> {
+        const res = await fetch(`/api/fs/search?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}`);
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    },
+
     async setContext(path: string): Promise<void> {
         const res = await fetch('/api/context/set', {
             method: 'POST',

@@ -38,6 +38,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// ── File system API ──────────────────────────────────────────────────────
 	fsHandler := fs.NewHandler(cfg.WorkDir)
 	mux.HandleFunc("/api/fs/list", fsHandler.List)     // GET  ?path=.
+	mux.HandleFunc("/api/fs/search", fsHandler.Search) // GET  ?query=xxx&tag=all/doc/img/code
 	mux.HandleFunc("/api/fs/read", fsHandler.Read)     // GET  ?path=./main.go
 	mux.HandleFunc("/api/fs/view", fsHandler.View)     // GET  ?path=./page.html (serves with correct content-type)
 	mux.HandleFunc("/api/fs/view/", fsHandler.View)    // GET  /api/fs/view/relative/path (prefix route for relative assets support)
