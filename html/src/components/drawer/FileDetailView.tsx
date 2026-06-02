@@ -406,7 +406,12 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                     </div>
                 </div>
                 {/* Content */}
-                <div class="fb-detail-content" ref={el => (this.contentEl = el)}>
+                <div
+                    class="fb-detail-content"
+                    ref={el => {
+                        this.contentEl = el;
+                    }}
+                >
                     {fileLoading ? (
                         <div class="fb-loading">
                             <div class="fb-loading-spinner" />
@@ -426,7 +431,9 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             spellcheck={false}
                             value={editedContent}
                             onInput={e => this.props.onEditedContentChange((e.target as HTMLTextAreaElement).value)}
-                            ref={el => (this.editorEl = el)}
+                            ref={el => {
+                                this.editorEl = el;
+                            }}
                         />
                     ) : isHtml ? (
                         <div class="fb-html-preview-container">
