@@ -66,16 +66,45 @@ func (h *Handler) getConfigPath() string {
 
 func (h *Handler) loadConfig() (*WorkspacesConfig, error) {
 	path := h.getConfigPath()
+	
+	// Dynamically resolve absolute path of 'temp' directory in current directory
+	tempDir, errDir := filepath.Abs("temp")
+	if errDir == nil {
+		_ = os.MkdirAll(tempDir, 0755)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &WorkspacesConfig{Workspaces: []Workspace{}}, nil
+			defaultWS := Workspace{
+				ID:     "temp",
+				Name:   "temp",
+				Path:   tempDir,
+				Status: "active",
+			}
+			cfg := &WorkspacesConfig{
+				Workspaces: []Workspace{defaultWS},
+			}
+			_ = h.saveConfig(cfg)
+			return cfg, nil
 		}
 		return nil, err
 	}
 	var cfg WorkspacesConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
+	}
+	
+	// If the file exists but contains 0 workspaces, pre-populate with the default 'temp' workspace
+	if len(cfg.Workspaces) == 0 {
+		defaultWS := Workspace{
+			ID:     "temp",
+			Name:   "temp",
+			Path:   tempDir,
+			Status: "active",
+		}
+		cfg.Workspaces = []Workspace{defaultWS}
+		_ = h.saveConfig(&cfg)
 	}
 	return &cfg, nil
 }

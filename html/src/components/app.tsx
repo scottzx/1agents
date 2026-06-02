@@ -161,6 +161,7 @@ interface AppState {
     accessAuthRequired: boolean;
     accessAuthenticated: boolean;
     accessTokenModalToken: string;
+    onboarded: boolean;
 }
 
 // Drag resizer state (module-level for perf)
@@ -235,6 +236,7 @@ export class App extends Component<{}, AppState> {
             accessAuthRequired: false,
             accessAuthenticated: true,
             accessTokenModalToken: '',
+            onboarded: localStorage.getItem('1agents-onboarded') === 'true',
         };
     }
 
@@ -387,6 +389,15 @@ export class App extends Component<{}, AppState> {
         }
     };
 
+    onUseTempWorkspace = () => {
+        localStorage.setItem('1agents-onboarded', 'true');
+        this.setState({ onboarded: true });
+        const tempWs = this.state.workspaces.find(w => w.id === 'temp');
+        if (tempWs) {
+            this.selectWorkspace(tempWs);
+        }
+    };
+
     /** Create a new workspace via POST /api/workspace/create */
     createWorkspace = async (name: string, path: string, terminalDir?: string, chatChannel?: string) => {
         let id = name
@@ -407,6 +418,8 @@ export class App extends Component<{}, AppState> {
         };
         try {
             await workspaceService.create(ws);
+            localStorage.setItem('1agents-onboarded', 'true');
+            this.setState({ onboarded: true });
             await this.loadWorkspaces();
             this.showToast(`工作空间 "${name}" 已创建 ✓`);
         } catch (err) {
@@ -427,6 +440,10 @@ export class App extends Component<{}, AppState> {
 
     /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
     deleteWorkspace = async (id: string) => {
+        if (this.state.workspaces.length <= 1) {
+            this.showToast('无法删除，系统需保留至少一个工作空间');
+            return;
+        }
         try {
             // If we're deleting the currently active workspace, clear it first so
             // loadWorkspaces knows to auto-select a new one instead of re-fetching
@@ -435,6 +452,7 @@ export class App extends Component<{}, AppState> {
                 this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
             }
             await workspaceService.delete(id);
+            await this.loadTerminals();
             await this.loadWorkspaces();
             this.showToast('工作空间已删除 ✓');
         } catch (err) {
@@ -902,7 +920,11 @@ export class App extends Component<{}, AppState> {
                 tab === 'channels' || tab === 'git' || tab === 'files'
                     ? Math.max(this.state.rightPanelWidth, 450)
                     : 320;
-            this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth });
+            this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth }, () => {
+                if (tab === 'channels') {
+                    this.loadCcConnectUrl();
+                }
+            });
         }
         this.triggerTerminalFit();
     };
@@ -1360,8 +1382,12 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container">
-                {workspaces.length === 0 ? (
-                    <WelcomeOnboarding language={language} onCreateWorkspace={this.openCreateWorkspacePicker} />
+                {!this.state.onboarded ? (
+                    <WelcomeOnboarding
+                        language={language}
+                        onCreateWorkspace={this.openCreateWorkspacePicker}
+                        onUseTempWorkspace={this.onUseTempWorkspace}
+                    />
                 ) : (
                     <Fragment>
                         {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}

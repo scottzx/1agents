@@ -347,12 +347,6 @@ func saveConfig(cfg *config.Config, path string) error {
 }
 
 func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool {
-	if len(cfg.Projects) == 0 {
-		log.Println("[ccconnect] No projects configured in cc-connect, skipping engine boot.")
-		<-ctx.Done()
-		return false
-	}
-
 	// Setup log levels
 	logLevel := slog.LevelInfo
 	switch strings.ToLower(cfg.Log.Level) {
@@ -364,6 +358,10 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		logLevel = slog.LevelError
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
+
+	if len(cfg.Projects) == 0 {
+		slog.Info("no projects configured in cc-connect, running management servers only")
+	}
 
 	engines := make([]*core.Engine, 0, len(cfg.Projects))
 	effectiveWorkDirs := make([]string, 0, len(cfg.Projects))

@@ -3,11 +3,12 @@ import { h, Component } from 'preact';
 interface WelcomeOnboardingProps {
     language: 'zh-CN' | 'en-US';
     onCreateWorkspace: () => void;
+    onUseTempWorkspace: () => void;
 }
 
 export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
     render() {
-        const { language, onCreateWorkspace } = this.props;
+        const { language, onCreateWorkspace, onUseTempWorkspace } = this.props;
 
         return (
             <div
@@ -26,6 +27,19 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                     .welcome-card-anim:hover {
                         transform: translateY(-2px);
                         box-shadow: var(--shadow-lg);
+                    }
+                    .welcome-secondary-btn {
+                        transition: all 0.2s;
+                    }
+                    .welcome-secondary-btn:hover {
+                        background: rgba(9, 105, 218, 0.08) !important;
+                        border-color: var(--accent-color) !important;
+                        color: var(--accent-color) !important;
+                        transform: translateY(-1px);
+                    }
+                    .welcome-cta-btn:hover {
+                        opacity: 0.95;
+                        transform: translateY(-1px);
                     }
                 `}</style>
                 <div
@@ -120,26 +134,49 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                         </div>
                     </div>
 
-                    {/* Pulsing Onboarding Action Button */}
-                    <button
-                        class="welcome-cta-btn"
-                        onClick={onCreateWorkspace}
-                        style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background: linear-gradient(135deg, var(--accent-color), #4f46e5); color: #ffffff; border: none; border-radius: 30px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(9, 105, 218, 0.3); animation: pulse 2s infinite;"
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            style="width: 16px; height: 16px;"
+                    {/* Dual Action Buttons Container */}
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: 100%;">
+                        {/* Option 1: Import Own Workspace */}
+                        <button
+                            class="welcome-cta-btn"
+                            onClick={onCreateWorkspace}
+                            style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background: linear-gradient(135deg, var(--accent-color), #4f46e5); color: #ffffff; border: none; border-radius: 30px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(9, 105, 218, 0.3); animation: pulse 2s infinite;"
                         >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        {language === 'zh-CN' ? '创建第一个工作空间' : 'Create First Workspace'}
-                    </button>
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="width: 16px; height: 16px;"
+                            >
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            {language === 'zh-CN' ? '导入我自己的项目' : 'Import My Own Project'}
+                        </button>
+
+                        {/* Option 2: Directly Use Default Workspace */}
+                        <button
+                            class="welcome-secondary-btn"
+                            onClick={onUseTempWorkspace}
+                            style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; background: transparent; color: var(--text-main); border: 2.5px solid var(--border-color); border-radius: 30px; font-size: 15px; font-weight: 600; cursor: pointer;"
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="width: 16px; height: 16px;"
+                            >
+                                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
+                            </svg>
+                            {language === 'zh-CN' ? '直接进入 temp 空间' : 'Directly Enter Temp Space'}
+                        </button>
+                    </div>
                 </div>
             </div>
         );

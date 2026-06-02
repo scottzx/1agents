@@ -79,6 +79,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		if out, err := renameCmd.CombinedOutput(); err != nil {
 			log.Printf("[terminal] rename placeholder error: %v (output: %s)", err, string(out))
 		} else {
+			// Synchronize shell directory to workspace Cwd
+			if req.Cwd != "" {
+				cdCmd := exec.Command("tmux", "send-keys", "-t", h.session+":0", fmt.Sprintf("cd %q && clear", req.Cwd), "C-m")
+				_ = cdCmd.Run()
+			}
 			// Switch to the renamed window
 			h.selectWindow(0)
 			win := &TmuxWindow{Index: 0, Name: winName, Active: true, WorkspaceID: req.WorkspaceID}

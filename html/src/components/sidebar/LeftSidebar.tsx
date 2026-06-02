@@ -56,6 +56,11 @@ export function LeftSidebar({
 
     const confirmDelete = (e: MouseEvent, id: string) => {
         e.stopPropagation();
+        if (workspaces.length <= 1) {
+            setConfirmDeleteId(null);
+            onDeleteWorkspace(id);
+            return;
+        }
         setConfirmDeleteId(null);
         setDeletingId(id);
         setTimeout(() => {
