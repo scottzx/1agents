@@ -324,9 +324,30 @@ jobs:
             echo "To publish automatically, add NPM_TOKEN to your repository secrets."
             exit 0
           fi
-          
+
+          # Extract binaries and dist into the npm packaging directory
+          mkdir -p npm/bin/linux-amd64 npm/bin/linux-arm64 npm/bin/darwin-arm64
+
+          # Extract linux-amd64
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C npm/bin/linux-amd64 bin/
+          mv npm/bin/linux-amd64/bin/* npm/bin/linux-amd64/
+          rm -rf npm/bin/linux-amd64/bin
+
+          # Extract linux-arm64
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-arm64.tar.gz -C npm/bin/linux-arm64 bin/
+          mv npm/bin/linux-arm64/bin/* npm/bin/linux-arm64/
+          rm -rf npm/bin/linux-arm64/bin
+
+          # Extract darwin-arm64
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C npm/bin/darwin-arm64 bin/
+          mv npm/bin/darwin-arm64/bin/* npm/bin/darwin-arm64/
+          rm -rf npm/bin/darwin-arm64/bin
+
+          # Extract dist (frontend assets)
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C npm/ dist/
+
           cd npm
-          
+
           # Update the version in package.json to NPM SemVer
           node -e "
             const fs = require('fs');
@@ -334,9 +355,9 @@ jobs:
             pkg.version = '${{ needs.prepare.outputs.npm_version }}';
             fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          
+
           # Configure NPM auth and publish
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
           npm publish --access public
-          
+
           echo "Successfully published version ${{ needs.prepare.outputs.npm_version }} to NPM registry!"

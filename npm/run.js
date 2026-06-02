@@ -10,28 +10,44 @@ const os = require("os");
 const PACKAGE = require("./package.json");
 const NAME = "1agents";
 const packageDir = __dirname;
-const binDir = path.join(packageDir, "bin");
+
+function getPlatformDir() {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === "darwin" && arch === "arm64") {
+    return "darwin-arm64";
+  }
+  if (platform === "linux") {
+    if (arch === "x64") return "linux-amd64";
+    if (arch === "arm64") return "linux-arm64";
+  }
+  throw new Error(`Unsupported platform: ${platform}/${arch}. Only macOS (arm64) and Linux (amd64/arm64) are supported.`);
+}
+
+let platformDir;
+try {
+  platformDir = getPlatformDir();
+} catch (err) {
+  console.error(`❌ [1agent] ${err.message}`);
+  process.exit(1);
+}
+
+const binDir = path.join(packageDir, "bin", platformDir);
 const ext = process.platform === "win32" ? ".exe" : "";
 const agentPath = path.join(binDir, NAME + ext);
 const ttydPath = path.join(binDir, "ttyd" + ext);
 
-function needsInstall() {
-  if (!fs.existsSync(agentPath)) return true;
-  if (!fs.existsSync(ttydPath)) return true;
-  return false;
+if (!fs.existsSync(agentPath) || !fs.existsSync(ttydPath)) {
+  console.error(`❌ [1agent] Bundled binaries are missing in ${binDir}. Please make sure the package was installed correctly.`);
+  process.exit(1);
 }
 
-if (needsInstall()) {
-  console.log(`[1agent] Binaries missing, running installer...`);
+if (process.platform !== "win32") {
   try {
-    execSync("node " + JSON.stringify(path.join(packageDir, "install.js")), {
-      stdio: "inherit",
-      cwd: packageDir,
-    });
-  } catch (err) {
-    console.error("[1agent] Auto-install failed. Please run manually: npm rebuild");
-    process.exit(1);
-  }
+    fs.chmodSync(agentPath, 0o755);
+    fs.chmodSync(ttydPath, 0o755);
+  } catch (e) {}
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

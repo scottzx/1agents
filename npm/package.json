@@ -22,14 +22,12 @@
     "1agents": "run.js",
     "cc-connect": "cc-run.js"
   },
-  "scripts": {
-    "postinstall": "node install.js"
-  },
   "engines": {
     "node": ">=22"
   },
   "files": [
-    "install.js",
+    "bin/",
+    "dist/",
     "run.js",
     "cc-run.js",
     "README.md"

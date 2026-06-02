@@ -7,7 +7,30 @@ const path = require("path");
 const fs = require("fs");
 
 const packageDir = __dirname;
-const myBinDir = path.join(packageDir, "bin");
+
+function getPlatformDir() {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === "darwin" && arch === "arm64") {
+    return "darwin-arm64";
+  }
+  if (platform === "linux") {
+    if (arch === "x64") return "linux-amd64";
+    if (arch === "arm64") return "linux-arm64";
+  }
+  throw new Error(`Unsupported platform: ${platform}/${arch}. Only macOS (arm64) and Linux (amd64/arm64) are supported.`);
+}
+
+let platformDir;
+try {
+  platformDir = getPlatformDir();
+} catch (err) {
+  console.error(`❌ [1agent] ${err.message}`);
+  process.exit(1);
+}
+
+const myBinDir = path.join(packageDir, "bin", platformDir);
 const ext = process.platform === "win32" ? ".exe" : "";
 let ccPath = path.join(myBinDir, "cc-connect" + ext);
 
@@ -28,16 +51,14 @@ try {
 
 // ── Fallback Execution ──
 if (!fs.existsSync(ccPath)) {
-  console.log(`[1agent] cc-connect CLI binary missing, running installer...`);
+  console.error(`❌ [1agent] cc-connect CLI binary is missing in ${myBinDir}. Please make sure the package was installed correctly.`);
+  process.exit(1);
+}
+
+if (process.platform !== "win32" && ccPath.startsWith(myBinDir)) {
   try {
-    execSync("node " + JSON.stringify(path.join(packageDir, "install.js")), {
-      stdio: "inherit",
-      cwd: packageDir,
-    });
-  } catch (err) {
-    console.error("[1agent] Auto-install failed. Please run manually: npm rebuild");
-    process.exit(1);
-  }
+    fs.chmodSync(ccPath, 0o755);
+  } catch (e) {}
 }
 
 try {
