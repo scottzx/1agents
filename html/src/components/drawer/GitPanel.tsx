@@ -764,8 +764,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             section === 'staged'
                 ? this.state.stagedCollapsed
                 : section === 'unstaged'
-                ? this.state.unstagedCollapsed
-                : this.state.untrackedCollapsed;
+                  ? this.state.unstagedCollapsed
+                  : this.state.untrackedCollapsed;
 
         return (
             <div class="git-section">
