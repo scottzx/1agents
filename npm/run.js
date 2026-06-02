@@ -29,7 +29,7 @@ let platformDir;
 try {
   platformDir = getPlatformDir();
 } catch (err) {
-  console.error(`❌ [1agent] ${err.message}`);
+  console.error(`❌ [1agents] ${err.message}`);
   process.exit(1);
 }
 
@@ -39,7 +39,7 @@ const agentPath = path.join(binDir, NAME + ext);
 const ttydPath = path.join(binDir, "ttyd" + ext);
 
 if (!fs.existsSync(agentPath) || !fs.existsSync(ttydPath)) {
-  console.error(`❌ [1agent] Bundled binaries are missing in ${binDir}. Please make sure the package was installed correctly.`);
+  console.error(`❌ [1agents] Bundled binaries are missing in ${binDir}. Please make sure the package was installed correctly.`);
   process.exit(1);
 }
 
