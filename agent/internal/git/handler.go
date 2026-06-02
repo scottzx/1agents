@@ -465,7 +465,9 @@ func (h *Handler) git(args ...string) (string, error) {
 }
 
 func (h *Handler) isRepo() bool {
-	_, err := h.git("rev-parse", "--git-dir")
+	// A directory is only considered a Git repository if it contains a .git folder or file directly inside it.
+	// This prevents Git from traversing upwards to parent directories (such as the user's home directory ~).
+	_, err := os.Stat(filepath.Join(h.root, ".git"))
 	return err == nil
 }
 

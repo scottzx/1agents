@@ -374,9 +374,11 @@ export class App extends Component<{}, AppState> {
                     this.loadCcConnectUrl();
                 }
             });
+            return workspaces;
         } catch (err) {
             console.error('[workspace] load error:', err);
             this.setState({ workspacesLoading: false, hasLoadedWorkspaces: true });
+            return [];
         }
     };
 
@@ -401,8 +403,8 @@ export class App extends Component<{}, AppState> {
             });
             localStorage.setItem('1agents-onboarded', 'true');
             this.setState({ onboarded: true });
-            await this.loadWorkspaces(true);
-            const tempWs = this.state.workspaces.find(w => w.id === 'temp');
+            const workspaces = await this.loadWorkspaces(true);
+            const tempWs = workspaces.find(w => w.id === 'temp');
             if (tempWs) {
                 await this.selectWorkspace(tempWs);
             }
@@ -434,13 +436,13 @@ export class App extends Component<{}, AppState> {
             await workspaceService.create(ws);
             localStorage.setItem('1agents-onboarded', 'true');
             this.setState({ onboarded: true });
-            await this.loadWorkspaces(true);
-            const newWs = this.state.workspaces.find(w => w.id === ws.id);
+            const workspaces = await this.loadWorkspaces(true);
+            const newWs = workspaces.find(w => w.id === ws.id);
             if (newWs) {
                 await this.selectWorkspace(newWs);
             } else {
-                if (this.state.workspaces.length > 0) {
-                    await this.selectWorkspace(this.state.workspaces[0]);
+                if (workspaces.length > 0) {
+                    await this.selectWorkspace(workspaces[0]);
                 }
             }
             this.showToast(`工作空间 "${name}" 已创建 ✓`);
