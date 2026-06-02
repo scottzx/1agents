@@ -358,9 +358,17 @@ export class App extends Component<{}, AppState> {
             });
             this.setState({ workspaces, folders, workspacesLoading: false }, () => {
                 if (skipAutoSelect) return;
-                if (!this.state.activeWorkspaceId && workspaces.length > 0) {
-                    this.selectWorkspace(workspaces[0]);
-                } else if (this.state.activeWorkspaceId) {
+                const { activeWorkspaceId } = this.state;
+                const activeStillExists = workspaces.some(ws => ws.id === activeWorkspaceId);
+                if (!activeWorkspaceId || !activeStillExists) {
+                    // Active workspace was deleted or never set — switch to first available
+                    if (workspaces.length > 0) {
+                        this.selectWorkspace(workspaces[0]);
+                    } else {
+                        // No workspaces left — clear stale state
+                        this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
+                    }
+                } else {
                     this.loadCcConnectUrl();
                 }
             });
@@ -426,6 +434,12 @@ export class App extends Component<{}, AppState> {
     /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
     deleteWorkspace = async (id: string) => {
         try {
+            // If we're deleting the currently active workspace, clear it first so
+            // loadWorkspaces knows to auto-select a new one instead of re-fetching
+            // the CC-Connect URL for a workspace that no longer exists.
+            if (this.state.activeWorkspaceId === id) {
+                this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
+            }
             await workspaceService.delete(id);
             await this.loadWorkspaces();
             this.showToast('工作空间已删除 ✓');
