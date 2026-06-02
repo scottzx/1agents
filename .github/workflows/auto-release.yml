@@ -325,26 +325,33 @@ jobs:
             exit 0
           fi
 
-          # Extract binaries and dist into the npm packaging directory
-          mkdir -p npm/bin/linux-amd64 npm/bin/linux-arm64 npm/bin/darwin-arm64
-
+          # Extract binaries and dist into the npm packaging directory using foolproof temporary folders
           # Extract linux-amd64
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C npm/bin/linux-amd64 bin/
-          mv npm/bin/linux-amd64/bin/* npm/bin/linux-amd64/
-          rm -rf npm/bin/linux-amd64/bin
+          mkdir -p temp-linux-amd64
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C temp-linux-amd64
+          mkdir -p npm/bin/linux-amd64
+          mv temp-linux-amd64/bin/* npm/bin/linux-amd64/
+          rm -rf temp-linux-amd64
 
           # Extract linux-arm64
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-arm64.tar.gz -C npm/bin/linux-arm64 bin/
-          mv npm/bin/linux-arm64/bin/* npm/bin/linux-arm64/
-          rm -rf npm/bin/linux-arm64/bin
+          mkdir -p temp-linux-arm64
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-arm64.tar.gz -C temp-linux-arm64
+          mkdir -p npm/bin/linux-arm64
+          mv temp-linux-arm64/bin/* npm/bin/linux-arm64/
+          rm -rf temp-linux-arm64
 
           # Extract darwin-arm64
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C npm/bin/darwin-arm64 bin/
-          mv npm/bin/darwin-arm64/bin/* npm/bin/darwin-arm64/
-          rm -rf npm/bin/darwin-arm64/bin
+          mkdir -p temp-darwin-arm64
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C temp-darwin-arm64
+          mkdir -p npm/bin/darwin-arm64
+          mv temp-darwin-arm64/bin/* npm/bin/darwin-arm64/
+          rm -rf temp-darwin-arm64
 
-          # Extract dist (frontend assets)
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C npm/ dist/
+          # Extract dist (frontend assets) from linux-amd64
+          mkdir -p temp-dist
+          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C temp-dist
+          mv temp-dist/dist npm/
+          rm -rf temp-dist
 
           cd npm
 
