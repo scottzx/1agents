@@ -11,6 +11,12 @@ import { RightPanel } from './drawer/RightPanel';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
+import { WorkspaceModal, DirPickerModal, AccessTokenModal } from './modal';
+import { workspaceService } from '../services/workspaceService';
+import { terminalService } from '../services/terminalService';
+import { fsService } from '../services/fsService';
+import { accessService } from '../services/accessService';
+import { crawlDirRecursive } from '../utils/fileCrawler';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const path = window.location.pathname.replace(/[/]+$/, '');
@@ -119,10 +125,6 @@ interface AppState {
     ccConnectUrl: string;
     // ── Directory picker modal state ──
     dirPickerOpen: boolean;
-    dirPickerPath: string;
-    dirPickerDirs: { name: string; path: string }[];
-    dirPickerParentPath: string;
-    dirPickerLoading: boolean;
     dirPickerOnSelect: ((path: string) => void) | null;
     // ── Terminal / tmux state ──
     terminalWindows: TmuxWindow[];
@@ -202,10 +204,6 @@ export class App extends Component<{}, AppState> {
             wsModalChatChannel: '',
             ccConnectUrl: '',
             dirPickerOpen: false,
-            dirPickerPath: '',
-            dirPickerDirs: [],
-            dirPickerParentPath: '',
-            dirPickerLoading: false,
             dirPickerOnSelect: null,
             terminalWindows: [],
             terminalWindowsLoading: false,
@@ -258,9 +256,7 @@ export class App extends Component<{}, AppState> {
             }
             this._tunnelHeartbeat = setInterval(
                 () => {
-                    fetch('/api/tunnel/status').catch(() => {
-                        /* best-effort */
-                    });
+                    accessService.pingTunnel();
                 },
                 5 * 60 * 1000
             );
@@ -302,9 +298,7 @@ export class App extends Component<{}, AppState> {
         // Tunnel idle heartbeat — polls /api/tunnel/status every 5 min to prevent auto-stop
         this._tunnelHeartbeat = setInterval(
             () => {
-                fetch('/api/tunnel/status').catch(() => {
-                    /* best-effort */
-                });
+                accessService.pingTunnel();
             },
             5 * 60 * 1000
         );
@@ -350,9 +344,7 @@ export class App extends Component<{}, AppState> {
     loadWorkspaces = async (skipAutoSelect = false) => {
         this.setState({ workspacesLoading: true });
         try {
-            const res = await fetch('/api/workspace/list');
-            if (!res.ok) throw new Error(await res.text());
-            const workspaces: Workspace[] = await res.json();
+            const workspaces = await workspaceService.list();
             // Preserve existing expand state by merging
             const existing = this.state.folders;
             const folders = workspaces.map(ws => {
@@ -366,9 +358,17 @@ export class App extends Component<{}, AppState> {
             });
             this.setState({ workspaces, folders, workspacesLoading: false }, () => {
                 if (skipAutoSelect) return;
-                if (!this.state.activeWorkspaceId && workspaces.length > 0) {
-                    this.selectWorkspace(workspaces[0]);
-                } else if (this.state.activeWorkspaceId) {
+                const { activeWorkspaceId } = this.state;
+                const activeStillExists = workspaces.some(ws => ws.id === activeWorkspaceId);
+                if (!activeWorkspaceId || !activeStillExists) {
+                    // Active workspace was deleted or never set — switch to first available
+                    if (workspaces.length > 0) {
+                        this.selectWorkspace(workspaces[0]);
+                    } else {
+                        // No workspaces left — clear stale state
+                        this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
+                    }
+                } else {
                     this.loadCcConnectUrl();
                 }
             });
@@ -382,21 +382,12 @@ export class App extends Component<{}, AppState> {
         const wsId = workspaceId || this.state.activeWorkspaceId;
         if (!wsId) return;
         try {
-            const res = await fetch('/api/cc-connect/url', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    workspace: wsId,
-                    theme: this.state.theme,
-                    lang: this.state.language || 'zh-CN',
-                }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                this.setState({ ccConnectUrl: data.url });
-            }
+            const url = await workspaceService.getCcConnectUrl(
+                wsId,
+                this.state.theme,
+                this.state.language || 'zh-CN'
+            );
+            this.setState({ ccConnectUrl: url });
         } catch (err) {
             console.error('[ccconnect] failed to load url:', err);
         }
@@ -421,12 +412,7 @@ export class App extends Component<{}, AppState> {
             chatChannel: chatChannel?.trim() || undefined,
         };
         try {
-            const res = await fetch('/api/workspace/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(ws),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await workspaceService.create(ws);
             await this.loadWorkspaces();
             this.showToast(`工作空间 "${name}" 已创建 ✓`);
         } catch (err) {
@@ -437,12 +423,7 @@ export class App extends Component<{}, AppState> {
     /** Update an existing workspace via POST /api/workspace/update */
     updateWorkspace = async (ws: Workspace) => {
         try {
-            const res = await fetch('/api/workspace/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(ws),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await workspaceService.update(ws);
             await this.loadWorkspaces();
             this.showToast('工作空间已更新 ✓');
         } catch (err) {
@@ -453,10 +434,13 @@ export class App extends Component<{}, AppState> {
     /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
     deleteWorkspace = async (id: string) => {
         try {
-            const res = await fetch(`/api/workspace/delete?id=${encodeURIComponent(id)}`, {
-                method: 'DELETE',
-            });
-            if (!res.ok) throw new Error(await res.text());
+            // If we're deleting the currently active workspace, clear it first so
+            // loadWorkspaces knows to auto-select a new one instead of re-fetching
+            // the CC-Connect URL for a workspace that no longer exists.
+            if (this.state.activeWorkspaceId === id) {
+                this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
+            }
+            await workspaceService.delete(id);
             await this.loadWorkspaces();
             this.showToast('工作空间已删除 ✓');
         } catch (err) {
@@ -484,38 +468,10 @@ export class App extends Component<{}, AppState> {
     };
 
     openDirPicker = (onSelect: (path: string) => void) => {
-        this.setState(
-            {
-                dirPickerOpen: true,
-                dirPickerPath: '',
-                dirPickerDirs: [],
-                dirPickerParentPath: '',
-                dirPickerLoading: true,
-                dirPickerOnSelect: onSelect,
-            },
-            () => {
-                this.loadDirPickerDirs('');
-            }
-        );
-    };
-
-    loadDirPickerDirs = async (path: string) => {
-        this.setState({ dirPickerLoading: true });
-        try {
-            const url = `/api/workspace/list-directories?path=${encodeURIComponent(path)}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            this.setState({
-                dirPickerPath: data.currentPath,
-                dirPickerParentPath: data.parentPath || '',
-                dirPickerDirs: data.directories || [],
-                dirPickerLoading: false,
-            });
-        } catch (err) {
-            this.showToast(`加载目录失败: ${err}`);
-            this.setState({ dirPickerLoading: false });
-        }
+        this.setState({
+            dirPickerOpen: true,
+            dirPickerOnSelect: onSelect,
+        });
     };
 
     openDirPickerForModal = () => {
@@ -577,13 +533,7 @@ export class App extends Component<{}, AppState> {
     loadTerminals = async () => {
         this.setState({ terminalWindowsLoading: true });
         try {
-            const res = await fetch('/api/terminal/list');
-            if (!res.ok) {
-                this.setState({ terminalWindowsLoading: false });
-                return;
-            }
-            const data = await res.json();
-            const windows: TmuxWindow[] = data.windows || [];
+            const windows = await terminalService.list();
             this.mergeSessionsIntoFolders(windows);
             this.setState({ terminalWindows: windows, terminalWindowsLoading: false });
         } catch (err) {
@@ -626,12 +576,7 @@ export class App extends Component<{}, AppState> {
     /** Create a new terminal tab via POST /api/terminal/create */
     createTerminal = async (workspaceId: string, cwd: string) => {
         try {
-            const res = await fetch('/api/terminal/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workspaceId, cwd }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await terminalService.create(workspaceId, cwd);
             await this.loadTerminals();
             this.showToast('新会话已创建 ✓');
         } catch (err) {
@@ -642,12 +587,7 @@ export class App extends Component<{}, AppState> {
     /** Switch to a tmux window via POST /api/terminal/switch */
     switchTerminal = async (windowIndex: number) => {
         try {
-            const res = await fetch('/api/terminal/switch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ windowIndex }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await terminalService.switch(windowIndex);
             await this.loadTerminals();
         } catch (err) {
             console.error('[terminal] switch error:', err);
@@ -657,12 +597,7 @@ export class App extends Component<{}, AppState> {
     /** Kill a terminal tab via POST /api/terminal/kill */
     killTerminal = async (windowIndex: number) => {
         try {
-            const res = await fetch('/api/terminal/kill', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ windowIndex }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await terminalService.kill(windowIndex);
             await this.loadTerminals();
             this.showToast('会话已关闭 ✓');
         } catch (err) {
@@ -673,11 +608,8 @@ export class App extends Component<{}, AppState> {
     /** Fetch current tmux mouse mode state */
     loadTmuxMouse = async () => {
         try {
-            const res = await fetch('/api/terminal/mouse');
-            if (res.ok) {
-                const data = await res.json();
-                this.setState({ tmuxMouseOn: !!data.mouse });
-            }
+            const mouseOn = await terminalService.getMouse();
+            this.setState({ tmuxMouseOn: mouseOn });
         } catch (err) {
             console.error('[terminal] load mouse state error:', err);
         }
@@ -687,14 +619,7 @@ export class App extends Component<{}, AppState> {
     toggleTmuxMouse = async () => {
         const nextState = !this.state.tmuxMouseOn;
         try {
-            const res = await fetch('/api/terminal/mouse', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mouse: nextState }),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            const actualState = !!data.mouse;
+            const actualState = await terminalService.setMouse(nextState);
             this.setState({ tmuxMouseOn: actualState });
             if (actualState) {
                 this.showToast('已开启滚轮滑动模式 (可通过方向键选择历史命令) ✓');
@@ -714,11 +639,7 @@ export class App extends Component<{}, AppState> {
     switchWorkspaceContext = async (ws: Workspace) => {
         // Tell backend to update fs + git roots atomically
         try {
-            await fetch('/api/context/set', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: ws.path }),
-            });
+            await fsService.setContext(ws.path);
         } catch (err) {
             console.error('[context] set error:', err);
         }
@@ -818,9 +739,7 @@ export class App extends Component<{}, AppState> {
             this.setState({ fsLoading: true });
         }
         try {
-            const res = await fetch(`/api/fs/list?path=${encodeURIComponent(relPath || '.')}`);
-            if (!res.ok) throw new Error(await res.text());
-            const entries: FsEntry[] = await res.json();
+            const entries = await fsService.list(relPath);
 
             if (!parent) {
                 this.setState({ fsEntries: entries, fsLoading: false });
@@ -868,9 +787,7 @@ export class App extends Component<{}, AppState> {
         // Check if this is an image file
         if (this.isImageFile(entry.name)) {
             try {
-                const res = await fetch(`/api/fs/image?path=${encodeURIComponent(entry.path)}`);
-                if (!res.ok) throw new Error(await res.text());
-                const dataUrl = await res.text();
+                const dataUrl = await fsService.readImage(entry.path);
                 this.setState({ imageDataUrl: dataUrl, isImagePreview: true, fileLoading: false });
             } catch (err) {
                 console.error('[fs] image load error:', err);
@@ -880,9 +797,7 @@ export class App extends Component<{}, AppState> {
         }
 
         try {
-            const res = await fetch(`/api/fs/read?path=${encodeURIComponent(entry.path)}`);
-            if (!res.ok) throw new Error(await res.text());
-            const text = await res.text();
+            const text = await fsService.read(entry.path);
             this.setState({ fileContent: text, editedContent: text, fileLoading: false });
         } catch (err) {
             console.error('[fs] read error:', err);
@@ -902,12 +817,7 @@ export class App extends Component<{}, AppState> {
         if (!selectedFsEntry || selectedFsEntry.isDir || fileSaving) return;
         this.setState({ fileSaving: true, fileSaveMsg: '' });
         try {
-            const res = await fetch(`/api/fs/write?path=${encodeURIComponent(selectedFsEntry.path)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-                body: editedContent,
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await fsService.write(selectedFsEntry.path, editedContent);
             this.setState({ fileContent: editedContent, fileSaving: false, fileSaveMsg: '已保存 ✓' });
             setTimeout(() => this.setState({ fileSaveMsg: '' }), 2000);
         } catch (err) {
@@ -1054,51 +964,12 @@ export class App extends Component<{}, AppState> {
 
     // ── Flat file crawler ──────────────────────────────────────────────────
 
-    /** Dirs to skip during recursive crawl */
-    private readonly IGNORE_DIRS = new Set([
-        'node_modules',
-        'dist',
-        'build',
-        '__pycache__',
-        'vendor',
-        '.git',
-        '.bun',
-        '.yarn',
-        '.pnpm',
-        '.cache',
-        '.vscode',
-        '.idea',
-    ]);
-
-    /** Recursively fetch all files under relPath, ignoring heavy dirs */
-    crawlDirRecursive = async (relPath: string, crawlId: number): Promise<FsEntry[]> => {
-        if (crawlId !== this._crawlCounter) return [];
-        const res = await fetch(`/api/fs/list?path=${encodeURIComponent(relPath || '.')}`);
-        if (crawlId !== this._crawlCounter) return [];
-        if (!res.ok) return [];
-        const entries: FsEntry[] = await res.json();
-        const results: FsEntry[] = [];
-        await Promise.all(
-            entries.map(async e => {
-                if (crawlId !== this._crawlCounter) return;
-                if (e.isDir) {
-                    if (this.IGNORE_DIRS.has(e.name)) return;
-                    const sub = await this.crawlDirRecursive(e.path, crawlId);
-                    results.push(...sub);
-                } else {
-                    results.push(e);
-                }
-            })
-        );
-        return results;
-    };
-
     loadFlatFiles = async () => {
         this._crawlCounter++;
         const currentCrawl = this._crawlCounter;
         this.setState({ flatFilesLoading: true });
         try {
-            const files = await this.crawlDirRecursive('', currentCrawl);
+            const files = await crawlDirRecursive('', currentCrawl, () => this._crawlCounter);
             if (currentCrawl === this._crawlCounter) {
                 this.setState({ flatFiles: files, flatFilesLoading: false });
             }
@@ -1119,17 +990,12 @@ export class App extends Component<{}, AppState> {
 
     checkAccessStatus = async () => {
         try {
-            const res = await fetch('/api/access/status');
-            if (res.ok) {
-                const data = await res.json();
-                const required = !!data.required;
-                const authenticated = !!data.authenticated;
-                this.setState({
-                    accessAuthRequired: required,
-                    accessAuthenticated: authenticated,
-                    accessGateVisible: required && !authenticated,
-                });
-            }
+            const data = await accessService.checkStatus();
+            this.setState({
+                accessAuthRequired: data.required,
+                accessAuthenticated: data.authenticated,
+                accessGateVisible: data.required && !data.authenticated,
+            });
         } catch {
             this.setState({
                 accessAuthRequired: false,
@@ -1159,14 +1025,8 @@ export class App extends Component<{}, AppState> {
 
     generateAccessToken = async () => {
         try {
-            const res = await fetch('/api/access/generate', { method: 'POST' });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                this.showToast(`生成令牌失败: ${data.error || res.statusText}`);
-                return;
-            }
-            const data = await res.json();
-            this.setState({ accessTokenModalToken: data.token, accessAuthRequired: true });
+            const token = await accessService.generateToken();
+            this.setState({ accessTokenModalToken: token, accessAuthRequired: true });
         } catch (err) {
             this.showToast(`生成令牌失败: ${err}`);
         }
@@ -1174,12 +1034,7 @@ export class App extends Component<{}, AppState> {
 
     revokeAccessToken = async () => {
         try {
-            const res = await fetch('/api/access/revoke', { method: 'POST' });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                this.showToast(`撤销失败: ${data.error || res.statusText}`);
-                return;
-            }
+            await accessService.revokeToken();
             this.showToast('访问令牌已撤销');
             await this.checkAccessStatus();
         } catch (err) {
@@ -1187,35 +1042,7 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    copyAccessToken = () => {
-        const { accessTokenModalToken } = this.state;
-        if (!accessTokenModalToken) return;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard
-                .writeText(accessTokenModalToken)
-                .then(() => {
-                    this.showToast('令牌已复制到剪贴板');
-                })
-                .catch(() => {
-                    this.showToast('复制失败，请手动复制');
-                });
-        } else {
-            // Fallback for non-HTTPS or older browsers
-            const textarea = document.createElement('textarea');
-            textarea.value = accessTokenModalToken;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                this.showToast('令牌已复制到剪贴板');
-            } catch {
-                this.showToast('复制失败，请手动复制');
-            }
-            document.body.removeChild(textarea);
-        }
-    };
+
 
     closeAccessTokenModal = () => {
         this.setState({ accessTokenModalToken: '' });
@@ -1236,9 +1063,7 @@ export class App extends Component<{}, AppState> {
         // Check if this is an image file
         if (this.isImageFile(entry.name)) {
             try {
-                const res = await fetch(`/api/fs/image?path=${encodeURIComponent(entry.path)}`);
-                if (!res.ok) throw new Error(await res.text());
-                const dataUrl = await res.text();
+                const dataUrl = await fsService.readImage(entry.path);
                 this.setState({ imageDataUrl: dataUrl, isImagePreview: true, fileLoading: false });
             } catch (err) {
                 console.error('[fs] image load error:', err);
@@ -1248,9 +1073,7 @@ export class App extends Component<{}, AppState> {
         }
 
         try {
-            const res = await fetch(`/api/fs/read?path=${encodeURIComponent(entry.path)}`);
-            if (!res.ok) throw new Error(await res.text());
-            const text = await res.text();
+            const text = await fsService.read(entry.path);
             this.setState({ fileContent: text, editedContent: text, fileLoading: false });
         } catch (err) {
             this.setState({ fileContent: `Error: ${err}`, editedContent: '', fileLoading: false });
@@ -1289,12 +1112,7 @@ export class App extends Component<{}, AppState> {
             : '';
         const newPath = `${dir}${base}_copy${ext}`;
         try {
-            const res = await fetch(`/api/fs/write?path=${encodeURIComponent(newPath)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-                body: fileContent,
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await fsService.write(newPath, fileContent);
             this.showToast('已复制文件 ✓');
             this.loadFlatFiles();
         } catch (err) {
@@ -1325,12 +1143,7 @@ export class App extends Component<{}, AppState> {
         const newPath = `${dir}${newName}`;
         try {
             // Write content to new path
-            const writeRes = await fetch(`/api/fs/write?path=${encodeURIComponent(newPath)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-                body: fileContent,
-            });
-            if (!writeRes.ok) throw new Error(await writeRes.text());
+            await fsService.write(newPath, fileContent);
             this.showToast('重命名成功 ✓');
             this.setState({ selectedFsEntry: { ...selectedFsEntry, name: newName, path: newPath }, viewMode: 'list' });
             this.loadFlatFiles();
@@ -1403,10 +1216,6 @@ export class App extends Component<{}, AppState> {
             wsModalChatChannel,
             ccConnectUrl,
             dirPickerOpen,
-            dirPickerPath,
-            dirPickerDirs,
-            dirPickerParentPath,
-            dirPickerLoading,
             dirPickerOnSelect,
             flatFiles,
             flatFilesLoading,
@@ -1537,200 +1346,34 @@ export class App extends Component<{}, AppState> {
 
                         {/* Workspace create/rename modal */}
                         {wsModalOpen && (
-                            <div class="ws-modal-overlay" onClick={this.closeWsModal}>
-                                <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                                    <div class="ws-modal-header">
-                                        <span>{wsModalMode === 'create' ? '新建工作空间' : '编辑工作空间'}</span>
-                                        <button class="ws-modal-close" onClick={this.closeWsModal}>
-                                            ✕
-                                        </button>
-                                    </div>
-                                    <div class="ws-modal-body">
-                                        <label class="ws-modal-label">名称</label>
-                                        <input
-                                            class="ws-modal-input"
-                                            placeholder="工作空间名称"
-                                            value={wsModalName}
-                                            onInput={(e: Event) =>
-                                                this.setState({ wsModalName: (e.target as HTMLInputElement).value })
-                                            }
-                                            onKeyDown={(e: KeyboardEvent) => {
-                                                if (e.key === 'Enter') this.submitWsModal();
-                                            }}
-                                            autoFocus
-                                        />
-                                        <label class="ws-modal-label">路径</label>
-                                        <div style="display: flex; gap: 8px; width: 100%;">
-                                            <input
-                                                class="ws-modal-input"
-                                                placeholder="/path/to/project  (可选)"
-                                                value={wsModalPath}
-                                                onInput={(e: Event) =>
-                                                    this.setState({ wsModalPath: (e.target as HTMLInputElement).value })
-                                                }
-                                                onKeyDown={(e: KeyboardEvent) => {
-                                                    if (e.key === 'Enter') this.submitWsModal();
-                                                }}
-                                                style="flex: 1;"
-                                            />
-                                            <button
-                                                class="ws-modal-cancel"
-                                                onClick={this.openDirPickerForModal}
-                                                style="height: 38px; flex-shrink: 0; padding: 0 12px; margin: 0; font-size: 12px; display: flex; align-items: center; justify-content: center;"
-                                            >
-                                                浏览...
-                                            </button>
-                                        </div>
-                                        <label class="ws-modal-label">终端文件夹 (可选)</label>
-                                        <input
-                                            class="ws-modal-input"
-                                            placeholder="终端窗口默认打开的目录 (重写路径)"
-                                            value={wsModalTerminalDir}
-                                            onInput={(e: Event) =>
-                                                this.setState({
-                                                    wsModalTerminalDir: (e.target as HTMLInputElement).value,
-                                                })
-                                            }
-                                            onKeyDown={(e: KeyboardEvent) => {
-                                                if (e.key === 'Enter') this.submitWsModal();
-                                            }}
-                                        />
-                                        <label class="ws-modal-label">AI 聊天频道 (可选)</label>
-                                        <input
-                                            class="ws-modal-input"
-                                            placeholder="CC-Connect 聊天频道或会话 key"
-                                            value={wsModalChatChannel}
-                                            onInput={(e: Event) =>
-                                                this.setState({
-                                                    wsModalChatChannel: (e.target as HTMLInputElement).value,
-                                                })
-                                            }
-                                            onKeyDown={(e: KeyboardEvent) => {
-                                                if (e.key === 'Enter') this.submitWsModal();
-                                            }}
-                                        />
-                                    </div>
-                                    <div class="ws-modal-footer">
-                                        <button class="ws-modal-cancel" onClick={this.closeWsModal}>
-                                            取消
-                                        </button>
-                                        <button class="ws-modal-confirm" onClick={this.submitWsModal}>
-                                            {wsModalMode === 'create' ? '创建' : '保存'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <WorkspaceModal
+                                mode={wsModalMode}
+                                name={wsModalName}
+                                path={wsModalPath}
+                                terminalDir={wsModalTerminalDir}
+                                chatChannel={wsModalChatChannel}
+                                onNameChange={val => this.setState({ wsModalName: val })}
+                                onPathChange={val => this.setState({ wsModalPath: val })}
+                                onTerminalDirChange={val => this.setState({ wsModalTerminalDir: val })}
+                                onChatChannelChange={val => this.setState({ wsModalChatChannel: val })}
+                                onClose={this.closeWsModal}
+                                onBrowse={this.openDirPickerForModal}
+                                onSubmit={this.submitWsModal}
+                            />
                         )}
 
                         {/* Remote Directory Picker Modal */}
                         {dirPickerOpen && (
-                            <div class="dp-modal-overlay" onClick={() => this.setState({ dirPickerOpen: false })}>
-                                <div class="dp-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                                    <div class="dp-modal-header">
-                                        <span>选择远程目录</span>
-                                        <button
-                                            class="dp-modal-close"
-                                            onClick={() => this.setState({ dirPickerOpen: false })}
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                    <div class="dp-modal-body">
-                                        <div class="dp-path-row">
-                                            {dirPickerParentPath && (
-                                                <button
-                                                    class="dp-up-btn"
-                                                    onClick={() => this.loadDirPickerDirs(dirPickerParentPath)}
-                                                    title="返回上一级"
-                                                >
-                                                    <svg
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2.5"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                    >
-                                                        <polyline points="15 18 9 12 15 6" />
-                                                    </svg>
-                                                </button>
-                                            )}
-                                            <input
-                                                class="dp-path-input"
-                                                value={dirPickerPath}
-                                                onInput={(e: Event) =>
-                                                    this.setState({
-                                                        dirPickerPath: (e.target as HTMLInputElement).value,
-                                                    })
-                                                }
-                                                onKeyDown={(e: KeyboardEvent) => {
-                                                    if (e.key === 'Enter') this.loadDirPickerDirs(dirPickerPath);
-                                                }}
-                                                placeholder="远程路径"
-                                            />
-                                            <button
-                                                class="dp-go-btn"
-                                                onClick={() => this.loadDirPickerDirs(dirPickerPath)}
-                                            >
-                                                进入
-                                            </button>
-                                        </div>
-
-                                        <div class="dp-dir-list-wrap">
-                                            {dirPickerLoading ? (
-                                                <div class="dp-loading">
-                                                    <div class="dp-spinner" />
-                                                    <span>正在读取远程目录...</span>
-                                                </div>
-                                            ) : dirPickerDirs.length === 0 ? (
-                                                <div class="dp-empty">当前目录下无子目录</div>
-                                            ) : (
-                                                <div class="dp-dir-list">
-                                                    {dirPickerDirs.map(dir => (
-                                                        <div
-                                                            key={dir.path}
-                                                            class="dp-dir-item"
-                                                            onClick={() => this.loadDirPickerDirs(dir.path)}
-                                                        >
-                                                            <svg
-                                                                class="dp-folder-icon"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2"
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
-                                                            >
-                                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                            </svg>
-                                                            <span class="dp-dir-name" title={dir.path}>
-                                                                {dir.name}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div class="dp-modal-footer">
-                                        <button
-                                            class="dp-modal-cancel"
-                                            onClick={() => this.setState({ dirPickerOpen: false })}
-                                        >
-                                            取消
-                                        </button>
-                                        <button
-                                            class="dp-modal-confirm"
-                                            onClick={() => {
-                                                if (dirPickerOnSelect) dirPickerOnSelect(dirPickerPath);
-                                                this.setState({ dirPickerOpen: false });
-                                            }}
-                                        >
-                                            选择当前目录
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <DirPickerModal
+                                onClose={() => this.setState({ dirPickerOpen: false })}
+                                onSelect={pickedPath => {
+                                    if (this.state.dirPickerOnSelect) {
+                                        this.state.dirPickerOnSelect(pickedPath);
+                                    }
+                                    this.setState({ dirPickerOpen: false });
+                                }}
+                                onShowToast={this.showToast}
+                            />
                         )}
 
                         {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -1883,24 +1526,11 @@ export class App extends Component<{}, AppState> {
 
                 {/* Access Token Display Modal (one-time, shown after generation) */}
                 {accessTokenModalToken && (
-                    <div class="at-modal-overlay" onClick={this.closeAccessTokenModal}>
-                        <div class="at-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                            <div class="at-modal-header">访问令牌已生成</div>
-                            <div class="at-modal-warning">
-                                <strong>请立即保存此令牌！</strong>此令牌仅在本次展示，关闭后将无法再次查看。
-                                请将其妥善保管，非本地网络访问时需要提供此令牌。
-                            </div>
-                            <div class="at-modal-token-box">
-                                <span class="at-modal-token-text">{accessTokenModalToken}</span>
-                                <button class="at-modal-copy-btn" onClick={this.copyAccessToken}>
-                                    复制
-                                </button>
-                            </div>
-                            <button class="at-modal-close-btn" onClick={this.closeAccessTokenModal}>
-                                我已保存令牌
-                            </button>
-                        </div>
-                    </div>
+                    <AccessTokenModal
+                        token={accessTokenModalToken}
+                        onClose={this.closeAccessTokenModal}
+                        onShowToast={this.showToast}
+                    />
                 )}
 
                 {/* Toast Notification */}

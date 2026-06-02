@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chenhg5/cc-connect/config"
 	"github.com/chenhg5/cc-connect/core"
@@ -167,6 +168,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			default:
 				log.Println("[workspace] CC-Connect hot restart already pending")
 			}
+			
+			// Wait for the hot restart to finish to avoid 502 Bad Gateway race condition on immediate redirect
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}
 
@@ -265,6 +269,9 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 			default:
 				log.Println("[workspace] CC-Connect hot restart already pending")
 			}
+			
+			// Wait for the hot restart to finish to avoid 502 Bad Gateway race condition on immediate redirect
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}
 
