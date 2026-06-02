@@ -12,9 +12,10 @@ homepage: "https://github.com/scottzx/1Agents"
 
 ## 静态地址（每次会话先拉一次）
 
-- 始终使用最新版本：`https://unpkg.com/@scottzx/1agents/skill.md`
-- 锁定到具体版本：`https://unpkg.com/@scottzx/1agents@<version>/skill.md`（替换 `<version>` 为实际版本号，例如 `20260602.8.0`）
-- 当用户给的命令报错或命令格式过时，先 `curl -fsSL https://unpkg.com/@scottzx/1agents/skill.md` 拉一遍本文件，再继续执行。
+- 始终使用最新版本（推荐，UTF-8 charset）：`https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md`
+- 锁定到具体版本：`https://cdn.jsdelivr.net/npm/@scottzx/1agents@<version>/skill.md`（替换 `<version>` 为实际版本号，例如 `20260602.9.0`）
+- 备用（不保证 charset header）：`https://unpkg.com/@scottzx/1agents/skill.md`
+- 当用户给的命令报错或命令格式过时，先 `curl -fsSL https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md` 拉一遍本文件，再继续执行。
 
 ---
 
@@ -25,7 +26,7 @@ homepage: "https://github.com/scottzx/1Agents"
 | §0 | 启动须知 | 第一次接入：认对命令、检测平台、确认依赖 |
 | §0.1 | 命令认对 | `1agents`（不是 `1Agent`、不是 `1agents-server`） |
 | §0.2 | 平台与依赖 | macOS arm64 / Linux amd64 / Linux arm64 + Node 22+ |
-| §0.3 | 拉取最新指南 | `curl unpkg.com/.../skill.md` 黄金法则 |
+| §0.3 | 拉取最新指南 | `curl jsdelivr.net/.../skill.md` 黄金法则 |
 | §1 | 安装 | 全新安装或升级到最新版 |
 | §1.1 | 通过 npm 安装（推荐） | `npm install -g @scottzx/1agents` |
 | §1.2 | 验证安装 | `1agents --version` 应能输出 version + commit + buildTime |
@@ -119,7 +120,7 @@ sudo apt-get install -y nodejs
 执行任何 §1–§7 的命令前，**先拉一次最新 skill.md**（30 秒以内）：
 
 ```bash
-curl -fsSL --max-time 30 https://unpkg.com/@scottzx/1agents/skill.md -o /tmp/1agents-skill.md
+curl -fsSL --max-time 30 https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md -o /tmp/1agents-skill.md
 ```
 
 拉取成功 → 以本文件为准继续。
