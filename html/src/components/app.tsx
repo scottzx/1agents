@@ -1,4 +1,4 @@
-import { h, Component } from 'preact';
+import { h, Component, Fragment } from 'preact';
 
 import type { ITerminalOptions, ITheme } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from './terminal/xterm';
@@ -10,6 +10,7 @@ import { MiddleCanvas } from './canvas/MiddleCanvas';
 import { RightPanel } from './drawer/RightPanel';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
+import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const path = window.location.pathname.replace(/[/]+$/, '');
@@ -266,9 +267,6 @@ export class App extends Component<{}, AppState> {
             return;
         }
 
-        this.loadDir('', null);
-        this.loadFlatFiles();
-
         // Wait for both workspaces and terminal sessions to load in parallel
         await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
 
@@ -283,7 +281,13 @@ export class App extends Component<{}, AppState> {
             const ws = workspaces.find(w => w.id === activeWorkspaceId);
             if (ws) {
                 await this.switchWorkspaceContext(ws);
+            } else {
+                this.loadDir('', null);
+                this.loadFlatFiles();
             }
+        } else {
+            this.loadDir('', null);
+            this.loadFlatFiles();
         }
 
         this.loadTmuxMouse();
@@ -1507,352 +1511,375 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container">
-                {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
-                <LeftSidebar
-                    folders={folders}
-                    workspaces={workspaces}
-                    workspacesLoading={workspacesLoading}
-                    leftSidebarOpen={leftSidebarOpen}
-                    leftSidebarWidth={leftSidebarWidth}
-                    activeWorkspaceId={activeWorkspaceId}
-                    toggleLeftSidebar={this.toggleLeftSidebar}
-                    toggleFolder={this.toggleFolder}
-                    toggleDrawerTab={this.toggleDrawerTab}
-                    onCreateWorkspace={this.openCreateWorkspacePicker}
-                    onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
-                    onDeleteWorkspace={this.deleteWorkspace}
-                    onSelectWorkspace={ws => this.selectWorkspace(ws)}
-                    onSelectSession={s => this.selectSession(s)}
-                    onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
-                    onTerminalKill={idx => this.killTerminal(idx)}
-                />
+                {workspaces.length === 0 && !workspacesLoading ? (
+                    <WelcomeOnboarding language={language} onCreateWorkspace={this.openCreateWorkspacePicker} />
+                ) : (
+                    <Fragment>
+                        {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
+                        <LeftSidebar
+                            folders={folders}
+                            workspaces={workspaces}
+                            workspacesLoading={workspacesLoading}
+                            leftSidebarOpen={leftSidebarOpen}
+                            leftSidebarWidth={leftSidebarWidth}
+                            activeWorkspaceId={activeWorkspaceId}
+                            toggleLeftSidebar={this.toggleLeftSidebar}
+                            toggleFolder={this.toggleFolder}
+                            toggleDrawerTab={this.toggleDrawerTab}
+                            onCreateWorkspace={this.openCreateWorkspacePicker}
+                            onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
+                            onDeleteWorkspace={this.deleteWorkspace}
+                            onSelectWorkspace={ws => this.selectWorkspace(ws)}
+                            onSelectSession={s => this.selectSession(s)}
+                            onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
+                            onTerminalKill={idx => this.killTerminal(idx)}
+                        />
 
-                {/* Workspace create/rename modal */}
-                {wsModalOpen && (
-                    <div class="ws-modal-overlay" onClick={this.closeWsModal}>
-                        <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                            <div class="ws-modal-header">
-                                <span>{wsModalMode === 'create' ? '新建工作空间' : '编辑工作空间'}</span>
-                                <button class="ws-modal-close" onClick={this.closeWsModal}>
-                                    ✕
-                                </button>
-                            </div>
-                            <div class="ws-modal-body">
-                                <label class="ws-modal-label">名称</label>
-                                <input
-                                    class="ws-modal-input"
-                                    placeholder="工作空间名称"
-                                    value={wsModalName}
-                                    onInput={(e: Event) =>
-                                        this.setState({ wsModalName: (e.target as HTMLInputElement).value })
-                                    }
-                                    onKeyDown={(e: KeyboardEvent) => {
-                                        if (e.key === 'Enter') this.submitWsModal();
-                                    }}
-                                    autoFocus
-                                />
-                                <label class="ws-modal-label">路径</label>
-                                <div style="display: flex; gap: 8px; width: 100%;">
-                                    <input
-                                        class="ws-modal-input"
-                                        placeholder="/path/to/project  (可选)"
-                                        value={wsModalPath}
-                                        onInput={(e: Event) =>
-                                            this.setState({ wsModalPath: (e.target as HTMLInputElement).value })
-                                        }
-                                        onKeyDown={(e: KeyboardEvent) => {
-                                            if (e.key === 'Enter') this.submitWsModal();
-                                        }}
-                                        style="flex: 1;"
-                                    />
-                                    <button
-                                        class="ws-modal-cancel"
-                                        onClick={this.openDirPickerForModal}
-                                        style="height: 38px; flex-shrink: 0; padding: 0 12px; margin: 0; font-size: 12px; display: flex; align-items: center; justify-content: center;"
-                                    >
-                                        浏览...
-                                    </button>
-                                </div>
-                                <label class="ws-modal-label">终端文件夹 (可选)</label>
-                                <input
-                                    class="ws-modal-input"
-                                    placeholder="终端窗口默认打开的目录 (重写路径)"
-                                    value={wsModalTerminalDir}
-                                    onInput={(e: Event) =>
-                                        this.setState({ wsModalTerminalDir: (e.target as HTMLInputElement).value })
-                                    }
-                                    onKeyDown={(e: KeyboardEvent) => {
-                                        if (e.key === 'Enter') this.submitWsModal();
-                                    }}
-                                />
-                                <label class="ws-modal-label">AI 聊天频道 (可选)</label>
-                                <input
-                                    class="ws-modal-input"
-                                    placeholder="CC-Connect 聊天频道或会话 key"
-                                    value={wsModalChatChannel}
-                                    onInput={(e: Event) =>
-                                        this.setState({ wsModalChatChannel: (e.target as HTMLInputElement).value })
-                                    }
-                                    onKeyDown={(e: KeyboardEvent) => {
-                                        if (e.key === 'Enter') this.submitWsModal();
-                                    }}
-                                />
-                            </div>
-                            <div class="ws-modal-footer">
-                                <button class="ws-modal-cancel" onClick={this.closeWsModal}>
-                                    取消
-                                </button>
-                                <button class="ws-modal-confirm" onClick={this.submitWsModal}>
-                                    {wsModalMode === 'create' ? '创建' : '保存'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Remote Directory Picker Modal */}
-                {dirPickerOpen && (
-                    <div class="dp-modal-overlay" onClick={() => this.setState({ dirPickerOpen: false })}>
-                        <div class="dp-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                            <div class="dp-modal-header">
-                                <span>选择远程目录</span>
-                                <button class="dp-modal-close" onClick={() => this.setState({ dirPickerOpen: false })}>
-                                    ✕
-                                </button>
-                            </div>
-                            <div class="dp-modal-body">
-                                <div class="dp-path-row">
-                                    {dirPickerParentPath && (
-                                        <button
-                                            class="dp-up-btn"
-                                            onClick={() => this.loadDirPickerDirs(dirPickerParentPath)}
-                                            title="返回上一级"
-                                        >
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <polyline points="15 18 9 12 15 6" />
-                                            </svg>
+                        {/* Workspace create/rename modal */}
+                        {wsModalOpen && (
+                            <div class="ws-modal-overlay" onClick={this.closeWsModal}>
+                                <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                                    <div class="ws-modal-header">
+                                        <span>{wsModalMode === 'create' ? '新建工作空间' : '编辑工作空间'}</span>
+                                        <button class="ws-modal-close" onClick={this.closeWsModal}>
+                                            ✕
                                         </button>
-                                    )}
-                                    <input
-                                        class="dp-path-input"
-                                        value={dirPickerPath}
-                                        onInput={(e: Event) =>
-                                            this.setState({ dirPickerPath: (e.target as HTMLInputElement).value })
-                                        }
-                                        onKeyDown={(e: KeyboardEvent) => {
-                                            if (e.key === 'Enter') this.loadDirPickerDirs(dirPickerPath);
-                                        }}
-                                        placeholder="远程路径"
-                                    />
-                                    <button class="dp-go-btn" onClick={() => this.loadDirPickerDirs(dirPickerPath)}>
-                                        进入
-                                    </button>
-                                </div>
-
-                                <div class="dp-dir-list-wrap">
-                                    {dirPickerLoading ? (
-                                        <div class="dp-loading">
-                                            <div class="dp-spinner" />
-                                            <span>正在读取远程目录...</span>
+                                    </div>
+                                    <div class="ws-modal-body">
+                                        <label class="ws-modal-label">名称</label>
+                                        <input
+                                            class="ws-modal-input"
+                                            placeholder="工作空间名称"
+                                            value={wsModalName}
+                                            onInput={(e: Event) =>
+                                                this.setState({ wsModalName: (e.target as HTMLInputElement).value })
+                                            }
+                                            onKeyDown={(e: KeyboardEvent) => {
+                                                if (e.key === 'Enter') this.submitWsModal();
+                                            }}
+                                            autoFocus
+                                        />
+                                        <label class="ws-modal-label">路径</label>
+                                        <div style="display: flex; gap: 8px; width: 100%;">
+                                            <input
+                                                class="ws-modal-input"
+                                                placeholder="/path/to/project  (可选)"
+                                                value={wsModalPath}
+                                                onInput={(e: Event) =>
+                                                    this.setState({ wsModalPath: (e.target as HTMLInputElement).value })
+                                                }
+                                                onKeyDown={(e: KeyboardEvent) => {
+                                                    if (e.key === 'Enter') this.submitWsModal();
+                                                }}
+                                                style="flex: 1;"
+                                            />
+                                            <button
+                                                class="ws-modal-cancel"
+                                                onClick={this.openDirPickerForModal}
+                                                style="height: 38px; flex-shrink: 0; padding: 0 12px; margin: 0; font-size: 12px; display: flex; align-items: center; justify-content: center;"
+                                            >
+                                                浏览...
+                                            </button>
                                         </div>
-                                    ) : dirPickerDirs.length === 0 ? (
-                                        <div class="dp-empty">当前目录下无子目录</div>
-                                    ) : (
-                                        <div class="dp-dir-list">
-                                            {dirPickerDirs.map(dir => (
-                                                <div
-                                                    key={dir.path}
-                                                    class="dp-dir-item"
-                                                    onClick={() => this.loadDirPickerDirs(dir.path)}
+                                        <label class="ws-modal-label">终端文件夹 (可选)</label>
+                                        <input
+                                            class="ws-modal-input"
+                                            placeholder="终端窗口默认打开的目录 (重写路径)"
+                                            value={wsModalTerminalDir}
+                                            onInput={(e: Event) =>
+                                                this.setState({
+                                                    wsModalTerminalDir: (e.target as HTMLInputElement).value,
+                                                })
+                                            }
+                                            onKeyDown={(e: KeyboardEvent) => {
+                                                if (e.key === 'Enter') this.submitWsModal();
+                                            }}
+                                        />
+                                        <label class="ws-modal-label">AI 聊天频道 (可选)</label>
+                                        <input
+                                            class="ws-modal-input"
+                                            placeholder="CC-Connect 聊天频道或会话 key"
+                                            value={wsModalChatChannel}
+                                            onInput={(e: Event) =>
+                                                this.setState({
+                                                    wsModalChatChannel: (e.target as HTMLInputElement).value,
+                                                })
+                                            }
+                                            onKeyDown={(e: KeyboardEvent) => {
+                                                if (e.key === 'Enter') this.submitWsModal();
+                                            }}
+                                        />
+                                    </div>
+                                    <div class="ws-modal-footer">
+                                        <button class="ws-modal-cancel" onClick={this.closeWsModal}>
+                                            取消
+                                        </button>
+                                        <button class="ws-modal-confirm" onClick={this.submitWsModal}>
+                                            {wsModalMode === 'create' ? '创建' : '保存'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Remote Directory Picker Modal */}
+                        {dirPickerOpen && (
+                            <div class="dp-modal-overlay" onClick={() => this.setState({ dirPickerOpen: false })}>
+                                <div class="dp-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                                    <div class="dp-modal-header">
+                                        <span>选择远程目录</span>
+                                        <button
+                                            class="dp-modal-close"
+                                            onClick={() => this.setState({ dirPickerOpen: false })}
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div class="dp-modal-body">
+                                        <div class="dp-path-row">
+                                            {dirPickerParentPath && (
+                                                <button
+                                                    class="dp-up-btn"
+                                                    onClick={() => this.loadDirPickerDirs(dirPickerParentPath)}
+                                                    title="返回上一级"
                                                 >
                                                     <svg
-                                                        class="dp-folder-icon"
                                                         viewBox="0 0 24 24"
                                                         fill="none"
                                                         stroke="currentColor"
-                                                        stroke-width="2"
+                                                        stroke-width="2.5"
                                                         stroke-linecap="round"
                                                         stroke-linejoin="round"
                                                     >
-                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                        <polyline points="15 18 9 12 15 6" />
                                                     </svg>
-                                                    <span class="dp-dir-name" title={dir.path}>
-                                                        {dir.name}
-                                                    </span>
-                                                </div>
-                                            ))}
+                                                </button>
+                                            )}
+                                            <input
+                                                class="dp-path-input"
+                                                value={dirPickerPath}
+                                                onInput={(e: Event) =>
+                                                    this.setState({
+                                                        dirPickerPath: (e.target as HTMLInputElement).value,
+                                                    })
+                                                }
+                                                onKeyDown={(e: KeyboardEvent) => {
+                                                    if (e.key === 'Enter') this.loadDirPickerDirs(dirPickerPath);
+                                                }}
+                                                placeholder="远程路径"
+                                            />
+                                            <button
+                                                class="dp-go-btn"
+                                                onClick={() => this.loadDirPickerDirs(dirPickerPath)}
+                                            >
+                                                进入
+                                            </button>
                                         </div>
-                                    )}
+
+                                        <div class="dp-dir-list-wrap">
+                                            {dirPickerLoading ? (
+                                                <div class="dp-loading">
+                                                    <div class="dp-spinner" />
+                                                    <span>正在读取远程目录...</span>
+                                                </div>
+                                            ) : dirPickerDirs.length === 0 ? (
+                                                <div class="dp-empty">当前目录下无子目录</div>
+                                            ) : (
+                                                <div class="dp-dir-list">
+                                                    {dirPickerDirs.map(dir => (
+                                                        <div
+                                                            key={dir.path}
+                                                            class="dp-dir-item"
+                                                            onClick={() => this.loadDirPickerDirs(dir.path)}
+                                                        >
+                                                            <svg
+                                                                class="dp-folder-icon"
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2"
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                            >
+                                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                            </svg>
+                                                            <span class="dp-dir-name" title={dir.path}>
+                                                                {dir.name}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div class="dp-modal-footer">
+                                        <button
+                                            class="dp-modal-cancel"
+                                            onClick={() => this.setState({ dirPickerOpen: false })}
+                                        >
+                                            取消
+                                        </button>
+                                        <button
+                                            class="dp-modal-confirm"
+                                            onClick={() => {
+                                                if (dirPickerOnSelect) dirPickerOnSelect(dirPickerPath);
+                                                this.setState({ dirPickerOpen: false });
+                                            }}
+                                        >
+                                            选择当前目录
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="dp-modal-footer">
-                                <button class="dp-modal-cancel" onClick={() => this.setState({ dirPickerOpen: false })}>
-                                    取消
-                                </button>
-                                <button
-                                    class="dp-modal-confirm"
-                                    onClick={() => {
-                                        if (dirPickerOnSelect) dirPickerOnSelect(dirPickerPath);
-                                        this.setState({ dirPickerOpen: false });
-                                    }}
-                                >
-                                    选择当前目录
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                        )}
 
-                {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
-                {leftSidebarOpen && (
-                    <div
-                        class="resizer resizer-left"
-                        onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
-                        title="拖动调整左侧栏宽度"
-                    />
-                )}
-
-                {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
-                <div
-                    class="workspace-main-content"
-                    style={
-                        this.state.isMobile
-                            ? {
-                                  // Constrain height to visual viewport when keyboard is open
-                                  height: this.state.keyboardVisible ? `${this.state.viewportHeight}px` : undefined,
-                              }
-                            : undefined
-                    }
-                >
-                    {/* [COZE PAGE HEADER]: Replaces top global header */}
-                    <WorkspaceHeader
-                        leftSidebarOpen={leftSidebarOpen}
-                        toggleLeftSidebar={this.toggleLeftSidebar}
-                        activeDrawerTab={activeDrawerTab}
-                        toggleDrawerTab={this.toggleDrawerTab}
-                        activeTab={activeTab}
-                        setActiveTab={this.setActiveTab}
-                        theme={theme}
-                        toggleTheme={this.toggleTheme}
-                        keyboardVisible={this.state.keyboardVisible}
-                        workspaceName={activeWorkspace?.name || ''}
-                        sessionName={activeSession?.name || ''}
-                        tmuxMouseOn={tmuxMouseOn}
-                        onTmuxMouseToggle={this.toggleTmuxMouse}
-                    />
-
-                    {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
-                    <div class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}>
-                        {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                        <MiddleCanvas
-                            activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
-                            wsUrl={wsUrl}
-                            tokenUrl={tokenUrl}
-                            clientOptions={clientOptions}
-                            termOptions={termOptions}
-                            flowControl={flowControl}
-                            onMobileDetect={isMobile => this.setState({ isMobile })}
-                            onKeyboardStateChange={this.handleKeyboardStateChange}
-                            tmuxMouseOn={tmuxMouseOn}
-                            onTmuxMouseToggle={this.toggleTmuxMouse}
-                        />
-
-                        {/* Resizer: between MIDDLE canvas and RIGHT panel */}
-                        {activeDrawerTab !== 'none' && (
+                        {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
+                        {leftSidebarOpen && (
                             <div
-                                class="resizer resizer-right"
-                                onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
-                                title="拖动调整右侧栏宽度"
+                                class="resizer resizer-left"
+                                onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
+                                title="拖动调整左侧栏宽度"
                             />
                         )}
 
-                        {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                        <RightPanel
-                            activeDrawerTab={activeDrawerTab}
-                            activeWorkspaceId={activeWorkspaceId}
-                            activeWorkspacePath={activeWorkspacePath}
-                            rightPanelWidth={rightPanelWidth}
-                            closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                            ccConnectUrl={ccConnectUrl}
-                            theme={theme}
-                            toggleTheme={this.toggleTheme}
-                            language={language}
-                            toggleLanguage={this.toggleLanguage}
-                            flatFiles={flatFiles}
-                            flatFilesLoading={flatFilesLoading}
-                            searchQuery={searchQuery}
-                            selectedFilterTag={selectedFilterTag}
-                            viewMode={viewMode}
-                            favoriteFiles={favoriteFiles}
-                            detailFullscreen={detailFullscreen}
-                            isEditingDetail={isEditingDetail}
-                            selectedFsEntry={selectedFsEntry}
-                            fileContent={fileContent}
-                            editedContent={editedContent}
-                            fileLoading={fileLoading}
-                            fileSaving={fileSaving}
-                            fileSaveMsg={fileSaveMsg}
-                            isImagePreview={isImagePreview}
-                            imageDataUrl={imageDataUrl}
-                            onSearchQueryChange={query => this.setState({ searchQuery: query })}
-                            onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
-                            onRefreshFlatFiles={async () => {
-                                this.loadDir('', null);
-                                this.loadFlatFiles();
-                                try {
-                                    await this.checkAccessStatus();
-                                    await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+                        {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
+                        <div
+                            class="workspace-main-content"
+                            style={
+                                this.state.isMobile
+                                    ? {
+                                          // Constrain height to visual viewport when keyboard is open
+                                          height: this.state.keyboardVisible
+                                              ? `${this.state.viewportHeight}px`
+                                              : undefined,
+                                      }
+                                    : undefined
+                            }
+                        >
+                            {/* [COZE PAGE HEADER]: Replaces top global header */}
+                            <WorkspaceHeader
+                                leftSidebarOpen={leftSidebarOpen}
+                                toggleLeftSidebar={this.toggleLeftSidebar}
+                                activeDrawerTab={activeDrawerTab}
+                                toggleDrawerTab={this.toggleDrawerTab}
+                                activeTab={activeTab}
+                                setActiveTab={this.setActiveTab}
+                                theme={theme}
+                                toggleTheme={this.toggleTheme}
+                                keyboardVisible={this.state.keyboardVisible}
+                                workspaceName={activeWorkspace?.name || ''}
+                                sessionName={activeSession?.name || ''}
+                                tmuxMouseOn={tmuxMouseOn}
+                                onTmuxMouseToggle={this.toggleTmuxMouse}
+                            />
 
-                                    const { workspaces, activeWorkspaceId } = this.state;
-                                    if (!activeWorkspaceId && workspaces.length > 0) {
-                                        await this.selectWorkspace(workspaces[0]);
-                                    } else if (activeWorkspaceId) {
-                                        await this.loadCcConnectUrl();
-                                    }
-                                } catch (e) {
-                                    console.error('Failed to reconnect/refresh:', e);
-                                }
-                            }}
-                            onOpenFileDetail={this.openFileDetail}
-                            onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
-                            onToggleFavorite={this.toggleFavorite}
-                            onCopyContent={this.copyFileContent}
-                            onDownloadFile={this.downloadFile}
-                            onRenameFile={this.renameFile}
-                            onToggleFullscreen={() => {
-                                const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
-                                if (selectedFsEntry) {
-                                    const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
-                                    const activeWorkspacePath = activeWorkspace?.path || '.';
-                                    const absolutePath = selectedFsEntry.path.startsWith('/')
-                                        ? selectedFsEntry.path
-                                        : `${activeWorkspacePath}/${selectedFsEntry.path}`;
-                                    const shareUrl = `${window.location.origin}${
-                                        window.location.pathname
-                                    }?preview=${encodeURIComponent(absolutePath)}`;
-                                    window.open(shareUrl, '_blank');
-                                }
-                            }}
-                            onShareFile={this.shareFile}
-                            onSaveFile={this.saveFile}
-                            onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                            onEditedContentChange={content => this.setState({ editedContent: content })}
-                            fsEntries={this.state.fsEntries}
-                            fsLoading={this.state.fsLoading}
-                            onToggleFsDir={this.toggleFsDir}
-                            accessTokenExists={accessAuthRequired}
-                            onGenerateAccessToken={this.generateAccessToken}
-                            onRevokeAccessToken={this.revokeAccessToken}
-                        />
-                    </div>
-                </div>
+                            {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
+                            <div class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}>
+                                {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
+                                <MiddleCanvas
+                                    activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
+                                    wsUrl={wsUrl}
+                                    tokenUrl={tokenUrl}
+                                    clientOptions={clientOptions}
+                                    termOptions={termOptions}
+                                    flowControl={flowControl}
+                                    onMobileDetect={isMobile => this.setState({ isMobile })}
+                                    onKeyboardStateChange={this.handleKeyboardStateChange}
+                                    tmuxMouseOn={tmuxMouseOn}
+                                    onTmuxMouseToggle={this.toggleTmuxMouse}
+                                />
+
+                                {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                                {activeDrawerTab !== 'none' && (
+                                    <div
+                                        class="resizer resizer-right"
+                                        onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
+                                        title="拖动调整右侧栏宽度"
+                                    />
+                                )}
+
+                                {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
+                                <RightPanel
+                                    activeDrawerTab={activeDrawerTab}
+                                    activeWorkspaceId={activeWorkspaceId}
+                                    activeWorkspacePath={activeWorkspacePath}
+                                    rightPanelWidth={rightPanelWidth}
+                                    closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                                    ccConnectUrl={ccConnectUrl}
+                                    theme={theme}
+                                    toggleTheme={this.toggleTheme}
+                                    language={language}
+                                    toggleLanguage={this.toggleLanguage}
+                                    flatFiles={flatFiles}
+                                    flatFilesLoading={flatFilesLoading}
+                                    searchQuery={searchQuery}
+                                    selectedFilterTag={selectedFilterTag}
+                                    viewMode={viewMode}
+                                    favoriteFiles={favoriteFiles}
+                                    detailFullscreen={detailFullscreen}
+                                    isEditingDetail={isEditingDetail}
+                                    selectedFsEntry={selectedFsEntry}
+                                    fileContent={fileContent}
+                                    editedContent={editedContent}
+                                    fileLoading={fileLoading}
+                                    fileSaving={fileSaving}
+                                    fileSaveMsg={fileSaveMsg}
+                                    isImagePreview={isImagePreview}
+                                    imageDataUrl={imageDataUrl}
+                                    onSearchQueryChange={query => this.setState({ searchQuery: query })}
+                                    onFilterTagChange={tag => this.setState({ selectedFilterTag: tag })}
+                                    onRefreshFlatFiles={async () => {
+                                        this.loadDir('', null);
+                                        this.loadFlatFiles();
+                                        try {
+                                            await this.checkAccessStatus();
+                                            await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+
+                                            const { workspaces, activeWorkspaceId } = this.state;
+                                            if (!activeWorkspaceId && workspaces.length > 0) {
+                                                await this.selectWorkspace(workspaces[0]);
+                                            } else if (activeWorkspaceId) {
+                                                await this.loadCcConnectUrl();
+                                            }
+                                        } catch (e) {
+                                            console.error('Failed to reconnect/refresh:', e);
+                                        }
+                                    }}
+                                    onOpenFileDetail={this.openFileDetail}
+                                    onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
+                                    onToggleFavorite={this.toggleFavorite}
+                                    onCopyContent={this.copyFileContent}
+                                    onDownloadFile={this.downloadFile}
+                                    onRenameFile={this.renameFile}
+                                    onToggleFullscreen={() => {
+                                        const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
+                                        if (selectedFsEntry) {
+                                            const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+                                            const activeWorkspacePath = activeWorkspace?.path || '.';
+                                            const absolutePath = selectedFsEntry.path.startsWith('/')
+                                                ? selectedFsEntry.path
+                                                : `${activeWorkspacePath}/${selectedFsEntry.path}`;
+                                            const shareUrl = `${window.location.origin}${
+                                                window.location.pathname
+                                            }?preview=${encodeURIComponent(absolutePath)}`;
+                                            window.open(shareUrl, '_blank');
+                                        }
+                                    }}
+                                    onShareFile={this.shareFile}
+                                    onSaveFile={this.saveFile}
+                                    onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
+                                    onEditedContentChange={content => this.setState({ editedContent: content })}
+                                    fsEntries={this.state.fsEntries}
+                                    fsLoading={this.state.fsLoading}
+                                    onToggleFsDir={this.toggleFsDir}
+                                    accessTokenExists={accessAuthRequired}
+                                    onGenerateAccessToken={this.generateAccessToken}
+                                    onRevokeAccessToken={this.revokeAccessToken}
+                                />
+                            </div>
+                        </div>
+                    </Fragment>
+                )}
 
                 {/* Access Token Display Modal (one-time, shown after generation) */}
                 {accessTokenModalToken && (
