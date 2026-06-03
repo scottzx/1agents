@@ -181,6 +181,203 @@ let _resizerActive: 'left' | 'right' | null = null;
 let _resizerStartX = 0;
 let _resizerStartWidth = 0;
 
+interface BuiltinBrowserProps {
+    tab: Tab;
+    active: boolean;
+    onUrlChange: (tabId: string, url: string) => void;
+}
+
+class BuiltinBrowser extends Component<BuiltinBrowserProps> {
+    private placeholderRef: HTMLDivElement | null = null;
+    private resizeObserver: ResizeObserver | null = null;
+    private inputRef: HTMLInputElement | null = null;
+    private isCreated = false;
+
+    componentDidMount() {
+        if (IS_DESKTOP) {
+            this.initWebview();
+        }
+    }
+
+    componentDidUpdate(prevProps: BuiltinBrowserProps) {
+        if (!IS_DESKTOP) return;
+
+        if (this.props.active !== prevProps.active) {
+            if (this.props.active) {
+                this.syncBounds();
+                this.showWebview();
+            } else {
+                this.invokeTauri('hide_all_browser_tabs');
+            }
+        }
+    }
+
+    componentWillUnmount() {
+        if (IS_DESKTOP) {
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+            }
+            this.destroyWebview();
+        }
+    }
+
+    private invokeTauri = async (command: string, args: Record<string, any> = {}) => {
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+            try {
+                return await (window as any).__TAURI__.core.invoke(command, args);
+            } catch (e) {
+                console.error(`Failed to invoke Tauri command ${command}:`, e);
+            }
+        }
+    };
+
+    private initWebview = async () => {
+        if (!this.placeholderRef) return;
+
+        // Wait a tick for the DOM to settle and calculate bounds
+        setTimeout(async () => {
+            if (!this.placeholderRef) return;
+            const rect = this.placeholderRef.getBoundingClientRect();
+            
+            // Create child webview
+            await this.invokeTauri('create_browser_tab', {
+                tabId: this.props.tab.id,
+                url: this.props.tab.url || 'about:blank',
+                x: rect.left,
+                y: rect.top,
+                width: rect.width,
+                height: rect.height,
+            });
+            this.isCreated = true;
+
+            // If active, show it immediately
+            if (this.props.active) {
+                this.showWebview();
+            } else {
+                this.invokeTauri('hide_all_browser_tabs');
+            }
+
+            // Set up ResizeObserver to track size changes
+            if (typeof ResizeObserver !== 'undefined') {
+                this.resizeObserver = new ResizeObserver(() => {
+                    this.syncBounds();
+                });
+                this.resizeObserver.observe(this.placeholderRef);
+            }
+        }, 100);
+    };
+
+    private syncBounds = async () => {
+        if (!this.placeholderRef || !this.isCreated || !this.props.active) return;
+        const rect = this.placeholderRef.getBoundingClientRect();
+        await this.invokeTauri('update_browser_tab_bounds', {
+            tabId: this.props.tab.id,
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+        });
+    };
+
+    private showWebview = async () => {
+        if (!this.isCreated) return;
+        await this.invokeTauri('show_browser_tab', { tabId: this.props.tab.id });
+    };
+
+    private destroyWebview = async () => {
+        await this.invokeTauri('destroy_browser_tab', { tabId: this.props.tab.id });
+    };
+
+    handleKeyPress = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && this.inputRef) {
+            let url = this.inputRef.value.trim();
+            if (url) {
+                if (!/^https?:\/\//i.test(url) && !url.startsWith('about:')) {
+                    url = 'http://' + url;
+                }
+                this.props.onUrlChange(this.props.tab.id, url);
+                if (IS_DESKTOP && this.isCreated) {
+                    this.invokeTauri('navigate_browser_tab', { tabId: this.props.tab.id, url });
+                }
+            }
+        }
+    };
+
+    handleRefresh = () => {
+        if (IS_DESKTOP && this.isCreated) {
+            this.invokeTauri('navigate_browser_tab', { tabId: this.props.tab.id, url: this.props.tab.url || 'about:blank' });
+        }
+    };
+
+    render() {
+        const { tab, active } = this.props;
+        const isHome = !tab.url || tab.url === 'about:blank';
+
+        return (
+            <div class="builtin-browser" style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+                <div class="browser-nav-bar">
+                    <button class="browser-refresh-btn" onClick={this.handleRefresh} title="刷新页面" disabled={isHome}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.72 2.78L21 8" />
+                            <polyline points="21 3 21 8 16 8" />
+                        </svg>
+                    </button>
+                    <input
+                        type="text"
+                        class="browser-url-input"
+                        placeholder="输入网址并回车 (e.g. www.bing.com 或 localhost:3000)"
+                        value={tab.url === 'about:blank' ? '' : tab.url}
+                        ref={el => { this.inputRef = el; }}
+                        onKeyDown={this.handleKeyPress}
+                    />
+                </div>
+                <div class="browser-iframe-wrapper" style="flex: 1; position: relative; width: 100%; height: 100%;">
+                    {isHome && (
+                        <div class="browser-welcome-page" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
+                            <div class="welcome-card">
+                                <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="2" y1="12" x2="22" y2="12" />
+                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                </svg>
+                                <h3 class="welcome-title">内置浏览器</h3>
+                                <p class="welcome-desc">
+                                    在上方地址栏输入网址并按回车键进行浏览。
+                                </p>
+                                <div class="welcome-tips">
+                                    <div class="tip-item">
+                                        <strong>💡 提示：</strong>
+                                        <span>在桌面端，该浏览器基于原生 Webview 渲染，没有任何 X-Frame-Options 拦截限制，支持顺畅访问任意公网网页（如 Bing、GitHub 等）。</span>
+                                    </div>
+                                    <div class="tip-item">
+                                        <strong>🛠 推荐用途：</strong>
+                                        <span>非常适合预览本地开发的 Web 服务以及访问各类公网网页。</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {!isHome && (
+                        <div 
+                            id={`browser-webview-placeholder-${tab.id}`} 
+                            class="browser-webview-placeholder"
+                            style="width: 100%; height: 100%; background: #00000000;"
+                            ref={el => {
+                                if (el && !this.placeholderRef) {
+                                    this.placeholderRef = el;
+                                    this.initWebview();
+                                } else {
+                                    this.placeholderRef = el;
+                                }
+                            }}
+                        />
+                    )}
+                </div>
+            </div>
+        );
+    }
+}
+
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
     private _crawlCounter = 0;
@@ -251,7 +448,7 @@ export class App extends Component<{}, AppState> {
             accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
             hasLoadedWorkspaces: false,
-            tabs: [{ id: 'terminal', title: '终端', type: 'terminal', closable: false }],
+            tabs: [{ id: 'terminal', title: '工作台', type: 'terminal', closable: false }],
             activeTabId: 'terminal',
         };
     }
@@ -999,6 +1196,18 @@ export class App extends Component<{}, AppState> {
         } else if (tab.type === 'terminal') {
             this.triggerTerminalFit();
         }
+
+        if (IS_DESKTOP) {
+            if (tab.type !== 'browser') {
+                if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+                    try {
+                        await (window as any).__TAURI__.core.invoke('hide_all_browser_tabs');
+                    } catch (e) {
+                        console.error('Failed to hide all browser tabs:', e);
+                    }
+                }
+            }
+        }
     };
 
     openPreviewTab = async (path: string, fileName: string) => {
@@ -1068,79 +1277,12 @@ export class App extends Component<{}, AppState> {
     };
 
     renderBuiltinBrowser = (tab: Tab) => {
-        let inputRef: HTMLInputElement | null = null;
-        const handleKeyPress = (e: KeyboardEvent) => {
-            if (e.key === 'Enter' && inputRef) {
-                let url = inputRef.value.trim();
-                if (url && !/^https?:\/\//i.test(url) && !url.startsWith('about:')) {
-                    url = 'http://' + url;
-                }
-                this.updateBrowserUrl(tab.id, url);
-            }
-        };
-
-        const handleRefresh = () => {
-            const iframe = document.getElementById(`iframe-${tab.id}`) as HTMLIFrameElement;
-            if (iframe) {
-                iframe.src = iframe.src;
-            }
-        };
-
-        const isHome = !tab.url || tab.url === 'about:blank';
-
         return (
-            <div class="builtin-browser">
-                <div class="browser-nav-bar">
-                    <button class="browser-refresh-btn" onClick={handleRefresh} title="刷新页面" disabled={isHome}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.72 2.78L21 8" />
-                            <polyline points="21 3 21 8 16 8" />
-                        </svg>
-                    </button>
-                    <input
-                        type="text"
-                        class="browser-url-input"
-                        placeholder="输入网址并回车 (e.g. localhost:3000 或 www.example.com)"
-                        value={tab.url}
-                        ref={el => { inputRef = el; }}
-                        onKeyDown={handleKeyPress}
-                    />
-                </div>
-                <div class="browser-iframe-wrapper">
-                    {isHome ? (
-                        <div class="browser-welcome-page">
-                            <div class="welcome-card">
-                                <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="2" y1="12" x2="22" y2="12" />
-                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                </svg>
-                                <h3 class="welcome-title">内置浏览器</h3>
-                                <p class="welcome-desc">
-                                    在上方地址栏输入网址并按回车键进行浏览。
-                                </p>
-                                <div class="welcome-tips">
-                                    <div class="tip-item">
-                                        <strong>💡 提示：</strong>
-                                        <span>多数公网大厂网站（如 Google, Bing, GitHub 等）设置了安全标头 <code>X-Frame-Options: SAMEORIGIN</code>，会阻止在 iframe 内加载。</span>
-                                    </div>
-                                    <div class="tip-item">
-                                        <strong>🛠 推荐用途：</strong>
-                                        <span>非常适合预览本地开发的 Web 服务（如 <code>http://localhost:3000</code>）、本地 HTML 页面、或者未设置防嵌标头的公共文档网站。</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <iframe
-                            id={`iframe-${tab.id}`}
-                            src={tab.url}
-                            class="browser-iframe"
-                            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                        />
-                    )}
-                </div>
-            </div>
+            <BuiltinBrowser
+                tab={tab}
+                active={this.state.activeTabId === tab.id}
+                onUrlChange={this.updateBrowserUrl}
+            />
         );
     };
 
@@ -1620,7 +1762,7 @@ export class App extends Component<{}, AppState> {
         const activeWorkspacePath = activeWorkspace?.path || '.';
 
         return (
-            <div class="app-container">
+            <div class="app-container" style="display: flex; flex-direction: column;">
                 {this.state.hasLoadedWorkspaces && workspaces.length === 0 ? (
                     <WelcomeOnboarding
                         language={language}
@@ -1629,267 +1771,276 @@ export class App extends Component<{}, AppState> {
                     />
                 ) : (
                     <Fragment>
-                        {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
-                        <LeftSidebar
-                            folders={folders}
-                            workspaces={workspaces}
-                            workspacesLoading={workspacesLoading}
-                            leftSidebarOpen={leftSidebarOpen}
-                            leftSidebarWidth={leftSidebarWidth}
-                            activeWorkspaceId={activeWorkspaceId}
-                            toggleLeftSidebar={this.toggleLeftSidebar}
-                            toggleFolder={this.toggleFolder}
-                            toggleDrawerTab={this.toggleDrawerTab}
-                            onCreateWorkspace={this.openCreateWorkspacePicker}
-                            onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
-                            onDeleteWorkspace={this.deleteWorkspace}
-                            onSelectWorkspace={ws => this.selectWorkspace(ws)}
-                            onSelectSession={s => this.selectSession(s)}
-                            onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
-                            onTerminalKill={idx => this.killTerminal(idx)}
-                        />
-
-                        {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
-                        {leftSidebarOpen && (
-                            <div
-                                class="resizer resizer-left"
-                                onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
-                                title="拖动调整左侧栏宽度"
-                            />
+                        {IS_DESKTOP && (
+                            <div class="workspace-tabs-bar">
+                                <div class="workspace-tabs-list">
+                                    {tabs.map(tab => {
+                                        const isActive = tab.id === activeTabId;
+                                        return (
+                                            <div
+                                                key={tab.id}
+                                                class={`workspace-tab-item ${isActive ? 'active' : ''}`}
+                                                onClick={() => this.selectTab(tab.id)}
+                                            >
+                                                <span class="tab-title">{tab.title}</span>
+                                                {tab.closable && (
+                                                    <span
+                                                        class="workspace-tab-close"
+                                                        onClick={(e: MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            this.closeTab(tab.id);
+                                                        }}
+                                                        title="关闭标签页"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                                        </svg>
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <button
+                                    class="workspace-tab-add-btn"
+                                    onClick={() => this.openBrowserTab('')}
+                                    title="打开新浏览器标签页"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                </button>
+                            </div>
                         )}
 
-                        {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
-                        <div
-                            class="workspace-main-content"
-                            style={
-                                this.state.isMobile
-                                    ? {
-                                          // Constrain height to visual viewport when keyboard is open
-                                          height: this.state.keyboardVisible
-                                              ? `${this.state.viewportHeight}px`
-                                              : undefined,
-                                      }
-                                    : undefined
-                            }
-                        >
-                            {/* [COZE PAGE HEADER]: Replaces top global header */}
-                            <WorkspaceHeader
-                                leftSidebarOpen={leftSidebarOpen}
-                                toggleLeftSidebar={this.toggleLeftSidebar}
-                                activeDrawerTab={activeDrawerTab}
-                                toggleDrawerTab={this.toggleDrawerTab}
-                                activeTab={activeTab}
-                                setActiveTab={this.setActiveTab}
-                                theme={theme}
-                                toggleTheme={this.toggleTheme}
-                                keyboardVisible={this.state.keyboardVisible}
-                                workspaceName={activeWorkspace?.name || ''}
-                                sessionName={activeSession?.name || ''}
-                                tmuxMouseOn={tmuxMouseOn}
-                                onTmuxMouseToggle={this.toggleTmuxMouse}
-                            />
-
-                            {IS_DESKTOP && (
-                                <div class="workspace-tabs-bar">
-                                    <div class="workspace-tabs-list">
-                                        {tabs.map(tab => {
-                                            const isActive = tab.id === activeTabId;
-                                            return (
-                                                <div
-                                                    key={tab.id}
-                                                    class={`workspace-tab-item ${isActive ? 'active' : ''}`}
-                                                    onClick={() => this.selectTab(tab.id)}
-                                                >
-                                                    <span class="tab-title">{tab.title}</span>
-                                                    {tab.closable && (
-                                                        <span
-                                                            class="workspace-tab-close"
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                this.closeTab(tab.id);
-                                                            }}
-                                                            title="关闭标签页"
-                                                        >
-                                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                                                <line x1="18" y1="6" x2="6" y2="18" />
-                                                                <line x1="6" y1="6" x2="18" y2="18" />
-                                                            </svg>
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <button
-                                        class="workspace-tab-add-btn"
-                                        onClick={() => this.openBrowserTab('')}
-                                        title="打开新浏览器标签页"
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                            <line x1="12" y1="5" x2="12" y2="19" />
-                                            <line x1="5" y1="12" x2="19" y2="12" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* [WORKSPACE BODY CONTAINER]: terminal & drawers or tab contents */}
-                            {activeTabId === 'terminal' ? (
-                                <div class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}>
-                                    {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                    <MiddleCanvas
-                                        activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
-                                        wsUrl={wsUrl}
-                                        tokenUrl={tokenUrl}
-                                        clientOptions={clientOptions}
-                                        termOptions={termOptions}
-                                        flowControl={flowControl}
-                                        onMobileDetect={isMobile => this.setState({ isMobile })}
-                                        onKeyboardStateChange={this.handleKeyboardStateChange}
-                                        tmuxMouseOn={tmuxMouseOn}
-                                        onTmuxMouseToggle={this.toggleTmuxMouse}
+                        <div class="app-main-layout" style="display: flex; flex: 1; flex-direction: row; overflow: hidden; width: 100%;">
+                            {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
+                            {activeTabId === 'terminal' && (
+                                <Fragment>
+                                    <LeftSidebar
+                                        folders={folders}
+                                        workspaces={workspaces}
+                                        workspacesLoading={workspacesLoading}
+                                        leftSidebarOpen={leftSidebarOpen}
+                                        leftSidebarWidth={leftSidebarWidth}
+                                        activeWorkspaceId={activeWorkspaceId}
+                                        toggleLeftSidebar={this.toggleLeftSidebar}
+                                        toggleFolder={this.toggleFolder}
+                                        toggleDrawerTab={this.toggleDrawerTab}
+                                        onCreateWorkspace={this.openCreateWorkspacePicker}
+                                        onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
+                                        onDeleteWorkspace={this.deleteWorkspace}
+                                        onSelectWorkspace={ws => this.selectWorkspace(ws)}
+                                        onSelectSession={s => this.selectSession(s)}
+                                        onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
+                                        onTerminalKill={idx => this.killTerminal(idx)}
                                     />
 
-                                    {/* Resizer: between MIDDLE canvas and RIGHT panel */}
-                                    {activeDrawerTab !== 'none' && (
+                                    {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
+                                    {leftSidebarOpen && (
                                         <div
-                                            class="resizer resizer-right"
-                                            onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
-                                            title="拖动调整右侧栏宽度"
+                                            class="resizer resizer-left"
+                                            onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
+                                            title="拖动调整左侧栏宽度"
                                         />
                                     )}
-
-                                    {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                                    <RightPanel
-                                        activeDrawerTab={activeDrawerTab}
-                                        activeWorkspaceId={activeWorkspaceId}
-                                        activeWorkspacePath={activeWorkspacePath}
-                                        rightPanelWidth={rightPanelWidth}
-                                        closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                                        ccConnectUrl={ccConnectUrl}
-                                        theme={theme}
-                                        toggleTheme={this.toggleTheme}
-                                        language={language}
-                                        toggleLanguage={this.toggleLanguage}
-                                        flatFiles={flatFiles}
-                                        flatFilesLoading={flatFilesLoading}
-                                        searchQuery={searchQuery}
-                                        selectedFilterTag={selectedFilterTag}
-                                        viewMode={viewMode}
-                                        favoriteFiles={favoriteFiles}
-                                        detailFullscreen={detailFullscreen}
-                                        isEditingDetail={isEditingDetail}
-                                        selectedFsEntry={selectedFsEntry}
-                                        fileContent={fileContent}
-                                        editedContent={editedContent}
-                                        fileLoading={fileLoading}
-                                        fileSaving={fileSaving}
-                                        fileSaveMsg={fileSaveMsg}
-                                        isImagePreview={isImagePreview}
-                                        imageDataUrl={imageDataUrl}
-                                        onSearchQueryChange={this.handleSearchChange}
-                                        onFilterTagChange={this.handleFilterTagChange}
-                                        onRefreshFlatFiles={async () => {
-                                            this.loadDir('', null);
-                                            const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
-                                            if (isSearching) {
-                                                this.loadFlatFiles();
-                                            }
-                                            try {
-                                                await this.checkAccessStatus();
-                                                await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
-
-                                                const { workspaces, activeWorkspaceId } = this.state;
-                                                if (!activeWorkspaceId && workspaces.length > 0) {
-                                                    await this.selectWorkspace(workspaces[0]);
-                                                } else if (activeWorkspaceId) {
-                                                    await this.loadCcConnectUrl();
-                                                }
-                                            } catch (e) {
-                                                console.error('Failed to reconnect/refresh:', e);
-                                            }
-                                        }}
-                                        onOpenFileDetail={this.openFileDetail}
-                                        onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
-                                        onToggleFavorite={this.toggleFavorite}
-                                        onCopyContent={this.copyFileContent}
-                                        onDownloadFile={this.downloadFile}
-                                        onRenameFile={this.renameFile}
-                                        onToggleFullscreen={() => {
-                                            const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
-                                            if (selectedFsEntry) {
-                                                const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
-                                                const activeWorkspacePath = activeWorkspace?.path || '.';
-                                                const absolutePath = selectedFsEntry.path.startsWith('/')
-                                                    ? selectedFsEntry.path
-                                                    : `${activeWorkspacePath}/${selectedFsEntry.path}`;
-                                                if (IS_DESKTOP) {
-                                                    this.openPreviewTab(absolutePath, selectedFsEntry.name);
-                                                } else {
-                                                    const shareUrl = `${window.location.origin}${
-                                                        window.location.pathname
-                                                    }?preview=${encodeURIComponent(absolutePath)}`;
-                                                    window.open(shareUrl, '_blank');
-                                                }
-                                            }
-                                        }}
-                                        onShareFile={this.shareFile}
-                                        onSaveFile={this.saveFile}
-                                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                                        onEditedContentChange={content => this.setState({ editedContent: content })}
-                                        onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
-                                        fsEntries={this.state.fsEntries}
-                                        fsLoading={this.state.fsLoading}
-                                        onToggleFsDir={this.toggleFsDir}
-                                        accessTokenExists={accessAuthRequired}
-                                        onGenerateAccessToken={this.generateAccessToken}
-                                        onRevokeAccessToken={this.revokeAccessToken}
-                                    />
-                                </div>
-                            ) : (
-                                <div class="workspace-body-container dynamic-tab-view">
-                                    {activeTabObj?.type === 'preview' ? (
-                                        <div class="fb-detail-view-tab-container" style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;">
-                                            {selectedFsEntry ? (
-                                                <FileDetailView
-                                                    selectedFsEntry={selectedFsEntry}
-                                                    favoriteFiles={favoriteFiles}
-                                                    detailFullscreen={false}
-                                                    isEditingDetail={isEditingDetail}
-                                                    fileContent={fileContent}
-                                                    editedContent={editedContent}
-                                                    fileLoading={fileLoading}
-                                                    fileSaving={fileSaving}
-                                                    fileSaveMsg={fileSaveMsg}
-                                                    isImagePreview={isImagePreview}
-                                                    imageDataUrl={imageDataUrl}
-                                                    onBackToList={() => this.closeTab(activeTabId)}
-                                                    onToggleFavorite={this.toggleFavorite}
-                                                    onCopyContent={this.copyFileContent}
-                                                    onDownloadFile={this.downloadFile}
-                                                    onRenameFile={this.renameFile}
-                                                    onToggleFullscreen={() => {}}
-                                                    onShareFile={this.shareFile}
-                                                    onSaveFile={this.saveFile}
-                                                    onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                                                    onEditedContentChange={content => this.setState({ editedContent: content })}
-                                                    onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
-                                                    isStandalone={true}
-                                                />
-                                            ) : (
-                                                <div class="fb-loading">
-                                                    <div class="fb-loading-spinner" />
-                                                    <span>正在载入预览…</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : activeTabObj?.type === 'browser' ? (
-                                        <div class="builtin-browser-container" style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden;">
-                                            {this.renderBuiltinBrowser(activeTabObj)}
-                                        </div>
-                                    ) : null}
-                                </div>
+                                </Fragment>
                             )}
+
+                            {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
+                            <div
+                                class="workspace-main-content"
+                                style={
+                                    this.state.isMobile
+                                        ? {
+                                              // Constrain height to visual viewport when keyboard is open
+                                              height: this.state.keyboardVisible
+                                                  ? `${this.state.viewportHeight}px`
+                                                  : undefined,
+                                          }
+                                        : undefined
+                                }
+                            >
+                                {activeTabId === 'terminal' ? (
+                                    <Fragment>
+                                        {/* [COZE PAGE HEADER]: Replaces top global header */}
+                                        <WorkspaceHeader
+                                            leftSidebarOpen={leftSidebarOpen}
+                                            toggleLeftSidebar={this.toggleLeftSidebar}
+                                            activeDrawerTab={activeDrawerTab}
+                                            toggleDrawerTab={this.toggleDrawerTab}
+                                            activeTab={activeTab}
+                                            setActiveTab={this.setActiveTab}
+                                            theme={theme}
+                                            toggleTheme={this.toggleTheme}
+                                            keyboardVisible={this.state.keyboardVisible}
+                                            workspaceName={activeWorkspace?.name || ''}
+                                            sessionName={activeSession?.name || ''}
+                                            tmuxMouseOn={tmuxMouseOn}
+                                            onTmuxMouseToggle={this.toggleTmuxMouse}
+                                        />
+
+                                        {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
+                                        <div class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}>
+                                            {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
+                                            <MiddleCanvas
+                                                activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
+                                                wsUrl={wsUrl}
+                                                tokenUrl={tokenUrl}
+                                                clientOptions={clientOptions}
+                                                termOptions={termOptions}
+                                                flowControl={flowControl}
+                                                onMobileDetect={isMobile => this.setState({ isMobile })}
+                                                onKeyboardStateChange={this.handleKeyboardStateChange}
+                                                tmuxMouseOn={tmuxMouseOn}
+                                                onTmuxMouseToggle={this.toggleTmuxMouse}
+                                            />
+
+                                            {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                                            {activeDrawerTab !== 'none' && (
+                                                <div
+                                                    class="resizer resizer-right"
+                                                    onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
+                                                    title="拖动调整右侧栏宽度"
+                                                />
+                                            )}
+
+                                            {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
+                                            <RightPanel
+                                                activeDrawerTab={activeDrawerTab}
+                                                activeWorkspaceId={activeWorkspaceId}
+                                                activeWorkspacePath={activeWorkspacePath}
+                                                rightPanelWidth={rightPanelWidth}
+                                                closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                                                ccConnectUrl={ccConnectUrl}
+                                                theme={theme}
+                                                toggleTheme={this.toggleTheme}
+                                                language={language}
+                                                toggleLanguage={this.toggleLanguage}
+                                                flatFiles={flatFiles}
+                                                flatFilesLoading={flatFilesLoading}
+                                                searchQuery={searchQuery}
+                                                selectedFilterTag={selectedFilterTag}
+                                                viewMode={viewMode}
+                                                favoriteFiles={favoriteFiles}
+                                                detailFullscreen={detailFullscreen}
+                                                isEditingDetail={isEditingDetail}
+                                                selectedFsEntry={selectedFsEntry}
+                                                fileContent={fileContent}
+                                                editedContent={editedContent}
+                                                fileLoading={fileLoading}
+                                                fileSaving={fileSaving}
+                                                fileSaveMsg={fileSaveMsg}
+                                                isImagePreview={isImagePreview}
+                                                imageDataUrl={imageDataUrl}
+                                                onSearchQueryChange={this.handleSearchChange}
+                                                onFilterTagChange={this.handleFilterTagChange}
+                                                onRefreshFlatFiles={async () => {
+                                                    this.loadDir('', null);
+                                                    const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
+                                                    if (isSearching) {
+                                                        this.loadFlatFiles();
+                                                    }
+                                                    try {
+                                                        await this.checkAccessStatus();
+                                                        await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+
+                                                        const { workspaces, activeWorkspaceId } = this.state;
+                                                        if (!activeWorkspaceId && workspaces.length > 0) {
+                                                            await this.selectWorkspace(workspaces[0]);
+                                                        } else if (activeWorkspaceId) {
+                                                            await this.loadCcConnectUrl();
+                                                        }
+                                                    } catch (e) {
+                                                        console.error('Failed to reconnect/refresh:', e);
+                                                    }
+                                                }}
+                                                onOpenFileDetail={this.openFileDetail}
+                                                onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
+                                                onToggleFavorite={this.toggleFavorite}
+                                                onCopyContent={this.copyFileContent}
+                                                onDownloadFile={this.downloadFile}
+                                                onRenameFile={this.renameFile}
+                                                onToggleFullscreen={() => {
+                                                    const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
+                                                    if (selectedFsEntry) {
+                                                        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+                                                        const activeWorkspacePath = activeWorkspace?.path || '.';
+                                                        const absolutePath = selectedFsEntry.path.startsWith('/')
+                                                            ? selectedFsEntry.path
+                                                            : `${activeWorkspacePath}/${selectedFsEntry.path}`;
+                                                        if (IS_DESKTOP) {
+                                                            this.openPreviewTab(absolutePath, selectedFsEntry.name);
+                                                        } else {
+                                                            const shareUrl = `${window.location.origin}${
+                                                                window.location.pathname
+                                                            }?preview=${encodeURIComponent(absolutePath)}`;
+                                                            window.open(shareUrl, '_blank');
+                                                        }
+                                                    }
+                                                }}
+                                                onShareFile={this.shareFile}
+                                                onSaveFile={this.saveFile}
+                                                onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
+                                                onEditedContentChange={content => this.setState({ editedContent: content })}
+                                                onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
+                                                fsEntries={this.state.fsEntries}
+                                                fsLoading={this.state.fsLoading}
+                                                onToggleFsDir={this.toggleFsDir}
+                                                accessTokenExists={accessAuthRequired}
+                                                onGenerateAccessToken={this.generateAccessToken}
+                                                onRevokeAccessToken={this.revokeAccessToken}
+                                            />
+                                        </div>
+                                    </Fragment>
+                                ) : (
+                                    <div class="workspace-body-container dynamic-tab-view">
+                                        {activeTabObj?.type === 'preview' && (
+                                            <div class="fb-detail-view-tab-container" style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;">
+                                                {selectedFsEntry ? (
+                                                    <FileDetailView
+                                                        selectedFsEntry={selectedFsEntry}
+                                                        favoriteFiles={favoriteFiles}
+                                                        detailFullscreen={false}
+                                                        isEditingDetail={isEditingDetail}
+                                                        fileContent={fileContent}
+                                                        editedContent={editedContent}
+                                                        fileLoading={fileLoading}
+                                                        fileSaving={fileSaving}
+                                                        fileSaveMsg={fileSaveMsg}
+                                                        isImagePreview={isImagePreview}
+                                                        imageDataUrl={imageDataUrl}
+                                                        onBackToList={() => this.closeTab(activeTabId)}
+                                                        onToggleFavorite={this.toggleFavorite}
+                                                        onCopyContent={this.copyFileContent}
+                                                        onDownloadFile={this.downloadFile}
+                                                        onRenameFile={this.renameFile}
+                                                        onToggleFullscreen={() => {}}
+                                                        onShareFile={this.shareFile}
+                                                        onSaveFile={this.saveFile}
+                                                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
+                                                        onEditedContentChange={content => this.setState({ editedContent: content })}
+                                                        onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
+                                                        isStandalone={true}
+                                                    />
+                                                ) : (
+                                                    <div class="fb-loading">
+                                                        <div class="fb-loading-spinner" />
+                                                        <span>正在载入预览…</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        <div class="builtin-browser-container" style={{ flex: 1, height: '100%', display: activeTabObj?.type === 'browser' ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden' }}>
+                                            {this.state.tabs
+                                                .filter(t => t.type === 'browser')
+                                                .map(t => this.renderBuiltinBrowser(t))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </Fragment>
                 )}

@@ -371,9 +371,21 @@ func pickDirectory() (string, error) {
 		return pickDirectoryDarwin()
 	case "linux":
 		return pickDirectoryLinux()
+	case "windows":
+		return pickDirectoryWindows()
 	default:
 		return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
+}
+
+func pickDirectoryWindows() (string, error) {
+	script := `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = "选择工作空间目录"; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $f.SelectedPath }`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func pickDirectoryDarwin() (string, error) {

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -106,7 +107,14 @@ func main() {
 		bundledNode := filepath.Join(resourcesDir, "resources", "runtime", "node", "bin")
 		bundledStdBin := filepath.Join(resourcesDir, "resources", "bin")
 
-		newPath := fmt.Sprintf("%s:%s:%s:%s", bundledBin, bundledNode, bundledStdBin, userPath)
+		var paths []string
+		if runtime.GOOS == "windows" {
+			bundledBinRoot := filepath.Join(resourcesDir, "resources", "bundled_tools")
+			paths = []string{bundledBin, bundledBinRoot, bundledNode, bundledStdBin, userPath}
+		} else {
+			paths = []string{bundledBin, bundledNode, bundledStdBin, userPath}
+		}
+		newPath := strings.Join(paths, string(os.PathListSeparator))
 		os.Setenv("PATH", newPath)
 		log.Printf("[main] Desktop Mode Enabled.")
 		log.Printf("[main] Set ttyd path to: %s", cfg.TtydBinaryPath)
@@ -350,6 +358,9 @@ func findAvailablePort(ip string, basePort int) (int, error) {
 
 // getLoginShellPath runs the user's default login shell to read their full PATH environment variable.
 func getLoginShellPath() string {
+	if runtime.GOOS == "windows" {
+		return os.Getenv("PATH")
+	}
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/zsh"

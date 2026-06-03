@@ -1,6 +1,7 @@
 package config
 
 import (
+	"runtime"
 	"time"
 )
 
@@ -50,16 +51,24 @@ type Config struct {
 
 // Default returns a Config populated with safe default values.
 func Default() *Config {
-	return &Config{
+	cfg := &Config{
 		ListenAddr:     ":38080",
 		TtydAddr:       "127.0.0.1:37681",
 		TtydBinaryPath: "./ttyd",
-		TtydArgs:       []string{"tmux", "new-session", "-A", "-s", "1agents"},
-		TmuxSession:    "1agents",
 		WorkDir:        "~",
 		StaticDir:      "./html/dist",
 		RestartDelay:   3 * time.Second,
 		MaxRestarts:    5,
 	}
+
+	if runtime.GOOS == "windows" {
+		cfg.TtydArgs = []string{"powershell.exe"}
+		cfg.TmuxSession = ""
+	} else {
+		cfg.TtydArgs = []string{"tmux", "new-session", "-A", "-s", "1agents"}
+		cfg.TmuxSession = "1agents"
+	}
+
+	return cfg
 }
 

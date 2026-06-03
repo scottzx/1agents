@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -304,6 +305,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/access/generate", handleAccessGenerate)
 	mux.HandleFunc("/api/access/verify", handleAccessVerify)
 	mux.HandleFunc("/api/access/revoke", handleAccessRevoke)
+
+	// ── Proxy API ────────────────────────────────────────────────────────────
+	mux.HandleFunc("/api/proxy", handleProxy)
 
 	// ── Static frontend assets ───────────────────────────────────────────────
 	// This catch-all must be registered last so it does not shadow the routes
@@ -623,4 +627,107 @@ func handleAccessRevoke(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Access token revoked."})
+}
+
+// handleProxy acts as a reverse proxy that fetches external websites, strips
+// X-Frame-Options & Content-Security-Policy headers, and injects `<base>` and link-rewriting scripts.
+func handleProxy(w http.ResponseWriter, r *http.Request) {
+	targetURL := r.URL.Query().Get("url")
+	if targetURL == "" {
+		http.Error(w, "Missing url parameter", http.StatusBadRequest)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Forward standard headers
+	req.Header.Set("User-Agent", r.Header.Get("User-Agent"))
+	req.Header.Set("Accept", r.Header.Get("Accept"))
+	req.Header.Set("Accept-Language", r.Header.Get("Accept-Language"))
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	// If it's HTML, inject our base href and click interceptor scripts!
+	if strings.Contains(strings.ToLower(contentType), "text/html") {
+		htmlStr := string(bodyBytes)
+		
+		// 1. Inject <base href="..."> right after the opening <head> tag
+		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
+		if headIdx != -1 {
+			insertPos := headIdx + len("<head>")
+			
+			// Inject `<base>` tag and click interceptor script
+			baseTag := `<base href="` + targetURL + `">`
+			scriptTag := `
+<script>
+(function() {
+  // Prevent links from redirecting the frame to non-proxied addresses
+  document.addEventListener('click', function(e) {
+    var target = e.target.closest('a');
+    if (target && target.href) {
+      e.preventDefault();
+      // Route the absolute URL back through our proxy!
+      window.location.href = window.location.origin + '/api/proxy?url=' + encodeURIComponent(target.href);
+    }
+  }, true);
+
+  // Prevent form actions from escaping the proxy
+  document.addEventListener('submit', function(e) {
+    var target = e.target;
+    if (target && target.action) {
+      if (target.method.toLowerCase() === 'get') {
+        e.preventDefault();
+        try {
+          var url = new URL(target.action);
+          var formData = new FormData(target);
+          for (var pair of formData.entries()) {
+            url.searchParams.set(pair[0], pair[1]);
+          }
+          window.location.href = window.location.origin + '/api/proxy?url=' + encodeURIComponent(url.href);
+        } catch(err) {
+          // Fallback if URL parsing fails
+        }
+      }
+    }
+  }, true);
+})();
+</script>
+`
+			htmlStr = htmlStr[:insertPos] + baseTag + scriptTag + htmlStr[insertPos:]
+			bodyBytes = []byte(htmlStr)
+		}
+	}
+
+	// Copy headers, stripping security controls
+	for k, v := range resp.Header {
+		lowerK := strings.ToLower(k)
+		if lowerK == "x-frame-options" || lowerK == "content-security-policy" || lowerK == "csp" {
+			continue
+		}
+		for _, val := range v {
+			w.Header().Add(k, val)
+		}
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(bodyBytes)
 }

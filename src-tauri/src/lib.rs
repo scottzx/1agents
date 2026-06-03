@@ -75,12 +75,123 @@ fn get_active_daemon_addr(app: &tauri::App) -> Option<String> {
     None
 }
 
+#[derive(Default)]
+pub struct BrowserWebviewsState(pub std::sync::Mutex<std::collections::HashMap<String, tauri::webview::Webview>>);
+
+#[tauri::command]
+async fn create_browser_tab(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, BrowserWebviewsState>,
+    tab_id: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let window = app.get_window("main").ok_or("Main window not found")?;
+    
+    let mut map = state.0.lock().unwrap();
+    if map.contains_key(&tab_id) {
+        return Ok(());
+    }
+
+    let parsed_url = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
+
+    // Create the child webview using WebviewBuilder
+    let webview = window.add_child(
+        tauri::webview::WebviewBuilder::new(&tab_id, tauri::WebviewUrl::External(parsed_url)),
+        tauri::LogicalPosition::new(x, y),
+        tauri::LogicalSize::new(width, height),
+    ).map_err(|e| e.to_string())?;
+
+    map.insert(tab_id, webview);
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_browser_tab_bounds(
+    state: tauri::State<'_, BrowserWebviewsState>,
+    tab_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let map = state.0.lock().unwrap();
+    if let Some(webview) = map.get(&tab_id) {
+        webview.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+        webview.set_size(tauri::LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn navigate_browser_tab(
+    state: tauri::State<'_, BrowserWebviewsState>,
+    tab_id: String,
+    url: String,
+) -> Result<(), String> {
+    let map = state.0.lock().unwrap();
+    if let Some(webview) = map.get(&tab_id) {
+        let parsed_url = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
+        webview.navigate(parsed_url).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_browser_tab(
+    state: tauri::State<'_, BrowserWebviewsState>,
+    tab_id: String,
+) -> Result<(), String> {
+    let map = state.0.lock().unwrap();
+    for (id, webview) in map.iter() {
+        if id == &tab_id {
+            webview.show().map_err(|e| e.to_string())?;
+        } else {
+            webview.hide().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn hide_all_browser_tabs(
+    state: tauri::State<'_, BrowserWebviewsState>,
+) -> Result<(), String> {
+    let map = state.0.lock().unwrap();
+    for webview in map.values() {
+        webview.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn destroy_browser_tab(
+    state: tauri::State<'_, BrowserWebviewsState>,
+    tab_id: String,
+) -> Result<(), String> {
+    let mut map = state.0.lock().unwrap();
+    map.remove(&tab_id);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let child_process = Arc::new(Mutex::new(None));
     let child_process_clone = Arc::clone(&child_process);
 
     let app = tauri::Builder::default()
+        .manage(BrowserWebviewsState::default())
+        .invoke_handler(tauri::generate_handler![
+            create_browser_tab,
+            update_browser_tab_bounds,
+            navigate_browser_tab,
+            show_browser_tab,
+            hide_all_browser_tabs,
+            destroy_browser_tab
+        ])
         .setup(move |app| {
             if cfg!(debug_assertions) {
                 let _ = app.handle().plugin(

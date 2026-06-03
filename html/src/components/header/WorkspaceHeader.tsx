@@ -272,7 +272,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={handleSessionClick}
                 >
                     <span class="mob-menu-icon">{IconSession}</span>
-                    <span class="mob-menu-label">终端</span>
+                    <span class="mob-menu-label">工作台</span>
                     {sessionActive && <span class="mob-menu-badge">当前</span>}
                 </button>
 

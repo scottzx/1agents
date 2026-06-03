@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/scottzx/1Agents/backend/internal/config"
 )
@@ -39,12 +40,17 @@ type SwitchRequest struct {
 
 // Handler manages tmux terminal windows via HTTP API.
 type Handler struct {
-	session string
+	session     string
+	mu          sync.RWMutex
+	mockWindows []TmuxWindow
 }
 
 // NewHandler creates a terminal Handler.
 func NewHandler(cfg *config.Config) *Handler {
-	return &Handler{session: cfg.TmuxSession}
+	return &Handler{
+		session:     cfg.TmuxSession,
+		mockWindows: make([]TmuxWindow, 0),
+	}
 }
 
 // ── POST /api/terminal/create ──────────────────────────────────────────────
@@ -62,6 +68,38 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.WorkspaceID == "" {
 		http.Error(w, "workspaceId is required", http.StatusBadRequest)
+		return
+	}
+
+	if h.session == "" {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+
+		var win *TmuxWindow
+		for i := range h.mockWindows {
+			if h.mockWindows[i].WorkspaceID == req.WorkspaceID {
+				win = &h.mockWindows[i]
+				break
+			}
+		}
+
+		if win == nil {
+			newWin := TmuxWindow{
+				Index:       len(h.mockWindows),
+				Name:        fmt.Sprintf("%s_%d", req.WorkspaceID, len(h.mockWindows)+1),
+				Active:      true,
+				WorkspaceID: req.WorkspaceID,
+				Cwd:         req.Cwd,
+			}
+			h.mockWindows = append(h.mockWindows, newWin)
+			win = &h.mockWindows[len(h.mockWindows)-1]
+		}
+
+		for i := range h.mockWindows {
+			h.mockWindows[i].Active = (h.mockWindows[i].Index == win.Index)
+		}
+
+		writeJSON(w, http.StatusCreated, win)
 		return
 	}
 
@@ -122,12 +160,22 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // ── GET /api/terminal/list ─────────────────────────────────────────────────
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Do NOT auto-create tmux session — only list if session already exists.
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+	
+		if h.session == "" {
+			h.mu.RLock()
+			defer h.mu.RUnlock()
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"windows": h.mockWindows,
+				"session": "",
+			})
+			return
+		}
+	
+		// Do NOT auto-create tmux session — only list if session already exists.
 	// User must manually create a session via /api/terminal/create first.
 	if !h.sessionExists() {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -161,6 +209,45 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 	var req KillRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.session == "" {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+
+		if len(h.mockWindows) <= 1 {
+			http.Error(w, "cannot kill the last terminal window", http.StatusBadRequest)
+			return
+		}
+
+		idx := -1
+		for i, win := range h.mockWindows {
+			if win.Index == req.WindowIndex {
+				idx = i
+				break
+			}
+		}
+
+		if idx == -1 {
+			http.Error(w, "window not found", http.StatusNotFound)
+			return
+		}
+
+		h.mockWindows = append(h.mockWindows[:idx], h.mockWindows[idx+1:]...)
+
+		activeFound := false
+		for i := range h.mockWindows {
+			h.mockWindows[i].Index = i
+			if h.mockWindows[i].Active {
+				activeFound = true
+			}
+		}
+		if !activeFound && len(h.mockWindows) > 0 {
+			h.mockWindows[0].Active = true
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 		return
 	}
 
@@ -210,6 +297,29 @@ func (h *Handler) Switch(w http.ResponseWriter, r *http.Request) {
 	var req SwitchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.session == "" {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+
+		found := false
+		for i := range h.mockWindows {
+			if h.mockWindows[i].Index == req.WindowIndex {
+				found = true
+				h.mockWindows[i].Active = true
+			} else {
+				h.mockWindows[i].Active = false
+			}
+		}
+
+		if !found {
+			http.Error(w, "window not found", http.StatusNotFound)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 		return
 	}
 
@@ -339,6 +449,11 @@ func (h *Handler) GetMouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.session == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"mouse": false})
+		return
+	}
+
 	if !h.sessionExists() {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"mouse": false})
 		return
@@ -367,6 +482,11 @@ func (h *Handler) SetMouse(w http.ResponseWriter, r *http.Request) {
 	var req MouseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.session == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "mouse": req.Mouse})
 		return
 	}
 
