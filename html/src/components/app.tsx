@@ -174,6 +174,7 @@ export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
     private _crawlCounter = 0;
     private _searchTimeout: number | null = null;
+    private _workspaceTreeCache: Record<string, FsEntry[]> = {};
 
     constructor() {
         super();
@@ -680,12 +681,15 @@ export class App extends Component<{}, AppState> {
             console.error('[context] set error:', err);
         }
 
-        // Reset file-browser state, then reload from new root
+        const cached = this._workspaceTreeCache[ws.id] || [];
+
+        // Reset file-browser state, using cache if available to prevent UI flashing
         this.setState({
-            fsEntries: [],
+            fsEntries: cached,
             selectedFsEntry: null,
             fileContent: '',
             editedContent: '',
+            fsLoading: cached.length === 0,
         });
         this.loadDir('', null);
     };
@@ -771,18 +775,39 @@ export class App extends Component<{}, AppState> {
     /** Fetch directory entries from /api/fs/list and merge into the tree */
     loadDir = async (relPath: string, parent: FsEntry | null) => {
         if (!parent) {
-            this.setState({ fsLoading: true });
+            const hasCache = this.state.fsEntries && this.state.fsEntries.length > 0;
+            if (!hasCache) {
+                this.setState({ fsLoading: true });
+            }
         }
         try {
             const entries = await fsService.list(relPath);
 
             if (!parent) {
-                this.setState({ fsEntries: entries, fsLoading: false });
+                this.setState(prev => {
+                    let nextEntries = entries;
+                    if (prev.fsEntries && prev.fsEntries.length > 0) {
+                        nextEntries = mergeFreshEntries(prev.fsEntries, entries);
+                    }
+                    if (this.state.activeWorkspaceId) {
+                        this._workspaceTreeCache[this.state.activeWorkspaceId] = nextEntries;
+                    }
+                    return {
+                        fsEntries: nextEntries,
+                        fsLoading: false,
+                    };
+                });
             } else {
                 // Merge children into the existing tree
-                this.setState(prev => ({
-                    fsEntries: mergeChildren(prev.fsEntries, parent.path, entries),
-                }));
+                this.setState(prev => {
+                    const nextEntries = mergeChildren(prev.fsEntries, parent.path, entries);
+                    if (this.state.activeWorkspaceId) {
+                        this._workspaceTreeCache[this.state.activeWorkspaceId] = nextEntries;
+                    }
+                    return {
+                        fsEntries: nextEntries,
+                    };
+                });
             }
         } catch (err) {
             console.error('[fs] list error:', err);
@@ -794,13 +819,23 @@ export class App extends Component<{}, AppState> {
     toggleFsDir = (entry: FsEntry) => {
         if (!entry.isDir) return;
         const willExpand = !entry.expanded;
-        this.setState(prev => ({
-            fsEntries: setExpanded(prev.fsEntries, entry.path, willExpand),
-        }));
-        // Lazy-load children only on first expand
-        if (willExpand && (!entry.children || entry.children.length === 0)) {
-            this.loadDir(entry.path, entry);
-        }
+        this.setState(
+            prev => {
+                const nextEntries = setExpanded(prev.fsEntries, entry.path, willExpand);
+                if (this.state.activeWorkspaceId) {
+                    this._workspaceTreeCache[this.state.activeWorkspaceId] = nextEntries;
+                }
+                return {
+                    fsEntries: nextEntries,
+                };
+            },
+            () => {
+                // Lazy-load children only on first expand
+                if (willExpand && (!entry.children || entry.children.length === 0)) {
+                    this.loadDir(entry.path, entry);
+                }
+            }
+        );
     };
 
     /** Open a file and load its content from /api/fs/read */
@@ -1668,5 +1703,28 @@ function setExpanded(entries: FsEntry[], targetPath: string, expanded: boolean):
             return { ...e, children: setExpanded(e.children, targetPath, expanded) };
         }
         return e;
+    });
+}
+
+/**
+ * Merges a fresh list of directory entries into the existing tree structure,
+ * preserving already loaded children and expansion states of matching paths.
+ */
+function mergeFreshEntries(existing: FsEntry[], fresh: FsEntry[]): FsEntry[] {
+    const existingMap = new Map<string, FsEntry>();
+    existing.forEach(e => {
+        existingMap.set(e.path, e);
+    });
+
+    return fresh.map(f => {
+        const ext = existingMap.get(f.path);
+        if (ext) {
+            return {
+                ...f,
+                expanded: ext.expanded,
+                children: ext.children,
+            };
+        }
+        return f;
     });
 }
