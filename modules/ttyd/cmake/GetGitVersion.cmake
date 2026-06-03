@@ -29,7 +29,8 @@ endfunction()
 function(get_git_head var1)
   if(GIT_EXECUTABLE)
     execute_process(
-      COMMAND ${GIT_EXECUTABLE} --git-dir ${CMAKE_CURRENT_SOURCE_DIR}/.git rev-parse --short HEAD
+      COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       RESULT_VARIABLE status
       OUTPUT_VARIABLE GIT_COMMIT
       OUTPUT_STRIP_TRAILING_WHITESPACE
