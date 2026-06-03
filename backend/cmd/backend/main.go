@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -82,7 +84,9 @@ func main() {
 	isSubcommand := flag.NArg() > 0 && flag.Arg(0) == "tunnel"
 	if !isSubcommand {
 		if activeAddr, activePid, isRunning := checkDaemonRunning(); isRunning {
-			log.Printf("[main] 1Agents daemon is already running at http://%s (PID %d). Exiting.", activeAddr, activePid)
+			log.Printf("[main] 1Agents daemon is already running at http://%s (PID %d).", activeAddr, activePid)
+			log.Printf("[main] Starting Gateway Reverse Proxy on %s -> http://%s...", cfg.ListenAddr, activeAddr)
+			startReverseProxy(cfg.ListenAddr, activeAddr)
 			return
 		}
 	}
@@ -394,4 +398,38 @@ func checkDaemonRunning() (string, int, bool) {
 		return info.ListenAddr, info.PID, true
 	}
 	return "", 0, false
+}
+
+// startReverseProxy sets up a lightweight HTTP and WebSocket forwarding server
+func startReverseProxy(listenAddr, targetAddr string) {
+	if strings.HasPrefix(targetAddr, ":") {
+		targetAddr = "127.0.0.1" + targetAddr
+	} else if strings.HasPrefix(targetAddr, "0.0.0.0:") {
+		targetAddr = strings.Replace(targetAddr, "0.0.0.0:", "127.0.0.1:", 1)
+	}
+
+	targetURL, err := url.Parse("http://" + targetAddr)
+	if err != nil {
+		log.Fatalf("[proxy] FATAL: failed to parse target URL: %v", err)
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Customize Director to handle Host headers correctly for routing
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
+		req.Host = targetURL.Host
+	}
+
+	server := &http.Server{
+		Addr:    listenAddr,
+		Handler: proxy,
+	}
+
+	log.Printf("[proxy] Reverse proxy listening on %s", listenAddr)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("[proxy] FATAL: reverse proxy failed: %v", err)
+	}
 }

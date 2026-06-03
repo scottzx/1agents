@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { merge } = require('webpack-merge');
+const webpack = require('webpack');
 const ESLintPlugin = require('eslint-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
@@ -48,6 +49,9 @@ const baseConfig = {
         extensions: ['.tsx', '.ts', '.js'],
     },
     plugins: [
+        new webpack.DefinePlugin({
+            IS_DESKTOP: JSON.stringify(process.env.IS_DESKTOP === 'true'),
+        }),
         new ESLintPlugin({
             context: path.resolve(__dirname, '.'),
             extensions: ['js', 'jsx', 'ts', 'tsx'],

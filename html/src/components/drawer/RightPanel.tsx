@@ -53,6 +53,7 @@ interface RightPanelProps {
     onSaveFile: () => void;
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
+    onOpenPreview?: (path: string, name: string) => void;
 
     // Access token props
     accessTokenExists: boolean;
@@ -109,6 +110,7 @@ export function RightPanel({
     onSaveFile,
     onToggleEditing,
     onEditedContentChange,
+    onOpenPreview,
 
     // Access token props
     accessTokenExists,
@@ -270,6 +272,7 @@ export function RightPanel({
                                 onSaveFile={onSaveFile}
                                 onToggleEditing={onToggleEditing}
                                 onEditedContentChange={onEditedContentChange}
+                                onOpenPreview={onOpenPreview}
                             />
                         )
                     ))}

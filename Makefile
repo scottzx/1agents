@@ -93,6 +93,8 @@ clean:
 .PHONY: tauri-resources tauri-dev tauri-build
 
 tauri-resources: all
+	@echo "=== Rebuilding frontend for Tauri (Desktop Mode) ==="
+	cd html && corepack enable && yarn install && IS_DESKTOP=true yarn build
 	@echo "=== Setting up Tauri resources ==="
 	./scripts/setup-resources.sh
 

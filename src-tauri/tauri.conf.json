@@ -12,8 +12,8 @@
     "windows": [
       {
         "title": "1Agents",
-        "width": 800,
-        "height": 600,
+        "width": 1200,
+        "height": 800,
         "resizable": true,
         "fullscreen": false
       }
