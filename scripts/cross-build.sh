@@ -17,6 +17,10 @@ LIBUV_VERSION="${LIBUV_VERSION:-1.52.1}"
 LIBWEBSOCKETS_VERSION="${LIBWEBSOCKETS_VERSION:-4.5.7}"
 
 build_zlib() {
+    if [ -f "${STAGE_DIR}/lib/libz.a" ]; then
+        echo "=== zlib already built, skipping..."
+        return
+    fi
     echo "=== Building zlib-${ZLIB_VERSION} (${TARGET})..."
     mkdir -p "${BUILD_DIR}/zlib-${ZLIB_VERSION}"
     curl -fSsLo- "https://github.com/madler/zlib/archive/refs/tags/v${ZLIB_VERSION}.tar.gz" | tar xz --strip-components=1 -C "${BUILD_DIR}/zlib-${ZLIB_VERSION}"
@@ -27,6 +31,10 @@ build_zlib() {
 }
 
 build_json-c() {
+    if [ -f "${STAGE_DIR}/lib/libjson-c.a" ]; then
+        echo "=== json-c already built, skipping..."
+        return
+    fi
     echo "=== Building json-c-${JSON_C_VERSION} (${TARGET})..."
     curl -fSsLo- "https://s3.amazonaws.com/json-c_releases/releases/json-c-${JSON_C_VERSION}.tar.gz" | tar xz -C "${BUILD_DIR}"
     pushd "${BUILD_DIR}/json-c-${JSON_C_VERSION}"
@@ -59,6 +67,10 @@ map_openssl_target() {
 }
 
 build_openssl() {
+    if [ -f "${STAGE_DIR}/lib/libssl.a" ] && [ -f "${STAGE_DIR}/lib/libcrypto.a" ]; then
+        echo "=== openssl already built, skipping..."
+        return
+    fi
     openssl_target=$(map_openssl_target "${BUILD_TARGET}")
     echo "=== Building openssl-${OPENSSL_VERSION} (${openssl_target})..."
     curl -sLo- "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" | tar xz -C "${BUILD_DIR}"
@@ -77,6 +89,10 @@ build_openssl() {
 }
 
 build_libuv() {
+    if [ -f "${STAGE_DIR}/lib/libuv.a" ]; then
+        echo "=== libuv already built, skipping..."
+        return
+    fi
     echo "=== Building libuv-${LIBUV_VERSION} (${TARGET})..."
     curl -fSsLo- "https://dist.libuv.org/dist/v${LIBUV_VERSION}/libuv-v${LIBUV_VERSION}.tar.gz" | tar xz -C "${BUILD_DIR}"
     pushd "${BUILD_DIR}/libuv-v${LIBUV_VERSION}"
@@ -103,6 +119,10 @@ EOF
 }
 
 build_libwebsockets() {
+    if [ -f "${STAGE_DIR}/lib/libwebsockets.a" ]; then
+        echo "=== libwebsockets already built, skipping..."
+        return
+    fi
     echo "=== Building libwebsockets-${LIBWEBSOCKETS_VERSION} (${TARGET})..."
     curl -fSsLo- "https://github.com/warmcat/libwebsockets/archive/v${LIBWEBSOCKETS_VERSION}.tar.gz" | tar xz -C "${BUILD_DIR}"
     pushd "${BUILD_DIR}/libwebsockets-${LIBWEBSOCKETS_VERSION}"
@@ -177,7 +197,7 @@ build() {
 
     echo "=== Building target ${ALIAS} (${TARGET})..."
 
-    rm -rf "${STAGE_DIR}" "${BUILD_DIR}"
+    rm -rf "${BUILD_DIR}"
     mkdir -p "${STAGE_DIR}" "${BUILD_DIR}"
     export PKG_CONFIG_PATH="${STAGE_DIR}/lib/pkgconfig"
 

@@ -12,12 +12,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache html.h
+        id: cache-html-h
+        uses: actions/cache@v4
+        with:
+          path: modules/ttyd/src/html.h
+          key: html-header-${{ runner.os }}-${{ hashFiles('html/package.json', 'html/yarn.lock', 'html/gulpfile.js', 'html/webpack.config.js', 'html/tsconfig.json', 'html/src/**') }}
+
       - name: Set up Node.js
+        if: steps.cache-html-h.outputs.cache-hit != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '24'
 
       - name: Cache Yarn dependencies
+        if: steps.cache-html-h.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -28,6 +37,7 @@ jobs:
             ${{ runner.os }}-yarn-
 
       - name: Install and Build Frontend
+        if: steps.cache-html-h.outputs.cache-hit != 'true'
         working-directory: html
         run: |
           corepack enable

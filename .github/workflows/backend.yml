@@ -21,12 +21,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache html.h
+        id: cache-html-h
+        uses: actions/cache@v4
+        with:
+          path: modules/ttyd/src/html.h
+          key: html-header-${{ runner.os }}-${{ hashFiles('html/package.json', 'html/yarn.lock', 'html/gulpfile.js', 'html/webpack.config.js', 'html/tsconfig.json', 'html/src/**') }}
+
       - name: Set up Node.js
+        if: steps.cache-html-h.outputs.cache-hit != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '24'
 
       - name: Build Web Assets
+        if: steps.cache-html-h.outputs.cache-hit != 'true'
         run: |
           cd html
           corepack enable
@@ -39,72 +48,29 @@ jobs:
           name: html-header
           path: modules/ttyd/src/html.h
 
-  msvc:
-    runs-on: windows-latest
-    needs: [build-frontend]
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-      VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg.exe
-      VCPKG_TRIPLET: x64-windows-static
-      TOOLCHAIN_FILE: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-    steps:
-      - uses: actions/checkout@v6
-      - name: Checkout vcpkg
-        uses: actions/checkout@v6
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-      - name: Bootstrap vcpkg
-        shell: pwsh
-        run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat
-      - name: Install dependencies
-        shell: pwsh
-        run: |
-          $env:VCPKG_ROOT = "${{ env.VCPKG_ROOT }}"
-          ${{ env.VCPKG_EXE }} install --triplet ${{ env.VCPKG_TRIPLET }} libwebsockets libuv json-c zlib openssl getopt-win32
-
-      - name: Download html.h artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: html-header
-          path: temp-html-header
-
-      - name: Copy html.h to modules/ttyd/src/
-        shell: pwsh
-        run: |
-          if (Test-Path "temp-html-header/modules/ttyd/src/html.h") {
-            Copy-Item "temp-html-header/modules/ttyd/src/html.h" "modules/ttyd/src/html.h" -Force
-          } elseif (Test-Path "temp-html-header/html.h") {
-            Copy-Item "temp-html-header/html.h" "modules/ttyd/src/html.h" -Force
-          } else {
-            Write-Host "html.h not found!"
-            Get-ChildItem -Path temp-html-header -Recurse
-          }
-
-      - name: Build with MSVC
-        shell: pwsh
-        run: |
-          $env:VCPKG_ROOT = "${{ env.VCPKG_ROOT }}"
-          cmake -S modules/ttyd -B build -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN_FILE }}" -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_TRIPLET }}
-          cmake --build build --config Release
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ttyd.msvc
-          path: build/Release/ttyd.exe
-
   cross:
     runs-on: ubuntu-24.04
     needs: [build-frontend]
     strategy:
       fail-fast: false
       matrix:
-        target: [i686, x86_64, arm, armhf, aarch64, mips, mipsel, mips64, mips64el, ppc64, ppc64le, s390x, win32]
+        target: [x86_64, aarch64, armhf, s390x]
     steps:
       - uses: actions/checkout@v6
       - name: Install packages
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf automake build-essential cmake curl file libtool
+
+      - name: Cache cross-compilation stage
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/cross
+            /opt/stage
+          key: cross-stage-${{ matrix.target }}-${{ hashFiles('scripts/cross-build.sh') }}
+          restore-keys: |
+            cross-stage-${{ matrix.target }}-
 
       - name: Download html.h artifact
         uses: actions/download-artifact@v8
