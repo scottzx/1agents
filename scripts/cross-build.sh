@@ -17,7 +17,7 @@ LIBUV_VERSION="${LIBUV_VERSION:-1.52.1}"
 LIBWEBSOCKETS_VERSION="${LIBWEBSOCKETS_VERSION:-4.5.7}"
 
 build_zlib() {
-    if [ -f "${STAGE_DIR}/lib/libz.a" ]; then
+    if [ -f "${STAGE_DIR}/lib/libz.a" ] || [ -f "${STAGE_DIR}/lib64/libz.a" ]; then
         echo "=== zlib already built, skipping..."
         return
     fi
@@ -31,7 +31,7 @@ build_zlib() {
 }
 
 build_json-c() {
-    if [ -f "${STAGE_DIR}/lib/libjson-c.a" ]; then
+    if [ -f "${STAGE_DIR}/lib/libjson-c.a" ] || [ -f "${STAGE_DIR}/lib64/libjson-c.a" ]; then
         echo "=== json-c already built, skipping..."
         return
     fi
@@ -67,7 +67,8 @@ map_openssl_target() {
 }
 
 build_openssl() {
-    if [ -f "${STAGE_DIR}/lib/libssl.a" ] && [ -f "${STAGE_DIR}/lib/libcrypto.a" ]; then
+    if ( [ -f "${STAGE_DIR}/lib/libssl.a" ] || [ -f "${STAGE_DIR}/lib64/libssl.a" ] ) && \
+       ( [ -f "${STAGE_DIR}/lib/libcrypto.a" ] || [ -f "${STAGE_DIR}/lib64/libcrypto.a" ] ); then
         echo "=== openssl already built, skipping..."
         return
     fi
@@ -89,7 +90,7 @@ build_openssl() {
 }
 
 build_libuv() {
-    if [ -f "${STAGE_DIR}/lib/libuv.a" ]; then
+    if [ -f "${STAGE_DIR}/lib/libuv.a" ] || [ -f "${STAGE_DIR}/lib64/libuv.a" ]; then
         echo "=== libuv already built, skipping..."
         return
     fi
@@ -119,7 +120,7 @@ EOF
 }
 
 build_libwebsockets() {
-    if [ -f "${STAGE_DIR}/lib/libwebsockets.a" ]; then
+    if [ -f "${STAGE_DIR}/lib/libwebsockets.a" ] || [ -f "${STAGE_DIR}/lib64/libwebsockets.a" ]; then
         echo "=== libwebsockets already built, skipping..."
         return
     fi
