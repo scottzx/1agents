@@ -379,6 +379,27 @@ jobs:
           name: html-dist
           path: html/dist
 
+      - name: Download html.h artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: html-header
+          path: temp-html-header
+
+      - name: Copy html.h to modules/ttyd/src/
+        shell: bash
+        run: |
+          if [ -f temp-html-header/modules/ttyd/src/html.h ]; then
+            cp temp-html-header/modules/ttyd/src/html.h modules/ttyd/src/html.h
+          elif [ -f temp-html-header/src/html.h ]; then
+            cp temp-html-header/src/html.h modules/ttyd/src/html.h
+          elif [ -f temp-html-header/html.h ]; then
+            cp temp-html-header/html.h modules/ttyd/src/html.h
+          else
+            echo "html.h not found!"
+            find temp-html-header -type f
+            exit 1
+          fi
+
       - name: Cache cc-connect Web Assets
         id: cache-ccconnect-web
         uses: actions/cache@v4
