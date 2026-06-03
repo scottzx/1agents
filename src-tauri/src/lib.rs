@@ -97,11 +97,13 @@ async fn create_browser_tab(
     }
 
     let parsed_url = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
+    let y_offset = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
+    println!("[Tauri Debug] create_browser_tab: tab_id={}, url={}, x={}, y={}, y_offset={}, final_y={}", tab_id, url, x, y, y_offset, y + y_offset);
 
     // Create the child webview using WebviewBuilder
     let webview = window.add_child(
         tauri::webview::WebviewBuilder::new(&tab_id, tauri::WebviewUrl::External(parsed_url)),
-        tauri::LogicalPosition::new(x, y),
+        tauri::LogicalPosition::new(x, y + y_offset),
         tauri::LogicalSize::new(width, height),
     ).map_err(|e| e.to_string())?;
 
@@ -119,8 +121,10 @@ async fn update_browser_tab_bounds(
     height: f64,
 ) -> Result<(), String> {
     let map = state.0.lock().unwrap();
+    let y_offset = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
+    println!("[Tauri Debug] update_browser_tab_bounds: tab_id={}, x={}, y={}, y_offset={}, final_y={}", tab_id, x, y, y_offset, y + y_offset);
     if let Some(webview) = map.get(&tab_id) {
-        webview.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+        webview.set_position(tauri::LogicalPosition::new(x, y + y_offset)).map_err(|e| e.to_string())?;
         webview.set_size(tauri::LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
     }
     Ok(())

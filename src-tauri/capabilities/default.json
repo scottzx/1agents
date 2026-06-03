@@ -5,7 +5,14 @@
   "windows": [
     "main"
   ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/**",
+      "http://localhost:*/**"
+    ]
+  },
   "permissions": [
-    "core:default"
+    "core:default",
+    "allow-browser-commands"
   ]
 }

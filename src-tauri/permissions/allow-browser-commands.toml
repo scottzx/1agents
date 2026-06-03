@@ -1,0 +1,13 @@
+[[permission]]
+identifier = "allow-browser-commands"
+description = "Enable browser commands"
+
+[permission.commands]
+allow = [
+  "create_browser_tab",
+  "update_browser_tab_bounds",
+  "navigate_browser_tab",
+  "show_browser_tab",
+  "hide_all_browser_tabs",
+  "destroy_browser_tab"
+]
