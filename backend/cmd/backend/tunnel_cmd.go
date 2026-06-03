@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -62,7 +63,16 @@ func handleTunnelCommand(cmd string, port string, timeout string) {
 		os.Exit(1)
 	}
 
-	baseURL := fmt.Sprintf("http://127.0.0.1%s", listenAddr)
+	addr := listenAddr
+	if strings.HasPrefix(addr, ":") {
+		addr = "127.0.0.1" + addr
+	} else if strings.HasPrefix(addr, "0.0.0.0:") {
+		addr = strings.Replace(addr, "0.0.0.0:", "127.0.0.1:", 1)
+	}
+	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+		addr = "http://" + addr
+	}
+	baseURL := addr
 	client := &http.Client{Timeout: 30 * time.Second}
 	authHeader := "Bearer " + token
 

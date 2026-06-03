@@ -77,6 +77,16 @@ func main() {
 		return
 	}
 
+	// ── check if daemon is already running ─────────────────────────────────────
+	// Subcommands like 'tunnel' should not prevent execution since they are clients.
+	isSubcommand := flag.NArg() > 0 && flag.Arg(0) == "tunnel"
+	if !isSubcommand {
+		if activeAddr, activePid, isRunning := checkDaemonRunning(); isRunning {
+			log.Printf("[main] 1Agents daemon is already running at http://%s (PID %d). Exiting.", activeAddr, activePid)
+			return
+		}
+	}
+
 	if isDesktop {
 		if resourcesDir == "" {
 			log.Fatalf("[main] FATAL: -desktop mode requires -resources-dir to be set")
@@ -350,4 +360,38 @@ func getLoginShellPath() string {
 		return os.Getenv("PATH")
 	}
 	return strings.TrimSpace(string(output))
+}
+
+// checkDaemonRunning reads ~/.1agents/daemon.json and checks if the daemon is active
+func checkDaemonRunning() (string, int, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", 0, false
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".1agents", "daemon.json"))
+	if err != nil {
+		return "", 0, false
+	}
+	var info struct {
+		ListenAddr string `json:"listen_addr"`
+		PID        int    `json:"pid"`
+	}
+	if err := json.Unmarshal(data, &info); err != nil || info.ListenAddr == "" {
+		return "", 0, false
+	}
+
+	// Verify if the daemon is actively listening on the port
+	addr := info.ListenAddr
+	if strings.HasPrefix(addr, ":") {
+		addr = "127.0.0.1" + addr
+	} else if strings.HasPrefix(addr, "0.0.0.0:") {
+		addr = strings.Replace(addr, "0.0.0.0:", "127.0.0.1:", 1)
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return info.ListenAddr, info.PID, true
+	}
+	return "", 0, false
 }
