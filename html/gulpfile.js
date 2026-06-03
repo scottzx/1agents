@@ -102,6 +102,6 @@ task(
                 })
             )
             .pipe(rename('html.h'))
-            .pipe(dest('../src/'));
+            .pipe(dest('../modules/ttyd/src/'));
     })
 );

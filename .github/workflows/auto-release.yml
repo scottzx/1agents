@@ -87,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: html-header
-          path: src/html.h
+          path: modules/ttyd/src/html.h
 
   build-linux:
     runs-on: ubuntu-24.04
@@ -111,7 +111,7 @@ jobs:
         with:
           go-version: '1.26.1'
           cache: true
-          cache-dependency-path: agent/go.sum
+          cache-dependency-path: backend/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -130,12 +130,14 @@ jobs:
           name: html-header
           path: temp-html-header
 
-      - name: Copy html.h to src/
+      - name: Copy html.h to modules/ttyd/src/
         run: |
-          if [ -f temp-html-header/src/html.h ]; then
-            cp temp-html-header/src/html.h src/html.h
+          if [ -f temp-html-header/modules/ttyd/src/html.h ]; then
+            cp temp-html-header/modules/ttyd/src/html.h modules/ttyd/src/html.h
+          elif [ -f temp-html-header/src/html.h ]; then
+            cp temp-html-header/src/html.h modules/ttyd/src/html.h
           elif [ -f temp-html-header/html.h ]; then
-            cp temp-html-header/html.h src/html.h
+            cp temp-html-header/html.h modules/ttyd/src/html.h
           else
             echo "html.h not found!"
             find temp-html-header -type f
@@ -166,23 +168,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('cc-connect/web/pnpm-lock.yaml') }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-${{ runner.os }}-
 
       - name: Build cc-connect Web Assets
         run: |
           npm install -g pnpm
-          cd cc-connect/web
+          cd modules/cc-connect/web
           pnpm install --frozen-lockfile --dangerously-allow-all-builds
           pnpm build
 
       - name: Build Go 1agents
         run: |
-          cd agent
-          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build/1agents ./cmd/agent
-          cd ../cc-connect/cmd/cc-connect
-          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../build/cc-connect .
+          cd backend
+          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build/1agents ./cmd/backend
+          cd ../modules/cc-connect/cmd/cc-connect
+          GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build/cc-connect .
 
       - name: Download cloudflared binary
         run: |
@@ -222,7 +224,7 @@ jobs:
         with:
           go-version: '1.26.1'
           cache: true
-          cache-dependency-path: agent/go.sum
+          cache-dependency-path: backend/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -241,12 +243,14 @@ jobs:
           name: html-header
           path: temp-html-header
 
-      - name: Copy html.h to src/
+      - name: Copy html.h to modules/ttyd/src/
         run: |
-          if [ -f temp-html-header/src/html.h ]; then
-            cp temp-html-header/src/html.h src/html.h
+          if [ -f temp-html-header/modules/ttyd/src/html.h ]; then
+            cp temp-html-header/modules/ttyd/src/html.h modules/ttyd/src/html.h
+          elif [ -f temp-html-header/src/html.h ]; then
+            cp temp-html-header/src/html.h modules/ttyd/src/html.h
           elif [ -f temp-html-header/html.h ]; then
-            cp temp-html-header/html.h src/html.h
+            cp temp-html-header/html.h modules/ttyd/src/html.h
           else
             echo "html.h not found!"
             find temp-html-header -type f
@@ -259,30 +263,30 @@ jobs:
       - name: Build ttyd natively
         run: |
           mkdir build-ttyd && cd build-ttyd
-          cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ..
+          cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ../modules/ttyd
           make
 
       - name: Cache pnpm
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('cc-connect/web/pnpm-lock.yaml') }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-${{ runner.os }}-
 
       - name: Build cc-connect Web Assets
         run: |
           npm install -g pnpm
-          cd cc-connect/web
+          cd modules/cc-connect/web
           pnpm install --frozen-lockfile --dangerously-allow-all-builds
           pnpm build
 
       - name: Build Go 1agents
         run: |
-          cd agent
-          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build-ttyd/1agents ./cmd/agent
-          cd ../cc-connect/cmd/cc-connect
-          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../build-ttyd/cc-connect .
+          cd backend
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build-ttyd/1agents ./cmd/backend
+          cd ../modules/cc-connect/cmd/cc-connect
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build-ttyd/cc-connect .
 
       - name: Download cloudflared binary
         run: |

@@ -59,7 +59,7 @@ dist/
 .antigravitycli
 
 # Generated build artifacts
-src/html.h
+modules/ttyd/src/html.h
 
 # Project files
 !init.d

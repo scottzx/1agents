@@ -48,7 +48,7 @@ git submodule add /Users/scott/Documents/01-开发项目/AI应用/cc-connect cc-
 #### [MODIFY] [go.mod](file:///Users/scott/Documents/01-开发项目/Web应用/1agents/agent/go.mod)
 - Append the relative submodule replacement directory:
   ```go
-  replace github.com/chenhg5/cc-connect => ../cc-connect
+  replace github.com/chenhg5/cc-connect => ../modules/cc-connect
   ```
 - Declare dependency `github.com/chenhg5/cc-connect v0.0.0` in the `require` block.
 

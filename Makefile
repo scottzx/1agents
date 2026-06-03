@@ -20,23 +20,23 @@ AGENT_LDFLAGS := -s -w \
   -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
   -X main.buildTime=$(BUILD_TIME)
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb agent package clean help
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb backend agent package clean help
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
 	@echo "Host: $(HOSTNAME) ($(OS)/$(ARCH))"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, agent)"
-	@echo "  make frontend          - Build frontend assets (html/) and generate src/html.h"
+	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, backend)"
+	@echo "  make frontend          - Build frontend assets (html/) and generate modules/ttyd/src/html.h"
 	@echo "  make ttyd              - Compile native ttyd C server natively on the current host"
 	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
 	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
-	@echo "  make agent             - Compile 1agents Go agent server with version ldflags"
+	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
 
-all: frontend ttyd cc-connect agent
+all: frontend ttyd cc-connect backend
 
 frontend:
 	@echo "=== Building Frontend (html/)..."
@@ -45,9 +45,9 @@ frontend:
 ttyd:
 	@echo "=== Building ttyd terminal server..."
 	@if [ "$(OS)" = "Darwin" ]; then \
-		cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S . ; \
+		cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S modules/ttyd ; \
 	else \
-		cmake -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S . ; \
+		cmake -DCMAKE_BUILD_TYPE=Release -B build-ttyd -S modules/ttyd ; \
 	fi
 	make -C build-ttyd
 	@mkdir -p build
@@ -55,20 +55,22 @@ ttyd:
 
 cc-connect:
 	@echo "=== Building cc-connect daemon..."
-	$(MAKE) -C cc-connect build
+	$(MAKE) -C modules/cc-connect build
 	@mkdir -p build
-	cp cc-connect/cc-connect build/cc-connect
+	cp modules/cc-connect/cc-connect build/cc-connect
 
 cc-connect-noweb:
 	@echo "=== Building cc-connect daemon (no web build)..."
-	$(MAKE) -C cc-connect build-noweb
+	$(MAKE) -C modules/cc-connect build-noweb
 	@mkdir -p build
-	cp cc-connect/cc-connect build/cc-connect
+	cp modules/cc-connect/cc-connect build/cc-connect
 
-agent:
-	@echo "=== Building 1agents Go server..."
+backend:
+	@echo "=== Building 1agents Go server (backend)..."
 	mkdir -p build
-	cd agent && go build -ldflags "$(AGENT_LDFLAGS)" -o ../build/1agents ./cmd/agent
+	cd backend && go build -ldflags "$(AGENT_LDFLAGS)" -o ../build/1agents ./cmd/backend
+
+agent: backend
 
 package: all
 	@echo "=== Packaging 1agents for $(OS_LOWER)-$(ARCH_LOWER) on $(HOSTNAME)..."
@@ -84,5 +86,5 @@ package: all
 clean:
 	@echo "=== Cleaning build artifacts..."
 	rm -rf build build-ttyd dist
-	rm -rf html/dist src/html.h
-	$(MAKE) -C cc-connect clean
+	rm -rf html/dist modules/ttyd/src/html.h
+	$(MAKE) -C modules/cc-connect clean

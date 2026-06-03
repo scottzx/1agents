@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/scottzx/1Agents/agent/internal/cert"
-	"github.com/scottzx/1Agents/agent/internal/ccconnect"
-	"github.com/scottzx/1Agents/agent/internal/config"
-	"github.com/scottzx/1Agents/agent/internal/server"
-	"github.com/scottzx/1Agents/agent/internal/supervisor"
-	"github.com/scottzx/1Agents/agent/internal/tunnel"
+	"github.com/scottzx/1Agents/backend/internal/cert"
+	"github.com/scottzx/1Agents/backend/internal/ccconnect"
+	"github.com/scottzx/1Agents/backend/internal/config"
+	"github.com/scottzx/1Agents/backend/internal/server"
+	"github.com/scottzx/1Agents/backend/internal/supervisor"
+	"github.com/scottzx/1Agents/backend/internal/tunnel"
 )
 
 var (

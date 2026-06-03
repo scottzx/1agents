@@ -8,17 +8,17 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/scottzx/1Agents/agent/internal/auth"
-	"github.com/scottzx/1Agents/agent/internal/ccconnect"
-	"github.com/scottzx/1Agents/agent/internal/config"
-	ctxt "github.com/scottzx/1Agents/agent/internal/context"
-	"github.com/scottzx/1Agents/agent/internal/fs"
-	"github.com/scottzx/1Agents/agent/internal/gateway"
-	"github.com/scottzx/1Agents/agent/internal/git"
-	"github.com/scottzx/1Agents/agent/internal/system"
-	"github.com/scottzx/1Agents/agent/internal/terminal"
-	"github.com/scottzx/1Agents/agent/internal/tunnel"
-	"github.com/scottzx/1Agents/agent/internal/workspace"
+	"github.com/scottzx/1Agents/backend/internal/auth"
+	"github.com/scottzx/1Agents/backend/internal/ccconnect"
+	"github.com/scottzx/1Agents/backend/internal/config"
+	ctxt "github.com/scottzx/1Agents/backend/internal/context"
+	"github.com/scottzx/1Agents/backend/internal/fs"
+	"github.com/scottzx/1Agents/backend/internal/gateway"
+	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/system"
+	"github.com/scottzx/1Agents/backend/internal/terminal"
+	"github.com/scottzx/1Agents/backend/internal/tunnel"
+	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
 // NewRouter builds and returns the main HTTP request multiplexer.

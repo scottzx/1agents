@@ -1,4 +1,4 @@
-module github.com/scottzx/1Agents/agent
+module github.com/scottzx/1Agents/backend
 
 go 1.26.1
 
@@ -32,4 +32,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/chenhg5/cc-connect => ../cc-connect
+replace github.com/chenhg5/cc-connect => ../modules/cc-connect

@@ -152,7 +152,7 @@ build_ttyd() {
         -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -flto" \
         -DCMAKE_EXE_LINKER_FLAGS="-static -no-pie -Wl,-s -Wl,-Bsymbolic -Wl,--gc-sections" \
         -DCMAKE_BUILD_TYPE=RELEASE \
-        ..
+        ../modules/ttyd
     make install
 }
 

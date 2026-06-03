@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/scottzx/1Agents/agent/internal/config"
+	"github.com/scottzx/1Agents/backend/internal/config"
 )
 
 // TmuxWindow represents a single tmux window parsed from list-windows output.

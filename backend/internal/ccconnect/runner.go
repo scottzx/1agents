@@ -51,7 +51,7 @@ import (
 	_ "github.com/chenhg5/cc-connect/platform/wps-xiezuo"
 	_ "github.com/chenhg5/cc-connect/web"
 
-	"github.com/scottzx/1Agents/agent/internal/workspace"
+	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
 type dummyBridgePlatform struct{}
