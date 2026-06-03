@@ -4,20 +4,44 @@ on:
   push:
     paths:
     - ".github/workflows/backend.yml"
-    - "CMakeLists.txt"
-    - "src/*"
-    - "scripts/*"
+    - "modules/ttyd/CMakeLists.txt"
+    - "modules/ttyd/src/**"
+    - "scripts/**"
   pull_request:
     paths:
     - ".github/workflows/backend.yml"
-    - "CMakeLists.txt"
-    - "src/*"
-    - "scripts/*"
+    - "modules/ttyd/CMakeLists.txt"
+    - "modules/ttyd/src/**"
+    - "scripts/**"
   workflow_call:
 
 jobs:
+  build-frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Build Web Assets
+        run: |
+          cd html
+          corepack enable
+          yarn install
+          yarn build
+
+      - name: Upload html.h
+        uses: actions/upload-artifact@v7
+        with:
+          name: html-header
+          path: modules/ttyd/src/html.h
+
   msvc:
     runs-on: windows-latest
+    needs: [build-frontend]
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg.exe
@@ -38,18 +62,39 @@ jobs:
         run: |
           $env:VCPKG_ROOT = "${{ env.VCPKG_ROOT }}"
           ${{ env.VCPKG_EXE }} install --triplet ${{ env.VCPKG_TRIPLET }} libwebsockets libuv json-c zlib openssl getopt-win32
+
+      - name: Download html.h artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: html-header
+          path: temp-html-header
+
+      - name: Copy html.h to modules/ttyd/src/
+        shell: pwsh
+        run: |
+          if (Test-Path "temp-html-header/modules/ttyd/src/html.h") {
+            Copy-Item "temp-html-header/modules/ttyd/src/html.h" "modules/ttyd/src/html.h" -Force
+          } elseif (Test-Path "temp-html-header/html.h") {
+            Copy-Item "temp-html-header/html.h" "modules/ttyd/src/html.h" -Force
+          } else {
+            Write-Host "html.h not found!"
+            Get-ChildItem -Path temp-html-header -Recurse
+          }
+
       - name: Build with MSVC
         shell: pwsh
         run: |
           $env:VCPKG_ROOT = "${{ env.VCPKG_ROOT }}"
-          cmake -S . -B build -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN_FILE }}" -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_TRIPLET }}
+          cmake -S modules/ttyd -B build -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN_FILE }}" -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_TRIPLET }}
           cmake --build build --config Release
       - uses: actions/upload-artifact@v7
         with:
           name: ttyd.msvc
           path: build/Release/ttyd.exe
+
   cross:
     runs-on: ubuntu-24.04
+    needs: [build-frontend]
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +105,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf automake build-essential cmake curl file libtool
+
+      - name: Download html.h artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: html-header
+          path: temp-html-header
+
+      - name: Copy html.h to modules/ttyd/src/
+        run: |
+          if [ -f temp-html-header/modules/ttyd/src/html.h ]; then
+            cp temp-html-header/modules/ttyd/src/html.h modules/ttyd/src/html.h
+          elif [ -f temp-html-header/html.h ]; then
+            cp temp-html-header/html.h modules/ttyd/src/html.h
+          else
+            echo "html.h not found!"
+            find temp-html-header -type f
+          fi
+
       - name: Cross build (${{ matrix.target }})
         env:
           BUILD_TARGET: ${{ matrix.target }}
@@ -68,4 +131,3 @@ jobs:
         with:
           name: ttyd.${{ matrix.target }}
           path: build/ttyd*
-
