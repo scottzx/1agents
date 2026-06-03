@@ -123,7 +123,9 @@ jobs:
         with:
           go-version: '1.26.1'
           cache: true
-          cache-dependency-path: backend/go.sum
+          cache-dependency-path: |
+            backend/go.sum
+            modules/cc-connect/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -176,7 +178,15 @@ jobs:
           BUILD_TARGET: ${{ matrix.target }}
         run: ./scripts/cross-build.sh
 
+      - name: Cache cc-connect Web Assets
+        id: cache-ccconnect-web
+        uses: actions/cache@v4
+        with:
+          path: modules/cc-connect/web/dist
+          key: cc-connect-web-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/package.json', 'modules/cc-connect/web/pnpm-lock.yaml', 'modules/cc-connect/web/src/**', 'modules/cc-connect/web/index.html', 'modules/cc-connect/web/vite.config.ts', 'modules/cc-connect/web/tailwind.config.ts', 'modules/cc-connect/web/postcss.config.js') }}
+
       - name: Cache pnpm
+        if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
@@ -185,6 +195,7 @@ jobs:
             pnpm-${{ runner.os }}-
 
       - name: Build cc-connect Web Assets
+        if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
         run: |
           npm install -g pnpm
           cd modules/cc-connect/web
@@ -236,7 +247,9 @@ jobs:
         with:
           go-version: '1.26.1'
           cache: true
-          cache-dependency-path: backend/go.sum
+          cache-dependency-path: |
+            backend/go.sum
+            modules/cc-connect/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -278,7 +291,15 @@ jobs:
           cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ../modules/ttyd
           make
 
+      - name: Cache cc-connect Web Assets
+        id: cache-ccconnect-web
+        uses: actions/cache@v4
+        with:
+          path: modules/cc-connect/web/dist
+          key: cc-connect-web-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/package.json', 'modules/cc-connect/web/pnpm-lock.yaml', 'modules/cc-connect/web/src/**', 'modules/cc-connect/web/index.html', 'modules/cc-connect/web/vite.config.ts', 'modules/cc-connect/web/tailwind.config.ts', 'modules/cc-connect/web/postcss.config.js') }}
+
       - name: Cache pnpm
+        if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
@@ -287,6 +308,7 @@ jobs:
             pnpm-${{ runner.os }}-
 
       - name: Build cc-connect Web Assets
+        if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
         run: |
           npm install -g pnpm
           cd modules/cc-connect/web
