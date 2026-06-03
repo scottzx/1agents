@@ -9,7 +9,12 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') return;
-    if (event.request.url.includes('/ws') || event.request.url.includes('/token')) return;
+    if (
+        event.request.url.includes('/ws') ||
+        event.request.url.includes('/token') ||
+        event.request.url.includes('/cc-connect')
+    )
+        return;
 
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });

@@ -42,11 +42,11 @@ export const workspaceService = {
         return res.json();
     },
 
-    async getCcConnectUrl(workspaceId: string, theme: string, lang: string): Promise<string> {
+    async getCcConnectUrl(workspaceId: string, theme: string, lang: string, path?: string): Promise<string> {
         const res = await fetch('/api/cc-connect/url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspace: workspaceId, theme, lang }),
+            body: JSON.stringify({ workspace: workspaceId, theme, lang, path }),
         });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();

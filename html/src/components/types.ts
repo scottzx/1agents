@@ -60,7 +60,7 @@ export interface TmuxWindow {
     cwd: string;
 }
 
-export type RightDrawerTab = 'files' | 'git' | 'channels' | 'settings' | 'none';
+export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'settings' | 'none';
 
 // NOTE: Keep in sync with getFileTagFromExt in agent/internal/fs/handler.go
 export function getFileTag(name: string): 'doc' | 'img' | 'code' | 'video' | 'audio' | 'other' {

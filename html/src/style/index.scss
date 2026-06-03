@@ -750,6 +750,12 @@ body {
         color: var(--text-sidebar);
         background-color: var(--bg-sidebar-hover);
       }
+
+      &.active {
+        color: var(--text-sidebar);
+        background-color: var(--bg-sidebar-hover);
+        font-weight: 500;
+      }
     }
   }
 }
