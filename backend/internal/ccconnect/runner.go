@@ -89,22 +89,23 @@ type providerWiringResult struct {
 
 // Start boots the cc-connect supervisor, dynamic port allocator, configuration synchronization,
 // and engine listeners.
-// Start boots the cc-connect supervisor, dynamic port allocator, configuration synchronization,
-// and engine listeners.
-func Start(ctx context.Context) {
+func Start(ctx context.Context, isDesktop bool) {
 	log.Println("[ccconnect] Starting cc-connect integration runner...")
 
+	baseMgmtPort := 39820
+	baseBridgePort := 39810
+
 	var err error
-	ManagementPort, err = findFreePort(9820)
+	ManagementPort, err = findFreePort(baseMgmtPort)
 	if err != nil {
-		log.Printf("[ccconnect] Error finding management port, fallback to 9820: %v", err)
-		ManagementPort = 9820
+		log.Printf("[ccconnect] Error finding management port, fallback to %d: %v", baseMgmtPort, err)
+		ManagementPort = baseMgmtPort
 	}
 
-	BridgePort, err = findFreePort(9810)
+	BridgePort, err = findFreePort(baseBridgePort)
 	if err != nil {
-		log.Printf("[ccconnect] Error finding bridge port, fallback to 9810: %v", err)
-		BridgePort = 9810
+		log.Printf("[ccconnect] Error finding bridge port, fallback to %d: %v", baseBridgePort, err)
+		BridgePort = baseBridgePort
 	}
 
 	home, err := os.UserHomeDir()
@@ -411,7 +412,7 @@ insecure = true
 
 func findFreePort(startPort int) (int, error) {
 	for port := startPort; port < startPort+100; port++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err == nil {
 			ln.Close()
 			return port, nil

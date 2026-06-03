@@ -51,8 +51,8 @@ type Config struct {
 // Default returns a Config populated with safe default values.
 func Default() *Config {
 	return &Config{
-		ListenAddr:     ":8080",
-		TtydAddr:       "127.0.0.1:7681",
+		ListenAddr:     ":38080",
+		TtydAddr:       "127.0.0.1:37681",
 		TtydBinaryPath: "./ttyd",
 		TtydArgs:       []string{"tmux", "new-session", "-A", "-s", "1agents"},
 		TmuxSession:    "1agents",

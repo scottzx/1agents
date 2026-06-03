@@ -88,3 +88,18 @@ clean:
 	rm -rf build build-ttyd dist
 	rm -rf html/dist modules/ttyd/src/html.h
 	$(MAKE) -C modules/cc-connect clean
+	rm -rf src-tauri/resources src-tauri/target
+
+.PHONY: tauri-resources tauri-dev tauri-build
+
+tauri-resources: all
+	@echo "=== Setting up Tauri resources ==="
+	./scripts/setup-resources.sh
+
+tauri-dev: tauri-resources
+	@echo "=== Starting Tauri in development mode ==="
+	npx @tauri-apps/cli dev
+
+tauri-build: tauri-resources
+	@echo "=== Building Tauri production bundle ==="
+	npx @tauri-apps/cli build

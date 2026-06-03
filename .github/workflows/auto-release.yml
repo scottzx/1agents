@@ -343,9 +343,110 @@ jobs:
           name: 1agents-darwin-arm64
           path: 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
 
+  build-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            os_name: macos
+          - platform: windows-latest
+            os_name: windows
+    runs-on: ${{ matrix.platform }}
+    needs: [prepare, build-frontend]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache: true
+          cache-dependency-path: |
+            backend/go.sum
+            modules/cc-connect/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Download html-dist artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: html-dist
+          path: html/dist
+
+      - name: Cache cc-connect Web Assets
+        id: cache-ccconnect-web
+        uses: actions/cache@v4
+        with:
+          path: modules/cc-connect/web/dist
+          key: cc-connect-web-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/package.json', 'modules/cc-connect/web/pnpm-lock.yaml', 'modules/cc-connect/web/src/**', 'modules/cc-connect/web/index.html', 'modules/cc-connect/web/vite.config.ts', 'modules/cc-connect/web/tailwind.config.ts', 'modules/cc-connect/web/postcss.config.js') }}
+
+      - name: Build cc-connect Web Assets
+        if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          npm install -g pnpm
+          cd modules/cc-connect/web
+          pnpm install --frozen-lockfile --dangerously-allow-all-builds
+          pnpm build
+
+      - name: Build macOS binaries
+        if: matrix.os_name == 'macos'
+        run: |
+          brew install cmake libuv json-c openssl libwebsockets
+          mkdir build-ttyd && cd build-ttyd
+          cmake -DCMAKE_PREFIX_PATH="/opt/homebrew;/usr/local" -DCMAKE_BUILD_TYPE=Release ../modules/ttyd
+          make
+          cd ..
+          mkdir -p build
+          cp build-ttyd/ttyd build/ttyd
+          
+          # Build Go binaries
+          cd backend
+          go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build/1agents ./cmd/backend
+          cd ../modules/cc-connect/cmd/cc-connect
+          go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build/cc-connect .
+
+      - name: Build Windows binaries
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: |
+          mkdir -p build
+          # Download precompiled ttyd.exe for Windows
+          curl -L -o build/ttyd.exe "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe"
+          
+          # Build Go binaries
+          cd backend
+          GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build/1agents.exe ./cmd/backend
+          cd ../modules/cc-connect/cmd/cc-connect
+          GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build/cc-connect.exe .
+
+      - name: Setup Tauri resources
+        shell: bash
+        run: |
+          ./scripts/setup-resources.sh
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri desktop application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: "Release ${{ needs.prepare.outputs.tag }}"
+          releaseDraft: true
+          prerelease: false
+
   release:
     runs-on: ubuntu-latest
-    needs: [prepare, build-linux, build-macos]
+    needs: [prepare, build-linux, build-macos, build-desktop]
     steps:
       - uses: actions/checkout@v6
 

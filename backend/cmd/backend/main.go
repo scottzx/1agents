@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"log"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -60,6 +62,11 @@ func main() {
 	var tunnelIdleTimeout int
 	flag.IntVar(&tunnelIdleTimeout, "tunnel-idle-timeout", 15, "Auto-stop tunnel after N minutes of inactivity (0 to disable)")
 
+	var isDesktop bool
+	var resourcesDir string
+	flag.BoolVar(&isDesktop, "desktop", false, "Indicates if the daemon is running in desktop mode")
+	flag.StringVar(&resourcesDir, "resources-dir", "", "Path to the Tauri resources directory")
+
 	var showVersion bool
 	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
 
@@ -68,6 +75,29 @@ func main() {
 	if showVersion {
 		fmt.Printf("1agents %s\ncommit:  %s\nbuilt:   %s\n", version, commit, buildTime)
 		return
+	}
+
+	if isDesktop {
+		if resourcesDir == "" {
+			log.Fatalf("[main] FATAL: -desktop mode requires -resources-dir to be set")
+		}
+		// Resolve ttyd binary path inside resources/bin/ttyd
+		cfg.TtydBinaryPath = filepath.Join(resourcesDir, "resources", "bin", "ttyd")
+		// Resolve static files dir inside resources/dist
+		cfg.StaticDir = filepath.Join(resourcesDir, "resources", "dist")
+
+		// Retrieve the login shell path to inherit host environment variables (like brew, git, etc.)
+		userPath := getLoginShellPath()
+		bundledBin := filepath.Join(resourcesDir, "resources", "bundled_tools", "bin")
+		bundledNode := filepath.Join(resourcesDir, "resources", "runtime", "node", "bin")
+		bundledStdBin := filepath.Join(resourcesDir, "resources", "bin")
+
+		newPath := fmt.Sprintf("%s:%s:%s:%s", bundledBin, bundledNode, bundledStdBin, userPath)
+		os.Setenv("PATH", newPath)
+		log.Printf("[main] Desktop Mode Enabled.")
+		log.Printf("[main] Set ttyd path to: %s", cfg.TtydBinaryPath)
+		log.Printf("[main] Set static dir to: %s", cfg.StaticDir)
+		log.Printf("[main] Set PATH to: %s", newPath)
 	}
 
 	// Configure tunnel idle timeout (applies to both --tunnel and API-started tunnels)
@@ -131,7 +161,7 @@ func main() {
 	}
 
 	// ── 2. Start cc-connect Supervisor & engines ──────────────────────────────
-	ccconnect.Start(ctx)
+	ccconnect.Start(ctx, isDesktop)
 
 	// ── 3. Start HTTP gateway ─────────────────────────────────────────────────
 	router := server.NewRouter(cfg)
@@ -151,6 +181,17 @@ func main() {
 		log.Printf("[main] Build Time         : %s", buildTime)
 		log.Printf("[main] Working directory  : %s", cfg.WorkDir)
 		log.Printf("[main] Dev mode (no-ttyd) : %v", noTtyd)
+
+		// Print a beautiful unified port list for the user
+		fmt.Println("\n==================================================================")
+		fmt.Println("🚀 1AGENTS DEPLOYMENT STATUS:")
+		fmt.Printf("   🌐 HTTP Gateway (Listen)  : %s\n", cfg.ListenAddr)
+		if !noTtyd {
+			fmt.Printf("   📺 Internal Web Terminal  : %s\n", cfg.TtydAddr)
+		}
+		fmt.Printf("   🔌 CC-Connect Bridge Port : :%d (Dynamic)\n", ccconnect.BridgePort)
+		fmt.Printf("   ⚙️  CC-Connect Mgmt Port   : :%d (Dynamic)\n", ccconnect.ManagementPort)
+		fmt.Println("==================================================================")
 		
 		var err error
 		if enableSSL {
@@ -291,4 +332,22 @@ func findAvailablePort(ip string, basePort int) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("no available port found in range %d-%d", basePort, basePort+100)
+}
+
+// getLoginShellPath runs the user's default login shell to read their full PATH environment variable.
+func getLoginShellPath() string {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	// -l loads login environment, -c executes the echo command
+	cmd := exec.CommandContext(ctx, shell, "-l", "-c", "echo $PATH")
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("[main] Failed to get login shell PATH: %v. Using basic PATH.", err)
+		return os.Getenv("PATH")
+	}
+	return strings.TrimSpace(string(output))
 }
