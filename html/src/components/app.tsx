@@ -187,9 +187,78 @@ interface BuiltinBrowserProps {
     onUrlChange: (tabId: string, url: string) => void;
 }
 
-class BuiltinBrowser extends Component<BuiltinBrowserProps> {
+interface BuiltinBrowserState {
+    iframeSrc: string;
+}
+
+class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState> {
     private inputRef: HTMLInputElement | null = null;
     private iframeRef: HTMLIFrameElement | null = null;
+    private lastLoadedUrl: string = '';
+
+    state: BuiltinBrowserState = {
+        iframeSrc: this.getIframeUrl(this.props.tab.url || '')
+    };
+
+    componentDidMount() {
+        window.addEventListener('message', this.handleIframeMessage);
+    }
+
+    componentWillUnmount() {
+        window.removeEventListener('message', this.handleIframeMessage);
+    }
+
+    componentWillReceiveProps(nextProps: BuiltinBrowserProps) {
+        if (nextProps.tab.url !== this.props.tab.url) {
+            if (nextProps.tab.url !== this.lastLoadedUrl) {
+                this.setState({
+                    iframeSrc: this.getIframeUrl(nextProps.tab.url || '')
+                });
+            }
+        }
+    }
+
+    handleIframeMessage = (e: MessageEvent) => {
+        if (this.iframeRef && e.source === this.iframeRef.contentWindow) {
+            const data = e.data;
+            if (data && data.type === 'iframe_navigate' && typeof data.url === 'string') {
+                const newUrl = data.url;
+                if (newUrl && newUrl !== this.props.tab.url) {
+                    this.lastLoadedUrl = newUrl;
+                    this.props.onUrlChange(this.props.tab.id, newUrl);
+                }
+            }
+        }
+    };
+
+    getOriginalUrl = (urlStr: string): string => {
+        try {
+            const url = new URL(urlStr);
+            if (url.pathname === '/api/proxy') {
+                const target = url.searchParams.get('url');
+                if (target) return target;
+            }
+            return urlStr;
+        } catch (e) {
+            return urlStr;
+        }
+    };
+
+    handleIframeLoad = () => {
+        if (!this.iframeRef || !this.iframeRef.contentWindow) return;
+        try {
+            const iframeUrl = this.iframeRef.contentWindow.location.href;
+            if (iframeUrl && iframeUrl !== 'about:blank') {
+                const targetUrl = this.getOriginalUrl(iframeUrl);
+                if (targetUrl && targetUrl !== this.props.tab.url) {
+                    this.lastLoadedUrl = targetUrl;
+                    this.props.onUrlChange(this.props.tab.id, targetUrl);
+                }
+            }
+        } catch (e) {
+            // Expected cross-origin error when loading non-proxied localhost/intranet sites
+        }
+    };
 
     private invokeTauri = async (command: string, args: Record<string, any> = {}) => {
         if (typeof window !== 'undefined' && (window as any).__TAURI__) {
@@ -201,7 +270,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
         }
     };
 
-    isLocalUrl = (urlStr: string): boolean => {
+    isLocalUrl(urlStr: string): boolean {
         try {
             const url = new URL(urlStr);
             const hostname = url.hostname.toLowerCase();
@@ -217,17 +286,17 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
             const lower = urlStr.toLowerCase();
             return lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('::1');
         }
-    };
+    }
 
-    getIframeUrl = (urlStr: string): string => {
+    getIframeUrl(urlStr: string): string {
         if (!urlStr || urlStr === 'about:blank') {
             return 'about:blank';
         }
         if (this.isLocalUrl(urlStr)) {
             return urlStr;
         }
-        return `/api/proxy?url=${encodeURIComponent(urlStr)}`;
-    };
+        return `${window.location.origin}/api/proxy?url=${encodeURIComponent(urlStr)}`;
+    }
 
     handleKeyPress = (e: KeyboardEvent) => {
         if (e.key === 'Enter' && this.inputRef) {
@@ -236,6 +305,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
                 if (!/^https?:\/\//i.test(url) && !url.startsWith('about:')) {
                     url = 'http://' + url;
                 }
+                this.lastLoadedUrl = '';
                 this.props.onUrlChange(this.props.tab.id, url);
             }
         }
@@ -251,7 +321,8 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
         const { tab } = this.props;
         if (!tab.url || tab.url === 'about:blank') return;
         
-        if (IS_DESKTOP) {
+        const isDesktopEnv = IS_DESKTOP || (typeof window !== 'undefined' && !!(window as any).__TAURI__);
+        if (isDesktopEnv) {
             this.invokeTauri('open_in_external_browser', { url: tab.url });
         } else {
             window.open(tab.url, '_blank');
@@ -261,7 +332,6 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
     render() {
         const { tab, active } = this.props;
         const isHome = !tab.url || tab.url === 'about:blank';
-        const iframeUrl = this.getIframeUrl(tab.url || '');
 
         return (
             <div class="builtin-browser" style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
@@ -317,9 +387,10 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
                     {!isHome && (
                         <iframe 
                             ref={el => { this.iframeRef = el; }}
-                            src={iframeUrl}
+                            src={this.state.iframeSrc}
                             class="browser-iframe"
                             style="width: 100%; height: 100%; border: none; background: #fff;"
+                            onLoad={this.handleIframeLoad}
                         />
                     )}
                 </div>

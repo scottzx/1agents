@@ -680,6 +680,34 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 			scriptTag := `
 <script>
 (function() {
+  function getOriginalUrl(url) {
+    try {
+      var urlObj = new URL(url || window.location.href);
+      if (urlObj.pathname === '/api/proxy') {
+        var target = urlObj.searchParams.get('url');
+        if (target) return target;
+      }
+      return urlObj.href;
+    } catch(e) {
+      return url || window.location.href;
+    }
+  }
+
+  function notifyParent(url) {
+    try {
+      var orig = getOriginalUrl(url);
+      window.parent.postMessage({ type: 'iframe_navigate', url: orig }, '*');
+    } catch(e) {}
+  }
+
+  // Notify parent of initial load
+  notifyParent();
+
+  // Notify parent on history popstate (e.g. back/forward)
+  window.addEventListener('popstate', function() {
+    notifyParent();
+  });
+
   // Prevent links from redirecting the frame to non-proxied addresses
   document.addEventListener('click', function(e) {
     var target = e.target.closest('a');
@@ -719,8 +747,10 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
           var resolvedUrl = new URL(url, document.baseURI).href;
           var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
           originalPushState.apply(window.history, [state, title, proxiedUrl]);
+          notifyParent(resolvedUrl);
         } else {
           originalPushState.apply(window.history, arguments);
+          notifyParent();
         }
       } catch (e) {
         console.warn('Blocked pushState rewrite:', e);
@@ -734,12 +764,72 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
           var resolvedUrl = new URL(url, document.baseURI).href;
           var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
           originalReplaceState.apply(window.history, [state, title, proxiedUrl]);
+          notifyParent(resolvedUrl);
         } else {
           originalReplaceState.apply(window.history, arguments);
+          notifyParent();
         }
       } catch (e) {
         console.warn('Blocked replaceState rewrite:', e);
       }
+    };
+  }
+
+  // Intercept window.fetch to route relative/external data requests through proxy
+  if (window.fetch) {
+    var originalFetch = window.fetch;
+    window.fetch = function(input, init) {
+      try {
+        var url;
+        if (typeof input === 'string') {
+          url = input;
+        } else if (input instanceof URL) {
+          url = input.href;
+        } else if (input && input.url) {
+          url = input.url;
+        }
+
+        if (url) {
+          var resolvedUrl = new URL(url, document.baseURI).href;
+          var proxyHost = window.location.host;
+          var resolvedObj = new URL(resolvedUrl);
+          if (resolvedObj.host !== proxyHost) {
+            var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
+            if (typeof input === 'string') {
+              input = proxiedUrl;
+            } else if (input instanceof URL) {
+              input = new URL(proxiedUrl);
+            } else if (input instanceof Request) {
+              input = new Request(proxiedUrl, input);
+            } else if (input && input.url) {
+              input = new Request(proxiedUrl, input);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Blocked fetch rewrite:', e);
+      }
+      return originalFetch.apply(this, arguments);
+    };
+  }
+
+  // Intercept XMLHttpRequest to route relative/external data requests through proxy
+  if (window.XMLHttpRequest) {
+    var originalOpen = window.XMLHttpRequest.prototype.open;
+    window.XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+      try {
+        if (url) {
+          var resolvedUrl = new URL(url, document.baseURI).href;
+          var proxyHost = window.location.host;
+          var resolvedObj = new URL(resolvedUrl);
+          if (resolvedObj.host !== proxyHost) {
+            arguments[1] = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
+          }
+        }
+      } catch (e) {
+        console.warn('Blocked XHR rewrite:', e);
+      }
+      return originalOpen.apply(this, arguments);
     };
   }
 })();
