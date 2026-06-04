@@ -496,7 +496,7 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 						break
 					} else if strings.Contains(cmdLower, "codex") {
 						agent = "codex"
-						status = "idle"
+						status = ""
 						break
 					} else if strings.Contains(cmdLower, "claude") && !strings.Contains(cmdLower, "daemon") {
 						agent = "claude"
