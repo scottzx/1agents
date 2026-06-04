@@ -1,6 +1,7 @@
 import { h, Component } from 'preact';
 import { marked } from 'marked';
 import { FsEntry, getFileTag, formatBytes } from '../types';
+import { t, type Lang } from '../i18n';
 
 interface FileDetailViewProps {
     selectedFsEntry: FsEntry;
@@ -27,6 +28,7 @@ interface FileDetailViewProps {
     onEditedContentChange: (content: string) => void;
     isStandalone?: boolean;
     onOpenPreview?: (path: string, name: string) => void;
+    language: Lang;
 }
 
 export class FileDetailView extends Component<FileDetailViewProps> {
@@ -179,6 +181,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             onSaveFile,
             onShareFile,
             isStandalone,
+            language,
         } = this.props;
 
         const isFav = favoriteFiles.includes(selectedFsEntry.path);
@@ -195,7 +198,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                 {/* Detail Header */}
                 <div class="fb-detail-header">
                     {!isStandalone && (
-                        <button class="fb-detail-back" onClick={onBackToList} title="返回列表">
+                        <button class="fb-detail-back" onClick={onBackToList} title={t('fileDetail.back', language)}>
                             <svg
                                 viewBox="0 0 24 24"
                                 fill="none"
@@ -230,7 +233,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                         <button
                             class={`fb-icon-btn ${isFav ? 'active-fav' : ''}`}
                             onClick={() => onToggleFavorite(selectedFsEntry.path)}
-                            title={isFav ? '取消收藏' : '收藏'}
+                            title={isFav ? t('fileDetail.unfavorite', language) : t('fileDetail.favorite', language)}
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -250,7 +253,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                     .join('/')}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                title="在新窗口打开预览"
+                                title={t('fileDetail.openInWindow', language)}
                                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                             >
                                 <svg
@@ -272,7 +275,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 class="fb-icon-btn"
                                 onClick={onSaveFile}
                                 disabled={fileSaving}
-                                title={fileSaving ? '保存中…' : '保存 (Ctrl+S)'}
+                                title={fileSaving ? t('fileDetail.saving', language) : t('fileDetail.save', language)}
                                 style={{ color: 'var(--accent-color)' }}
                             >
                                 <svg
@@ -290,7 +293,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             </button>
                         )}
                         {!isImg && !isPdf && !isVideo && !isAudio && isEditingDetail && (
-                            <button class="fb-icon-btn" onClick={this.handleStopEditing} title="退出编辑/预览">
+                            <button
+                                class="fb-icon-btn"
+                                onClick={this.handleStopEditing}
+                                title={t('fileDetail.exitEdit', language)}
+                            >
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -308,7 +315,9 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             <button
                                 class="fb-icon-btn"
                                 onClick={this.handleStartEditing}
-                                title={isHtml ? '查看源码/编辑' : '编辑代码'}
+                                title={
+                                    isHtml ? t('fileDetail.viewSource', language) : t('fileDetail.editCode', language)
+                                }
                             >
                                 <svg
                                     viewBox="0 0 24 24"
@@ -324,7 +333,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             </button>
                         )}
                         {!isImg && !isPdf && !isVideo && !isAudio && (
-                            <button class="fb-icon-btn" onClick={onCopyContent} title="复制内容">
+                            <button
+                                class="fb-icon-btn"
+                                onClick={onCopyContent}
+                                title={t('fileDetail.copyContent', language)}
+                            >
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -339,7 +352,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             </button>
                         )}
 
-                        <button class="fb-icon-btn" onClick={onDownloadFile} title="下载">
+                        <button class="fb-icon-btn" onClick={onDownloadFile} title={t('common.download', language)}>
                             <svg
                                 viewBox="0 0 24 24"
                                 fill="none"
@@ -353,7 +366,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                 <line x1="12" x2="12" y1="15" y2="3" />
                             </svg>
                         </button>
-                        <button class="fb-icon-btn" onClick={onRenameFile} title="重命名">
+                        <button class="fb-icon-btn" onClick={onRenameFile} title={t('common.rename', language)}>
                             <svg
                                 viewBox="0 0 24 24"
                                 fill="none"
@@ -366,7 +379,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             </svg>
                         </button>
                         {!IS_DESKTOP && (
-                            <button class="fb-icon-btn" onClick={onShareFile} title="分享链接">
+                            <button class="fb-icon-btn" onClick={onShareFile} title={t('fileDetail.share', language)}>
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -387,7 +400,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             <button
                                 class={`fb-icon-btn ${detailFullscreen ? 'active' : ''}`}
                                 onClick={onToggleFullscreen}
-                                title={detailFullscreen ? '退出全屏' : '全屏预览'}
+                                title={
+                                    detailFullscreen
+                                        ? t('fileDetail.exitFullscreen', language)
+                                        : t('fileDetail.fullscreen', language)
+                                }
                             >
                                 {detailFullscreen ? (
                                     <svg
@@ -426,7 +443,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                     {fileLoading ? (
                         <div class="fb-loading">
                             <div class="fb-loading-spinner" />
-                            <span>读取文件中…</span>
+                            <span>{t('fileDetail.loading', language)}</span>
                         </div>
                     ) : isImagePreview ? (
                         <div class="image-preview-container">
@@ -447,7 +464,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                     .map(encodeURIComponent)
                                     .join('/')}`}
                             >
-                                您的浏览器不支持播放该视频
+                                {t('fileDetail.videoUnsupported', language)}
                             </video>
                         </div>
                     ) : isAudio ? (
@@ -472,7 +489,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                                         .map(encodeURIComponent)
                                         .join('/')}`}
                                 >
-                                    您的浏览器不支持播放该音频
+                                    {t('fileDetail.audioUnsupported', language)}
                                 </audio>
                             </div>
                         </div>

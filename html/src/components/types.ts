@@ -1,3 +1,5 @@
+import type { Lang } from './i18n';
+
 /** A terminal session — mirrors a tmux window, belongs to a workspace. */
 export interface Session {
     id: string;
@@ -27,16 +29,16 @@ export interface Workspace {
 
 export type WorkspaceStatus = 'active' | 'inactive' | 'planning' | 'archived';
 
-export const WORKSPACE_STATUSES: { value: WorkspaceStatus; label: string }[] = [
-    { value: 'active', label: '进行中' },
-    { value: 'inactive', label: '未激活' },
-    { value: 'planning', label: '规划中' },
-    { value: 'archived', label: '已归档' },
+export const WORKSPACE_STATUS_KEYS: { value: WorkspaceStatus; labelKey: string }[] = [
+    { value: 'active', labelKey: 'workspace.status.active' },
+    { value: 'inactive', labelKey: 'workspace.status.inactive' },
+    { value: 'planning', labelKey: 'workspace.status.planning' },
+    { value: 'archived', labelKey: 'workspace.status.archived' },
 ];
 
-export function getStatusLabel(status: string): string {
-    const found = WORKSPACE_STATUSES.find(s => s.value === status);
-    return found ? found.label : status;
+export function getStatusLabel(status: string, language: Lang, t: (key: string, lang: Lang) => string): string {
+    const found = WORKSPACE_STATUS_KEYS.find(s => s.value === status);
+    return found ? t(found.labelKey, language) : status;
 }
 
 /** A single file or directory entry returned by /api/fs/list */

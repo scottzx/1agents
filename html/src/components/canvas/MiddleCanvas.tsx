@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { Terminal } from '../terminal';
 import type { ITerminalOptions } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from '../terminal/xterm';
+import { t, type Lang } from '../i18n';
 
 interface MiddleCanvasProps {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
@@ -14,6 +15,7 @@ interface MiddleCanvasProps {
     onKeyboardStateChange?: (visible: boolean) => void;
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
+    language: Lang;
 }
 
 export function MiddleCanvas({
@@ -27,6 +29,7 @@ export function MiddleCanvas({
     onKeyboardStateChange,
     tmuxMouseOn,
     onTmuxMouseToggle,
+    language,
 }: MiddleCanvasProps) {
     return (
         <main class="middle-canvas">
@@ -44,6 +47,7 @@ export function MiddleCanvas({
                         onKeyboardStateChange={onKeyboardStateChange}
                         tmuxMouseOn={tmuxMouseOn}
                         onTmuxMouseToggle={onTmuxMouseToggle}
+                        language={language}
                     />
                 ) : (
                     <div class="placeholder-view" style="margin: 0; border: none; border-radius: 0; height: 100%;">
@@ -60,8 +64,8 @@ export function MiddleCanvas({
                             <path d="m7 8 3 2-3 2" />
                             <path d="M12 12h4" />
                         </svg>
-                        <h3 class="placeholder-title">终端就绪</h3>
-                        <p class="placeholder-desc">在全局导航栏中点击【终端】以开始交互会话。</p>
+                        <h3 class="placeholder-title">{t('canvas.terminalReady', language)}</h3>
+                        <p class="placeholder-desc">{t('canvas.terminalReadyDesc', language)}</p>
                     </div>
                 )}
             </div>

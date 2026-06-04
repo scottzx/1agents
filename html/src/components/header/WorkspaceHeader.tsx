@@ -1,6 +1,7 @@
 import { h, Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 import { RightDrawerTab, isFullPageTab } from '../types';
+import { t, type Lang } from '../i18n';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -16,7 +17,15 @@ interface WorkspaceHeaderProps {
     sessionName: string;
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
+    language: Lang;
 }
+
+const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
+    providers: 'header.title.providers',
+    skills: 'header.title.skills',
+    settings: 'header.title.settings',
+    discovery: 'header.title.discovery',
+};
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const {
@@ -30,6 +39,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         sessionName,
         tmuxMouseOn,
         onTmuxMouseToggle,
+        language,
     } = props;
 
     // Mobile hamburger menu open state
@@ -208,7 +218,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             class="sidebar-toggle-btn"
                             onClick={toggleLeftSidebar}
                             style="margin-right: 4px;"
-                            title="展开左侧栏"
+                            title={t('header.expandSidebar', language)}
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -225,19 +235,13 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     {isFullPageTab(activeDrawerTab) ? (
                         <div class="header-title-group">
                             <span class="ws-name" style="font-weight: 600;">
-                                {activeDrawerTab === 'providers'
-                                    ? '模型管理'
-                                    : activeDrawerTab === 'skills'
-                                      ? '技能管理'
-                                      : activeDrawerTab === 'settings'
-                                        ? '系统设置'
-                                        : '发现中心'}
+                                {t(FULLPAGE_TITLE_KEYS[activeDrawerTab] ?? '', language)}
                             </span>
                         </div>
                     ) : (
                         <div class="header-title-group">
-                            <span class="ws-name">{workspaceName || '未选择工作空间'}</span>
-                            <span class="session-name">{sessionName || '无会话'}</span>
+                            <span class="ws-name">{workspaceName || t('header.noWorkspace', language)}</span>
+                            <span class="session-name">{sessionName || t('header.noSession', language)}</span>
                         </div>
                     )}
                 </div>
@@ -250,8 +254,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                                 onClick={onTmuxMouseToggle}
                                 title={
                                     tmuxMouseOn
-                                        ? '当前模式：滚轮滑动（点击切换为选择复制）'
-                                        : '当前模式：选择复制（点击切换为滚轮滑动）'
+                                        ? t('header.modeToggleTitleScroll', language)
+                                        : t('header.modeToggleTitleSelect', language)
                                 }
                             >
                                 <svg
@@ -266,7 +270,9 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                                     <path d="M12 2v6" />
                                     <path d="M5 10h14" />
                                 </svg>
-                                <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
+                                <span>
+                                    {t(tmuxMouseOn ? 'header.modeLabelScroll' : 'header.modeLabelSelect', language)}
+                                </span>
                             </button>
                         )}
 
@@ -276,7 +282,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             id="hdr-btn-channels"
                             class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('channels')}
-                            title="AI 渠道连接"
+                            title={t('header.channels', language)}
                         >
                             {IconChannels}
                         </button>
@@ -284,7 +290,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             id="hdr-btn-files"
                             class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('files')}
-                            title="文件浏览器"
+                            title={t('header.files', language)}
                         >
                             {IconFiles}
                         </button>
@@ -292,7 +298,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             id="hdr-btn-git"
                             class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('git')}
-                            title="版本控制 (Git)"
+                            title={t('header.git', language)}
                         >
                             {IconGit}
                         </button>
@@ -304,8 +310,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     id="mob-hamburger-btn"
                     class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
                     onClick={toggleMobileMenu}
-                    title="菜单"
-                    aria-label="打开功能菜单"
+                    title={t('header.menu', language)}
+                    aria-label={t('header.openMenu', language)}
                     aria-expanded={mobileMenuOpen}
                 >
                     {mobileMenuOpen ? IconClose : IconHamburger}
@@ -315,7 +321,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             {/* Mobile: slide-down drawer menu */}
             {mobileMenuOpen && <div class="mobile-menu-backdrop" onClick={closeMobileMenu} />}
             <div class={`mobile-menu-drawer ${mobileMenuOpen ? 'open' : ''}`}>
-                <div class="mobile-menu-section-title">切换视图</div>
+                <div class="mobile-menu-section-title">{t('header.mobile.switchView', language)}</div>
 
                 <button
                     id="mob-menu-terminal"
@@ -323,8 +329,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={handleSessionClick}
                 >
                     <span class="mob-menu-icon">{IconSession}</span>
-                    <span class="mob-menu-label">工作台</span>
-                    {sessionActive && <span class="mob-menu-badge">当前</span>}
+                    <span class="mob-menu-label">{t('header.mobile.workbench', language)}</span>
+                    {sessionActive && <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>}
                 </button>
 
                 <button
@@ -333,8 +339,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('channels')}
                 >
                     <span class="mob-menu-icon">{IconChannels}</span>
-                    <span class="mob-menu-label">AI 渠道</span>
-                    {activeDrawerTab === 'channels' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.channels', language)}</span>
+                    {activeDrawerTab === 'channels' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
 
                 <button
@@ -343,8 +351,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('files')}
                 >
                     <span class="mob-menu-icon">{IconFiles}</span>
-                    <span class="mob-menu-label">文件浏览器</span>
-                    {activeDrawerTab === 'files' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.files', language)}</span>
+                    {activeDrawerTab === 'files' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
 
                 <button
@@ -353,11 +363,13 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('git')}
                 >
                     <span class="mob-menu-icon">{IconGit}</span>
-                    <span class="mob-menu-label">版本控制 (Git)</span>
-                    {activeDrawerTab === 'git' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.git', language)}</span>
+                    {activeDrawerTab === 'git' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
 
-                <div class="mobile-menu-section-title">管理</div>
+                <div class="mobile-menu-section-title">{t('header.mobile.manage', language)}</div>
 
                 <button
                     id="mob-menu-settings"
@@ -365,8 +377,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('settings')}
                 >
                     <span class="mob-menu-icon">{IconSettings}</span>
-                    <span class="mob-menu-label">系统设置</span>
-                    {activeDrawerTab === 'settings' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.settings', language)}</span>
+                    {activeDrawerTab === 'settings' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
 
                 <button
@@ -375,8 +389,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('skills')}
                 >
                     <span class="mob-menu-icon">{IconSkills}</span>
-                    <span class="mob-menu-label">技能管理</span>
-                    {activeDrawerTab === 'skills' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.skills', language)}</span>
+                    {activeDrawerTab === 'skills' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
 
                 <button
@@ -385,8 +401,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('providers')}
                 >
                     <span class="mob-menu-icon">{IconProviders}</span>
-                    <span class="mob-menu-label">模型管理</span>
-                    {activeDrawerTab === 'providers' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.providers', language)}</span>
+                    {activeDrawerTab === 'providers' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
 
                 <button
@@ -395,8 +413,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onClick={() => handleDrawerToggle('discovery')}
                 >
                     <span class="mob-menu-icon">{IconDiscovery}</span>
-                    <span class="mob-menu-label">发现中心</span>
-                    {activeDrawerTab === 'discovery' && <span class="mob-menu-badge">打开中</span>}
+                    <span class="mob-menu-label">{t('header.mobile.discovery', language)}</span>
+                    {activeDrawerTab === 'discovery' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
                 </button>
             </div>
         </Fragment>

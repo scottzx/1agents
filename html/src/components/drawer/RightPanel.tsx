@@ -5,6 +5,7 @@ import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
+import { t, type Lang } from '../i18n';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -17,8 +18,8 @@ interface RightPanelProps {
     // Theme settings props
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
-    language: 'zh-CN' | 'en-US';
-    toggleLanguage: (lang: 'zh-CN' | 'en-US') => void;
+    language: Lang;
+    toggleLanguage: (lang: Lang) => void;
 
     // File Browser / Detail State
     flatFiles: FsEntry[];
@@ -134,19 +135,19 @@ export function RightPanel({
     const getDrawerTitle = (tab: RightDrawerTab) => {
         switch (tab) {
             case 'files':
-                return '资源管理';
+                return t('drawer.title.files', language);
             case 'git':
-                return '版本控制';
+                return t('drawer.title.git', language);
             case 'channels':
-                return '消息渠道';
+                return t('drawer.title.channels', language);
             case 'providers':
-                return '模型管理';
+                return t('drawer.title.providers', language);
             case 'settings':
-                return '系统设置';
+                return t('drawer.title.settings', language);
             case 'skills':
-                return '技能管理';
+                return t('drawer.title.skills', language);
             case 'discovery':
-                return '发现中心';
+                return t('drawer.title.discovery', language);
             default:
                 return '';
         }
@@ -180,7 +181,11 @@ export function RightPanel({
                         <div
                             class={`panel-refresh-btn ${isSpinning ? 'spinning' : ''}`}
                             onClick={activeDrawerTab === 'files' ? onRefreshFlatFiles : () => gitRefreshFn?.()}
-                            title={activeDrawerTab === 'files' ? '刷新资源' : '刷新 Git 状态'}
+                            title={
+                                activeDrawerTab === 'files'
+                                    ? t('drawer.refresh.files', language)
+                                    : t('drawer.refresh.git', language)
+                            }
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -195,7 +200,7 @@ export function RightPanel({
                             </svg>
                         </div>
                     )}
-                    <div class="panel-close-btn" onClick={closeDrawer} title="收起面板">
+                    <div class="panel-close-btn" onClick={closeDrawer} title={t('drawer.collapse', language)}>
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -253,6 +258,7 @@ export function RightPanel({
                             fsEntries={fsEntries}
                             fsLoading={fsLoading}
                             onToggleFsDir={onToggleFsDir}
+                            language={language}
                         />
                     ) : (
                         selectedFsEntry && (
@@ -279,6 +285,7 @@ export function RightPanel({
                                 onToggleEditing={onToggleEditing}
                                 onEditedContentChange={onEditedContentChange}
                                 onOpenPreview={onOpenPreview}
+                                language={language}
                             />
                         )
                     ))}
@@ -289,6 +296,7 @@ export function RightPanel({
                         activeWorkspaceId={activeWorkspaceId}
                         onLoadingChange={setGitLoading}
                         onRegisterRefresh={fn => setGitRefreshFn(() => fn)}
+                        language={language}
                     />
                 )}
 

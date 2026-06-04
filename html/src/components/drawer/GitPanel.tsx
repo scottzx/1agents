@@ -1,4 +1,5 @@
 import { h, Component, Fragment } from 'preact';
+import { t, type Lang } from '../i18n';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ interface GitPanelProps {
     activeWorkspaceId: string;
     onLoadingChange?: (loading: boolean) => void;
     onRegisterRefresh?: (refreshFn: () => void) => void;
+    language: Lang;
 }
 
 interface GitPanelState {
@@ -72,13 +74,13 @@ interface GitPanelState {
 
 // ── Status label map ───────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<string, string> = {
-    M: '已修改',
-    A: '已添加',
-    D: '已删除',
-    R: '已重命名',
-    C: '已复制',
-    '?': '未跟踪',
+const STATUS_KEY: Record<string, string> = {
+    M: 'git.status.M',
+    A: 'git.status.A',
+    D: 'git.status.D',
+    R: 'git.status.R',
+    C: 'git.status.C',
+    '?': 'git.status.?',
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -89,13 +91,13 @@ const STATUS_COLOR: Record<string, string> = {
     '?': 'git-status-u',
 };
 
-function relativeTime(ts: number): string {
+function relativeTime(ts: number, language: Lang): string {
     const diff = Math.floor(Date.now() / 1000) - ts;
-    if (diff < 60) return '刚刚';
-    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
-    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} 天前`;
-    return new Date(ts * 1000).toLocaleDateString('zh-CN', {
+    if (diff < 60) return t('git.time.justNow', language);
+    if (diff < 3600) return t('git.time.minutesAgo', language, { n: Math.floor(diff / 60) });
+    if (diff < 86400) return t('git.time.hoursAgo', language, { n: Math.floor(diff / 3600) });
+    if (diff < 86400 * 7) return t('git.time.daysAgo', language, { n: Math.floor(diff / 86400) });
+    return new Date(ts * 1000).toLocaleDateString(t('git.time.dateFmtLocale', language), {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
@@ -436,22 +438,20 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     };
 
     discard = async (file: string) => {
-        const confirmDiscard = window.confirm(
-            `确定要放弃对文件 "${file}" 的所有更改吗？\n此操作将直接重置文件，且无法撤销！`
-        );
+        const confirmDiscard = window.confirm(t('git.discardConfirm', this.props.language, { file }));
         if (!confirmDiscard) return;
 
         this.setState({ loading: true });
         try {
             const res = await fetch(`/api/git/discard?file=${encodeURIComponent(file)}`, { method: 'POST' });
             if (!res.ok) throw new Error(await res.text());
-            this.showToast('已放弃更改 ✓');
+            this.showToast(t('git.toast.discarded', this.props.language));
             if (this.state.diffFile === file) {
                 this.setState({ diffFile: null, diffContent: '' });
             }
             this.refresh();
         } catch (err) {
-            this.showToast(`放弃更改失败: ${err}`);
+            this.showToast(t('git.toast.discardFailed', this.props.language, { err: String(err) }));
             this.setState({ loading: false });
         }
     };
@@ -465,10 +465,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 body: JSON.stringify({ branch: branchName, create: false }),
             });
             if (!res.ok) throw new Error(await res.text());
-            this.showToast(`已切换到分支 "${branchName}" ✓`);
+            this.showToast(t('git.toast.branchSwitched', this.props.language, { branch: branchName }));
             this.refresh();
         } catch (err) {
-            this.showToast(`切换分支失败: ${err}`);
+            this.showToast(t('git.toast.branchSwitchFailed', this.props.language, { err: String(err) }));
             this.setState({ loading: false });
         }
     };
@@ -485,7 +485,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             });
             if (!res.ok) throw new Error(await res.text());
             const branchName = newBranchName.trim();
-            this.showToast(`已成功创建并切换到分支 "${branchName}" ✓`);
+            this.showToast(t('git.toast.branchCreated', this.props.language, { branch: branchName }));
             this.setState({
                 newBranchName: '',
                 showNewBranchInput: false,
@@ -494,7 +494,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             });
             this.refresh();
         } catch (err) {
-            this.showToast(`创建分支失败: ${err}`);
+            this.showToast(t('git.toast.branchCreateFailed', this.props.language, { err: String(err) }));
             this.setState({ creatingBranch: false });
         }
     };
@@ -511,30 +511,30 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             });
             if (!res.ok) throw new Error(await res.text());
             this.setState({ commitMsg: '', committing: false });
-            this.showToast('提交成功 ✓');
+            this.showToast(t('git.toast.committed', this.props.language));
             this.refresh();
             if (this.state.logExpanded) this.loadLog();
         } catch (err) {
             this.setState({ committing: false });
-            this.showToast(`提交失败: ${err}`);
+            this.showToast(t('git.toast.commitFailed', this.props.language, { err: String(err) }));
         }
     };
 
     generateAICommit = async () => {
         this.setState({ aiLoading: true });
-        this.showToast('AI 正在深度分析暂存代码中… 🤖');
+        this.showToast(t('git.toast.aiAnalyzing', this.props.language));
         try {
             const res = await fetch('/api/git/ai-commit', { method: 'POST' });
             const data = await res.json();
             if (!res.ok) {
-                throw new Error(data.error || '生成失败');
+                throw new Error(data.error || t('git.toast.aiFailedFallback', this.props.language));
             }
             this.setState({ commitMsg: data.message, aiLoading: false });
-            this.showToast('提交说明生成成功 ✨');
+            this.showToast(t('git.toast.aiSuccess', this.props.language));
         } catch (err) {
             this.setState({ aiLoading: false });
             const errMsg = (err as Error)?.message || String(err);
-            this.showToast(`AI 生成失败: ${errMsg}`);
+            this.showToast(t('git.toast.aiFailed', this.props.language, { msg: errMsg }));
         }
     };
 
@@ -543,11 +543,19 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         try {
             const res = await fetch(`/api/git/${action}`, { method: 'POST' });
             if (!res.ok) throw new Error(await res.text());
-            this.showToast(action === 'push' ? '远程推送成功 ✓' : '拉取更新成功 ✓');
+            this.showToast(
+                t(action === 'push' ? 'git.toast.pushSuccess' : 'git.toast.pullSuccess', this.props.language)
+            );
             this.refresh();
             if (this.state.logExpanded) this.loadLog();
         } catch (err) {
-            this.showToast(`${action === 'push' ? '推送' : '拉取'}失败: ${err}`);
+            this.showToast(
+                t(
+                    action === 'push' ? 'git.toast.pushFailedPrefix' : 'git.toast.pullFailedPrefix',
+                    this.props.language,
+                    { err: String(err) }
+                )
+            );
         } finally {
             this.setState({ pushPullLoading: null });
         }
@@ -636,6 +644,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     renderDiff() {
         const { diffFile, diffContent, diffLoading } = this.state;
+        const { language } = this.props;
         if (!diffFile) return null;
 
         const parsedLines = this.parseDiffLines(diffContent);
@@ -647,7 +656,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     <button
                         class="git-diff-close-btn"
                         onClick={() => this.setState({ diffFile: null, diffContent: '' })}
-                        title="关闭差异"
+                        title={t('git.diff.close', language)}
                     >
                         ×
                     </button>
@@ -655,7 +664,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 {diffLoading ? (
                     <div class="git-diff-loading">
                         <div class="git-spinner" />
-                        <span>正在计算差异…</span>
+                        <span>{t('git.diff.loading', language)}</span>
                     </div>
                 ) : parsedLines.length > 0 ? (
                     <div class="git-diff-wrapper">
@@ -680,7 +689,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         </div>
                     </div>
                 ) : (
-                    <div class="git-diff-empty">文件内容无差异</div>
+                    <div class="git-diff-empty">{t('git.diff.empty', language)}</div>
                 )}
             </div>
         );
@@ -688,10 +697,11 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     renderFileRow(file: FileStatus, section: 'staged' | 'unstaged' | 'untracked') {
         const { diffFile, diffStaged } = this.state;
+        const { language } = this.props;
         const isStaged = section === 'staged';
         const isOpen = diffFile === file.path && diffStaged === isStaged;
         const statusCls = STATUS_COLOR[file.status] || 'git-status-u';
-        const label = STATUS_LABEL[file.status] || file.status;
+        const label = STATUS_KEY[file.status] ? t(STATUS_KEY[file.status], language) : file.status;
 
         return (
             <Fragment key={`${section}-${file.path}`}>
@@ -714,7 +724,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                     e.stopPropagation();
                                     this.unstage(file.path);
                                 }}
-                                title="取消暂存"
+                                title={t('git.action.unstage', language)}
                             >
                                 {IconMinus}
                             </button>
@@ -727,7 +737,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                             e.stopPropagation();
                                             this.discard(file.path);
                                         }}
-                                        title="放弃更改 (Restore)"
+                                        title={t('git.action.discard', language)}
                                     >
                                         {IconTrash}
                                     </button>
@@ -738,7 +748,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                         e.stopPropagation();
                                         this.stage(file.path);
                                     }}
-                                    title="暂存文件"
+                                    title={t('git.action.stage', language)}
                                 >
                                     {IconPlus}
                                 </button>
@@ -797,6 +807,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     }
 
     renderCleanState() {
+        const { language } = this.props;
         return (
             <div class="git-clean-state-card">
                 <div class="git-clean-illustration">
@@ -812,10 +823,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         <polyline points="22 4 12 14.01 9 11.01" />
                     </svg>
                 </div>
-                <h3 class="git-clean-title">工作区非常干净</h3>
-                <p class="git-clean-desc">没有任何未提交的更改。您可以安心开发新功能或切换到其他工作分支。</p>
+                <h3 class="git-clean-title">{t('git.clean.title', language)}</h3>
+                <p class="git-clean-desc">{t('git.clean.desc', language)}</p>
                 <button class="git-clean-refresh-btn" onClick={this.refresh}>
-                    {IconRefresh} 刷新状态
+                    {IconRefresh} {t('git.clean.refresh', language)}
                 </button>
             </div>
         );
@@ -840,13 +851,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             showNewBranchInput,
             commitSearchQuery,
         } = this.state;
+        const { language } = this.props;
 
         if (!status && loading) {
             return (
                 <div class="git-panel">
                     <div class="git-loading-full">
                         <div class="git-spinner" />
-                        <span>读取 Git 仓库状态…</span>
+                        <span>{t('git.loading.status', language)}</span>
                     </div>
                 </div>
             );
@@ -857,8 +869,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 <div class="git-panel">
                     <div class="git-no-repo">
                         <div class="git-no-repo-icon">⎇</div>
-                        <span>当前目录不是 Git 仓库</span>
-                        <span class="git-no-repo-hint">请在终端中运行 `git init` 初始化仓库</span>
+                        <span>{t('git.noRepo.title', language)}</span>
+                        <span class="git-no-repo-hint">{t('git.noRepo.hint', language)}</span>
                     </div>
                 </div>
             );
@@ -901,7 +913,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 this.setState({ branchDropdownOpen: nextOpen });
                                 if (nextOpen) this.loadBranches();
                             }}
-                            title="切换 / 创建分支"
+                            title={t('git.branch.toggleTitle', language)}
                         >
                             <span class="git-branch-icon">{IconBranch}</span>
                             <span class="git-branch-name">{status.branch}</span>
@@ -911,12 +923,18 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         {(status.ahead > 0 || status.behind > 0) && (
                             <span class="git-ahead-behind">
                                 {status.ahead > 0 && (
-                                    <span class="git-ahead" title={`领先远程 ${status.ahead} 个提交`}>
+                                    <span
+                                        class="git-ahead"
+                                        title={t('git.branch.ahead', language, { n: status.ahead })}
+                                    >
                                         ↑{status.ahead}
                                     </span>
                                 )}
                                 {status.behind > 0 && (
-                                    <span class="git-behind" title={`落后远程 ${status.behind} 个提交`}>
+                                    <span
+                                        class="git-behind"
+                                        title={t('git.branch.behind', language, { n: status.behind })}
+                                    >
                                         ↓{status.behind}
                                     </span>
                                 )}
@@ -928,14 +946,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     {branchDropdownOpen && (
                         <div class="git-branch-dropdown">
                             <div class="git-dropdown-header">
-                                <span>选择分支</span>
+                                <span>{t('git.branch.selectTitle', language)}</span>
                                 <button
                                     class={`git-create-branch-toggle-btn ${showNewBranchInput ? 'active' : ''}`}
                                     onClick={e => {
                                         e.stopPropagation();
                                         this.setState({ showNewBranchInput: !showNewBranchInput });
                                     }}
-                                    title="新建分支"
+                                    title={t('git.branch.new', language)}
                                 >
                                     {IconPlus}
                                 </button>
@@ -946,7 +964,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                     <input
                                         type="text"
                                         class="git-new-branch-input"
-                                        placeholder="分支名称…"
+                                        placeholder={t('git.branch.namePlaceholder', language)}
                                         value={newBranchName}
                                         onInput={e =>
                                             this.setState({ newBranchName: (e.target as HTMLInputElement).value })
@@ -961,7 +979,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                         onClick={this.createBranch}
                                         disabled={creatingBranch || !newBranchName.trim()}
                                     >
-                                        {creatingBranch ? '…' : '创建'}
+                                        {creatingBranch
+                                            ? t('git.branch.creating', language)
+                                            : t('git.branch.create', language)}
                                     </button>
                                 </div>
                             )}
@@ -970,10 +990,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 {branchesLoading ? (
                                     <div class="git-dropdown-loading">
                                         <div class="git-spinner" />
-                                        <span>加载中…</span>
+                                        <span>{t('git.branch.loading', language)}</span>
                                     </div>
                                 ) : branches.length === 0 ? (
-                                    <div class="git-dropdown-empty">暂无可用分支</div>
+                                    <div class="git-dropdown-empty">{t('git.branch.empty', language)}</div>
                                 ) : (
                                     branches.map(b => (
                                         <div
@@ -996,9 +1016,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 <div class="git-commit-box">
                     <textarea
                         class="git-commit-input"
-                        placeholder={
-                            hasStaged ? '输入提交说明（Ctrl+Enter 快捷提交）' : '请先暂存文件，然后输入提交说明…'
-                        }
+                        placeholder={t(
+                            hasStaged ? 'git.commit.placeholderReady' : 'git.commit.placeholderEmpty',
+                            language
+                        )}
                         disabled={!hasStaged}
                         value={commitMsg}
                         onInput={e => this.setState({ commitMsg: (e.target as HTMLTextAreaElement).value })}
@@ -1012,7 +1033,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             class="git-ai-commit-btn"
                             onClick={this.generateAICommit}
                             disabled={!hasStaged || this.state.aiLoading}
-                            title="AI 智能生成提交说明 (Claude Code)"
+                            title={t('git.commit.aiTitle', language)}
                         >
                             {this.state.aiLoading ? <div class="git-spinner" /> : IconSparkles}
                         </button>
@@ -1020,14 +1041,18 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             class="git-commit-btn"
                             onClick={this.commit}
                             disabled={!hasStaged || !commitMsg.trim() || committing}
-                            title="Ctrl+Enter 提交暂存"
+                            title={t('git.commit.submitTitle', language)}
                         >
                             {committing ? (
-                                '提交中…'
+                                t('git.commit.committing', language)
                             ) : (
                                 <Fragment>
                                     {IconCommit}
-                                    <span>提交{stagedCount > 0 ? ` (${stagedCount})` : ''}</span>
+                                    <span>
+                                        {t('git.commit.commitLabel', language, {
+                                            n: stagedCount > 0 ? ` (${stagedCount})` : '',
+                                        })}
+                                    </span>
                                 </Fragment>
                             )}
                         </button>
@@ -1035,7 +1060,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             class="git-push-btn"
                             onClick={() => this.pushOrPull('push')}
                             disabled={pushPullLoading !== null}
-                            title="推送 (Push)"
+                            title={t('git.action.push', language)}
                         >
                             {pushPullLoading === 'push' ? <div class="git-spinner" /> : IconPush}
                         </button>
@@ -1043,7 +1068,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             class="git-pull-btn"
                             onClick={() => this.pushOrPull('pull')}
                             disabled={pushPullLoading !== null}
-                            title="拉取 (Pull)"
+                            title={t('git.action.pull', language)}
                         >
                             {pushPullLoading === 'pull' ? <div class="git-spinner" /> : IconPull}
                         </button>
@@ -1055,14 +1080,26 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     this.renderCleanState()
                 ) : (
                     <div class="git-sections-container">
-                        {this.renderSection('已暂存的更改', staged, 'staged', () => this.unstage(null), '全部取消')}
-                        {this.renderSection('未暂存的更改', unstaged, 'unstaged', () => this.stage(null), '全部暂存 +')}
                         {this.renderSection(
-                            '未跟踪的文件',
+                            t('git.section.staged', language),
+                            staged,
+                            'staged',
+                            () => this.unstage(null),
+                            t('git.section.unstageAll', language)
+                        )}
+                        {this.renderSection(
+                            t('git.section.unstaged', language),
+                            unstaged,
+                            'unstaged',
+                            () => this.stage(null),
+                            t('git.section.stageAll', language)
+                        )}
+                        {this.renderSection(
+                            t('git.section.untracked', language),
                             untracked,
                             'untracked',
                             () => this.stage(null),
-                            '全部暂存 +'
+                            t('git.section.stageAll', language)
                         )}
                     </div>
                 )}
@@ -1075,7 +1112,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     >
                         <span class="git-section-title">
                             {IconChevron(logExpanded)}
-                            最近提交历史
+                            {t('git.log.title', language)}
                         </span>
                     </div>
 
@@ -1087,7 +1124,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 <input
                                     type="text"
                                     class="git-log-search-input"
-                                    placeholder="根据信息 / 作者 / 哈希过滤…"
+                                    placeholder={t('git.log.searchPlaceholder', language)}
                                     value={commitSearchQuery}
                                     onInput={e =>
                                         this.setState({ commitSearchQuery: (e.target as HTMLInputElement).value })
@@ -1097,7 +1134,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                     <button
                                         class="git-log-search-clear"
                                         onClick={() => this.setState({ commitSearchQuery: '' })}
-                                        title="清空搜索"
+                                        title={t('git.log.clearSearch', language)}
                                     >
                                         ×
                                     </button>
@@ -1107,10 +1144,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             {logLoading ? (
                                 <div class="git-loading-row">
                                     <div class="git-spinner" />
-                                    <span>正在加载提交历史…</span>
+                                    <span>{t('git.log.loading', language)}</span>
                                 </div>
                             ) : filteredLog.length === 0 ? (
-                                <div class="git-log-empty">未匹配到任何提交记录</div>
+                                <div class="git-log-empty">{t('git.log.empty', language)}</div>
                             ) : (
                                 <div class="git-log-timeline">
                                     <div class="git-log-timeline-line" />
@@ -1121,7 +1158,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                             <div
                                                 key={c.hash}
                                                 class="git-log-timeline-item"
-                                                title={`作者: ${c.author}\n完整哈希: ${c.hash}`}
+                                                title={t('git.log.tooltip', language, {
+                                                    author: c.author,
+                                                    hash: c.hash,
+                                                })}
                                             >
                                                 <div class="git-log-avatar-container">
                                                     <div class="git-log-avatar" style={{ backgroundColor: avatarBg }}>
@@ -1136,9 +1176,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                                             onClick={e => {
                                                                 e.stopPropagation();
                                                                 navigator.clipboard.writeText(c.hash);
-                                                                this.showToast('提交哈希已成功复制 📋');
+                                                                this.showToast(t('git.toast.hashCopied', language));
                                                             }}
-                                                            title="点击复制完整哈希值"
+                                                            title={t('git.log.copyHash', language)}
                                                         >
                                                             {c.short}
                                                         </span>
@@ -1146,7 +1186,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                                     <div class="git-log-meta-row">
                                                         <span class="git-log-author">{c.author}</span>
                                                         <span class="git-log-bullet">•</span>
-                                                        <span class="git-log-time">{relativeTime(c.time)}</span>
+                                                        <span class="git-log-time">
+                                                            {relativeTime(c.time, language)}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </div>

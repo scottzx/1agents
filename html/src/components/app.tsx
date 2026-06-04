@@ -18,6 +18,7 @@ import { workspaceService } from '../services/workspaceService';
 import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
+import { t, type Lang } from '../i18n';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const path = window.location.pathname.replace(/[/]+$/, '');
@@ -169,7 +170,7 @@ interface AppState {
     keyboardVisible: boolean;
     viewportHeight: number;
     activeSession: Session | null;
-    language: 'zh-CN' | 'en-US';
+    language: Lang;
     // ── Access token state ──
     accessGateVisible: boolean;
     accessAuthRequired: boolean;
@@ -188,6 +189,7 @@ interface BuiltinBrowserProps {
     tab: Tab;
     active: boolean;
     onUrlChange: (tabId: string, url: string) => void;
+    language: Lang;
 }
 
 interface BuiltinBrowserState {
@@ -345,6 +347,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
 
     render() {
         const { tab, active } = this.props;
+        const { language } = this.props;
         const isHome = !tab.url || tab.url === 'about:blank';
 
         return (
@@ -353,7 +356,12 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
                 style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}
             >
                 <div class="browser-nav-bar">
-                    <button class="browser-refresh-btn" onClick={this.handleRefresh} title="刷新页面" disabled={isHome}>
+                    <button
+                        class="browser-refresh-btn"
+                        onClick={this.handleRefresh}
+                        title={t('app.browser.refresh', this.props.language)}
+                        disabled={isHome}
+                    >
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -369,7 +377,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
                     <input
                         type="text"
                         class="browser-url-input"
-                        placeholder="输入网址并回车 (e.g. www.bing.com 或 localhost:3000)"
+                        placeholder={t('app.browser.placeholder', this.props.language)}
                         value={tab.url === 'about:blank' ? '' : tab.url}
                         ref={el => {
                             this.inputRef = el;
@@ -379,7 +387,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
                     <button
                         class="browser-open-external-btn"
                         onClick={this.handleOpenExternal}
-                        title="在本地浏览器中打开"
+                        title={t('app.browser.openExternal', this.props.language)}
                         disabled={isHome}
                     >
                         <svg
@@ -416,22 +424,16 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
                                     <line x1="2" y1="12" x2="22" y2="12" />
                                     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                                 </svg>
-                                <h3 class="welcome-title">内置浏览器</h3>
-                                <p class="welcome-desc">在上方地址栏输入网址并按回车键进行浏览。</p>
+                                <h3 class="welcome-title">{t('app.browser.title', language)}</h3>
+                                <p class="welcome-desc">{t('app.browser.welcomeDesc', language)}</p>
                                 <div class="welcome-tips">
                                     <div class="tip-item">
-                                        <strong>💡 提示：</strong>
-                                        <span>
-                                            该浏览器基于 iframe 渲染，对于公网网页，自动使用 Go
-                                            后端进行代理以解决跨域与安全策略拦截；本地服务直连加载。
-                                        </span>
+                                        <strong>{t('app.browser.tipProxyLabel', language)}</strong>
+                                        <span>{t('app.browser.tipProxyDesc', language)}</span>
                                     </div>
                                     <div class="tip-item">
-                                        <strong>🌐 外部打开：</strong>
-                                        <span>
-                                            若页面遇到复杂的 JS
-                                            渲染问题或白屏，可点击输入框右侧的按钮，直接使用系统默认浏览器打开该网页。
-                                        </span>
+                                        <strong>{t('app.browser.tipExternalLabel', language)}</strong>
+                                        <span>{t('app.browser.tipExternalDesc', language)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -518,14 +520,14 @@ export class App extends Component<{}, AppState> {
             isMobile: window.innerWidth <= 768,
             keyboardVisible: false,
             viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
-            language: (localStorage.getItem('1agents-language') || 'zh-CN') as 'zh-CN' | 'en-US',
+            language: (localStorage.getItem('1agents-language') || 'zh-CN') as Lang,
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
             accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
             hasLoadedWorkspaces: false,
-            tabs: [{ id: 'terminal', title: '工作台', type: 'terminal', closable: false }],
+            tabs: [{ id: 'terminal', title: t('app.tab.workbench', 'zh-CN'), type: 'terminal', closable: false }],
             activeTabId: 'terminal',
         };
     }
@@ -715,7 +717,7 @@ export class App extends Component<{}, AppState> {
             }
         } catch (err) {
             console.error('[workspace] failed to create temp workspace:', err);
-            this.showToast(`创建 temp 空间失败: ${err}`);
+            this.showToast(t('app.toast.tempCreateFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -750,9 +752,9 @@ export class App extends Component<{}, AppState> {
                     await this.selectWorkspace(workspaces[0]);
                 }
             }
-            this.showToast(`工作空间 "${name}" 已创建 ✓`);
+            this.showToast(t('app.toast.workspaceCreated', this.state.language, { name }));
         } catch (err) {
-            this.showToast(`创建失败: ${err}`);
+            this.showToast(t('app.toast.workspaceCreateFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -761,16 +763,16 @@ export class App extends Component<{}, AppState> {
         try {
             await workspaceService.update(ws);
             await this.loadWorkspaces();
-            this.showToast('工作空间已更新 ✓');
+            this.showToast(t('app.toast.workspaceUpdated', this.state.language));
         } catch (err) {
-            this.showToast(`更新失败: ${err}`);
+            this.showToast(t('app.toast.workspaceUpdateFailed', this.state.language, { err: String(err) }));
         }
     };
 
     /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
     deleteWorkspace = async (id: string) => {
         if (this.state.workspaces.length <= 1) {
-            this.showToast('无法删除，系统需保留至少一个工作空间');
+            this.showToast(t('app.toast.workspaceDeleteLast', this.state.language));
             return;
         }
         try {
@@ -783,9 +785,9 @@ export class App extends Component<{}, AppState> {
             await workspaceService.delete(id);
             await this.loadTerminals();
             await this.loadWorkspaces();
-            this.showToast('工作空间已删除 ✓');
+            this.showToast(t('app.toast.workspaceDeleted', this.state.language));
         } catch (err) {
-            this.showToast(`删除失败: ${err}`);
+            this.showToast(t('app.toast.workspaceDeleteFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -894,7 +896,7 @@ export class App extends Component<{}, AppState> {
                         id: w.name,
                         workspaceId: w.workspaceId,
                         index: w.index,
-                        name: `会话 #${w.index}`,
+                        name: t('app.session.title', this.state.language, { index: w.index }),
                         active: w.active,
                         cwd: w.cwd,
                     })),
@@ -906,7 +908,7 @@ export class App extends Component<{}, AppState> {
                   id: activeWin.name,
                   workspaceId: activeWin.workspaceId,
                   index: activeWin.index,
-                  name: `会话 #${activeWin.index}`,
+                  name: t('app.session.title', this.state.language, { index: activeWin.index }),
                   active: true,
                   cwd: activeWin.cwd,
               }
@@ -919,9 +921,9 @@ export class App extends Component<{}, AppState> {
         try {
             await terminalService.create(workspaceId, cwd);
             await this.loadTerminals();
-            this.showToast('新会话已创建 ✓');
+            this.showToast(t('app.toast.sessionCreated', this.state.language));
         } catch (err) {
-            this.showToast(`创建会话失败: ${err}`);
+            this.showToast(t('app.toast.sessionCreateFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -940,9 +942,9 @@ export class App extends Component<{}, AppState> {
         try {
             await terminalService.kill(windowIndex);
             await this.loadTerminals();
-            this.showToast('会话已关闭 ✓');
+            this.showToast(t('app.toast.sessionKilled', this.state.language));
         } catch (err) {
-            this.showToast(`关闭会话失败: ${err}`);
+            this.showToast(t('app.toast.sessionKillFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -963,12 +965,12 @@ export class App extends Component<{}, AppState> {
             const actualState = await terminalService.setMouse(nextState);
             this.setState({ tmuxMouseOn: actualState });
             if (actualState) {
-                this.showToast('已开启滚轮滑动模式 (可通过方向键选择历史命令) ✓');
+                this.showToast(t('app.toast.mouseScrollOn', this.state.language));
             } else {
-                this.showToast('已开启鼠标选择复制模式 (可直接拖拽选中复制) ✓');
+                this.showToast(t('app.toast.mouseSelectOn', this.state.language));
             }
         } catch (err) {
-            this.showToast(`切换鼠标模式失败: ${err}`);
+            this.showToast(t('app.toast.mouseToggleFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -1037,7 +1039,7 @@ export class App extends Component<{}, AppState> {
                 const ws = workspaces.find(w => w.id === session.workspaceId);
                 if (ws) {
                     await this.switchWorkspaceContext(ws);
-                    this.showToast(`已切换到 "${ws.name}" ✓`);
+                    this.showToast(t('app.toast.workspaceSwitched', this.state.language, { name: ws.name }));
                 }
             }
         };
@@ -1079,7 +1081,7 @@ export class App extends Component<{}, AppState> {
 
         // Switch backend context (fs + git roots) and reload file browser
         await this.switchWorkspaceContext(ws);
-        this.showToast(`已切换到 "${ws.name}" ✓`);
+        this.showToast(t('app.toast.workspaceSwitched', this.state.language, { name: ws.name }));
     };
 
     // ── File system API helpers ──────────────────────────────────────────────
@@ -1200,15 +1202,22 @@ export class App extends Component<{}, AppState> {
         this.setState({ fileSaving: true, fileSaveMsg: '' });
         try {
             await fsService.write(selectedFsEntry.path, editedContent);
-            this.setState({ fileContent: editedContent, fileSaving: false, fileSaveMsg: '已保存 ✓' });
+            this.setState({
+                fileContent: editedContent,
+                fileSaving: false,
+                fileSaveMsg: t('app.toast.fileSaved', this.state.language),
+            });
             setTimeout(() => this.setState({ fileSaveMsg: '' }), 2000);
         } catch (err) {
             console.error('[fs] write error:', err);
-            this.setState({ fileSaving: false, fileSaveMsg: `保存失败: ${err}` });
+            this.setState({
+                fileSaving: false,
+                fileSaveMsg: t('app.toast.fileSaveFailed', this.state.language, { err: String(err) }),
+            });
         }
     };
 
-    updateCcConnectUrlParams = (theme: 'light' | 'dark', lang: 'zh-CN' | 'en-US') => {
+    updateCcConnectUrlParams = (theme: 'light' | 'dark', lang: Lang) => {
         const urlStr = this.state.ccConnectUrl;
         if (!urlStr) return;
         try {
@@ -1262,7 +1271,7 @@ export class App extends Component<{}, AppState> {
         this.triggerTerminalFit();
     };
 
-    toggleLanguage = (lang: 'zh-CN' | 'en-US') => {
+    toggleLanguage = (lang: Lang) => {
         this.setState({ language: lang }, () => {
             // Also notify the CC-Connect iframe of the language change
             const iframe = document.getElementById('cc-connect-iframe') as HTMLIFrameElement | null;
@@ -1279,7 +1288,8 @@ export class App extends Component<{}, AppState> {
             }
         });
         localStorage.setItem('1agents-language', lang);
-        this.showToast(`默认识别语言已切换为: ${lang === 'zh-CN' ? '中文' : 'English'} ✓`);
+        const langName = t(lang === 'zh-CN' ? 'app.langName.zh' : 'app.langName.en', lang);
+        this.showToast(t('app.toast.langChanged', lang, { lang: langName }));
     };
 
     triggerTerminalFit = () => {
@@ -1304,7 +1314,7 @@ export class App extends Component<{}, AppState> {
 
         if (tab.type === 'preview' && tab.path) {
             const entry: FsEntry = {
-                name: tab.title.replace('预览: ', ''),
+                name: tab.title.replace(t('app.preview.prefix', this.state.language), ''),
                 path: tab.path,
                 isDir: false,
                 size: 0,
@@ -1324,7 +1334,7 @@ export class App extends Component<{}, AppState> {
         if (!exists) {
             const newTab: Tab = {
                 id: tabId,
-                title: `预览: ${fileName}`,
+                title: `${t('app.preview.prefix', this.state.language)}${fileName}`,
                 type: 'preview',
                 path: path,
                 closable: true,
@@ -1341,7 +1351,7 @@ export class App extends Component<{}, AppState> {
         const tabId = `browser-${Date.now()}`;
         const newTab: Tab = {
             id: tabId,
-            title: '内置浏览器',
+            title: t('app.browser.title', this.state.language),
             type: 'browser',
             url: url,
             closable: true,
@@ -1384,7 +1394,12 @@ export class App extends Component<{}, AppState> {
 
     renderBuiltinBrowser = (tab: Tab) => {
         return (
-            <BuiltinBrowser tab={tab} active={this.state.activeTabId === tab.id} onUrlChange={this.updateBrowserUrl} />
+            <BuiltinBrowser
+                tab={tab}
+                active={this.state.activeTabId === tab.id}
+                onUrlChange={this.updateBrowserUrl}
+                language={this.state.language}
+            />
         );
     };
 
@@ -1557,17 +1572,17 @@ export class App extends Component<{}, AppState> {
             const token = await accessService.generateToken();
             this.setState({ accessTokenModalToken: token, accessAuthRequired: true });
         } catch (err) {
-            this.showToast(`生成令牌失败: ${err}`);
+            this.showToast(t('app.toast.tokenGenerateFailed', this.state.language, { err: String(err) }));
         }
     };
 
     revokeAccessToken = async () => {
         try {
             await accessService.revokeToken();
-            this.showToast('访问令牌已撤销');
+            this.showToast(t('app.toast.tokenRevoked', this.state.language));
             await this.checkAccessStatus();
         } catch (err) {
-            this.showToast(`撤销失败: ${err}`);
+            this.showToast(t('app.toast.tokenRevokeFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -1622,9 +1637,9 @@ export class App extends Component<{}, AppState> {
     copyFileContent = async () => {
         try {
             await navigator.clipboard.writeText(this.state.fileContent);
-            this.showToast('复制成功 ✓');
+            this.showToast(t('app.toast.copySuccess', this.state.language));
         } catch (_) {
-            this.showToast('复制失败');
+            this.showToast(t('app.toast.copyFailed', this.state.language));
         }
     };
 
@@ -1640,10 +1655,10 @@ export class App extends Component<{}, AppState> {
         const newPath = `${dir}${base}_copy${ext}`;
         try {
             await fsService.write(newPath, fileContent);
-            this.showToast('已复制文件 ✓');
+            this.showToast(t('app.toast.fileDuplicated', this.state.language));
             this.loadDir('', null);
         } catch (err) {
-            this.showToast(`复制失败: ${err}`);
+            this.showToast(t('app.toast.fileDuplicateFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -1662,7 +1677,7 @@ export class App extends Component<{}, AppState> {
     renameFile = async () => {
         const { selectedFsEntry, fileContent } = this.state;
         if (!selectedFsEntry) return;
-        const newName = window.prompt('请输入新文件名:', selectedFsEntry.name);
+        const newName = window.prompt(t('app.prompt.rename', this.state.language), selectedFsEntry.name);
         if (!newName || newName === selectedFsEntry.name) return;
         const dir = selectedFsEntry.path.includes('/')
             ? selectedFsEntry.path.slice(0, selectedFsEntry.path.lastIndexOf('/') + 1)
@@ -1671,11 +1686,11 @@ export class App extends Component<{}, AppState> {
         try {
             // Write content to new path
             await fsService.write(newPath, fileContent);
-            this.showToast('重命名成功 ✓');
+            this.showToast(t('app.toast.renameSuccess', this.state.language));
             this.setState({ selectedFsEntry: { ...selectedFsEntry, name: newName, path: newPath }, viewMode: 'list' });
             this.loadDir('', null);
         } catch (err) {
-            this.showToast(`重命名失败: ${err}`);
+            this.showToast(t('app.toast.renameFailed', this.state.language, { err: String(err) }));
         }
     };
 
@@ -1694,9 +1709,9 @@ export class App extends Component<{}, AppState> {
         )}`;
         try {
             await navigator.clipboard.writeText(shareUrl);
-            this.showToast('分享链接已复制到剪贴板 ✓');
+            this.showToast(t('app.toast.shareCopied', this.state.language));
         } catch (_) {
-            this.showToast('复制分享链接失败，请手动复制');
+            this.showToast(t('app.toast.shareCopyFailed', this.state.language));
         }
     };
 
@@ -1790,7 +1805,7 @@ export class App extends Component<{}, AppState> {
 
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
-            return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} />;
+            return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} language={language} />;
         }
 
         // If workspaces are empty and loading on initial load, show a loading spinner
@@ -1803,7 +1818,7 @@ export class App extends Component<{}, AppState> {
                     <div class="fb-loading" style="display: flex; flex-direction: column; align-items: center;">
                         <div class="fb-loading-spinner" />
                         <span style="color: var(--text-main); margin-top: 12px; font-family: var(--font-sans);">
-                            {language === 'zh-CN' ? '正在载入工作空间…' : 'Loading workspaces…'}
+                            {t('app.loading.workspaces', language)}
                         </span>
                     </div>
                 </div>
@@ -1822,7 +1837,9 @@ export class App extends Component<{}, AppState> {
                     >
                         <div class="fb-loading" style="display: flex; flex-direction: column; align-items: center;">
                             <div class="fb-loading-spinner" />
-                            <span style="color: var(--text-main); margin-top: 12px;">载入分享文件预览中…</span>
+                            <span style="color: var(--text-main); margin-top: 12px;">
+                                {t('app.loading.sharePreview', language)}
+                            </span>
                         </div>
                     </div>
                 );
@@ -1861,6 +1878,7 @@ export class App extends Component<{}, AppState> {
                         onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
                         onEditedContentChange={content => this.setState({ editedContent: content })}
                         isStandalone={true}
+                        language={language}
                     />
                     {toastMsg && (
                         <div class="fb-toast">
@@ -1911,7 +1929,7 @@ export class App extends Component<{}, AppState> {
                                                             e.stopPropagation();
                                                             this.closeTab(tab.id);
                                                         }}
-                                                        title="关闭标签页"
+                                                        title={t('common.closeTab', language)}
                                                     >
                                                         <svg
                                                             viewBox="0 0 24 24"
@@ -1933,7 +1951,7 @@ export class App extends Component<{}, AppState> {
                                 <button
                                     class="workspace-tab-add-btn"
                                     onClick={() => this.openBrowserTab('')}
-                                    title="打开新浏览器标签页"
+                                    title={t('common.openBrowserTab', language)}
                                 >
                                     <svg
                                         viewBox="0 0 24 24"
@@ -1975,6 +1993,7 @@ export class App extends Component<{}, AppState> {
                                         onSelectSession={s => this.selectSession(s)}
                                         onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
                                         onTerminalKill={idx => this.killTerminal(idx)}
+                                        language={language}
                                     />
 
                                     {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -1982,7 +2001,7 @@ export class App extends Component<{}, AppState> {
                                         <div
                                             class="resizer resizer-left"
                                             onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
-                                            title="拖动调整左侧栏宽度"
+                                            title={t('app.resizer.leftTitle', language)}
                                         />
                                     )}
                                 </Fragment>
@@ -2019,6 +2038,7 @@ export class App extends Component<{}, AppState> {
                                             sessionName={activeSession?.name || ''}
                                             tmuxMouseOn={tmuxMouseOn}
                                             onTmuxMouseToggle={this.toggleTmuxMouse}
+                                            language={language}
                                         />
 
                                         {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
@@ -2092,6 +2112,7 @@ export class App extends Component<{}, AppState> {
                                                                 onOpenBrowserTab={
                                                                     IS_DESKTOP ? this.openBrowserTab : undefined
                                                                 }
+                                                                language={language}
                                                             />
                                                         </div>
                                                     )}
@@ -2135,6 +2156,7 @@ export class App extends Component<{}, AppState> {
                                                         onKeyboardStateChange={this.handleKeyboardStateChange}
                                                         tmuxMouseOn={tmuxMouseOn}
                                                         onTmuxMouseToggle={this.toggleTmuxMouse}
+                                                        language={language}
                                                     />
 
                                                     {/* Resizer: between MIDDLE canvas and RIGHT panel */}
@@ -2144,7 +2166,7 @@ export class App extends Component<{}, AppState> {
                                                             onMouseDown={(e: MouseEvent) =>
                                                                 this.handleResizerDown('right', e)
                                                             }
-                                                            title="拖动调整右侧栏宽度"
+                                                            title={t('app.resizer.rightTitle', language)}
                                                         />
                                                     )}
 
@@ -2304,11 +2326,12 @@ export class App extends Component<{}, AppState> {
                                                                 : undefined
                                                         }
                                                         isStandalone={true}
+                                                        language={language}
                                                     />
                                                 ) : (
                                                     <div class="fb-loading">
                                                         <div class="fb-loading-spinner" />
-                                                        <span>正在载入预览…</span>
+                                                        <span>{t('app.loading.preview', language)}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -2349,6 +2372,7 @@ export class App extends Component<{}, AppState> {
                         onClose={this.closeWsModal}
                         onBrowse={this.openDirPickerForModal}
                         onSubmit={this.submitWsModal}
+                        language={language}
                     />
                 )}
 
@@ -2363,6 +2387,7 @@ export class App extends Component<{}, AppState> {
                             this.setState({ dirPickerOpen: false });
                         }}
                         onShowToast={this.showToast}
+                        language={language}
                     />
                 )}
 
@@ -2372,6 +2397,7 @@ export class App extends Component<{}, AppState> {
                         token={accessTokenModalToken}
                         onClose={this.closeAccessTokenModal}
                         onShowToast={this.showToast}
+                        language={language}
                     />
                 )}
 
