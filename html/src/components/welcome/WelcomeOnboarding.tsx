@@ -1,7 +1,8 @@
 import { h, Component } from 'preact';
+import { t, type Lang } from '../i18n';
 
 interface WelcomeOnboardingProps {
-    language: 'zh-CN' | 'en-US';
+    language: Lang;
     onCreateWorkspace: () => void;
     onUseTempWorkspace: () => void;
 }
@@ -67,13 +68,11 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                     </div>
 
                     <h1 style="font-size: 32px; font-weight: 700; margin: 0 0 12px 0; background: linear-gradient(135deg, var(--text-main), var(--text-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                        {language === 'zh-CN' ? '欢迎使用 1Agents' : 'Welcome to 1Agents'}
+                        {t('welcome.title', language)}
                     </h1>
 
                     <p style="font-size: 15px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 32px 0; max-width: 480px;">
-                        {language === 'zh-CN'
-                            ? '轻量级、免配置的 Web 协同智能体开发工作台。集成极致响应的 Web 终端、全功能文件浏览器及智能体路由调度。'
-                            : 'A lightweight, zero-config remote web workbench integrating high-performance terminals, file manager, and AI agent channel routing.'}
+                        {t('welcome.subtitle', language)}
                     </p>
 
                     <div
@@ -97,12 +96,10 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                             </div>
                             <div>
                                 <h4 style="font-size: 14px; font-weight: 600; margin: 0 0 4px 0; color: var(--text-main);">
-                                    {language === 'zh-CN' ? '持久化终端会话' : 'Persistent Terminal Sessions'}
+                                    {t('welcome.feat1Title', language)}
                                 </h4>
                                 <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
-                                    {language === 'zh-CN'
-                                        ? '内置 tmux，支持意外断开自动持久重连。'
-                                        : 'Built-in tmux state keeps terminal sessions running indefinitely.'}
+                                    {t('welcome.feat1Desc', language)}
                                 </p>
                             </div>
                         </div>
@@ -123,12 +120,10 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                             </div>
                             <div>
                                 <h4 style="font-size: 14px; font-weight: 600; margin: 0 0 4px 0; color: var(--text-main);">
-                                    {language === 'zh-CN' ? '全功能文件管理' : 'Full File-System Explorer'}
+                                    {t('welcome.feat2Title', language)}
                                 </h4>
                                 <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
-                                    {language === 'zh-CN'
-                                        ? '直观管理项目代码，支持 HTML/PDF/图片高清预览及在线编辑。'
-                                        : 'Manage code files with premium online editing and HTML/PDF previews.'}
+                                    {t('welcome.feat2Desc', language)}
                                 </p>
                             </div>
                         </div>
@@ -154,7 +149,7 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                                 <line x1="12" y1="5" x2="12" y2="19" />
                                 <line x1="5" y1="12" x2="19" y2="12" />
                             </svg>
-                            {language === 'zh-CN' ? '导入我自己的项目' : 'Import My Own Project'}
+                            {t('welcome.cta1', language)}
                         </button>
 
                         {/* Option 2: Directly Use Default Workspace */}
@@ -174,7 +169,7 @@ export class WelcomeOnboarding extends Component<WelcomeOnboardingProps> {
                             >
                                 <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
                             </svg>
-                            {language === 'zh-CN' ? '直接进入 temp 空间' : 'Directly Enter Temp Space'}
+                            {t('welcome.cta2', language)}
                         </button>
                     </div>
                 </div>

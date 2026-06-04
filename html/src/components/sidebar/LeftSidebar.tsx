@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session } from '../types';
+import { t, type Lang } from '../i18n';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -20,6 +21,7 @@ interface LeftSidebarProps {
     onSelectSession: (session: Session) => void;
     onTerminalCreate: (workspaceId: string, cwd: string) => void;
     onTerminalKill: (windowIndex: number) => void;
+    language: Lang;
 }
 
 export function LeftSidebar({
@@ -40,6 +42,7 @@ export function LeftSidebar({
     onSelectSession,
     onTerminalCreate,
     onTerminalKill,
+    language,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -92,7 +95,7 @@ export function LeftSidebar({
                         <img class="brand-logo-img" src="/logo.png" />
                         <span>1agents</span>
                     </div>
-                    <div class="sidebar-close-btn" onClick={toggleLeftSidebar} title="折叠侧边栏">
+                    <div class="sidebar-close-btn" onClick={toggleLeftSidebar} title={t('sidebar.collapse', language)}>
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -110,7 +113,7 @@ export function LeftSidebar({
             <div class="sidebar-scroll">
                 <div class="workspace-section">
                     <div class="section-header">
-                        <span>工作空间 Workspaces</span>
+                        <span>{t('sidebar.workspaces', language)}</span>
                         <div class="header-actions">
                             {/* Add workspace button */}
                             <button
@@ -119,7 +122,7 @@ export function LeftSidebar({
                                     e.stopPropagation();
                                     onCreateWorkspace();
                                 }}
-                                title="新建工作空间"
+                                title={t('sidebar.newWorkspace', language)}
                             >
                                 <svg
                                     viewBox="0 0 24 24"
@@ -157,9 +160,9 @@ export function LeftSidebar({
                             >
                                 <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                             </svg>
-                            <span>暂无工作空间</span>
+                            <span>{t('sidebar.empty', language)}</span>
                             <button class="ws-empty-add" onClick={onCreateWorkspace}>
-                                + 新建
+                                {t('common.new', language)}
                             </button>
                         </div>
                     )}
@@ -187,15 +190,15 @@ export function LeftSidebar({
                                     {isConfirmingDelete ? (
                                         /* Delete confirm inline */
                                         <div class="ws-delete-confirm">
-                                            <span>删除 "{folder.name}"？</span>
+                                            <span>{t('sidebar.deleteConfirm', language, { name: folder.name })}</span>
                                             <button
                                                 class="ws-del-yes"
                                                 onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
                                             >
-                                                删除
+                                                {t('common.delete', language)}
                                             </button>
                                             <button class="ws-del-no" onClick={cancelDelete}>
-                                                取消
+                                                {t('common.cancel', language)}
                                             </button>
                                         </div>
                                     ) : (
@@ -238,7 +241,7 @@ export function LeftSidebar({
                                                 {ws && (
                                                     <button
                                                         class="ws-action-btn ws-action-add"
-                                                        title="新建终端"
+                                                        title={t('sidebar.newTerminal', language)}
                                                         onClick={(e: MouseEvent) => {
                                                             e.stopPropagation();
                                                             onTerminalCreate(ws.id, ws.terminalDir || ws.path);
@@ -260,7 +263,7 @@ export function LeftSidebar({
                                                     ws && [
                                                         <button
                                                             class="ws-action-btn"
-                                                            title="编辑"
+                                                            title={t('common.edit', language)}
                                                             onClick={(e: MouseEvent) => {
                                                                 e.stopPropagation();
                                                                 onRenameWorkspace(ws);
@@ -280,7 +283,7 @@ export function LeftSidebar({
                                                         </button>,
                                                         <button
                                                             class="ws-action-btn ws-action-delete"
-                                                            title="删除"
+                                                            title={t('common.delete', language)}
                                                             onClick={(e: MouseEvent) => handleDeleteClick(e, folder.id)}
                                                         >
                                                             <svg
@@ -305,7 +308,7 @@ export function LeftSidebar({
                                     {folder.expanded && (
                                         <div class="project-children">
                                             {folder.sessions.length === 0 ? (
-                                                <div class="ws-no-sessions">暂无会话 — 点击工作空间旁的 + 创建</div>
+                                                <div class="ws-no-sessions">{t('sidebar.noSessions', language)}</div>
                                             ) : (
                                                 folder.sessions.map(session => (
                                                     <div
@@ -326,7 +329,7 @@ export function LeftSidebar({
                                                         <span class="chat-time">{session.workspaceId}</span>
                                                         <button
                                                             class="session-kill-btn"
-                                                            title="关闭会话"
+                                                            title={t('sidebar.closeSession', language)}
                                                             onClick={(e: MouseEvent) => {
                                                                 e.stopPropagation();
                                                                 setKillingSessionIndex(session.index);
@@ -363,7 +366,7 @@ export function LeftSidebar({
                 <div
                     class={`footer-item${activeDrawerTab === 'providers' ? ' active' : ''}`}
                     onClick={() => toggleDrawerTab('providers')}
-                    title="模型与服务商管理"
+                    title={t('sidebar.providersTitle', language)}
                 >
                     <svg
                         viewBox="0 0 24 24"
@@ -378,12 +381,12 @@ export function LeftSidebar({
                         <line x1="6" y1="6" x2="6.01" y2="6" />
                         <line x1="6" y1="18" x2="6.01" y2="18" />
                     </svg>
-                    <span>模型管理</span>
+                    <span>{t('sidebar.providers', language)}</span>
                 </div>
                 <div
                     class={`footer-item${activeDrawerTab === 'skills' ? ' active' : ''}`}
                     onClick={() => toggleDrawerTab('skills')}
-                    title="技能与 MCP 管理"
+                    title={t('sidebar.skillsTitle', language)}
                 >
                     <svg
                         viewBox="0 0 24 24"
@@ -395,12 +398,12 @@ export function LeftSidebar({
                     >
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                     </svg>
-                    <span>技能管理</span>
+                    <span>{t('sidebar.skills', language)}</span>
                 </div>
                 <div
                     class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
                     onClick={() => toggleDrawerTab('discovery')}
-                    title="发现中心"
+                    title={t('sidebar.discoveryTitle', language)}
                 >
                     <svg
                         viewBox="0 0 24 24"
@@ -413,7 +416,7 @@ export function LeftSidebar({
                         <circle cx="12" cy="12" r="10" />
                         <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
                     </svg>
-                    <span>发现中心</span>
+                    <span>{t('sidebar.discovery', language)}</span>
                 </div>
                 <div
                     class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}

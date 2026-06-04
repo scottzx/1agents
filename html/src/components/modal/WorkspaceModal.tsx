@@ -1,4 +1,5 @@
 import { h, Component } from 'preact';
+import { t, type Lang } from '../i18n';
 
 interface WorkspaceModalProps {
     mode: 'create' | 'rename';
@@ -13,6 +14,7 @@ interface WorkspaceModalProps {
     onClose: () => void;
     onBrowse: () => void;
     onSubmit: () => void;
+    language: Lang;
 }
 
 export class WorkspaceModal extends Component<WorkspaceModalProps> {
@@ -30,22 +32,27 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
             onClose,
             onBrowse,
             onSubmit,
+            language,
         } = this.props;
 
         return (
             <div class="ws-modal-overlay" onClick={onClose}>
                 <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     <div class="ws-modal-header">
-                        <span>{mode === 'create' ? '新建工作空间' : '编辑工作空间'}</span>
+                        <span>
+                            {mode === 'create'
+                                ? t('modal.workspace.createTitle', language)
+                                : t('modal.workspace.editTitle', language)}
+                        </span>
                         <button class="ws-modal-close" onClick={onClose}>
                             ✕
                         </button>
                     </div>
                     <div class="ws-modal-body">
-                        <label class="ws-modal-label">名称</label>
+                        <label class="ws-modal-label">{t('modal.workspace.name', language)}</label>
                         <input
                             class="ws-modal-input"
-                            placeholder="工作空间名称"
+                            placeholder={t('modal.workspace.namePlaceholder', language)}
                             value={name}
                             onInput={(e: Event) => onNameChange((e.target as HTMLInputElement).value)}
                             onKeyDown={(e: KeyboardEvent) => {
@@ -53,11 +60,11 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
                             }}
                             autoFocus
                         />
-                        <label class="ws-modal-label">路径</label>
+                        <label class="ws-modal-label">{t('modal.workspace.path', language)}</label>
                         <div style="display: flex; gap: 8px; width: 100%;">
                             <input
                                 class="ws-modal-input"
-                                placeholder="/path/to/project  (可选)"
+                                placeholder={t('modal.workspace.pathPlaceholder', language)}
                                 value={path}
                                 onInput={(e: Event) => onPathChange((e.target as HTMLInputElement).value)}
                                 onKeyDown={(e: KeyboardEvent) => {
@@ -70,23 +77,23 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
                                 onClick={onBrowse}
                                 style="height: 38px; flex-shrink: 0; padding: 0 12px; margin: 0; font-size: 12px; display: flex; align-items: center; justify-content: center;"
                             >
-                                浏览...
+                                {t('modal.workspace.browse', language)}
                             </button>
                         </div>
-                        <label class="ws-modal-label">终端文件夹 (可选)</label>
+                        <label class="ws-modal-label">{t('modal.workspace.terminalDir', language)}</label>
                         <input
                             class="ws-modal-input"
-                            placeholder="终端窗口默认打开的目录 (重写路径)"
+                            placeholder={t('modal.workspace.terminalDirPlaceholder', language)}
                             value={terminalDir}
                             onInput={(e: Event) => onTerminalDirChange((e.target as HTMLInputElement).value)}
                             onKeyDown={(e: KeyboardEvent) => {
                                 if (e.key === 'Enter') onSubmit();
                             }}
                         />
-                        <label class="ws-modal-label">AI 聊天频道 (可选)</label>
+                        <label class="ws-modal-label">{t('modal.workspace.chatChannel', language)}</label>
                         <input
                             class="ws-modal-input"
-                            placeholder="CC-Connect 聊天频道或会话 key"
+                            placeholder={t('modal.workspace.chatChannelPlaceholder', language)}
                             value={chatChannel}
                             onInput={(e: Event) => onChatChannelChange((e.target as HTMLInputElement).value)}
                             onKeyDown={(e: KeyboardEvent) => {
@@ -96,10 +103,12 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
                     </div>
                     <div class="ws-modal-footer">
                         <button class="ws-modal-cancel" onClick={onClose}>
-                            取消
+                            {t('common.cancel', language)}
                         </button>
                         <button class="ws-modal-confirm" onClick={onSubmit}>
-                            {mode === 'create' ? '创建' : '保存'}
+                            {mode === 'create'
+                                ? t('modal.workspace.create', language)
+                                : t('modal.workspace.save', language)}
                         </button>
                     </div>
                 </div>

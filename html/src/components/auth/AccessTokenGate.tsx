@@ -1,7 +1,9 @@
 import { h, Component } from 'preact';
+import { t, type Lang } from '../i18n';
 
 interface AccessTokenGateProps {
     onAuthenticated: () => void;
+    language: Lang;
 }
 
 interface AccessTokenGateState {
@@ -37,7 +39,7 @@ export class AccessTokenGate extends Component<AccessTokenGateProps, AccessToken
             if (!res.ok) {
                 this.setState({
                     loading: false,
-                    error: 'Verification failed. Please try again.',
+                    error: t('auth.invalidToken', this.props.language),
                 });
                 return;
             }
@@ -48,13 +50,13 @@ export class AccessTokenGate extends Component<AccessTokenGateProps, AccessToken
             } else {
                 this.setState({
                     loading: false,
-                    error: data.error || '无效的访问令牌，请重试。',
+                    error: data.error || t('auth.invalidToken', this.props.language),
                 });
             }
         } catch {
             this.setState({
                 loading: false,
-                error: '网络错误，请检查连接后重试。',
+                error: t('auth.networkError', this.props.language),
             });
         }
     };
@@ -65,6 +67,7 @@ export class AccessTokenGate extends Component<AccessTokenGateProps, AccessToken
 
     render() {
         const { token, loading, error } = this.state;
+        const { language } = this.props;
 
         return (
             <div class="access-gate-overlay">
@@ -84,16 +87,15 @@ export class AccessTokenGate extends Component<AccessTokenGateProps, AccessToken
                             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                         </svg>
                     </div>
-                    <h2 class="access-gate-title">需要访问令牌</h2>
+                    <h2 class="access-gate-title">{t('auth.title', language)}</h2>
                     <p class="access-gate-desc">
-                        此设备首次从非本地网络访问，请输入您的访问令牌以继续。
-                        令牌仅在首次生成时展示，如已遗失请在设置页面重新生成。
+                        {t('auth.descLine1', language)} {t('auth.descLine2', language)}
                     </p>
                     <form onSubmit={this.handleSubmit}>
                         <input
                             class="access-gate-input"
                             type="password"
-                            placeholder="请输入访问令牌..."
+                            placeholder={t('auth.placeholder', language)}
                             value={token}
                             onInput={this.handleInput}
                             autocomplete="off"
@@ -101,7 +103,7 @@ export class AccessTokenGate extends Component<AccessTokenGateProps, AccessToken
                         />
                         {error && <div class="access-gate-error">{error}</div>}
                         <button class="access-gate-btn" type="submit" disabled={loading || !token.trim()}>
-                            {loading ? '验证中...' : '验证访问'}
+                            {loading ? t('auth.submitting', language) : t('auth.submit', language)}
                         </button>
                     </form>
                 </div>

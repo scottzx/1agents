@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import { FsEntry, getFileTag, formatBytes } from '../types';
+import { t, type Lang } from '../i18n';
 
 interface FlatFileBrowserProps {
     flatFiles: FsEntry[];
@@ -15,7 +16,16 @@ interface FlatFileBrowserProps {
     fsEntries: FsEntry[];
     fsLoading: boolean;
     onToggleFsDir: (entry: FsEntry) => void;
+
+    language: Lang;
 }
+
+const TAG_KEYS: Record<'all' | 'doc' | 'img' | 'code', string> = {
+    all: 'fileBrowser.tagAll',
+    doc: 'fileBrowser.tagDoc',
+    img: 'fileBrowser.tagImg',
+    code: 'fileBrowser.tagCode',
+};
 
 export function FlatFileBrowser({
     flatFiles,
@@ -29,6 +39,7 @@ export function FlatFileBrowser({
     fsEntries,
     fsLoading,
     onToggleFsDir,
+    language,
 }: FlatFileBrowserProps) {
     const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
 
@@ -101,7 +112,7 @@ export function FlatFileBrowser({
                             <div class="fb-tree-children">
                                 {node.children.length === 0 ? (
                                     <div class="fb-tree-empty-dir" style={`padding-left: ${(depth + 1) * 14 + 32}px`}>
-                                        (空文件夹)
+                                        {t('fileBrowser.emptyDir', language)}
                                     </div>
                                 ) : (
                                     renderTreeNodes(node.children, depth + 1)
@@ -142,7 +153,7 @@ export function FlatFileBrowser({
                     id="fb-search-input"
                     class="fb-search-input"
                     type="text"
-                    placeholder="搜索文件名或路径..."
+                    placeholder={t('fileBrowser.searchPlaceholder', language)}
                     value={searchQuery}
                     onInput={e => onSearchQueryChange((e.target as HTMLInputElement).value)}
                 />
@@ -155,7 +166,7 @@ export function FlatFileBrowser({
                         class={`fb-tag ${selectedFilterTag === tag ? 'active' : ''}`}
                         onClick={() => onFilterTagChange(tag)}
                     >
-                        {tag === 'all' ? '全部' : tag === 'doc' ? '文档' : tag === 'img' ? '图片' : '代码'}
+                        {t(TAG_KEYS[tag], language)}
                     </button>
                 ))}
             </div>
@@ -165,10 +176,10 @@ export function FlatFileBrowser({
                 flatFilesLoading ? (
                     <div class="fb-loading">
                         <div class="fb-loading-spinner" />
-                        <span>扫描搜索中…</span>
+                        <span>{t('fileBrowser.searching', language)}</span>
                     </div>
                 ) : filtered.length === 0 ? (
-                    <div class="fb-empty">没有匹配的文件</div>
+                    <div class="fb-empty">{t('fileBrowser.noMatch', language)}</div>
                 ) : (
                     <div class="fb-file-list">
                         {filtered.map(f => {
@@ -197,10 +208,10 @@ export function FlatFileBrowser({
                             );
                         })}
                         <div class="fb-list-footer">
-                            共 {filtered.length} 个搜索结果
+                            {t('fileBrowser.resultCount', language, { count: filtered.length })}
                             {filtered.length >= 1000 && (
                                 <span class="fb-truncated-hint" style="color: var(--text-muted); margin-left: 8px;">
-                                    (仅显示前 1000 条，请提供更精确的搜索词)
+                                    {t('fileBrowser.truncated', language)}
                                 </span>
                             )}
                         </div>
@@ -210,14 +221,14 @@ export function FlatFileBrowser({
             fsLoading && fsEntries.length === 0 ? (
                 <div class="fb-loading">
                     <div class="fb-loading-spinner" />
-                    <span>载入文件树中…</span>
+                    <span>{t('fileBrowser.loading', language)}</span>
                 </div>
             ) : fsEntries.length === 0 ? (
-                <div class="fb-empty">当前工作空间为空</div>
+                <div class="fb-empty">{t('fileBrowser.empty', language)}</div>
             ) : (
                 <div class="fb-file-list fb-tree-list">
                     {renderTreeNodes(fsEntries)}
-                    <div class="fb-list-footer">文件树加载完成</div>
+                    <div class="fb-list-footer">{t('fileBrowser.loaded', language)}</div>
                 </div>
             )}
         </div>

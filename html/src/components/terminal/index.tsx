@@ -4,6 +4,7 @@ import { Xterm, XtermOptions } from './xterm';
 
 import '@xterm/xterm/css/xterm.css';
 import { Modal } from '../modal';
+import { t, type Lang } from '../i18n';
 
 interface Props extends XtermOptions {
     id: string;
@@ -11,6 +12,7 @@ interface Props extends XtermOptions {
     onKeyboardStateChange?: (visible: boolean) => void;
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
+    language: Lang;
 }
 
 interface SpeechResultEvent {
@@ -248,7 +250,7 @@ export class Terminal extends Component<Props, State> {
             case '→':
                 this.xterm.sendData('\x1b[C');
                 break;
-            case '粘贴':
+            case 'paste':
                 try {
                     const text = await navigator.clipboard.readText();
                     if (text) {
@@ -300,7 +302,7 @@ export class Terminal extends Component<Props, State> {
                 }
             ).webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            this.setState({ speechError: '当前浏览器不支持语音识别 API，请使用 iOS Safari / Chrome。' });
+            this.setState({ speechError: t('terminal.speech.unsupported', this.props.language) });
             setTimeout(() => this.setState({ speechError: '' }), 4000);
             return;
         }
@@ -310,7 +312,7 @@ export class Terminal extends Component<Props, State> {
             this.recognition.continuous = true;
             this.recognition.interimResults = true;
 
-            const lang = localStorage.getItem('1agents-language') || 'zh-CN';
+            const lang = this.props.language;
             this.recognition.lang = lang;
 
             this.recognition.onstart = () => {
@@ -325,9 +327,8 @@ export class Terminal extends Component<Props, State> {
                 const finalParts: string[] = [];
                 let interimText = '';
 
-                const lang = localStorage.getItem('1agents-language') || 'zh-CN';
                 const isChinese = lang.toLowerCase().startsWith('zh');
-                const period = isChinese ? '。' : '.';
+                const period = t(isChinese ? 'terminal.period.zh' : 'terminal.period.en', this.props.language);
 
                 for (let i = 0; i < event.results.length; ++i) {
                     const result = event.results[i];
@@ -369,14 +370,14 @@ export class Terminal extends Component<Props, State> {
 
             this.recognition.onerror = (event: SpeechErrorEvent) => {
                 console.error('Speech recognition error:', event.error);
-                let errMsg = '语音识别出错，请重试。';
+                let errMsg = t('terminal.speech.error', this.props.language);
                 if (event.error === 'not-allowed') {
-                    errMsg = '麦克风权限被拒绝，请在系统设置中允许浏览器访问麦克风。';
+                    errMsg = t('terminal.speech.micDenied', this.props.language);
                 } else if (event.error === 'no-speech') {
                     this.cleanupSpeech();
                     return;
                 } else if (event.error === 'network') {
-                    errMsg = '网络连接失败，请检查是否处于内网或代理拦截。';
+                    errMsg = t('terminal.speech.network', this.props.language);
                 }
                 this.setState({ speechError: errMsg });
                 setTimeout(() => this.setState({ speechError: '' }), 4000);
@@ -392,7 +393,7 @@ export class Terminal extends Component<Props, State> {
             this.recognition.start();
         } catch (err) {
             console.error('Failed to start speech recognition:', err);
-            this.setState({ speechError: '启动语音识别失败，请检查麦克风权限。' });
+            this.setState({ speechError: t('terminal.speech.startFailed', this.props.language) });
             setTimeout(() => this.setState({ speechError: '' }), 4000);
             this.cleanupSpeech();
         }
@@ -429,7 +430,7 @@ export class Terminal extends Component<Props, State> {
     }
 
     render(
-        { id }: Props,
+        { id, language }: Props,
         {
             modal,
             isMobile,
@@ -498,7 +499,7 @@ export class Terminal extends Component<Props, State> {
                                 {speechText ? (
                                     <span class="speech-text">{speechText}</span>
                                 ) : (
-                                    <span class="placeholder">正在倾听，请开始说话...</span>
+                                    <span class="placeholder">{t('terminal.speech.listening', language)}</span>
                                 )}
                             </div>
                         )}
@@ -509,7 +510,7 @@ export class Terminal extends Component<Props, State> {
                                     <div class="submenu-group">
                                         <button
                                             class="key-btn key-btn-command"
-                                            title="运行 claude"
+                                            title={t('terminal.action.runClaude', language)}
                                             onClick={() => {
                                                 this.xterm.sendData('claude\r');
                                             }}
@@ -612,7 +613,7 @@ export class Terminal extends Component<Props, State> {
                                 class={`key-btn key-btn-text key-btn-submenu-toggle ${
                                     activeSubMenu === 'commands' ? 'active' : ''
                                 }`}
-                                title="快捷命令"
+                                title={t('terminal.action.commands', language)}
                                 onClick={() => this.toggleSubMenu('commands')}
                             >
                                 <svg
@@ -626,14 +627,14 @@ export class Terminal extends Component<Props, State> {
                                     <polyline points="4 17 10 11 4 5" />
                                     <line x1="12" y1="19" x2="20" y2="19" />
                                 </svg>
-                                命令
+                                {t('terminal.label.commands', language)}
                             </button>
                             {/* Toggle 方向键/D-Pad (Direction Keys Toggle) */}
                             <button
                                 class={`key-btn key-btn-submenu-toggle ${
                                     activeSubMenu === 'directions' ? 'active' : ''
                                 }`}
-                                title="方向与删除"
+                                title={t('terminal.action.directions', language)}
                                 onClick={() => this.toggleSubMenu('directions')}
                             >
                                 <svg
@@ -652,7 +653,11 @@ export class Terminal extends Component<Props, State> {
                                 </svg>
                             </button>
                             {/* Paste */}
-                            <button class="key-btn" title="粘贴" onClick={() => this.sendQuickKey('粘贴')}>
+                            <button
+                                class="key-btn"
+                                title={t('terminal.action.paste', language)}
+                                onClick={() => this.sendQuickKey('paste')}
+                            >
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
@@ -670,7 +675,7 @@ export class Terminal extends Component<Props, State> {
                             {isHttps && (
                                 <button
                                     class={`key-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
-                                    title="语音输入"
+                                    title={t('terminal.action.voice', language)}
                                     onClick={this.toggleSpeech}
                                 >
                                     <svg
@@ -709,7 +714,10 @@ export class Terminal extends Component<Props, State> {
                             {/* Tmux Mouse Toggle (Scroll vs Select Mode) */}
                             <button
                                 class={`key-btn key-btn-mouse ${this.props.tmuxMouseOn ? 'active' : ''}`}
-                                title={this.props.tmuxMouseOn ? '当前：滚轮滑动模式' : '当前：选择复制模式'}
+                                title={t(
+                                    this.props.tmuxMouseOn ? 'terminal.mouse.scroll' : 'terminal.mouse.select',
+                                    language
+                                )}
                                 onClick={this.props.onTmuxMouseToggle}
                             >
                                 <svg

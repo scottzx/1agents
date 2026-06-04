@@ -1,10 +1,12 @@
 import { h, Component } from 'preact';
 import { workspaceService } from '../../services/workspaceService';
+import { t, type Lang } from '../i18n';
 
 interface DirPickerModalProps {
     onClose: () => void;
     onSelect: (path: string) => void;
     onShowToast: (msg: string) => void;
+    language: Lang;
 }
 
 interface DirPickerModalState {
@@ -40,20 +42,20 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                 dirPickerLoading: false,
             });
         } catch (err) {
-            this.props.onShowToast(`加载目录失败: ${err}`);
+            this.props.onShowToast(t('modal.dirPicker.loadFailed', this.props.language, { err: String(err) }));
             this.setState({ dirPickerLoading: false });
         }
     };
 
     render() {
-        const { onClose, onSelect } = this.props;
+        const { onClose, onSelect, language } = this.props;
         const { dirPickerPath, dirPickerParentPath, dirPickerDirs, dirPickerLoading } = this.state;
 
         return (
             <div class="dp-modal-overlay" onClick={onClose}>
                 <div class="dp-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     <div class="dp-modal-header">
-                        <span>选择远程目录</span>
+                        <span>{t('modal.dirPicker.title', language)}</span>
                         <button class="dp-modal-close" onClick={onClose}>
                             ✕
                         </button>
@@ -64,7 +66,7 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                                 <button
                                     class="dp-up-btn"
                                     onClick={() => this.loadDirs(dirPickerParentPath)}
-                                    title="返回上一级"
+                                    title={t('modal.dirPicker.up', language)}
                                 >
                                     <svg
                                         viewBox="0 0 24 24"
@@ -89,10 +91,10 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                                 onKeyDown={(e: KeyboardEvent) => {
                                     if (e.key === 'Enter') this.loadDirs(dirPickerPath);
                                 }}
-                                placeholder="远程路径"
+                                placeholder={t('modal.dirPicker.placeholder', language)}
                             />
                             <button class="dp-go-btn" onClick={() => this.loadDirs(dirPickerPath)}>
-                                进入
+                                {t('modal.dirPicker.go', language)}
                             </button>
                         </div>
 
@@ -100,10 +102,10 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                             {dirPickerLoading ? (
                                 <div class="dp-loading">
                                     <div class="dp-spinner" />
-                                    <span>正在读取远程目录...</span>
+                                    <span>{t('modal.dirPicker.loading', language)}</span>
                                 </div>
                             ) : dirPickerDirs.length === 0 ? (
-                                <div class="dp-empty">当前目录下无子目录</div>
+                                <div class="dp-empty">{t('modal.dirPicker.empty', language)}</div>
                             ) : (
                                 <div class="dp-dir-list">
                                     {dirPickerDirs.map(dir => (
@@ -130,7 +132,7 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                     </div>
                     <div class="dp-modal-footer">
                         <button class="dp-modal-cancel" onClick={onClose}>
-                            取消
+                            {t('common.cancel', language)}
                         </button>
                         <button
                             class="dp-modal-confirm"
@@ -138,7 +140,7 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                                 onSelect(dirPickerPath);
                             }}
                         >
-                            选择当前目录
+                            {t('modal.dirPicker.selectCurrent', language)}
                         </button>
                     </div>
                 </div>

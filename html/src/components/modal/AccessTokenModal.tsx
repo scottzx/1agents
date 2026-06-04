@@ -1,23 +1,25 @@
 import { h, Component } from 'preact';
+import { t, type Lang } from '../i18n';
 
 interface AccessTokenModalProps {
     token: string;
     onClose: () => void;
     onShowToast: (msg: string) => void;
+    language: Lang;
 }
 
 export class AccessTokenModal extends Component<AccessTokenModalProps> {
     copyAccessToken = () => {
-        const { token, onShowToast } = this.props;
+        const { token, onShowToast, language } = this.props;
         if (!token) return;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard
                 .writeText(token)
                 .then(() => {
-                    onShowToast('令牌已复制到剪贴板 ✓');
+                    onShowToast(t('modal.token.copied', language));
                 })
                 .catch(() => {
-                    onShowToast('复制失败，请手动复制');
+                    onShowToast(t('modal.token.copyFailed', language));
                 });
         } else {
             // Fallback for non-HTTPS or older browsers
@@ -29,33 +31,33 @@ export class AccessTokenModal extends Component<AccessTokenModalProps> {
             textarea.select();
             try {
                 document.execCommand('copy');
-                onShowToast('令牌已复制到剪贴板 ✓');
+                onShowToast(t('modal.token.copied', language));
             } catch {
-                onShowToast('复制失败，请手动复制');
+                onShowToast(t('modal.token.copyFailed', language));
             }
             document.body.removeChild(textarea);
         }
     };
 
     render() {
-        const { token, onClose } = this.props;
+        const { token, onClose, language } = this.props;
 
         return (
             <div class="at-modal-overlay" onClick={onClose}>
                 <div class="at-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                    <div class="at-modal-header">访问令牌已生成</div>
+                    <div class="at-modal-header">{t('modal.token.title', language)}</div>
                     <div class="at-modal-warning">
-                        <strong>请立即保存此令牌！</strong>此令牌仅在本次展示，关闭后将无法再次查看。
-                        请将其妥善保管，非本地网络访问时需要提供此令牌。
+                        <strong>{t('modal.token.warningLabel', language)}</strong>
+                        {t('modal.token.warningBody1', language)} {t('modal.token.warningBody2', language)}
                     </div>
                     <div class="at-modal-token-box">
                         <span class="at-modal-token-text">{token}</span>
                         <button class="at-modal-copy-btn" onClick={this.copyAccessToken}>
-                            复制
+                            {t('modal.token.copy', language)}
                         </button>
                     </div>
                     <button class="at-modal-close-btn" onClick={onClose}>
-                        我已保存令牌
+                        {t('modal.token.ack', language)}
                     </button>
                 </div>
             </div>
