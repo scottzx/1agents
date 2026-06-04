@@ -75,109 +75,20 @@ fn get_active_daemon_addr(app: &tauri::App) -> Option<String> {
     None
 }
 
-#[derive(Default)]
-pub struct BrowserWebviewsState(pub std::sync::Mutex<std::collections::HashMap<String, tauri::webview::Webview>>);
-
 #[tauri::command]
-async fn create_browser_tab(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, BrowserWebviewsState>,
-    tab_id: String,
-    url: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    let window = app.get_window("main").ok_or("Main window not found")?;
-    
-    let mut map = state.0.lock().unwrap();
-    if map.contains_key(&tab_id) {
-        return Ok(());
+async fn open_in_external_browser(url: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(&url).spawn();
     }
-
-    let parsed_url = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
-    let y_offset = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
-    println!("[Tauri Debug] create_browser_tab: tab_id={}, url={}, x={}, y={}, y_offset={}, final_y={}", tab_id, url, x, y, y_offset, y + y_offset);
-
-    // Create the child webview using WebviewBuilder
-    let webview = window.add_child(
-        tauri::webview::WebviewBuilder::new(&tab_id, tauri::WebviewUrl::External(parsed_url)),
-        tauri::LogicalPosition::new(x, y + y_offset),
-        tauri::LogicalSize::new(width, height),
-    ).map_err(|e| e.to_string())?;
-
-    map.insert(tab_id, webview);
-    Ok(())
-}
-
-#[tauri::command]
-async fn update_browser_tab_bounds(
-    state: tauri::State<'_, BrowserWebviewsState>,
-    tab_id: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    let map = state.0.lock().unwrap();
-    let y_offset = if cfg!(target_os = "macos") { 28.0 } else { 0.0 };
-    println!("[Tauri Debug] update_browser_tab_bounds: tab_id={}, x={}, y={}, y_offset={}, final_y={}", tab_id, x, y, y_offset, y + y_offset);
-    if let Some(webview) = map.get(&tab_id) {
-        webview.set_position(tauri::LogicalPosition::new(x, y + y_offset)).map_err(|e| e.to_string())?;
-        webview.set_size(tauri::LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd").args(&["/C", "start", &url]).spawn();
     }
-    Ok(())
-}
-
-#[tauri::command]
-async fn navigate_browser_tab(
-    state: tauri::State<'_, BrowserWebviewsState>,
-    tab_id: String,
-    url: String,
-) -> Result<(), String> {
-    let map = state.0.lock().unwrap();
-    if let Some(webview) = map.get(&tab_id) {
-        let parsed_url = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
-        webview.navigate(parsed_url).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
     }
-    Ok(())
-}
-
-#[tauri::command]
-async fn show_browser_tab(
-    state: tauri::State<'_, BrowserWebviewsState>,
-    tab_id: String,
-) -> Result<(), String> {
-    let map = state.0.lock().unwrap();
-    for (id, webview) in map.iter() {
-        if id == &tab_id {
-            webview.show().map_err(|e| e.to_string())?;
-        } else {
-            webview.hide().map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn hide_all_browser_tabs(
-    state: tauri::State<'_, BrowserWebviewsState>,
-) -> Result<(), String> {
-    let map = state.0.lock().unwrap();
-    for webview in map.values() {
-        webview.hide().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn destroy_browser_tab(
-    state: tauri::State<'_, BrowserWebviewsState>,
-    tab_id: String,
-) -> Result<(), String> {
-    let mut map = state.0.lock().unwrap();
-    map.remove(&tab_id);
     Ok(())
 }
 
@@ -187,14 +98,8 @@ pub fn run() {
     let child_process_clone = Arc::clone(&child_process);
 
     let app = tauri::Builder::default()
-        .manage(BrowserWebviewsState::default())
         .invoke_handler(tauri::generate_handler![
-            create_browser_tab,
-            update_browser_tab_bounds,
-            navigate_browser_tab,
-            show_browser_tab,
-            hide_all_browser_tabs,
-            destroy_browser_tab
+            open_in_external_browser
         ])
         .setup(move |app| {
             if cfg!(debug_assertions) {

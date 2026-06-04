@@ -188,38 +188,8 @@ interface BuiltinBrowserProps {
 }
 
 class BuiltinBrowser extends Component<BuiltinBrowserProps> {
-    private placeholderRef: HTMLDivElement | null = null;
-    private resizeObserver: ResizeObserver | null = null;
     private inputRef: HTMLInputElement | null = null;
-    private isCreated = false;
-
-    componentDidMount() {
-        if (IS_DESKTOP) {
-            this.initWebview();
-        }
-    }
-
-    componentDidUpdate(prevProps: BuiltinBrowserProps) {
-        if (!IS_DESKTOP) return;
-
-        if (this.props.active !== prevProps.active) {
-            if (this.props.active) {
-                this.syncBounds();
-                this.showWebview();
-            } else {
-                this.invokeTauri('hide_all_browser_tabs');
-            }
-        }
-    }
-
-    componentWillUnmount() {
-        if (IS_DESKTOP) {
-            if (this.resizeObserver) {
-                this.resizeObserver.disconnect();
-            }
-            this.destroyWebview();
-        }
-    }
+    private iframeRef: HTMLIFrameElement | null = null;
 
     private invokeTauri = async (command: string, args: Record<string, any> = {}) => {
         if (typeof window !== 'undefined' && (window as any).__TAURI__) {
@@ -231,61 +201,32 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
         }
     };
 
-    private initWebview = async () => {
-        if (!this.placeholderRef) return;
-
-        // Wait a tick for the DOM to settle and calculate bounds
-        setTimeout(async () => {
-            if (!this.placeholderRef) return;
-            const rect = this.placeholderRef.getBoundingClientRect();
-            
-            // Create child webview
-            await this.invokeTauri('create_browser_tab', {
-                tabId: this.props.tab.id,
-                url: this.props.tab.url || 'about:blank',
-                x: rect.left,
-                y: rect.top,
-                width: rect.width,
-                height: rect.height,
-            });
-            this.isCreated = true;
-
-            // If active, show it immediately
-            if (this.props.active) {
-                this.showWebview();
-            } else {
-                this.invokeTauri('hide_all_browser_tabs');
-            }
-
-            // Set up ResizeObserver to track size changes
-            if (typeof ResizeObserver !== 'undefined') {
-                this.resizeObserver = new ResizeObserver(() => {
-                    this.syncBounds();
-                });
-                this.resizeObserver.observe(this.placeholderRef);
-            }
-        }, 100);
+    isLocalUrl = (urlStr: string): boolean => {
+        try {
+            const url = new URL(urlStr);
+            const hostname = url.hostname.toLowerCase();
+            return (
+                hostname === 'localhost' ||
+                hostname === '127.0.0.1' ||
+                hostname === '::1' ||
+                hostname.startsWith('192.168.') ||
+                hostname.startsWith('10.') ||
+                hostname.startsWith('172.')
+            );
+        } catch (e) {
+            const lower = urlStr.toLowerCase();
+            return lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('::1');
+        }
     };
 
-    private syncBounds = async () => {
-        if (!this.placeholderRef || !this.isCreated || !this.props.active) return;
-        const rect = this.placeholderRef.getBoundingClientRect();
-        await this.invokeTauri('update_browser_tab_bounds', {
-            tabId: this.props.tab.id,
-            x: rect.left,
-            y: rect.top,
-            width: rect.width,
-            height: rect.height,
-        });
-    };
-
-    private showWebview = async () => {
-        if (!this.isCreated) return;
-        await this.invokeTauri('show_browser_tab', { tabId: this.props.tab.id });
-    };
-
-    private destroyWebview = async () => {
-        await this.invokeTauri('destroy_browser_tab', { tabId: this.props.tab.id });
+    getIframeUrl = (urlStr: string): string => {
+        if (!urlStr || urlStr === 'about:blank') {
+            return 'about:blank';
+        }
+        if (this.isLocalUrl(urlStr)) {
+            return urlStr;
+        }
+        return `/api/proxy?url=${encodeURIComponent(urlStr)}`;
     };
 
     handleKeyPress = (e: KeyboardEvent) => {
@@ -296,22 +237,31 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
                     url = 'http://' + url;
                 }
                 this.props.onUrlChange(this.props.tab.id, url);
-                if (IS_DESKTOP && this.isCreated) {
-                    this.invokeTauri('navigate_browser_tab', { tabId: this.props.tab.id, url });
-                }
             }
         }
     };
 
     handleRefresh = () => {
-        if (IS_DESKTOP && this.isCreated) {
-            this.invokeTauri('navigate_browser_tab', { tabId: this.props.tab.id, url: this.props.tab.url || 'about:blank' });
+        if (this.iframeRef) {
+            this.iframeRef.src = this.iframeRef.src;
+        }
+    };
+
+    handleOpenExternal = () => {
+        const { tab } = this.props;
+        if (!tab.url || tab.url === 'about:blank') return;
+        
+        if (IS_DESKTOP) {
+            this.invokeTauri('open_in_external_browser', { url: tab.url });
+        } else {
+            window.open(tab.url, '_blank');
         }
     };
 
     render() {
         const { tab, active } = this.props;
         const isHome = !tab.url || tab.url === 'about:blank';
+        const iframeUrl = this.getIframeUrl(tab.url || '');
 
         return (
             <div class="builtin-browser" style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
@@ -330,6 +280,13 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
                         ref={el => { this.inputRef = el; }}
                         onKeyDown={this.handleKeyPress}
                     />
+                    <button class="browser-open-external-btn" onClick={this.handleOpenExternal} title="在本地浏览器中打开" disabled={isHome}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                    </button>
                 </div>
                 <div class="browser-iframe-wrapper" style="flex: 1; position: relative; width: 100%; height: 100%;">
                     {isHome && (
@@ -347,29 +304,22 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps> {
                                 <div class="welcome-tips">
                                     <div class="tip-item">
                                         <strong>💡 提示：</strong>
-                                        <span>在桌面端，该浏览器基于原生 Webview 渲染，没有任何 X-Frame-Options 拦截限制，支持顺畅访问任意公网网页（如 Bing、GitHub 等）。</span>
+                                        <span>该浏览器基于 iframe 渲染，对于公网网页，自动使用 Go 后端进行代理以解决跨域与安全策略拦截；本地服务直连加载。</span>
                                     </div>
                                     <div class="tip-item">
-                                        <strong>🛠 推荐用途：</strong>
-                                        <span>非常适合预览本地开发的 Web 服务以及访问各类公网网页。</span>
+                                        <strong>🌐 外部打开：</strong>
+                                        <span>若页面遇到复杂的 JS 渲染问题或白屏，可点击输入框右侧的按钮，直接使用系统默认浏览器打开该网页。</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
                     {!isHome && (
-                        <div 
-                            id={`browser-webview-placeholder-${tab.id}`} 
-                            class="browser-webview-placeholder"
-                            style="width: 100%; height: 100%; background: #00000000;"
-                            ref={el => {
-                                if (el && !this.placeholderRef) {
-                                    this.placeholderRef = el;
-                                    this.initWebview();
-                                } else {
-                                    this.placeholderRef = el;
-                                }
-                            }}
+                        <iframe 
+                            ref={el => { this.iframeRef = el; }}
+                            src={iframeUrl}
+                            class="browser-iframe"
+                            style="width: 100%; height: 100%; border: none; background: #fff;"
                         />
                     )}
                 </div>
@@ -1195,18 +1145,6 @@ export class App extends Component<{}, AppState> {
             await this.openFileDetail(entry);
         } else if (tab.type === 'terminal') {
             this.triggerTerminalFit();
-        }
-
-        if (IS_DESKTOP) {
-            if (tab.type !== 'browser') {
-                if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-                    try {
-                        await (window as any).__TAURI__.core.invoke('hide_all_browser_tabs');
-                    } catch (e) {
-                        console.error('Failed to hide all browser tabs:', e);
-                    }
-                }
-            }
         }
     };
 

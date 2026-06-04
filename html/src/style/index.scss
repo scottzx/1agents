@@ -5026,7 +5026,7 @@ body {
   flex-shrink: 0;
 }
 
-.browser-refresh-btn {
+.browser-refresh-btn, .browser-open-external-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5039,9 +5039,14 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background-color: var(--btn-hover);
     color: var(--text-main);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   svg {

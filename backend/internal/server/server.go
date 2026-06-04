@@ -675,7 +675,8 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 			insertPos := headIdx + len("<head>")
 			
 			// Inject `<base>` tag and click interceptor script
-			baseTag := `<base href="` + targetURL + `">`
+			actualURL := resp.Request.URL.String()
+			baseTag := `<base href="` + actualURL + `">`
 			scriptTag := `
 <script>
 (function() {
@@ -708,6 +709,39 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
       }
     }
   }, true);
+
+  // Rewrite History API state changes to same-origin to prevent SecurityError
+  if (window.history) {
+    var originalPushState = window.history.pushState;
+    window.history.pushState = function(state, title, url) {
+      try {
+        if (url) {
+          var resolvedUrl = new URL(url, document.baseURI).href;
+          var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
+          originalPushState.apply(window.history, [state, title, proxiedUrl]);
+        } else {
+          originalPushState.apply(window.history, arguments);
+        }
+      } catch (e) {
+        console.warn('Blocked pushState rewrite:', e);
+      }
+    };
+
+    var originalReplaceState = window.history.replaceState;
+    window.history.replaceState = function(state, title, url) {
+      try {
+        if (url) {
+          var resolvedUrl = new URL(url, document.baseURI).href;
+          var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
+          originalReplaceState.apply(window.history, [state, title, proxiedUrl]);
+        } else {
+          originalReplaceState.apply(window.history, arguments);
+        }
+      } catch (e) {
+        console.warn('Blocked replaceState rewrite:', e);
+      }
+    };
+  }
 })();
 </script>
 `
