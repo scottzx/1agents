@@ -3,11 +3,12 @@ import { h, Component, Fragment } from 'preact';
 import type { ITerminalOptions, ITheme } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from './terminal/xterm';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session } from './types';
+import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session, isFullPageTab } from './types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
 import { RightPanel } from './drawer/RightPanel';
+import { DiscoveryPanel } from './drawer/DiscoveryPanel';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
@@ -714,7 +715,7 @@ export class App extends Component<{}, AppState> {
     };
 
     selectSession = async (session: Session) => {
-        if (this.state.activeDrawerTab === 'providers') {
+        if (isFullPageTab(this.state.activeDrawerTab)) {
             this.setState({ activeDrawerTab: 'none' });
         }
         const oldWorkspaceId = this.state.activeWorkspaceId;
@@ -770,7 +771,7 @@ export class App extends Component<{}, AppState> {
 
     /** Switch active workspace and cd into it in a matching tmux window */
     selectWorkspace = async (ws: Workspace) => {
-        if (this.state.activeDrawerTab === 'providers') {
+        if (isFullPageTab(this.state.activeDrawerTab)) {
             this.setState({ activeDrawerTab: 'none' });
         }
         const { activeWorkspaceId, terminalWindows } = this.state;
@@ -1566,9 +1567,9 @@ export class App extends Component<{}, AppState> {
 
                             {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
                             <div
-                                class={`workspace-body-container ${activeDrawerTab !== 'none' && activeDrawerTab !== 'providers' ? 'drawer-open' : ''}`}
+                                class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
                             >
-                                {activeDrawerTab === 'providers' ? (
+                                {isFullPageTab(activeDrawerTab) ? (
                                     <div
                                         style={{
                                             flex: 1,
@@ -1579,7 +1580,7 @@ export class App extends Component<{}, AppState> {
                                             overflow: 'hidden',
                                         }}
                                     >
-                                        {ccProvidersUrl && (
+                                        {activeDrawerTab === 'providers' && ccProvidersUrl && (
                                             <iframe
                                                 id="cc-providers-iframe"
                                                 src={this.getCcConnectIframeUrl(ccProvidersUrl)}
@@ -1603,6 +1604,11 @@ export class App extends Component<{}, AppState> {
                                                     background: 'transparent',
                                                 }}
                                             />
+                                        )}
+                                        {activeDrawerTab === 'discovery' && (
+                                            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                                                <DiscoveryPanel />
+                                            </div>
                                         )}
                                     </div>
                                 ) : (

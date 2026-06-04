@@ -381,6 +381,24 @@ export function LeftSidebar({
                     <span>模型管理</span>
                 </div>
                 <div
+                    class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('discovery')}
+                    title="发现中心"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <circle cx="12" cy="12" r="10" />
+                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                    </svg>
+                    <span>发现中心</span>
+                </div>
+                <div
                     class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}
                     onClick={() => toggleDrawerTab('settings')}
                 >

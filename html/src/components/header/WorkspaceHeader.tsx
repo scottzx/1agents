@@ -1,6 +1,6 @@
 import { h, Fragment } from 'preact';
 import { useState } from 'preact/hooks';
-import { RightDrawerTab } from '../types';
+import { RightDrawerTab, isFullPageTab } from '../types';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -178,10 +178,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </svg>
                         </button>
                     )}
-                    {activeDrawerTab === 'providers' ? (
+                    {isFullPageTab(activeDrawerTab) ? (
                         <div class="header-title-group">
                             <span class="ws-name" style="font-weight: 600;">
-                                模型管理
+                                {activeDrawerTab === 'providers' ? '模型管理' : '发现中心'}
                             </span>
                         </div>
                     ) : (
@@ -192,7 +192,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     )}
                 </div>
 
-                {activeDrawerTab !== 'providers' && (
+                {!isFullPageTab(activeDrawerTab) && (
                     <Fragment>
                         {/* Desktop: right shortcut buttons — channels, files, git, settings */}
                         <div class="header-right">
