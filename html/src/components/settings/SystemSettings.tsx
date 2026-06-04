@@ -764,7 +764,6 @@ export function SystemSettings({
         <div class="sys-settings-page">
             {/* Left nav column */}
             <nav class="sys-settings-nav">
-                <div class="sys-settings-nav-title">{t('系统设置', 'System Settings')}</div>
                 {NAV_ITEMS.map(item => (
                     <button
                         key={item.key}

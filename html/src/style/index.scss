@@ -1719,17 +1719,6 @@ body {
         &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
     }
 
-    .sys-settings-nav-title {
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--text-muted);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        padding: 0 10px 12px 10px;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 8px;
-    }
-
     .sys-settings-nav-item {
         display: flex;
         align-items: center;
@@ -1935,10 +1924,12 @@ body {
             &::-webkit-scrollbar { display: none; }
         }
 
-        .sys-settings-nav-title { display: none; }
         .sys-settings-nav-item { flex-shrink: 0; white-space: nowrap; padding: 7px 12px; }
         .sys-settings-content { padding: 16px; }
         .sys-settings-toggle-group { grid-template-columns: 1fr; }
+        .sys-settings-theme-grid { grid-template-columns: 1fr; }
+        .sys-settings-action-row { flex-direction: column; align-items: stretch; }
+        .sys-settings-btn { justify-content: center; }
     }
 }
 
