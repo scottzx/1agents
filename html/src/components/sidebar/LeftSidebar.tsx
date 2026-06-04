@@ -381,6 +381,23 @@ export function LeftSidebar({
                     <span>模型管理</span>
                 </div>
                 <div
+                    class={`footer-item${activeDrawerTab === 'skills' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('skills')}
+                    title="技能与 MCP 管理"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                    </svg>
+                    <span>技能管理</span>
+                </div>
+                <div
                     class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
                     onClick={() => toggleDrawerTab('discovery')}
                     title="发现中心"

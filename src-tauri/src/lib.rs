@@ -135,6 +135,7 @@ pub fn run() {
                 adhoc_sign(&bin_dir.join("1agents"));
                 adhoc_sign(&bin_dir.join("ttyd"));
                 adhoc_sign(&bin_dir.join("cc-connect"));
+                adhoc_sign(&bin_dir.join("cc-switch"));
                 adhoc_sign(&node_dir.join("node"));
 
                 // Resolve 1agents backend path inside resources/bin/

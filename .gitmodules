@@ -1,3 +1,9 @@
 [submodule "cc-connect"]
 	path = modules/cc-connect
 	url = https://github.com/scottzx/cc-connect
+[submodule "modules/cc-switch-cli"]
+	path = modules/cc-switch-cli
+	url = https://github.com/SaladDay/cc-switch-cli
+[submodule "modules/1skills"]
+	path = modules/1skills
+	url = https://github.com/scottzx/1skills

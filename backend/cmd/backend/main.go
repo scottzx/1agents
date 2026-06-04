@@ -46,6 +46,10 @@ func main() {
 		"Internal ttyd listen address (must stay on 127.0.0.1)")
 	flag.StringVar(&cfg.TtydBinaryPath, "ttyd-bin", cfg.TtydBinaryPath,
 		"Path to the ttyd executable")
+	flag.StringVar(&cfg.SkillsAddr, "skills-addr", cfg.SkillsAddr,
+		"Internal 1skills listen address (must stay on 127.0.0.1)")
+	flag.StringVar(&cfg.SkillsBinaryPath, "skills-bin", cfg.SkillsBinaryPath,
+		"Path to the python executable to run 1skills")
 	flag.StringVar(&cfg.WorkDir, "workdir", cfg.WorkDir,
 		"Root directory exposed by the file-system API")
 	flag.StringVar(&cfg.StaticDir, "static", cfg.StaticDir,
@@ -182,6 +186,25 @@ func main() {
 		time.Sleep(600 * time.Millisecond)
 	}
 
+	// ── 1.2. Start skills supervisor ─────────────────────────────────────────
+	skillsHost, skillsPortStr, err := net.SplitHostPort(cfg.SkillsAddr)
+	if err != nil {
+		skillsHost = "127.0.0.1"
+		skillsPortStr = "38085"
+	}
+	var skillsBasePort int
+	fmt.Sscanf(skillsPortStr, "%d", &skillsBasePort)
+	skillsFreePort, err := findAvailablePort(skillsHost, skillsBasePort)
+	if err != nil {
+		log.Printf("[main] WARNING: Failed to find free port starting from %d for 1skills: %v. Using default.", skillsBasePort, err)
+	} else if skillsFreePort != skillsBasePort {
+		log.Printf("[main] Port %d is busy. Automatically selected free port %d for internal 1skills.", skillsBasePort, skillsFreePort)
+		cfg.SkillsAddr = net.JoinHostPort(skillsHost, fmt.Sprintf("%d", skillsFreePort))
+	}
+
+	skillsSup := supervisor.NewSkills(cfg)
+	skillsSup.Start(ctx)
+
 	// ── 2. Start cc-connect Supervisor & engines ──────────────────────────────
 	ccconnect.Start(ctx, isDesktop)
 
@@ -213,6 +236,7 @@ func main() {
 		}
 		fmt.Printf("   🔌 CC-Connect Bridge Port : :%d (Dynamic)\n", ccconnect.BridgePort)
 		fmt.Printf("   ⚙️  CC-Connect Mgmt Port   : :%d (Dynamic)\n", ccconnect.ManagementPort)
+		fmt.Printf("   🛠️  1skills Microservice   : %s\n", cfg.SkillsAddr)
 		fmt.Println("==================================================================")
 		
 		var err error
@@ -319,6 +343,7 @@ func main() {
 	}
 
 	<-sup.Done()
+	<-skillsSup.Done()
 	log.Println("[main] Shutdown complete. Goodbye.")
 }
 

@@ -1691,6 +1691,257 @@ body {
   }
 }
 
+/* ==========================================================================
+   SYSTEM SETTINGS FULL-PAGE MODULE
+   ========================================================================== */
+.sys-settings-page {
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background-color: var(--bg-page);
+
+    .sys-settings-nav {
+        width: 220px;
+        flex-shrink: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background-color: var(--bg-panel);
+        border-right: 1px solid var(--border-color);
+        padding: 24px 12px;
+        gap: 4px;
+        overflow-y: auto;
+
+        &::-webkit-scrollbar { width: 4px; }
+        &::-webkit-scrollbar-track { background: transparent; }
+        &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+    }
+
+    .sys-settings-nav-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 0 10px 12px 10px;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 8px;
+    }
+
+    .sys-settings-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        font-family: var(--font-sans);
+        transition: all 0.18s ease;
+        text-align: left;
+        width: 100%;
+
+        &:hover { background-color: var(--btn-hover); color: var(--text-main); }
+
+        &.active {
+            background-color: var(--accent-light);
+            color: var(--accent-color);
+            font-weight: 600;
+            .sys-settings-nav-icon svg { stroke: var(--accent-color); }
+        }
+    }
+
+    .sys-settings-nav-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 20px;
+        height: 20px;
+        svg { width: 16px; height: 16px; transition: stroke 0.18s ease; }
+    }
+
+    .sys-settings-content {
+        flex: 1;
+        height: 100%;
+        overflow-y: auto;
+        padding: 32px 40px;
+        &::-webkit-scrollbar { width: 6px; }
+        &::-webkit-scrollbar-track { background: transparent; }
+        &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    }
+
+    .sys-settings-section { max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+
+    .sys-settings-section-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-main);
+        letter-spacing: -0.01em;
+    }
+
+    .sys-settings-section-desc {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        margin-top: -12px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .sys-settings-card {
+        background-color: var(--bg-panel);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        &:hover { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color), var(--shadow-sm); }
+    }
+
+    .sys-settings-card-header { display: flex; align-items: flex-start; gap: 14px; }
+
+    .sys-settings-card-icon {
+        width: 36px; height: 36px; border-radius: 8px;
+        background-color: var(--accent-light);
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        svg { width: 18px; height: 18px; stroke: var(--accent-color); }
+        &.danger-icon { background-color: rgba(220, 38, 38, 0.08); svg { stroke: #dc2626; } }
+    }
+
+    .sys-settings-card-title { font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 4px; }
+
+    .sys-settings-card-subtitle { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+    .sys-settings-toggle-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .sys-settings-option-btn {
+        display: flex; align-items: center; justify-content: center; gap: 7px;
+        height: 38px; border-radius: 8px; border: 1px solid var(--border-color);
+        background-color: var(--bg-card); color: var(--text-secondary);
+        font-size: 12.5px; font-weight: 500; font-family: var(--font-sans);
+        cursor: pointer; transition: all 0.18s ease;
+        &:hover { background-color: var(--btn-hover); color: var(--text-main); }
+        &.active { border-color: var(--accent-color); background-color: var(--accent-light); color: var(--accent-color); font-weight: 600; }
+        svg { width: 14px; height: 14px; }
+    }
+
+    .sys-settings-theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .sys-settings-theme-card {
+        display: flex; flex-direction: column; gap: 10px; padding: 12px;
+        border-radius: 10px; border: 2px solid var(--border-color);
+        background: var(--bg-card); cursor: pointer; transition: all 0.2s ease;
+        position: relative; font-family: var(--font-sans);
+        &:hover { border-color: var(--accent-color); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        &.active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
+    }
+
+    .sys-settings-theme-preview {
+        height: 72px; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
+        &.light-preview {
+            background: #f8f9fa;
+            .preview-bar { background: #e9ecef; height: 12px; }
+            .preview-line { background: #ced4da; height: 6px; border-radius: 3px; margin: 6px 8px 4px 8px; }
+        }
+        &.dark-preview {
+            background: #1a1b1e;
+            .preview-bar { background: #25262b; height: 12px; }
+            .preview-line { background: #373a40; height: 6px; border-radius: 3px; margin: 6px 8px 4px 8px; }
+        }
+    }
+
+    .preview-content { display: flex; flex-direction: column; flex: 1; }
+
+    .sys-settings-theme-label {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 12px; font-weight: 600; color: var(--text-main);
+        svg { width: 13px; height: 13px; }
+    }
+
+    .sys-settings-theme-check {
+        position: absolute; top: 8px; right: 8px;
+        width: 18px; height: 18px; border-radius: 50%;
+        background-color: var(--accent-color); color: #fff;
+        font-size: 10px; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+    }
+
+    .sys-settings-token-status { display: flex; align-items: center; }
+
+    .sys-settings-token-badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 12px; border-radius: 20px;
+        font-size: 11.5px; font-weight: 600;
+        &.active { background-color: rgba(34, 197, 94, 0.12); color: #16a34a; }
+        &.inactive { background-color: var(--btn-hover); color: var(--text-muted); }
+        svg { flex-shrink: 0; }
+    }
+
+    .sys-settings-action-row { display: flex; align-items: center; gap: 10px; }
+
+    .sys-settings-btn {
+        display: inline-flex; align-items: center; gap: 7px;
+        height: 36px; padding: 0 16px; border-radius: 8px;
+        border: 1px solid var(--border-color); font-size: 12.5px; font-weight: 600;
+        font-family: var(--font-sans); cursor: pointer; transition: all 0.18s ease;
+
+        &.primary { background-color: var(--accent-color); border-color: var(--accent-color); color: #fff; &:hover { opacity: 0.88; } }
+        &.danger { background-color: #dc2626; border-color: #dc2626; color: #fff; &:hover { background-color: #b91c1c; border-color: #b91c1c; } }
+        &.warning { background-color: var(--bg-card); border-color: #d97706; color: #d97706; &:hover { background-color: rgba(217, 119, 6, 0.1); } }
+        &.ghost { background-color: transparent; border-color: var(--border-color); color: var(--text-secondary); &:hover { background-color: var(--btn-hover); color: var(--text-main); } }
+
+        svg { width: 14px; height: 14px; }
+    }
+
+    .sys-settings-about-brand { display: flex; align-items: center; gap: 16px; }
+
+    .sys-settings-about-logo {
+        width: 52px; height: 52px; border-radius: 12px;
+        object-fit: cover; box-shadow: var(--shadow-sm);
+    }
+
+    .sys-settings-about-name { font-size: 20px; font-weight: 700; color: var(--text-main); letter-spacing: -0.02em; }
+
+    .sys-settings-about-tagline { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+
+    .sys-settings-about-meta {
+        display: flex; flex-direction: column; gap: 10px; padding: 16px;
+        background-color: var(--bg-page); border-radius: 8px; border: 1px solid var(--border-color);
+    }
+
+    .sys-settings-about-meta-row {
+        display: flex; align-items: center; justify-content: space-between; font-size: 12.5px;
+        .meta-label { color: var(--text-muted); font-weight: 500; }
+        .meta-value { color: var(--text-main); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        .meta-link { color: var(--accent-color); text-decoration: none; &:hover { text-decoration: underline; } }
+    }
+
+    @media (max-width: 640px) {
+        flex-direction: column;
+
+        .sys-settings-nav {
+            width: 100%; height: auto; flex-direction: row; flex-wrap: nowrap;
+            overflow-x: auto; padding: 10px 12px; gap: 6px;
+            border-right: none; border-bottom: 1px solid var(--border-color);
+            &::-webkit-scrollbar { display: none; }
+        }
+
+        .sys-settings-nav-title { display: none; }
+        .sys-settings-nav-item { flex-shrink: 0; white-space: nowrap; padding: 7px 12px; }
+        .sys-settings-content { padding: 16px; }
+        .sys-settings-toggle-group { grid-template-columns: 1fr; }
+    }
+}
+
 /* Discovery Center inside drawer panel / full-page view */
 .discovery-container {
     display: flex;

@@ -9,6 +9,7 @@ import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
 import { RightPanel } from './drawer/RightPanel';
 import { DiscoveryPanel } from './drawer/DiscoveryPanel';
+import { SystemSettings } from './settings/SystemSettings';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
@@ -2052,12 +2053,60 @@ export class App extends Component<{}, AppState> {
                                                             }}
                                                         />
                                                     )}
+                                                    {activeDrawerTab === 'skills' && (
+                                                        <iframe
+                                                            id="skills-iframe"
+                                                            src="/1skills/"
+                                                            onLoad={e => {
+                                                                const iframe = e.target as HTMLIFrameElement;
+                                                                if (iframe && iframe.contentWindow) {
+                                                                    iframe.contentWindow.postMessage(
+                                                                        { type: 'THEME_CHANGE', theme },
+                                                                        '*'
+                                                                    );
+                                                                    iframe.contentWindow.postMessage(
+                                                                        { type: 'LANG_CHANGE', lang: language },
+                                                                        '*'
+                                                                    );
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                width: '100%',
+                                                                height: '100%',
+                                                                border: 'none',
+                                                                background: 'transparent',
+                                                            }}
+                                                        />
+                                                    )}
                                                     {activeDrawerTab === 'discovery' && (
                                                         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                                                             <DiscoveryPanel
                                                                 onOpenBrowserTab={
                                                                     IS_DESKTOP ? this.openBrowserTab : undefined
                                                                 }
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {activeDrawerTab === 'settings' && (
+                                                        <div
+                                                            style={{
+                                                                flex: 1,
+                                                                overflow: 'hidden',
+                                                                display: 'flex',
+                                                                flexDirection: 'column',
+                                                                height: '100%',
+                                                            }}
+                                                        >
+                                                            <SystemSettings
+                                                                theme={theme}
+                                                                toggleTheme={this.toggleTheme}
+                                                                language={language}
+                                                                toggleLanguage={this.toggleLanguage}
+                                                                tmuxMouseOn={tmuxMouseOn}
+                                                                onTmuxMouseToggle={this.toggleTmuxMouse}
+                                                                accessTokenExists={accessAuthRequired}
+                                                                onGenerateAccessToken={this.generateAccessToken}
+                                                                onRevokeAccessToken={this.revokeAccessToken}
                                                             />
                                                         </div>
                                                     )}

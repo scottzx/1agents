@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -166,6 +167,7 @@ insecure = true
 		} else {
 			BridgeToken = core.GenerateToken(16)
 		}
+		syncAllProvidersToCCSwitch(cfgSync.Providers)
 	} else {
 		log.Printf("[ccconnect] Error decoding config TOML synchronously: %v", err)
 		if ManagementToken == "" {
@@ -225,7 +227,9 @@ insecure = true
 			}
 
 			cfg := &config.Config{}
-			if _, err := toml.DecodeFile(configPath, cfg); err != nil {
+			if _, err := toml.DecodeFile(configPath, cfg); err == nil {
+				syncAllProvidersToCCSwitch(cfg.Providers)
+			} else {
 				log.Printf("[ccconnect] Error decoding config TOML (%s): %v", configPath, err)
 			}
 
@@ -523,6 +527,26 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			return reloadConfig(configPath, capturedProjName, capturedEngine)
 		})
 
+		capturedProj := proj
+		engine.SetProviderSaveFunc(func(providerName string) error {
+			err := config.SaveActiveProvider(capturedProjName, providerName)
+			if err == nil {
+				appType := ""
+				switch capturedProj.Agent.Type {
+				case "claudecode":
+					appType = "claude"
+				case "codex":
+					appType = "codex"
+				case "gemini":
+					appType = "gemini"
+				}
+				if appType != "" && providerName != "" {
+					go runCCSwitchSwitchCommand(appType, sanitizeID(providerName))
+				}
+			}
+			return err
+		})
+
 		engines = append(engines, engine)
 		effectiveWorkDirs = append(effectiveWorkDirs, effectiveWorkDir)
 	}
@@ -760,13 +784,27 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			return out, nil
 		})
 		mgmtSrv.SetAddGlobalProvider(func(info core.GlobalProviderInfo) error {
-			return config.AddGlobalProvider(globalProviderToConfig(info))
+			p := globalProviderToConfig(info)
+			err := config.AddGlobalProvider(p)
+			if err == nil {
+				syncProviderToCCSwitch(p)
+			}
+			return err
 		})
 		mgmtSrv.SetUpdateGlobalProvider(func(name string, info core.GlobalProviderInfo) error {
-			return config.UpdateGlobalProvider(name, globalProviderToConfig(info))
+			p := globalProviderToConfig(info)
+			err := config.UpdateGlobalProvider(name, p)
+			if err == nil {
+				syncProviderToCCSwitch(p)
+			}
+			return err
 		})
 		mgmtSrv.SetRemoveGlobalProvider(func(name string) error {
-			return config.RemoveGlobalProvider(name)
+			err := config.RemoveGlobalProvider(name)
+			if err == nil {
+				deleteProviderFromCCSwitch(name)
+			}
+			return err
 		})
 		mgmtSrv.SetFetchPresets(core.FetchProviderPresets)
 		mgmtSrv.SetFetchSkillPresets(core.FetchSkillPresets)
@@ -1017,6 +1055,7 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 	if err != nil {
 		return nil, fmt.Errorf("reload config: %w", err)
 	}
+	syncAllProvidersToCCSwitch(cfg.Providers)
 
 	result := &core.ConfigReloadResult{}
 
@@ -1363,6 +1402,166 @@ func sanitizeID(name string) string {
 		}
 	}
 	return sb.String()
+}
+
+func syncProviderToCCSwitch(p config.ProviderConfig) {
+	dbPath := findCCSwitchDB()
+	if dbPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		dir := filepath.Join(home, ".cc-switch")
+		_ = os.MkdirAll(dir, 0755)
+		dbPath = filepath.Join(dir, "cc-switch.db")
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		log.Printf("[ccconnect] sync to cc-switch failed to open db: %v", err)
+		return
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS providers (
+		id TEXT NOT NULL,
+		app_type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		settings_config TEXT NOT NULL,
+		website_url TEXT,
+		category TEXT,
+		created_at INTEGER,
+		sort_index INTEGER,
+		notes TEXT,
+		icon TEXT,
+		icon_color TEXT,
+		meta TEXT NOT NULL DEFAULT '{}',
+		is_current BOOLEAN NOT NULL DEFAULT 0,
+		in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
+		PRIMARY KEY (id, app_type)
+	)`)
+	if err != nil {
+		log.Printf("[ccconnect] sync to cc-switch failed to create table: %v", err)
+		return
+	}
+
+	id := sanitizeID(p.Name)
+	if id == "" {
+		return
+	}
+
+	var targetApps []string
+	if len(p.AgentTypes) > 0 {
+		for _, at := range p.AgentTypes {
+			switch at {
+			case "claudecode":
+				targetApps = append(targetApps, "claude")
+			case "codex":
+				targetApps = append(targetApps, "codex")
+			case "gemini":
+				targetApps = append(targetApps, "gemini")
+			}
+		}
+	} else {
+		targetApps = []string{"claude", "codex", "gemini"}
+	}
+
+	for _, app := range targetApps {
+		var settingsMap map[string]any
+		switch app {
+		case "claude":
+			env := map[string]string{
+				"ANTHROPIC_BASE_URL": p.BaseURL,
+				"ANTHROPIC_AUTH_TOKEN": p.APIKey,
+				"ANTHROPIC_MODEL": p.Model,
+			}
+			for k, v := range p.Env {
+				env[k] = v
+			}
+			settingsMap = map[string]any{
+				"env": env,
+			}
+		case "codex":
+			settingsMap = map[string]any{
+				"auth": map[string]string{
+					"OPENAI_API_KEY": p.APIKey,
+				},
+				"config": fmt.Sprintf("base_url = %q\nmodel = %q\n", p.BaseURL, p.Model),
+			}
+		case "gemini":
+			settingsMap = map[string]any{
+				"env": map[string]string{
+					"GOOGLE_GEMINI_BASE_URL": p.BaseURL,
+					"GEMINI_API_KEY": p.APIKey,
+					"GEMINI_MODEL": p.Model,
+				},
+			}
+		default:
+			settingsMap = map[string]any{
+				"api_key": p.APIKey,
+				"base_url": p.BaseURL,
+				"model": p.Model,
+			}
+		}
+
+		scBytes, err := json.Marshal(settingsMap)
+		if err != nil {
+			continue
+		}
+		scStr := string(scBytes)
+
+		query := `INSERT INTO providers (id, app_type, name, settings_config, meta)
+			VALUES (?, ?, ?, ?, '{}')
+			ON CONFLICT(id, app_type) DO UPDATE SET
+				name = excluded.name,
+				settings_config = excluded.settings_config`
+		_, err = db.Exec(query, id, app, p.Name, scStr)
+		if err != nil {
+			log.Printf("[ccconnect] sync provider %s for app %s to cc-switch failed: %v", p.Name, app, err)
+		}
+	}
+}
+
+func deleteProviderFromCCSwitch(name string) {
+	id := sanitizeID(name)
+	dbPath := findCCSwitchDB()
+	if dbPath == "" {
+		return
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	_, _ = db.Exec("DELETE FROM providers WHERE id = ?", id)
+}
+
+func syncAllProvidersToCCSwitch(providers []config.ProviderConfig) {
+	for _, p := range providers {
+		syncProviderToCCSwitch(p)
+	}
+}
+
+func runCCSwitchSwitchCommand(appType, providerID string) {
+	binPath, err := exec.LookPath("cc-switch")
+	if err != nil {
+		binPath = "./build/cc-switch"
+		if _, err := os.Stat(binPath); err != nil {
+			log.Printf("[ccconnect] cc-switch binary not found in PATH or build/")
+			return
+		}
+	}
+
+	log.Printf("[ccconnect] executing %s --app %s provider switch %s", binPath, appType, providerID)
+	cmd := exec.Command(binPath, "--app", appType, "provider", "switch", providerID)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("[ccconnect] cc-switch switch command failed: %v", err)
+	} else {
+		log.Printf("[ccconnect] cc-switch switch command executed successfully")
+	}
 }
 
 

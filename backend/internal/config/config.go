@@ -47,18 +47,26 @@ type Config struct {
 
 	// TunnelToken stores the active session authentication token in memory.
 	TunnelToken string
+
+	// SkillsAddr is the address the 1skills FastAPI server listens on locally.
+	SkillsAddr string
+
+	// SkillsBinaryPath is the path to the python executable to run 1skills.
+	SkillsBinaryPath string
 }
 
 // Default returns a Config populated with safe default values.
 func Default() *Config {
 	cfg := &Config{
-		ListenAddr:     ":38080",
-		TtydAddr:       "127.0.0.1:37681",
-		TtydBinaryPath: "./ttyd",
-		WorkDir:        "~",
-		StaticDir:      "./html/dist",
-		RestartDelay:   3 * time.Second,
-		MaxRestarts:    5,
+		ListenAddr:       ":38080",
+		TtydAddr:         "127.0.0.1:37681",
+		TtydBinaryPath:   "./ttyd",
+		SkillsAddr:       "127.0.0.1:38085",
+		SkillsBinaryPath: "python3",
+		WorkDir:          "~",
+		StaticDir:        "./html/dist",
+		RestartDelay:     3 * time.Second,
+		MaxRestarts:      5,
 	}
 
 	if runtime.GOOS == "windows" {

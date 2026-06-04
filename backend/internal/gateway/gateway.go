@@ -89,3 +89,32 @@ func NewBridgeProxy(bridgePort int) http.Handler {
 
 	return proxy
 }
+
+// NewSkillsProxy creates an http.Handler that transparently reverse-proxies
+// requests to the locally-running 1skills FastAPI server on skillsPort.
+func NewSkillsProxy(skillsPort int) http.Handler {
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("127.0.0.1:%d", skillsPort),
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = targetURL.Host
+		// Strip /1skills prefix so it hits the correct endpoints in FastAPI
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/1skills")
+		if req.URL.RawPath != "" {
+			req.URL.RawPath = strings.TrimPrefix(req.URL.RawPath, "/1skills")
+		}
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("[gateway] 1skills proxy error for %s: %v", r.URL.Path, err)
+		http.Error(w, "1skills service unavailable. Please wait a moment and refresh.", http.StatusBadGateway)
+	}
+
+	return proxy
+}

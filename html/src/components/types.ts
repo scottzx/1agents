@@ -60,10 +60,10 @@ export interface TmuxWindow {
     cwd: string;
 }
 
-export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'settings' | 'discovery' | 'none';
+export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'settings' | 'discovery' | 'skills' | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
-    return tab === 'providers' || tab === 'discovery';
+    return tab === 'providers' || tab === 'discovery' || tab === 'skills' || tab === 'settings';
 }
 
 // NOTE: Keep in sync with getFileTagFromExt in agent/internal/fs/handler.go

@@ -183,6 +183,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// Proxies /bridge/ws to the CC-Connect bridge server (dynamic port).
 	mux.Handle("/bridge/", gateway.NewBridgeProxy(ccconnect.BridgePort))
 
+	// ── 1skills reverse proxy ────────────────────────────────────────────────
+	var skillsPort int
+	if _, portStr, err := net.SplitHostPort(cfg.SkillsAddr); err == nil {
+		fmt.Sscanf(portStr, "%d", &skillsPort)
+	} else {
+		skillsPort = 38085
+	}
+	mux.Handle("/1skills/", gateway.NewSkillsProxy(skillsPort))
+
 	// ── Tunnel API (on-demand multi-port tunnel control) ─────────────────────
 	tunnelAuth := func(r *http.Request) bool {
 		authHeader := r.Header.Get("Authorization")
