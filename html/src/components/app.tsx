@@ -199,7 +199,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
     private lastLoadedUrl: string = '';
 
     state: BuiltinBrowserState = {
-        iframeSrc: this.getIframeUrl(this.props.tab.url || '')
+        iframeSrc: this.getIframeUrl(this.props.tab.url || ''),
     };
 
     componentDidMount() {
@@ -214,7 +214,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
         if (nextProps.tab.url !== this.props.tab.url) {
             if (nextProps.tab.url !== this.lastLoadedUrl) {
                 this.setState({
-                    iframeSrc: this.getIframeUrl(nextProps.tab.url || '')
+                    iframeSrc: this.getIframeUrl(nextProps.tab.url || ''),
                 });
             }
         }
@@ -262,14 +262,16 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
         }
     };
 
-    private invokeTauri = async (command: string, args: Record<string, any> = {}) => {
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+    private invokeTauri = async (command: string, args: Record<string, unknown> = {}): Promise<unknown> => {
+        const tauri = (window as unknown as { __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
+        if (tauri) {
             try {
-                return await (window as any).__TAURI__.core.invoke(command, args);
+                return await tauri.core.invoke(command, args);
             } catch (e) {
                 console.error(`Failed to invoke Tauri command ${command}:`, e);
             }
         }
+        return null;
     };
 
     isLocalUrl(urlStr: string): boolean {
@@ -314,16 +316,20 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
     };
 
     handleRefresh = () => {
-        if (this.iframeRef) {
-            this.iframeRef.src = this.iframeRef.src;
+        if (this.iframeRef && this.iframeRef.contentWindow) {
+            try {
+                this.iframeRef.contentWindow.location.reload();
+            } catch (e) {
+                this.iframeRef.src = this.state.iframeSrc;
+            }
         }
     };
 
     handleOpenExternal = () => {
         const { tab } = this.props;
         if (!tab.url || tab.url === 'about:blank') return;
-        
-        const isDesktopEnv = IS_DESKTOP || (typeof window !== 'undefined' && !!(window as any).__TAURI__);
+
+        const isDesktopEnv = IS_DESKTOP || (typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: object }).__TAURI__);
         if (isDesktopEnv) {
             this.invokeTauri('open_in_external_browser', { url: tab.url });
         } else {
@@ -336,7 +342,10 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
         const isHome = !tab.url || tab.url === 'about:blank';
 
         return (
-            <div class="builtin-browser" style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+            <div
+                class="builtin-browser"
+                style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}
+            >
                 <div class="browser-nav-bar">
                     <button class="browser-refresh-btn" onClick={this.handleRefresh} title="刷新页面" disabled={isHome}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
