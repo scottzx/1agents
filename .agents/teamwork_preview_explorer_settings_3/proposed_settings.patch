@@ -1,0 +1,104 @@
+diff --git a/html/src/components/sidebar/LeftSidebar.tsx b/html/src/components/sidebar/LeftSidebar.tsx
+index a2d58bc..c2f348e 100644
+--- a/html/src/components/sidebar/LeftSidebar.tsx
++++ b/html/src/components/sidebar/LeftSidebar.tsx
+@@ -21,6 +21,7 @@ interface LeftSidebarProps {
+     onSelectSession: (session: Session) => void;
+     onTerminalCreate: (workspaceId: string, cwd: string) => void;
+     onTerminalKill: (windowIndex: number) => void;
++    onOpenSettings?: () => void;
+ }
+ 
+ export function LeftSidebar({
+@@ -41,6 +42,7 @@ export function LeftSidebar({
+     onSelectSession,
+     onTerminalCreate,
+     onTerminalKill,
++    onOpenSettings,
+ }: LeftSidebarProps) {
+     const [hoveredId, setHoveredId] = useState<string | null>(null);
+     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+@@ -417,7 +419,7 @@ export function LeftSidebar({
+                 </div>
+                 <div
+                     class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}
+-                    onClick={() => toggleDrawerTab('settings')}
++                    onClick={onOpenSettings || (() => toggleDrawerTab('settings'))}
+                 >
+                     <svg
+                         viewBox="0 0 24 24"
+diff --git a/html/src/components/modal/index.tsx b/html/src/components/modal/index.tsx
+index fd85321..ea84b2c 100644
+--- a/html/src/components/modal/index.tsx
++++ b/html/src/components/modal/index.tsx
+@@ -29,3 +29,4 @@ export class Modal extends Component<Props> {
+ export { WorkspaceModal } from './WorkspaceModal';
+ export { DirPickerModal } from './DirPickerModal';
+ export { AccessTokenModal } from './AccessTokenModal';
++export { SettingsModal } from './SettingsModal';
+diff --git a/html/src/components/app.tsx b/html/src/components/app.tsx
+index ef3cd21..bfb8c9d 100644
+--- a/html/src/components/app.tsx
++++ b/html/src/components/app.tsx
+@@ -12,7 +12,7 @@ import { DiscoveryPanel } from './drawer/DiscoveryPanel';
+ import { FileDetailView } from './drawer/FileDetailView';
+ import { AccessTokenGate } from './auth/AccessTokenGate';
+ import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
+-import { WorkspaceModal, DirPickerModal, AccessTokenModal } from './modal';
++import { WorkspaceModal, DirPickerModal, AccessTokenModal, SettingsModal } from './modal';
+ import { workspaceService } from '../services/workspaceService';
+ import { terminalService } from '../services/terminalService';
+ import { fsService } from '../services/fsService';
+@@ -176,6 +176,7 @@ interface AppState {
+     accessTokenModalToken: string;
+     onboarded: boolean;
+     hasLoadedWorkspaces: boolean;
++    settingsModalOpen: boolean;
+ }
+ 
+ // Drag resizer state (module-level for perf)
+@@ -526,6 +527,7 @@ class App extends Component<{}, AppState> {
+             hasLoadedWorkspaces: false,
+             tabs: [{ id: 'terminal', title: '工作台', type: 'terminal', closable: false }],
+             activeTabId: 'terminal',
++            settingsModalOpen: false,
+         };
+     }
+ 
+@@ -1966,6 +1968,7 @@ class App extends Component<{}, AppState> {
+                                         onSelectSession={s => this.selectSession(s)}
+                                         onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
+                                         onTerminalKill={idx => this.killTerminal(idx)}
++                                        onOpenSettings={() => this.setState({ settingsModalOpen: true })}
+                                     />
+ 
+                                     {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
+@@ -2343,6 +2346,27 @@ class App extends Component<{}, AppState> {
+                         onShowToast={this.showToast}
+                     />
+                 )}
++
++                {/* Premium Split-Column Settings Modal */}
++                {settingsModalOpen && (
++                    <SettingsModal
++                        show={settingsModalOpen}
++                        onClose={() => this.setState({ settingsModalOpen: false })}
++                        theme={theme}
++                        toggleTheme={this.toggleTheme}
++                        language={language}
++                        toggleLanguage={this.toggleLanguage}
++                        tmuxMouseOn={tmuxMouseOn}
++                        toggleTmuxMouse={this.toggleTmuxMouse}
++                        accessTokenExists={accessTokenExists}
++                        onGenerateAccessToken={this.generateAccessToken}
++                        onRevokeAccessToken={this.revokeAccessToken}
++                        activeWorkspaceId={activeWorkspaceId}
++                        activeWorkspacePath={activeWorkspacePath}
++                        workspaceName={activeWorkspace?.name || ''}
++                        onClearWorkspaceCache={() => { this._workspaceTreeCache = {}; }}
++                        onShowToast={this.showToast}
++                    />
++                )}
+ 
+                 {/* Toast Notification */}
+                 {toastMsg && (
