@@ -223,9 +223,12 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
 
     handleIframeMessage = (e: MessageEvent) => {
         if (this.iframeRef && e.source === this.iframeRef.contentWindow) {
+            // Reject cross-origin messages so a misbehaving page can't poison the URL bar
+            if (e.origin !== window.location.origin) return;
             const data = e.data;
             if (data && data.type === 'iframe_navigate' && typeof data.url === 'string') {
-                const newUrl = data.url;
+                // Strip /api/proxy?url= wrapper — mirrors handleIframeLoad's extraction
+                const newUrl = this.getOriginalUrl(data.url);
                 if (newUrl && newUrl !== this.props.tab.url) {
                     this.lastLoadedUrl = newUrl;
                     this.props.onUrlChange(this.props.tab.id, newUrl);
@@ -302,6 +305,11 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
             return 'about:blank';
         }
         if (this.isLocalUrl(urlStr)) {
+            return urlStr;
+        }
+        // Don't double-wrap an already-proxied URL — breaks the feedback loop
+        // if tab.url is transiently a /api/proxy?url=... string
+        if (urlStr.startsWith(`${window.location.origin}/api/proxy?url=`)) {
             return urlStr;
         }
         return `${window.location.origin}/api/proxy?url=${encodeURIComponent(urlStr)}`;
