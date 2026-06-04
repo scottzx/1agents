@@ -1,7 +1,7 @@
 import { h, Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 
-type SettingsCategory = 'general' | 'appearance' | 'security' | 'about';
+type SettingsCategory = 'general' | 'appearance' | 'security' | 'feedback' | 'about';
 
 interface SystemSettingsProps {
     theme: 'light' | 'dark';
@@ -70,6 +70,24 @@ const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon
         ),
     },
     {
+        key: 'feedback',
+        labelZh: '反馈与联系',
+        labelEn: 'Feedback & Contact',
+        icon: (
+            <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
+            </svg>
+        ),
+    },
+    {
         key: 'about',
         labelZh: '关于与维护',
         labelEn: 'About & Maintenance',
@@ -124,45 +142,6 @@ export function SystemSettings({
             <div class="sys-settings-section-title">{t('通用设置', 'General Settings')}</div>
             <div class="sys-settings-section-desc">
                 {t('配置语言和语音识别选项。', 'Configure language and dictation options.')}
-            </div>
-
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('界面语言', 'Interface Language')}</div>
-                        <div class="sys-settings-card-subtitle">
-                            {t('选择应用的显示语言', 'Choose the display language of the app')}
-                        </div>
-                    </div>
-                </div>
-                <div class="sys-settings-toggle-group">
-                    <button
-                        class={`sys-settings-option-btn ${language === 'zh-CN' ? 'active' : ''}`}
-                        onClick={() => toggleLanguage('zh-CN')}
-                    >
-                        🇨🇳 中文 (Chinese)
-                    </button>
-                    <button
-                        class={`sys-settings-option-btn ${language === 'en-US' ? 'active' : ''}`}
-                        onClick={() => toggleLanguage('en-US')}
-                    >
-                        🇺🇸 English
-                    </button>
-                </div>
             </div>
 
             <div class="sys-settings-card">
@@ -496,6 +475,159 @@ export function SystemSettings({
         </div>
     );
 
+    const renderFeedback = () => (
+        <div class="sys-settings-section">
+            <div class="sys-settings-section-title">{t('反馈与联系', 'Feedback & Contact')}</div>
+            <div class="sys-settings-section-desc">
+                {t(
+                    '如有问题、建议或合作意向，欢迎通过以下方式联系我们。',
+                    'For questions, suggestions, or collaboration inquiries, please reach out via the channels below.'
+                )}
+            </div>
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                            <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('公司', 'Company')}</div>
+                        <div class="sys-settings-card-subtitle">杭州一芥智能有限公司</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                            <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('联系邮箱', 'Email')}</div>
+                        <div class="sys-settings-card-subtitle">
+                            <a
+                                href="mailto:xiaofengzeng93@outlook.com"
+                                class="meta-link"
+                                style="word-break: break-all;"
+                            >
+                                xiaofengzeng93@outlook.com
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('用户反馈表', 'Feedback Form')}</div>
+                        <div class="sys-settings-card-subtitle">
+                            {t(
+                                '提交功能建议或问题反馈，帮助我们改进产品。',
+                                'Submit feature requests or bug reports to help us improve.'
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div class="sys-settings-action-row">
+                    <a
+                        class="sys-settings-btn primary"
+                        href="https://my.feishu.cn/share/base/form/shrcn0OGqn5ZBCiPEpmJuJ3Djtc"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        {t('打开反馈表', 'Open Feedback Form')}
+                    </a>
+                </div>
+            </div>
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="2" y1="12" x2="22" y2="12" />
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('界面语言', 'Interface Language')}</div>
+                        <div class="sys-settings-card-subtitle">
+                            {t('选择应用的显示语言', 'Choose the display language of the app')}
+                        </div>
+                    </div>
+                </div>
+                <div class="sys-settings-toggle-group">
+                    <button
+                        class={`sys-settings-option-btn ${language === 'zh-CN' ? 'active' : ''}`}
+                        onClick={() => toggleLanguage('zh-CN')}
+                    >
+                        🇨🇳 中文 (Chinese)
+                    </button>
+                    <button
+                        class={`sys-settings-option-btn ${language === 'en-US' ? 'active' : ''}`}
+                        onClick={() => toggleLanguage('en-US')}
+                    >
+                        🇺🇸 English
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
     const renderAbout = () => (
         <div class="sys-settings-section">
             <div class="sys-settings-section-title">{t('关于与维护', 'About & Maintenance')}</div>
@@ -619,6 +751,8 @@ export function SystemSettings({
                 return renderAppearance();
             case 'security':
                 return renderSecurity();
+            case 'feedback':
+                return renderFeedback();
             case 'about':
                 return renderAbout();
             default:

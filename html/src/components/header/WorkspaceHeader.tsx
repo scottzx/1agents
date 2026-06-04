@@ -170,9 +170,11 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             <span class="ws-name" style="font-weight: 600;">
                                 {activeDrawerTab === 'providers'
                                     ? '模型管理'
-                                    : activeDrawerTab === 'settings'
-                                      ? '系统设置'
-                                      : '发现中心'}
+                                    : activeDrawerTab === 'skills'
+                                      ? '技能管理'
+                                      : activeDrawerTab === 'settings'
+                                        ? '系统设置'
+                                        : '发现中心'}
                             </span>
                         </div>
                     ) : (

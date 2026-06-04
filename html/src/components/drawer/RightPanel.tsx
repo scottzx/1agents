@@ -143,6 +143,8 @@ export function RightPanel({
                 return '模型管理';
             case 'settings':
                 return '系统设置';
+            case 'skills':
+                return '技能管理';
             case 'discovery':
                 return '发现中心';
             default:
