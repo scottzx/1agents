@@ -1989,7 +1989,7 @@ export class App extends Component<{}, AppState> {
                                                     )}
                                                     {activeDrawerTab === 'discovery' && (
                                                         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                                                            <DiscoveryPanel />
+                                                            <DiscoveryPanel onOpenBrowserTab={IS_DESKTOP ? this.openBrowserTab : undefined} />
                                                         </div>
                                                     )}
                                                 </div>

@@ -19,14 +19,30 @@ const QUICK_LINKS: LinkCard[] = [
     },
 ];
 
-export function DiscoveryPanel() {
+interface DiscoveryPanelProps {
+    onOpenBrowserTab?: (url: string) => void;
+}
+
+export function DiscoveryPanel({ onOpenBrowserTab }: DiscoveryPanelProps) {
     return (
         <div class="discovery-container">
-            <div class="discovery-header-desc">精选各类实用的 AI 辅助工具与技能库，点击即可在新窗口快速访问。</div>
+            <div class="discovery-header-desc">精选各类实用的 AI 辅助工具与技能库，点击即可在内置浏览器中快速访问。</div>
 
             <div class="discovery-cards-list">
                 {QUICK_LINKS.map((card, idx) => (
-                    <a key={idx} href={card.url} target="_blank" rel="noopener noreferrer" class="discovery-card">
+                    <a
+                        key={idx}
+                        href={card.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                            if (onOpenBrowserTab) {
+                                e.preventDefault();
+                                onOpenBrowserTab(card.url);
+                            }
+                        }}
+                        class="discovery-card"
+                    >
                         <div class="card-top">
                             <div
                                 class="card-icon-wrapper"
