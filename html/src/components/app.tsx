@@ -263,7 +263,11 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
     };
 
     private invokeTauri = async (command: string, args: Record<string, unknown> = {}): Promise<unknown> => {
-        const tauri = (window as unknown as { __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
+        const tauri = (
+            window as unknown as {
+                __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } };
+            }
+        ).__TAURI__;
         if (tauri) {
             try {
                 return await tauri.core.invoke(command, args);
@@ -329,7 +333,8 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
         const { tab } = this.props;
         if (!tab.url || tab.url === 'about:blank') return;
 
-        const isDesktopEnv = IS_DESKTOP || (typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: object }).__TAURI__);
+        const isDesktopEnv =
+            IS_DESKTOP || (typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: object }).__TAURI__);
         if (isDesktopEnv) {
             this.invokeTauri('open_in_external_browser', { url: tab.url });
         } else {
@@ -348,7 +353,14 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
             >
                 <div class="browser-nav-bar">
                     <button class="browser-refresh-btn" onClick={this.handleRefresh} title="刷新页面" disabled={isHome}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
                             <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.72 2.78L21 8" />
                             <polyline points="21 3 21 8 16 8" />
                         </svg>
@@ -358,11 +370,25 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
                         class="browser-url-input"
                         placeholder="输入网址并回车 (e.g. www.bing.com 或 localhost:3000)"
                         value={tab.url === 'about:blank' ? '' : tab.url}
-                        ref={el => { this.inputRef = el; }}
+                        ref={el => {
+                            this.inputRef = el;
+                        }}
                         onKeyDown={this.handleKeyPress}
                     />
-                    <button class="browser-open-external-btn" onClick={this.handleOpenExternal} title="在本地浏览器中打开" disabled={isHome}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button
+                        class="browser-open-external-btn"
+                        onClick={this.handleOpenExternal}
+                        title="在本地浏览器中打开"
+                        disabled={isHome}
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                             <polyline points="15 3 21 3 21 9" />
                             <line x1="10" y1="14" x2="21" y2="3" />
@@ -371,33 +397,50 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
                 </div>
                 <div class="browser-iframe-wrapper" style="flex: 1; position: relative; width: 100%; height: 100%;">
                     {isHome && (
-                        <div class="browser-welcome-page" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
+                        <div
+                            class="browser-welcome-page"
+                            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"
+                        >
                             <div class="welcome-card">
-                                <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <svg
+                                    class="welcome-icon"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
                                     <circle cx="12" cy="12" r="10" />
                                     <line x1="2" y1="12" x2="22" y2="12" />
                                     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                                 </svg>
                                 <h3 class="welcome-title">内置浏览器</h3>
-                                <p class="welcome-desc">
-                                    在上方地址栏输入网址并按回车键进行浏览。
-                                </p>
+                                <p class="welcome-desc">在上方地址栏输入网址并按回车键进行浏览。</p>
                                 <div class="welcome-tips">
                                     <div class="tip-item">
                                         <strong>💡 提示：</strong>
-                                        <span>该浏览器基于 iframe 渲染，对于公网网页，自动使用 Go 后端进行代理以解决跨域与安全策略拦截；本地服务直连加载。</span>
+                                        <span>
+                                            该浏览器基于 iframe 渲染，对于公网网页，自动使用 Go
+                                            后端进行代理以解决跨域与安全策略拦截；本地服务直连加载。
+                                        </span>
                                     </div>
                                     <div class="tip-item">
                                         <strong>🌐 外部打开：</strong>
-                                        <span>若页面遇到复杂的 JS 渲染问题或白屏，可点击输入框右侧的按钮，直接使用系统默认浏览器打开该网页。</span>
+                                        <span>
+                                            若页面遇到复杂的 JS
+                                            渲染问题或白屏，可点击输入框右侧的按钮，直接使用系统默认浏览器打开该网页。
+                                        </span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
                     {!isHome && (
-                        <iframe 
-                            ref={el => { this.iframeRef = el; }}
+                        <iframe
+                            ref={el => {
+                                this.iframeRef = el;
+                            }}
                             src={this.state.iframeSrc}
                             class="browser-iframe"
                             style="width: 100%; height: 100%; border: none; background: #fff;"
@@ -1326,17 +1369,13 @@ export class App extends Component<{}, AppState> {
                     return { ...t, url };
                 }
                 return t;
-            })
+            }),
         }));
     };
 
     renderBuiltinBrowser = (tab: Tab) => {
         return (
-            <BuiltinBrowser
-                tab={tab}
-                active={this.state.activeTabId === tab.id}
-                onUrlChange={this.updateBrowserUrl}
-            />
+            <BuiltinBrowser tab={tab} active={this.state.activeTabId === tab.id} onUrlChange={this.updateBrowserUrl} />
         );
     };
 
@@ -1865,7 +1904,14 @@ export class App extends Component<{}, AppState> {
                                                         }}
                                                         title="关闭标签页"
                                                     >
-                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                        <svg
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2.5"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
                                                             <line x1="18" y1="6" x2="6" y2="18" />
                                                             <line x1="6" y1="6" x2="18" y2="18" />
                                                         </svg>
@@ -1880,7 +1926,14 @@ export class App extends Component<{}, AppState> {
                                     onClick={() => this.openBrowserTab('')}
                                     title="打开新浏览器标签页"
                                 >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
                                         <line x1="12" y1="5" x2="12" y2="19" />
                                         <line x1="5" y1="12" x2="19" y2="12" />
                                     </svg>
@@ -1888,7 +1941,10 @@ export class App extends Component<{}, AppState> {
                             </div>
                         )}
 
-                        <div class="app-main-layout" style="display: flex; flex: 1; flex-direction: row; overflow: hidden; width: 100%;">
+                        <div
+                            class="app-main-layout"
+                            style="display: flex; flex: 1; flex-direction: row; overflow: hidden; width: 100%;"
+                        >
                             {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
                             {activeTabId === 'terminal' && (
                                 <Fragment>
@@ -1998,7 +2054,11 @@ export class App extends Component<{}, AppState> {
                                                     )}
                                                     {activeDrawerTab === 'discovery' && (
                                                         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                                                            <DiscoveryPanel onOpenBrowserTab={IS_DESKTOP ? this.openBrowserTab : undefined} />
+                                                            <DiscoveryPanel
+                                                                onOpenBrowserTab={
+                                                                    IS_DESKTOP ? this.openBrowserTab : undefined
+                                                                }
+                                                            />
                                                         </div>
                                                     )}
                                                 </div>
@@ -2006,7 +2066,9 @@ export class App extends Component<{}, AppState> {
                                                 <Fragment>
                                                     {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
                                                     <MiddleCanvas
-                                                        activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
+                                                        activeTab={
+                                                            activeTab as 'terminal' | 'agents' | 'console' | 'folders'
+                                                        }
                                                         wsUrl={wsUrl}
                                                         tokenUrl={tokenUrl}
                                                         clientOptions={clientOptions}
@@ -2022,7 +2084,9 @@ export class App extends Component<{}, AppState> {
                                                     {activeDrawerTab !== 'none' && (
                                                         <div
                                                             class="resizer resizer-right"
-                                                            onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
+                                                            onMouseDown={(e: MouseEvent) =>
+                                                                this.handleResizerDown('right', e)
+                                                            }
                                                             title="拖动调整右侧栏宽度"
                                                         />
                                                     )}
@@ -2059,7 +2123,8 @@ export class App extends Component<{}, AppState> {
                                                         onFilterTagChange={this.handleFilterTagChange}
                                                         onRefreshFlatFiles={async () => {
                                                             this.loadDir('', null);
-                                                            const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
+                                                            const isSearching =
+                                                                searchQuery !== '' || selectedFilterTag !== 'all';
                                                             if (isSearching) {
                                                                 this.loadFlatFiles();
                                                             }
@@ -2092,15 +2157,24 @@ export class App extends Component<{}, AppState> {
                                                         onDownloadFile={this.downloadFile}
                                                         onRenameFile={this.renameFile}
                                                         onToggleFullscreen={() => {
-                                                            const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
+                                                            const { selectedFsEntry, workspaces, activeWorkspaceId } =
+                                                                this.state;
                                                             if (selectedFsEntry) {
-                                                                const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
-                                                                const activeWorkspacePath = activeWorkspace?.path || '.';
-                                                                const absolutePath = selectedFsEntry.path.startsWith('/')
+                                                                const activeWorkspace = workspaces.find(
+                                                                    w => w.id === activeWorkspaceId
+                                                                );
+                                                                const activeWorkspacePath =
+                                                                    activeWorkspace?.path || '.';
+                                                                const absolutePath = selectedFsEntry.path.startsWith(
+                                                                    '/'
+                                                                )
                                                                     ? selectedFsEntry.path
                                                                     : `${activeWorkspacePath}/${selectedFsEntry.path}`;
                                                                 if (IS_DESKTOP) {
-                                                                    this.openPreviewTab(absolutePath, selectedFsEntry.name);
+                                                                    this.openPreviewTab(
+                                                                        absolutePath,
+                                                                        selectedFsEntry.name
+                                                                    );
                                                                 } else {
                                                                     const shareUrl = `${window.location.origin}${
                                                                         window.location.pathname
@@ -2111,9 +2185,17 @@ export class App extends Component<{}, AppState> {
                                                         }}
                                                         onShareFile={this.shareFile}
                                                         onSaveFile={this.saveFile}
-                                                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                                                        onEditedContentChange={content => this.setState({ editedContent: content })}
-                                                        onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
+                                                        onToggleEditing={isEditing =>
+                                                            this.setState({ isEditingDetail: isEditing })
+                                                        }
+                                                        onEditedContentChange={content =>
+                                                            this.setState({ editedContent: content })
+                                                        }
+                                                        onOpenPreview={
+                                                            IS_DESKTOP
+                                                                ? (path, name) => this.openPreviewTab(path, name)
+                                                                : undefined
+                                                        }
                                                         fsEntries={this.state.fsEntries}
                                                         fsLoading={this.state.fsLoading}
                                                         onToggleFsDir={this.toggleFsDir}
@@ -2128,7 +2210,10 @@ export class App extends Component<{}, AppState> {
                                 ) : (
                                     <div class="workspace-body-container dynamic-tab-view">
                                         {activeTabObj?.type === 'preview' && (
-                                            <div class="fb-detail-view-tab-container" style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;">
+                                            <div
+                                                class="fb-detail-view-tab-container"
+                                                style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;"
+                                            >
                                                 {selectedFsEntry ? (
                                                     <FileDetailView
                                                         selectedFsEntry={selectedFsEntry}
@@ -2150,9 +2235,17 @@ export class App extends Component<{}, AppState> {
                                                         onToggleFullscreen={() => {}}
                                                         onShareFile={this.shareFile}
                                                         onSaveFile={this.saveFile}
-                                                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                                                        onEditedContentChange={content => this.setState({ editedContent: content })}
-                                                        onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
+                                                        onToggleEditing={isEditing =>
+                                                            this.setState({ isEditingDetail: isEditing })
+                                                        }
+                                                        onEditedContentChange={content =>
+                                                            this.setState({ editedContent: content })
+                                                        }
+                                                        onOpenPreview={
+                                                            IS_DESKTOP
+                                                                ? (path, name) => this.openPreviewTab(path, name)
+                                                                : undefined
+                                                        }
                                                         isStandalone={true}
                                                     />
                                                 ) : (
@@ -2163,7 +2256,16 @@ export class App extends Component<{}, AppState> {
                                                 )}
                                             </div>
                                         )}
-                                        <div class="builtin-browser-container" style={{ flex: 1, height: '100%', display: activeTabObj?.type === 'browser' ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden' }}>
+                                        <div
+                                            class="builtin-browser-container"
+                                            style={{
+                                                flex: 1,
+                                                height: '100%',
+                                                display: activeTabObj?.type === 'browser' ? 'flex' : 'none',
+                                                flexDirection: 'column',
+                                                overflow: 'hidden',
+                                            }}
+                                        >
                                             {this.state.tabs
                                                 .filter(t => t.type === 'browser')
                                                 .map(t => this.renderBuiltinBrowser(t))}
