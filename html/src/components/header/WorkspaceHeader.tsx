@@ -95,6 +95,63 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         </svg>
     );
 
+    // Settings (gear) icon
+    const IconSettings = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+    );
+    // Skills / puzzle icon
+    const IconSkills = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.611 1.611c-.47.47-1.087.706-1.704.706s-1.233-.235-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.878-.289c-.493.074-.84.348-1.08.649L6.36 21.95a2 2 0 0 1-2.828 0l-.482-.482a2 2 0 0 1 0-2.828L4.5 17.19c.302-.24.575-.587.649-1.08a1.026 1.026 0 0 0-.289-.878L3.292 13.66c-.47-.47-.706-1.087-.706-1.704s.235-1.233.706-1.704L4.903 8.64a.98.98 0 0 1 .837-.276c.47.07.802.48.968.925a2.501 2.501 0 1 0 3.214-3.214c-.446-.166-.855-.497-.925-.968a.979.979 0 0 1 .276-.837L10.884 3.66c.47-.47 1.087-.706 1.704-.706s1.233.235 1.704.706l1.568 1.568c.23.23.556.338.878.289.493-.074.84-.348 1.08-.649L19.36 3.42a2 2 0 0 1 2.828 0l.482.482a2 2 0 0 1 0 2.828L21.22 7.18c-.302.24-.575.587-.649 1.08z" />
+            <path d="M12 8v8M8 12h8" />
+        </svg>
+    );
+    // Providers / cloud icon
+    const IconProviders = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9z" />
+            <circle cx="12" cy="10" r="3" />
+        </svg>
+    );
+    // Discovery / compass icon
+    const IconDiscovery = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+        </svg>
+    );
+
     // Hamburger / Close icon
     const IconHamburger = (
         <svg
@@ -170,9 +227,11 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             <span class="ws-name" style="font-weight: 600;">
                                 {activeDrawerTab === 'providers'
                                     ? '模型管理'
-                                    : activeDrawerTab === 'settings'
-                                      ? '系统设置'
-                                      : '发现中心'}
+                                    : activeDrawerTab === 'skills'
+                                      ? '技能管理'
+                                      : activeDrawerTab === 'settings'
+                                        ? '系统设置'
+                                        : '发现中心'}
                             </span>
                         </div>
                     ) : (
@@ -184,76 +243,73 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                 </div>
 
                 {!isFullPageTab(activeDrawerTab) && (
-                    <Fragment>
-                        {/* Desktop: right shortcut buttons — channels, files, git, settings */}
-                        <div class="header-right">
-                            {onTmuxMouseToggle && (
-                                <button
-                                    class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
-                                    onClick={onTmuxMouseToggle}
-                                    title={
-                                        tmuxMouseOn
-                                            ? '当前模式：滚轮滑动（点击切换为选择复制）'
-                                            : '当前模式：选择复制（点击切换为滚轮滑动）'
-                                    }
+                    <div class="header-right">
+                        {onTmuxMouseToggle && (
+                            <button
+                                class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
+                                onClick={onTmuxMouseToggle}
+                                title={
+                                    tmuxMouseOn
+                                        ? '当前模式：滚轮滑动（点击切换为选择复制）'
+                                        : '当前模式：选择复制（点击切换为滚轮滑动）'
+                                }
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
                                 >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2.5"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <rect x="5" y="2" width="14" height="20" rx="7" />
-                                        <path d="M12 2v6" />
-                                        <path d="M5 10h14" />
-                                    </svg>
-                                    <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
-                                </button>
-                            )}
-
-                            {onTmuxMouseToggle && <div class="divider" />}
-
-                            <button
-                                id="hdr-btn-channels"
-                                class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                                onClick={() => toggleDrawerTab('channels')}
-                                title="AI 渠道连接"
-                            >
-                                {IconChannels}
+                                    <rect x="5" y="2" width="14" height="20" rx="7" />
+                                    <path d="M12 2v6" />
+                                    <path d="M5 10h14" />
+                                </svg>
+                                <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
                             </button>
-                            <button
-                                id="hdr-btn-files"
-                                class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
-                                onClick={() => toggleDrawerTab('files')}
-                                title="文件浏览器"
-                            >
-                                {IconFiles}
-                            </button>
-                            <button
-                                id="hdr-btn-git"
-                                class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
-                                onClick={() => toggleDrawerTab('git')}
-                                title="版本控制 (Git)"
-                            >
-                                {IconGit}
-                            </button>
-                        </div>
+                        )}
 
-                        {/* Mobile: hamburger button (only visible on mobile via CSS) */}
+                        {onTmuxMouseToggle && <div class="divider" />}
+
                         <button
-                            id="mob-hamburger-btn"
-                            class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
-                            onClick={toggleMobileMenu}
-                            title="菜单"
-                            aria-label="打开功能菜单"
-                            aria-expanded={mobileMenuOpen}
+                            id="hdr-btn-channels"
+                            class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
+                            onClick={() => toggleDrawerTab('channels')}
+                            title="AI 渠道连接"
                         >
-                            {mobileMenuOpen ? IconClose : IconHamburger}
+                            {IconChannels}
                         </button>
-                    </Fragment>
+                        <button
+                            id="hdr-btn-files"
+                            class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
+                            onClick={() => toggleDrawerTab('files')}
+                            title="文件浏览器"
+                        >
+                            {IconFiles}
+                        </button>
+                        <button
+                            id="hdr-btn-git"
+                            class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
+                            onClick={() => toggleDrawerTab('git')}
+                            title="版本控制 (Git)"
+                        >
+                            {IconGit}
+                        </button>
+                    </div>
                 )}
+
+                {/* Mobile: hamburger button (only visible on mobile via CSS) */}
+                <button
+                    id="mob-hamburger-btn"
+                    class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
+                    onClick={toggleMobileMenu}
+                    title="菜单"
+                    aria-label="打开功能菜单"
+                    aria-expanded={mobileMenuOpen}
+                >
+                    {mobileMenuOpen ? IconClose : IconHamburger}
+                </button>
             </header>
 
             {/* Mobile: slide-down drawer menu */}
@@ -299,6 +355,48 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconGit}</span>
                     <span class="mob-menu-label">版本控制 (Git)</span>
                     {activeDrawerTab === 'git' && <span class="mob-menu-badge">打开中</span>}
+                </button>
+
+                <div class="mobile-menu-section-title">管理</div>
+
+                <button
+                    id="mob-menu-settings"
+                    class={`mobile-menu-item ${activeDrawerTab === 'settings' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('settings')}
+                >
+                    <span class="mob-menu-icon">{IconSettings}</span>
+                    <span class="mob-menu-label">系统设置</span>
+                    {activeDrawerTab === 'settings' && <span class="mob-menu-badge">打开中</span>}
+                </button>
+
+                <button
+                    id="mob-menu-skills"
+                    class={`mobile-menu-item ${activeDrawerTab === 'skills' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('skills')}
+                >
+                    <span class="mob-menu-icon">{IconSkills}</span>
+                    <span class="mob-menu-label">技能管理</span>
+                    {activeDrawerTab === 'skills' && <span class="mob-menu-badge">打开中</span>}
+                </button>
+
+                <button
+                    id="mob-menu-providers"
+                    class={`mobile-menu-item ${activeDrawerTab === 'providers' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('providers')}
+                >
+                    <span class="mob-menu-icon">{IconProviders}</span>
+                    <span class="mob-menu-label">模型管理</span>
+                    {activeDrawerTab === 'providers' && <span class="mob-menu-badge">打开中</span>}
+                </button>
+
+                <button
+                    id="mob-menu-discovery"
+                    class={`mobile-menu-item ${activeDrawerTab === 'discovery' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('discovery')}
+                >
+                    <span class="mob-menu-icon">{IconDiscovery}</span>
+                    <span class="mob-menu-label">发现中心</span>
+                    {activeDrawerTab === 'discovery' && <span class="mob-menu-badge">打开中</span>}
                 </button>
             </div>
         </Fragment>
