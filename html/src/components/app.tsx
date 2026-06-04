@@ -1252,6 +1252,10 @@ export class App extends Component<{}, AppState> {
             if (providersIframe && providersIframe.contentWindow) {
                 providersIframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
             }
+            const skillsIframe = document.getElementById('skills-iframe') as HTMLIFrameElement | null;
+            if (skillsIframe && skillsIframe.contentWindow) {
+                skillsIframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
+            }
         });
         document.documentElement.setAttribute('data-theme', targetTheme);
         localStorage.setItem('1agents-theme', targetTheme);
@@ -1268,6 +1272,10 @@ export class App extends Component<{}, AppState> {
             const providersIframe = document.getElementById('cc-providers-iframe') as HTMLIFrameElement | null;
             if (providersIframe && providersIframe.contentWindow) {
                 providersIframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
+            }
+            const skillsIframe = document.getElementById('skills-iframe') as HTMLIFrameElement | null;
+            if (skillsIframe && skillsIframe.contentWindow) {
+                skillsIframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
             }
         });
         localStorage.setItem('1agents-language', lang);
