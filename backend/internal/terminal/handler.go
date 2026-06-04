@@ -49,7 +49,6 @@ type Handler struct {
 	mu          sync.RWMutex
 	mockWindows []TmuxWindow
 	agyCache    map[int]string
-	codexCache  map[int]string
 }
 
 // NewHandler creates a terminal Handler.
@@ -58,7 +57,6 @@ func NewHandler(cfg *config.Config) *Handler {
 		session:     cfg.TmuxSession,
 		mockWindows: make([]TmuxWindow, 0),
 		agyCache:    make(map[int]string),
-		codexCache:  make(map[int]string),
 	}
 }
 
@@ -406,25 +404,14 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 			delete(h.agyCache, pid)
 		}
 	}
-	// Clean up dead PIDs from codexCache
-	for pid := range h.codexCache {
-		if _, exists := cmdMap[pid]; !exists {
-			delete(h.codexCache, pid)
-		}
-	}
 
 	// Find uncached PIDs
 	var uncachedAgyPIDs []int
-	var uncachedCodexPIDs []int
 	for pid, cmdLine := range cmdMap {
 		cmdLower := strings.ToLower(cmdLine)
 		if strings.Contains(cmdLower, "agy") || strings.Contains(cmdLower, "antigravity") {
 			if _, cached := h.agyCache[pid]; !cached {
 				uncachedAgyPIDs = append(uncachedAgyPIDs, pid)
-			}
-		} else if strings.Contains(cmdLower, "codex") {
-			if _, cached := h.codexCache[pid]; !cached {
-				uncachedCodexPIDs = append(uncachedCodexPIDs, pid)
 			}
 		}
 	}
@@ -436,21 +423,11 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 			h.agyCache[pid] = convID
 		}
 	}
-	if len(uncachedCodexPIDs) > 0 {
-		newCodexRollouts := getCodexRolloutPaths(uncachedCodexPIDs)
-		for pid, path := range newCodexRollouts {
-			h.codexCache[pid] = path
-		}
-	}
 
 	// Clone caches to avoid holding lock during file I/O
 	agyConvIDs := make(map[int]string)
 	for pid, convID := range h.agyCache {
 		agyConvIDs[pid] = convID
-	}
-	codexRollouts := make(map[int]string)
-	for pid, path := range h.codexCache {
-		codexRollouts[pid] = path
 	}
 	h.mu.Unlock()
 
@@ -520,9 +497,6 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 					} else if strings.Contains(cmdLower, "codex") {
 						agent = "codex"
 						status = "idle"
-						if path, ok := codexRollouts[pid]; ok && path != "" {
-							status, waitingFor = getCodexStatus(path)
-						}
 						break
 					} else if strings.Contains(cmdLower, "claude") && !strings.Contains(cmdLower, "daemon") {
 						agent = "claude"
