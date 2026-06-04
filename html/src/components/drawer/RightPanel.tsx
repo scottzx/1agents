@@ -139,8 +139,12 @@ export function RightPanel({
                 return '版本控制';
             case 'channels':
                 return '消息渠道';
+            case 'providers':
+                return '模型管理';
             case 'settings':
                 return '系统设置';
+            case 'discovery':
+                return '发现中心';
             default:
                 return '';
         }
@@ -205,7 +209,7 @@ export function RightPanel({
                 </div>
             </div>
 
-            {/* cc-connect iframe container is kept alive to avoid 1-2s load latency */}
+            {/* cc-connect channels iframe container is kept alive to avoid 1-2s load latency */}
             <div
                 class="panel-body-iframe"
                 style={`flex: 1; overflow: hidden; display: ${

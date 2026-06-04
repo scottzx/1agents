@@ -750,6 +750,12 @@ body {
         color: var(--text-sidebar);
         background-color: var(--bg-sidebar-hover);
       }
+
+      &.active {
+        color: var(--text-sidebar);
+        background-color: var(--bg-sidebar-hover);
+        font-weight: 500;
+      }
     }
   }
 }
@@ -1684,6 +1690,130 @@ body {
     }
   }
 }
+
+/* Discovery Center inside drawer panel / full-page view */
+.discovery-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+
+    .discovery-header-desc {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      padding-bottom: 16px;
+      border-bottom: 1px dashed var(--border-color);
+    }
+
+    .discovery-cards-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+      padding-bottom: 32px;
+    }
+
+    .discovery-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+
+      &:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-color);
+        box-shadow: var(--shadow-md), 0 0 0 1px var(--accent-color);
+
+        .card-footer .arrow-right-icon {
+          transform: translateX(4px);
+        }
+      }
+
+      .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        .card-icon-wrapper {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          .card-icon {
+            width: 20px;
+            height: 20px;
+          }
+        }
+
+        .card-badge {
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--accent-color);
+          background-color: var(--accent-light);
+          padding: 3px 8px;
+          border-radius: 20px;
+        }
+      }
+
+      .card-content {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+
+        .card-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-main);
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .card-description {
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--text-secondary);
+          margin: 0;
+        }
+      }
+
+      .card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+        margin-top: 4px;
+
+        .card-action-text {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--accent-color);
+        }
+
+        .arrow-right-icon {
+          width: 14px;
+          height: 14px;
+          color: var(--accent-color);
+          transition: transform 0.2s;
+        }
+      }
+    }
+  }
 
 /* Syntax Highlighting elements inside the preview */
 .kw { color: var(--code-keyword); font-weight: 600; }  /* Keyword */

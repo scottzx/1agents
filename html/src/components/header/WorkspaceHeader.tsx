@@ -1,6 +1,6 @@
 import { h, Fragment } from 'preact';
 import { useState } from 'preact/hooks';
-import { RightDrawerTab } from '../types';
+import { RightDrawerTab, isFullPageTab } from '../types';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -178,87 +178,99 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </svg>
                         </button>
                     )}
-                    <div class="header-title-group">
-                        <span class="ws-name">{workspaceName || '未选择工作空间'}</span>
-                        <span class="session-name">{sessionName || '无会话'}</span>
-                    </div>
-                </div>
-
-                {/* Desktop: right shortcut buttons — channels, files, git, settings */}
-                <div class="header-right">
-                    {onTmuxMouseToggle && (
-                        <button
-                            class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
-                            onClick={onTmuxMouseToggle}
-                            title={
-                                tmuxMouseOn
-                                    ? '当前模式：滚轮滑动（点击切换为选择复制）'
-                                    : '当前模式：选择复制（点击切换为滚轮滑动）'
-                            }
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect x="5" y="2" width="14" height="20" rx="7" />
-                                <path d="M12 2v6" />
-                                <path d="M5 10h14" />
-                            </svg>
-                            <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
-                        </button>
+                    {isFullPageTab(activeDrawerTab) ? (
+                        <div class="header-title-group">
+                            <span class="ws-name" style="font-weight: 600;">
+                                {activeDrawerTab === 'providers' ? '模型管理' : '发现中心'}
+                            </span>
+                        </div>
+                    ) : (
+                        <div class="header-title-group">
+                            <span class="ws-name">{workspaceName || '未选择工作空间'}</span>
+                            <span class="session-name">{sessionName || '无会话'}</span>
+                        </div>
                     )}
-
-                    {onTmuxMouseToggle && <div class="divider" />}
-
-                    <button
-                        id="hdr-btn-channels"
-                        class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                        onClick={() => toggleDrawerTab('channels')}
-                        title="AI 渠道连接"
-                    >
-                        {IconChannels}
-                    </button>
-                    <button
-                        id="hdr-btn-files"
-                        class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
-                        onClick={() => toggleDrawerTab('files')}
-                        title="文件浏览器"
-                    >
-                        {IconFiles}
-                    </button>
-                    <button
-                        id="hdr-btn-git"
-                        class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
-                        onClick={() => toggleDrawerTab('git')}
-                        title="版本控制 (Git)"
-                    >
-                        {IconGit}
-                    </button>
-                    <button
-                        id="hdr-btn-settings"
-                        class={`shortcut-btn ${activeDrawerTab === 'settings' ? 'active' : ''}`}
-                        onClick={() => toggleDrawerTab('settings')}
-                        title="系统设置（含主题）"
-                    >
-                        {IconSettings}
-                    </button>
                 </div>
 
-                {/* Mobile: hamburger button (only visible on mobile via CSS) */}
-                <button
-                    id="mob-hamburger-btn"
-                    class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
-                    onClick={toggleMobileMenu}
-                    title="菜单"
-                    aria-label="打开功能菜单"
-                    aria-expanded={mobileMenuOpen}
-                >
-                    {mobileMenuOpen ? IconClose : IconHamburger}
-                </button>
+                {!isFullPageTab(activeDrawerTab) && (
+                    <Fragment>
+                        {/* Desktop: right shortcut buttons — channels, files, git, settings */}
+                        <div class="header-right">
+                            {onTmuxMouseToggle && (
+                                <button
+                                    class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
+                                    onClick={onTmuxMouseToggle}
+                                    title={
+                                        tmuxMouseOn
+                                            ? '当前模式：滚轮滑动（点击切换为选择复制）'
+                                            : '当前模式：选择复制（点击切换为滚轮滑动）'
+                                    }
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <rect x="5" y="2" width="14" height="20" rx="7" />
+                                        <path d="M12 2v6" />
+                                        <path d="M5 10h14" />
+                                    </svg>
+                                    <span>{tmuxMouseOn ? '滚轮滑动' : '选择复制'}</span>
+                                </button>
+                            )}
+
+                            {onTmuxMouseToggle && <div class="divider" />}
+
+                            <button
+                                id="hdr-btn-channels"
+                                class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
+                                onClick={() => toggleDrawerTab('channels')}
+                                title="AI 渠道连接"
+                            >
+                                {IconChannels}
+                            </button>
+                            <button
+                                id="hdr-btn-files"
+                                class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
+                                onClick={() => toggleDrawerTab('files')}
+                                title="文件浏览器"
+                            >
+                                {IconFiles}
+                            </button>
+                            <button
+                                id="hdr-btn-git"
+                                class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
+                                onClick={() => toggleDrawerTab('git')}
+                                title="版本控制 (Git)"
+                            >
+                                {IconGit}
+                            </button>
+                            <button
+                                id="hdr-btn-settings"
+                                class={`shortcut-btn ${activeDrawerTab === 'settings' ? 'active' : ''}`}
+                                onClick={() => toggleDrawerTab('settings')}
+                                title="系统设置（含主题）"
+                            >
+                                {IconSettings}
+                            </button>
+                        </div>
+
+                        {/* Mobile: hamburger button (only visible on mobile via CSS) */}
+                        <button
+                            id="mob-hamburger-btn"
+                            class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
+                            onClick={toggleMobileMenu}
+                            title="菜单"
+                            aria-label="打开功能菜单"
+                            aria-expanded={mobileMenuOpen}
+                        >
+                            {mobileMenuOpen ? IconClose : IconHamburger}
+                        </button>
+                    </Fragment>
+                )}
             </header>
 
             {/* Mobile: slide-down drawer menu */}

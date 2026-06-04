@@ -12,6 +12,7 @@ interface LeftSidebarProps {
     toggleLeftSidebar: () => void;
     toggleFolder: (id: string) => void;
     toggleDrawerTab: (tab: RightDrawerTab) => void;
+    activeDrawerTab: RightDrawerTab;
     onCreateWorkspace: () => void;
     onRenameWorkspace: (ws: Workspace) => void;
     onDeleteWorkspace: (id: string) => void;
@@ -31,6 +32,7 @@ export function LeftSidebar({
     toggleLeftSidebar,
     toggleFolder,
     toggleDrawerTab,
+    activeDrawerTab,
     onCreateWorkspace,
     onRenameWorkspace,
     onDeleteWorkspace,
@@ -358,7 +360,48 @@ export function LeftSidebar({
             </div>
 
             <div class="sidebar-footer">
-                <div class="footer-item" onClick={() => toggleDrawerTab('settings')}>
+                <div
+                    class={`footer-item${activeDrawerTab === 'providers' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('providers')}
+                    title="模型与服务商管理"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                        <line x1="6" y1="6" x2="6.01" y2="6" />
+                        <line x1="6" y1="18" x2="6.01" y2="18" />
+                    </svg>
+                    <span>模型管理</span>
+                </div>
+                <div
+                    class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('discovery')}
+                    title="发现中心"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <circle cx="12" cy="12" r="10" />
+                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                    </svg>
+                    <span>发现中心</span>
+                </div>
+                <div
+                    class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('settings')}
+                >
                     <svg
                         viewBox="0 0 24 24"
                         fill="none"

@@ -67,6 +67,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 			Workspace string `json:"workspace"`
 			Theme     string `json:"theme"`
 			Lang      string `json:"lang"`
+			Path      string `json:"path"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -93,7 +94,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 		}
 
 		redirectPath := ""
-		if foundWS.ChatChannel != "" {
+		if body.Path != "" {
+			redirectPath = body.Path
+		} else if foundWS.ChatChannel != "" {
 			redirectPath = "/chat/" + foundWS.ChatChannel
 		} else {
 			projName := foundWS.Name

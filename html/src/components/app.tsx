@@ -3,11 +3,12 @@ import { h, Component, Fragment } from 'preact';
 import type { ITerminalOptions, ITheme } from '@xterm/xterm';
 import type { ClientOptions, FlowControl } from './terminal/xterm';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session } from './types';
+import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session, isFullPageTab } from './types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
 import { WorkspaceHeader } from './header/WorkspaceHeader';
 import { MiddleCanvas } from './canvas/MiddleCanvas';
 import { RightPanel } from './drawer/RightPanel';
+import { DiscoveryPanel } from './drawer/DiscoveryPanel';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
@@ -133,6 +134,7 @@ interface AppState {
     wsModalTerminalDir: string;
     wsModalChatChannel: string;
     ccConnectUrl: string;
+    ccProvidersUrl: string;
     // ── Directory picker modal state ──
     dirPickerOpen: boolean;
     dirPickerOnSelect: ((path: string) => void) | null;
@@ -435,6 +437,7 @@ export class App extends Component<{}, AppState> {
             wsModalTerminalDir: '',
             wsModalChatChannel: '',
             ccConnectUrl: '',
+            ccProvidersUrl: '',
             dirPickerOpen: false,
             dirPickerOnSelect: null,
             terminalWindows: [],
@@ -600,10 +603,11 @@ export class App extends Component<{}, AppState> {
                         this.selectWorkspace(workspaces[0]);
                     } else {
                         // No workspaces left — clear stale state
-                        this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
+                        this.setState({ activeWorkspaceId: '', ccConnectUrl: '', ccProvidersUrl: '' });
                     }
                 } else {
                     this.loadCcConnectUrl();
+                    this.loadCcProvidersUrl();
                 }
             });
             return workspaces;
@@ -622,6 +626,22 @@ export class App extends Component<{}, AppState> {
             this.setState({ ccConnectUrl: url });
         } catch (err) {
             console.error('[ccconnect] failed to load url:', err);
+        }
+    };
+
+    loadCcProvidersUrl = async (workspaceId?: string) => {
+        const wsId = workspaceId || this.state.activeWorkspaceId;
+        if (!wsId) return;
+        try {
+            const url = await workspaceService.getCcConnectUrl(
+                wsId,
+                this.state.theme,
+                this.state.language || 'zh-CN',
+                '/providers'
+            );
+            this.setState({ ccProvidersUrl: url });
+        } catch (err) {
+            console.error('[ccconnect] failed to load providers url:', err);
         }
     };
 
@@ -926,6 +946,9 @@ export class App extends Component<{}, AppState> {
     };
 
     selectSession = async (session: Session) => {
+        if (isFullPageTab(this.state.activeDrawerTab)) {
+            this.setState({ activeDrawerTab: 'none' });
+        }
         const oldWorkspaceId = this.state.activeWorkspaceId;
         const { workspaces } = this.state;
 
@@ -956,6 +979,7 @@ export class App extends Component<{}, AppState> {
 
             if (session.workspaceId !== oldWorkspaceId) {
                 this.loadCcConnectUrl(session.workspaceId);
+                this.loadCcProvidersUrl(session.workspaceId);
                 // Switch backend context and reload file browser / git panel
                 const ws = workspaces.find(w => w.id === session.workspaceId);
                 if (ws) {
@@ -978,11 +1002,15 @@ export class App extends Component<{}, AppState> {
 
     /** Switch active workspace and cd into it in a matching tmux window */
     selectWorkspace = async (ws: Workspace) => {
+        if (isFullPageTab(this.state.activeDrawerTab)) {
+            this.setState({ activeDrawerTab: 'none' });
+        }
         const { activeWorkspaceId, terminalWindows } = this.state;
         if (ws.id === activeWorkspaceId) return;
 
         this.setState({ activeWorkspaceId: ws.id }, () => {
             this.loadCcConnectUrl(ws.id);
+            this.loadCcProvidersUrl(ws.id);
             localStorage.setItem('1agents-active-workspace', ws.id);
         });
 
@@ -1167,6 +1195,10 @@ export class App extends Component<{}, AppState> {
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
             }
+            const providersIframe = document.getElementById('cc-providers-iframe') as HTMLIFrameElement | null;
+            if (providersIframe && providersIframe.contentWindow) {
+                providersIframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
+            }
         });
         document.documentElement.setAttribute('data-theme', targetTheme);
         localStorage.setItem('1agents-theme', targetTheme);
@@ -1179,6 +1211,10 @@ export class App extends Component<{}, AppState> {
             const iframe = document.getElementById('cc-connect-iframe') as HTMLIFrameElement | null;
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
+            }
+            const providersIframe = document.getElementById('cc-providers-iframe') as HTMLIFrameElement | null;
+            if (providersIframe && providersIframe.contentWindow) {
+                providersIframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
             }
         });
         localStorage.setItem('1agents-language', lang);
@@ -1303,12 +1339,14 @@ export class App extends Component<{}, AppState> {
         } else {
             // Expand drawer with smart width: wider for channels, git, and files panels
             const smartWidth =
-                tab === 'channels' || tab === 'git' || tab === 'files'
+                tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
                     ? Math.max(this.state.rightPanelWidth, 450)
                     : 320;
             this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth }, () => {
                 if (tab === 'channels') {
                     this.loadCcConnectUrl();
+                } else if (tab === 'providers') {
+                    this.loadCcProvidersUrl();
                 }
             });
         }
@@ -1450,7 +1488,7 @@ export class App extends Component<{}, AppState> {
             if (!activeWorkspaceId && workspaces.length > 0) {
                 await this.selectWorkspace(workspaces[0]);
             } else if (activeWorkspaceId) {
-                await this.loadCcConnectUrl();
+                await Promise.all([this.loadCcConnectUrl(), this.loadCcProvidersUrl()]);
             }
             this.loadTmuxMouse();
             this.checkUrlPreview();
@@ -1627,6 +1665,22 @@ export class App extends Component<{}, AppState> {
         await this.openFileDetail(entry);
     };
 
+    getCcConnectIframeUrl = (url?: string) => {
+        if (!url) return '';
+        if (url.startsWith('/')) {
+            return url;
+        }
+        try {
+            const parsed = new URL(url);
+            if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+                parsed.hostname = window.location.hostname;
+            }
+            return parsed.toString();
+        } catch (e) {
+            return url;
+        }
+    };
+
     render() {
         const {
             activeTab,
@@ -1647,6 +1701,7 @@ export class App extends Component<{}, AppState> {
             wsModalTerminalDir,
             wsModalChatChannel,
             ccConnectUrl,
+            ccProvidersUrl,
             dirPickerOpen,
             flatFiles,
             flatFilesLoading,
@@ -1838,6 +1893,7 @@ export class App extends Component<{}, AppState> {
                                         toggleLeftSidebar={this.toggleLeftSidebar}
                                         toggleFolder={this.toggleFolder}
                                         toggleDrawerTab={this.toggleDrawerTab}
+                                        activeDrawerTab={activeDrawerTab}
                                         onCreateWorkspace={this.openCreateWorkspacePicker}
                                         onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
                                         onDeleteWorkspace={this.deleteWorkspace}
@@ -1892,116 +1948,172 @@ export class App extends Component<{}, AppState> {
                                         />
 
                                         {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
-                                        <div class={`workspace-body-container ${activeDrawerTab !== 'none' ? 'drawer-open' : ''}`}>
-                                            {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                            <MiddleCanvas
-                                                activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
-                                                wsUrl={wsUrl}
-                                                tokenUrl={tokenUrl}
-                                                clientOptions={clientOptions}
-                                                termOptions={termOptions}
-                                                flowControl={flowControl}
-                                                onMobileDetect={isMobile => this.setState({ isMobile })}
-                                                onKeyboardStateChange={this.handleKeyboardStateChange}
-                                                tmuxMouseOn={tmuxMouseOn}
-                                                onTmuxMouseToggle={this.toggleTmuxMouse}
-                                            />
-
-                                            {/* Resizer: between MIDDLE canvas and RIGHT panel */}
-                                            {activeDrawerTab !== 'none' && (
+                                        <div
+                                            class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
+                                        >
+                                            {isFullPageTab(activeDrawerTab) ? (
                                                 <div
-                                                    class="resizer resizer-right"
-                                                    onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
-                                                    title="拖动调整右侧栏宽度"
-                                                />
+                                                    style={{
+                                                        flex: 1,
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        height: '100%',
+                                                        width: '100%',
+                                                        overflow: 'hidden',
+                                                    }}
+                                                >
+                                                    {activeDrawerTab === 'providers' && ccProvidersUrl && (
+                                                        <iframe
+                                                            id="cc-providers-iframe"
+                                                            src={this.getCcConnectIframeUrl(ccProvidersUrl)}
+                                                            onLoad={e => {
+                                                                const iframe = e.target as HTMLIFrameElement;
+                                                                if (iframe && iframe.contentWindow) {
+                                                                    iframe.contentWindow.postMessage(
+                                                                        { type: 'THEME_CHANGE', theme },
+                                                                        '*'
+                                                                    );
+                                                                    iframe.contentWindow.postMessage(
+                                                                        { type: 'LANG_CHANGE', lang: language },
+                                                                        '*'
+                                                                    );
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                width: '100%',
+                                                                height: '100%',
+                                                                border: 'none',
+                                                                background: 'transparent',
+                                                            }}
+                                                        />
+                                                    )}
+                                                    {activeDrawerTab === 'discovery' && (
+                                                        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                                                            <DiscoveryPanel />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <Fragment>
+                                                    {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
+                                                    <MiddleCanvas
+                                                        activeTab={activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
+                                                        wsUrl={wsUrl}
+                                                        tokenUrl={tokenUrl}
+                                                        clientOptions={clientOptions}
+                                                        termOptions={termOptions}
+                                                        flowControl={flowControl}
+                                                        onMobileDetect={isMobile => this.setState({ isMobile })}
+                                                        onKeyboardStateChange={this.handleKeyboardStateChange}
+                                                        tmuxMouseOn={tmuxMouseOn}
+                                                        onTmuxMouseToggle={this.toggleTmuxMouse}
+                                                    />
+
+                                                    {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                                                    {activeDrawerTab !== 'none' && (
+                                                        <div
+                                                            class="resizer resizer-right"
+                                                            onMouseDown={(e: MouseEvent) => this.handleResizerDown('right', e)}
+                                                            title="拖动调整右侧栏宽度"
+                                                        />
+                                                    )}
+
+                                                    {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
+                                                    <RightPanel
+                                                        activeDrawerTab={activeDrawerTab}
+                                                        activeWorkspaceId={activeWorkspaceId}
+                                                        activeWorkspacePath={activeWorkspacePath}
+                                                        rightPanelWidth={rightPanelWidth}
+                                                        closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
+                                                        ccConnectUrl={ccConnectUrl}
+                                                        theme={theme}
+                                                        toggleTheme={this.toggleTheme}
+                                                        language={language}
+                                                        toggleLanguage={this.toggleLanguage}
+                                                        flatFiles={flatFiles}
+                                                        flatFilesLoading={flatFilesLoading}
+                                                        searchQuery={searchQuery}
+                                                        selectedFilterTag={selectedFilterTag}
+                                                        viewMode={viewMode}
+                                                        favoriteFiles={favoriteFiles}
+                                                        detailFullscreen={detailFullscreen}
+                                                        isEditingDetail={isEditingDetail}
+                                                        selectedFsEntry={selectedFsEntry}
+                                                        fileContent={fileContent}
+                                                        editedContent={editedContent}
+                                                        fileLoading={fileLoading}
+                                                        fileSaving={fileSaving}
+                                                        fileSaveMsg={fileSaveMsg}
+                                                        isImagePreview={isImagePreview}
+                                                        imageDataUrl={imageDataUrl}
+                                                        onSearchQueryChange={this.handleSearchChange}
+                                                        onFilterTagChange={this.handleFilterTagChange}
+                                                        onRefreshFlatFiles={async () => {
+                                                            this.loadDir('', null);
+                                                            const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
+                                                            if (isSearching) {
+                                                                this.loadFlatFiles();
+                                                            }
+                                                            try {
+                                                                await this.checkAccessStatus();
+                                                                await Promise.all([
+                                                                    this.loadWorkspaces(true),
+                                                                    this.loadTerminals(),
+                                                                ]);
+
+                                                                const { workspaces, activeWorkspaceId } = this.state;
+                                                                if (!activeWorkspaceId && workspaces.length > 0) {
+                                                                    await this.selectWorkspace(workspaces[0]);
+                                                                } else if (activeWorkspaceId) {
+                                                                    await Promise.all([
+                                                                        this.loadCcConnectUrl(),
+                                                                        this.loadCcProvidersUrl(),
+                                                                    ]);
+                                                                }
+                                                            } catch (e) {
+                                                                console.error('Failed to reconnect/refresh:', e);
+                                                            }
+                                                        }}
+                                                        onOpenFileDetail={this.openFileDetail}
+                                                        onBackToList={() =>
+                                                            this.setState({ viewMode: 'list', detailFullscreen: false })
+                                                        }
+                                                        onToggleFavorite={this.toggleFavorite}
+                                                        onCopyContent={this.copyFileContent}
+                                                        onDownloadFile={this.downloadFile}
+                                                        onRenameFile={this.renameFile}
+                                                        onToggleFullscreen={() => {
+                                                            const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
+                                                            if (selectedFsEntry) {
+                                                                const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+                                                                const activeWorkspacePath = activeWorkspace?.path || '.';
+                                                                const absolutePath = selectedFsEntry.path.startsWith('/')
+                                                                    ? selectedFsEntry.path
+                                                                    : `${activeWorkspacePath}/${selectedFsEntry.path}`;
+                                                                if (IS_DESKTOP) {
+                                                                    this.openPreviewTab(absolutePath, selectedFsEntry.name);
+                                                                } else {
+                                                                    const shareUrl = `${window.location.origin}${
+                                                                        window.location.pathname
+                                                                    }?preview=${encodeURIComponent(absolutePath)}`;
+                                                                    window.open(shareUrl, '_blank');
+                                                                }
+                                                            }
+                                                        }}
+                                                        onShareFile={this.shareFile}
+                                                        onSaveFile={this.saveFile}
+                                                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
+                                                        onEditedContentChange={content => this.setState({ editedContent: content })}
+                                                        onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
+                                                        fsEntries={this.state.fsEntries}
+                                                        fsLoading={this.state.fsLoading}
+                                                        onToggleFsDir={this.toggleFsDir}
+                                                        accessTokenExists={accessAuthRequired}
+                                                        onGenerateAccessToken={this.generateAccessToken}
+                                                        onRevokeAccessToken={this.revokeAccessToken}
+                                                    />
+                                                </Fragment>
                                             )}
-
-                                            {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                                            <RightPanel
-                                                activeDrawerTab={activeDrawerTab}
-                                                activeWorkspaceId={activeWorkspaceId}
-                                                activeWorkspacePath={activeWorkspacePath}
-                                                rightPanelWidth={rightPanelWidth}
-                                                closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                                                ccConnectUrl={ccConnectUrl}
-                                                theme={theme}
-                                                toggleTheme={this.toggleTheme}
-                                                language={language}
-                                                toggleLanguage={this.toggleLanguage}
-                                                flatFiles={flatFiles}
-                                                flatFilesLoading={flatFilesLoading}
-                                                searchQuery={searchQuery}
-                                                selectedFilterTag={selectedFilterTag}
-                                                viewMode={viewMode}
-                                                favoriteFiles={favoriteFiles}
-                                                detailFullscreen={detailFullscreen}
-                                                isEditingDetail={isEditingDetail}
-                                                selectedFsEntry={selectedFsEntry}
-                                                fileContent={fileContent}
-                                                editedContent={editedContent}
-                                                fileLoading={fileLoading}
-                                                fileSaving={fileSaving}
-                                                fileSaveMsg={fileSaveMsg}
-                                                isImagePreview={isImagePreview}
-                                                imageDataUrl={imageDataUrl}
-                                                onSearchQueryChange={this.handleSearchChange}
-                                                onFilterTagChange={this.handleFilterTagChange}
-                                                onRefreshFlatFiles={async () => {
-                                                    this.loadDir('', null);
-                                                    const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
-                                                    if (isSearching) {
-                                                        this.loadFlatFiles();
-                                                    }
-                                                    try {
-                                                        await this.checkAccessStatus();
-                                                        await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
-
-                                                        const { workspaces, activeWorkspaceId } = this.state;
-                                                        if (!activeWorkspaceId && workspaces.length > 0) {
-                                                            await this.selectWorkspace(workspaces[0]);
-                                                        } else if (activeWorkspaceId) {
-                                                            await this.loadCcConnectUrl();
-                                                        }
-                                                    } catch (e) {
-                                                        console.error('Failed to reconnect/refresh:', e);
-                                                    }
-                                                }}
-                                                onOpenFileDetail={this.openFileDetail}
-                                                onBackToList={() => this.setState({ viewMode: 'list', detailFullscreen: false })}
-                                                onToggleFavorite={this.toggleFavorite}
-                                                onCopyContent={this.copyFileContent}
-                                                onDownloadFile={this.downloadFile}
-                                                onRenameFile={this.renameFile}
-                                                onToggleFullscreen={() => {
-                                                    const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
-                                                    if (selectedFsEntry) {
-                                                        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
-                                                        const activeWorkspacePath = activeWorkspace?.path || '.';
-                                                        const absolutePath = selectedFsEntry.path.startsWith('/')
-                                                            ? selectedFsEntry.path
-                                                            : `${activeWorkspacePath}/${selectedFsEntry.path}`;
-                                                        if (IS_DESKTOP) {
-                                                            this.openPreviewTab(absolutePath, selectedFsEntry.name);
-                                                        } else {
-                                                            const shareUrl = `${window.location.origin}${
-                                                                window.location.pathname
-                                                            }?preview=${encodeURIComponent(absolutePath)}`;
-                                                            window.open(shareUrl, '_blank');
-                                                        }
-                                                    }
-                                                }}
-                                                onShareFile={this.shareFile}
-                                                onSaveFile={this.saveFile}
-                                                onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                                                onEditedContentChange={content => this.setState({ editedContent: content })}
-                                                onOpenPreview={IS_DESKTOP ? (path, name) => this.openPreviewTab(path, name) : undefined}
-                                                fsEntries={this.state.fsEntries}
-                                                fsLoading={this.state.fsLoading}
-                                                onToggleFsDir={this.toggleFsDir}
-                                                accessTokenExists={accessAuthRequired}
-                                                onGenerateAccessToken={this.generateAccessToken}
-                                                onRevokeAccessToken={this.revokeAccessToken}
-                                            />
                                         </div>
                                     </Fragment>
                                 ) : (
