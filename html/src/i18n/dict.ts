@@ -130,6 +130,11 @@ export const zhCN: Record<string, string> = {
     'sidebar.discoveryTitle': '发现中心',
     'sidebar.discovery': '发现中心',
     'sidebar.settings': 'Settings',
+    'sidebar.sessionStatus.idle': '空闲',
+    'sidebar.sessionStatus.busy': '繁忙中...',
+    'sidebar.sessionStatus.waiting': '等待授权...',
+    'sidebar.sessionStatus.shell': '命令行',
+    'sidebar.sessionStatus.none': '未启动 Claude',
 
     // ── Auth (AccessTokenGate.tsx) ────────────────────────────────────────
     'auth.title': '需要访问令牌',
@@ -549,6 +554,11 @@ export const enUS: Record<string, string> = {
     'sidebar.discoveryTitle': 'Discovery',
     'sidebar.discovery': 'Discovery',
     'sidebar.settings': 'Settings',
+    'sidebar.sessionStatus.idle': 'Idle',
+    'sidebar.sessionStatus.busy': 'Busy...',
+    'sidebar.sessionStatus.waiting': 'Waiting for permission...',
+    'sidebar.sessionStatus.shell': 'Interactive Shell',
+    'sidebar.sessionStatus.none': 'Claude Not Started',
 
     // ── Auth ─────────────────────────────────────────────────────────────
     'auth.title': 'Access token required',

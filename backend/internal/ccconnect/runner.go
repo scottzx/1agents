@@ -812,6 +812,9 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			core.SetPresetsURL(cfg.ProviderPresetsURL)
 		}
 		mgmtSrv.SetListCCSwitchProviders(listCCSwitchProvidersForWeb)
+		mgmtSrv.SetGetCCSwitchSettings(getCCSwitchSettingsForWeb)
+		mgmtSrv.SetSaveCCSwitchSettings(saveCCSwitchSettingsForWeb)
+		mgmtSrv.SetSwitchCCSwitchProvider(switchCCSwitchProviderForWeb)
 		mgmtSrv.Start()
 	}
 
@@ -1471,9 +1474,12 @@ func syncProviderToCCSwitch(p config.ProviderConfig) {
 		switch app {
 		case "claude":
 			env := map[string]string{
-				"ANTHROPIC_BASE_URL": p.BaseURL,
-				"ANTHROPIC_AUTH_TOKEN": p.APIKey,
-				"ANTHROPIC_MODEL": p.Model,
+				"ANTHROPIC_BASE_URL":            p.BaseURL,
+				"ANTHROPIC_AUTH_TOKEN":          p.APIKey,
+				"ANTHROPIC_MODEL":               p.Model,
+				"ANTHROPIC_DEFAULT_HAIKU_MODEL":  p.Model,
+				"ANTHROPIC_DEFAULT_SONNET_MODEL": p.Model,
+				"ANTHROPIC_DEFAULT_OPUS_MODEL":   p.Model,
 			}
 			for k, v := range p.Env {
 				env[k] = v
@@ -1511,10 +1517,11 @@ func syncProviderToCCSwitch(p config.ProviderConfig) {
 		scStr := string(scBytes)
 
 		query := `INSERT INTO providers (id, app_type, name, settings_config, meta)
-			VALUES (?, ?, ?, ?, '{}')
+			VALUES (?, ?, ?, ?, '{"commonConfigEnabled":true}')
 			ON CONFLICT(id, app_type) DO UPDATE SET
 				name = excluded.name,
-				settings_config = excluded.settings_config`
+				settings_config = excluded.settings_config,
+				meta = excluded.meta`
 		_, err = db.Exec(query, id, app, p.Name, scStr)
 		if err != nil {
 			log.Printf("[ccconnect] sync provider %s for app %s to cc-switch failed: %v", p.Name, app, err)
@@ -1562,6 +1569,85 @@ func runCCSwitchSwitchCommand(appType, providerID string) {
 	} else {
 		log.Printf("[ccconnect] cc-switch switch command executed successfully")
 	}
+}
+
+func getCCSwitchSettingsForWeb() (map[string]string, error) {
+	dbPath := findCCSwitchDB()
+	if dbPath == "" {
+		return nil, fmt.Errorf("cc-switch database not found")
+	}
+
+	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open cc-switch db: %w", err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query("SELECT key, value FROM settings WHERE key LIKE 'common_config_%'")
+	if err != nil {
+		return nil, fmt.Errorf("query cc-switch settings: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var key, val string
+		if err := rows.Scan(&key, &val); err == nil {
+			result[key] = val
+		}
+	}
+	return result, nil
+}
+
+func saveCCSwitchSettingsForWeb(updates map[string]string) error {
+	dbPath := findCCSwitchDB()
+	if dbPath == "" {
+		return fmt.Errorf("cc-switch database not found")
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return fmt.Errorf("open cc-switch db: %w", err)
+	}
+	defer db.Close()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for k, v := range updates {
+		_, err := tx.Exec(`INSERT INTO settings (key, value) VALUES (?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, k, v)
+		if err != nil {
+			return fmt.Errorf("update settings key %s: %w", k, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Trigger live reload by calling the switch command for each updated appType
+	// if there's a currently active provider for that app.
+	for k := range updates {
+		if strings.HasPrefix(k, "common_config_") {
+			appType := strings.TrimPrefix(k, "common_config_")
+			var currentProviderID string
+			err := db.QueryRow("SELECT id FROM providers WHERE app_type = ? AND is_current = 1 LIMIT 1", appType).Scan(&currentProviderID)
+			if err == nil && currentProviderID != "" {
+				go runCCSwitchSwitchCommand(appType, currentProviderID)
+			}
+		}
+	}
+
+	return nil
+}
+
+func switchCCSwitchProviderForWeb(appType, providerID string) error {
+	go runCCSwitchSwitchCommand(appType, providerID)
+	return nil
 }
 
 

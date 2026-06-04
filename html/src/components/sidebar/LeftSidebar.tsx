@@ -323,10 +323,26 @@ export function LeftSidebar({
                                                             onSelectSession(session);
                                                         }}
                                                     >
-                                                        <span class="chat-title" title={session.name}>
-                                                            {session.name}
-                                                        </span>
-                                                        <span class="chat-time">{session.workspaceId}</span>
+                                                        <div class="chat-item-left">
+                                                            <span
+                                                                class={`status-dot status-${session.status || 'none'}`}
+                                                                title={t(
+                                                                    `sidebar.sessionStatus.${session.status || 'none'}`,
+                                                                    language
+                                                                )}
+                                                            />
+                                                            <span class="chat-title" title={session.name}>
+                                                                {session.name}
+                                                            </span>
+                                                        </div>
+                                                        {session.agent ? (
+                                                            <span class="chat-agent">
+                                                                {session.agent === 'antigravity'
+                                                                    ? 'agy'
+                                                                    : session.agent.charAt(0).toUpperCase() +
+                                                                      session.agent.slice(1)}
+                                                            </span>
+                                                        ) : null}
                                                         <button
                                                             class="session-kill-btn"
                                                             title={t('sidebar.closeSession', language)}

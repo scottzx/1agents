@@ -466,6 +466,7 @@ class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState>
 
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
+    private _terminalPollInterval: ReturnType<typeof setInterval> | null = null;
     private _crawlCounter = 0;
     private _searchTimeout: number | null = null;
     private _workspaceTreeCache: Record<string, FsEntry[]> = {};
@@ -602,6 +603,11 @@ export class App extends Component<{}, AppState> {
             },
             5 * 60 * 1000
         );
+
+        // Periodically poll terminal sessions (status indicator updates) every 3 seconds
+        this._terminalPollInterval = setInterval(() => {
+            this.loadTerminals();
+        }, 3000);
     }
 
     componentWillUnmount() {
@@ -614,6 +620,10 @@ export class App extends Component<{}, AppState> {
         if (this._tunnelHeartbeat) {
             clearInterval(this._tunnelHeartbeat);
             this._tunnelHeartbeat = null;
+        }
+        if (this._terminalPollInterval) {
+            clearInterval(this._terminalPollInterval);
+            this._terminalPollInterval = null;
         }
     }
 
@@ -907,6 +917,9 @@ export class App extends Component<{}, AppState> {
                         name: t('app.session.title', this.state.language, { index: w.index }),
                         active: w.active,
                         cwd: w.cwd,
+                        status: w.status,
+                        waitingFor: w.waitingFor,
+                        agent: w.agent,
                     })),
             })),
         }));
@@ -919,6 +932,9 @@ export class App extends Component<{}, AppState> {
                   name: t('app.session.title', this.state.language, { index: activeWin.index }),
                   active: true,
                   cwd: activeWin.cwd,
+                  status: activeWin.status,
+                  waitingFor: activeWin.waitingFor,
+                  agent: activeWin.agent,
               }
             : null;
         this.setState({ activeSession });

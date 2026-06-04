@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -15,11 +16,15 @@ import (
 
 // TmuxWindow represents a single tmux window parsed from list-windows output.
 type TmuxWindow struct {
-	Index      int    `json:"index"`
-	Name       string `json:"name"`
-	Active     bool   `json:"active"`
+	Index       int    `json:"index"`
+	Name        string `json:"name"`
+	Active      bool   `json:"active"`
 	WorkspaceID string `json:"workspaceId"`
-	Cwd        string `json:"cwd"`
+	Cwd         string `json:"cwd"`
+	Status      string `json:"status"`      // e.g. "idle", "busy", "shell", "waiting", ""
+	WaitingFor  string `json:"waitingFor"`  // e.g. "permission prompt", ""
+	Agent       string `json:"agent"`       // e.g. "claude", "antigravity", ""
+	PanePID     int    `json:"-"`
 }
 
 // CreateRequest is the body for POST /api/terminal/create.
@@ -43,6 +48,8 @@ type Handler struct {
 	session     string
 	mu          sync.RWMutex
 	mockWindows []TmuxWindow
+	agyCache    map[int]string
+	codexCache  map[int]string
 }
 
 // NewHandler creates a terminal Handler.
@@ -50,6 +57,8 @@ func NewHandler(cfg *config.Config) *Handler {
 	return &Handler{
 		session:     cfg.TmuxSession,
 		mockWindows: make([]TmuxWindow, 0),
+		agyCache:    make(map[int]string),
+		codexCache:  make(map[int]string),
 	}
 }
 
@@ -375,8 +384,77 @@ func (h *Handler) nextWindowNum(workspaceID string) int {
 	return maxN + 1
 }
 
+
+
 func (h *Handler) listWindows() ([]TmuxWindow, error) {
-	format := "#{window_index}|#{window_name}|#{?window_active,1,0}"
+	parentMap, cmdMap, err := getProcessDetails()
+	if err != nil {
+		log.Printf("[terminal] getProcessDetails error: %v", err)
+	}
+
+	claudeSessions, err := getClaudeSessions()
+	if err != nil {
+		log.Printf("[terminal] getClaudeSessions error: %v", err)
+	}
+
+	home, _ := os.UserHomeDir()
+
+	h.mu.Lock()
+	// Clean up dead PIDs from agyCache
+	for pid := range h.agyCache {
+		if _, exists := cmdMap[pid]; !exists {
+			delete(h.agyCache, pid)
+		}
+	}
+	// Clean up dead PIDs from codexCache
+	for pid := range h.codexCache {
+		if _, exists := cmdMap[pid]; !exists {
+			delete(h.codexCache, pid)
+		}
+	}
+
+	// Find uncached PIDs
+	var uncachedAgyPIDs []int
+	var uncachedCodexPIDs []int
+	for pid, cmdLine := range cmdMap {
+		cmdLower := strings.ToLower(cmdLine)
+		if strings.Contains(cmdLower, "agy") || strings.Contains(cmdLower, "antigravity") {
+			if _, cached := h.agyCache[pid]; !cached {
+				uncachedAgyPIDs = append(uncachedAgyPIDs, pid)
+			}
+		} else if strings.Contains(cmdLower, "codex") {
+			if _, cached := h.codexCache[pid]; !cached {
+				uncachedCodexPIDs = append(uncachedCodexPIDs, pid)
+			}
+		}
+	}
+
+	// Query lsof for uncached PIDs and update cache
+	if len(uncachedAgyPIDs) > 0 {
+		newAgyConvIDs := getAgyConversationIDs(uncachedAgyPIDs)
+		for pid, convID := range newAgyConvIDs {
+			h.agyCache[pid] = convID
+		}
+	}
+	if len(uncachedCodexPIDs) > 0 {
+		newCodexRollouts := getCodexRolloutPaths(uncachedCodexPIDs)
+		for pid, path := range newCodexRollouts {
+			h.codexCache[pid] = path
+		}
+	}
+
+	// Clone caches to avoid holding lock during file I/O
+	agyConvIDs := make(map[int]string)
+	for pid, convID := range h.agyCache {
+		agyConvIDs[pid] = convID
+	}
+	codexRollouts := make(map[int]string)
+	for pid, path := range h.codexCache {
+		codexRollouts[pid] = path
+	}
+	h.mu.Unlock()
+
+	format := "#{window_index}|#{window_name}|#{?window_active,1,0}|#{pane_pid}"
 	cmd := exec.Command("tmux", "list-windows", "-t", h.session, "-F", format)
 	out, err := cmd.Output()
 	if err != nil {
@@ -388,8 +466,8 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 3)
-		if len(parts) != 3 {
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) != 4 {
 			continue
 		}
 		idx, err := strconv.Atoi(parts[0])
@@ -398,6 +476,10 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 		}
 		name := parts[1]
 		active := parts[2] == "1"
+		panePID, err := strconv.Atoi(parts[3])
+		if err != nil {
+			panePID = 0
+		}
 
 		// Parse workspace ID from name: "{workspaceId}_{n}"
 		wsID := name
@@ -405,11 +487,61 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 			wsID = name[:lastUnderscore]
 		}
 
+		status := ""
+		waitingFor := ""
+		agent := ""
+
+		// 1. Try to find a Claude session match first
+		if panePID > 0 && len(claudeSessions) > 0 && len(parentMap) > 0 {
+			for _, cs := range claudeSessions {
+				if cs.PID == panePID || isAncestor(parentMap, cs.PID, panePID) {
+					status = cs.Status
+					waitingFor = cs.WaitingFor
+					agent = cs.Agent
+					if agent == "" {
+						agent = "claude"
+					}
+					break
+				}
+			}
+		}
+
+		if agent == "" && panePID > 0 && len(parentMap) > 0 && len(cmdMap) > 0 {
+			for pid, cmdLine := range cmdMap {
+				if pid == panePID || isAncestor(parentMap, pid, panePID) {
+					cmdLower := strings.ToLower(cmdLine)
+					if strings.Contains(cmdLower, "agy") || strings.Contains(cmdLower, "antigravity") {
+						agent = "antigravity"
+						status = "idle"
+						if convID, ok := agyConvIDs[pid]; ok && convID != "" {
+							status, waitingFor = getAgyStatus(home, convID)
+						}
+						break
+					} else if strings.Contains(cmdLower, "codex") {
+						agent = "codex"
+						status = "idle"
+						if path, ok := codexRollouts[pid]; ok && path != "" {
+							status, waitingFor = getCodexStatus(path)
+						}
+						break
+					} else if strings.Contains(cmdLower, "claude") && !strings.Contains(cmdLower, "daemon") {
+						agent = "claude"
+						status = "idle"
+						break
+					}
+				}
+			}
+		}
+
 		windows = append(windows, TmuxWindow{
 			Index:       idx,
 			Name:        name,
 			Active:      active,
 			WorkspaceID: wsID,
+			Status:      status,
+			WaitingFor:  waitingFor,
+			Agent:       agent,
+			PanePID:     panePID,
 		})
 	}
 	return windows, nil

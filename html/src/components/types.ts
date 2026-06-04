@@ -8,6 +8,9 @@ export interface Session {
     name: string;
     active: boolean;
     cwd?: string;
+    status?: string;
+    waitingFor?: string;
+    agent?: string;
 }
 
 export interface WorkspaceFolder {
@@ -60,6 +63,9 @@ export interface TmuxWindow {
     active: boolean;
     workspaceId: string;
     cwd: string;
+    status?: string;
+    waitingFor?: string;
+    agent?: string;
 }
 
 export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'settings' | 'discovery' | 'skills' | 'none';
