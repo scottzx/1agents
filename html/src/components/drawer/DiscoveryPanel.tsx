@@ -26,7 +26,9 @@ interface DiscoveryPanelProps {
 export function DiscoveryPanel({ onOpenBrowserTab }: DiscoveryPanelProps) {
     return (
         <div class="discovery-container">
-            <div class="discovery-header-desc">精选各类实用的 AI 辅助工具与技能库，点击即可在内置浏览器中快速访问。</div>
+            <div class="discovery-header-desc">
+                精选各类实用的 AI 辅助工具与技能库，点击即可在内置浏览器中快速访问。
+            </div>
 
             <div class="discovery-cards-list">
                 {QUICK_LINKS.map((card, idx) => (
@@ -35,7 +37,7 @@ export function DiscoveryPanel({ onOpenBrowserTab }: DiscoveryPanelProps) {
                         href={card.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => {
+                        onClick={e => {
                             if (onOpenBrowserTab) {
                                 e.preventDefault();
                                 onOpenBrowserTab(card.url);
