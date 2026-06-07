@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -48,7 +47,6 @@ type Handler struct {
 	session     string
 	mu          sync.RWMutex
 	mockWindows []TmuxWindow
-	agyCache    map[int]string
 }
 
 // NewHandler creates a terminal Handler.
@@ -56,7 +54,6 @@ func NewHandler(cfg *config.Config) *Handler {
 	return &Handler{
 		session:     cfg.TmuxSession,
 		mockWindows: make([]TmuxWindow, 0),
-		agyCache:    make(map[int]string),
 	}
 }
 
@@ -395,42 +392,6 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 		log.Printf("[terminal] getClaudeSessions error: %v", err)
 	}
 
-	home, _ := os.UserHomeDir()
-
-	h.mu.Lock()
-	// Clean up dead PIDs from agyCache
-	for pid := range h.agyCache {
-		if _, exists := cmdMap[pid]; !exists {
-			delete(h.agyCache, pid)
-		}
-	}
-
-	// Find uncached PIDs
-	var uncachedAgyPIDs []int
-	for pid, cmdLine := range cmdMap {
-		cmdLower := strings.ToLower(cmdLine)
-		if strings.Contains(cmdLower, "agy") || strings.Contains(cmdLower, "antigravity") {
-			if _, cached := h.agyCache[pid]; !cached {
-				uncachedAgyPIDs = append(uncachedAgyPIDs, pid)
-			}
-		}
-	}
-
-	// Query lsof for uncached PIDs and update cache
-	if len(uncachedAgyPIDs) > 0 {
-		newAgyConvIDs := getAgyConversationIDs(uncachedAgyPIDs)
-		for pid, convID := range newAgyConvIDs {
-			h.agyCache[pid] = convID
-		}
-	}
-
-	// Clone caches to avoid holding lock during file I/O
-	agyConvIDs := make(map[int]string)
-	for pid, convID := range h.agyCache {
-		agyConvIDs[pid] = convID
-	}
-	h.mu.Unlock()
-
 	format := "#{window_index}|#{window_name}|#{?window_active,1,0}|#{pane_pid}"
 	cmd := exec.Command("tmux", "list-windows", "-t", h.session, "-F", format)
 	out, err := cmd.Output()
@@ -489,10 +450,7 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 					cmdLower := strings.ToLower(cmdLine)
 					if strings.Contains(cmdLower, "agy") || strings.Contains(cmdLower, "antigravity") {
 						agent = "antigravity"
-						status = "idle"
-						if convID, ok := agyConvIDs[pid]; ok && convID != "" {
-							status, waitingFor = getAgyStatus(home, convID)
-						}
+						status = ""
 						break
 					} else if strings.Contains(cmdLower, "codex") {
 						agent = "codex"
