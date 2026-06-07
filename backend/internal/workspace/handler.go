@@ -345,6 +345,60 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true})
 }
 
+// Reorder handles POST /api/workspace/reorder
+func (h *Handler) Reorder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg, err := h.loadConfig()
+	if err != nil {
+		log.Printf("[workspace] load error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Create a lookup map for existing workspaces
+	wsMap := make(map[string]Workspace)
+	for _, ws := range cfg.Workspaces {
+		wsMap[ws.ID] = ws
+	}
+
+	var reordered []Workspace
+	// Add workspaces in the requested order
+	for _, id := range req.IDs {
+		if ws, exists := wsMap[id]; exists {
+			reordered = append(reordered, ws)
+			delete(wsMap, id) // Mark as handled
+		}
+	}
+
+	// Append any remaining workspaces that weren't specified in the reorder request
+	for _, ws := range cfg.Workspaces {
+		if _, exists := wsMap[ws.ID]; exists {
+			reordered = append(reordered, ws)
+		}
+	}
+
+	cfg.Workspaces = reordered
+	if err := h.saveConfig(cfg); err != nil {
+		log.Printf("[workspace] save error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{"ok": true})
+}
+
+
 // PickDirectory handles POST /api/workspace/pick-directory.
 // It opens a native OS folder picker dialog and returns the selected path.
 func (h *Handler) PickDirectory(w http.ResponseWriter, r *http.Request) {

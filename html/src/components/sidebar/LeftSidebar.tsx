@@ -21,6 +21,7 @@ interface LeftSidebarProps {
     onSelectSession: (session: Session) => void;
     onTerminalCreate: (workspaceId: string, cwd: string) => void;
     onTerminalKill: (windowIndex: number) => void;
+    onReorderFolders?: (draggedId: string, targetId: string, position: 'before' | 'after') => void;
     language: Lang;
 }
 
@@ -42,12 +43,69 @@ export function LeftSidebar({
     onSelectSession,
     onTerminalCreate,
     onTerminalKill,
+    onReorderFolders,
     language,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [killingSessionIndex, setKillingSessionIndex] = useState<number | null>(null);
+
+    const [draggedId, setDraggedId] = useState<string | null>(null);
+    const [dragOverId, setDragOverId] = useState<string | null>(null);
+    const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null);
+
+    const handleDragStart = (e: DragEvent, id: string) => {
+        if (confirmDeleteId === id) {
+            e.preventDefault();
+            return;
+        }
+        setDraggedId(id);
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', id);
+        }
+    };
+
+    const handleDragOver = (e: DragEvent, targetId: string) => {
+        e.preventDefault();
+        if (draggedId === targetId) return;
+
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const relativeY = e.clientY - rect.top;
+        const isAfter = relativeY > rect.height / 2;
+
+        setDragOverId(targetId);
+        setDragOverPosition(isAfter ? 'after' : 'before');
+    };
+
+    const handleDragLeave = (e: DragEvent, targetId: string) => {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const x = e.clientX;
+        const y = e.clientY;
+        if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+            if (dragOverId === targetId) {
+                setDragOverId(null);
+                setDragOverPosition(null);
+            }
+        }
+    };
+
+    const handleDrop = (e: DragEvent, targetId: string) => {
+        e.preventDefault();
+        if (draggedId && draggedId !== targetId && dragOverPosition && onReorderFolders) {
+            onReorderFolders(draggedId, targetId, dragOverPosition);
+        }
+        setDraggedId(null);
+        setDragOverId(null);
+        setDragOverPosition(null);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedId(null);
+        setDragOverId(null);
+        setDragOverPosition(null);
+    };
 
     useEffect(() => {
         setDeletingId(null);
@@ -203,7 +261,23 @@ export function LeftSidebar({
                                         </div>
                                     ) : (
                                         <div
-                                            class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
+                                            class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
+                                                draggedId === folder.id ? 'dragging' : ''
+                                            } ${
+                                                dragOverId === folder.id && dragOverPosition === 'before'
+                                                    ? 'drag-over-before'
+                                                    : ''
+                                            } ${
+                                                dragOverId === folder.id && dragOverPosition === 'after'
+                                                    ? 'drag-over-after'
+                                                    : ''
+                                            }`}
+                                            draggable={true}
+                                            onDragStart={e => handleDragStart(e, folder.id)}
+                                            onDragOver={e => handleDragOver(e, folder.id)}
+                                            onDragLeave={e => handleDragLeave(e, folder.id)}
+                                            onDrop={e => handleDrop(e, folder.id)}
+                                            onDragEnd={handleDragEnd}
                                             onClick={() => {
                                                 toggleFolder(folder.id);
                                                 if (ws) onSelectWorkspace(ws);
@@ -236,7 +310,12 @@ export function LeftSidebar({
                                             </span>
 
                                             {/* Action buttons */}
-                                            <div class="ws-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                                            <div
+                                                class="ws-actions"
+                                                draggable={false}
+                                                onDragStart={e => e.preventDefault()}
+                                                onClick={(e: MouseEvent) => e.stopPropagation()}
+                                            >
                                                 {/* Add session button — always visible */}
                                                 {ws && (
                                                     <button

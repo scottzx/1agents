@@ -809,6 +809,43 @@ export class App extends Component<{}, AppState> {
         }
     };
 
+    /** Reorder workspaces on drag and drop */
+    reorderFolders = async (draggedId: string, targetId: string, position: 'before' | 'after') => {
+        const { workspaces, folders } = this.state;
+
+        const draggedIdx = workspaces.findIndex(w => w.id === draggedId);
+        const targetIdx = workspaces.findIndex(w => w.id === targetId);
+
+        if (draggedIdx === -1 || targetIdx === -1 || draggedIdx === targetIdx) return;
+
+        const newWorkspaces = [...workspaces];
+        const [draggedItem] = newWorkspaces.splice(draggedIdx, 1);
+
+        let newTargetIdx = newWorkspaces.findIndex(w => w.id === targetId);
+        if (position === 'after') {
+            newTargetIdx += 1;
+        }
+
+        newWorkspaces.splice(newTargetIdx, 0, draggedItem);
+
+        const newFolders = newWorkspaces.map(ws => {
+            const f = folders.find(folder => folder.id === ws.id);
+            return f || { id: ws.id, name: ws.name, expanded: false, sessions: [] };
+        });
+
+        // Optimistic UI update
+        this.setState({ workspaces: newWorkspaces, folders: newFolders });
+
+        try {
+            await workspaceService.reorder(newWorkspaces.map(w => w.id));
+        } catch (err) {
+            console.error('[workspace] reorder error:', err);
+            // Rollback on error
+            this.setState({ workspaces, folders });
+            this.showToast(t('app.toast.workspaceReorderFailed', this.state.language, { err: String(err) }));
+        }
+    };
+
     /** Open custom directory picker and create workspace from selected directory */
     openCreateWorkspacePicker = () => {
         this.openDirPicker(pickedPath => {
@@ -2017,6 +2054,7 @@ export class App extends Component<{}, AppState> {
                                         onSelectSession={s => this.selectSession(s)}
                                         onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
                                         onTerminalKill={idx => this.killTerminal(idx)}
+                                        onReorderFolders={this.reorderFolders}
                                         language={language}
                                     />
 

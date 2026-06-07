@@ -32,6 +32,15 @@ export const workspaceService = {
         if (!res.ok) throw new Error(await res.text());
     },
 
+    async reorder(ids: string[]): Promise<void> {
+        const res = await fetch('/api/workspace/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
     async listDirectories(path: string): Promise<{
         currentPath: string;
         parentPath: string | null;

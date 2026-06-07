@@ -404,6 +404,17 @@ body {
         }
       }
 
+      @keyframes dragLinePulse {
+        from {
+          opacity: 0.6;
+          box-shadow: 0 0 2px var(--accent-color);
+        }
+        to {
+          opacity: 1;
+          box-shadow: 0 0 6px var(--accent-color);
+        }
+      }
+
       .ws-delete-confirm {
         display: flex;
         align-items: center;
@@ -477,8 +488,40 @@ body {
         font-size: 13px;
         font-weight: 500;
         color: var(--text-sidebar);
-        transition: background-color 0.2s;
+        transition: background-color 0.2s, opacity 0.2s, border 0.2s;
         position: relative;
+
+        &.dragging {
+          opacity: 0.4;
+          border: 1px dashed var(--accent-color);
+          background-color: var(--bg-sidebar-hover);
+        }
+
+        &.drag-over-before::before {
+          content: '';
+          position: absolute;
+          top: -2px;
+          left: 4px;
+          right: 4px;
+          height: 2px;
+          background-color: var(--accent-color);
+          border-radius: 2px;
+          z-index: 10;
+          animation: dragLinePulse 0.8s infinite alternate ease-in-out;
+        }
+
+        &.drag-over-after::after {
+          content: '';
+          position: absolute;
+          bottom: -2px;
+          left: 4px;
+          right: 4px;
+          height: 2px;
+          background-color: var(--accent-color);
+          border-radius: 2px;
+          z-index: 10;
+          animation: dragLinePulse 0.8s infinite alternate ease-in-out;
+        }
 
         &:hover {
           background-color: var(--bg-sidebar-hover);
