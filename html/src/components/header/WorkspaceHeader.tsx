@@ -2,6 +2,7 @@ import { h, Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 import { RightDrawerTab, isFullPageTab } from '../types';
 import { t, type Lang } from '../i18n';
+import type { ModuleManifest } from '../../modules/module-types';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -18,6 +19,16 @@ interface WorkspaceHeaderProps {
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
     language: Lang;
+    /**
+     * Optional module manifest for the active drawer tab. When set, the
+     * mobile hamburger menu gets a section that mirrors the manifest so
+     * the user always sees the module's navigation in the host chrome.
+     */
+    moduleNav?: {
+        manifest: ModuleManifest;
+        activePath: string;
+        onNavigate: (to: string) => void;
+    };
 }
 
 const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
@@ -40,6 +51,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         tmuxMouseOn,
         onTmuxMouseToggle,
         language,
+        moduleNav,
     } = props;
 
     // Mobile hamburger menu open state
@@ -418,6 +430,49 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
                     )}
                 </button>
+
+                {moduleNav && (
+                    <Fragment>
+                        <div class="mobile-menu-section-title">{t('header.mobile.moduleNav', language)}</div>
+                        {moduleNav.manifest.topLinks?.map(link => (
+                            <button
+                                key={`mnav-top-${link.key}`}
+                                class={`mobile-menu-item ${moduleNav.activePath === link.to ? 'active' : ''}`}
+                                onClick={() => {
+                                    moduleNav.onNavigate(link.to);
+                                    closeMobileMenu();
+                                }}
+                            >
+                                <span class="mob-menu-label">{link.label}</span>
+                                {moduleNav.activePath === link.to && (
+                                    <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
+                                )}
+                            </button>
+                        ))}
+                        {moduleNav.manifest.groups.map(group => (
+                            <Fragment key={`mnav-group-${group.key}`}>
+                                <div class="mobile-menu-subtitle">{group.label}</div>
+                                {group.links.map(link => (
+                                    <button
+                                        key={`mnav-link-${link.key}`}
+                                        class={`mobile-menu-item mobile-menu-item--indent ${
+                                            moduleNav.activePath === link.to ? 'active' : ''
+                                        }`}
+                                        onClick={() => {
+                                            moduleNav.onNavigate(link.to);
+                                            closeMobileMenu();
+                                        }}
+                                    >
+                                        <span class="mob-menu-label">{link.label}</span>
+                                        {link.count !== null && link.count !== undefined && (
+                                            <span class="mob-menu-count">{link.count}</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </Fragment>
+                        ))}
+                    </Fragment>
+                )}
             </div>
         </Fragment>
     );

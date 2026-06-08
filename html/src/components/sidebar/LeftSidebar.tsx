@@ -2,6 +2,8 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session } from '../types';
 import { t, type Lang } from '../i18n';
+import { ModuleNav } from './ModuleNav';
+import type { ModuleManifest } from '../../modules/module-types';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -21,8 +23,20 @@ interface LeftSidebarProps {
     onSelectSession: (session: Session) => void;
     onTerminalCreate: (workspaceId: string, cwd: string) => void;
     onTerminalKill: (windowIndex: number) => void;
+    onRenameSession: (session: Session) => void;
     onReorderFolders?: (draggedId: string, targetId: string, position: 'before' | 'after') => void;
     language: Lang;
+
+    /**
+     * Optional module nav surface. Set when the active drawer tab is backed
+     * by a module (1skills today). The host renders this inside the same
+     * sidebar column — never as a separate nested sidebar.
+     */
+    moduleNav?: {
+        manifest: ModuleManifest;
+        activePath: string;
+        onNavigate: (to: string) => void;
+    };
 }
 
 export function LeftSidebar({
@@ -43,10 +57,14 @@ export function LeftSidebar({
     onSelectSession,
     onTerminalCreate,
     onTerminalKill,
+    onRenameSession,
     onReorderFolders,
     language,
-}: LeftSidebarProps) {
+    moduleNav,
+    }: LeftSidebarProps) {
+
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+    const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [killingSessionIndex, setKillingSessionIndex] = useState<number | null>(null);
@@ -106,6 +124,7 @@ export function LeftSidebar({
         setDragOverId(null);
         setDragOverPosition(null);
     };
+
 
     useEffect(() => {
         setDeletingId(null);
@@ -401,6 +420,12 @@ export function LeftSidebar({
                                                             e.stopPropagation();
                                                             onSelectSession(session);
                                                         }}
+                                                        onMouseEnter={() => setHoveredSessionId(session.id)}
+                                                        onMouseLeave={() =>
+                                                            setHoveredSessionId(prev =>
+                                                                prev === session.id ? null : prev
+                                                            )
+                                                        }
                                                     >
                                                         <div class="chat-item-left">
                                                             <span
@@ -422,30 +447,57 @@ export function LeftSidebar({
                                                                       session.agent.slice(1)}
                                                             </span>
                                                         ) : null}
-                                                        <button
-                                                            class="session-kill-btn"
-                                                            title={t('sidebar.closeSession', language)}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                setKillingSessionIndex(session.index);
-                                                                setTimeout(() => {
-                                                                    onTerminalKill(session.index);
-                                                                }, 300);
-                                                            }}
-                                                        >
-                                                            <svg
-                                                                width="12"
-                                                                height="12"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2"
-                                                                stroke-linecap="round"
+                                                        <div class="session-actions">
+                                                            {hoveredSessionId === session.id && (
+                                                                <button
+                                                                    class="session-action-btn"
+                                                                    title={t('sidebar.renameSession', language)}
+                                                                    onClick={(e: MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        onRenameSession(session);
+                                                                    }}
+                                                                >
+
+                                                                    <svg
+                                                                        width="12"
+                                                                        height="12"
+                                                                        viewBox="0 0 24 24"
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        stroke-width="2"
+                                                                        stroke-linecap="round"
+                                                                        stroke-linejoin="round"
+                                                                    >
+                                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                    </svg>
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                class="session-kill-btn"
+                                                                title={t('sidebar.closeSession', language)}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    setKillingSessionIndex(session.index);
+                                                                    setTimeout(() => {
+                                                                        onTerminalKill(session.index);
+                                                                    }, 300);
+                                                                }}
                                                             >
-                                                                <line x1="18" x2="6" y1="6" y2="18" />
-                                                                <line x1="6" x2="18" y1="6" y2="18" />
-                                                            </svg>
-                                                        </button>
+                                                                <svg
+                                                                    width="12"
+                                                                    height="12"
+                                                                    viewBox="0 0 24 24"
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    stroke-width="2"
+                                                                    stroke-linecap="round"
+                                                                >
+                                                                    <line x1="18" x2="6" y1="6" y2="18" />
+                                                                    <line x1="6" x2="18" y1="6" y2="18" />
+                                                                </svg>
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 ))
                                             )}
@@ -456,6 +508,15 @@ export function LeftSidebar({
                         })}
                 </div>
             </div>
+
+            {moduleNav && (
+                <ModuleNav
+                    manifest={moduleNav.manifest}
+                    activePath={moduleNav.activePath}
+                    language={language}
+                    onNavigate={moduleNav.onNavigate}
+                />
+            )}
 
             <div class="sidebar-footer">
                 <div

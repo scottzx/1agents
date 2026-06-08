@@ -54,6 +54,8 @@ export const zhCN: Record<string, string> = {
     'app.toast.sessionCreateFailed': '创建会话失败: {err}',
     'app.toast.sessionKilled': '会话已关闭 ✓',
     'app.toast.sessionKillFailed': '关闭会话失败: {err}',
+    'app.toast.sessionRenamed': '会话已重命名 ✓',
+    'app.toast.sessionRenameFailed': '重命名失败: {err}',
     'app.toast.mouseScrollOn': '已开启滚轮滑动模式 (可通过方向键选择历史命令) ✓',
     'app.toast.mouseSelectOn': '已开启鼠标选择复制模式 (可直接拖拽选中复制) ✓',
     'app.toast.mouseToggleFailed': '切换鼠标模式失败: {err}',
@@ -114,6 +116,7 @@ export const zhCN: Record<string, string> = {
     'header.mobile.skills': '技能管理',
     'header.mobile.providers': '模型管理',
     'header.mobile.discovery': '发现中心',
+    'header.mobile.moduleNav': '模块导航',
 
     // ── Sidebar (LeftSidebar.tsx) ─────────────────────────────────────────
     'sidebar.collapse': '折叠侧边栏',
@@ -124,6 +127,7 @@ export const zhCN: Record<string, string> = {
     'sidebar.newTerminal': '新建终端',
     'sidebar.noSessions': '暂无会话 — 点击工作空间旁的 + 创建',
     'sidebar.closeSession': '关闭会话',
+    'sidebar.renameSession': '重命名会话',
     'sidebar.providersTitle': '模型与服务商管理',
     'sidebar.providers': '模型管理',
     'sidebar.skillsTitle': '技能与 MCP 管理',
@@ -161,6 +165,11 @@ export const zhCN: Record<string, string> = {
     'modal.workspace.chatChannelPlaceholder': 'CC-Connect 聊天频道或会话 key',
     'modal.workspace.create': '创建',
     'modal.workspace.save': '保存',
+
+    'modal.session.renameTitle': '重命名会话',
+    'modal.session.name': '会话名称',
+    'modal.session.namePlaceholder': '输入自定义会话名称',
+    'modal.session.save': '保存',
 
     'modal.dirPicker.title': '选择远程目录',
     'modal.dirPicker.up': '返回上一级',
@@ -480,6 +489,8 @@ export const enUS: Record<string, string> = {
     'app.toast.sessionCreateFailed': 'Failed to create session: {err}',
     'app.toast.sessionKilled': 'Session closed ✓',
     'app.toast.sessionKillFailed': 'Failed to close session: {err}',
+    'app.toast.sessionRenamed': 'Session renamed ✓',
+    'app.toast.sessionRenameFailed': 'Rename failed: {err}',
     'app.toast.mouseScrollOn': 'Scroll mode on (use arrow keys to browse history) ✓',
     'app.toast.mouseSelectOn': 'Select-to-copy mode on (drag to select and copy) ✓',
     'app.toast.mouseToggleFailed': 'Failed to toggle mouse mode: {err}',
@@ -539,6 +550,7 @@ export const enUS: Record<string, string> = {
     'header.mobile.skills': 'Skill Management',
     'header.mobile.providers': 'Model Management',
     'header.mobile.discovery': 'Discovery',
+    'header.mobile.moduleNav': 'Module Navigation',
 
     // ── Sidebar ──────────────────────────────────────────────────────────
     'sidebar.collapse': 'Collapse sidebar',
@@ -549,6 +561,7 @@ export const enUS: Record<string, string> = {
     'sidebar.newTerminal': 'New terminal',
     'sidebar.noSessions': 'No sessions — click + next to a workspace to create one',
     'sidebar.closeSession': 'Close session',
+    'sidebar.renameSession': 'Rename session',
     'sidebar.providersTitle': 'Model & Provider Management',
     'sidebar.providers': 'Models',
     'sidebar.skillsTitle': 'Skill & MCP Management',
@@ -587,6 +600,11 @@ export const enUS: Record<string, string> = {
     'modal.workspace.chatChannelPlaceholder': 'CC-Connect chat channel or session key',
     'modal.workspace.create': 'Create',
     'modal.workspace.save': 'Save',
+
+    'modal.session.renameTitle': 'Rename Session',
+    'modal.session.name': 'Session name',
+    'modal.session.namePlaceholder': 'Enter a custom session name',
+    'modal.session.save': 'Save',
 
     'modal.dirPicker.title': 'Select remote directory',
     'modal.dirPicker.up': 'Go up one level',

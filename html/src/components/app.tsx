@@ -13,12 +13,15 @@ import { SystemSettings } from './settings/SystemSettings';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
-import { WorkspaceModal, DirPickerModal, AccessTokenModal } from './modal';
+import { WorkspaceModal, DirPickerModal, AccessTokenModal, SessionRenameModal } from './modal';
 import { workspaceService } from '../services/workspaceService';
 import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
 import { t, type Lang } from '../i18n';
+import { getModuleByTab, buildModuleIframeSrc, mergeManifests, type ModuleRegistration } from '../modules/registry';
+import { postToModule, isModuleInboundMessage } from '../modules/post-message';
+import type { ModuleManifest } from '../modules/module-types';
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const path = window.location.pathname.replace(/[/]+$/, '');
@@ -144,6 +147,10 @@ interface AppState {
     terminalWindows: TmuxWindow[];
     terminalWindowsLoading: boolean;
     tmuxMouseOn: boolean;
+    // ── Session rename modal state ──
+    sessionRenameModalOpen: boolean;
+    sessionRenameTarget: Session | null;
+    sessionRenameName: string;
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -177,6 +184,11 @@ interface AppState {
     accessTokenModalToken: string;
     onboarded: boolean;
     hasLoadedWorkspaces: boolean;
+    // ── Module slot state ──
+    /** Active sub-path inside the active module, e.g. "/skills/use". */
+    activeModulePath: string;
+    /** Live manifest per module id (overlays the static fallback). */
+    moduleManifests: Record<string, ModuleManifest>;
 }
 
 // Drag resizer state (module-level for perf)
@@ -506,6 +518,9 @@ export class App extends Component<{}, AppState> {
             terminalWindows: [],
             terminalWindowsLoading: false,
             tmuxMouseOn: true,
+            sessionRenameModalOpen: false,
+            sessionRenameTarget: null,
+            sessionRenameName: '',
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -536,6 +551,8 @@ export class App extends Component<{}, AppState> {
             hasLoadedWorkspaces: false,
             tabs: [{ id: 'terminal', title: t('app.tab.workbench', 'zh-CN'), type: 'terminal', closable: false }],
             activeTabId: 'terminal',
+            activeModulePath: '',
+            moduleManifests: {},
         };
     }
 
@@ -590,6 +607,8 @@ export class App extends Component<{}, AppState> {
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
+        // Listen for postMessage events from module iframes (NAV_CHANGE, READY).
+        window.addEventListener('message', this.handleModuleMessage);
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
         }
@@ -612,6 +631,7 @@ export class App extends Component<{}, AppState> {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
+        window.removeEventListener('message', this.handleModuleMessage);
         if (window.visualViewport) {
             window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
         }
@@ -900,6 +920,36 @@ export class App extends Component<{}, AppState> {
         });
     };
 
+    openRenameSessionModal = (s: Session) => {
+        this.setState({
+            sessionRenameModalOpen: true,
+            sessionRenameTarget: s,
+            sessionRenameName: s.name,
+        });
+    };
+
+    closeSessionRenameModal = () => {
+        this.setState({
+            sessionRenameModalOpen: false,
+            sessionRenameTarget: null,
+            sessionRenameName: '',
+        });
+    };
+
+    submitRenameSession = async () => {
+        const { sessionRenameTarget, sessionRenameName } = this.state;
+        if (!sessionRenameTarget) return;
+        const trimmed = sessionRenameName.trim();
+        try {
+            await terminalService.rename(sessionRenameTarget.id, trimmed);
+            this.closeSessionRenameModal();
+            await this.loadTerminals();
+            this.showToast(t('app.toast.sessionRenamed', this.state.language));
+        } catch (err) {
+            this.showToast(t('app.toast.sessionRenameFailed', this.state.language, { err: String(err) }));
+        }
+    };
+
     submitWsModal = async () => {
         const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalTerminalDir, wsModalChatChannel } =
             this.state;
@@ -949,7 +999,7 @@ export class App extends Component<{}, AppState> {
                         id: w.name,
                         workspaceId: w.workspaceId,
                         index: w.index,
-                        name: t('app.session.title', this.state.language, { index: w.index }),
+                        name: w.customName || t('app.session.title', this.state.language, { index: w.index }),
                         active: w.active,
                         cwd: w.cwd,
                         status: w.status,
@@ -964,7 +1014,7 @@ export class App extends Component<{}, AppState> {
                   id: activeWin.name,
                   workspaceId: activeWin.workspaceId,
                   index: activeWin.index,
-                  name: t('app.session.title', this.state.language, { index: activeWin.index }),
+                  name: activeWin.customName || t('app.session.title', this.state.language, { index: activeWin.index }),
                   active: true,
                   cwd: activeWin.cwd,
                   status: activeWin.status,
@@ -1461,23 +1511,140 @@ export class App extends Component<{}, AppState> {
     toggleDrawerTab = (tab: RightDrawerTab) => {
         if (this.state.activeDrawerTab === tab) {
             // Collapse the drawer
-            this.setState({ activeDrawerTab: 'none' });
+            this.setState({ activeDrawerTab: 'none', activeModulePath: '' });
         } else {
             // Expand drawer with smart width: wider for channels, git, and files panels
             const smartWidth =
                 tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
                     ? Math.max(this.state.rightPanelWidth, 450)
                     : 320;
-            this.setState({ activeDrawerTab: tab, rightPanelWidth: smartWidth }, () => {
-                if (tab === 'channels') {
-                    this.loadCcConnectUrl();
-                } else if (tab === 'providers') {
-                    this.loadCcProvidersUrl();
+
+            // Module-backed tabs get their entry path; non-module tabs clear it.
+            const mod = getModuleByTab(tab);
+            const newModulePath = mod ? mod.entryPath : '';
+            this.setState(
+                { activeDrawerTab: tab, rightPanelWidth: smartWidth, activeModulePath: newModulePath },
+                () => {
+                    if (tab === 'channels') {
+                        this.loadCcConnectUrl();
+                    } else if (tab === 'providers') {
+                        this.loadCcProvidersUrl();
+                    } else if (mod) {
+                        this.loadModuleManifest(mod);
+                    }
                 }
-            });
+            );
         }
         this.triggerTerminalFit();
     };
+
+    /**
+     * Module iframe reported a route change (NAV_CHANGE). Mirror it into host
+     * state and the main app URL. We use `replaceState` rather than `pushState`
+     * to avoid polluting the back/forward history when the user clicks around
+     * inside the iframe.
+     */
+    handleModuleMessage = (e: MessageEvent) => {
+        if (!isModuleInboundMessage(e.data)) return;
+
+        if (e.data.type === 'NAV_CHANGE') {
+            const path = e.data.path || '';
+            if (path === this.state.activeModulePath) return;
+            this.setState({ activeModulePath: path });
+            this.syncModuleUrl(path);
+        } else if (e.data.type === 'READY') {
+            // Module announces it's mounted — re-fetch live manifest counts now
+            // and immediately push the current theme/lang/nav.
+            const iframe = this.findActiveModuleIframe();
+            if (!iframe) return;
+            postToModule(iframe, { type: 'THEME_CHANGE', theme: this.state.theme });
+            postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
+            if (this.state.activeModulePath) {
+                postToModule(iframe, { type: 'NAVIGATE', to: this.state.activeModulePath });
+            }
+            const mod = getModuleByTab(this.state.activeDrawerTab);
+            if (mod) this.loadModuleManifest(mod);
+        }
+    };
+
+    /** Locates the iframe element for the active module-backed drawer tab. */
+    findActiveModuleIframe = (): HTMLIFrameElement | null => {
+        const id = `${this.state.activeDrawerTab}-iframe`;
+        return document.getElementById(id) as HTMLIFrameElement | null;
+    };
+
+    /**
+     * Pushes a NAVIGATE message to the active module iframe and updates host
+     * state. Called by `<ModuleNav />` when the user clicks a manifest link.
+     */
+    navigateInModule = (to: string) => {
+        if (!to) return;
+        if (to === this.state.activeModulePath) return;
+        const iframe = this.findActiveModuleIframe();
+        this.setState({ activeModulePath: to });
+        this.syncModuleUrl(to);
+        if (iframe) {
+            postToModule(iframe, { type: 'NAVIGATE', to });
+        }
+    };
+
+    /**
+     * Mirrors the active module path into the main app URL as
+     * `/m/<moduleId>/<subPath>`. Uses `replaceState` so the iframe's
+     * internal back/forward doesn't get clobbered.
+     */
+    syncModuleUrl = (subPath: string) => {
+        const mod = getModuleByTab(this.state.activeDrawerTab);
+        if (!mod) return;
+        const url = new URL(window.location.href);
+        const cleanPath = subPath.startsWith('/') ? subPath : '/' + subPath;
+        url.search = '';
+        url.hash = `/m/${mod.moduleId}${cleanPath}`;
+        try {
+            window.history.replaceState({}, '', url.toString());
+        } catch {
+            /* ignore */
+        }
+    };
+
+    /**
+     * Fetches the live manifest for a module and merges it over the static
+     * one. Failures are silent — the static manifest keeps the sidebar
+     * functional even when the module is offline.
+     */
+    loadModuleManifest = async (mod: ModuleRegistration) => {
+        if (!mod.manifestUrl) return;
+        try {
+            const res = await fetch(mod.manifestUrl, { credentials: 'same-origin' });
+            if (!res.ok) return;
+            const live = (await res.json()) as ModuleManifest;
+            this.setState(prev => ({
+                moduleManifests: {
+                    ...prev.moduleManifests,
+                    [mod.moduleId]: mergeManifests(mod.staticManifest, live),
+                },
+            }));
+        } catch {
+            /* static manifest is the fallback — nothing to do */
+        }
+    };
+
+    /**
+     * Returns the module nav data to pass to `LeftSidebar`, or undefined if
+     * the active drawer tab isn't module-backed. The live manifest is used
+     * when available; the static manifest is the fallback.
+     */
+    buildModuleNav(): { manifest: ModuleManifest; activePath: string; onNavigate: (to: string) => void } | undefined {
+        const mod = getModuleByTab(this.state.activeDrawerTab);
+        if (!mod) return undefined;
+        const live = this.state.moduleManifests[mod.moduleId];
+        const manifest = live ?? mod.staticManifest;
+        return {
+            manifest,
+            activePath: this.state.activeModulePath || mod.entryPath,
+            onNavigate: this.navigateInModule,
+        };
+    }
 
     toggleLeftSidebar = () => {
         const opening = !this.state.leftSidebarOpen;
@@ -1845,6 +2012,9 @@ export class App extends Component<{}, AppState> {
             accessAuthRequired,
             tabs,
             activeTabId,
+            sessionRenameModalOpen,
+            sessionRenameTarget,
+            sessionRenameName,
         } = this.state;
 
         const activeTabObj = tabs.find(t => t.id === activeTabId);
@@ -2039,8 +2209,10 @@ export class App extends Component<{}, AppState> {
                                         onSelectSession={s => this.selectSession(s)}
                                         onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
                                         onTerminalKill={idx => this.killTerminal(idx)}
+                                        onRenameSession={s => this.openRenameSessionModal(s)}
                                         onReorderFolders={this.reorderFolders}
                                         language={language}
+                                        moduleNav={this.buildModuleNav()}
                                     />
 
                                     {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -2086,6 +2258,7 @@ export class App extends Component<{}, AppState> {
                                             tmuxMouseOn={tmuxMouseOn}
                                             onTmuxMouseToggle={this.toggleTmuxMouse}
                                             language={language}
+                                            moduleNav={this.buildModuleNav()}
                                         />
 
                                         {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
@@ -2128,31 +2301,36 @@ export class App extends Component<{}, AppState> {
                                                             }}
                                                         />
                                                     )}
-                                                    {activeDrawerTab === 'skills' && (
-                                                        <iframe
-                                                            id="skills-iframe"
-                                                            src="/1skills/"
-                                                            onLoad={e => {
-                                                                const iframe = e.target as HTMLIFrameElement;
-                                                                if (iframe && iframe.contentWindow) {
-                                                                    iframe.contentWindow.postMessage(
-                                                                        { type: 'THEME_CHANGE', theme },
-                                                                        '*'
-                                                                    );
-                                                                    iframe.contentWindow.postMessage(
-                                                                        { type: 'LANG_CHANGE', lang: language },
-                                                                        '*'
-                                                                    );
-                                                                }
-                                                            }}
-                                                            style={{
-                                                                width: '100%',
-                                                                height: '100%',
-                                                                border: 'none',
-                                                                background: 'transparent',
-                                                            }}
-                                                        />
-                                                    )}
+                                                    {activeDrawerTab === 'skills' &&
+                                                        (() => {
+                                                            const skillsMod = getModuleByTab('skills');
+                                                            const skillsSrc = skillsMod
+                                                                ? buildModuleIframeSrc(skillsMod)
+                                                                : '/1skills/';
+                                                            return (
+                                                                <iframe
+                                                                    id="skills-iframe"
+                                                                    src={skillsSrc}
+                                                                    onLoad={e => {
+                                                                        const iframe = e.target as HTMLIFrameElement;
+                                                                        postToModule(iframe, {
+                                                                            type: 'THEME_CHANGE',
+                                                                            theme,
+                                                                        });
+                                                                        postToModule(iframe, {
+                                                                            type: 'LANG_CHANGE',
+                                                                            lang: language,
+                                                                        });
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        height: '100%',
+                                                                        border: 'none',
+                                                                        background: 'transparent',
+                                                                    }}
+                                                                />
+                                                            );
+                                                        })()}
                                                     {activeDrawerTab === 'discovery' && (
                                                         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                                                             <DiscoveryPanel
@@ -2444,6 +2622,17 @@ export class App extends Component<{}, AppState> {
                         token={accessTokenModalToken}
                         onClose={this.closeAccessTokenModal}
                         onShowToast={this.showToast}
+                        language={language}
+                    />
+                )}
+
+                {/* Session Rename Modal */}
+                {sessionRenameModalOpen && sessionRenameTarget && (
+                    <SessionRenameModal
+                        title={sessionRenameName}
+                        onTitleChange={val => this.setState({ sessionRenameName: val })}
+                        onClose={this.closeSessionRenameModal}
+                        onSubmit={this.submitRenameSession}
                         language={language}
                     />
                 )}

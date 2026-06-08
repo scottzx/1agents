@@ -60,6 +60,7 @@ export interface FsEntry {
 export interface TmuxWindow {
     index: number;
     name: string;
+    customName?: string;
     active: boolean;
     workspaceId: string;
     cwd: string;
@@ -72,6 +73,17 @@ export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'setti
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
     return tab === 'providers' || tab === 'discovery' || tab === 'skills' || tab === 'settings';
+}
+
+/**
+ * Module-backed drawer tab state. Sits next to `RightDrawerTab` (which we
+ * keep untouched for migration safety). Modules contribute their own sub-path
+ * that the host mirrors in the main app's URL.
+ */
+export interface RightDrawerState {
+    tab: RightDrawerTab;
+    /** Sub-path inside an active module, e.g. "/skills/use". Empty for non-module tabs. */
+    modulePath: string;
 }
 
 // NOTE: Keep in sync with getFileTagFromExt in agent/internal/fs/handler.go
