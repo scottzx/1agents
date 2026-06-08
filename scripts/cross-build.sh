@@ -199,7 +199,7 @@ build() {
 
     echo "=== Installing toolchain ${ALIAS} (${TARGET})..."
 
-    mkdir -p "${CROSS_ROOT}" && export PATH="${PATH}:${CROSS_ROOT}/bin"
+    mkdir -p "${CROSS_ROOT}" && export PATH="${CROSS_ROOT}/usr/bin:${CROSS_ROOT}/bin:${PATH}"
     if ! curl -fSsLo- --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 \
             "${MUSL_CC_URL_PRIMARY}/${TARGET}-cross.tgz" \
             | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}; then
