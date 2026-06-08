@@ -183,9 +183,11 @@ build() {
     STAGE_DIR="${STAGE_ROOT}/${TARGET}"
     BUILD_DIR="${BUILD_ROOT}/${TARGET}"
     if [ "$(uname -s)" = "Darwin" ]; then
-        MUSL_CC_URL="https://github.com/tsl0922/musl-toolchains/releases/download/2021-11-23"
+        MUSL_CC_URL_PRIMARY="https://github.com/tsl0922/musl-toolchains/releases/download/2021-11-23"
+        MUSL_CC_URL_FALLBACK="https://musl.cc"
     else
-        MUSL_CC_URL="https://musl.cc"
+        MUSL_CC_URL_PRIMARY="https://musl.cc"
+        MUSL_CC_URL_FALLBACK="https://github.com/tsl0922/musl-toolchains/releases/download/2021-11-23"
     fi
     COMPONENTS="1"
     SYSTEM="Linux"
@@ -198,7 +200,14 @@ build() {
     echo "=== Installing toolchain ${ALIAS} (${TARGET})..."
 
     mkdir -p "${CROSS_ROOT}" && export PATH="${PATH}:${CROSS_ROOT}/bin"
-    curl -fSsLo- "${MUSL_CC_URL}/${TARGET}-cross.tgz" | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}
+    if ! curl -fSsLo- --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 \
+            "${MUSL_CC_URL_PRIMARY}/${TARGET}-cross.tgz" \
+            | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}; then
+        echo "=== Primary toolchain source failed, falling back to ${MUSL_CC_URL_FALLBACK}"
+        curl -fSsLo- --connect-timeout 30 --max-time 300 \
+            "${MUSL_CC_URL_FALLBACK}/${TARGET}-cross.tgz" \
+            | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}
+    fi
 
     echo "=== Building target ${ALIAS} (${TARGET})..."
 
