@@ -194,266 +194,298 @@ export function LeftSidebar({
                                 {/* Add workspace button */}
                                 <button
                                     class="ws-add-btn"
-                                onClick={(e: MouseEvent) => {
-                                    e.stopPropagation();
-                                    onCreateWorkspace();
-                                }}
-                                title={t('sidebar.newWorkspace', language)}
-                            >
+                                    onClick={(e: MouseEvent) => {
+                                        e.stopPropagation();
+                                        onCreateWorkspace();
+                                    }}
+                                    title={t('sidebar.newWorkspace', language)}
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M5 12h14M12 5v14" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Loading skeleton */}
+                        {workspacesLoading && (
+                            <div class="ws-skeleton">
+                                <div class="ws-skeleton-item" />
+                                <div class="ws-skeleton-item" style="width:75%" />
+                                <div class="ws-skeleton-item" style="width:60%" />
+                            </div>
+                        )}
+
+                        {/* Empty state */}
+                        {!workspacesLoading && folders.length === 0 && (
+                            <div class="ws-empty">
                                 <svg
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
-                                    stroke-width="2.5"
+                                    stroke-width="1.5"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                 >
-                                    <path d="M5 12h14M12 5v14" />
+                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                                 </svg>
-                            </button>
-                        </div>
-                    </div>
+                                <span>{t('sidebar.empty', language)}</span>
+                                <button class="ws-empty-add" onClick={onCreateWorkspace}>
+                                    {t('common.new', language)}
+                                </button>
+                            </div>
+                        )}
 
-                    {/* Loading skeleton */}
-                    {workspacesLoading && (
-                        <div class="ws-skeleton">
-                            <div class="ws-skeleton-item" />
-                            <div class="ws-skeleton-item" style="width:75%" />
-                            <div class="ws-skeleton-item" style="width:60%" />
-                        </div>
-                    )}
+                        {!workspacesLoading &&
+                            folders.map(folder => {
+                                const ws = workspaces.find(w => w.id === folder.id);
+                                const isHovered = hoveredId === folder.id;
+                                const isConfirmingDelete = confirmDeleteId === folder.id;
+                                const isActive = folder.id === activeWorkspaceId;
+                                const isDeleting = deletingId === folder.id;
 
-                    {/* Empty state */}
-                    {!workspacesLoading && folders.length === 0 && (
-                        <div class="ws-empty">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                            </svg>
-                            <span>{t('sidebar.empty', language)}</span>
-                            <button class="ws-empty-add" onClick={onCreateWorkspace}>
-                                {t('common.new', language)}
-                            </button>
-                        </div>
-                    )}
-
-                    {!workspacesLoading &&
-                        folders.map(folder => {
-                            const ws = workspaces.find(w => w.id === folder.id);
-                            const isHovered = hoveredId === folder.id;
-                            const isConfirmingDelete = confirmDeleteId === folder.id;
-                            const isActive = folder.id === activeWorkspaceId;
-                            const isDeleting = deletingId === folder.id;
-
-                            return (
-                                <div
-                                    key={folder.id}
-                                    class={`project-node${isActive ? ' ws-active' : ''}${
-                                        isDeleting ? ' ws-deleting' : ''
-                                    }`}
-                                    onMouseEnter={() => setHoveredId(folder.id)}
-                                    onMouseLeave={() => {
-                                        setHoveredId(null);
-                                        if (confirmDeleteId === folder.id) setConfirmDeleteId(null);
-                                    }}
-                                >
-                                    {isConfirmingDelete ? (
-                                        /* Delete confirm inline */
-                                        <div class="ws-delete-confirm">
-                                            <span>{t('sidebar.deleteConfirm', language, { name: folder.name })}</span>
-                                            <button
-                                                class="ws-del-yes"
-                                                onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
-                                            >
-                                                {t('common.delete', language)}
-                                            </button>
-                                            <button class="ws-del-no" onClick={cancelDelete}>
-                                                {t('common.cancel', language)}
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
-                                                draggedId === folder.id ? 'dragging' : ''
-                                            } ${
-                                                dragOverId === folder.id && dragOverPosition === 'before'
-                                                    ? 'drag-over-before'
-                                                    : ''
-                                            } ${
-                                                dragOverId === folder.id && dragOverPosition === 'after'
-                                                    ? 'drag-over-after'
-                                                    : ''
-                                            }`}
-                                            draggable={true}
-                                            onDragStart={e => handleDragStart(e, folder.id)}
-                                            onDragOver={e => handleDragOver(e, folder.id)}
-                                            onDragLeave={e => handleDragLeave(e, folder.id)}
-                                            onDrop={e => handleDrop(e, folder.id)}
-                                            onDragEnd={handleDragEnd}
-                                            onClick={() => {
-                                                toggleFolder(folder.id);
-                                                if (ws) onSelectWorkspace(ws);
-                                            }}
-                                        >
-                                            <svg
-                                                class="chevron"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <polyline points="9 18 15 12 9 6" />
-                                            </svg>
-                                            <svg
-                                                class="folder-icon"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                            </svg>
-                                            <span class="ws-name" title={ws?.path || folder.name}>
-                                                {folder.name}
-                                            </span>
-
-                                            {/* Action buttons */}
+                                return (
+                                    <div
+                                        key={folder.id}
+                                        class={`project-node${isActive ? ' ws-active' : ''}${
+                                            isDeleting ? ' ws-deleting' : ''
+                                        }`}
+                                        onMouseEnter={() => setHoveredId(folder.id)}
+                                        onMouseLeave={() => {
+                                            setHoveredId(null);
+                                            if (confirmDeleteId === folder.id) setConfirmDeleteId(null);
+                                        }}
+                                    >
+                                        {isConfirmingDelete ? (
+                                            /* Delete confirm inline */
+                                            <div class="ws-delete-confirm">
+                                                <span>
+                                                    {t('sidebar.deleteConfirm', language, { name: folder.name })}
+                                                </span>
+                                                <button
+                                                    class="ws-del-yes"
+                                                    onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
+                                                >
+                                                    {t('common.delete', language)}
+                                                </button>
+                                                <button class="ws-del-no" onClick={cancelDelete}>
+                                                    {t('common.cancel', language)}
+                                                </button>
+                                            </div>
+                                        ) : (
                                             <div
-                                                class="ws-actions"
-                                                draggable={false}
-                                                onDragStart={e => e.preventDefault()}
-                                                onClick={(e: MouseEvent) => e.stopPropagation()}
+                                                class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
+                                                    draggedId === folder.id ? 'dragging' : ''
+                                                } ${
+                                                    dragOverId === folder.id && dragOverPosition === 'before'
+                                                        ? 'drag-over-before'
+                                                        : ''
+                                                } ${
+                                                    dragOverId === folder.id && dragOverPosition === 'after'
+                                                        ? 'drag-over-after'
+                                                        : ''
+                                                }`}
+                                                draggable={true}
+                                                onDragStart={e => handleDragStart(e, folder.id)}
+                                                onDragOver={e => handleDragOver(e, folder.id)}
+                                                onDragLeave={e => handleDragLeave(e, folder.id)}
+                                                onDrop={e => handleDrop(e, folder.id)}
+                                                onDragEnd={handleDragEnd}
+                                                onClick={() => {
+                                                    toggleFolder(folder.id);
+                                                    if (ws) onSelectWorkspace(ws);
+                                                }}
                                             >
-                                                {/* Add session button — always visible */}
-                                                {ws && (
-                                                    <button
-                                                        class="ws-action-btn ws-action-add"
-                                                        title={t('sidebar.newTerminal', language)}
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onTerminalCreate(ws.id, ws.terminalDir || ws.path);
-                                                        }}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2.5"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <path d="M5 12h14M12 5v14" />
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                                {isHovered &&
-                                                    ws && [
+                                                <svg
+                                                    class="chevron"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2.5"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <polyline points="9 18 15 12 9 6" />
+                                                </svg>
+                                                <svg
+                                                    class="folder-icon"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                </svg>
+                                                <span class="ws-name" title={ws?.path || folder.name}>
+                                                    {folder.name}
+                                                </span>
+
+                                                {/* Action buttons */}
+                                                <div
+                                                    class="ws-actions"
+                                                    draggable={false}
+                                                    onDragStart={e => e.preventDefault()}
+                                                    onClick={(e: MouseEvent) => e.stopPropagation()}
+                                                >
+                                                    {/* Add session button — always visible */}
+                                                    {ws && (
                                                         <button
-                                                            class="ws-action-btn"
-                                                            title={t('common.edit', language)}
+                                                            class="ws-action-btn ws-action-add"
+                                                            title={t('sidebar.newTerminal', language)}
                                                             onClick={(e: MouseEvent) => {
                                                                 e.stopPropagation();
-                                                                onRenameWorkspace(ws);
+                                                                onTerminalCreate(ws.id, ws.terminalDir || ws.path);
                                                             }}
                                                         >
                                                             <svg
                                                                 viewBox="0 0 24 24"
                                                                 fill="none"
                                                                 stroke="currentColor"
-                                                                stroke-width="2"
+                                                                stroke-width="2.5"
                                                                 stroke-linecap="round"
                                                                 stroke-linejoin="round"
                                                             >
-                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                <path d="M5 12h14M12 5v14" />
                                                             </svg>
-                                                        </button>,
-                                                        <button
-                                                            class="ws-action-btn ws-action-delete"
-                                                            title={t('common.delete', language)}
-                                                            onClick={(e: MouseEvent) => handleDeleteClick(e, folder.id)}
-                                                        >
-                                                            <svg
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2"
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
+                                                        </button>
+                                                    )}
+                                                    {isHovered &&
+                                                        ws && [
+                                                            <button
+                                                                class="ws-action-btn"
+                                                                title={t('common.edit', language)}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    onRenameWorkspace(ws);
+                                                                }}
                                                             >
-                                                                <polyline points="3 6 5 6 21 6" />
-                                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                                <path d="M10 11v6M14 11v6" />
-                                                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                            </svg>
-                                                        </button>,
-                                                    ]}
+                                                                <svg
+                                                                    viewBox="0 0 24 24"
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    stroke-width="2"
+                                                                    stroke-linecap="round"
+                                                                    stroke-linejoin="round"
+                                                                >
+                                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                </svg>
+                                                            </button>,
+                                                            <button
+                                                                class="ws-action-btn ws-action-delete"
+                                                                title={t('common.delete', language)}
+                                                                onClick={(e: MouseEvent) =>
+                                                                    handleDeleteClick(e, folder.id)
+                                                                }
+                                                            >
+                                                                <svg
+                                                                    viewBox="0 0 24 24"
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    stroke-width="2"
+                                                                    stroke-linecap="round"
+                                                                    stroke-linejoin="round"
+                                                                >
+                                                                    <polyline points="3 6 5 6 21 6" />
+                                                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                                                    <path d="M10 11v6M14 11v6" />
+                                                                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                                                </svg>
+                                                            </button>,
+                                                        ]}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {folder.expanded && (
-                                        <div class="project-children">
-                                            {folder.sessions.length === 0 ? (
-                                                <div class="ws-no-sessions">{t('sidebar.noSessions', language)}</div>
-                                            ) : (
-                                                folder.sessions.map(session => (
-                                                    <div
-                                                        key={session.id}
-                                                        class={`chat-item ${session.active ? 'active' : ''}${
-                                                            killingSessionIndex === session.index
-                                                                ? ' chat-item-killing'
-                                                                : ''
-                                                        }`}
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onSelectSession(session);
-                                                        }}
-                                                        onMouseEnter={() => setHoveredSessionId(session.id)}
-                                                        onMouseLeave={() =>
-                                                            setHoveredSessionId(prev =>
-                                                                prev === session.id ? null : prev
-                                                            )
-                                                        }
-                                                    >
-                                                        <div class="chat-item-left">
-                                                            <span
-                                                                class={`status-dot status-${session.status || 'none'}`}
-                                                                title={t(
-                                                                    `sidebar.sessionStatus.${session.status || 'none'}`,
-                                                                    language
+                                        {folder.expanded && (
+                                            <div class="project-children">
+                                                {folder.sessions.length === 0 ? (
+                                                    <div class="ws-no-sessions">
+                                                        {t('sidebar.noSessions', language)}
+                                                    </div>
+                                                ) : (
+                                                    folder.sessions.map(session => (
+                                                        <div
+                                                            key={session.id}
+                                                            class={`chat-item ${session.active ? 'active' : ''}${
+                                                                killingSessionIndex === session.index
+                                                                    ? ' chat-item-killing'
+                                                                    : ''
+                                                            }`}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onSelectSession(session);
+                                                            }}
+                                                            onMouseEnter={() => setHoveredSessionId(session.id)}
+                                                            onMouseLeave={() =>
+                                                                setHoveredSessionId(prev =>
+                                                                    prev === session.id ? null : prev
+                                                                )
+                                                            }
+                                                        >
+                                                            <div class="chat-item-left">
+                                                                <span
+                                                                    class={`status-dot status-${session.status || 'none'}`}
+                                                                    title={t(
+                                                                        `sidebar.sessionStatus.${session.status || 'none'}`,
+                                                                        language
+                                                                    )}
+                                                                />
+                                                                <span class="chat-title" title={session.name}>
+                                                                    {session.name}
+                                                                </span>
+                                                            </div>
+                                                            {session.agent ? (
+                                                                <span class="chat-agent">
+                                                                    {session.agent === 'antigravity'
+                                                                        ? 'agy'
+                                                                        : session.agent.charAt(0).toUpperCase() +
+                                                                          session.agent.slice(1)}
+                                                                </span>
+                                                            ) : null}
+                                                            <div class="session-actions">
+                                                                {hoveredSessionId === session.id && (
+                                                                    <button
+                                                                        class="session-action-btn"
+                                                                        title={t('sidebar.renameSession', language)}
+                                                                        onClick={(e: MouseEvent) => {
+                                                                            e.stopPropagation();
+                                                                            onRenameSession(session);
+                                                                        }}
+                                                                    >
+                                                                        <svg
+                                                                            width="12"
+                                                                            height="12"
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            stroke-width="2"
+                                                                            stroke-linecap="round"
+                                                                            stroke-linejoin="round"
+                                                                        >
+                                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                        </svg>
+                                                                    </button>
                                                                 )}
-                                                            />
-                                                            <span class="chat-title" title={session.name}>
-                                                                {session.name}
-                                                            </span>
-                                                        </div>
-                                                        {session.agent ? (
-                                                            <span class="chat-agent">
-                                                                {session.agent === 'antigravity'
-                                                                    ? 'agy'
-                                                                    : session.agent.charAt(0).toUpperCase() +
-                                                                      session.agent.slice(1)}
-                                                            </span>
-                                                        ) : null}
-                                                        <div class="session-actions">
-                                                            {hoveredSessionId === session.id && (
                                                                 <button
-                                                                    class="session-action-btn"
-                                                                    title={t('sidebar.renameSession', language)}
+                                                                    class="session-kill-btn"
+                                                                    title={t('sidebar.closeSession', language)}
                                                                     onClick={(e: MouseEvent) => {
                                                                         e.stopPropagation();
-                                                                        onRenameSession(session);
+                                                                        setKillingSessionIndex(session.index);
+                                                                        setTimeout(() => {
+                                                                            onTerminalKill(session.index);
+                                                                        }, 300);
                                                                     }}
                                                                 >
                                                                     <svg
@@ -464,46 +496,20 @@ export function LeftSidebar({
                                                                         stroke="currentColor"
                                                                         stroke-width="2"
                                                                         stroke-linecap="round"
-                                                                        stroke-linejoin="round"
                                                                     >
-                                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                        <line x1="18" x2="6" y1="6" y2="18" />
+                                                                        <line x1="6" x2="18" y1="6" y2="18" />
                                                                     </svg>
                                                                 </button>
-                                                            )}
-                                                            <button
-                                                                class="session-kill-btn"
-                                                                title={t('sidebar.closeSession', language)}
-                                                                onClick={(e: MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    setKillingSessionIndex(session.index);
-                                                                    setTimeout(() => {
-                                                                        onTerminalKill(session.index);
-                                                                    }, 300);
-                                                                }}
-                                                            >
-                                                                <svg
-                                                                    width="12"
-                                                                    height="12"
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                >
-                                                                    <line x1="18" x2="6" y1="6" y2="18" />
-                                                                    <line x1="6" x2="18" y1="6" y2="18" />
-                                                                </svg>
-                                                            </button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                     </div>
                 </div>
             )}

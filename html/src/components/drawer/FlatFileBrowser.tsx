@@ -215,16 +215,31 @@ export function FlatFileBrowser({
                                 >
                                     <div class={`fb-ext-badge fb-ext-${tag}`}>{ext.slice(0, 3)}</div>
                                     <div class="fb-file-info">
-                                        <span class="fb-file-name">{f.name}</span>
-                                        <span class="fb-file-meta">
-                                            {formatBytes(f.size)} · {f.path}
+                                        <span class="fb-file-name" title={f.name}>
+                                            {f.name}
                                         </span>
+                                        <span class="fb-file-meta">{formatBytes(f.size)}</span>
                                     </div>
                                     {isFav && (
                                         <svg class="fb-star-indicator" viewBox="0 0 24 24" fill="currentColor">
                                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                                         </svg>
                                     )}
+                                    <div class="fb-info-icon" tabIndex={0}>
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="12" cy="12" r="10" />
+                                            <line x1="12" y1="16" x2="12" y2="12" />
+                                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                                        </svg>
+                                        <div class="fb-info-tooltip">{f.path}</div>
+                                    </div>
                                 </div>
                             );
                         })}
