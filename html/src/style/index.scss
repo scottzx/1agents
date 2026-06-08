@@ -891,6 +891,179 @@ body {
       }
     }
   }
+
+  /* ── Module Slot navigation surface ────────────────────────────────────
+   * Rendered inside the same column as the host sidebar when the active
+   * drawer tab is backed by a module (1skills today). Shares the visual
+   * idiom of `.sidebar-footer` / `.footer-item` so the user only ever
+   * sees one sidebar. */
+  .sidebar-module-nav {
+    border-top: 1px solid var(--border-sidebar);
+    padding: 10px 8px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    max-height: 50vh;
+  }
+
+  .module-nav-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+
+  .module-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    & + & {
+      margin-top: 6px;
+    }
+  }
+
+  .module-nav-group__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-sidebar-muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    border-radius: 6px;
+    text-align: left;
+    width: 100%;
+
+    &:hover {
+      color: var(--text-sidebar);
+      background-color: var(--bg-sidebar-hover);
+    }
+
+    .module-nav-group__label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .module-nav-group__count {
+      font-size: 11px;
+      color: var(--text-sidebar-muted);
+      background-color: var(--bg-sidebar-hover);
+      border-radius: 999px;
+      padding: 1px 7px;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    .module-nav-icon {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    .module-nav-chevron {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+      transition: transform 0.18s ease;
+    }
+  }
+
+  .module-nav-group[data-collapsed='true'] {
+    .module-nav-chevron {
+      transform: rotate(-90deg);
+    }
+  }
+
+  .module-nav-group.has-active .module-nav-group__header {
+    color: var(--text-sidebar);
+  }
+
+  .module-nav-group__items {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 2px 0 4px 4px;
+  }
+
+  .module-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--text-sidebar-muted);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+
+    &:hover {
+      color: var(--text-sidebar);
+      background-color: var(--bg-sidebar-hover);
+    }
+
+    &.is-active {
+      color: var(--text-sidebar);
+      background-color: var(--bg-sidebar-hover);
+      font-weight: 500;
+    }
+
+    .module-nav-link__dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background-color: currentColor;
+      opacity: 0.4;
+      flex-shrink: 0;
+    }
+
+    &.is-active .module-nav-link__dot {
+      opacity: 1;
+      background-color: var(--accent, #0969da);
+    }
+
+    .module-nav-link__label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .module-nav-link__count {
+      font-size: 11px;
+      color: var(--text-sidebar-muted);
+      background-color: var(--bg-sidebar-hover);
+      border-radius: 999px;
+      padding: 1px 7px;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    .module-nav-link__badge {
+      font-size: 10px;
+      color: #fff;
+      background-color: #cf222e;
+      border-radius: 999px;
+      padding: 0 5px;
+      min-width: 14px;
+      text-align: center;
+      line-height: 14px;
+    }
+  }
 }
 
 /* ==========================================================================
@@ -3247,6 +3420,38 @@ body {
           white-space: nowrap;
           flex-shrink: 0;
           opacity: 0.8;
+        }
+
+        .fb-file-path {
+          flex: 1 1 auto;
+          min-width: 0;
+          font-size: 11px;
+          color: var(--text-muted);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          // RTL trick: render text right-to-left so overflow is clipped from
+          // the LEFT, keeping the meaningful directory suffix visible.
+          direction: rtl;
+          text-align: left;
+          opacity: 0.7;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+      }
+
+      // Search-result row: name + size get guaranteed space; path is the one
+      // that gives way. Overrides the default space-between layout so items
+      // sit naturally with a gap instead of being stretched to the edges.
+      .fb-search-row .fb-file-info {
+        justify-content: flex-start;
+
+        .fb-file-name {
+          flex-shrink: 0;
+          max-width: 40%;
+        }
+
+        .fb-file-meta {
+          flex-shrink: 0;
         }
       }
 
