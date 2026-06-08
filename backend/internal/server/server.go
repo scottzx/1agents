@@ -157,6 +157,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/terminal/list", termHandler.List)     // GET
 	mux.HandleFunc("/api/terminal/kill", termHandler.Kill)     // POST {windowIndex}
 	mux.HandleFunc("/api/terminal/switch", termHandler.Switch) // POST {windowIndex}
+	mux.HandleFunc("/api/terminal/rename", termHandler.Rename) // POST {windowName, name}
 	mux.HandleFunc("/api/terminal/mouse", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			termHandler.GetMouse(w, r)

@@ -35,6 +35,15 @@ export const terminalService = {
         if (!res.ok) throw new Error(await res.text());
     },
 
+    async rename(windowName: string, name: string): Promise<void> {
+        const res = await fetch('/api/terminal/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ windowName, name }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
     async getMouse(): Promise<boolean> {
         const res = await fetch('/api/terminal/mouse');
         if (!res.ok) throw new Error(await res.text());

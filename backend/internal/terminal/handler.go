@@ -17,6 +17,7 @@ import (
 type TmuxWindow struct {
 	Index       int    `json:"index"`
 	Name        string `json:"name"`
+	CustomName  string `json:"customName,omitempty"` // user-supplied display label (persisted in ~/.1agents/session_names.json)
 	Active      bool   `json:"active"`
 	WorkspaceID string `json:"workspaceId"`
 	Cwd         string `json:"cwd"`
@@ -42,10 +43,18 @@ type SwitchRequest struct {
 	WindowIndex int `json:"windowIndex"`
 }
 
+// RenameRequest is the body for POST /api/terminal/rename. The empty Name
+// value resets the session to its default display label.
+type RenameRequest struct {
+	WindowName string `json:"windowName"`
+	Name       string `json:"name"`
+}
+
 // Handler manages tmux terminal windows via HTTP API.
 type Handler struct {
 	session     string
 	mu          sync.RWMutex
+	nameMu      sync.Mutex // serializes reads/writes of ~/.1agents/session_names.json
 	mockWindows []TmuxWindow
 }
 
@@ -238,6 +247,8 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		_ = h.DeleteSessionName(h.mockWindows[idx].Name)
+
 		h.mockWindows = append(h.mockWindows[:idx], h.mockWindows[idx+1:]...)
 
 		activeFound := false
@@ -266,17 +277,24 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the target window index exists
+	// Check if the target window index exists; capture its name so we can clean
+	// up any persisted custom display name before the window is gone.
 	exists := false
+	var winName string
 	for _, w := range windows {
 		if w.Index == req.WindowIndex {
 			exists = true
+			winName = w.Name
 			break
 		}
 	}
 	if !exists {
 		http.Error(w, "window not found", http.StatusNotFound)
 		return
+	}
+
+	if err := h.DeleteSessionName(winName); err != nil {
+		log.Printf("[terminal] delete session name (best-effort): %v", err)
 	}
 
 	cmd := exec.Command("tmux", "kill-window", "-t", fmt.Sprintf("%s:%d", h.session, req.WindowIndex))
@@ -288,6 +306,33 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// ── POST /api/terminal/rename ──────────────────────────────────────────────
+
+func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RenameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.WindowName == "" {
+		http.Error(w, "windowName is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.SetSessionName(req.WindowName, req.Name); err != nil {
+		log.Printf("[terminal] rename save error: %v", err)
+		http.Error(w, "failed to save session name: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name})
 }
 
 // ── POST /api/terminal/switch ──────────────────────────────────────────────
@@ -476,7 +521,7 @@ func (h *Handler) listWindows() ([]TmuxWindow, error) {
 			PanePID:     panePID,
 		})
 	}
-	return windows, nil
+	return h.ApplySessionNames(windows), nil
 }
 
 func (h *Handler) findWindowByName(name string) (*TmuxWindow, error) {
