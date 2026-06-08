@@ -61,8 +61,7 @@ export function LeftSidebar({
     onReorderFolders,
     language,
     moduleNav,
-    }: LeftSidebarProps) {
-
+}: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -125,7 +124,6 @@ export function LeftSidebar({
         setDragOverPosition(null);
     };
 
-
     useEffect(() => {
         setDeletingId(null);
         setKillingSessionIndex(null);
@@ -187,14 +185,15 @@ export function LeftSidebar({
                 </div>
             </div>
 
-            <div class="sidebar-scroll">
-                <div class="workspace-section">
-                    <div class="section-header">
-                        <span>{t('sidebar.workspaces', language)}</span>
-                        <div class="header-actions">
-                            {/* Add workspace button */}
-                            <button
-                                class="ws-add-btn"
+            {!moduleNav && (
+                <div class="sidebar-scroll">
+                    <div class="workspace-section">
+                        <div class="section-header">
+                            <span>{t('sidebar.workspaces', language)}</span>
+                            <div class="header-actions">
+                                {/* Add workspace button */}
+                                <button
+                                    class="ws-add-btn"
                                 onClick={(e: MouseEvent) => {
                                     e.stopPropagation();
                                     onCreateWorkspace();
@@ -457,7 +456,6 @@ export function LeftSidebar({
                                                                         onRenameSession(session);
                                                                     }}
                                                                 >
-
                                                                     <svg
                                                                         width="12"
                                                                         height="12"
@@ -506,8 +504,9 @@ export function LeftSidebar({
                                 </div>
                             );
                         })}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {moduleNav && (
                 <ModuleNav

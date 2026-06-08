@@ -893,10 +893,9 @@ body {
   }
 
   /* ── Module Slot navigation surface ────────────────────────────────────
-   * Rendered inside the same column as the host sidebar when the active
-   * drawer tab is backed by a module (1skills today). Shares the visual
-   * idiom of `.sidebar-footer` / `.footer-item` so the user only ever
-   * sees one sidebar. */
+   * Replaces the workspace tree when a module-backed drawer tab is
+   * active. Fills the full available sidebar height so the user only
+   * ever sees one navigation surface. */
   .sidebar-module-nav {
     border-top: 1px solid var(--border-sidebar);
     padding: 10px 8px 6px;
@@ -904,8 +903,8 @@ body {
     flex-direction: column;
     gap: 4px;
     overflow-y: auto;
-    flex-shrink: 0;
-    max-height: 50vh;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .module-nav-section {
@@ -3421,37 +3420,16 @@ body {
           flex-shrink: 0;
           opacity: 0.8;
         }
-
-        .fb-file-path {
-          flex: 1 1 auto;
-          min-width: 0;
-          font-size: 11px;
-          color: var(--text-muted);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          // RTL trick: render text right-to-left so overflow is clipped from
-          // the LEFT, keeping the meaningful directory suffix visible.
-          direction: rtl;
-          text-align: left;
-          opacity: 0.7;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        }
       }
 
-      // Search-result row: name + size get guaranteed space; path is the one
-      // that gives way. Overrides the default space-between layout so items
-      // sit naturally with a gap instead of being stretched to the edges.
+      // Search-result row: name takes the slack, size stays full. The path
+      // is no longer inlined — it lives in the info-icon hover tooltip.
       .fb-search-row .fb-file-info {
         justify-content: flex-start;
 
         .fb-file-name {
-          flex-shrink: 0;
-          max-width: 40%;
-        }
-
-        .fb-file-meta {
-          flex-shrink: 0;
+          flex: 1 1 auto;
+          min-width: 0;
         }
       }
 
@@ -3462,6 +3440,71 @@ body {
         flex-shrink: 0;
         filter: drop-shadow(0 1px 1px rgba(226, 185, 59, 0.15));
         animation: fb-scale-up 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      // Path-on-hover affordance for search rows. The icon stays subtle and
+      // brightens on hover; the tooltip is hidden until then and shows the
+      // full path above the row.
+      .fb-info-icon {
+        position: relative;
+        flex-shrink: 0;
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+        opacity: 0.45;
+        cursor: help;
+        transition: opacity 0.15s ease, color 0.15s ease;
+        outline: none;
+
+        svg {
+          width: 100%;
+          height: 100%;
+          display: block;
+        }
+
+        &:hover,
+        &:focus-within {
+          opacity: 1;
+          color: var(--accent-color);
+        }
+
+        .fb-info-tooltip {
+          position: absolute;
+          top: 0;
+          right: 0;
+          transform: translateY(calc(-100% - 6px));
+          max-width: 360px;
+          padding: 5px 9px;
+          background-color: var(--bg-tooltip, #1f2937);
+          color: var(--text-tooltip, #f3f4f6);
+          font-size: 11px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          line-height: 1.4;
+          white-space: nowrap;
+          border-radius: 4px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+          pointer-events: none;
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.12s ease, visibility 0.12s ease;
+          z-index: 100;
+
+          // Small caret pointing down at the icon.
+          &::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            right: 3px;
+            border: 4px solid transparent;
+            border-top-color: var(--bg-tooltip, #1f2937);
+          }
+        }
+
+        &:hover .fb-info-tooltip,
+        &:focus-within .fb-info-tooltip {
+          opacity: 1;
+          visibility: visible;
+        }
       }
     }
 
