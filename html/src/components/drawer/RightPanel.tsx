@@ -132,10 +132,7 @@ export function RightPanel({
     // gitLoading toggles). Without useCallback, every RightPanel render would
     // hand FlatFileBrowser a new onToggleFsDir prop reference and force a
     // re-render of the entire tree.
-    const handleToggleFsDir = useCallback(
-        (entry: FsEntry) => onToggleFsDir(entry),
-        [onToggleFsDir]
-    );
+    const handleToggleFsDir = useCallback((entry: FsEntry) => onToggleFsDir(entry), [onToggleFsDir]);
 
     let isSpinning = false;
     if (activeDrawerTab === 'files') {

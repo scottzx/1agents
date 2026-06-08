@@ -1,5 +1,4 @@
 import { h, Component } from 'preact';
-import { marked } from 'marked';
 import { FsEntry, getFileTag, formatBytes } from '../types';
 import { t, type Lang } from '../i18n';
 
