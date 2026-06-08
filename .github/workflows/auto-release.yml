@@ -101,18 +101,72 @@ jobs:
           name: html-header
           path: modules/ttyd/src/html.h
 
+  # ── 1skills PyInstaller build ─────────────────────────────────────────────
+  # PyInstaller embeds the CPython runtime, so the build MUST run natively on
+  # each target platform/arch. Cross-compilation is not supported.
+  build-1skills:
+    name: build-1skills-${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: darwin-arm64
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install build dependencies
+        working-directory: modules/1skills
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt ".[build]"
+          npm ci
+
+      - name: Build 1skills release artifact
+        working-directory: modules/1skills
+        run: python scripts/build_release.py
+
+      - name: Upload 1skills artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: 1skills-${{ matrix.target }}
+          path: modules/1skills/.artifacts/release/*
+
   build-linux:
-    runs-on: ubuntu-24.04
-    needs: [prepare, build-frontend]
+    runs-on: ${{ matrix.runner }}
+    needs: [prepare, build-frontend, build-1skills]
     strategy:
       matrix:
         include:
           - arch: amd64
             target: amd64
             goarch: amd64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+            skills_target: linux-x64
           - arch: arm64
             target: arm64
             goarch: arm64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            skills_target: linux-arm64
     steps:
       - uses: actions/checkout@v6
         with:
@@ -209,6 +263,30 @@ jobs:
           cd ../modules/cc-connect/cmd/cc-connect
           GOOS=linux GOARCH=${{ matrix.goarch }} go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build/cc-connect .
 
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ matrix.rust_target }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ matrix.rust_target }}-
+
+      - name: Build cc-switch CLI
+        run: |
+          cargo build \
+            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
+            --release \
+            --target ${{ matrix.rust_target }}
+          mkdir -p build
+          cp modules/cc-switch-cli/src-tauri/target/${{ matrix.rust_target }}/release/cc-switch build/cc-switch
+
       - name: Download cloudflared binary
         run: |
           if [ "${{ matrix.arch }}" = "arm64" ]; then
@@ -218,13 +296,29 @@ jobs:
           fi
           chmod +x build/cloudflared
 
+      - name: Download 1skills artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: 1skills-${{ matrix.skills_target }}
+          path: temp-1skills
+
+      - name: Extract skill-manager binary
+        run: |
+          # The artifact is skill-manager-v{version}-{target}.tar.gz containing skill-manager/ dir
+          ARCHIVE=$(find temp-1skills -name '*.tar.gz' | head -1)
+          mkdir -p temp-skill-manager
+          tar -xzf "$ARCHIVE" -C temp-skill-manager
+          chmod +x temp-skill-manager/skill-manager/skill-manager
+
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
           cp build/1agents release-pkg/bin/
           cp build/ttyd release-pkg/bin/
           cp build/cc-connect release-pkg/bin/
+          cp build/cc-switch release-pkg/bin/
           cp build/cloudflared release-pkg/bin/
+          cp temp-skill-manager/skill-manager/skill-manager release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
 
@@ -236,7 +330,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    needs: [prepare, build-frontend]
+    needs: [prepare, build-frontend, build-1skills]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -322,10 +416,43 @@ jobs:
           cd ../modules/cc-connect/cmd/cc-connect
           GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build-ttyd/cc-connect .
 
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-darwin-arm64-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-darwin-arm64-
+
+      - name: Build cc-switch CLI
+        run: |
+          cargo build \
+            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
+            --release
+          cp modules/cc-switch-cli/src-tauri/target/release/cc-switch build-ttyd/cc-switch
+
       - name: Download cloudflared binary
         run: |
           curl -L -o build-ttyd/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
           chmod +x build-ttyd/cloudflared
+
+      - name: Download 1skills artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: 1skills-darwin-arm64
+          path: temp-1skills
+
+      - name: Extract skill-manager binary
+        run: |
+          ARCHIVE=$(find temp-1skills -name '*.tar.gz' | head -1)
+          mkdir -p temp-skill-manager
+          tar -xzf "$ARCHIVE" -C temp-skill-manager
+          chmod +x temp-skill-manager/skill-manager/skill-manager
 
       - name: Package Release Archive
         run: |
@@ -333,7 +460,9 @@ jobs:
           cp build-ttyd/1agents release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp build-ttyd/cc-connect release-pkg/bin/
+          cp build-ttyd/cc-switch release-pkg/bin/
           cp build-ttyd/cloudflared release-pkg/bin/
+          cp temp-skill-manager/skill-manager/skill-manager release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
 
@@ -350,10 +479,12 @@ jobs:
         include:
           - platform: macos-latest
             os_name: macos
+            skills_target: darwin-arm64
           - platform: windows-latest
             os_name: windows
+            skills_target: ''  # 1skills does not support Windows; omitted from desktop bundle
     runs-on: ${{ matrix.platform }}
-    needs: [prepare, build-frontend]
+    needs: [prepare, build-frontend, build-1skills]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -446,6 +577,52 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build/1agents.exe ./cmd/backend
           cd ../modules/cc-connect/cmd/cc-connect
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build/cc-connect.exe .
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-desktop-${{ matrix.os_name }}-${{ hashFiles('modules/cc-switch-cli/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-desktop-${{ matrix.os_name }}-
+
+      - name: Build cc-switch CLI (macOS)
+        if: matrix.os_name == 'macos'
+        run: |
+          cargo build \
+            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
+            --release
+          cp modules/cc-switch-cli/src-tauri/target/release/cc-switch build/cc-switch
+
+      - name: Build cc-switch CLI (Windows)
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: |
+          cargo build \
+            --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml \
+            --release
+          cp modules/cc-switch-cli/src-tauri/target/release/cc-switch.exe build/cc-switch.exe
+
+      - name: Download 1skills artifact (macOS only)
+        if: matrix.os_name == 'macos'
+        uses: actions/download-artifact@v8
+        with:
+          name: 1skills-${{ matrix.skills_target }}
+          path: temp-1skills
+
+      - name: Extract skill-manager binary (macOS only)
+        if: matrix.os_name == 'macos'
+        run: |
+          ARCHIVE=$(find temp-1skills -name '*.tar.gz' | head -1)
+          mkdir -p temp-skill-manager
+          tar -xzf "$ARCHIVE" -C temp-skill-manager
+          chmod +x temp-skill-manager/skill-manager/skill-manager
+          cp temp-skill-manager/skill-manager/skill-manager build/skill-manager
 
       - name: Setup Tauri resources
         shell: bash

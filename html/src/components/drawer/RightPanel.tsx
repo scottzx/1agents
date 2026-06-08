@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useCallback } from 'preact/hooks';
 import { FsEntry, RightDrawerTab } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
@@ -37,7 +37,7 @@ interface RightPanelProps {
     fileSaving: boolean;
     fileSaveMsg: string;
     isImagePreview: boolean;
-    imageDataUrl: string;
+    imageUrl: string;
 
     // File Handlers
     onSearchQueryChange: (query: string) => void;
@@ -95,7 +95,7 @@ export function RightPanel({
     fileSaving,
     fileSaveMsg,
     isImagePreview,
-    imageDataUrl,
+    imageUrl,
 
     onSearchQueryChange,
     onFilterTagChange,
@@ -125,6 +125,17 @@ export function RightPanel({
 }: RightPanelProps) {
     const [gitLoading, setGitLoading] = useState(false);
     const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
+
+    // Stable callback identity so FlatFileBrowser's referential-equality
+    // short-circuits (and the parent toggleFsDir's stable reference downstream)
+    // don't churn on every RightPanel re-render (e.g. when activeDrawerTab or
+    // gitLoading toggles). Without useCallback, every RightPanel render would
+    // hand FlatFileBrowser a new onToggleFsDir prop reference and force a
+    // re-render of the entire tree.
+    const handleToggleFsDir = useCallback(
+        (entry: FsEntry) => onToggleFsDir(entry),
+        [onToggleFsDir]
+    );
 
     let isSpinning = false;
     if (activeDrawerTab === 'files') {
@@ -257,7 +268,7 @@ export function RightPanel({
                             onOpenFileDetail={onOpenFileDetail}
                             fsEntries={fsEntries}
                             fsLoading={fsLoading}
-                            onToggleFsDir={onToggleFsDir}
+                            onToggleFsDir={handleToggleFsDir}
                             language={language}
                         />
                     ) : (
@@ -273,7 +284,7 @@ export function RightPanel({
                                 fileSaving={fileSaving}
                                 fileSaveMsg={fileSaveMsg}
                                 isImagePreview={isImagePreview}
-                                imageDataUrl={imageDataUrl}
+                                imageUrl={imageUrl}
                                 onBackToList={onBackToList}
                                 onToggleFavorite={onToggleFavorite}
                                 onCopyContent={onCopyContent}

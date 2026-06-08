@@ -118,3 +118,28 @@ func NewSkillsProxy(skillsPort int) http.Handler {
 
 	return proxy
 }
+
+// NewSkillsAPIProxy creates an http.Handler that transparently reverse-proxies
+// requests directly to the 1skills FastAPI server on skillsPort WITHOUT stripping any path prefix.
+func NewSkillsAPIProxy(skillsPort int) http.Handler {
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("127.0.0.1:%d", skillsPort),
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = targetURL.Host
+	}
+
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("[gateway] 1skills API proxy error for %s: %v", r.URL.Path, err)
+		http.Error(w, "1skills API service unavailable. Please wait a moment and refresh.", http.StatusBadGateway)
+	}
+
+	return proxy
+}
+

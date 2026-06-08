@@ -14,7 +14,7 @@ interface FileDetailViewProps {
     fileSaving: boolean;
     fileSaveMsg: string;
     isImagePreview: boolean;
-    imageDataUrl: string;
+    imageUrl: string;
 
     onBackToList: () => void;
     onToggleFavorite: (path: string) => void;
@@ -35,6 +35,17 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     private contentEl: HTMLDivElement | null = null;
     private editorEl: HTMLTextAreaElement | null = null;
     private savedScrollTop: number = 0;
+
+    // ── Markdown worker plumbing ────────────────────────────────────────────
+    // Parsing markdown with `marked()` blocks the main thread for hundreds of
+    // ms on large files. We offload it to a dedicated worker and only render
+    // the HTML for the most recent request (id-keyed) so stale responses from
+    // fast file-switches can't overwrite a newer one.
+    private _mdWorker: Worker | null = null;
+    private _mdRequestId: number = 0;
+    private _mdLatestHtml: string = '';
+    private _mdLastRenderedPath: string = '';
+    private _mdLastRenderedContent: string = '';
 
     private handleStartEditing = () => {
         const pos = this.contentEl ? this.contentEl.scrollTop : 0;
@@ -130,6 +141,30 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         }
     };
 
+    componentDidMount() {
+        // Spin up the markdown worker. `new URL(..., import.meta.url)` is the
+        // webpack 5-native pattern; ts-loader + webpack will emit a separate
+        // worker chunk and bundle `marked` into it.
+        // @ts-expect-error import.meta requires module:es2020+ in tsconfig; webpack 5 emits the correct URL at build time.
+        this._mdWorker = new Worker(new URL('../../workers/markdown.worker.ts', import.meta.url), {
+            type: 'module',
+        });
+        this._mdWorker.addEventListener('message', this.handleMdWorkerMessage);
+        this._mdWorker.addEventListener('error', this.handleMdWorkerError);
+
+        // Kick off an initial parse if the mounted file is markdown.
+        this.dispatchMarkdownParse();
+    }
+
+    componentWillUnmount() {
+        if (this._mdWorker) {
+            this._mdWorker.removeEventListener('message', this.handleMdWorkerMessage);
+            this._mdWorker.removeEventListener('error', this.handleMdWorkerError);
+            this._mdWorker.terminate();
+            this._mdWorker = null;
+        }
+    }
+
     componentDidUpdate(prevProps: FileDetailViewProps) {
         // Reset scroll position if the file has changed
         if (prevProps.selectedFsEntry.path !== this.props.selectedFsEntry.path) {
@@ -140,7 +175,18 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             if (this.editorEl) {
                 this.editorEl.scrollTop = 0;
             }
+            // Clear stale HTML immediately so the previous file's content
+            // doesn't flash before the worker returns.
+            this._mdLatestHtml = '';
+            this._mdLastRenderedPath = '';
+            this._mdLastRenderedContent = '';
+            this.dispatchMarkdownParse();
             return;
+        }
+
+        // Re-parse when the underlying fileContent changes (e.g. after a save).
+        if (prevProps.fileContent !== this.props.fileContent) {
+            this.dispatchMarkdownParse();
         }
 
         // Restore scroll position when entering editing mode
@@ -158,6 +204,49 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         }
     }
 
+    /**
+     * Send the current markdown content to the worker, but only if this file
+     * is actually a markdown file (avoids spinning the worker for plain text,
+     * code, etc. that never reach the marked branch).
+     */
+    private dispatchMarkdownParse() {
+        const { selectedFsEntry, fileContent } = this.props;
+        if (!selectedFsEntry) return;
+        if (!selectedFsEntry.name.toLowerCase().endsWith('.md')) return;
+        if (!this._mdWorker) return;
+        if (this._mdLastRenderedPath === selectedFsEntry.path && this._mdLastRenderedContent === fileContent) {
+            return;
+        }
+        this._mdRequestId++;
+        this._mdWorker.postMessage({ id: this._mdRequestId, content: fileContent });
+    }
+
+    private handleMdWorkerMessage = (e: MessageEvent<{ id: number; html: string }>) => {
+        const { id, html } = e.data;
+        // Stale-response guard: only the most recent request updates the DOM.
+        if (id !== this._mdRequestId) return;
+        this._mdLatestHtml = html;
+        this._mdLastRenderedPath = this.props.selectedFsEntry.path;
+        this._mdLastRenderedContent = this.props.fileContent;
+        this.forceUpdate();
+    };
+
+    private handleMdWorkerError = (e: ErrorEvent) => {
+        // Worker failed (script error, marked crash, etc.). Fall back to a
+        // simple escaped <pre> so the user still sees the content rather
+        // than a perpetually empty preview pane.
+        console.error('[md-worker] error:', e.message);
+        this._mdLatestHtml = `<pre class="md-fallback">${this.escapeHtml(this.props.fileContent)}</pre>`;
+        this._mdLastRenderedPath = this.props.selectedFsEntry.path;
+        this._mdLastRenderedContent = this.props.fileContent;
+        this.forceUpdate();
+    };
+
+    /** Minimal HTML escaper for fallback rendering when the worker is unavailable. */
+    private escapeHtml(s: string): string {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     render() {
         const {
             selectedFsEntry,
@@ -170,7 +259,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             fileSaving,
             fileSaveMsg,
             isImagePreview,
-            imageDataUrl,
+            imageUrl,
 
             onBackToList,
             onToggleFavorite,
@@ -447,7 +536,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                         </div>
                     ) : isImagePreview ? (
                         <div class="image-preview-container">
-                            <img src={imageDataUrl} alt={selectedFsEntry.name} class="image-preview" />
+                            <img src={imageUrl} alt={selectedFsEntry.name} class="image-preview" />
                         </div>
                     ) : isImg ? (
                         <div class="fb-img-preview">
@@ -526,7 +615,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                     ) : isMd ? (
                         <div
                             class="fb-md-render"
-                            dangerouslySetInnerHTML={{ __html: marked(fileContent) as string }}
+                            dangerouslySetInnerHTML={{ __html: this._mdLatestHtml || this.escapeHtml(fileContent) }}
                             onClick={this.handleMarkdownClick}
                         />
                     ) : (

@@ -155,7 +155,6 @@ interface AppState {
     fileSaveMsg: string;
     // ── Image preview ──
     isImagePreview: boolean;
-    imageDataUrl: string;
     // ── Flat file browser ──
     flatFiles: FsEntry[];
     flatFilesLoading: boolean;
@@ -516,7 +515,6 @@ export class App extends Component<{}, AppState> {
             fileSaving: false,
             fileSaveMsg: '',
             isImagePreview: false,
-            imageDataUrl: '',
             flatFiles: [],
             flatFilesLoading: false,
             searchQuery: '',
@@ -1226,18 +1224,13 @@ export class App extends Component<{}, AppState> {
             editedContent: '',
             fileSaveMsg: '',
             isImagePreview: false,
-            imageDataUrl: '',
         });
 
         // Check if this is an image file
         if (this.isImageFile(entry.name)) {
-            try {
-                const dataUrl = await fsService.readImage(entry.path);
-                this.setState({ imageDataUrl: dataUrl, isImagePreview: true, fileLoading: false });
-            } catch (err) {
-                console.error('[fs] image load error:', err);
-                this.setState({ fileContent: `Error loading image: ${err}`, fileLoading: false });
-            }
+            // Image is now rendered directly via <img src={fsService.imageUrl(path)}> —
+            // no need to fetch into state. Just mark the preview mode.
+            this.setState({ isImagePreview: true, fileLoading: false });
             return;
         }
 
@@ -1660,18 +1653,11 @@ export class App extends Component<{}, AppState> {
             editedContent: '',
             isEditingDetail: false,
             isImagePreview: false,
-            imageDataUrl: '',
         });
 
         // Check if this is an image file
         if (this.isImageFile(entry.name)) {
-            try {
-                const dataUrl = await fsService.readImage(entry.path);
-                this.setState({ imageDataUrl: dataUrl, isImagePreview: true, fileLoading: false });
-            } catch (err) {
-                console.error('[fs] image load error:', err);
-                this.setState({ fileContent: `Error loading image: ${err}`, fileLoading: false });
-            }
+            this.setState({ isImagePreview: true, fileLoading: false });
             return;
         }
 
@@ -1851,7 +1837,6 @@ export class App extends Component<{}, AppState> {
             fileSaving,
             fileSaveMsg,
             isImagePreview,
-            imageDataUrl,
             toastMsg,
             activeSession,
             language,
@@ -1922,7 +1907,7 @@ export class App extends Component<{}, AppState> {
                         fileSaving={fileSaving}
                         fileSaveMsg={fileSaveMsg}
                         isImagePreview={isImagePreview}
-                        imageDataUrl={imageDataUrl}
+                        imageUrl={fsService.imageUrl(selectedFsEntry.path)}
                         onBackToList={() => {
                             // Go back to the main workspace by clearing URL params
                             window.location.href = window.location.origin + window.location.pathname;
@@ -2259,7 +2244,7 @@ export class App extends Component<{}, AppState> {
                                                         fileSaving={fileSaving}
                                                         fileSaveMsg={fileSaveMsg}
                                                         isImagePreview={isImagePreview}
-                                                        imageDataUrl={imageDataUrl}
+                                                        imageUrl={fsService.imageUrl(selectedFsEntry?.path ?? '')}
                                                         onSearchQueryChange={this.handleSearchChange}
                                                         onFilterTagChange={this.handleFilterTagChange}
                                                         onRefreshFlatFiles={async () => {
@@ -2367,7 +2352,7 @@ export class App extends Component<{}, AppState> {
                                                         fileSaving={fileSaving}
                                                         fileSaveMsg={fileSaveMsg}
                                                         isImagePreview={isImagePreview}
-                                                        imageDataUrl={imageDataUrl}
+                                                        imageUrl={fsService.imageUrl(selectedFsEntry.path)}
                                                         onBackToList={() => this.closeTab(activeTabId)}
                                                         onToggleFavorite={this.toggleFavorite}
                                                         onCopyContent={this.copyFileContent}
@@ -2495,11 +2480,16 @@ function mergeChildren(entries: FsEntry[], targetPath: string, children: FsEntry
 /**
  * Walk the tree and toggle `expanded` on the node whose path matches `targetPath`.
  * Returns a new array (immutable update).
+ *
+ * On collapse, the previously-loaded `children` array is dropped so it can be
+ * garbage-collected. The next time the directory is expanded, `loadDir` will
+ * re-fetch its children. This prevents the tree from holding onto every
+ * expanded directory's contents for the lifetime of the App instance.
  */
 function setExpanded(entries: FsEntry[], targetPath: string, expanded: boolean): FsEntry[] {
     return entries.map(e => {
         if (e.path === targetPath) {
-            return { ...e, expanded };
+            return { ...e, expanded, children: expanded ? e.children : undefined };
         }
         if (e.children) {
             return { ...e, children: setExpanded(e.children, targetPath, expanded) };

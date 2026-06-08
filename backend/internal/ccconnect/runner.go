@@ -1123,6 +1123,7 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 
 func configProviderToGlobal(p config.ProviderConfig) core.GlobalProviderInfo {
 	info := core.GlobalProviderInfo{
+		ID:          p.ID,
 		Name:        p.Name,
 		APIKey:      p.APIKey,
 		BaseURL:     p.BaseURL,
@@ -1160,6 +1161,7 @@ func configProviderToGlobal(p config.ProviderConfig) core.GlobalProviderInfo {
 
 func globalProviderToConfig(info core.GlobalProviderInfo) config.ProviderConfig {
 	p := config.ProviderConfig{
+		ID:          info.ID,
 		Name:        info.Name,
 		APIKey:      info.APIKey,
 		BaseURL:     info.BaseURL,
@@ -1384,6 +1386,7 @@ func listCCSwitchProvidersForWeb() ([]core.CCSwitchProviderInfo, error) {
 			continue
 		}
 		result = append(result, core.CCSwitchProviderInfo{
+			ID:        row.ID,
 			Name:      p.Name,
 			AppType:   row.AppType,
 			APIKey:    p.APIKey,
@@ -1448,7 +1451,10 @@ func syncProviderToCCSwitch(p config.ProviderConfig) {
 		return
 	}
 
-	id := sanitizeID(p.Name)
+	id := p.ID
+	if id == "" {
+		id = sanitizeID(p.Name)
+	}
 	if id == "" {
 		return
 	}

@@ -43,7 +43,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/fs/read", fsHandler.Read)     // GET  ?path=./main.go
 	mux.HandleFunc("/api/fs/view", fsHandler.View)     // GET  ?path=./page.html (serves with correct content-type)
 	mux.HandleFunc("/api/fs/view/", fsHandler.View)    // GET  /api/fs/view/relative/path (prefix route for relative assets support)
-	mux.HandleFunc("/api/fs/image", fsHandler.Image)   // GET  ?path=./image.png (returns base64 data URL)
+	mux.HandleFunc("/api/fs/image", fsHandler.Image)     // GET  ?path=./image.png (returns base64 data URL, deprecated)
+	mux.HandleFunc("/api/fs/image/", fsHandler.ImageStream) // GET  /api/fs/image/relative/path (streams raw bytes; preferred)
 	mux.HandleFunc("/api/fs/write", fsHandler.Write)   // POST ?path=./main.go
 	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)   // POST ?path=./newdir
 	mux.HandleFunc("/api/fs/delete", fsHandler.Delete) // DELETE ?path=./main.go
@@ -192,6 +193,23 @@ func NewRouter(cfg *config.Config) http.Handler {
 		skillsPort = 38085
 	}
 	mux.Handle("/1skills/", gateway.NewSkillsProxy(skillsPort))
+
+	// ── 1skills API pass-through routes ──────────────────────────────────────
+	// The 1skills frontend is built with VITE_API_BASE=/api, so its JS makes
+	// requests to /api/skills, /api/mcp, /api/slash-commands, etc. directly on
+	// the gateway host. These routes forward those calls to the Python backend
+	// without stripping any prefix (the Python FastAPI handles /api/* natively).
+	skillsAPIProxy := gateway.NewSkillsProxy(skillsPort)
+	mux.Handle("/api/skills", skillsAPIProxy)
+	mux.Handle("/api/skills/", skillsAPIProxy)
+	mux.Handle("/api/mcp/", skillsAPIProxy)
+	mux.Handle("/api/slash-commands", skillsAPIProxy)
+	mux.Handle("/api/slash-commands/", skillsAPIProxy)
+	mux.Handle("/api/marketplace/", skillsAPIProxy)
+	mux.Handle("/api/scan/", skillsAPIProxy)
+	mux.Handle("/api/settings", skillsAPIProxy)
+	mux.Handle("/api/settings/", skillsAPIProxy)
+	mux.Handle("/api/health", skillsAPIProxy)
 
 	// ── Tunnel API (on-demand multi-port tunnel control) ─────────────────────
 	tunnelAuth := func(r *http.Request) bool {

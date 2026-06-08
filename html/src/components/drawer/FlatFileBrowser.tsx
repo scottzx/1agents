@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { useMemo } from 'preact/hooks';
 import { FsEntry, getFileTag, formatBytes } from '../types';
 import { t, type Lang } from '../i18n';
 
@@ -27,6 +28,21 @@ const TAG_KEYS: Record<'all' | 'doc' | 'img' | 'code', string> = {
     code: 'fileBrowser.tagCode',
 };
 
+/**
+ * Sort children at each level: directories first, then files, alphabetically.
+ * Implemented as a free function so it can be used inside useMemo without
+ * closing over component scope (which would invalidate the cache every render).
+ */
+function sortTree(nodes: FsEntry[]): FsEntry[] {
+    return [...nodes]
+        .sort((a, b) => {
+            if (a.isDir && !b.isDir) return -1;
+            if (!a.isDir && b.isDir) return 1;
+            return a.name.localeCompare(b.name);
+        })
+        .map(n => (n.children ? { ...n, children: sortTree(n.children) } : n));
+}
+
 export function FlatFileBrowser({
     flatFiles,
     flatFilesLoading,
@@ -43,27 +59,32 @@ export function FlatFileBrowser({
 }: FlatFileBrowserProps) {
     const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
 
-    // 1. Filter flat list for search/tag results
-    const filtered = flatFiles.filter(f => {
-        const matchSearch =
-            !searchQuery ||
-            f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            f.path.toLowerCase().includes(searchQuery.toLowerCase());
-        const tag = getFileTag(f.name);
-        const matchTag = selectedFilterTag === 'all' || tag === selectedFilterTag;
-        return matchSearch && matchTag;
-    });
-
-    // 2. Recursive Tree Renderer
-    const renderTreeNodes = (nodes: FsEntry[], depth: number = 0) => {
-        // Sort folders first, then files alphabetically
-        const sortedNodes = [...nodes].sort((a, b) => {
-            if (a.isDir && !b.isDir) return -1;
-            if (!a.isDir && b.isDir) return 1;
-            return a.name.localeCompare(b.name);
+    // 1. Filter flat list for search/tag results. Memoized so typing in the
+    //    search input doesn't recompute on every unrelated parent re-render.
+    //    Lowercases the query once instead of per-row.
+    const filtered = useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        return flatFiles.filter(f => {
+            if (q && !f.name.toLowerCase().includes(q) && !f.path.toLowerCase().includes(q)) {
+                return false;
+            }
+            if (selectedFilterTag !== 'all' && getFileTag(f.name) !== selectedFilterTag) {
+                return false;
+            }
+            return true;
         });
+    }, [flatFiles, searchQuery, selectedFilterTag]);
 
-        return sortedNodes.map(node => {
+    // 2. Sort the tree once per fsEntries change. Without this, every render
+    //    re-spreads and re-sorts the full tree (O(N log N) per render) even
+    //    when nothing about the tree itself changed.
+    const sortedTree = useMemo(() => sortTree(fsEntries), [fsEntries]);
+
+    // 3. Recursive Tree Renderer
+    const renderTreeNodes = (nodes: FsEntry[], depth: number = 0) => {
+        // nodes is pre-sorted by sortTree() at the top level (recursively, for
+        // children), so we just map directly here.
+        return nodes.map(node => {
             const isDir = node.isDir;
             const expanded = !!node.expanded;
             const ext = node.name.includes('.') ? node.name.split('.').pop()! : '?';
@@ -227,7 +248,7 @@ export function FlatFileBrowser({
                 <div class="fb-empty">{t('fileBrowser.empty', language)}</div>
             ) : (
                 <div class="fb-file-list fb-tree-list">
-                    {renderTreeNodes(fsEntries)}
+                    {renderTreeNodes(sortedTree)}
                     <div class="fb-list-footer">{t('fileBrowser.loaded', language)}</div>
                 </div>
             )}

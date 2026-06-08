@@ -13,6 +13,28 @@ export const fsService = {
         return res.text();
     },
 
+    /**
+     * Build a direct URL for the image preview. The browser fetches and decodes
+     * the image itself — no base64 round-trip, no state, no in-memory dataURL string.
+     * Used as <img src={fsService.imageUrl(entry.path)}>.
+     */
+    imageUrl(path: string): string {
+        return `/api/fs/image/${path.split('/').map(encodeURIComponent).join('/')}`;
+    },
+
+    /**
+     * Fetch a file (e.g. an image) as a Blob for download, avoiding the base64
+     * overhead of readImage(). Returns a Blob along with a suggested filename.
+     */
+    async fetchAsBlob(path: string): Promise<{ blob: Blob; filename: string }> {
+        const url = this.imageUrl(path);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+        const filename = path.split('/').pop() || 'download';
+        return { blob, filename };
+    },
+
     async readImage(path: string): Promise<string> {
         const res = await fetch(`/api/fs/image?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error(await res.text());

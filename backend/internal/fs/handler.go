@@ -218,9 +218,59 @@ func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// ImageStream handles GET /api/fs/image/<relative-path> (or /api/fs/image?path=<rel-path> as fallback).
+// Streams the image with its real MIME type so the browser can render it directly via <img src>.
+// Unlike Image(), it does NOT base64-encode the payload — it uses http.ServeFile for proper
+// Content-Type detection, Range support, and zero in-memory buffering.
+// Supported formats: gif, png, jpg, jpeg, webp, bmp, svg
+func (h *Handler) ImageStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract path from subpath first (e.g. /api/fs/image/folder/photo.png)
+	rel := strings.TrimPrefix(r.URL.Path, "/api/fs/image/")
+	if rel == r.URL.Path || rel == "" {
+		// Fallback to query parameter
+		rel = r.URL.Query().Get("path")
+	}
+
+	abs, ok := h.safeAbs(rel)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	// Reject non-image files with 415 — the endpoint is image-specific.
+	if getImageMimeType(abs) == "application/octet-stream" {
+		http.Error(w, "unsupported image format", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	// Stream the file with proper Content-Type, Range support, and ETag.
+	// http.ServeFile detects the MIME from the extension when not set explicitly.
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeFile(w, r, abs)
+}
+
 // Image handles GET /api/fs/image?path=<relative-path>
 // Returns the file as a base64-encoded data URL for image preview.
 // Supported formats: gif, png, jpg, jpeg, webp, bmp, svg
+//
+// Deprecated: prefer ImageStream (/api/fs/image/<path>) which streams the raw bytes
+// and lets the browser handle caching/decoding. This endpoint is kept for the
+// desktop/mobile shells that still call fsService.readImage() with the dataURL.
 func (h *Handler) Image(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

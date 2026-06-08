@@ -57,6 +57,17 @@ cp "build/cc-switch$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
 
 chmod +x "$BIN_DIR/1agents$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
 
+# Copy skill-manager (1skills PyInstaller binary) if available
+# In CI it is placed at build/skill-manager by the workflow before this script runs.
+# In local dev it may be absent; the supervisor will fall back to .venv mode.
+if [ -f "build/skill-manager" ]; then
+    cp "build/skill-manager" "$BIN_DIR/skill-manager"
+    chmod +x "$BIN_DIR/skill-manager"
+    echo "Copied skill-manager binary."
+else
+    echo "WARNING: build/skill-manager not found. 1skills will run in dev (.venv) mode inside the app."
+fi
+
 # 4.1. Ad-hoc sign binaries on macOS to satisfy Gatekeeper
 if [ "$(uname)" = "Darwin" ]; then
     echo "=== Ad-hoc signing binaries for macOS ==="
@@ -65,6 +76,9 @@ if [ "$(uname)" = "Darwin" ]; then
     codesign --force --deep --sign - "$BIN_DIR/cc-connect"
     codesign --force --deep --sign - "$BIN_DIR/cc-switch"
     codesign --force --deep --sign - "$NODE_DIR/node"
+    if [ -f "$BIN_DIR/skill-manager" ]; then
+        codesign --force --deep --sign - "$BIN_DIR/skill-manager"
+    fi
 fi
 
 # 5. Copy frontend assets
