@@ -197,15 +197,23 @@ build() {
         SYSTEM="Windows"
     fi
 
-    echo "=== Installing toolchain ${ALIAS} (${TARGET})..."
+    TARGET_ARCH="${TARGET%%-*}"
+    HOST_ARCH="$(uname -m)"
+    if [ "${HOST_ARCH}" = "${TARGET_ARCH}" ]; then
+        TOOLCHAIN_FLAVOR="native"
+    else
+        TOOLCHAIN_FLAVOR="cross"
+    fi
+
+    echo "=== Installing toolchain ${ALIAS} (${TARGET}) [host=${HOST_ARCH}, target_arch=${TARGET_ARCH}, flavor=${TOOLCHAIN_FLAVOR}]..."
 
     mkdir -p "${CROSS_ROOT}" && export PATH="${CROSS_ROOT}/usr/bin:${CROSS_ROOT}/bin:${PATH}"
     if ! curl -fSsLo- --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 \
-            "${MUSL_CC_URL_PRIMARY}/${TARGET}-cross.tgz" \
+            "${MUSL_CC_URL_PRIMARY}/${TARGET}-${TOOLCHAIN_FLAVOR}.tgz" \
             | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}; then
         echo "=== Primary toolchain source failed, falling back to ${MUSL_CC_URL_FALLBACK}"
         curl -fSsLo- --connect-timeout 30 --max-time 300 \
-            "${MUSL_CC_URL_FALLBACK}/${TARGET}-cross.tgz" \
+            "${MUSL_CC_URL_FALLBACK}/${TARGET}-${TOOLCHAIN_FLAVOR}.tgz" \
             | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}
     fi
 
