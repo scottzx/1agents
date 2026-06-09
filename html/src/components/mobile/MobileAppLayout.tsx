@@ -20,7 +20,6 @@ import {
     flowControl,
 } from '../terminal/terminalConfig';
 import { getModuleByTab, buildModuleIframeSrc } from '../../modules/registry';
-import { postToModule } from '../../modules/post-message';
 import './MobileAppLayout.scss';
 
 interface MobileAppLayoutProps {
@@ -40,7 +39,7 @@ interface MobileAppLayoutState {
 export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLayoutState> {
     state: MobileAppLayoutState = {
         activeMobileTab: 'workspaces',
-        selectedWorkspaceId: this.props.state.activeWorkspaceId || '',
+        selectedWorkspaceId: '',
         inSessionView: false,
         skillsInDetail: false,
         activeMoreSubView: 'menu',
@@ -252,7 +251,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <polyline points="15 18 9 12 15 6" />
                                             </svg>
-                                            {t('mobile.backToWorkspaces', language) || '工作空间列表'}
                                         </button>
                                         <div class="mobile-subview-title">
                                             {t('mobile.selectSession', language) || '会话选择'}
@@ -330,32 +328,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                         </div>
                                                     ) : (
                                                         <div class="mobile-session-container">
-                                                            <div class="mobile-dropdown-section">
-                                                                <select
-                                                                    value={activeSession?.id || ''}
-                                                                    onChange={e => {
-                                                                        const target = sessions.find(
-                                                                            s => s.id === e.currentTarget.value
-                                                                        );
-                                                                        if (target) {
-                                                                            app.selectSession(target);
-                                                                            this.setState({ inSessionView: true });
-                                                                        }
-                                                                    }}
-                                                                    class="mobile-session-select"
-                                                                >
-                                                                    <option value="">
-                                                                        {t('mobile.selectExistingSession', language) ||
-                                                                            '-- 下拉选择已有会话 --'}
-                                                                    </option>
-                                                                    {sessions.map(s => (
-                                                                        <option key={s.id} value={s.id}>
-                                                                            {s.name} ({s.status || 'idle'})
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-
                                                             <div class="mobile-session-cards-grid">
                                                                 <div class="mobile-menu-group">
                                                                     {sessions.map(s => {
@@ -403,6 +375,47 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                     >
                                                                                         {s.status || 'idle'}
                                                                                     </span>
+                                                                                    <button
+                                                                                        class="action-btn"
+                                                                                        title={t(
+                                                                                            'sidebar.renameSession',
+                                                                                            language
+                                                                                        )}
+                                                                                        onClick={e => {
+                                                                                            e.stopPropagation();
+                                                                                            app.openRenameSessionModal(
+                                                                                                s
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        <svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor"
+                                                                                        >
+                                                                                            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                                                                        </svg>
+                                                                                    </button>
+                                                                                    <button
+                                                                                        class="action-btn delete"
+                                                                                        title={t(
+                                                                                            'sidebar.closeSession',
+                                                                                            language
+                                                                                        )}
+                                                                                        onClick={e => {
+                                                                                            e.stopPropagation();
+                                                                                            app.killTerminal(s.index);
+                                                                                        }}
+                                                                                    >
+                                                                                        <svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor"
+                                                                                        >
+                                                                                            <polyline points="3 6 5 6 21 6" />
+                                                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                                                        </svg>
+                                                                                    </button>
                                                                                 </div>
                                                                             </div>
                                                                         );
@@ -505,7 +518,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     onCopyContent={app.copyFileContent}
                                                     onDownloadFile={app.downloadFile}
                                                     onRenameFile={app.renameFile}
-                                                    onToggleFullscreen={() => {}}
+                                                    onToggleFullscreen={() => {
+                                                        if (selectedFsEntry) {
+                                                            const encodedPath = selectedFsEntry.path
+                                                                .split('/')
+                                                                .map(encodeURIComponent)
+                                                                .join('/');
+                                                            window.open(`/api/fs/view/${encodedPath}`, '_blank');
+                                                        }
+                                                    }}
                                                     onShareFile={app.shareFile}
                                                     onSaveFile={app.saveFile}
                                                     onToggleEditing={isEditing =>
@@ -650,7 +671,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <polyline points="15 18 9 12 15 6" />
                                             </svg>
-                                            {t('mobile.backToSkills', language) || '技能列表'}
                                         </button>
                                         <div class="mobile-subview-title">{t('sidebar.skills', language)}</div>
                                     </div>
@@ -658,17 +678,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <iframe
                                             id="skills-iframe"
                                             src={skillsSrc}
-                                            onLoad={e => {
-                                                const iframe = e.target as HTMLIFrameElement;
-                                                postToModule(iframe, { type: 'THEME_CHANGE', theme });
-                                                postToModule(iframe, { type: 'LANG_CHANGE', lang: language });
-                                                if (moduleNav) {
-                                                    postToModule(iframe, {
-                                                        type: 'NAVIGATE',
-                                                        to: moduleNav.activePath,
-                                                    });
-                                                }
-                                            }}
                                             style="width: 100%; height: 100%; border: none; background: transparent;"
                                         />
                                     </div>
@@ -683,7 +692,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                             {activeMoreSubView === 'menu' && (
                                 <div class="mobile-menu-view scrollable">
                                     <div class="mobile-menu-header">
-                                        <h2>{t('app.workbench', language) || '1agents'}</h2>
+                                        <h2>{t('app.workbench', language) || '更多应用'}</h2>
                                         <p>{t('mobile.more.desc', language) || '分布式协同与高级系统管理'}</p>
                                     </div>
 
@@ -739,7 +748,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                     <polyline points="15 18 9 12 15 6" />
                                                 </svg>
-                                                {t('mobile.backToSettings', language) || '设置列表'}
                                             </button>
                                             <div class="mobile-subview-title">
                                                 {activeSettingsCategory === 'general' &&
@@ -763,7 +771,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                     <polyline points="15 18 9 12 15 6" />
                                                 </svg>
-                                                {t('mobile.backToMore', language) || '更多菜单'}
                                             </button>
                                             <div class="mobile-subview-title">
                                                 {activeMoreSubView === 'settings' &&
@@ -979,7 +986,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                         <polyline points="15 18 9 12 15 6" />
                                     </svg>
-                                    {t('common.close', language) || 'Close'}
                                 </button>
                                 <div class="mobile-subview-title">{t('mobile.preview', language) || 'Preview'}</div>
                             </div>
@@ -1031,7 +1037,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                         <polyline points="15 18 9 12 15 6" />
                                     </svg>
-                                    {t('common.close', language) || 'Close'}
                                 </button>
                                 <div class="mobile-subview-title">{t('mobile.browser', language) || 'Browser'}</div>
                             </div>

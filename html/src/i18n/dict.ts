@@ -28,6 +28,7 @@ export const zhCN: Record<string, string> = {
 
     // ── App shell (app.tsx) ───────────────────────────────────────────────
     'app.tab.workbench': '工作台',
+    'app.workbench': '更多应用',
     'app.session.title': '会话 #{index}',
     'app.session.titlePlain': '会话 #',
     'app.preview.prefix': '预览: ',
@@ -120,7 +121,7 @@ export const zhCN: Record<string, string> = {
 
     // ── Sidebar (LeftSidebar.tsx) ─────────────────────────────────────────
     'sidebar.collapse': '折叠侧边栏',
-    'sidebar.workspaces': '工作空间 Workspaces',
+    'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
     'sidebar.empty': '暂无工作空间',
     'sidebar.deleteConfirm': '删除 "{name}"？',
@@ -383,6 +384,12 @@ export const zhCN: Record<string, string> = {
     'welcome.cta2': '直接进入 temp 空间',
 
     // ── Settings (SystemSettings.tsx) ────────────────────────────────────
+    'settings.nav.general': '通用设置',
+    'settings.nav.appearance': '外观与终端',
+    'settings.nav.security': '安全设置',
+    'settings.nav.feedback': '反馈与联系',
+    'settings.nav.about': '关于与维护',
+
     'settings.general.title': '通用设置',
     'settings.general.desc': '配置语言和语音识别选项。',
     'settings.general.dictationLang': '语音识别语言',
@@ -440,18 +447,14 @@ export const zhCN: Record<string, string> = {
     // ── Mobile ──
     'sidebar.more': '更多',
     'mobile.workspaces.desc': '管理并协同您的分布式设备节点',
-    'mobile.backToWorkspaces': '工作空间列表',
     'mobile.selectSession': '会话选择',
     'mobile.sessionList': '会话列表 ({count})',
     'mobile.newSession': '+ 新建会话',
     'mobile.noSessionsActive': '当前空间下暂无活动终端会话',
     'mobile.createFirstSession': '创建并进入第一个会话',
     'mobile.selectExistingSession': '-- 下拉选择已有会话 --',
-    'mobile.backToSkills': '技能列表',
     'mobile.more.desc': '分布式协同与高级系统管理',
     'mobile.systemSettings': '系统设置',
-    'mobile.backToSettings': '设置列表',
-    'mobile.backToMore': '更多菜单',
     'mobile.preview': '预览',
     'mobile.browser': '浏览器',
 };
@@ -484,6 +487,7 @@ export const enUS: Record<string, string> = {
 
     // ── App shell ────────────────────────────────────────────────────────
     'app.tab.workbench': 'Workbench',
+    'app.workbench': 'More Apps',
     'app.session.title': 'Session #{index}',
     'app.session.titlePlain': 'Session #',
     'app.preview.prefix': 'Preview: ',
@@ -844,6 +848,12 @@ export const enUS: Record<string, string> = {
     'welcome.cta2': 'Directly Enter Temp Space',
 
     // ── Settings ─────────────────────────────────────────────────────────
+    'settings.nav.general': 'General',
+    'settings.nav.appearance': 'Appearance & Terminal',
+    'settings.nav.security': 'Security',
+    'settings.nav.feedback': 'Feedback & Contact',
+    'settings.nav.about': 'About & Maintenance',
+
     'settings.general.title': 'General Settings',
     'settings.general.desc': 'Configure language and dictation options.',
     'settings.general.dictationLang': 'Voice Dictation Language',
@@ -904,18 +914,14 @@ export const enUS: Record<string, string> = {
     // ── Mobile ──
     'sidebar.more': 'More',
     'mobile.workspaces.desc': 'Manage and coordinate your distributed device nodes',
-    'mobile.backToWorkspaces': 'Workspaces List',
     'mobile.selectSession': 'Select Session',
     'mobile.sessionList': 'Sessions ({count})',
     'mobile.newSession': '+ New Session',
     'mobile.noSessionsActive': 'No active terminal sessions in this workspace',
     'mobile.createFirstSession': 'Create and enter the first session',
     'mobile.selectExistingSession': '-- Select an existing session --',
-    'mobile.backToSkills': 'Skills List',
     'mobile.more.desc': 'Distributed collaboration & advanced system management',
     'mobile.systemSettings': 'System Settings',
-    'mobile.backToSettings': 'Settings List',
-    'mobile.backToMore': 'More Menu',
     'mobile.preview': 'Preview',
     'mobile.browser': 'Browser',
 };

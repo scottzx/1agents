@@ -18,11 +18,10 @@ interface SystemSettingsProps {
     hideSidebar?: boolean;
 }
 
-const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon: h.JSX.Element }[] = [
+const NAV_ITEMS: { key: SettingsCategory; labelKey: string; icon: h.JSX.Element }[] = [
     {
         key: 'general',
-        labelZh: '通用设置',
-        labelEn: 'General',
+        labelKey: 'settings.nav.general',
         icon: (
             <svg
                 viewBox="0 0 24 24"
@@ -39,8 +38,7 @@ const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon
     },
     {
         key: 'appearance',
-        labelZh: '外观与终端',
-        labelEn: 'Appearance & Terminal',
+        labelKey: 'settings.nav.appearance',
         icon: (
             <svg
                 viewBox="0 0 24 24"
@@ -57,8 +55,7 @@ const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon
     },
     {
         key: 'security',
-        labelZh: '安全设置',
-        labelEn: 'Security',
+        labelKey: 'settings.nav.security',
         icon: (
             <svg
                 viewBox="0 0 24 24"
@@ -74,8 +71,7 @@ const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon
     },
     {
         key: 'feedback',
-        labelZh: '反馈与联系',
-        labelEn: 'Feedback & Contact',
+        labelKey: 'settings.nav.feedback',
         icon: (
             <svg
                 viewBox="0 0 24 24"
@@ -92,8 +88,7 @@ const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon
     },
     {
         key: 'about',
-        labelZh: '关于与维护',
-        labelEn: 'About & Maintenance',
+        labelKey: 'settings.nav.about',
         icon: (
             <svg
                 viewBox="0 0 24 24"
@@ -739,9 +734,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                             onClick={() => setActiveCategory(item.key)}
                         >
                             <span class="sys-settings-nav-icon">{item.icon}</span>
-                            <span class="sys-settings-nav-label">
-                                {language === 'zh-CN' ? item.labelZh : item.labelEn}
-                            </span>
+                            <span class="sys-settings-nav-label">{t(item.labelKey, language)}</span>
                         </button>
                     ))}
                 </nav>
