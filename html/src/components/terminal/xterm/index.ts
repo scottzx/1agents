@@ -199,6 +199,11 @@ export class Xterm {
     }
 
     @bind
+    public fit() {
+        this.fitAddon.fit();
+    }
+
+    @bind
     private initListeners() {
         const { terminal, fitAddon, overlayAddon, register, sendData } = this;
         register(

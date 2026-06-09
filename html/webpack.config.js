@@ -112,7 +112,7 @@ const devConfig = {
             },
             {
                 // HTTP API & Asset endpoints — proxy to the Go backend
-                context: ['/api', '/cc-connect', '/assets'],
+                context: ['/api', '/cc-connect', '/assets', '/1skills'],
                 target: `http://localhost:${backendPort}`,
                 changeOrigin: true,
             },

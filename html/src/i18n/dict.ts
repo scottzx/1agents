@@ -134,7 +134,7 @@ export const zhCN: Record<string, string> = {
     'sidebar.skills': '技能管理',
     'sidebar.discoveryTitle': '发现中心',
     'sidebar.discovery': '发现中心',
-    'sidebar.settings': 'Settings',
+    'sidebar.settings': '系统设置',
     'sidebar.sessionStatus.idle': '空闲',
     'sidebar.sessionStatus.busy': '繁忙中...',
     'sidebar.sessionStatus.waiting': '等待授权...',
@@ -345,6 +345,9 @@ export const zhCN: Record<string, string> = {
     'git.log.copyHash': '点击复制完整哈希值',
 
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
+    'terminal.label.input': '输入',
+    'terminal.action.input': '打开输入面板',
+    'terminal.input.placeholder': '输入命令并点击发送...',
     'terminal.quickKey.paste': '粘贴',
     'terminal.speech.unsupported': '当前浏览器不支持语音识别 API，请使用 iOS Safari / Chrome。',
     'terminal.speech.error': '语音识别出错，请重试。',
@@ -433,6 +436,24 @@ export const zhCN: Record<string, string> = {
     'settings.about.resetDesc': '清除所有本地缓存数据并重置应用到初始状态。',
     'settings.about.confirmReset': '确认重置',
     'settings.about.resetBtn': '重置应用数据',
+
+    // ── Mobile ──
+    'sidebar.more': '更多',
+    'mobile.workspaces.desc': '管理并协同您的分布式设备节点',
+    'mobile.backToWorkspaces': '工作空间列表',
+    'mobile.selectSession': '会话选择',
+    'mobile.sessionList': '会话列表 ({count})',
+    'mobile.newSession': '+ 新建会话',
+    'mobile.noSessionsActive': '当前空间下暂无活动终端会话',
+    'mobile.createFirstSession': '创建并进入第一个会话',
+    'mobile.selectExistingSession': '-- 下拉选择已有会话 --',
+    'mobile.backToSkills': '技能列表',
+    'mobile.more.desc': '分布式协同与高级系统管理',
+    'mobile.systemSettings': '系统设置',
+    'mobile.backToSettings': '设置列表',
+    'mobile.backToMore': '更多菜单',
+    'mobile.preview': '预览',
+    'mobile.browser': '浏览器',
 };
 
 // English dictionary.
@@ -783,6 +804,9 @@ export const enUS: Record<string, string> = {
     'git.log.copyHash': 'Click to copy the full hash',
 
     // ── Terminal ─────────────────────────────────────────────────────────
+    'terminal.label.input': 'Input',
+    'terminal.action.input': 'Open Input Panel',
+    'terminal.input.placeholder': 'Type command and click send...',
     'terminal.quickKey.paste': 'Paste',
     'terminal.speech.unsupported':
         'This browser does not support the Speech Recognition API. Please use iOS Safari or Chrome.',
@@ -876,4 +900,22 @@ export const enUS: Record<string, string> = {
     'settings.about.resetDesc': 'Clear all local cached data and reset the app to its initial state.',
     'settings.about.confirmReset': 'Confirm Reset',
     'settings.about.resetBtn': 'Reset App Data',
+
+    // ── Mobile ──
+    'sidebar.more': 'More',
+    'mobile.workspaces.desc': 'Manage and coordinate your distributed device nodes',
+    'mobile.backToWorkspaces': 'Workspaces List',
+    'mobile.selectSession': 'Select Session',
+    'mobile.sessionList': 'Sessions ({count})',
+    'mobile.newSession': '+ New Session',
+    'mobile.noSessionsActive': 'No active terminal sessions in this workspace',
+    'mobile.createFirstSession': 'Create and enter the first session',
+    'mobile.selectExistingSession': '-- Select an existing session --',
+    'mobile.backToSkills': 'Skills List',
+    'mobile.more.desc': 'Distributed collaboration & advanced system management',
+    'mobile.systemSettings': 'System Settings',
+    'mobile.backToSettings': 'Settings List',
+    'mobile.backToMore': 'More Menu',
+    'mobile.preview': 'Preview',
+    'mobile.browser': 'Browser',
 };

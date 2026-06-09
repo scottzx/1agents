@@ -14,6 +14,8 @@ interface SystemSettingsProps {
     accessTokenExists: boolean;
     onGenerateAccessToken: () => void;
     onRevokeAccessToken: () => void;
+    activeCategory?: SettingsCategory;
+    hideSidebar?: boolean;
 }
 
 const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon: h.JSX.Element }[] = [
@@ -109,18 +111,24 @@ const NAV_ITEMS: { key: SettingsCategory; labelZh: string; labelEn: string; icon
     },
 ];
 
-export function SystemSettings({
-    theme,
-    toggleTheme,
-    language,
-    toggleLanguage,
-    tmuxMouseOn,
-    onTmuxMouseToggle,
-    accessTokenExists,
-    onGenerateAccessToken,
-    onRevokeAccessToken,
-}: SystemSettingsProps) {
-    const [activeCategory, setActiveCategory] = useState<SettingsCategory>('general');
+export function SystemSettings(props: SystemSettingsProps) {
+    const {
+        theme,
+        toggleTheme,
+        language,
+        toggleLanguage,
+        tmuxMouseOn,
+        onTmuxMouseToggle,
+        accessTokenExists,
+        onGenerateAccessToken,
+        onRevokeAccessToken,
+        hideSidebar = false,
+    } = props;
+
+    const [activeCategoryState, setActiveCategoryState] = useState<SettingsCategory>('general');
+    const activeCategory = props.activeCategory ?? activeCategoryState;
+    const setActiveCategory = props.activeCategory ? () => {} : setActiveCategoryState;
+
     const [confirmReset, setConfirmReset] = useState(false);
 
     const handleResetCache = () => {
@@ -720,20 +728,24 @@ export function SystemSettings({
     };
 
     return (
-        <div class="sys-settings-page">
+        <div class={`sys-settings-page ${hideSidebar ? 'hide-sidebar' : ''}`}>
             {/* Left nav column */}
-            <nav class="sys-settings-nav">
-                {NAV_ITEMS.map(item => (
-                    <button
-                        key={item.key}
-                        class={`sys-settings-nav-item ${activeCategory === item.key ? 'active' : ''}`}
-                        onClick={() => setActiveCategory(item.key)}
-                    >
-                        <span class="sys-settings-nav-icon">{item.icon}</span>
-                        <span class="sys-settings-nav-label">{language === 'zh-CN' ? item.labelZh : item.labelEn}</span>
-                    </button>
-                ))}
-            </nav>
+            {!hideSidebar && (
+                <nav class="sys-settings-nav">
+                    {NAV_ITEMS.map(item => (
+                        <button
+                            key={item.key}
+                            class={`sys-settings-nav-item ${activeCategory === item.key ? 'active' : ''}`}
+                            onClick={() => setActiveCategory(item.key)}
+                        >
+                            <span class="sys-settings-nav-icon">{item.icon}</span>
+                            <span class="sys-settings-nav-label">
+                                {language === 'zh-CN' ? item.labelZh : item.labelEn}
+                            </span>
+                        </button>
+                    ))}
+                </nav>
+            )}
 
             {/* Right content area */}
             <div class="sys-settings-content">{renderContent()}</div>

@@ -215,6 +215,7 @@ export class App extends Component<{}, AppState> {
             document.addEventListener('keydown', this.handleKeyDown);
             document.addEventListener('mousemove', this.handleResizerMove);
             document.addEventListener('mouseup', this.handleResizerUp);
+            window.addEventListener('resize', this.handleWindowResize);
             if (window.visualViewport) {
                 window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
             }
@@ -253,6 +254,7 @@ export class App extends Component<{}, AppState> {
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
+        window.addEventListener('resize', this.handleWindowResize);
         // Listen for postMessage events from module iframes (NAV_CHANGE, READY).
         window.addEventListener('message', this.handleModuleMessage);
         if (window.visualViewport) {
@@ -277,6 +279,7 @@ export class App extends Component<{}, AppState> {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
+        window.removeEventListener('resize', this.handleWindowResize);
         window.removeEventListener('message', this.handleModuleMessage);
         if (window.visualViewport) {
             window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
@@ -297,6 +300,13 @@ export class App extends Component<{}, AppState> {
                 viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
             });
             this.triggerTerminalFit();
+        }
+    };
+
+    handleWindowResize = () => {
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile !== this.state.isMobile) {
+            this.setState({ isMobile });
         }
     };
 

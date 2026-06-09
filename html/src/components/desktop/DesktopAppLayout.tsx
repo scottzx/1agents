@@ -64,6 +64,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
             fileSaveMsg,
             isImagePreview,
             accessAuthRequired,
+            isMobile,
         } = state;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -316,6 +317,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 clientOptions={clientOptions}
                                                 termOptions={termOptions}
                                                 flowControl={flowControl}
+                                                isMobile={isMobile}
                                                 onMobileDetect={isMobile => app.setState({ isMobile })}
                                                 onKeyboardStateChange={app.handleKeyboardStateChange}
                                                 tmuxMouseOn={tmuxMouseOn}
