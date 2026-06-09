@@ -28,6 +28,7 @@ export const zhCN: Record<string, string> = {
 
     // ── App shell (app.tsx) ───────────────────────────────────────────────
     'app.tab.workbench': '工作台',
+    'app.workbench': '更多应用',
     'app.session.title': '会话 #{index}',
     'app.session.titlePlain': '会话 #',
     'app.preview.prefix': '预览: ',
@@ -36,6 +37,7 @@ export const zhCN: Record<string, string> = {
     'app.loading.workspaces': '正在载入工作空间…',
     'app.loading.preview': '正在载入预览…',
     'app.loading.sharePreview': '载入分享文件预览中…',
+    'app.workspace.create': '新建工作空间',
     'app.langName.zh': '中文',
     'app.langName.en': 'English',
     'app.prompt.rename': '请输入新文件名:',
@@ -120,7 +122,7 @@ export const zhCN: Record<string, string> = {
 
     // ── Sidebar (LeftSidebar.tsx) ─────────────────────────────────────────
     'sidebar.collapse': '折叠侧边栏',
-    'sidebar.workspaces': '工作空间 Workspaces',
+    'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
     'sidebar.empty': '暂无工作空间',
     'sidebar.deleteConfirm': '删除 "{name}"？',
@@ -134,7 +136,7 @@ export const zhCN: Record<string, string> = {
     'sidebar.skills': '技能管理',
     'sidebar.discoveryTitle': '发现中心',
     'sidebar.discovery': '发现中心',
-    'sidebar.settings': 'Settings',
+    'sidebar.settings': '系统设置',
     'sidebar.sessionStatus.idle': '空闲',
     'sidebar.sessionStatus.busy': '繁忙中...',
     'sidebar.sessionStatus.waiting': '等待授权...',
@@ -345,6 +347,9 @@ export const zhCN: Record<string, string> = {
     'git.log.copyHash': '点击复制完整哈希值',
 
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
+    'terminal.label.input': '输入',
+    'terminal.action.input': '打开输入面板',
+    'terminal.input.placeholder': '输入命令并点击发送...',
     'terminal.quickKey.paste': '粘贴',
     'terminal.speech.unsupported': '当前浏览器不支持语音识别 API，请使用 iOS Safari / Chrome。',
     'terminal.speech.error': '语音识别出错，请重试。',
@@ -380,6 +385,12 @@ export const zhCN: Record<string, string> = {
     'welcome.cta2': '直接进入 temp 空间',
 
     // ── Settings (SystemSettings.tsx) ────────────────────────────────────
+    'settings.nav.general': '通用设置',
+    'settings.nav.appearance': '外观与终端',
+    'settings.nav.security': '安全设置',
+    'settings.nav.feedback': '反馈与联系',
+    'settings.nav.about': '关于与维护',
+
     'settings.general.title': '通用设置',
     'settings.general.desc': '配置语言和语音识别选项。',
     'settings.general.dictationLang': '语音识别语言',
@@ -433,6 +444,22 @@ export const zhCN: Record<string, string> = {
     'settings.about.resetDesc': '清除所有本地缓存数据并重置应用到初始状态。',
     'settings.about.confirmReset': '确认重置',
     'settings.about.resetBtn': '重置应用数据',
+
+    // ── Mobile ──
+    'sidebar.more': '更多',
+    'mobile.workspaces.desc': '管理并协同您的分布式设备节点',
+    'mobile.selectSession': '会话选择',
+    'mobile.sessionList': '会话列表 ({count})',
+    'mobile.newSession': '+ 新建会话',
+    'mobile.noSessionsActive': '当前空间下暂无活动终端会话',
+    'mobile.createFirstSession': '创建并进入第一个会话',
+    'mobile.selectExistingSession': '-- 下拉选择已有会话 --',
+    'mobile.more.desc': '分布式协同与高级系统管理',
+    'mobile.systemSettings': '系统设置',
+    'mobile.preview': '预览',
+    'mobile.browser': '浏览器',
+    'mobile.confirmDeleteSession.title': '删除会话',
+    'mobile.confirmDeleteSession.message': '确定要删除会话 “{name}” 吗?此操作无法撤销。',
 };
 
 // English dictionary.
@@ -463,6 +490,7 @@ export const enUS: Record<string, string> = {
 
     // ── App shell ────────────────────────────────────────────────────────
     'app.tab.workbench': 'Workbench',
+    'app.workbench': 'More Apps',
     'app.session.title': 'Session #{index}',
     'app.session.titlePlain': 'Session #',
     'app.preview.prefix': 'Preview: ',
@@ -471,6 +499,7 @@ export const enUS: Record<string, string> = {
     'app.loading.workspaces': 'Loading workspaces…',
     'app.loading.preview': 'Loading preview…',
     'app.loading.sharePreview': 'Loading shared file preview…',
+    'app.workspace.create': 'New workspace',
     'app.langName.zh': '中文',
     'app.langName.en': 'English',
     'app.prompt.rename': 'Enter a new filename:',
@@ -783,6 +812,9 @@ export const enUS: Record<string, string> = {
     'git.log.copyHash': 'Click to copy the full hash',
 
     // ── Terminal ─────────────────────────────────────────────────────────
+    'terminal.label.input': 'Input',
+    'terminal.action.input': 'Open Input Panel',
+    'terminal.input.placeholder': 'Type command and click send...',
     'terminal.quickKey.paste': 'Paste',
     'terminal.speech.unsupported':
         'This browser does not support the Speech Recognition API. Please use iOS Safari or Chrome.',
@@ -820,6 +852,12 @@ export const enUS: Record<string, string> = {
     'welcome.cta2': 'Directly Enter Temp Space',
 
     // ── Settings ─────────────────────────────────────────────────────────
+    'settings.nav.general': 'General',
+    'settings.nav.appearance': 'Appearance & Terminal',
+    'settings.nav.security': 'Security',
+    'settings.nav.feedback': 'Feedback & Contact',
+    'settings.nav.about': 'About & Maintenance',
+
     'settings.general.title': 'General Settings',
     'settings.general.desc': 'Configure language and dictation options.',
     'settings.general.dictationLang': 'Voice Dictation Language',
@@ -876,4 +914,20 @@ export const enUS: Record<string, string> = {
     'settings.about.resetDesc': 'Clear all local cached data and reset the app to its initial state.',
     'settings.about.confirmReset': 'Confirm Reset',
     'settings.about.resetBtn': 'Reset App Data',
+
+    // ── Mobile ──
+    'sidebar.more': 'More',
+    'mobile.workspaces.desc': 'Manage and coordinate your distributed device nodes',
+    'mobile.selectSession': 'Select Session',
+    'mobile.sessionList': 'Sessions ({count})',
+    'mobile.newSession': '+ New Session',
+    'mobile.noSessionsActive': 'No active terminal sessions in this workspace',
+    'mobile.createFirstSession': 'Create and enter the first session',
+    'mobile.selectExistingSession': '-- Select an existing session --',
+    'mobile.more.desc': 'Distributed collaboration & advanced system management',
+    'mobile.systemSettings': 'System Settings',
+    'mobile.preview': 'Preview',
+    'mobile.browser': 'Browser',
+    'mobile.confirmDeleteSession.title': 'Delete session',
+    'mobile.confirmDeleteSession.message': 'Delete session "{name}"? This action cannot be undone.',
 };

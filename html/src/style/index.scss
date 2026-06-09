@@ -1635,9 +1635,13 @@ body {
     align-items: center;
 
     .panel-tab-title {
-      font-size: 13px;
+      font-size: 18px;
       font-weight: 600;
       color: var(--text-main);
+
+      @media (min-width: 640px) {
+        font-size: 20px;
+      }
     }
 
     .panel-header-actions {
@@ -1998,68 +2002,16 @@ body {
 
 /* ==========================================================================
    SYSTEM SETTINGS FULL-PAGE MODULE
+   The category navigation lives in the workspace's own sidebar (see
+   `LeftSidebar` / `ModuleNav`) — this block is content-only.
    ========================================================================== */
 .sys-settings-page {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     height: 100%;
     width: 100%;
     overflow: hidden;
     background-color: var(--bg-page);
-
-    .sys-settings-nav {
-        width: 220px;
-        flex-shrink: 0;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        background-color: var(--bg-panel);
-        border-right: 1px solid var(--border-color);
-        padding: 24px 12px;
-        gap: 4px;
-        overflow-y: auto;
-
-        &::-webkit-scrollbar { width: 4px; }
-        &::-webkit-scrollbar-track { background: transparent; }
-        &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
-    }
-
-    .sys-settings-nav-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 9px 10px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        color: var(--text-secondary);
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        font-family: var(--font-sans);
-        transition: all 0.18s ease;
-        text-align: left;
-        width: 100%;
-
-        &:hover { background-color: var(--btn-hover); color: var(--text-main); }
-
-        &.active {
-            background-color: var(--accent-light);
-            color: var(--accent-color);
-            font-weight: 600;
-            .sys-settings-nav-icon svg { stroke: var(--accent-color); }
-        }
-    }
-
-    .sys-settings-nav-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        width: 20px;
-        height: 20px;
-        svg { width: 16px; height: 16px; transition: stroke 0.18s ease; }
-    }
 
     .sys-settings-content {
         flex: 1;
@@ -2075,18 +2027,26 @@ body {
 
     .sys-settings-section-title {
         font-size: 18px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--text-main);
         letter-spacing: -0.01em;
+
+        @media (min-width: 640px) {
+            font-size: 20px;
+        }
     }
 
     .sys-settings-section-desc {
-        font-size: 13px;
-        color: var(--text-secondary);
-        line-height: 1.6;
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.625;
         margin-top: -12px;
         padding-bottom: 4px;
         border-bottom: 1px solid var(--border-color);
+
+        @media (min-width: 640px) {
+            font-size: 14px;
+        }
     }
 
     .sys-settings-card {
@@ -2220,16 +2180,6 @@ body {
     }
 
     @media (max-width: 640px) {
-        flex-direction: column;
-
-        .sys-settings-nav {
-            width: 100%; height: auto; flex-direction: row; flex-wrap: nowrap;
-            overflow-x: auto; padding: 10px 12px; gap: 6px;
-            border-right: none; border-bottom: 1px solid var(--border-color);
-            &::-webkit-scrollbar { display: none; }
-        }
-
-        .sys-settings-nav-item { flex-shrink: 0; white-space: nowrap; padding: 7px 12px; }
         .sys-settings-content { padding: 16px; }
         .sys-settings-toggle-group { grid-template-columns: 1fr; }
         .sys-settings-theme-grid { grid-template-columns: 1fr; }
@@ -2540,24 +2490,176 @@ body {
         box-shadow: 0 0 8px var(--badge-glow);
       }
 
-      // Esc keeps text label — slightly wider
-      &.key-btn-text {
-        width: 44px;
-        font-size: 11px;
+      .key-btn-label {
         font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
         font-weight: 600;
+        line-height: 1;
         letter-spacing: 0.3px;
+        text-transform: lowercase;
+        pointer-events: none;
+      }
+    }
+  }
+}
+
+.mobile-input-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  background-color: var(--bg-header);
+  border-top: 1px solid var(--border-color);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+  z-index: 20;
+  animation: slideDownIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  .panel-inner {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .panel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    padding: 0;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+
+    svg {
+      width: 16px;
+      height: 16px;
+      pointer-events: none;
+    }
+
+    &:hover {
+      background-color: var(--btn-hover);
+      border-color: var(--text-secondary);
+    }
+
+    &:active {
+      background-color: var(--border-color);
+      transform: scale(0.92);
+    }
+
+    &.send-btn {
+      background-color: var(--accent-color);
+      border-color: var(--accent-color);
+      color: #fff;
+
+      &:hover {
+        opacity: 0.9;
       }
 
-      &.key-btn-submenu-toggle {
-        &.key-btn-text {
-          width: 58px;
-          display: inline-flex;
-          align-items: center;
-          gap: 2px;
-          padding: 0 4px;
-        }
+      &:disabled {
+        background-color: var(--bg-page);
+        border-color: var(--border-color);
+        color: var(--text-muted);
+        cursor: not-allowed;
+        opacity: 0.6;
+        transform: none;
       }
+    }
+
+    &.close-btn {
+      color: var(--text-secondary);
+    }
+  }
+
+  .panel-textarea-wrapper {
+    flex: 1;
+    min-width: 0;
+    height: 76px;
+    position: relative;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-page);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s, box-shadow 0.2s;
+
+    &:focus-within {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px var(--badge-glow);
+    }
+
+    &.recording-active {
+      border-color: #ff4d4f;
+      box-shadow: 0 0 8px rgba(255, 77, 79, 0.2);
+      animation: pulse-border 1.5s infinite;
+    }
+  }
+
+  .panel-textarea-inner {
+    width: 100%;
+    height: 100%;
+    padding: 8px 36px 8px 12px; // 36px right padding for inline button
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    resize: none;
+    line-height: 20px;
+    box-shadow: none;
+    box-sizing: border-box;
+
+    &::placeholder {
+      color: var(--text-muted);
+    }
+  }
+
+  .panel-send-inline-btn {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: none;
+    background-color: var(--accent-color);
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+
+    svg {
+      width: 13px;
+      height: 13px;
+      pointer-events: none;
+    }
+
+    &:hover {
+      opacity: 0.9;
+    }
+
+    &:active {
+      transform: scale(0.9);
+    }
+
+    &:disabled {
+      background-color: transparent;
+      color: var(--text-muted);
+      cursor: not-allowed;
+      opacity: 0.5;
+      transform: none;
     }
   }
 }
@@ -2573,24 +2675,6 @@ body {
   cursor: text;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-}
-
-.hidden-terminal-input {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-  border: none;
-  outline: none;
-  background: transparent;
-  resize: none;
-  overflow: hidden;
-  padding: 0;
-  margin: 0;
-  z-index: -1;
 }
 
 @keyframes slideUp {

@@ -8,6 +8,7 @@ import { t, type Lang } from '../i18n';
 
 interface Props extends XtermOptions {
     id: string;
+    isMobile: boolean;
     onMobileDetect?: (isMobile: boolean) => void;
     onKeyboardStateChange?: (visible: boolean) => void;
     tmuxMouseOn?: boolean;
@@ -46,10 +47,8 @@ interface SpeechRecognitionInstance {
 
 interface State {
     modal: boolean;
-    isMobile: boolean;
-    hiddenInputValue: string;
-    inputLeft?: string;
-    inputTop?: string;
+    showInputPanel: boolean;
+    panelInputValue: string;
     isRecording: boolean;
     speechText: string;
     speechError: string;
@@ -59,23 +58,21 @@ interface State {
 export class Terminal extends Component<Props, State> {
     private container: HTMLElement;
     private xterm: Xterm;
-    private hiddenInput: HTMLTextAreaElement | null = null;
+    private panelInputRef: HTMLTextAreaElement | null = null;
+    private recognition: SpeechRecognitionInstance | null = null;
+    private isUnmounted = false;
+    private speechStartValue = '';
     private touchStartY = 0;
     private isScrolling = false;
     private hasScrolled = false;
-    private isComposing = false;
-    private recognition: SpeechRecognitionInstance | null = null;
-    private isUnmounted = false;
 
     constructor(props: Props) {
         super();
         this.xterm = new Xterm(props, this.showModal);
         this.state = {
             modal: false,
-            isMobile: false,
-            hiddenInputValue: ' ',
-            inputLeft: '0px',
-            inputTop: '0px',
+            showInputPanel: false,
+            panelInputValue: '',
             isRecording: false,
             speechText: '',
             speechError: '',
@@ -84,11 +81,7 @@ export class Terminal extends Component<Props, State> {
     }
 
     async componentDidMount() {
-        const isMobile =
-            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-            window.innerWidth <= 768;
-        this.setState({ isMobile });
-        this.props.onMobileDetect?.(isMobile);
+        this.props.onMobileDetect?.(this.props.isMobile);
 
         await this.xterm.refreshToken();
         if (this.isUnmounted || !this.container) return;
@@ -147,92 +140,49 @@ export class Terminal extends Component<Props, State> {
     }
 
     @bind
-    handleOverlayClick(e: MouseEvent) {
+    handleOverlayClick() {
         if (this.hasScrolled) return;
+        this.toggleInputPanel();
+    }
 
-        const rect = e.currentTarget ? (e.currentTarget as HTMLElement).getBoundingClientRect() : { left: 0, top: 0 };
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
+    @bind
+    toggleInputPanel() {
         this.setState(
-            {
-                inputLeft: `${x}px`,
-                inputTop: `${y}px`,
-            },
+            prevState => ({ showInputPanel: !prevState.showInputPanel }),
             () => {
-                if (this.hiddenInput) {
-                    if (document.activeElement === this.hiddenInput) {
-                        this.hiddenInput.blur();
-                    } else {
-                        this.hiddenInput.focus({ preventScroll: true });
-                    }
+                if (this.state.showInputPanel && this.panelInputRef) {
+                    this.panelInputRef.focus();
                 }
+                // Fit xterm to new space
+                setTimeout(() => {
+                    this.xterm.fit();
+                }, 150);
             }
         );
     }
 
     @bind
-    handleCompositionStart() {
-        this.isComposing = true;
+    handlePanelInputChange(e: Event) {
+        this.setState({ panelInputValue: (e.target as HTMLTextAreaElement).value });
     }
 
     @bind
-    handleCompositionEnd(e: CompositionEvent) {
-        this.isComposing = false;
-        const text = e.data;
+    handlePanelInputKeyDown(e: KeyboardEvent) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            this.sendPanelInput();
+        }
+    }
+
+    @bind
+    sendPanelInput() {
+        const text = this.state.panelInputValue;
         if (text) {
-            this.xterm.sendData(text);
+            this.xterm.sendData(text + '\r');
+            this.setState({ panelInputValue: '' }, () => {
+                this.panelInputRef?.focus();
+            });
         }
-        this.setState({ hiddenInputValue: ' ' });
-    }
-
-    @bind
-    handleHiddenInput(e: Event) {
-        if (this.isComposing) {
-            const value = (e.target as HTMLTextAreaElement).value;
-            this.setState({ hiddenInputValue: value });
-            return;
-        }
-
-        const value = (e.target as HTMLTextAreaElement).value;
-        if (value.length === 0) {
-            this.xterm.sendData('\x7f'); // Backspace
-            this.setState({ hiddenInputValue: ' ' });
-            return;
-        }
-
-        let typedText = '';
-        if (value.startsWith(' ')) {
-            typedText = value.substring(1);
-        } else {
-            typedText = value;
-        }
-
-        if (typedText.length > 0) {
-            const processedText = typedText.replace(/\n/g, '\r');
-            this.xterm.sendData(processedText);
-        }
-
-        this.setState({ hiddenInputValue: ' ' });
-    }
-
-    @bind
-    handleHiddenInputFocus() {
-        this.props.onKeyboardStateChange?.(true);
-        setTimeout(() => {
-            window.scrollTo(0, 0);
-            document.body.scrollTop = 0;
-            if (document.documentElement) {
-                document.documentElement.scrollTop = 0;
-            }
-        }, 30);
-    }
-
-    @bind
-    handleHiddenInputBlur() {
-        setTimeout(() => {
-            this.props.onKeyboardStateChange?.(false);
-        }, 100);
     }
 
     @bind
@@ -284,7 +234,7 @@ export class Terminal extends Component<Props, State> {
     @bind
     toggleSpeech() {
         if (this.state.isRecording) {
-            this.stopAndSendSpeech();
+            this.stopSpeech();
             return;
         }
 
@@ -316,6 +266,7 @@ export class Terminal extends Component<Props, State> {
             this.recognition.lang = lang;
 
             this.recognition.onstart = () => {
+                this.speechStartValue = this.state.panelInputValue;
                 this.setState({
                     isRecording: true,
                     speechText: '',
@@ -365,7 +316,12 @@ export class Terminal extends Component<Props, State> {
                         currentText = interimText.trim();
                     }
                 }
-                this.setState({ speechText: currentText });
+
+                const updatedValue = (this.speechStartValue + (this.speechStartValue ? ' ' : '') + currentText).trim();
+                this.setState({
+                    speechText: currentText,
+                    panelInputValue: updatedValue,
+                });
             };
 
             this.recognition.onerror = (event: SpeechErrorEvent) => {
@@ -386,7 +342,7 @@ export class Terminal extends Component<Props, State> {
 
             this.recognition.onend = () => {
                 if (this.state.isRecording) {
-                    this.stopAndSendSpeech();
+                    this.stopSpeech();
                 }
             };
 
@@ -414,36 +370,29 @@ export class Terminal extends Component<Props, State> {
     @bind
     cancelSpeech() {
         this.cleanupSpeech();
-        this.setState({ speechText: '', speechError: '' });
+        this.setState({
+            panelInputValue: this.speechStartValue || '',
+            speechText: '',
+            speechError: '',
+        });
     }
 
     @bind
-    stopAndSendSpeech() {
-        const textToSend = this.state.speechText ? this.state.speechText.trim() : '';
+    stopSpeech() {
         this.cleanupSpeech();
-
-        if (textToSend) {
-            this.xterm.sendData(textToSend);
-        }
-
         this.setState({ speechText: '', speechError: '' });
     }
 
     render(
-        { id, language }: Props,
-        {
-            modal,
-            isMobile,
-            hiddenInputValue,
-            inputLeft,
-            inputTop,
-            isRecording,
-            speechText,
-            speechError,
-            activeSubMenu,
-        }: State
+        { id, language, isMobile }: Props,
+        { modal, showInputPanel, panelInputValue, isRecording, speechError, activeSubMenu }: State
     ) {
-        const isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
+        const isHttps =
+            typeof window !== 'undefined' &&
+            window.location &&
+            (window.location.protocol === 'https:' ||
+                window.location.hostname === 'localhost' ||
+                window.location.hostname === '127.0.0.1');
 
         return (
             <div style="display: flex; flex-direction: column; height: 100%; width: 100%; position: relative;">
@@ -461,28 +410,7 @@ export class Terminal extends Component<Props, State> {
                             onTouchMove={this.handleTouchMove}
                             onTouchEnd={this.handleTouchEnd}
                             onClick={this.handleOverlayClick}
-                        >
-                            <textarea
-                                ref={el => {
-                                    this.hiddenInput = el;
-                                }}
-                                class="hidden-terminal-input"
-                                style={{
-                                    left: inputLeft || '0px',
-                                    top: inputTop || '0px',
-                                }}
-                                value={hiddenInputValue}
-                                onInput={this.handleHiddenInput}
-                                onFocus={this.handleHiddenInputFocus}
-                                onBlur={this.handleHiddenInputBlur}
-                                onCompositionStart={this.handleCompositionStart}
-                                onCompositionEnd={this.handleCompositionEnd}
-                                autoComplete="off"
-                                autoCorrect="off"
-                                autoCapitalize="off"
-                                spellcheck={false}
-                            />
-                        </div>
+                        />
                     )}
                     <Modal show={modal}>
                         <label class="file-label">
@@ -491,18 +419,74 @@ export class Terminal extends Component<Props, State> {
                         </label>
                     </Modal>
                 </div>
-                {isMobile && (
-                    <div class="mobile-input-bar">
-                        {isRecording && (
-                            <div class="speech-inline-preview">
-                                <span class="preview-dot"></span>
-                                {speechText ? (
-                                    <span class="speech-text">{speechText}</span>
-                                ) : (
-                                    <span class="placeholder">{t('terminal.speech.listening', language)}</span>
-                                )}
+                {isMobile && showInputPanel && (
+                    <div class="mobile-input-panel">
+                        <div class="panel-inner">
+                            {isHttps && (
+                                <button
+                                    class={`panel-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
+                                    title={t('terminal.action.voice', language)}
+                                    onClick={this.toggleSpeech}
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                                        <line x1="12" y1="19" x2="12" y2="23" />
+                                        <line x1="8" y1="23" x2="16" y2="23" />
+                                    </svg>
+                                </button>
+                            )}
+                            <div class={`panel-textarea-wrapper ${isRecording ? 'recording-active' : ''}`}>
+                                <textarea
+                                    ref={el => {
+                                        this.panelInputRef = el;
+                                    }}
+                                    class="panel-textarea-inner"
+                                    value={panelInputValue}
+                                    onInput={this.handlePanelInputChange}
+                                    onKeyDown={this.handlePanelInputKeyDown}
+                                    placeholder={
+                                        isRecording
+                                            ? t('terminal.speech.listening', language)
+                                            : t('terminal.input.placeholder', language)
+                                    }
+                                    rows={3}
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    autoCapitalize="off"
+                                    spellcheck={false}
+                                />
+                                <button
+                                    class="panel-send-inline-btn"
+                                    onClick={this.sendPanelInput}
+                                    disabled={!panelInputValue.trim()}
+                                    title="Send"
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <line x1="22" y1="2" x2="11" y2="13" />
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                    </svg>
+                                </button>
                             </div>
-                        )}
+                        </div>
+                    </div>
+                )}
+                {isMobile && !showInputPanel && (
+                    <div class="mobile-input-bar">
                         {/* Secondary commands submenu rendered above the bottom row */}
                         {activeSubMenu && (
                             <div class="mobile-quick-submenu">
@@ -519,7 +503,7 @@ export class Terminal extends Component<Props, State> {
                                                 viewBox="0 0 24 24"
                                                 fill="none"
                                                 stroke="currentColor"
-                                                stroke-width="2.5"
+                                                stroke-width="2"
                                                 stroke-linecap="round"
                                                 stroke-linejoin="round"
                                             >
@@ -538,7 +522,7 @@ export class Terminal extends Component<Props, State> {
                                                 viewBox="0 0 24 24"
                                                 fill="none"
                                                 stroke="currentColor"
-                                                stroke-width="2.5"
+                                                stroke-width="2"
                                                 stroke-linecap="round"
                                                 stroke-linejoin="round"
                                             >
@@ -551,7 +535,7 @@ export class Terminal extends Component<Props, State> {
                                                 viewBox="0 0 24 24"
                                                 fill="none"
                                                 stroke="currentColor"
-                                                stroke-width="2.5"
+                                                stroke-width="2"
                                                 stroke-linecap="round"
                                                 stroke-linejoin="round"
                                             >
@@ -564,7 +548,7 @@ export class Terminal extends Component<Props, State> {
                                                 viewBox="0 0 24 24"
                                                 fill="none"
                                                 stroke="currentColor"
-                                                stroke-width="2.5"
+                                                stroke-width="2"
                                                 stroke-linecap="round"
                                                 stroke-linejoin="round"
                                             >
@@ -577,7 +561,7 @@ export class Terminal extends Component<Props, State> {
                                                 viewBox="0 0 24 24"
                                                 fill="none"
                                                 stroke="currentColor"
-                                                stroke-width="2.5"
+                                                stroke-width="2"
                                                 stroke-linecap="round"
                                                 stroke-linejoin="round"
                                             >
@@ -610,9 +594,7 @@ export class Terminal extends Component<Props, State> {
                         <div class="mobile-quick-keys">
                             {/* Toggle 快捷命令 (Quick Commands Toggle) */}
                             <button
-                                class={`key-btn key-btn-text key-btn-submenu-toggle ${
-                                    activeSubMenu === 'commands' ? 'active' : ''
-                                }`}
+                                class={`key-btn key-btn-submenu-toggle ${activeSubMenu === 'commands' ? 'active' : ''}`}
                                 title={t('terminal.action.commands', language)}
                                 onClick={() => this.toggleSubMenu('commands')}
                             >
@@ -620,14 +602,13 @@ export class Terminal extends Component<Props, State> {
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
-                                    stroke-width="2.5"
+                                    stroke-width="2"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                 >
                                     <polyline points="4 17 10 11 4 5" />
                                     <line x1="12" y1="19" x2="20" y2="19" />
                                 </svg>
-                                {t('terminal.label.commands', language)}
                             </button>
                             {/* Toggle 方向键/D-Pad (Direction Keys Toggle) */}
                             <button
@@ -652,6 +633,24 @@ export class Terminal extends Component<Props, State> {
                                     <polyline points="17 8 21 12 17 16" />
                                 </svg>
                             </button>
+                            {/* Toggle 输入框 (Input Panel Toggle) */}
+                            <button
+                                class={`key-btn key-btn-input-toggle ${showInputPanel ? 'active' : ''}`}
+                                title={t('terminal.action.input', language)}
+                                onClick={this.toggleInputPanel}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+                                    <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M18 12h.01M10 12h4" />
+                                </svg>
+                            </button>
                             {/* Paste */}
                             <button
                                 class="key-btn"
@@ -671,31 +670,9 @@ export class Terminal extends Component<Props, State> {
                                     <path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1z" />
                                 </svg>
                             </button>
-                            {/* Speech Recognition Mic Button (HTTPS only) */}
-                            {isHttps && (
-                                <button
-                                    class={`key-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
-                                    title={t('terminal.action.voice', language)}
-                                    onClick={this.toggleSpeech}
-                                >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-                                        <line x1="12" y1="19" x2="12" y2="23" />
-                                        <line x1="8" y1="23" x2="16" y2="23" />
-                                    </svg>
-                                </button>
-                            )}
-                            {/* Esc — keep text, it's clear */}
-                            <button class="key-btn key-btn-text" title="Esc" onClick={() => this.sendQuickKey('Esc')}>
-                                Esc
+                            {/* Esc */}
+                            <button class="key-btn" title="Esc" onClick={() => this.sendQuickKey('Esc')}>
+                                <span class="key-btn-label">esc</span>
                             </button>
                             {/* Enter / Return */}
                             <button class="key-btn" title="Enter" onClick={() => this.sendQuickKey('Enter')}>

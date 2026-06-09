@@ -11,6 +11,7 @@ interface MiddleCanvasProps {
     clientOptions: ClientOptions;
     termOptions: ITerminalOptions;
     flowControl: FlowControl;
+    isMobile: boolean;
     onMobileDetect?: (isMobile: boolean) => void;
     onKeyboardStateChange?: (visible: boolean) => void;
     tmuxMouseOn?: boolean;
@@ -25,6 +26,7 @@ export function MiddleCanvas({
     clientOptions,
     termOptions,
     flowControl,
+    isMobile,
     onMobileDetect,
     onKeyboardStateChange,
     tmuxMouseOn,
@@ -43,6 +45,7 @@ export function MiddleCanvas({
                         clientOptions={clientOptions}
                         termOptions={termOptions}
                         flowControl={flowControl}
+                        isMobile={isMobile}
                         onMobileDetect={onMobileDetect}
                         onKeyboardStateChange={onKeyboardStateChange}
                         tmuxMouseOn={tmuxMouseOn}

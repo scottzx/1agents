@@ -14,6 +14,7 @@
 
 import type { RightDrawerTab } from '../components/types';
 import type { ModuleId, ModuleManifest } from './module-types';
+import { SETTINGS_MODULE_ID, SETTINGS_STATIC_MANIFEST, SETTINGS_ENTRY_PATH } from './settings-manifest';
 
 export interface ModuleRegistration {
     moduleId: ModuleId;
@@ -88,8 +89,11 @@ const SKILLS_STATIC_MANIFEST: ModuleManifest = {
 };
 
 /**
- * The registered modules. Only 1skills is wired today; cc-connect and ttyd
- * will follow the same shape in subsequent PRs.
+ * The registered modules. 1skills is the only iframe-backed module today;
+ * `settings` shares the same `ModuleManifest` shape so the host can render
+ * its category navigation through `<ModuleNav />` in the workspace's left
+ * sidebar — the content body itself is the host-rendered `SystemSettings`
+ * component, not an iframe (see `DesktopAppLayout`).
  */
 export const MODULES: Record<ModuleId, ModuleRegistration> = {
     skills: {
@@ -99,6 +103,16 @@ export const MODULES: Record<ModuleId, ModuleRegistration> = {
         staticManifest: SKILLS_STATIC_MANIFEST,
         manifestUrl: '/1skills/api/manifest',
         entryPath: '/overview',
+    },
+    settings: {
+        moduleId: SETTINGS_MODULE_ID,
+        ownerTab: 'settings',
+        // No iframe — `buildModuleIframeSrc()` is not called for settings
+        // (the desktop layout renders `SystemSettings` directly). The empty
+        // `iframeBase` is here only to satisfy the type contract.
+        iframeBase: '',
+        staticManifest: SETTINGS_STATIC_MANIFEST,
+        entryPath: SETTINGS_ENTRY_PATH,
     },
 };
 
