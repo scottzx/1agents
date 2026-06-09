@@ -7,3 +7,6 @@
 [submodule "modules/1skills"]
 	path = modules/1skills
 	url = https://github.com/scottzx/1skills
+[submodule "modules/1acp"]
+	path = modules/1acp
+	url = https://github.com/scottzx/1acp.git
