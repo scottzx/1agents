@@ -460,6 +460,8 @@ export const zhCN: Record<string, string> = {
     'mobile.browser': '浏览器',
     'mobile.confirmDeleteSession.title': '删除会话',
     'mobile.confirmDeleteSession.message': '确定要删除会话 “{name}” 吗?此操作无法撤销。',
+    'mobile.confirmDeleteWorkspace.title': '删除工作空间',
+    'mobile.confirmDeleteWorkspace.message': '确定要删除工作空间 “{name}” 吗?此操作无法撤销。',
 };
 
 // English dictionary.
@@ -930,4 +932,6 @@ export const enUS: Record<string, string> = {
     'mobile.browser': 'Browser',
     'mobile.confirmDeleteSession.title': 'Delete session',
     'mobile.confirmDeleteSession.message': 'Delete session "{name}"? This action cannot be undone.',
+    'mobile.confirmDeleteWorkspace.title': 'Delete workspace',
+    'mobile.confirmDeleteWorkspace.message': 'Delete workspace "{name}"? This action cannot be undone.',
 };

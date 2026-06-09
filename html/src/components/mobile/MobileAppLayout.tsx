@@ -9,7 +9,6 @@ import { SystemSettings } from '../settings/SystemSettings';
 import { FileDetailView } from '../drawer/FileDetailView';
 import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
-import type { Session } from '../types';
 import type { App, AppState } from '../app';
 import {
     lightTermTheme,
@@ -116,9 +115,21 @@ interface MobileAppLayoutState {
     selectedWorkspaceId: string;
     inSessionView: boolean;
     skillsInDetail: boolean;
+    /**
+     * The path the skills iframe was last mounted with, baked into its URL
+     * hash (e.g. `#/skills/use`). Captured at the moment the user clicks
+     * a sub-link in the skills list, so the iframe boots directly at the
+     * right route — no race with the host's postMessage handshake, no
+     * flash of the catch-all `* → /overview` redirect. Reset whenever
+     * the iframe is unmounted (going back to the list, switching tabs).
+     */
+    mountedSkillsPath: string;
     activeMoreSubView: 'menu' | 'settings' | 'discovery';
     activeSettingsCategory: 'menu' | 'general' | 'appearance' | 'security' | 'feedback' | 'about';
-    pendingDeleteSession: Session | null;
+    pendingConfirm:
+        | { kind: 'session'; name: string; sessionIndex: number }
+        | { kind: 'workspace'; name: string; workspaceId: string }
+        | null;
 }
 
 export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLayoutState> {
@@ -127,9 +138,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         selectedWorkspaceId: '',
         inSessionView: false,
         skillsInDetail: false,
+        mountedSkillsPath: '',
         activeMoreSubView: 'menu',
         activeSettingsCategory: 'menu',
-        pendingDeleteSession: null,
+        pendingConfirm: null,
     };
 
     componentWillReceiveProps(nextProps: MobileAppLayoutProps) {
@@ -142,7 +154,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
     }
 
     setMobileTab = (tab: 'workspaces' | 'providers' | 'skills' | 'more') => {
-        this.setState({ activeMobileTab: tab });
+        this.setState({ activeMobileTab: tab, mountedSkillsPath: '' });
         if (tab === 'skills') {
             this.setState({ skillsInDetail: false });
             if (this.props.state.activeDrawerTab !== 'skills') {
@@ -229,9 +241,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeTabObj?.type !== 'preview' &&
             activeTabObj?.type !== 'browser';
 
-        // Skills iframe src
+        // Skills iframe src — bake the mount-time path into the URL hash so
+        // the iframe's HashRouter boots at the right route. `mountedSkillsPath`
+        // is captured by the click handler in the list above and only changes
+        // when the iframe is unmounted, so the src stays stable for the
+        // lifetime of one mount.
         const skillsMod = getModuleByTab('skills');
-        const skillsSrc = skillsMod ? buildModuleIframeSrc(skillsMod) : '/1skills/';
+        const skillsSrc = skillsMod
+            ? buildModuleIframeSrc(skillsMod, this.state.mountedSkillsPath || undefined)
+            : '/1skills/';
         const moduleNav = app.buildModuleNav();
 
         return (
@@ -297,7 +315,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                     </svg>
                                                                 </button>
                                                                 <button
-                                                                    onClick={() => app.deleteWorkspace(ws.id)}
+                                                                    onClick={() =>
+                                                                        this.setState({
+                                                                            pendingConfirm: {
+                                                                                kind: 'workspace',
+                                                                                name: ws.name,
+                                                                                workspaceId: ws.id,
+                                                                            },
+                                                                        })
+                                                                    }
                                                                     class="action-btn delete"
                                                                     title="Delete"
                                                                 >
@@ -506,7 +532,12 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                         onClick={e => {
                                                                                             e.stopPropagation();
                                                                                             this.setState({
-                                                                                                pendingDeleteSession: s,
+                                                                                                pendingConfirm: {
+                                                                                                    kind: 'session',
+                                                                                                    name: s.name,
+                                                                                                    sessionIndex:
+                                                                                                        s.index,
+                                                                                                },
                                                                                             });
                                                                                         }}
                                                                                     >
@@ -703,8 +734,14 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             key={link.key}
                                                             class="mobile-menu-row"
                                                             onClick={() => {
+                                                                // Capture the path BEFORE mounting the iframe so
+                                                                // the iframe's URL hash can boot the iframe at
+                                                                // the right route on first paint.
+                                                                this.setState({
+                                                                    mountedSkillsPath: link.to,
+                                                                    skillsInDetail: true,
+                                                                });
                                                                 moduleNav.onNavigate(link.to);
-                                                                this.setState({ skillsInDetail: true });
                                                             }}
                                                         >
                                                             <span class="row-label">{link.label}</span>
@@ -731,8 +768,11 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                 key={link.key}
                                                                 class="mobile-menu-row"
                                                                 onClick={() => {
+                                                                    this.setState({
+                                                                        mountedSkillsPath: link.to,
+                                                                        skillsInDetail: true,
+                                                                    });
                                                                     moduleNav.onNavigate(link.to);
-                                                                    this.setState({ skillsInDetail: true });
                                                                 }}
                                                             >
                                                                 <span class="row-label">{link.label}</span>
@@ -769,7 +809,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                     <div class="mobile-subview-header">
                                         <button
                                             class="mobile-subview-back-btn"
-                                            onClick={() => this.setState({ skillsInDetail: false })}
+                                            onClick={() =>
+                                                this.setState({ skillsInDetail: false, mountedSkillsPath: '' })
+                                            }
                                         >
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <polyline points="15 18 9 12 15 6" />
@@ -1053,58 +1095,73 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     </div>
                 )}
 
-                {/* Delete Session Confirmation Modal */}
-                {this.state.pendingDeleteSession && (
-                    <div class="mobile-confirm-modal" role="dialog" aria-modal="true">
-                        <div
-                            class="mobile-confirm-backdrop"
-                            onClick={() => this.setState({ pendingDeleteSession: null })}
-                        />
-                        <div class="mobile-confirm-box">
-                            <div class="mobile-confirm-icon">
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
+                {/* Delete Confirmation Modal (session or workspace) */}
+                {this.state.pendingConfirm &&
+                    (() => {
+                        const confirm = this.state.pendingConfirm!;
+                        const titleKey =
+                            confirm.kind === 'session'
+                                ? 'mobile.confirmDeleteSession.title'
+                                : 'mobile.confirmDeleteWorkspace.title';
+                        const messageKey =
+                            confirm.kind === 'session'
+                                ? 'mobile.confirmDeleteSession.message'
+                                : 'mobile.confirmDeleteWorkspace.message';
+                        const fallbackTitle = confirm.kind === 'session' ? '删除会话' : '删除工作空间';
+                        const fallbackMessage = `确定要删除 ${
+                            confirm.kind === 'session' ? '会话' : '工作空间'
+                        } “${confirm.name}” 吗?此操作无法撤销。`;
+                        return (
+                            <div class="mobile-confirm-modal" role="dialog" aria-modal="true">
+                                <div
+                                    class="mobile-confirm-backdrop"
+                                    onClick={() => this.setState({ pendingConfirm: null })}
+                                />
+                                <div class="mobile-confirm-box">
+                                    <div class="mobile-confirm-icon">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <polyline points="3 6 5 6 21 6" />
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="mobile-confirm-title">{t(titleKey, language) || fallbackTitle}</h3>
+                                    <p class="mobile-confirm-message">
+                                        {t(messageKey, language, { name: confirm.name }) || fallbackMessage}
+                                    </p>
+                                    <div class="mobile-confirm-actions">
+                                        <button
+                                            class="mobile-confirm-btn cancel"
+                                            onClick={() => this.setState({ pendingConfirm: null })}
+                                        >
+                                            {t('common.cancel', language) || '取消'}
+                                        </button>
+                                        <button
+                                            class="mobile-confirm-btn danger"
+                                            onClick={async () => {
+                                                const target = this.state.pendingConfirm;
+                                                this.setState({ pendingConfirm: null });
+                                                if (!target) return;
+                                                if (target.kind === 'session') {
+                                                    await app.killTerminal(target.sessionIndex);
+                                                } else {
+                                                    await app.deleteWorkspace(target.workspaceId);
+                                                }
+                                            }}
+                                        >
+                                            {t('common.delete', language) || '删除'}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <h3 class="mobile-confirm-title">
-                                {t('mobile.confirmDeleteSession.title', language) || '删除会话'}
-                            </h3>
-                            <p class="mobile-confirm-message">
-                                {t('mobile.confirmDeleteSession.message', language, {
-                                    name: this.state.pendingDeleteSession.name,
-                                }) || `确定要删除会话 “${this.state.pendingDeleteSession.name}” 吗?此操作无法撤销。`}
-                            </p>
-                            <div class="mobile-confirm-actions">
-                                <button
-                                    class="mobile-confirm-btn cancel"
-                                    onClick={() => this.setState({ pendingDeleteSession: null })}
-                                >
-                                    {t('common.cancel', language) || '取消'}
-                                </button>
-                                <button
-                                    class="mobile-confirm-btn danger"
-                                    onClick={async () => {
-                                        const target = this.state.pendingDeleteSession;
-                                        this.setState({ pendingDeleteSession: null });
-                                        if (target) {
-                                            await app.killTerminal(target.index);
-                                        }
-                                    }}
-                                >
-                                    {t('common.delete', language) || '删除'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                        );
+                    })()}
             </div>
         );
     }

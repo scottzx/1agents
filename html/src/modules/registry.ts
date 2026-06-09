@@ -131,13 +131,19 @@ export function getModuleByTab(tab: RightDrawerTab): ModuleRegistration | null {
 
 /**
  * Builds the iframe `src` for a module. Always appends `?bare=1` so the
- * module renders without its own chrome. The active sub-path is delivered
- * to the iframe via a NAVIGATE postMessage from the host once it announces
- * READY, so we don't need to encode it in the URL.
+ * module renders without its own chrome.
+ *
+ * Pass `subPath` to bake the initial route into the URL hash (e.g.
+ * `#/skills/use`). The iframe's HashRouter reads the hash on mount, so
+ * the iframe boots directly at the right route — no race with the host's
+ * postMessage handshake, no flash of the catch-all `* → /overview`
+ * redirect. Use this when the iframe is mounted fresh at a non-entry
+ * route (e.g. mobile skills sub-page).
  */
-export function buildModuleIframeSrc(mod: ModuleRegistration): string {
+export function buildModuleIframeSrc(mod: ModuleRegistration, subPath?: string): string {
     const base = mod.iframeBase.endsWith('/') ? mod.iframeBase : mod.iframeBase + '/';
-    return `${base}?bare=1`;
+    const hash = subPath ? `#${subPath.startsWith('/') ? subPath : '/' + subPath}` : '';
+    return `${base}?bare=1${hash}`;
 }
 
 /**
