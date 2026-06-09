@@ -679,14 +679,14 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     {activeMobileTab === 'providers' && (
                         <div class="mobile-tab-content">
                             {ccProvidersUrl ? (
-                                <div class="mobile-iframe-container" style="width: 100%; height: 100%;">
+                                <div class="mobile-iframe-container" style="flex: 1; min-height: 0; overflow: hidden;">
                                     <cc-connect-panel
                                         id="cc-providers-panel"
                                         route={extractCcRedirect(ccProvidersUrl, '/providers')}
                                         theme={theme}
                                         lang={language}
                                         auth-token={extractCcToken(ccProvidersUrl)}
-                                        style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
+                                        style="width: 100%; height: 100%; display: flex; flex-direction: column;"
                                     />
                                 </div>
                             ) : (
@@ -803,7 +803,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         </button>
                                         <div class="mobile-subview-title">{t('sidebar.skills', language)}</div>
                                     </div>
-                                    <div class="mobile-subview-content">
+                                    <div class="mobile-subview-content" style="overflow: hidden;">
                                         <skills-panel
                                             id="skills-panel"
                                             route={
@@ -813,7 +813,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             }
                                             theme={theme}
                                             lang={language}
-                                            style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
+                                            style="width: 100%; height: 100%; display: flex; flex-direction: column;"
                                         />
                                     </div>
                                 </div>
