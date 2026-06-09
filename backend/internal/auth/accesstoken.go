@@ -8,20 +8,23 @@ import (
 const configDirName = ".1agents"
 const tokenFileName = "access-token"
 
-func TokenFilePath() string {
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		home = "."
+		return "."
 	}
-	return filepath.Join(home, configDirName, tokenFileName)
+	return home
+}
+
+func TokenFilePath() string {
+	return filepath.Join(get1AgentsHome(), configDirName, tokenFileName)
 }
 
 func ensureConfigDir() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	configDir := filepath.Join(home, configDirName)
+	configDir := filepath.Join(get1AgentsHome(), configDirName)
 	return os.MkdirAll(configDir, 0755)
 }
 

@@ -14,6 +14,17 @@ import (
 // EnsureBinary checks if cloudflared is available in the system PATH.
 // If not found, it checks ~/.1agents/bin/cloudflared, and downloads
 // the correct binary for the host's OS and architecture if missing.
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return home
+}
+
 func EnsureBinary() (string, error) {
 	// 0. Check if cloudflared is in the same directory as the running 1agents executable
 	if exePath, err := os.Executable(); err == nil {
@@ -36,10 +47,7 @@ func EnsureBinary() (string, error) {
 	}
 
 	// 2. Resolve default user directory: ~/.1agents/bin/
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get user home directory: %w", err)
-	}
+	home := get1AgentsHome()
 
 	binDir := filepath.Join(home, ".1agents", "bin")
 	binaryName := "cloudflared"

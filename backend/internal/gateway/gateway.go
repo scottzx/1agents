@@ -68,7 +68,7 @@ func NewCCConnectProxy(mgmtPort int) http.Handler {
 // NewBridgeProxy creates an http.Handler that transparently reverse-proxies
 // WebSocket and HTTP requests to the locally-running CC-Connect bridge server
 // on bridgePort (used by the frontend to establish a direct bridge connection).
-func NewBridgeProxy(bridgePort int) http.Handler {
+func NewBridgeProxy(bridgePort int, bridgeToken string) http.Handler {
 	targetURL := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("127.0.0.1:%d", bridgePort),
@@ -80,6 +80,13 @@ func NewBridgeProxy(bridgePort int) http.Handler {
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
 		req.Host = targetURL.Host
+
+		q := req.URL.Query()
+		tok := q.Get("token")
+		if tok != "" && tok != bridgeToken {
+			q.Set("token", bridgeToken)
+			req.URL.RawQuery = q.Encode()
+		}
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {

@@ -19,24 +19,32 @@ import (
 
 var configDir string
 
-func init() {
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		home = "."
+		return "."
 	}
-	configDir = filepath.Join(home, ".1agents")
+	return home
+}
+
+func init() {
+	configDir = filepath.Join(get1AgentsHome(), ".1agents")
 }
 
 const configFile = "workspaces_dir.json"
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Path        string `json:"path"`
-	Status      string `json:"status"`
-	TerminalDir string `json:"terminalDir,omitempty"`
-	ChatChannel string `json:"chatChannel,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	Status       string `json:"status"`
+	TerminalDir  string `json:"terminalDir,omitempty"`
+	ChatChannel  string `json:"chatChannel,omitempty"`
+	DefaultAgent string `json:"defaultAgent,omitempty"`
 }
 
 // WorkspacesConfig is the top-level structure stored in workspaces_dir.json.
@@ -135,6 +143,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Backfill default agent if missing — matches the existing
+	// "claudecode" default in handler.go:175 + the agent.DefaultAgentType
+	// constant in internal/agent/types.go.
+	if ws.DefaultAgent == "" {
+		ws.DefaultAgent = "claudecode"
+	}
 	cfg, err := h.loadConfig()
 	if err != nil {
 		log.Printf("[workspace] load error: %v", err)
@@ -143,12 +157,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ws.ID == "temp" || ws.Path == "temp" {
-		homeDir, errHome := os.UserHomeDir()
-		if errHome == nil {
-			tempDir := filepath.Join(homeDir, "temp")
-			_ = os.MkdirAll(tempDir, 0755)
-			ws.Path = tempDir
-		}
+		homeDir := get1AgentsHome()
+		tempDir := filepath.Join(homeDir, "temp")
+		_ = os.MkdirAll(tempDir, 0755)
+		ws.Path = tempDir
 	}
 	// Check for duplicate ID
 	for _, existing := range cfg.Workspaces {

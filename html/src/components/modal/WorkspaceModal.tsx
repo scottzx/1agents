@@ -1,4 +1,7 @@
 import { h, Component } from 'preact';
+import { AgentTypePicker } from '../chat/AgentTypePicker';
+import { type AgentType } from '../types';
+import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
 
 interface WorkspaceModalProps {
     mode: 'create' | 'rename';
@@ -6,10 +9,12 @@ interface WorkspaceModalProps {
     path: string;
     terminalDir: string;
     chatChannel: string;
+    defaultAgent: AgentType;
     onNameChange: (val: string) => void;
     onPathChange: (val: string) => void;
     onTerminalDirChange: (val: string) => void;
     onChatChannelChange: (val: string) => void;
+    onDefaultAgentChange: (val: AgentType) => void;
     onClose: () => void;
     onBrowse: () => void;
     onSubmit: () => void;
@@ -23,10 +28,12 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
             path,
             terminalDir,
             chatChannel,
+            defaultAgent,
             onNameChange,
             onPathChange,
             onTerminalDirChange,
             onChatChannelChange,
+            onDefaultAgentChange,
             onClose,
             onBrowse,
             onSubmit,
@@ -83,6 +90,9 @@ export class WorkspaceModal extends Component<WorkspaceModalProps> {
                                 if (e.key === 'Enter') onSubmit();
                             }}
                         />
+                        <label class="ws-modal-label">默认智能体</label>
+                        <AgentTypePicker value={defaultAgent || DEFAULT_AGENT_TYPE} onChange={onDefaultAgentChange} />
+                        <p class="ws-modal-hint">新建聊天会话时默认使用此智能体；可以在创建会话时改为其他类型。</p>
                         <label class="ws-modal-label">AI 聊天频道 (可选)</label>
                         <input
                             class="ws-modal-input"

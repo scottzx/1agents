@@ -74,3 +74,6 @@ npm/dist/
 # Ignore stray binaries in npm/bin/ but keep the platform subdirs (linux-amd64/, etc.)
 npm/bin/*
 !npm/bin/*/
+
+# Local sandboxed home directory
+tmp_home/

@@ -16,6 +16,8 @@ interface WorkspaceHeaderProps {
     sessionName: string;
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
+    /** True when the active workspace has at least one chat session. */
+    hasChatSession?: boolean;
 }
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
@@ -30,6 +32,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         sessionName,
         tmuxMouseOn,
         onTmuxMouseToggle,
+        hasChatSession,
     } = props;
 
     // Mobile hamburger menu open state
@@ -79,6 +82,20 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         >
             <polyline points="4 17 10 11 4 5" />
             <line x1="12" x2="20" y1="19" y2="19" />
+        </svg>
+    );
+    // AI Agent / chat icon
+    const IconAgents = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M9 10h.01M12 10h.01M15 10h.01" />
         </svg>
     );
     // AI Chat channels icon
@@ -272,6 +289,16 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                         {onTmuxMouseToggle && <div class="divider" />}
 
+                        {hasChatSession && (
+                            <button
+                                id="hdr-btn-agents"
+                                class={`shortcut-btn ${activeTab === 'agents' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('agents')}
+                                title="智能体聊天"
+                            >
+                                {IconAgents}
+                            </button>
+                        )}
                         <button
                             id="hdr-btn-channels"
                             class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
@@ -326,6 +353,21 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-label">工作台</span>
                     {sessionActive && <span class="mob-menu-badge">当前</span>}
                 </button>
+
+                {hasChatSession && (
+                    <button
+                        id="mob-menu-agents"
+                        class={`mobile-menu-item ${activeTab === 'agents' ? 'active' : ''}`}
+                        onClick={() => {
+                            setActiveTab('agents');
+                            closeMobileMenu();
+                        }}
+                    >
+                        <span class="mob-menu-icon">{IconAgents}</span>
+                        <span class="mob-menu-label">智能体</span>
+                        {activeTab === 'agents' && <span class="mob-menu-badge">当前</span>}
+                    </button>
+                )}
 
                 <button
                     id="mob-menu-channels"

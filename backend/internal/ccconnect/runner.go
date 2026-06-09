@@ -52,6 +52,7 @@ import (
 	_ "github.com/chenhg5/cc-connect/platform/wps-xiezuo"
 	_ "github.com/chenhg5/cc-connect/web"
 
+	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -88,6 +89,17 @@ type providerWiringResult struct {
 	canStartInitialRefresh    bool
 }
 
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return home
+}
+
 // Start boots the cc-connect supervisor, dynamic port allocator, configuration synchronization,
 // and engine listeners.
 func Start(ctx context.Context, isDesktop bool) {
@@ -109,10 +121,7 @@ func Start(ctx context.Context, isDesktop bool) {
 		BridgePort = baseBridgePort
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "."
-	}
+	home := get1AgentsHome()
 	ccDir := filepath.Join(home, ".cc-connect")
 	if err := os.MkdirAll(ccDir, 0o755); err != nil {
 		log.Printf("[ccconnect] Error creating ~/.cc-connect: %v", err)
@@ -309,49 +318,79 @@ insecure = true
 
 				var updatedProjects []config.ProjectConfig
 
+
 				for _, ws := range wsCfg.Workspaces {
-					projName := ws.Name
-					if projName == "" {
-						projName = ws.ID
+					wsName := ws.Name
+					if wsName == "" {
+						wsName = ws.ID
 					}
 
-					if p, ok := existingProjects[projName]; ok {
-						if p.Agent.Options == nil {
-							p.Agent.Options = make(map[string]any)
-						}
-						p.Agent.Options["work_dir"] = ws.Path
+					defaultAgent := ws.DefaultAgent
+					if defaultAgent == "" {
+						defaultAgent = "claudecode"
+					}
 
-						// Ensure bridge platform exists
-						hasBridge := false
-						for _, plat := range p.Platforms {
-							if plat.Type == "bridge" {
-								hasBridge = true
-								break
+					type projToRegister struct {
+						name      string
+						agentType string
+					}
+					var targets []projToRegister
+					targets = append(targets, projToRegister{name: wsName, agentType: defaultAgent}) // Legacy
+
+					// Pre-register projects for all supported agent types in this workspace
+					for _, at := range agent.SupportedAgentTypes {
+						targets = append(targets, projToRegister{
+							name:      ccProjectName(wsName, at),
+							agentType: at,
+						})
+					}
+
+					// Deduplicate target project names
+					seen := make(map[string]bool)
+					for _, target := range targets {
+						if seen[target.name] {
+							continue
+						}
+						seen[target.name] = true
+
+						if p, ok := existingProjects[target.name]; ok {
+							if p.Agent.Options == nil {
+								p.Agent.Options = make(map[string]any)
 							}
-						}
-						if !hasBridge {
-							p.Platforms = append(p.Platforms, config.PlatformConfig{
-								Type: "bridge",
-							})
-						}
-						updatedProjects = append(updatedProjects, *p)
-					} else {
-						newProj := config.ProjectConfig{
-							Name: projName,
-							Agent: config.AgentConfig{
-								Type: "claudecode",
-								Options: map[string]any{
-									"work_dir": ws.Path,
-									"mode":     "default",
-								},
-							},
-							Platforms: []config.PlatformConfig{
-								{
+							p.Agent.Options["work_dir"] = ws.Path
+
+							// Ensure bridge platform exists
+							hasBridge := false
+							for _, plat := range p.Platforms {
+								if plat.Type == "bridge" {
+									hasBridge = true
+									break
+								}
+							}
+							if !hasBridge {
+								p.Platforms = append(p.Platforms, config.PlatformConfig{
 									Type: "bridge",
+								})
+							}
+							updatedProjects = append(updatedProjects, *p)
+						} else {
+							newProj := config.ProjectConfig{
+								Name: target.name,
+								Agent: config.AgentConfig{
+									Type: target.agentType,
+									Options: map[string]any{
+										"work_dir": ws.Path,
+										"mode":     "default",
+									},
 								},
-							},
+								Platforms: []config.PlatformConfig{
+									{
+										Type: "bridge",
+									},
+								},
+							}
+							updatedProjects = append(updatedProjects, newProj)
 						}
-						updatedProjects = append(updatedProjects, newProj)
 					}
 				}
 
@@ -360,7 +399,7 @@ insecure = true
 
 			// 3. Fallback: if project list is empty, inject a default placeholder project to pass CC-Connect's validation.
 			if len(cfg.Projects) == 0 {
-				homeDir, _ := os.UserHomeDir()
+				homeDir := get1AgentsHome()
 				tempDir := filepath.Join(homeDir, "temp")
 				_ = os.MkdirAll(tempDir, 0755)
 				cfg.Projects = []config.ProjectConfig{
@@ -383,6 +422,7 @@ insecure = true
 			}
 
 			// Write the merged configuration back to disk
+			cfg.DataDir = ccDir
 			if err := saveConfig(cfg, configPath); err != nil {
 				log.Printf("[ccconnect] Error saving config back to disk: %v", err)
 			}
@@ -451,8 +491,12 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		slog.Info("no projects configured in cc-connect, running management servers only")
 	}
 
-	engines := make([]*core.Engine, 0, len(cfg.Projects))
-	effectiveWorkDirs := make([]string, 0, len(cfg.Projects))
+	type initializedProject struct {
+		proj             config.ProjectConfig
+		engine           *core.Engine
+		effectiveWorkDir string
+	}
+	var iprojs []initializedProject
 
 	for _, proj := range cfg.Projects {
 		if proj.RunAsUser != "" {
@@ -547,8 +591,11 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			return err
 		})
 
-		engines = append(engines, engine)
-		effectiveWorkDirs = append(effectiveWorkDirs, effectiveWorkDir)
+		iprojs = append(iprojs, initializedProject{
+			proj:             proj,
+			engine:           engine,
+			effectiveWorkDir: effectiveWorkDir,
+		})
 	}
 
 	cronStore, err := core.NewCronStore(cfg.DataDir)
@@ -564,29 +611,29 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		if cfg.Cron.SessionMode != "" {
 			cronSched.SetDefaultSessionMode(cfg.Cron.SessionMode)
 		}
-		for i, e := range engines {
-			cronSched.RegisterEngine(cfg.Projects[i].Name, e)
-			e.SetCronScheduler(cronSched)
+		for _, ip := range iprojs {
+			cronSched.RegisterEngine(ip.proj.Name, ip.engine)
+			ip.engine.SetCronScheduler(cronSched)
 		}
 	}
 
 	heartbeatSched := core.NewHeartbeatScheduler(cfg.DataDir)
-	for i, proj := range cfg.Projects {
-		hbCfg := buildHeartbeatConfig(proj.Heartbeat)
+	for _, ip := range iprojs {
+		hbCfg := buildHeartbeatConfig(ip.proj.Heartbeat)
 		if hbCfg.Enabled {
-			heartbeatSched.Register(proj.Name, hbCfg, engines[i], effectiveWorkDirs[i])
+			heartbeatSched.Register(ip.proj.Name, hbCfg, ip.engine, ip.effectiveWorkDir)
 		}
-		engines[i].SetHeartbeatScheduler(heartbeatSched)
+		ip.engine.SetHeartbeatScheduler(heartbeatSched)
 	}
 
 	var startErrors []error
-	for _, e := range engines {
-		if err := e.Start(); err != nil {
+	for _, ip := range iprojs {
+		if err := ip.engine.Start(); err != nil {
 			slog.Warn("engine start partially failed", "error", err)
 			startErrors = append(startErrors, err)
 		}
 	}
-	if len(startErrors) > 0 && len(startErrors) == len(engines) {
+	if len(startErrors) > 0 && len(startErrors) == len(iprojs) {
 		slog.Error("all engines failed to start")
 	}
 
@@ -604,8 +651,8 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		slog.Error("failed to create cc-connect Unix socket API server", "error", err)
 	} else {
 		apiSrv = apiSrvInstance
-		for i, e := range engines {
-			apiSrv.RegisterEngine(cfg.Projects[i].Name, e)
+		for _, ip := range iprojs {
+			apiSrv.RegisterEngine(ip.proj.Name, ip.engine)
 		}
 		if cronSched != nil {
 			apiSrv.SetCronScheduler(cronSched)
@@ -631,10 +678,10 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			bridgeSrv = core.NewBridgeServer(port, cfg.Bridge.Token, path, cfg.Bridge.CORSOrigins)
 		}
 		if bridgeSrv != nil {
-			for i, e := range engines {
-				bp := bridgeSrv.NewPlatform(cfg.Projects[i].Name)
-				bridgeSrv.RegisterEngine(cfg.Projects[i].Name, e, bp)
-				e.AddPlatform(bp)
+			for _, ip := range iprojs {
+				bp := bridgeSrv.NewPlatform(ip.proj.Name)
+				bridgeSrv.RegisterEngine(ip.proj.Name, ip.engine, bp)
+				ip.engine.AddPlatform(bp)
 			}
 			bridgeSrv.Start()
 		}
@@ -648,8 +695,8 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			port = 9820
 		}
 		mgmtSrv = core.NewManagementServer(port, cfg.Management.Token, cfg.Management.CORSOrigins)
-		for i, e := range engines {
-			mgmtSrv.RegisterEngine(cfg.Projects[i].Name, e)
+		for _, ip := range iprojs {
+			mgmtSrv.RegisterEngine(ip.proj.Name, ip.engine)
 		}
 		if cronSched != nil {
 			mgmtSrv.SetCronScheduler(cronSched)
@@ -815,12 +862,12 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		mgmtSrv.Start()
 	}
 
-	slog.Info("cc-connect is running inside 1Agent", "projects", len(engines))
+	slog.Info("cc-connect is running inside 1Agent", "projects", len(iprojs))
 
 	if notify := core.ConsumeRestartNotify(cfg.DataDir); notify != nil {
 		slog.Info("post-restart: sending success notification", "platform", notify.Platform, "session", notify.SessionKey)
-		for _, e := range engines {
-			e.SendRestartNotification(notify.Platform, notify.SessionKey)
+		for _, ip := range iprojs {
+			ip.engine.SendRestartNotification(notify.Platform, notify.SessionKey)
 		}
 	}
 
@@ -852,8 +899,8 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 	if cronSched != nil {
 		cronSched.Stop()
 	}
-	for _, e := range engines {
-		e.Stop()
+	for _, ip := range iprojs {
+		ip.engine.Stop()
 	}
 
 	if restartReq != nil {
@@ -1562,6 +1609,25 @@ func runCCSwitchSwitchCommand(appType, providerID string) {
 	} else {
 		log.Printf("[ccconnect] cc-switch switch command executed successfully")
 	}
+}
+
+func ccProjectName(wsName string, agentType string) string {
+	var sb strings.Builder
+	for _, r := range wsName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('_')
+		}
+	}
+	slug := sb.String()
+	if len(slug) > 32 {
+		slug = slug[:32]
+	}
+	if slug == "" {
+		slug = "ws"
+	}
+	return fmt.Sprintf("%s__%s", slug, agentType)
 }
 
 

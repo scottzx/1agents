@@ -33,6 +33,17 @@ var (
 	buildTime = "unknown"
 )
 
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return home
+}
+
 func main() {
 	cfg := config.Default()
 
@@ -264,11 +275,7 @@ func main() {
 
 			// Fallback to default user home directory paths for self-signed certs
 			if sslCert == "" || sslKey == "" {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					log.Printf("[main] WARNING: could not resolve user home directory (%v). Using current directory.", err)
-					home = "."
-				}
+				home := get1AgentsHome()
 				defaultCertDir := filepath.Join(home, ".1agents", "certs")
 				if sslCert == "" {
 					sslCert = filepath.Join(defaultCertDir, "cert.pem")
@@ -350,10 +357,7 @@ func main() {
 // writeDaemonFile writes the daemon's listen address to a well-known location
 // so CLI subcommands (tunnel, etc.) can discover the port without flags.
 func writeDaemonFile(listenAddr string) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return
-	}
+	home := get1AgentsHome()
 	daemonDir := filepath.Join(home, ".1agents")
 	os.MkdirAll(daemonDir, 0700)
 
@@ -404,10 +408,7 @@ func getLoginShellPath() string {
 
 // checkDaemonRunning reads ~/.1agents/daemon.json and checks if the daemon is active
 func checkDaemonRunning() (string, int, bool) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", 0, false
-	}
+	home := get1AgentsHome()
 	data, err := os.ReadFile(filepath.Join(home, ".1agents", "daemon.json"))
 	if err != nil {
 		return "", 0, false

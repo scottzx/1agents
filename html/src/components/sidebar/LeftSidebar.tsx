@@ -1,6 +1,6 @@
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
-import { WorkspaceFolder, Workspace, RightDrawerTab, Session } from '../types';
+import { useState, useEffect, useRef } from 'preact/hooks';
+import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat } from '../types';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -20,6 +20,8 @@ interface LeftSidebarProps {
     onSelectSession: (session: Session) => void;
     onTerminalCreate: (workspaceId: string, cwd: string) => void;
     onTerminalKill: (windowIndex: number) => void;
+    onChatCreate: (workspaceId: string) => void;
+    onChatKill: (sessionId: string) => void;
 }
 
 export function LeftSidebar({
@@ -40,16 +42,32 @@ export function LeftSidebar({
     onSelectSession,
     onTerminalCreate,
     onTerminalKill,
+    onChatCreate,
+    onChatKill,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [killingSessionIndex, setKillingSessionIndex] = useState<number | null>(null);
+    const [killingSessionId, setKillingSessionId] = useState<string | null>(null);
+    const [openDropdownWsId, setOpenDropdownWsId] = useState<string | null>(null);
+    const dropdownRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         setDeletingId(null);
-        setKillingSessionIndex(null);
+        setKillingSessionId(null);
     }, [folders]);
+
+    // Close the add-session dropdown on outside click.
+    useEffect(() => {
+        if (!openDropdownWsId) return;
+        const onDown = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setOpenDropdownWsId(null);
+            }
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [openDropdownWsId]);
 
     const handleDeleteClick = (e: MouseEvent, id: string) => {
         e.stopPropagation();
@@ -75,12 +93,20 @@ export function LeftSidebar({
         setConfirmDeleteId(null);
     };
 
+    const handleSessionKill = (e: MouseEvent, session: Session) => {
+        e.stopPropagation();
+        setKillingSessionId(session.id);
+        setTimeout(() => {
+            if (isChat(session)) onChatKill(session.id);
+            else onTerminalKill(session.index);
+        }, 300);
+    };
+
     return (
         <aside
             class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}
             style={leftSidebarOpen ? `width: ${leftSidebarWidth}px` : ''}
             onClick={(e: MouseEvent) => {
-                // If on mobile and clicking the backdrop (outside the sidebar container which is 280px wide on mobile)
                 if (window.innerWidth <= 768 && e.clientX > 280) {
                     toggleLeftSidebar();
                 }
@@ -112,7 +138,6 @@ export function LeftSidebar({
                     <div class="section-header">
                         <span>工作空间 Workspaces</span>
                         <div class="header-actions">
-                            {/* Add workspace button */}
                             <button
                                 class="ws-add-btn"
                                 onClick={(e: MouseEvent) => {
@@ -135,7 +160,6 @@ export function LeftSidebar({
                         </div>
                     </div>
 
-                    {/* Loading skeleton */}
                     {workspacesLoading && (
                         <div class="ws-skeleton">
                             <div class="ws-skeleton-item" />
@@ -144,7 +168,6 @@ export function LeftSidebar({
                         </div>
                     )}
 
-                    {/* Empty state */}
                     {!workspacesLoading && folders.length === 0 && (
                         <div class="ws-empty">
                             <svg
@@ -171,6 +194,7 @@ export function LeftSidebar({
                             const isConfirmingDelete = confirmDeleteId === folder.id;
                             const isActive = folder.id === activeWorkspaceId;
                             const isDeleting = deletingId === folder.id;
+                            const isDropdownOpen = openDropdownWsId === folder.id;
 
                             return (
                                 <div
@@ -185,7 +209,6 @@ export function LeftSidebar({
                                     }}
                                 >
                                     {isConfirmingDelete ? (
-                                        /* Delete confirm inline */
                                         <div class="ws-delete-confirm">
                                             <span>删除 "{folder.name}"？</span>
                                             <button
@@ -232,29 +255,59 @@ export function LeftSidebar({
                                                 {folder.name}
                                             </span>
 
-                                            {/* Action buttons */}
                                             <div class="ws-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                                                {/* Add session button — always visible */}
                                                 {ws && (
-                                                    <button
-                                                        class="ws-action-btn ws-action-add"
-                                                        title="新建终端"
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onTerminalCreate(ws.id, ws.terminalDir || ws.path);
-                                                        }}
+                                                    <div
+                                                        class="ws-add-dropdown"
+                                                        ref={isDropdownOpen ? dropdownRef : null}
                                                     >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2.5"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
+                                                        <button
+                                                            class="ws-action-btn ws-action-add"
+                                                            title="新建会话"
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                setOpenDropdownWsId(isDropdownOpen ? null : folder.id);
+                                                            }}
                                                         >
-                                                            <path d="M5 12h14M12 5v14" />
-                                                        </svg>
-                                                    </button>
+                                                            <svg
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                stroke-width="2.5"
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                            >
+                                                                <path d="M5 12h14M12 5v14" />
+                                                            </svg>
+                                                        </button>
+                                                        {isDropdownOpen && (
+                                                            <div class="ws-add-dropdown-menu">
+                                                                <button
+                                                                    class="ws-add-dropdown-item"
+                                                                    onClick={(e: MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        setOpenDropdownWsId(null);
+                                                                        onTerminalCreate(
+                                                                            ws.id,
+                                                                            ws.terminalDir || ws.path
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    新建终端
+                                                                </button>
+                                                                <button
+                                                                    class="ws-add-dropdown-item"
+                                                                    onClick={(e: MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        setOpenDropdownWsId(null);
+                                                                        onChatCreate(ws.id);
+                                                                    }}
+                                                                >
+                                                                    新建聊天
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
                                                 {isHovered &&
                                                     ws && [
@@ -307,49 +360,91 @@ export function LeftSidebar({
                                             {folder.sessions.length === 0 ? (
                                                 <div class="ws-no-sessions">暂无会话 — 点击工作空间旁的 + 创建</div>
                                             ) : (
-                                                folder.sessions.map(session => (
-                                                    <div
-                                                        key={session.id}
-                                                        class={`chat-item ${session.active ? 'active' : ''}${
-                                                            killingSessionIndex === session.index
-                                                                ? ' chat-item-killing'
-                                                                : ''
-                                                        }`}
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onSelectSession(session);
-                                                        }}
-                                                    >
-                                                        <span class="chat-title" title={session.name}>
-                                                            {session.name}
-                                                        </span>
-                                                        <span class="chat-time">{session.workspaceId}</span>
-                                                        <button
-                                                            class="session-kill-btn"
-                                                            title="关闭会话"
+                                                folder.sessions.map(session => {
+                                                    const killing = killingSessionId === session.id;
+                                                    if (isChat(session)) {
+                                                        return (
+                                                            <div
+                                                                key={session.id}
+                                                                class={`chat-item chat-row-kind-chat ${session.active ? 'active' : ''}${
+                                                                    killing ? ' chat-item-killing' : ''
+                                                                }`}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    onSelectSession(session);
+                                                                }}
+                                                            >
+                                                                <span class="chat-kind-icon" title="聊天会话">
+                                                                    💬
+                                                                </span>
+                                                                <span class="chat-title" title={session.name}>
+                                                                    {session.name || '聊天会话'}
+                                                                </span>
+                                                                <span class={`chat-status-dot ${session.status}`} />
+                                                                <button
+                                                                    class="session-kill-btn"
+                                                                    title="关闭会话"
+                                                                    onClick={(e: MouseEvent) =>
+                                                                        handleSessionKill(e, session)
+                                                                    }
+                                                                >
+                                                                    <svg
+                                                                        width="12"
+                                                                        height="12"
+                                                                        viewBox="0 0 24 24"
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        stroke-width="2"
+                                                                        stroke-linecap="round"
+                                                                    >
+                                                                        <line x1="18" x2="6" y1="6" y2="18" />
+                                                                        <line x1="6" x2="18" y1="6" y2="18" />
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <div
+                                                            key={session.id}
+                                                            class={`chat-item chat-row-kind-terminal ${session.active ? 'active' : ''}${
+                                                                killing ? ' chat-item-killing' : ''
+                                                            }`}
                                                             onClick={(e: MouseEvent) => {
                                                                 e.stopPropagation();
-                                                                setKillingSessionIndex(session.index);
-                                                                setTimeout(() => {
-                                                                    onTerminalKill(session.index);
-                                                                }, 300);
+                                                                onSelectSession(session);
                                                             }}
                                                         >
-                                                            <svg
-                                                                width="12"
-                                                                height="12"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2"
-                                                                stroke-linecap="round"
+                                                            <span class="chat-kind-icon" title="终端会话">
+                                                                ›_
+                                                            </span>
+                                                            <span class="chat-title" title={session.name}>
+                                                                {session.name}
+                                                            </span>
+                                                            <span class="chat-time">{session.workspaceId}</span>
+                                                            <button
+                                                                class="session-kill-btn"
+                                                                title="关闭会话"
+                                                                onClick={(e: MouseEvent) =>
+                                                                    handleSessionKill(e, session)
+                                                                }
                                                             >
-                                                                <line x1="18" x2="6" y1="6" y2="18" />
-                                                                <line x1="6" x2="18" y1="6" y2="18" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                ))
+                                                                <svg
+                                                                    width="12"
+                                                                    height="12"
+                                                                    viewBox="0 0 24 24"
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    stroke-width="2"
+                                                                    stroke-linecap="round"
+                                                                >
+                                                                    <line x1="18" x2="6" y1="6" y2="18" />
+                                                                    <line x1="6" x2="18" y1="6" y2="18" />
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })
                                             )}
                                         </div>
                                     )}
@@ -411,7 +506,7 @@ export function LeftSidebar({
                         stroke-linejoin="round"
                     >
                         <circle cx="12" cy="12" r="10" />
-                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
                     </svg>
                     <span>发现中心</span>
                 </div>
