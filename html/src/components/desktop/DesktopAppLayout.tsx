@@ -1,6 +1,6 @@
 import { h, Component, Fragment } from 'preact';
 import type { ITerminalOptions } from '@xterm/xterm';
-import { isFullPageTab } from '../types';
+import { isFullPageTab, isChat } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
 import { MiddleCanvas } from '../canvas/MiddleCanvas';
@@ -167,6 +167,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onReorderFolders={app.reorderFolders}
                                 language={language}
                                 moduleNav={app.buildModuleNav()}
+                                onChatCreate={app.openChatCreate}
+                                onChatKill={app.killChatSession}
                             />
 
                             {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -201,6 +203,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     onTmuxMouseToggle={app.toggleTmuxMouse}
                                     language={language}
                                     moduleNav={app.buildModuleNav()}
+                                    hasChatSession={folders.some(
+                                        f => f.id === activeWorkspaceId && f.sessions.some(isChat)
+                                    )}
                                 />
 
                                 {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
@@ -314,6 +319,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 tmuxMouseOn={tmuxMouseOn}
                                                 onTmuxMouseToggle={app.toggleTmuxMouse}
                                                 language={language}
+                                                activeChatSession={
+                                                    activeSession && isChat(activeSession) ? activeSession : null
+                                                }
                                             />
 
                                             {/* Resizer: between MIDDLE canvas and RIGHT panel */}

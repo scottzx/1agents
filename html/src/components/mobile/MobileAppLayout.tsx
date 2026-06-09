@@ -2,6 +2,7 @@ import { h, Component, Fragment } from 'preact';
 import type { ITerminalOptions } from '@xterm/xterm';
 
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
+import { isChat } from '../types';
 import { MiddleCanvas } from '../canvas/MiddleCanvas';
 import { RightPanel } from '../drawer/RightPanel';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
@@ -127,7 +128,7 @@ interface MobileAppLayoutState {
     activeMoreSubView: 'menu' | 'settings' | 'discovery';
     activeSettingsCategory: SettingsCategory | 'menu';
     pendingConfirm:
-        | { kind: 'session'; name: string; sessionIndex: number }
+        | { kind: 'session'; name: string; sessionIndex: number; isChat: boolean; sessionId?: string }
         | { kind: 'workspace'; name: string; workspaceId: string }
         | null;
 }
@@ -435,6 +436,13 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                 <div class="mobile-menu-group">
                                                                     {sessions.map(s => {
                                                                         const isActive = activeSession?.id === s.id;
+                                                                        const sessionAgent = isChat(s)
+                                                                            ? s.agentType
+                                                                            : s.agent;
+                                                                        const sessionCwd = isChat(s)
+                                                                            ? undefined
+                                                                            : s.cwd;
+                                                                        const sessionIndex = isChat(s) ? -1 : s.index;
                                                                         return (
                                                                             <div
                                                                                 key={s.id}
@@ -448,41 +456,47 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                             >
                                                                                 <div class="card-left">
                                                                                     <div class="session-card-icon">
-                                                                                        <svg
-                                                                                            viewBox="0 0 24 24"
-                                                                                            fill="none"
-                                                                                            stroke="currentColor"
-                                                                                        >
-                                                                                            <polyline points="4 17 10 11 4 5" />
-                                                                                            <line
-                                                                                                x1="12"
-                                                                                                x2="20"
-                                                                                                y1="19"
-                                                                                                y2="19"
-                                                                                            />
-                                                                                        </svg>
+                                                                                        {isChat(s) ? (
+                                                                                            <span style="font-size: 16px;">
+                                                                                                💬
+                                                                                            </span>
+                                                                                        ) : (
+                                                                                            <svg
+                                                                                                viewBox="0 0 24 24"
+                                                                                                fill="none"
+                                                                                                stroke="currentColor"
+                                                                                            >
+                                                                                                <polyline points="4 17 10 11 4 5" />
+                                                                                                <line
+                                                                                                    x1="12"
+                                                                                                    x2="20"
+                                                                                                    y1="19"
+                                                                                                    y2="19"
+                                                                                                />
+                                                                                            </svg>
+                                                                                        )}
                                                                                     </div>
                                                                                     <div class="session-card-info">
                                                                                         <div class="session-card-name-row">
                                                                                             <span class="session-card-name">
                                                                                                 {s.name}
                                                                                             </span>
-                                                                                            {s.agent ? (
+                                                                                            {sessionAgent ? (
                                                                                                 <span class="session-card-agent">
-                                                                                                    {s.agent ===
+                                                                                                    {sessionAgent ===
                                                                                                     'antigravity'
                                                                                                         ? 'agy'
-                                                                                                        : s.agent
+                                                                                                        : sessionAgent
                                                                                                               .charAt(0)
                                                                                                               .toUpperCase() +
-                                                                                                          s.agent.slice(
+                                                                                                          sessionAgent.slice(
                                                                                                               1
                                                                                                           )}
                                                                                                 </span>
                                                                                             ) : null}
                                                                                         </div>
                                                                                         <span class="session-card-cwd">
-                                                                                            {s.cwd ||
+                                                                                            {sessionCwd ||
                                                                                                 activeWorkspacePath}
                                                                                         </span>
                                                                                     </div>
@@ -527,7 +541,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                                     kind: 'session',
                                                                                                     name: s.name,
                                                                                                     sessionIndex:
-                                                                                                        s.index,
+                                                                                                        sessionIndex,
+                                                                                                    isChat: isChat(s),
+                                                                                                    sessionId: s.id,
                                                                                                 },
                                                                                             });
                                                                                         }}
@@ -575,6 +591,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         tmuxMouseOn={tmuxMouseOn}
                                         onTmuxMouseToggle={app.toggleTmuxMouse}
                                         language={language}
+                                        hasChatSession={folders.some(
+                                            f => f.id === selectedWorkspaceId && f.sessions.some(isChat)
+                                        )}
                                     />
                                     <div class="workspace-body-container" style="flex: 1; min-height: 0;">
                                         {activeDrawerTab === 'none' && (
@@ -593,6 +612,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 tmuxMouseOn={tmuxMouseOn}
                                                 onTmuxMouseToggle={app.toggleTmuxMouse}
                                                 language={language}
+                                                activeChatSession={
+                                                    activeSession && isChat(activeSession) ? activeSession : null
+                                                }
                                             />
                                         )}
 
@@ -1139,7 +1161,11 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 this.setState({ pendingConfirm: null });
                                                 if (!target) return;
                                                 if (target.kind === 'session') {
-                                                    await app.killTerminal(target.sessionIndex);
+                                                    if (target.isChat && target.sessionId) {
+                                                        await app.killChatSession(target.sessionId);
+                                                    } else {
+                                                        await app.killTerminal(target.sessionIndex);
+                                                    }
                                                 } else {
                                                     await app.deleteWorkspace(target.workspaceId);
                                                 }

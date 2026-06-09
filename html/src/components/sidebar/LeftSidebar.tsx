@@ -375,7 +375,9 @@ export function LeftSidebar({
                                                                 title={t('sidebar.newSession', language) || '新建会话'}
                                                                 onClick={(e: MouseEvent) => {
                                                                     e.stopPropagation();
-                                                                    setOpenDropdownWsId(isDropdownOpen ? null : folder.id);
+                                                                    setOpenDropdownWsId(
+                                                                        isDropdownOpen ? null : folder.id
+                                                                    );
                                                                 }}
                                                             >
                                                                 <svg
@@ -487,11 +489,19 @@ export function LeftSidebar({
                                                                         onSelectSession(session);
                                                                     }}
                                                                 >
-                                                                    <span class="chat-kind-icon" title={t('sidebar.chatSession', language) || '聊天会话'}>
+                                                                    <span
+                                                                        class="chat-kind-icon"
+                                                                        title={
+                                                                            t('sidebar.chatSession', language) ||
+                                                                            '聊天会话'
+                                                                        }
+                                                                    >
                                                                         💬
                                                                     </span>
                                                                     <span class="chat-title" title={session.name}>
-                                                                        {session.name || t('sidebar.chatSession', language) || '聊天会话'}
+                                                                        {session.name ||
+                                                                            t('sidebar.chatSession', language) ||
+                                                                            '聊天会话'}
                                                                     </span>
                                                                     <span class={`chat-status-dot ${session.status}`} />
                                                                     <button

@@ -1,6 +1,18 @@
 import { h, Component } from 'preact';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session, ChatSession, AgentType, isChat, isTerminal, isFullPageTab } from './types';
+import {
+    WorkspaceFolder,
+    Workspace,
+    FsEntry,
+    RightDrawerTab,
+    TmuxWindow,
+    Session,
+    ChatSession,
+    AgentType,
+    isChat,
+    isTerminal,
+    isFullPageTab,
+} from './types';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
@@ -825,7 +837,8 @@ export class App extends Component<{}, AppState> {
                     id: activeWin.name,
                     workspaceId: activeWin.workspaceId,
                     index: activeWin.index,
-                    name: activeWin.customName || t('app.session.title', this.state.language, { index: activeWin.index }),
+                    name:
+                        activeWin.customName || t('app.session.title', this.state.language, { index: activeWin.index }),
                     active: true,
                     cwd: activeWin.cwd,
                     status: activeWin.status,
@@ -1821,8 +1834,6 @@ export class App extends Component<{}, AppState> {
             wsModalTerminalDir,
             wsModalChatChannel,
             wsModalDefaultAgent,
-            ccConnectUrl,
-            ccProvidersUrl,
             chatCreateOpen,
             chatCreateWsId,
             dirPickerOpen,
@@ -1842,10 +1853,6 @@ export class App extends Component<{}, AppState> {
             sessionRenameModalOpen,
             sessionRenameTarget,
             sessionRenameName,
-            accessAuthRequired,
-            tabs,
-            activeTabId,
-            chatSessions,
         } = this.state;
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
