@@ -1,15 +1,6 @@
-import { h, Component, Fragment } from 'preact';
-
-import type { ITerminalOptions, ITheme } from '@xterm/xterm';
-import type { ClientOptions, FlowControl } from './terminal/xterm';
+import { h, Component } from 'preact';
 
 import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session, isFullPageTab } from './types';
-import { LeftSidebar } from './sidebar/LeftSidebar';
-import { WorkspaceHeader } from './header/WorkspaceHeader';
-import { MiddleCanvas } from './canvas/MiddleCanvas';
-import { RightPanel } from './drawer/RightPanel';
-import { DiscoveryPanel } from './drawer/DiscoveryPanel';
-import { SystemSettings } from './settings/SystemSettings';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
@@ -19,93 +10,27 @@ import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
 import { t, type Lang } from '../i18n';
-import { getModuleByTab, buildModuleIframeSrc, mergeManifests, type ModuleRegistration } from '../modules/registry';
+import { getModuleByTab, mergeManifests, type ModuleRegistration } from '../modules/registry';
 import { postToModule, isModuleInboundMessage } from '../modules/post-message';
 import type { ModuleManifest } from '../modules/module-types';
+import { DesktopAppLayout } from './desktop/DesktopAppLayout';
+import { MobileAppLayout } from './mobile/MobileAppLayout';
+import { BuiltinBrowser } from './browser/BuiltinBrowser';
 
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const path = window.location.pathname.replace(/[/]+$/, '');
-const wsUrl = [protocol, '//', window.location.host, path, '/ws', window.location.search].join('');
-const tokenUrl = [window.location.protocol, '//', window.location.host, path, '/token'].join('');
+import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
 
-const clientOptions = {
-    rendererType: 'webgl',
-    disableLeaveAlert: false,
-    disableResizeOverlay: false,
-    enableZmodem: false,
-    enableTrzsz: false,
-    enableSixel: false,
-    closeOnDisconnect: false,
-    isWindows: false,
-    unicodeVersion: '11',
-} as ClientOptions;
+export {
+    wsUrl,
+    tokenUrl,
+    clientOptions,
+    flowControl,
+    lightTermTheme,
+    darkTermTheme,
+    baseTermOptions,
+    isMobileDevice,
+} from './terminal/terminalConfig';
 
-const flowControl = {
-    limit: 100000,
-    highWater: 10,
-    lowWater: 4,
-} as FlowControl;
-
-const lightTermTheme = {
-    foreground: '#1f2328',
-    background: '#fafafa',
-    cursor: '#1f2328',
-    selectionBackground: '#0969da',
-    selectionForeground: '#ffffff',
-    selectionInactiveBackground: '#e2e8f0',
-    black: '#1f2328',
-    red: '#cf222e',
-    green: '#1a7f37',
-    yellow: '#9a6700',
-    blue: '#0969da',
-    magenta: '#8250df',
-    cyan: '#1b7c83',
-    white: '#57606a',
-    brightBlack: '#6e7781',
-    brightRed: '#d1242f',
-    brightGreen: '#2da44e',
-    brightYellow: '#b48600',
-    brightBlue: '#2188ff',
-    brightMagenta: '#a371f7',
-    brightCyan: '#31929a',
-    brightWhite: '#1f2328',
-} as ITheme;
-
-const darkTermTheme = {
-    foreground: '#d2d2d2',
-    background: '#0d1117',
-    cursor: '#adadad',
-    selectionBackground: '#2f81f7',
-    selectionForeground: '#ffffff',
-    black: '#000000',
-    red: '#d81e00',
-    green: '#5ea702',
-    yellow: '#cfae00',
-    blue: '#427ab3',
-    magenta: '#89658e',
-    cyan: '#00a7aa',
-    white: '#dbded8',
-    brightBlack: '#686a66',
-    brightRed: '#f54235',
-    brightGreen: '#99e343',
-    brightYellow: '#fdeb61',
-    brightBlue: '#84b0d8',
-    brightMagenta: '#bc94b7',
-    brightCyan: '#37e6e8',
-    brightWhite: '#f1f1f0',
-} as ITheme;
-
-const baseTermOptions = {
-    fontFamily: 'JetBrains Mono, Consolas, Liberation Mono, Menlo, monospace',
-    allowProposedApi: true,
-    minimumContrastRatio: 4.5,
-} as ITerminalOptions;
-
-const isMobileDevice = () =>
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    window.innerWidth <= 768;
-
-interface Tab {
+export interface Tab {
     id: string; // 'terminal', 'preview-[path]', 'browser-[timestamp]'
     title: string;
     type: 'terminal' | 'preview' | 'browser';
@@ -114,7 +39,7 @@ interface Tab {
     closable: boolean;
 }
 
-interface AppState {
+export interface AppState {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
     activeDrawerTab: RightDrawerTab;
     tabs: Tab[];
@@ -195,285 +120,6 @@ interface AppState {
 let _resizerActive: 'left' | 'right' | null = null;
 let _resizerStartX = 0;
 let _resizerStartWidth = 0;
-
-interface BuiltinBrowserProps {
-    tab: Tab;
-    active: boolean;
-    onUrlChange: (tabId: string, url: string) => void;
-    language: Lang;
-}
-
-interface BuiltinBrowserState {
-    iframeSrc: string;
-}
-
-class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState> {
-    private inputRef: HTMLInputElement | null = null;
-    private iframeRef: HTMLIFrameElement | null = null;
-    private lastLoadedUrl: string = '';
-
-    state: BuiltinBrowserState = {
-        iframeSrc: this.getIframeUrl(this.props.tab.url || ''),
-    };
-
-    componentDidMount() {
-        window.addEventListener('message', this.handleIframeMessage);
-    }
-
-    componentWillUnmount() {
-        window.removeEventListener('message', this.handleIframeMessage);
-    }
-
-    componentWillReceiveProps(nextProps: BuiltinBrowserProps) {
-        if (nextProps.tab.url !== this.props.tab.url) {
-            if (nextProps.tab.url !== this.lastLoadedUrl) {
-                this.setState({
-                    iframeSrc: this.getIframeUrl(nextProps.tab.url || ''),
-                });
-            }
-        }
-    }
-
-    handleIframeMessage = (e: MessageEvent) => {
-        if (this.iframeRef && e.source === this.iframeRef.contentWindow) {
-            // Reject cross-origin messages so a misbehaving page can't poison the URL bar
-            if (e.origin !== window.location.origin) return;
-            const data = e.data;
-            if (data && data.type === 'iframe_navigate' && typeof data.url === 'string') {
-                // Strip /api/proxy?url= wrapper — mirrors handleIframeLoad's extraction
-                const newUrl = this.getOriginalUrl(data.url);
-                if (newUrl && newUrl !== this.props.tab.url) {
-                    this.lastLoadedUrl = newUrl;
-                    this.props.onUrlChange(this.props.tab.id, newUrl);
-                }
-            }
-        }
-    };
-
-    getOriginalUrl = (urlStr: string): string => {
-        try {
-            const url = new URL(urlStr);
-            if (url.pathname === '/api/proxy') {
-                const target = url.searchParams.get('url');
-                if (target) return target;
-            }
-            return urlStr;
-        } catch (e) {
-            return urlStr;
-        }
-    };
-
-    handleIframeLoad = () => {
-        if (!this.iframeRef || !this.iframeRef.contentWindow) return;
-        try {
-            const iframeUrl = this.iframeRef.contentWindow.location.href;
-            if (iframeUrl && iframeUrl !== 'about:blank') {
-                const targetUrl = this.getOriginalUrl(iframeUrl);
-                if (targetUrl && targetUrl !== this.props.tab.url) {
-                    this.lastLoadedUrl = targetUrl;
-                    this.props.onUrlChange(this.props.tab.id, targetUrl);
-                }
-            }
-        } catch (e) {
-            // Expected cross-origin error when loading non-proxied localhost/intranet sites
-        }
-    };
-
-    private invokeTauri = async (command: string, args: Record<string, unknown> = {}): Promise<unknown> => {
-        const tauri = (
-            window as unknown as {
-                __TAURI__?: { core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } };
-            }
-        ).__TAURI__;
-        if (tauri) {
-            try {
-                return await tauri.core.invoke(command, args);
-            } catch (e) {
-                console.error(`Failed to invoke Tauri command ${command}:`, e);
-            }
-        }
-        return null;
-    };
-
-    isLocalUrl(urlStr: string): boolean {
-        try {
-            const url = new URL(urlStr);
-            const hostname = url.hostname.toLowerCase();
-            return (
-                hostname === 'localhost' ||
-                hostname === '127.0.0.1' ||
-                hostname === '::1' ||
-                hostname.startsWith('192.168.') ||
-                hostname.startsWith('10.') ||
-                hostname.startsWith('172.')
-            );
-        } catch (e) {
-            const lower = urlStr.toLowerCase();
-            return lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('::1');
-        }
-    }
-
-    getIframeUrl(urlStr: string): string {
-        if (!urlStr || urlStr === 'about:blank') {
-            return 'about:blank';
-        }
-        if (this.isLocalUrl(urlStr)) {
-            return urlStr;
-        }
-        // Don't double-wrap an already-proxied URL — breaks the feedback loop
-        // if tab.url is transiently a /api/proxy?url=... string
-        if (urlStr.startsWith(`${window.location.origin}/api/proxy?url=`)) {
-            return urlStr;
-        }
-        return `${window.location.origin}/api/proxy?url=${encodeURIComponent(urlStr)}`;
-    }
-
-    handleKeyPress = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' && this.inputRef) {
-            let url = this.inputRef.value.trim();
-            if (url) {
-                if (!/^https?:\/\//i.test(url) && !url.startsWith('about:')) {
-                    url = 'http://' + url;
-                }
-                this.lastLoadedUrl = '';
-                this.props.onUrlChange(this.props.tab.id, url);
-            }
-        }
-    };
-
-    handleRefresh = () => {
-        if (this.iframeRef && this.iframeRef.contentWindow) {
-            try {
-                this.iframeRef.contentWindow.location.reload();
-            } catch (e) {
-                this.iframeRef.src = this.state.iframeSrc;
-            }
-        }
-    };
-
-    handleOpenExternal = () => {
-        const { tab } = this.props;
-        if (!tab.url || tab.url === 'about:blank') return;
-
-        const isDesktopEnv =
-            IS_DESKTOP || (typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: object }).__TAURI__);
-        if (isDesktopEnv) {
-            this.invokeTauri('open_in_external_browser', { url: tab.url });
-        } else {
-            window.open(tab.url, '_blank');
-        }
-    };
-
-    render() {
-        const { tab, active } = this.props;
-        const { language } = this.props;
-        const isHome = !tab.url || tab.url === 'about:blank';
-
-        return (
-            <div
-                class="builtin-browser"
-                style={{ display: active ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}
-            >
-                <div class="browser-nav-bar">
-                    <button
-                        class="browser-refresh-btn"
-                        onClick={this.handleRefresh}
-                        title={t('app.browser.refresh', this.props.language)}
-                        disabled={isHome}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.72 2.78L21 8" />
-                            <polyline points="21 3 21 8 16 8" />
-                        </svg>
-                    </button>
-                    <input
-                        type="text"
-                        class="browser-url-input"
-                        placeholder={t('app.browser.placeholder', this.props.language)}
-                        value={tab.url === 'about:blank' ? '' : tab.url}
-                        ref={el => {
-                            this.inputRef = el;
-                        }}
-                        onKeyDown={this.handleKeyPress}
-                    />
-                    <button
-                        class="browser-open-external-btn"
-                        onClick={this.handleOpenExternal}
-                        title={t('app.browser.openExternal', this.props.language)}
-                        disabled={isHome}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                    </button>
-                </div>
-                <div class="browser-iframe-wrapper" style="flex: 1; position: relative; width: 100%; height: 100%;">
-                    {isHome && (
-                        <div
-                            class="browser-welcome-page"
-                            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"
-                        >
-                            <div class="welcome-card">
-                                <svg
-                                    class="welcome-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="1.5"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="2" y1="12" x2="22" y2="12" />
-                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                </svg>
-                                <h3 class="welcome-title">{t('app.browser.title', language)}</h3>
-                                <p class="welcome-desc">{t('app.browser.welcomeDesc', language)}</p>
-                                <div class="welcome-tips">
-                                    <div class="tip-item">
-                                        <strong>{t('app.browser.tipProxyLabel', language)}</strong>
-                                        <span>{t('app.browser.tipProxyDesc', language)}</span>
-                                    </div>
-                                    <div class="tip-item">
-                                        <strong>{t('app.browser.tipExternalLabel', language)}</strong>
-                                        <span>{t('app.browser.tipExternalDesc', language)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {!isHome && (
-                        <iframe
-                            ref={el => {
-                                this.iframeRef = el;
-                            }}
-                            src={this.state.iframeSrc}
-                            class="browser-iframe"
-                            style="width: 100%; height: 100%; border: none; background: #fff;"
-                            onLoad={this.handleIframeLoad}
-                        />
-                    )}
-                </div>
-            </div>
-        );
-    }
-}
 
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
@@ -1969,33 +1615,16 @@ export class App extends Component<{}, AppState> {
 
     render() {
         const {
-            activeTab,
-            activeDrawerTab,
-            theme,
-            leftSidebarOpen,
-            leftSidebarWidth,
-            tmuxMouseOn,
-            rightPanelWidth,
-            folders,
             workspaces,
             workspacesLoading,
-            activeWorkspaceId,
             wsModalOpen,
             wsModalMode,
             wsModalName,
             wsModalPath,
             wsModalTerminalDir,
             wsModalChatChannel,
-            ccConnectUrl,
-            ccProvidersUrl,
             dirPickerOpen,
-            flatFiles,
-            flatFilesLoading,
-            searchQuery,
-            selectedFilterTag,
-            viewMode,
             favoriteFiles,
-            detailFullscreen,
             isEditingDetail,
             selectedFsEntry,
             fileContent,
@@ -2005,20 +1634,13 @@ export class App extends Component<{}, AppState> {
             fileSaveMsg,
             isImagePreview,
             toastMsg,
-            activeSession,
             language,
             accessGateVisible,
             accessTokenModalToken,
-            accessAuthRequired,
-            tabs,
-            activeTabId,
             sessionRenameModalOpen,
             sessionRenameTarget,
             sessionRenameName,
         } = this.state;
-
-        const activeTabObj = tabs.find(t => t.id === activeTabId);
-
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} language={language} />;
@@ -2105,17 +1727,6 @@ export class App extends Component<{}, AppState> {
             );
         }
 
-        const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
-        const termOptions = {
-            ...baseTermOptions,
-            theme: currentTheme,
-            fontSize: isMobileDevice() ? 12 : 13,
-        } as ITerminalOptions;
-
-        // Derive the filesystem path of the currently active workspace
-        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
-        const activeWorkspacePath = activeWorkspace?.path || '.';
-
         return (
             <div class="app-container" style="display: flex; flex-direction: column;">
                 {this.state.hasLoadedWorkspaces && workspaces.length === 0 ? (
@@ -2124,465 +1735,10 @@ export class App extends Component<{}, AppState> {
                         onCreateWorkspace={this.openCreateWorkspacePicker}
                         onUseTempWorkspace={this.onUseTempWorkspace}
                     />
+                ) : this.state.isMobile ? (
+                    <MobileAppLayout app={this} state={this.state} />
                 ) : (
-                    <Fragment>
-                        {IS_DESKTOP && (
-                            <div class="workspace-tabs-bar">
-                                <div class="workspace-tabs-list">
-                                    {tabs.map(tab => {
-                                        const isActive = tab.id === activeTabId;
-                                        return (
-                                            <div
-                                                key={tab.id}
-                                                class={`workspace-tab-item ${isActive ? 'active' : ''}`}
-                                                onClick={() => this.selectTab(tab.id)}
-                                            >
-                                                <span class="tab-title">{tab.title}</span>
-                                                {tab.closable && (
-                                                    <span
-                                                        class="workspace-tab-close"
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            this.closeTab(tab.id);
-                                                        }}
-                                                        title={t('common.closeTab', language)}
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2.5"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <line x1="18" y1="6" x2="6" y2="18" />
-                                                            <line x1="6" y1="6" x2="18" y2="18" />
-                                                        </svg>
-                                                    </span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <button
-                                    class="workspace-tab-add-btn"
-                                    onClick={() => this.openBrowserTab('')}
-                                    title={t('common.openBrowserTab', language)}
-                                >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2.5"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <line x1="12" y1="5" x2="12" y2="19" />
-                                        <line x1="5" y1="12" x2="19" y2="12" />
-                                    </svg>
-                                </button>
-                            </div>
-                        )}
-
-                        <div
-                            class="app-main-layout"
-                            style="display: flex; flex: 1; flex-direction: row; overflow: hidden; width: 100%;"
-                        >
-                            {/* [COLUMN 1]: LEFT Workspaces Tree Sidebar */}
-                            {activeTabId === 'terminal' && (
-                                <Fragment>
-                                    <LeftSidebar
-                                        folders={folders}
-                                        workspaces={workspaces}
-                                        workspacesLoading={workspacesLoading}
-                                        leftSidebarOpen={leftSidebarOpen}
-                                        leftSidebarWidth={leftSidebarWidth}
-                                        activeWorkspaceId={activeWorkspaceId}
-                                        toggleLeftSidebar={this.toggleLeftSidebar}
-                                        toggleFolder={this.toggleFolder}
-                                        toggleDrawerTab={this.toggleDrawerTab}
-                                        activeDrawerTab={activeDrawerTab}
-                                        onCreateWorkspace={this.openCreateWorkspacePicker}
-                                        onRenameWorkspace={ws => this.openRenameWorkspaceModal(ws)}
-                                        onDeleteWorkspace={this.deleteWorkspace}
-                                        onSelectWorkspace={ws => this.selectWorkspace(ws)}
-                                        onSelectSession={s => this.selectSession(s)}
-                                        onTerminalCreate={(wsId, cwd) => this.createTerminal(wsId, cwd)}
-                                        onTerminalKill={idx => this.killTerminal(idx)}
-                                        onRenameSession={s => this.openRenameSessionModal(s)}
-                                        onReorderFolders={this.reorderFolders}
-                                        language={language}
-                                        moduleNav={this.buildModuleNav()}
-                                    />
-
-                                    {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
-                                    {leftSidebarOpen && (
-                                        <div
-                                            class="resizer resizer-left"
-                                            onMouseDown={(e: MouseEvent) => this.handleResizerDown('left', e)}
-                                            title={t('app.resizer.leftTitle', language)}
-                                        />
-                                    )}
-                                </Fragment>
-                            )}
-
-                            {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
-                            <div
-                                class="workspace-main-content"
-                                style={
-                                    this.state.isMobile
-                                        ? {
-                                              // Constrain height to visual viewport when keyboard is open.
-                                              // Subtract the desktop tab bar height (38px) since it sits
-                                              // above this container in the flex column and would otherwise
-                                              // push content past the visual viewport.
-                                              height: this.state.keyboardVisible
-                                                  ? `${this.state.viewportHeight - (IS_DESKTOP ? 38 : 0)}px`
-                                                  : undefined,
-                                          }
-                                        : undefined
-                                }
-                            >
-                                {activeTabId === 'terminal' ? (
-                                    <Fragment>
-                                        {/* [COZE PAGE HEADER]: Replaces top global header */}
-                                        <WorkspaceHeader
-                                            leftSidebarOpen={leftSidebarOpen}
-                                            toggleLeftSidebar={this.toggleLeftSidebar}
-                                            activeDrawerTab={activeDrawerTab}
-                                            toggleDrawerTab={this.toggleDrawerTab}
-                                            activeTab={activeTab}
-                                            setActiveTab={this.setActiveTab}
-                                            theme={theme}
-                                            toggleTheme={this.toggleTheme}
-                                            keyboardVisible={this.state.keyboardVisible}
-                                            workspaceName={activeWorkspace?.name || ''}
-                                            sessionName={activeSession?.name || ''}
-                                            tmuxMouseOn={tmuxMouseOn}
-                                            onTmuxMouseToggle={this.toggleTmuxMouse}
-                                            language={language}
-                                            moduleNav={this.buildModuleNav()}
-                                        />
-
-                                        {/* [WORKSPACE BODY CONTAINER]: terminal & drawers */}
-                                        <div
-                                            class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
-                                        >
-                                            {isFullPageTab(activeDrawerTab) ? (
-                                                <div
-                                                    style={{
-                                                        flex: 1,
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        height: '100%',
-                                                        width: '100%',
-                                                        overflow: 'hidden',
-                                                    }}
-                                                >
-                                                    {activeDrawerTab === 'providers' && ccProvidersUrl && (
-                                                        <iframe
-                                                            id="cc-providers-iframe"
-                                                            src={this.getCcConnectIframeUrl(ccProvidersUrl)}
-                                                            onLoad={e => {
-                                                                const iframe = e.target as HTMLIFrameElement;
-                                                                if (iframe && iframe.contentWindow) {
-                                                                    iframe.contentWindow.postMessage(
-                                                                        { type: 'THEME_CHANGE', theme },
-                                                                        '*'
-                                                                    );
-                                                                    iframe.contentWindow.postMessage(
-                                                                        { type: 'LANG_CHANGE', lang: language },
-                                                                        '*'
-                                                                    );
-                                                                }
-                                                            }}
-                                                            style={{
-                                                                width: '100%',
-                                                                height: '100%',
-                                                                border: 'none',
-                                                                background: 'transparent',
-                                                            }}
-                                                        />
-                                                    )}
-                                                    {activeDrawerTab === 'skills' &&
-                                                        (() => {
-                                                            const skillsMod = getModuleByTab('skills');
-                                                            const skillsSrc = skillsMod
-                                                                ? buildModuleIframeSrc(skillsMod)
-                                                                : '/1skills/';
-                                                            return (
-                                                                <iframe
-                                                                    id="skills-iframe"
-                                                                    src={skillsSrc}
-                                                                    onLoad={e => {
-                                                                        const iframe = e.target as HTMLIFrameElement;
-                                                                        postToModule(iframe, {
-                                                                            type: 'THEME_CHANGE',
-                                                                            theme,
-                                                                        });
-                                                                        postToModule(iframe, {
-                                                                            type: 'LANG_CHANGE',
-                                                                            lang: language,
-                                                                        });
-                                                                    }}
-                                                                    style={{
-                                                                        width: '100%',
-                                                                        height: '100%',
-                                                                        border: 'none',
-                                                                        background: 'transparent',
-                                                                    }}
-                                                                />
-                                                            );
-                                                        })()}
-                                                    {activeDrawerTab === 'discovery' && (
-                                                        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                                                            <DiscoveryPanel
-                                                                onOpenBrowserTab={
-                                                                    IS_DESKTOP ? this.openBrowserTab : undefined
-                                                                }
-                                                                language={language}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                    {activeDrawerTab === 'settings' && (
-                                                        <div
-                                                            style={{
-                                                                flex: 1,
-                                                                overflow: 'hidden',
-                                                                display: 'flex',
-                                                                flexDirection: 'column',
-                                                                height: '100%',
-                                                            }}
-                                                        >
-                                                            <SystemSettings
-                                                                theme={theme}
-                                                                toggleTheme={this.toggleTheme}
-                                                                language={language}
-                                                                toggleLanguage={this.toggleLanguage}
-                                                                tmuxMouseOn={tmuxMouseOn}
-                                                                onTmuxMouseToggle={this.toggleTmuxMouse}
-                                                                accessTokenExists={accessAuthRequired}
-                                                                onGenerateAccessToken={this.generateAccessToken}
-                                                                onRevokeAccessToken={this.revokeAccessToken}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <Fragment>
-                                                    {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                                    <MiddleCanvas
-                                                        activeTab={
-                                                            activeTab as 'terminal' | 'agents' | 'console' | 'folders'
-                                                        }
-                                                        wsUrl={wsUrl}
-                                                        tokenUrl={tokenUrl}
-                                                        clientOptions={clientOptions}
-                                                        termOptions={termOptions}
-                                                        flowControl={flowControl}
-                                                        onMobileDetect={isMobile => this.setState({ isMobile })}
-                                                        onKeyboardStateChange={this.handleKeyboardStateChange}
-                                                        tmuxMouseOn={tmuxMouseOn}
-                                                        onTmuxMouseToggle={this.toggleTmuxMouse}
-                                                        language={language}
-                                                    />
-
-                                                    {/* Resizer: between MIDDLE canvas and RIGHT panel */}
-                                                    {activeDrawerTab !== 'none' && (
-                                                        <div
-                                                            class="resizer resizer-right"
-                                                            onMouseDown={(e: MouseEvent) =>
-                                                                this.handleResizerDown('right', e)
-                                                            }
-                                                            title={t('app.resizer.rightTitle', language)}
-                                                        />
-                                                    )}
-
-                                                    {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                                                    <RightPanel
-                                                        activeDrawerTab={activeDrawerTab}
-                                                        activeWorkspaceId={activeWorkspaceId}
-                                                        activeWorkspacePath={activeWorkspacePath}
-                                                        rightPanelWidth={rightPanelWidth}
-                                                        closeDrawer={() => this.setState({ activeDrawerTab: 'none' })}
-                                                        ccConnectUrl={ccConnectUrl}
-                                                        theme={theme}
-                                                        toggleTheme={this.toggleTheme}
-                                                        language={language}
-                                                        toggleLanguage={this.toggleLanguage}
-                                                        flatFiles={flatFiles}
-                                                        flatFilesLoading={flatFilesLoading}
-                                                        searchQuery={searchQuery}
-                                                        selectedFilterTag={selectedFilterTag}
-                                                        viewMode={viewMode}
-                                                        favoriteFiles={favoriteFiles}
-                                                        detailFullscreen={detailFullscreen}
-                                                        isEditingDetail={isEditingDetail}
-                                                        selectedFsEntry={selectedFsEntry}
-                                                        fileContent={fileContent}
-                                                        editedContent={editedContent}
-                                                        fileLoading={fileLoading}
-                                                        fileSaving={fileSaving}
-                                                        fileSaveMsg={fileSaveMsg}
-                                                        isImagePreview={isImagePreview}
-                                                        imageUrl={fsService.imageUrl(selectedFsEntry?.path ?? '')}
-                                                        onSearchQueryChange={this.handleSearchChange}
-                                                        onFilterTagChange={this.handleFilterTagChange}
-                                                        onRefreshFlatFiles={async () => {
-                                                            this.loadDir('', null);
-                                                            const isSearching =
-                                                                searchQuery !== '' || selectedFilterTag !== 'all';
-                                                            if (isSearching) {
-                                                                this.loadFlatFiles();
-                                                            }
-                                                            try {
-                                                                await this.checkAccessStatus();
-                                                                await Promise.all([
-                                                                    this.loadWorkspaces(true),
-                                                                    this.loadTerminals(),
-                                                                ]);
-
-                                                                const { workspaces, activeWorkspaceId } = this.state;
-                                                                if (!activeWorkspaceId && workspaces.length > 0) {
-                                                                    await this.selectWorkspace(workspaces[0]);
-                                                                } else if (activeWorkspaceId) {
-                                                                    await Promise.all([
-                                                                        this.loadCcConnectUrl(),
-                                                                        this.loadCcProvidersUrl(),
-                                                                    ]);
-                                                                }
-                                                            } catch (e) {
-                                                                console.error('Failed to reconnect/refresh:', e);
-                                                            }
-                                                        }}
-                                                        onOpenFileDetail={this.openFileDetail}
-                                                        onBackToList={() =>
-                                                            this.setState({ viewMode: 'list', detailFullscreen: false })
-                                                        }
-                                                        onToggleFavorite={this.toggleFavorite}
-                                                        onCopyContent={this.copyFileContent}
-                                                        onDownloadFile={this.downloadFile}
-                                                        onRenameFile={this.renameFile}
-                                                        onToggleFullscreen={() => {
-                                                            const { selectedFsEntry, workspaces, activeWorkspaceId } =
-                                                                this.state;
-                                                            if (selectedFsEntry) {
-                                                                const activeWorkspace = workspaces.find(
-                                                                    w => w.id === activeWorkspaceId
-                                                                );
-                                                                const activeWorkspacePath =
-                                                                    activeWorkspace?.path || '.';
-                                                                const absolutePath = selectedFsEntry.path.startsWith(
-                                                                    '/'
-                                                                )
-                                                                    ? selectedFsEntry.path
-                                                                    : `${activeWorkspacePath}/${selectedFsEntry.path}`;
-                                                                if (IS_DESKTOP) {
-                                                                    this.openPreviewTab(
-                                                                        absolutePath,
-                                                                        selectedFsEntry.name
-                                                                    );
-                                                                } else {
-                                                                    const shareUrl = `${window.location.origin}${
-                                                                        window.location.pathname
-                                                                    }?preview=${encodeURIComponent(absolutePath)}`;
-                                                                    window.open(shareUrl, '_blank');
-                                                                }
-                                                            }
-                                                        }}
-                                                        onShareFile={this.shareFile}
-                                                        onSaveFile={this.saveFile}
-                                                        onToggleEditing={isEditing =>
-                                                            this.setState({ isEditingDetail: isEditing })
-                                                        }
-                                                        onEditedContentChange={content =>
-                                                            this.setState({ editedContent: content })
-                                                        }
-                                                        onOpenPreview={
-                                                            IS_DESKTOP
-                                                                ? (path, name) => this.openPreviewTab(path, name)
-                                                                : undefined
-                                                        }
-                                                        fsEntries={this.state.fsEntries}
-                                                        fsLoading={this.state.fsLoading}
-                                                        onToggleFsDir={this.toggleFsDir}
-                                                        accessTokenExists={accessAuthRequired}
-                                                        onGenerateAccessToken={this.generateAccessToken}
-                                                        onRevokeAccessToken={this.revokeAccessToken}
-                                                    />
-                                                </Fragment>
-                                            )}
-                                        </div>
-                                    </Fragment>
-                                ) : (
-                                    <div class="workspace-body-container dynamic-tab-view">
-                                        {activeTabObj?.type === 'preview' && (
-                                            <div
-                                                class="fb-detail-view-tab-container"
-                                                style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;"
-                                            >
-                                                {selectedFsEntry ? (
-                                                    <FileDetailView
-                                                        selectedFsEntry={selectedFsEntry}
-                                                        favoriteFiles={favoriteFiles}
-                                                        detailFullscreen={false}
-                                                        isEditingDetail={isEditingDetail}
-                                                        fileContent={fileContent}
-                                                        editedContent={editedContent}
-                                                        fileLoading={fileLoading}
-                                                        fileSaving={fileSaving}
-                                                        fileSaveMsg={fileSaveMsg}
-                                                        isImagePreview={isImagePreview}
-                                                        imageUrl={fsService.imageUrl(selectedFsEntry.path)}
-                                                        onBackToList={() => this.closeTab(activeTabId)}
-                                                        onToggleFavorite={this.toggleFavorite}
-                                                        onCopyContent={this.copyFileContent}
-                                                        onDownloadFile={this.downloadFile}
-                                                        onRenameFile={this.renameFile}
-                                                        onToggleFullscreen={() => {}}
-                                                        onShareFile={this.shareFile}
-                                                        onSaveFile={this.saveFile}
-                                                        onToggleEditing={isEditing =>
-                                                            this.setState({ isEditingDetail: isEditing })
-                                                        }
-                                                        onEditedContentChange={content =>
-                                                            this.setState({ editedContent: content })
-                                                        }
-                                                        onOpenPreview={
-                                                            IS_DESKTOP
-                                                                ? (path, name) => this.openPreviewTab(path, name)
-                                                                : undefined
-                                                        }
-                                                        isStandalone={true}
-                                                        language={language}
-                                                    />
-                                                ) : (
-                                                    <div class="fb-loading">
-                                                        <div class="fb-loading-spinner" />
-                                                        <span>{t('app.loading.preview', language)}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                        <div
-                                            class="builtin-browser-container"
-                                            style={{
-                                                flex: 1,
-                                                height: '100%',
-                                                display: activeTabObj?.type === 'browser' ? 'flex' : 'none',
-                                                flexDirection: 'column',
-                                                overflow: 'hidden',
-                                            }}
-                                        >
-                                            {this.state.tabs
-                                                .filter(t => t.type === 'browser')
-                                                .map(t => this.renderBuiltinBrowser(t))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </Fragment>
+                    <DesktopAppLayout app={this} state={this.state} />
                 )}
 
                 {/* Workspace create/rename modal */}
@@ -2649,66 +1805,4 @@ export class App extends Component<{}, AppState> {
             </div>
         );
     }
-}
-
-// ── Module-level helpers for immutable FsEntry tree manipulation ──────────────
-
-/**
- * Walk the tree and set `children` on the node whose path matches `targetPath`.
- * Returns a new array (immutable update).
- */
-function mergeChildren(entries: FsEntry[], targetPath: string, children: FsEntry[]): FsEntry[] {
-    return entries.map(e => {
-        if (e.path === targetPath) {
-            return { ...e, children };
-        }
-        if (e.children) {
-            return { ...e, children: mergeChildren(e.children, targetPath, children) };
-        }
-        return e;
-    });
-}
-
-/**
- * Walk the tree and toggle `expanded` on the node whose path matches `targetPath`.
- * Returns a new array (immutable update).
- *
- * On collapse, the previously-loaded `children` array is dropped so it can be
- * garbage-collected. The next time the directory is expanded, `loadDir` will
- * re-fetch its children. This prevents the tree from holding onto every
- * expanded directory's contents for the lifetime of the App instance.
- */
-function setExpanded(entries: FsEntry[], targetPath: string, expanded: boolean): FsEntry[] {
-    return entries.map(e => {
-        if (e.path === targetPath) {
-            return { ...e, expanded, children: expanded ? e.children : undefined };
-        }
-        if (e.children) {
-            return { ...e, children: setExpanded(e.children, targetPath, expanded) };
-        }
-        return e;
-    });
-}
-
-/**
- * Merges a fresh list of directory entries into the existing tree structure,
- * preserving already loaded children and expansion states of matching paths.
- */
-function mergeFreshEntries(existing: FsEntry[], fresh: FsEntry[]): FsEntry[] {
-    const existingMap = new Map<string, FsEntry>();
-    existing.forEach(e => {
-        existingMap.set(e.path, e);
-    });
-
-    return fresh.map(f => {
-        const ext = existingMap.get(f.path);
-        if (ext) {
-            return {
-                ...f,
-                expanded: ext.expanded,
-                children: ext.children,
-            };
-        }
-        return f;
-    });
 }

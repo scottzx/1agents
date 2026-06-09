@@ -15,7 +15,8 @@ function getBackendPort() {
     try {
         const daemonPath = path.join(process.env.HOME, '.1agents', 'daemon.json');
         const config = JSON.parse(fs.readFileSync(daemonPath, 'utf8'));
-        return config.listen_addr.replace(':', '') || '8080';
+        const match = config.listen_addr.match(/:(\d+)$/);
+        return match ? match[1] : '8080';
     } catch {
         return '8080';
     }
