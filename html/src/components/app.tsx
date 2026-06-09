@@ -2232,9 +2232,12 @@ export class App extends Component<{}, AppState> {
                                 style={
                                     this.state.isMobile
                                         ? {
-                                              // Constrain height to visual viewport when keyboard is open
+                                              // Constrain height to visual viewport when keyboard is open.
+                                              // Subtract the desktop tab bar height (38px) since it sits
+                                              // above this container in the flex column and would otherwise
+                                              // push content past the visual viewport.
                                               height: this.state.keyboardVisible
-                                                  ? `${this.state.viewportHeight}px`
+                                                  ? `${this.state.viewportHeight - (IS_DESKTOP ? 38 : 0)}px`
                                                   : undefined,
                                           }
                                         : undefined
