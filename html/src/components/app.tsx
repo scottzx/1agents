@@ -13,6 +13,13 @@ import { t, type Lang } from '../i18n';
 import { getModuleByTab, mergeManifests, type ModuleRegistration } from '../modules/registry';
 import { postToModule, isModuleInboundMessage } from '../modules/post-message';
 import type { ModuleManifest } from '../modules/module-types';
+import {
+    SETTINGS_MODULE_ID,
+    SETTINGS_DEFAULT_CATEGORY,
+    pathToSettingsCategory,
+    settingsCategoryToPath,
+    type SettingsCategory,
+} from '../modules/settings-manifest';
 import { DesktopAppLayout } from './desktop/DesktopAppLayout';
 import { MobileAppLayout } from './mobile/MobileAppLayout';
 import { BuiltinBrowser } from './browser/BuiltinBrowser';
@@ -114,6 +121,13 @@ export interface AppState {
     activeModulePath: string;
     /** Live manifest per module id (overlays the static fallback). */
     moduleManifests: Record<string, ModuleManifest>;
+    /**
+     * Active sub-category inside the system settings page. The settings
+     * module is host-rendered (no iframe) and lives in the same chrome as
+     * 1skills, so we keep a separate piece of state for it rather than
+     * overloading `activeModulePath`.
+     */
+    activeSettingsCategory: SettingsCategory;
 }
 
 // Drag resizer state (module-level for perf)
@@ -131,6 +145,12 @@ export class App extends Component<{}, AppState> {
     // send an explicit READY signal, so we use the first NAV_CHANGE as the
     // implicit handshake.
     private _moduleIframesReady: WeakSet<Window> = new WeakSet();
+    // When the host pushes a NAVIGATE to a freshly mounted iframe, the
+    // iframe goes through a short boot-up sequence (index route → Navigate
+    // redirect) and emits several NAV_CHANGE messages before settling on
+    // the path we asked for. We remember the requested path here and ignore
+    // boot-up NAV_CHANGEs until the iframe confirms the move.
+    private _pendingModuleNav: WeakMap<Window, string> = new WeakMap();
     private _workspaceTreeCache: Record<string, FsEntry[]> = {};
 
     constructor() {
@@ -204,6 +224,7 @@ export class App extends Component<{}, AppState> {
             activeTabId: 'terminal',
             activeModulePath: '',
             moduleManifests: {},
+            activeSettingsCategory: SETTINGS_DEFAULT_CATEGORY,
         };
     }
 
@@ -1229,7 +1250,10 @@ export class App extends Component<{}, AppState> {
                     postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
                 }
             }
-            if (path === this.state.activeModulePath && !isFirstFromThisSource) return;
+            // Boot-up: host already had a desired path before the iframe
+            // was listening. Push it and remember we did — subsequent
+            // NAV_CHANGEs from the iframe's index → redirect boot-up
+            // sequence must NOT clobber our state.
             if (
                 isFirstFromThisSource &&
                 isFromActiveIframe &&
@@ -1237,11 +1261,25 @@ export class App extends Component<{}, AppState> {
                 this.state.activeModulePath &&
                 path !== this.state.activeModulePath
             ) {
-                // Host had a desired path before the iframe was listening;
-                // push it now so the iframe follows.
                 postToModule(iframe, { type: 'NAVIGATE', to: this.state.activeModulePath });
+                if (e.source instanceof Window) {
+                    this._pendingModuleNav.set(e.source, this.state.activeModulePath);
+                }
                 return;
             }
+            // If we have a pending NAVIGATE and the iframe is still
+            // emitting boot-up NAV_CHANGEs that don't match, ignore them.
+            if (e.source instanceof Window && this._pendingModuleNav.has(e.source)) {
+                const wanted = this._pendingModuleNav.get(e.source)!;
+                if (path === wanted) {
+                    // Iframe followed our push — clear the gate and accept.
+                    this._pendingModuleNav.delete(e.source);
+                } else {
+                    // Still in boot-up. Don't touch host state.
+                    return;
+                }
+            }
+            if (path === this.state.activeModulePath) return;
             this.setState({ activeModulePath: path });
             this.syncModuleUrl(path);
         } else if (e.data.type === 'READY') {
@@ -1331,18 +1369,39 @@ export class App extends Component<{}, AppState> {
      * Returns the module nav data to pass to `LeftSidebar`, or undefined if
      * the active drawer tab isn't module-backed. The live manifest is used
      * when available; the static manifest is the fallback.
+     *
+     * Settings is a special case: it's a host-rendered page (no iframe),
+     * so its `onNavigate` updates `activeSettingsCategory` and we use that
+     * state (not `activeModulePath`) to derive the active link.
      */
     buildModuleNav(): { manifest: ModuleManifest; activePath: string; onNavigate: (to: string) => void } | undefined {
         const mod = getModuleByTab(this.state.activeDrawerTab);
         if (!mod) return undefined;
         const live = this.state.moduleManifests[mod.moduleId];
         const manifest = live ?? mod.staticManifest;
+        if (mod.moduleId === SETTINGS_MODULE_ID) {
+            return {
+                manifest,
+                activePath: settingsCategoryToPath(this.state.activeSettingsCategory),
+                onNavigate: (to: string) => this.setSettingsCategory(pathToSettingsCategory(to)),
+            };
+        }
         return {
             manifest,
             activePath: this.state.activeModulePath || mod.entryPath,
             onNavigate: this.navigateInModule,
         };
     }
+
+    /**
+     * Switches the active sub-category in the system settings page. Called
+     * by the host's `LeftSidebar` `ModuleNav` (desktop) and by the mobile
+     * "more" menu when the user picks a settings category.
+     */
+    setSettingsCategory = (category: SettingsCategory) => {
+        if (this.state.activeSettingsCategory === category) return;
+        this.setState({ activeSettingsCategory: category });
+    };
 
     toggleLeftSidebar = () => {
         const opening = !this.state.leftSidebarOpen;

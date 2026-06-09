@@ -301,6 +301,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                         accessTokenExists={accessAuthRequired}
                                                         onGenerateAccessToken={app.generateAccessToken}
                                                         onRevokeAccessToken={app.revokeAccessToken}
+                                                        activeCategory={state.activeSettingsCategory}
                                                     />
                                                 </div>
                                             )}

@@ -37,6 +37,7 @@ export const zhCN: Record<string, string> = {
     'app.loading.workspaces': '正在载入工作空间…',
     'app.loading.preview': '正在载入预览…',
     'app.loading.sharePreview': '载入分享文件预览中…',
+    'app.workspace.create': '新建工作空间',
     'app.langName.zh': '中文',
     'app.langName.en': 'English',
     'app.prompt.rename': '请输入新文件名:',
@@ -457,6 +458,8 @@ export const zhCN: Record<string, string> = {
     'mobile.systemSettings': '系统设置',
     'mobile.preview': '预览',
     'mobile.browser': '浏览器',
+    'mobile.confirmDeleteSession.title': '删除会话',
+    'mobile.confirmDeleteSession.message': '确定要删除会话 “{name}” 吗?此操作无法撤销。',
 };
 
 // English dictionary.
@@ -496,6 +499,7 @@ export const enUS: Record<string, string> = {
     'app.loading.workspaces': 'Loading workspaces…',
     'app.loading.preview': 'Loading preview…',
     'app.loading.sharePreview': 'Loading shared file preview…',
+    'app.workspace.create': 'New workspace',
     'app.langName.zh': '中文',
     'app.langName.en': 'English',
     'app.prompt.rename': 'Enter a new filename:',
@@ -924,4 +928,6 @@ export const enUS: Record<string, string> = {
     'mobile.systemSettings': 'System Settings',
     'mobile.preview': 'Preview',
     'mobile.browser': 'Browser',
+    'mobile.confirmDeleteSession.title': 'Delete session',
+    'mobile.confirmDeleteSession.message': 'Delete session "{name}"? This action cannot be undone.',
 };

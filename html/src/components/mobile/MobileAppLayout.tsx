@@ -9,6 +9,7 @@ import { SystemSettings } from '../settings/SystemSettings';
 import { FileDetailView } from '../drawer/FileDetailView';
 import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
+import type { Session } from '../types';
 import type { App, AppState } from '../app';
 import {
     lightTermTheme,
@@ -20,7 +21,90 @@ import {
     flowControl,
 } from '../terminal/terminalConfig';
 import { getModuleByTab, buildModuleIframeSrc } from '../../modules/registry';
+import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
 import './MobileAppLayout.scss';
+
+/**
+ * Inline SVG icons for each settings category. The manifest only carries
+ * i18n labels, not icons — the host's `ModuleNav` (desktop) shows a dot
+ * per link, but the mobile menu shows full icons, so we keep them here.
+ */
+function renderSettingsCategoryIcon(cat: SettingsCategory) {
+    switch (cat) {
+        case 'general':
+            return (
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+            );
+        case 'appearance':
+            return (
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                </svg>
+            );
+        case 'security':
+            return (
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+            );
+        case 'feedback':
+            return (
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                    <polyline points="22,6 12,13 2,6" />
+                </svg>
+            );
+        case 'about':
+            return (
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+            );
+        default:
+            return null;
+    }
+}
 
 interface MobileAppLayoutProps {
     app: App;
@@ -34,6 +118,7 @@ interface MobileAppLayoutState {
     skillsInDetail: boolean;
     activeMoreSubView: 'menu' | 'settings' | 'discovery';
     activeSettingsCategory: 'menu' | 'general' | 'appearance' | 'security' | 'feedback' | 'about';
+    pendingDeleteSession: Session | null;
 }
 
 export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLayoutState> {
@@ -44,6 +129,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         skillsInDetail: false,
         activeMoreSubView: 'menu',
         activeSettingsCategory: 'menu',
+        pendingDeleteSession: null,
     };
 
     componentWillReceiveProps(nextProps: MobileAppLayoutProps) {
@@ -360,9 +446,24 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                         </svg>
                                                                                     </div>
                                                                                     <div class="session-card-info">
-                                                                                        <span class="session-card-name">
-                                                                                            {s.name}
-                                                                                        </span>
+                                                                                        <div class="session-card-name-row">
+                                                                                            <span class="session-card-name">
+                                                                                                {s.name}
+                                                                                            </span>
+                                                                                            {s.agent ? (
+                                                                                                <span class="session-card-agent">
+                                                                                                    {s.agent ===
+                                                                                                    'antigravity'
+                                                                                                        ? 'agy'
+                                                                                                        : s.agent
+                                                                                                              .charAt(0)
+                                                                                                              .toUpperCase() +
+                                                                                                          s.agent.slice(
+                                                                                                              1
+                                                                                                          )}
+                                                                                                </span>
+                                                                                            ) : null}
+                                                                                        </div>
                                                                                         <span class="session-card-cwd">
                                                                                             {s.cwd ||
                                                                                                 activeWorkspacePath}
@@ -404,7 +505,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                         )}
                                                                                         onClick={e => {
                                                                                             e.stopPropagation();
-                                                                                            app.killTerminal(s.index);
+                                                                                            this.setState({
+                                                                                                pendingDeleteSession: s,
+                                                                                            });
                                                                                         }}
                                                                                     >
                                                                                         <svg
@@ -750,16 +853,12 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 </svg>
                                             </button>
                                             <div class="mobile-subview-title">
-                                                {activeSettingsCategory === 'general' &&
-                                                    (language === 'zh-CN' ? '通用设置' : 'General')}
-                                                {activeSettingsCategory === 'appearance' &&
-                                                    (language === 'zh-CN' ? '外观与终端' : 'Appearance & Terminal')}
-                                                {activeSettingsCategory === 'security' &&
-                                                    (language === 'zh-CN' ? '安全设置' : 'Security')}
-                                                {activeSettingsCategory === 'feedback' &&
-                                                    (language === 'zh-CN' ? '反馈与联系' : 'Feedback & Contact')}
-                                                {activeSettingsCategory === 'about' &&
-                                                    (language === 'zh-CN' ? '关于与维护' : 'About & Maintenance')}
+                                                {(() => {
+                                                    const link = SETTINGS_STATIC_MANIFEST.topLinks?.find(
+                                                        l => l.to === `/${activeSettingsCategory}`
+                                                    );
+                                                    return link ? t(link.label, language) : '';
+                                                })()}
                                             </div>
                                         </div>
                                     ) : (
@@ -784,172 +883,36 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             (activeSettingsCategory === 'menu' ? (
                                                 <div class="mobile-menu-view scrollable">
                                                     <div class="mobile-menu-group">
-                                                        <button
-                                                            class="mobile-menu-row"
-                                                            onClick={() =>
-                                                                this.setState({ activeSettingsCategory: 'general' })
-                                                            }
-                                                        >
-                                                            <div class="row-icon-wrapper settings-category-icon">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
+                                                        {(SETTINGS_STATIC_MANIFEST.topLinks ?? []).map(link => {
+                                                            const cat = link.to.replace('/', '') as SettingsCategory;
+                                                            return (
+                                                                <button
+                                                                    key={link.key}
+                                                                    class="mobile-menu-row"
+                                                                    onClick={() =>
+                                                                        this.setState({
+                                                                            activeSettingsCategory: cat,
+                                                                        })
+                                                                    }
                                                                 >
-                                                                    <circle cx="12" cy="12" r="3" />
-                                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                                                                </svg>
-                                                            </div>
-                                                            <span class="row-label">
-                                                                {language === 'zh-CN' ? '通用设置' : 'General'}
-                                                            </span>
-                                                            <div class="row-chevron">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                >
-                                                                    <polyline points="9 18 15 12 9 6" />
-                                                                </svg>
-                                                            </div>
-                                                        </button>
-                                                        <button
-                                                            class="mobile-menu-row"
-                                                            onClick={() =>
-                                                                this.setState({ activeSettingsCategory: 'appearance' })
-                                                            }
-                                                        >
-                                                            <div class="row-icon-wrapper settings-category-icon">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                >
-                                                                    <circle cx="12" cy="12" r="4" />
-                                                                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-                                                                </svg>
-                                                            </div>
-                                                            <span class="row-label">
-                                                                {language === 'zh-CN'
-                                                                    ? '外观与终端'
-                                                                    : 'Appearance & Terminal'}
-                                                            </span>
-                                                            <div class="row-chevron">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                >
-                                                                    <polyline points="9 18 15 12 9 6" />
-                                                                </svg>
-                                                            </div>
-                                                        </button>
-                                                        <button
-                                                            class="mobile-menu-row"
-                                                            onClick={() =>
-                                                                this.setState({ activeSettingsCategory: 'security' })
-                                                            }
-                                                        >
-                                                            <div class="row-icon-wrapper settings-category-icon">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                >
-                                                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                                                </svg>
-                                                            </div>
-                                                            <span class="row-label">
-                                                                {language === 'zh-CN' ? '安全设置' : 'Security'}
-                                                            </span>
-                                                            <div class="row-chevron">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                >
-                                                                    <polyline points="9 18 15 12 9 6" />
-                                                                </svg>
-                                                            </div>
-                                                        </button>
-                                                        <button
-                                                            class="mobile-menu-row"
-                                                            onClick={() =>
-                                                                this.setState({ activeSettingsCategory: 'feedback' })
-                                                            }
-                                                        >
-                                                            <div class="row-icon-wrapper settings-category-icon">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                >
-                                                                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                                                                    <polyline points="22,6 12,13 2,6" />
-                                                                </svg>
-                                                            </div>
-                                                            <span class="row-label">
-                                                                {language === 'zh-CN'
-                                                                    ? '反馈与联系'
-                                                                    : 'Feedback & Contact'}
-                                                            </span>
-                                                            <div class="row-chevron">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                >
-                                                                    <polyline points="9 18 15 12 9 6" />
-                                                                </svg>
-                                                            </div>
-                                                        </button>
-                                                        <button
-                                                            class="mobile-menu-row"
-                                                            onClick={() =>
-                                                                this.setState({ activeSettingsCategory: 'about' })
-                                                            }
-                                                        >
-                                                            <div class="row-icon-wrapper settings-category-icon">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                >
-                                                                    <circle cx="12" cy="12" r="10" />
-                                                                    <line x1="12" y1="8" x2="12" y2="12" />
-                                                                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                                                                </svg>
-                                                            </div>
-                                                            <span class="row-label">
-                                                                {language === 'zh-CN'
-                                                                    ? '关于与维护'
-                                                                    : 'About & Maintenance'}
-                                                            </span>
-                                                            <div class="row-chevron">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                >
-                                                                    <polyline points="9 18 15 12 9 6" />
-                                                                </svg>
-                                                            </div>
-                                                        </button>
+                                                                    <div class="row-icon-wrapper settings-category-icon">
+                                                                        {renderSettingsCategoryIcon(cat)}
+                                                                    </div>
+                                                                    <span class="row-label">
+                                                                        {t(link.label, language)}
+                                                                    </span>
+                                                                    <div class="row-chevron">
+                                                                        <svg
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                        >
+                                                                            <polyline points="9 18 15 12 9 6" />
+                                                                        </svg>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
                                             ) : (
@@ -964,7 +927,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     onGenerateAccessToken={app.generateAccessToken}
                                                     onRevokeAccessToken={app.revokeAccessToken}
                                                     activeCategory={activeSettingsCategory}
-                                                    hideSidebar={true}
                                                 />
                                             ))}
                                         {activeMoreSubView === 'discovery' && (
@@ -1088,6 +1050,59 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                             </svg>
                             {t('sidebar.more', language) || '更多'}
                         </button>
+                    </div>
+                )}
+
+                {/* Delete Session Confirmation Modal */}
+                {this.state.pendingDeleteSession && (
+                    <div class="mobile-confirm-modal" role="dialog" aria-modal="true">
+                        <div
+                            class="mobile-confirm-backdrop"
+                            onClick={() => this.setState({ pendingDeleteSession: null })}
+                        />
+                        <div class="mobile-confirm-box">
+                            <div class="mobile-confirm-icon">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                            </div>
+                            <h3 class="mobile-confirm-title">
+                                {t('mobile.confirmDeleteSession.title', language) || '删除会话'}
+                            </h3>
+                            <p class="mobile-confirm-message">
+                                {t('mobile.confirmDeleteSession.message', language, {
+                                    name: this.state.pendingDeleteSession.name,
+                                }) || `确定要删除会话 “${this.state.pendingDeleteSession.name}” 吗?此操作无法撤销。`}
+                            </p>
+                            <div class="mobile-confirm-actions">
+                                <button
+                                    class="mobile-confirm-btn cancel"
+                                    onClick={() => this.setState({ pendingDeleteSession: null })}
+                                >
+                                    {t('common.cancel', language) || '取消'}
+                                </button>
+                                <button
+                                    class="mobile-confirm-btn danger"
+                                    onClick={async () => {
+                                        const target = this.state.pendingDeleteSession;
+                                        this.setState({ pendingDeleteSession: null });
+                                        if (target) {
+                                            await app.killTerminal(target.index);
+                                        }
+                                    }}
+                                >
+                                    {t('common.delete', language) || '删除'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

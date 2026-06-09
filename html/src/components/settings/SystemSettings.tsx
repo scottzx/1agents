@@ -1,8 +1,9 @@
 import { h, Fragment } from 'preact';
 import { useState } from 'preact/hooks';
-import { t, type Lang } from '../i18n';
+import { t, type Lang } from '../../i18n';
+import type { SettingsCategory } from '../../modules/settings-manifest';
 
-type SettingsCategory = 'general' | 'appearance' | 'security' | 'feedback' | 'about';
+export type { SettingsCategory };
 
 interface SystemSettingsProps {
     theme: 'light' | 'dark';
@@ -14,98 +15,23 @@ interface SystemSettingsProps {
     accessTokenExists: boolean;
     onGenerateAccessToken: () => void;
     onRevokeAccessToken: () => void;
-    activeCategory?: SettingsCategory;
-    hideSidebar?: boolean;
+    /**
+     * Active sub-category. The component is purely content — it doesn't
+     * carry an internal sidebar. The host (workspace's left sidebar in
+     * desktop state, the "more" menu in mobile state) renders the category
+     * navigation in its own chrome and passes the active one down.
+     */
+    activeCategory: SettingsCategory;
 }
 
-const NAV_ITEMS: { key: SettingsCategory; labelKey: string; icon: h.JSX.Element }[] = [
-    {
-        key: 'general',
-        labelKey: 'settings.nav.general',
-        icon: (
-            <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-        ),
-    },
-    {
-        key: 'appearance',
-        labelKey: 'settings.nav.appearance',
-        icon: (
-            <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-            </svg>
-        ),
-    },
-    {
-        key: 'security',
-        labelKey: 'settings.nav.security',
-        icon: (
-            <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-        ),
-    },
-    {
-        key: 'feedback',
-        labelKey: 'settings.nav.feedback',
-        icon: (
-            <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-            </svg>
-        ),
-    },
-    {
-        key: 'about',
-        labelKey: 'settings.nav.about',
-        icon: (
-            <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-        ),
-    },
-];
-
+/**
+ * System settings — content view for the active sub-category.
+ *
+ * The category navigation lives outside this component (in the host's
+ * own sidebar/header, mirroring the skill-management design). Switching
+ * categories re-renders this component with a different `activeCategory`
+ * prop; no internal state is needed for that.
+ */
 export function SystemSettings(props: SystemSettingsProps) {
     const {
         theme,
@@ -117,12 +43,8 @@ export function SystemSettings(props: SystemSettingsProps) {
         accessTokenExists,
         onGenerateAccessToken,
         onRevokeAccessToken,
-        hideSidebar = false,
+        activeCategory,
     } = props;
-
-    const [activeCategoryState, setActiveCategoryState] = useState<SettingsCategory>('general');
-    const activeCategory = props.activeCategory ?? activeCategoryState;
-    const setActiveCategory = props.activeCategory ? () => {} : setActiveCategoryState;
 
     const [confirmReset, setConfirmReset] = useState(false);
 
@@ -723,24 +645,7 @@ export function SystemSettings(props: SystemSettingsProps) {
     };
 
     return (
-        <div class={`sys-settings-page ${hideSidebar ? 'hide-sidebar' : ''}`}>
-            {/* Left nav column */}
-            {!hideSidebar && (
-                <nav class="sys-settings-nav">
-                    {NAV_ITEMS.map(item => (
-                        <button
-                            key={item.key}
-                            class={`sys-settings-nav-item ${activeCategory === item.key ? 'active' : ''}`}
-                            onClick={() => setActiveCategory(item.key)}
-                        >
-                            <span class="sys-settings-nav-icon">{item.icon}</span>
-                            <span class="sys-settings-nav-label">{t(item.labelKey, language)}</span>
-                        </button>
-                    ))}
-                </nav>
-            )}
-
-            {/* Right content area */}
+        <div class="sys-settings-page sys-settings-page--bare">
             <div class="sys-settings-content">{renderContent()}</div>
         </div>
     );

@@ -681,10 +681,34 @@
       flex-direction: column;
       min-width: 0;
 
+      .session-card-name-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+
       .session-card-name {
         font-size: 14px;
         font-weight: 500;
         color: var(--text-main);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+      }
+
+      .session-card-agent {
+        display: inline-flex;
+        align-items: center;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 6px;
+        background-color: var(--accent-light);
+        color: var(--accent-color);
+        text-transform: capitalize;
+        flex-shrink: 0;
       }
 
       .session-card-cwd {
@@ -701,6 +725,7 @@
     display: flex;
     align-items: center;
     flex-shrink: 0;
+    gap: 6px;
 
     .status-badge {
       font-size: 10px;
@@ -717,6 +742,39 @@
       &.active, &.running {
         background-color: rgba(34, 197, 94, 0.15);
         color: #22c55e;
+      }
+    }
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-page);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      outline: none;
+
+      svg {
+        width: 14px;
+        height: 14px;
+        stroke-width: 2.2px;
+      }
+
+      &:active {
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+        background-color: var(--accent-light);
+      }
+
+      &.delete:active {
+        color: #ef4444;
+        border-color: #fca5a5;
+        background-color: #fef2f2;
       }
     }
   }
@@ -752,4 +810,111 @@
   background-color: var(--accent-color);
   color: #fff;
   margin-right: 8px;
+}
+
+/* ── Mobile Confirm Modal (Delete Session etc.) ── */
+.mobile-confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.mobile-confirm-box {
+  position: relative;
+  width: calc(100% - 48px);
+  max-width: 360px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-confirm-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fef2f2;
+  color: #ef4444;
+  flex-shrink: 0;
+
+  svg {
+    width: 24px;
+    height: 24px;
+    stroke-width: 2.2px;
+  }
+}
+
+.mobile-confirm-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.mobile-confirm-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.mobile-confirm-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.mobile-confirm-btn {
+  flex: 1;
+  padding: 11px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-page);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &.cancel:active {
+    background-color: var(--btn-hover);
+  }
+
+  &.danger {
+    background-color: #ef4444;
+    color: #fff;
+    border-color: #ef4444;
+
+    &:active {
+      background-color: #dc2626;
+    }
+  }
 }

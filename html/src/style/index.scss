@@ -2002,68 +2002,16 @@ body {
 
 /* ==========================================================================
    SYSTEM SETTINGS FULL-PAGE MODULE
+   The category navigation lives in the workspace's own sidebar (see
+   `LeftSidebar` / `ModuleNav`) — this block is content-only.
    ========================================================================== */
 .sys-settings-page {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     height: 100%;
     width: 100%;
     overflow: hidden;
     background-color: var(--bg-page);
-
-    .sys-settings-nav {
-        width: 220px;
-        flex-shrink: 0;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        background-color: var(--bg-panel);
-        border-right: 1px solid var(--border-color);
-        padding: 24px 12px;
-        gap: 4px;
-        overflow-y: auto;
-
-        &::-webkit-scrollbar { width: 4px; }
-        &::-webkit-scrollbar-track { background: transparent; }
-        &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
-    }
-
-    .sys-settings-nav-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 9px 10px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        color: var(--text-secondary);
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        font-family: var(--font-sans);
-        transition: all 0.18s ease;
-        text-align: left;
-        width: 100%;
-
-        &:hover { background-color: var(--btn-hover); color: var(--text-main); }
-
-        &.active {
-            background-color: var(--accent-light);
-            color: var(--accent-color);
-            font-weight: 600;
-            .sys-settings-nav-icon svg { stroke: var(--accent-color); }
-        }
-    }
-
-    .sys-settings-nav-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        width: 20px;
-        height: 20px;
-        svg { width: 16px; height: 16px; transition: stroke 0.18s ease; }
-    }
 
     .sys-settings-content {
         flex: 1;
@@ -2232,16 +2180,6 @@ body {
     }
 
     @media (max-width: 640px) {
-        flex-direction: column;
-
-        .sys-settings-nav {
-            width: 100%; height: auto; flex-direction: row; flex-wrap: nowrap;
-            overflow-x: auto; padding: 10px 12px; gap: 6px;
-            border-right: none; border-bottom: 1px solid var(--border-color);
-            &::-webkit-scrollbar { display: none; }
-        }
-
-        .sys-settings-nav-item { flex-shrink: 0; white-space: nowrap; padding: 7px 12px; }
         .sys-settings-content { padding: 16px; }
         .sys-settings-toggle-group { grid-template-columns: 1fr; }
         .sys-settings-theme-grid { grid-template-columns: 1fr; }
