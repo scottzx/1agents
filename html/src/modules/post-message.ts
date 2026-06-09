@@ -1,15 +1,14 @@
 /**
  * postMessage contract between the host and module iframes.
  *
+ * Since the migration to custom elements (<skills-panel>,
+ * <cc-connect-panel>) the only remaining iframe user is the
+ * cc-connect channels tab (xterm terminal), which still needs
+ * THEME_CHANGE and LANG_CHANGE.
+ *
  * Two directions:
  *   host  →  iframe:  THEME_CHANGE, LANG_CHANGE, NAVIGATE
  *   iframe →  host:   READY (mount completed), NAV_CHANGE (route changed)
- *
- * The host is the single writer of THEME/LANG — modules never echo them
- * back. The iframe is the single writer of NAV_CHANGE — the host mirrors
- * it into the URL but does not push a NAVIGATE for its own clicks (those
- * update host state first, then send a NAVIGATE so the iframe's router
- * follows).
  */
 
 export type ModuleMessage = ThemeChangeMessage | LangChangeMessage | NavigateMessage;

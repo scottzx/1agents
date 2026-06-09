@@ -20,17 +20,29 @@ export interface ModuleRegistration {
     moduleId: ModuleId;
     /** Which main-app drawer tab owns this module. */
     ownerTab: RightDrawerTab;
-    /** Base URL of the module (e.g. "/1skills/"). */
+    /**
+     * Base URL of the module (e.g. "/1skills/").
+     *
+     * @deprecated Skills is now loaded as a custom element
+     * (`<skills-panel>`) — `iframeBase` is only read by
+     * `buildModuleIframeSrc()` which is itself dead code kept
+     * as a fallback. The embed entry is served as an ESM module
+     * at `/api/embed/skills-embed.js`.
+     */
     iframeBase: string;
     /**
-     * Static manifest used as a fallback when the module is unreachable
-     * (network down, FastAPI not running, etc.). The host's `<ModuleNav />`
-     * renders this immediately and overlays the live manifest on top.
+     * Custom element tag name for the embed mode. When set the host
+     * renders this tag instead of an `<iframe>` — the element is
+     * defined by the submodule's embed entry (e.g. `embed.tsx`).
+     *
+     * If empty the module still uses the legacy iframe path.
      */
+    embedElement?: string;
+    /** … (unchanged) */
     staticManifest: ModuleManifest;
     /** Optional endpoint that returns a live manifest with counts. */
     manifestUrl?: string;
-    /** Initial entry path the iframe is loaded at. */
+    /** Initial entry path the iframe/element is loaded at. */
     entryPath: string;
 }
 
@@ -105,6 +117,7 @@ export const MODULES: Record<ModuleId, ModuleRegistration> = {
         moduleId: 'skills',
         ownerTab: 'skills',
         iframeBase: '/1skills/',
+        embedElement: 'skills-panel',
         staticManifest: SKILLS_STATIC_MANIFEST,
         manifestUrl: '/1skills/api/manifest',
         entryPath: '/overview',
@@ -138,12 +151,9 @@ export function getModuleByTab(tab: RightDrawerTab): ModuleRegistration | null {
  * Builds the iframe `src` for a module. Always appends `?bare=1` so the
  * module renders without its own chrome.
  *
- * Pass `subPath` to bake the initial route into the URL hash (e.g.
- * `#/skills/use`). The iframe's HashRouter reads the hash on mount, so
- * the iframe boots directly at the right route — no race with the host's
- * postMessage handshake, no flash of the catch-all `* → /overview`
- * redirect. Use this when the iframe is mounted fresh at a non-entry
- * route (e.g. mobile skills sub-page).
+ * @deprecated Skills & providers are now loaded as custom elements
+ * (see `embedElement` on `ModuleRegistration`). This function is kept
+ * as a fallback for any module that still uses the iframe path.
  */
 export function buildModuleIframeSrc(mod: ModuleRegistration, subPath?: string): string {
     const base = mod.iframeBase.endsWith('/') ? mod.iframeBase : mod.iframeBase + '/';

@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/scottzx/1Agents/backend/internal/auth"
@@ -194,6 +196,26 @@ func NewRouter(cfg *config.Config) http.Handler {
 		skillsPort = 38085
 	}
 	mux.Handle("/1skills/", gateway.NewSkillsProxy(skillsPort))
+
+	// ── Module embed scripts (custom elements) ──────────────────────────────
+	// Self-contained ESM bundles produced by the submodule embed pipelines
+	// (1skills: `yarn build:embed`, cc-connect: `npm run build:embed`).
+	// The 1agents frontend loads them as ESM modules to register
+	// <skills-panel> and <cc-connect-panel> custom elements, replacing
+	// the iframe approach for non-terminal panels.
+	//
+	// The path inside dist-embed is fixed by the submodule's vite
+	// library-mode config. We resolve the file at startup and 404 if the
+	// submodule has not been built yet — a friendlier failure mode than
+	// the route silently shadowing the static catch-all.
+	mux.HandleFunc("/api/embed/skills-embed.js", serveEmbedScript([]string{
+		"modules/1skills/dist-embed/skills-embed.js",
+		"../modules/1skills/dist-embed/skills-embed.js",
+	}))
+	mux.HandleFunc("/api/embed/cc-connect-embed.js", serveEmbedScript([]string{
+		"modules/cc-connect/web/dist-embed/cc-connect-embed.js",
+		"../modules/cc-connect/web/dist-embed/cc-connect-embed.js",
+	}))
 
 	// ── 1skills API pass-through routes ──────────────────────────────────────
 	// The 1skills frontend is built with VITE_API_BASE=/api, so its JS makes
@@ -886,4 +908,42 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(bodyBytes)
+}
+
+// serveEmbedScript returns an http.HandlerFunc that serves a single
+// submodule embed bundle. The handler resolves the file lazily on each
+// request, so a submodule that is built *after* 1agents has started
+// becomes available without a restart. The first existing path wins.
+//
+// If none of the candidates exist the handler returns 404 with a hint
+// telling the operator how to produce the bundle. This is intentional:
+// silently shadowing the static catch-all would make "iframe doesn't
+// load" look like "module registration failed", which is much harder
+// to diagnose.
+func serveEmbedScript(candidates []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET — these are static assets; anything else is a bug.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		for _, c := range candidates {
+			abs, err := filepath.Abs(c)
+			if err != nil {
+				continue
+			}
+			if info, err := os.Stat(abs); err == nil && !info.IsDir() {
+				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				w.Header().Set("Cache-Control", "no-cache")
+				http.ServeFile(w, r, abs)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w,
+			"embed bundle not found; tried: %s\nbuild it with `yarn build:embed` (1skills) or `npm run build:embed` (cc-connect) inside the submodule",
+			strings.Join(candidates, ", "),
+		)
+	}
 }

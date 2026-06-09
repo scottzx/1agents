@@ -1550,6 +1550,8 @@ body {
     /* Terminal card: tighter margins */
     .terminal-card {
       margin: 4px 8px 0px 8px;
+      width: calc(100% - 16px);
+      max-width: none;
       border-radius: 8px 8px 0 0;
     }
   }
@@ -1589,7 +1591,7 @@ body {
 
   .terminal-card {
     flex: 1;
-    margin: 4px 8px 0px 8px;
+    margin: 4px auto 0;
     width: calc(100% - 16px);
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);

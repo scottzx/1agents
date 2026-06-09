@@ -19,8 +19,8 @@ import {
     clientOptions,
     flowControl,
 } from '../terminal/terminalConfig';
-import { getModuleByTab, buildModuleIframeSrc } from '../../modules/registry';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
+import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 import './MobileAppLayout.scss';
 
 /**
@@ -241,15 +241,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeTabObj?.type !== 'preview' &&
             activeTabObj?.type !== 'browser';
 
-        // Skills iframe src — bake the mount-time path into the URL hash so
-        // the iframe's HashRouter boots at the right route. `mountedSkillsPath`
-        // is captured by the click handler in the list above and only changes
-        // when the iframe is unmounted, so the src stays stable for the
-        // lifetime of one mount.
-        const skillsMod = getModuleByTab('skills');
-        const skillsSrc = skillsMod
-            ? buildModuleIframeSrc(skillsMod, this.state.mountedSkillsPath || undefined)
-            : '/1skills/';
         const moduleNav = app.buildModuleNav();
 
         return (
@@ -689,20 +680,13 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                         <div class="mobile-tab-content">
                             {ccProvidersUrl ? (
                                 <div class="mobile-iframe-container" style="width: 100%; height: 100%;">
-                                    <iframe
-                                        id="cc-providers-iframe"
-                                        src={app.getCcConnectIframeUrl(ccProvidersUrl)}
-                                        onLoad={e => {
-                                            const iframe = e.target as HTMLIFrameElement;
-                                            if (iframe && iframe.contentWindow) {
-                                                iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme }, '*');
-                                                iframe.contentWindow.postMessage(
-                                                    { type: 'LANG_CHANGE', lang: language },
-                                                    '*'
-                                                );
-                                            }
-                                        }}
-                                        style="width: 100%; height: 100%; border: none; background: transparent;"
+                                    <cc-connect-panel
+                                        id="cc-providers-panel"
+                                        route={extractCcRedirect(ccProvidersUrl, '/providers')}
+                                        theme={theme}
+                                        lang={language}
+                                        auth-token={extractCcToken(ccProvidersUrl)}
+                                        style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
                                     />
                                 </div>
                             ) : (
@@ -820,10 +804,16 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <div class="mobile-subview-title">{t('sidebar.skills', language)}</div>
                                     </div>
                                     <div class="mobile-subview-content">
-                                        <iframe
-                                            id="skills-iframe"
-                                            src={skillsSrc}
-                                            style="width: 100%; height: 100%; border: none; background: transparent;"
+                                        <skills-panel
+                                            id="skills-panel"
+                                            route={
+                                                (activeMobileTab === 'skills' && state.activeModulePath) ||
+                                                this.state.mountedSkillsPath ||
+                                                '/overview'
+                                            }
+                                            theme={theme}
+                                            lang={language}
+                                            style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
                                         />
                                     </div>
                                 </div>

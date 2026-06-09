@@ -11,7 +11,6 @@ import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
 import { t, type Lang } from '../i18n';
 import { getModuleByTab, mergeManifests, type ModuleRegistration } from '../modules/registry';
-import { postToModule, isModuleInboundMessage } from '../modules/post-message';
 import type { ModuleManifest } from '../modules/module-types';
 import {
     SETTINGS_MODULE_ID,
@@ -140,20 +139,6 @@ export class App extends Component<{}, AppState> {
     private _terminalPollInterval: ReturnType<typeof setInterval> | null = null;
     private _crawlCounter = 0;
     private _searchTimeout: number | null = null;
-    // Module iframes we've seen a NAV_CHANGE from — i.e. their React app
-    // is mounted and listening for postMessage. 1skills doesn't send an
-    // explicit READY signal, so we use the first NAV_CHANGE as the
-    // implicit handshake. Keyed by the iframe element (not the Window)
-    // so the writer in handleModuleMessage and the reader in
-    // navigateInModule see the same key — contentWindow / e.source can
-    // be different Window proxies across reads.
-    private _moduleIframesReady: WeakSet<HTMLIFrameElement> = new WeakSet();
-    // When the host pushes a NAVIGATE to a freshly mounted iframe, the
-    // iframe goes through a short boot-up sequence (index route → Navigate
-    // redirect) and emits several NAV_CHANGE messages before settling on
-    // the path we asked for. We remember the requested path here and ignore
-    // boot-up NAV_CHANGEs until the iframe confirms the move.
-    private _pendingModuleNav: WeakMap<HTMLIFrameElement, string> = new WeakMap();
     private _workspaceTreeCache: Record<string, FsEntry[]> = {};
 
     constructor() {
@@ -284,8 +269,11 @@ export class App extends Component<{}, AppState> {
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);
         window.addEventListener('resize', this.handleWindowResize);
-        // Listen for postMessage events from module iframes (NAV_CHANGE, READY).
-        window.addEventListener('message', this.handleModuleMessage);
+        // Module custom elements (<skills-panel>, <cc-connect-panel>)
+        // bubble CustomEvent('navigate') up through the DOM when their
+        // internal MemoryRouter routes change. The host mirrors the path
+        // into its own URL state.
+        document.addEventListener('navigate', this.handleModuleNavigate);
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
         }
@@ -309,7 +297,7 @@ export class App extends Component<{}, AppState> {
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
         window.removeEventListener('resize', this.handleWindowResize);
-        window.removeEventListener('message', this.handleModuleMessage);
+        document.removeEventListener('navigate', this.handleModuleNavigate);
         if (window.visualViewport) {
             window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
         }
@@ -1231,94 +1219,56 @@ export class App extends Component<{}, AppState> {
      *
      * The first NAV_CHANGE from a given contentWindow is also our implicit
      * "iframe is ready" handshake — 1skills doesn't send an explicit READY.
-     * At that point we re-push THEME/LANG (in case the user changed them
-     * while the iframe was loading) and, if the host had a desired path
-     * before the iframe was listening, NAVIGATE.
+    /**
+     * Handles `CustomEvent('navigate', { detail: { path } })` bubbling up
+     * from a module custom element. Mirrors the path into host state and
+     * the main app URL — the same role that `handleModuleMessage` plays
+     * for the iframe postMessage NAV_CHANGE.
      */
-    handleModuleMessage = (e: MessageEvent) => {
-        if (!isModuleInboundMessage(e.data)) return;
-
-        if (e.data.type === 'NAV_CHANGE') {
-            const path = e.data.path || '';
-            const iframe = this.findActiveModuleIframe();
-            const isFromActiveIframe =
-                iframe !== null && iframe.contentWindow !== null && e.source === iframe.contentWindow;
-            const isFirstFromThisIframe =
-                isFromActiveIframe && iframe !== null && !this._moduleIframesReady.has(iframe);
-            if (isFirstFromThisIframe && iframe) {
-                this._moduleIframesReady.add(iframe);
-                // Re-push current theme/lang so a freshly mounted iframe
-                // doesn't sit on its own defaults until the next change.
-                postToModule(iframe, { type: 'THEME_CHANGE', theme: this.state.theme });
-                postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
-            }
-            // Boot-up: host already had a desired path before the iframe
-            // was listening. Push it and remember we did — subsequent
-            // NAV_CHANGEs from the iframe's index → redirect boot-up
-            // sequence must NOT clobber our state.
-            if (
-                isFirstFromThisIframe &&
-                iframe &&
-                this.state.activeModulePath &&
-                path !== this.state.activeModulePath
-            ) {
-                postToModule(iframe, { type: 'NAVIGATE', to: this.state.activeModulePath });
-                this._pendingModuleNav.set(iframe, this.state.activeModulePath);
-                return;
-            }
-            // If we have a pending NAVIGATE and the iframe is still
-            // emitting boot-up NAV_CHANGEs that don't match, ignore them.
-            if (iframe && this._pendingModuleNav.has(iframe)) {
-                const wanted = this._pendingModuleNav.get(iframe)!;
-                if (path === wanted) {
-                    // Iframe followed our push — clear the gate and accept.
-                    this._pendingModuleNav.delete(iframe);
-                } else {
-                    // Still in boot-up. Don't touch host state.
-                    return;
-                }
-            }
-            if (path === this.state.activeModulePath) return;
-            this.setState({ activeModulePath: path });
-            this.syncModuleUrl(path);
-        } else if (e.data.type === 'READY') {
-            // Module announces it's mounted — re-fetch live manifest counts now
-            // and immediately push the current theme/lang/nav.
-            const iframe = this.findActiveModuleIframe();
-            if (!iframe) return;
-            this._moduleIframesReady.add(iframe);
-            postToModule(iframe, { type: 'THEME_CHANGE', theme: this.state.theme });
-            postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
-            if (this.state.activeModulePath) {
-                postToModule(iframe, { type: 'NAVIGATE', to: this.state.activeModulePath });
-            }
-            const mod = getModuleByTab(this.state.activeDrawerTab);
-            if (mod) this.loadModuleManifest(mod);
-        }
-    };
-
-    /** Locates the iframe element for the active module-backed drawer tab. */
-    findActiveModuleIframe = (): HTMLIFrameElement | null => {
-        const id = `${this.state.activeDrawerTab}-iframe`;
-        return document.getElementById(id) as HTMLIFrameElement | null;
+    handleModuleNavigate = (e: Event) => {
+        const target = e.target as HTMLElement | null;
+        if (!target) return;
+        const tag = target.tagName ? target.tagName.toLowerCase() : '';
+        if (tag !== 'skills-panel' && tag !== 'cc-connect-panel') return;
+        const detail = (e as CustomEvent<{ path: string }>).detail;
+        if (!detail || typeof detail.path !== 'string' || !detail.path) return;
+        const path = detail.path;
+        if (path === this.state.activeModulePath) return;
+        this.setState({ activeModulePath: path });
+        this.syncModuleUrl(path);
     };
 
     /**
-     * Pushes a NAVIGATE message to the active module iframe and updates host
-     * state. Called by `<ModuleNav />` when the user clicks a manifest link.
+     * Map an active drawer tab to the id of its module-side custom element.
+     * All three module-backed tabs (channels, providers, skills) now use
+     * custom elements instead of iframes.
+     */
+    getActiveModulePanelId = (): string | null => {
+        const tab = this.state.activeDrawerTab;
+        if (tab === 'channels') return 'cc-channels-panel';
+        if (tab === 'providers') return 'cc-providers-panel';
+        if (tab === 'skills') return 'skills-panel';
+        return null;
+    };
+
+    /**
+     * Pushes a route change to the active module panel. Called by
+     * `<ModuleNav />` when the user clicks a manifest link.
      *
-     * The NAVIGATE is only posted when the iframe is known to be ready
-     * (its first NAV_CHANGE has been received). The readiness set is keyed
-     * by the iframe element so writer and reader see the same key.
+     * Since all modules now use custom elements (no more iframes), we
+     * update host state and set the `route` attribute on the panel
+     * element directly. The element's `attributeChangedCallback`
+     * forwards this to its internal MemoryRouter via `EmbedBridge`.
      */
     navigateInModule = (to: string) => {
         if (!to) return;
         if (to === this.state.activeModulePath) return;
-        const iframe = this.findActiveModuleIframe();
         this.setState({ activeModulePath: to });
         this.syncModuleUrl(to);
-        if (iframe && this._moduleIframesReady.has(iframe)) {
-            postToModule(iframe, { type: 'NAVIGATE', to });
+        const panelId = this.getActiveModulePanelId();
+        if (panelId) {
+            const panel = document.getElementById(panelId);
+            if (panel) panel.setAttribute('route', to);
         }
     };
 
@@ -1704,22 +1654,6 @@ export class App extends Component<{}, AppState> {
             detailFullscreen: true,
         });
         await this.openFileDetail(entry);
-    };
-
-    getCcConnectIframeUrl = (url?: string) => {
-        if (!url) return '';
-        if (url.startsWith('/')) {
-            return url;
-        }
-        try {
-            const parsed = new URL(url);
-            if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-                parsed.hostname = window.location.hostname;
-            }
-            return parsed.toString();
-        } catch (e) {
-            return url;
-        }
     };
 
     render() {

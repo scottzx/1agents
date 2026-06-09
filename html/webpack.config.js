@@ -116,6 +116,12 @@ const devConfig = {
                 target: `http://localhost:${backendPort}`,
                 changeOrigin: true,
             },
+            {
+                // Submodule embed bundles — proxy to the Go backend in dev
+                context: ['/api/embed'],
+                target: `http://localhost:${backendPort}`,
+                changeOrigin: true,
+            },
         ],
     },
     devtool: 'inline-source-map',

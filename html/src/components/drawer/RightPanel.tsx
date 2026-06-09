@@ -6,6 +6,7 @@ import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
 import { t, type Lang } from '../i18n';
+import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -161,22 +162,6 @@ export function RightPanel({
         }
     };
 
-    const getCcConnectIframeUrl = (url?: string) => {
-        if (!url) return '';
-        if (url.startsWith('/')) {
-            return url;
-        }
-        try {
-            const parsed = new URL(url);
-            if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-                parsed.hostname = window.location.hostname;
-            }
-            return parsed.toString();
-        } catch (e) {
-            return url;
-        }
-    };
-
     return (
         <aside
             class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}
@@ -224,7 +209,7 @@ export function RightPanel({
                 </div>
             </div>
 
-            {/* cc-connect channels iframe container is kept alive to avoid 1-2s load latency */}
+            {/* cc-connect channels panel (custom element, kept alive to avoid remount latency) */}
             <div
                 class="panel-body-iframe"
                 style={`flex: 1; overflow: hidden; display: ${
@@ -232,17 +217,13 @@ export function RightPanel({
                 }; flex-direction: column; height: 100%;`}
             >
                 {ccConnectUrl && (
-                    <iframe
-                        id="cc-connect-iframe"
-                        src={getCcConnectIframeUrl(ccConnectUrl)}
-                        onLoad={e => {
-                            const iframe = e.target as HTMLIFrameElement;
-                            if (iframe && iframe.contentWindow) {
-                                iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme }, '*');
-                                iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: language }, '*');
-                            }
-                        }}
-                        style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
+                    <cc-connect-panel
+                        id="cc-channels-panel"
+                        route={extractCcRedirect(ccConnectUrl)}
+                        theme={theme}
+                        lang={language}
+                        auth-token={extractCcToken(ccConnectUrl)}
+                        style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
                     />
                 )}
             </div>

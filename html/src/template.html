@@ -19,5 +19,14 @@
 <% for (const js in htmlWebpackPlugin.files.js) { %>
 <script inline type="text/javascript" src="<%= htmlWebpackPlugin.files.js[js] %>"></script>
 <% } %>
+<!--
+  Submodule embed bundles (custom elements). Loaded as native ESM modules
+  because the embed entries are self-contained IIFE-free modules that
+  register <skills-panel> and <cc-connect-panel> on import. They are
+  served by the 1agents Go backend at /api/embed/* (see backend's
+  server.go) and excluded from the service worker's fetch handler.
+-->
+<script type="module" src="/api/embed/skills-embed.js"></script>
+<script type="module" src="/api/embed/cc-connect-embed.js"></script>
 </body>
 </html>

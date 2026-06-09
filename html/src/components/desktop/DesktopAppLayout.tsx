@@ -20,8 +20,8 @@ import {
     clientOptions,
     flowControl,
 } from '../terminal/terminalConfig';
-import { getModuleByTab, buildModuleIframeSrc } from '../../modules/registry';
-import { postToModule } from '../../modules/post-message';
+import { getModuleByTab } from '../../modules/registry';
+import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -219,56 +219,46 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             }}
                                         >
                                             {activeDrawerTab === 'providers' && ccProvidersUrl && (
-                                                <iframe
-                                                    id="cc-providers-iframe"
-                                                    src={app.getCcConnectIframeUrl(ccProvidersUrl)}
-                                                    onLoad={e => {
-                                                        const iframe = e.target as HTMLIFrameElement;
-                                                        if (iframe && iframe.contentWindow) {
-                                                            iframe.contentWindow.postMessage(
-                                                                { type: 'THEME_CHANGE', theme },
-                                                                '*'
-                                                            );
-                                                            iframe.contentWindow.postMessage(
-                                                                { type: 'LANG_CHANGE', lang: language },
-                                                                '*'
-                                                            );
-                                                        }
-                                                    }}
+                                                <cc-connect-panel
+                                                    id="cc-providers-panel"
+                                                    route={extractCcRedirect(ccProvidersUrl, '/providers')}
+                                                    theme={theme}
+                                                    lang={language}
+                                                    auth-token={extractCcToken(ccProvidersUrl)}
                                                     style={{
                                                         width: '100%',
                                                         height: '100%',
-                                                        border: 'none',
-                                                        background: 'transparent',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        minHeight: 0,
+                                                        overflow: 'hidden',
                                                     }}
                                                 />
                                             )}
                                             {activeDrawerTab === 'skills' &&
                                                 (() => {
                                                     const skillsMod = getModuleByTab('skills');
-                                                    const skillsSrc = skillsMod
-                                                        ? buildModuleIframeSrc(skillsMod)
-                                                        : '/1skills/';
+                                                    const initialRoute =
+                                                        skillsMod &&
+                                                        state.activeModulePath &&
+                                                        activeDrawerTab === 'skills'
+                                                            ? state.activeModulePath
+                                                            : skillsMod
+                                                              ? skillsMod.entryPath
+                                                              : '/overview';
                                                     return (
-                                                        <iframe
-                                                            id="skills-iframe"
-                                                            src={skillsSrc}
-                                                            onLoad={e => {
-                                                                const iframe = e.target as HTMLIFrameElement;
-                                                                postToModule(iframe, {
-                                                                    type: 'THEME_CHANGE',
-                                                                    theme,
-                                                                });
-                                                                postToModule(iframe, {
-                                                                    type: 'LANG_CHANGE',
-                                                                    lang: language,
-                                                                });
-                                                            }}
+                                                        <skills-panel
+                                                            id="skills-panel"
+                                                            route={initialRoute}
+                                                            theme={theme}
+                                                            lang={language}
                                                             style={{
                                                                 width: '100%',
                                                                 height: '100%',
-                                                                border: 'none',
-                                                                background: 'transparent',
+                                                                display: 'flex',
+                                                                flexDirection: 'column',
+                                                                minHeight: 0,
+                                                                overflow: 'hidden',
                                                             }}
                                                         />
                                                     );
