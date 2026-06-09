@@ -296,6 +296,34 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-**Acknowledgements**:
-- Terminal xterm emulation is built upon the wonderful open-source server [ttyd](https://github.com/tsl0922/ttyd).
-- Remote platform chat bridges and project sync are driven by the [cc-connect](https://github.com/scottzx/cc-connect) module.
+## 🙏 Acknowledgements
+
+`1agents` stands on the shoulders of giants. The open-source projects listed below collectively power this application — heartfelt thanks to every author and maintainer:
+
+**Terminal & Frontend**
+- [ttyd](https://github.com/tsl0922/ttyd) (MIT) — Web-based terminal server; both the frontend and `modules/ttyd` are forked from this project
+- [xterm.js](https://github.com/xtermjs/xterm.js) (MIT) — High-performance web terminal emulator
+- [Preact](https://github.com/preactjs/preact) (MIT) — 3 KB React-compatible runtime powering the UI
+- [Marked](https://github.com/markedjs/marked) (MIT) — Markdown renderer for AI assistant messages
+- [trzsz](https://github.com/trzsz/trzsz.js) (MIT) — Web-based trzsz file transfer
+- [webpack](https://github.com/webpack/webpack) (MIT) — Frontend bundler and dev-server
+
+**AI / Messaging Bridge (cc-connect)**
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) (MIT) — Go TUI framework by Charm
+- [discordgo](https://github.com/bwmarrin/discordgo) (BSD-3) · [go-telegram/bot](https://github.com/go-telegram/bot) (MIT) · [slack-go](https://github.com/slack-go/slack) (BSD-2) · [line-bot-sdk-go](https://github.com/line/line-bot-sdk-go) (Apache-2.0)
+- [larksuite/oapi-sdk-go](https://github.com/larksuite/oapi-sdk-go) (MIT) — Official Feishu open-platform SDK
+- [dingtalk-stream-sdk-go](https://github.com/open-dingtalk/dingtalk-stream-sdk-go) (Apache-2.0) — DingTalk stream-connection SDK
+- [gorilla/websocket](https://github.com/gorilla/websocket) (BSD-2) — WebSocket transport foundation
+
+**AI Agent Toolchain**
+- [cc-switch](https://github.com/farion1231/cc-switch) (MIT) — farion1231's original prototype for multi-account configuration switching across Claude Code / Codex / Gemini
+- [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli) (MIT) — Rust TUI/CLI derivative of cc-switch — compiled and shipped as a sidecar binary for provider & session management
+- [skill-manager](https://github.com/mode-io/skill-manager) (MIT) — Local-first control panel for Skills / MCP servers / slash commands, integrated as the `modules/1skills` git submodule
+
+**Data & Infrastructure**
+- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3) — Pure-Go SQLite (no CGO) backing workspace and session persistence
+- [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT) — TOML configuration parser
+- [creack/pty](https://github.com/creack/pty) (MIT) — Unix pseudo-terminal bindings, core dependency of remote terminal sessions
+- [robfig/cron](https://github.com/robfig/cron) (MIT) — Go cron-expression scheduler
+
+Remote platform chat bridges and project sync are driven by the [cc-connect](https://github.com/scottzx/cc-connect) module. Anything missing? Please open an issue — we'd love to add it.

@@ -273,6 +273,34 @@ docker run -d \
 
 ---
 
-**致谢与关联项目**：
-- 终端底层核心能力基于优秀的开源项目 [ttyd](https://github.com/tsl0922/ttyd) 构建，衷心感谢其作者的杰出贡献。
-- 跨渠道 AI 消息桥接与智能体集成方案由子模块 [cc-connect](https://github.com/scottzx/cc-connect) 驱动。
+## 🙏 鸣谢 (Acknowledgements)
+
+`1agents` 站在巨人的肩膀上,下列开源项目共同支撑了本应用,在此向所有作者与维护者表达诚挚感谢:
+
+**终端与前端**
+- [ttyd](https://github.com/tsl0922/ttyd) (MIT) — 基于 Web 的终端服务,本项目前端及 `modules/ttyd` 子模块均 fork 自此项目
+- [xterm.js](https://github.com/xtermjs/xterm.js) (MIT) — 高性能 Web 终端模拟器
+- [Preact](https://github.com/preactjs/preact) (MIT) — 3KB 体积的 React 兼容运行时,驱动整个 UI
+- [Marked](https://github.com/markedjs/marked) (MIT) — AI 输出消息的 Markdown 渲染器
+- [trzsz](https://github.com/trzsz/trzsz.js) (MIT) — 基于 Web 的 trzsz 文件传输实现
+- [webpack](https://github.com/webpack/webpack) (MIT) — 前端打包与 dev-server
+
+**AI / 消息平台桥接 (cc-connect)**
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) (MIT) — Charm 团队出品的 Go TUI 框架
+- [discordgo](https://github.com/bwmarrin/discordgo) (BSD-3) · [go-telegram/bot](https://github.com/go-telegram/bot) (MIT) · [slack-go](https://github.com/slack-go/slack) (BSD-2) · [line-bot-sdk-go](https://github.com/line/line-bot-sdk-go) (Apache-2.0)
+- [larksuite/oapi-sdk-go](https://github.com/larksuite/oapi-sdk-go) (MIT) — 飞书开放平台官方 SDK
+- [dingtalk-stream-sdk-go](https://github.com/open-dingtalk/dingtalk-stream-sdk-go) (Apache-2.0) — 钉钉流式接入 SDK
+- [gorilla/websocket](https://github.com/gorilla/websocket) (BSD-2) — WebSocket 传输基础
+
+**AI Agent 工具链**
+- [cc-switch](https://github.com/farion1231/cc-switch) (MIT) — farion1231 出品的 Claude Code / Codex / Gemini 多账号配置切换原型
+- [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli) (MIT) — cc-switch 的 Rust TUI/CLI 衍生版,作为 sidecar 被编译并随发行版分发,负责供应商与会话管理
+- [skill-manager](https://github.com/mode-io/skill-manager) (MIT) — 本地优先的 Skill / MCP / Slash 命令管理面板,以 git submodule 形式集成在 `modules/1skills`
+
+**数据与基础设施**
+- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3) — 纯 Go 实现的 SQLite,支撑工作空间与会话持久化
+- [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT) — TOML 配置解析
+- [creack/pty](https://github.com/creack/pty) (MIT) — Unix 伪终端绑定,远端终端会话的核心依赖
+- [robfig/cron](https://github.com/robfig/cron) (MIT) — Go 的 cron 表达式调度器
+
+跨渠道 AI 消息桥接与智能体集成方案由子模块 [cc-connect](https://github.com/scottzx/cc-connect) 驱动。如有遗漏,欢迎通过 issue 告知补充。

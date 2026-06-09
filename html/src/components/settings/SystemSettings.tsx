@@ -522,6 +522,240 @@ export function SystemSettings(props: SystemSettingsProps) {
         </div>
     );
 
+    /**
+     * Curated list of major open-source projects we depend on. Kept short
+     * intentionally — this is acknowledgement, not a full SBOM. License
+     * field is the project's SPDX identifier; url points at the canonical
+     * upstream repository or homepage.
+     */
+    const CREDITS_GROUPS: Array<{
+        key: 'frontend' | 'bridge' | 'agents' | 'infra';
+        items: Array<{ name: string; descKey: string; license: string; url: string }>;
+    }> = [
+        {
+            key: 'frontend',
+            items: [
+                {
+                    name: 'ttyd',
+                    descKey: 'settings.credits.ttyd',
+                    license: 'MIT',
+                    url: 'https://github.com/tsl0922/ttyd',
+                },
+                {
+                    name: 'xterm.js',
+                    descKey: 'settings.credits.xterm',
+                    license: 'MIT',
+                    url: 'https://github.com/xtermjs/xterm.js',
+                },
+                {
+                    name: 'Preact',
+                    descKey: 'settings.credits.preact',
+                    license: 'MIT',
+                    url: 'https://github.com/preactjs/preact',
+                },
+                {
+                    name: 'Marked',
+                    descKey: 'settings.credits.marked',
+                    license: 'MIT',
+                    url: 'https://github.com/markedjs/marked',
+                },
+                {
+                    name: 'trzsz',
+                    descKey: 'settings.credits.trzsz',
+                    license: 'MIT',
+                    url: 'https://github.com/trzsz/trzsz.js',
+                },
+                {
+                    name: 'webpack',
+                    descKey: 'settings.credits.webpack',
+                    license: 'MIT',
+                    url: 'https://github.com/webpack/webpack',
+                },
+            ],
+        },
+        {
+            key: 'bridge',
+            items: [
+                {
+                    name: 'Bubble Tea',
+                    descKey: 'settings.credits.bubbletea',
+                    license: 'MIT',
+                    url: 'https://github.com/charmbracelet/bubbletea',
+                },
+                {
+                    name: 'discordgo',
+                    descKey: 'settings.credits.discordgo',
+                    license: 'BSD-3-Clause',
+                    url: 'https://github.com/bwmarrin/discordgo',
+                },
+                {
+                    name: 'go-telegram/bot',
+                    descKey: 'settings.credits.telegram',
+                    license: 'MIT',
+                    url: 'https://github.com/go-telegram/bot',
+                },
+                {
+                    name: 'slack-go',
+                    descKey: 'settings.credits.slack',
+                    license: 'BSD-2-Clause',
+                    url: 'https://github.com/slack-go/slack',
+                },
+                {
+                    name: 'line-bot-sdk-go',
+                    descKey: 'settings.credits.line',
+                    license: 'Apache-2.0',
+                    url: 'https://github.com/line/line-bot-sdk-go',
+                },
+                {
+                    name: 'larksuite/oapi-sdk-go',
+                    descKey: 'settings.credits.feishu',
+                    license: 'MIT',
+                    url: 'https://github.com/larksuite/oapi-sdk-go',
+                },
+                {
+                    name: 'dingtalk-stream-sdk-go',
+                    descKey: 'settings.credits.dingtalk',
+                    license: 'Apache-2.0',
+                    url: 'https://github.com/open-dingtalk/dingtalk-stream-sdk-go',
+                },
+                {
+                    name: 'gorilla/websocket',
+                    descKey: 'settings.credits.websocket',
+                    license: 'BSD-2-Clause',
+                    url: 'https://github.com/gorilla/websocket',
+                },
+            ],
+        },
+        {
+            key: 'agents',
+            items: [
+                {
+                    name: 'cc-switch',
+                    descKey: 'settings.credits.ccswitch',
+                    license: 'MIT',
+                    url: 'https://github.com/farion1231/cc-switch',
+                },
+                {
+                    name: 'cc-switch-cli',
+                    descKey: 'settings.credits.ccswitchcli',
+                    license: 'MIT',
+                    url: 'https://github.com/SaladDay/cc-switch-cli',
+                },
+                {
+                    name: 'skill-manager',
+                    descKey: 'settings.credits.skillmanager',
+                    license: 'MIT',
+                    url: 'https://github.com/mode-io/skill-manager',
+                },
+            ],
+        },
+        {
+            key: 'infra',
+            items: [
+                {
+                    name: 'modernc.org/sqlite',
+                    descKey: 'settings.credits.sqlite',
+                    license: 'BSD-3-Clause',
+                    url: 'https://gitlab.com/cznic/sqlite',
+                },
+                {
+                    name: 'BurntSushi/toml',
+                    descKey: 'settings.credits.toml',
+                    license: 'MIT',
+                    url: 'https://github.com/BurntSushi/toml',
+                },
+                {
+                    name: 'creack/pty',
+                    descKey: 'settings.credits.pty',
+                    license: 'MIT',
+                    url: 'https://github.com/creack/pty',
+                },
+                {
+                    name: 'robfig/cron',
+                    descKey: 'settings.credits.cron',
+                    license: 'MIT',
+                    url: 'https://github.com/robfig/cron',
+                },
+            ],
+        },
+    ];
+
+    const renderCredits = () => (
+        <div class="sys-settings-section">
+            <div class="sys-settings-section-title">{t('settings.credits.title', language)}</div>
+            <div class="sys-settings-section-desc">{t('settings.credits.desc', language)}</div>
+
+            {CREDITS_GROUPS.map(group => (
+                <div class="sys-settings-card" key={group.key}>
+                    <div class="sys-settings-card-header">
+                        <div class="sys-settings-card-icon">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="sys-settings-card-title">
+                                {t(`settings.credits.group.${group.key}`, language)}
+                            </div>
+                            <div class="sys-settings-card-subtitle">
+                                {t(`settings.credits.group.${group.key}.desc`, language)}
+                            </div>
+                        </div>
+                    </div>
+                    <ul style="margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px;">
+                        {group.items.map(item => (
+                            <li key={item.url} style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                                <a
+                                    class="meta-link"
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style="font-weight: 600;"
+                                >
+                                    {item.name}
+                                </a>
+                                <span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; opacity: 0.6;">
+                                    {item.license}
+                                </span>
+                                <span style="opacity: 0.75; font-size: 13px;">— {t(item.descKey, language)}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ))}
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('settings.credits.note.title', language)}</div>
+                        <div class="sys-settings-card-subtitle">{t('settings.credits.note.desc', language)}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
     const renderAbout = () => (
         <div class="sys-settings-section">
             <div class="sys-settings-section-title">{t('settings.about.title', language)}</div>
@@ -639,6 +873,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderFeedback();
             case 'about':
                 return renderAbout();
+            case 'credits':
+                return renderCredits();
             default:
                 return null;
         }

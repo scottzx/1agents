@@ -13,7 +13,7 @@
 
 import type { ModuleManifest } from './module-types';
 
-export type SettingsCategory = 'general' | 'appearance' | 'security' | 'feedback' | 'about';
+export type SettingsCategory = 'general' | 'appearance' | 'security' | 'feedback' | 'about' | 'credits';
 
 export interface SettingsNavItem {
     key: SettingsCategory;
@@ -29,6 +29,7 @@ export const SETTINGS_CATEGORIES: SettingsNavItem[] = [
     { key: 'security', path: '/security', i18nKey: 'settings.nav.security' },
     { key: 'feedback', path: '/feedback', i18nKey: 'settings.nav.feedback' },
     { key: 'about', path: '/about', i18nKey: 'settings.nav.about' },
+    { key: 'credits', path: '/credits', i18nKey: 'settings.nav.credits' },
 ];
 
 export const SETTINGS_DEFAULT_CATEGORY: SettingsCategory = 'general';

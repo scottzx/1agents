@@ -102,7 +102,7 @@ function ModuleGroup({ group, activePath, defaultCollapsed, onNavigate, language
                         dangerouslySetInnerHTML={{ __html: groupIcon }}
                     />
                 )}
-                <span class="module-nav-group__label">{group.label}</span>
+                <span class="module-nav-group__label">{t(group.label, language)}</span>
                 {group.count !== null && group.count !== undefined && (
                     <span class="module-nav-group__count">{group.count}</span>
                 )}
@@ -145,10 +145,10 @@ interface ModuleLinkProps {
 }
 
 function ModuleLink({ link, active, onClick, language }: ModuleLinkProps) {
-    // The label is rendered verbatim — module authors are expected to send
-    // translated strings (the static manifest uses Chinese strings today).
-    // The `t()` lookup is a best-effort fallback for legacy i18n keys.
-    const display = t(link.label, language) === link.label ? link.label : t(link.label, language);
+    // Labels are i18n keys (e.g. 'module.skills.link.inUse'). The `t()` helper
+    // falls back to the key string if missing — which still beats showing
+    // nothing — and logs a console.warn so the missing key is visible.
+    const display = t(link.label, language);
     return (
         <button type="button" class={`module-nav-link${active ? ' is-active' : ''}`} onClick={onClick} title={display}>
             <span class="module-nav-link__dot" aria-hidden="true" />

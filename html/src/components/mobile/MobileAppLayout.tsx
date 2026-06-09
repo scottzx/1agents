@@ -125,7 +125,7 @@ interface MobileAppLayoutState {
      */
     mountedSkillsPath: string;
     activeMoreSubView: 'menu' | 'settings' | 'discovery';
-    activeSettingsCategory: 'menu' | 'general' | 'appearance' | 'security' | 'feedback' | 'about';
+    activeSettingsCategory: SettingsCategory | 'menu';
     pendingConfirm:
         | { kind: 'session'; name: string; sessionIndex: number }
         | { kind: 'workspace'; name: string; workspaceId: string }
@@ -744,7 +744,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                 moduleNav.onNavigate(link.to);
                                                             }}
                                                         >
-                                                            <span class="row-label">{link.label}</span>
+                                                            <span class="row-label">{t(link.label, language)}</span>
                                                             <div class="row-chevron">
                                                                 <svg
                                                                     viewBox="0 0 24 24"
@@ -761,7 +761,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
 
                                             {moduleNav.manifest.groups.map(group => (
                                                 <div key={group.key} class="mobile-skills-group-section">
-                                                    <div class="group-title">{group.label}</div>
+                                                    <div class="group-title">{t(group.label, language)}</div>
                                                     <div class="mobile-menu-group">
                                                         {group.links.map(link => (
                                                             <button
@@ -775,7 +775,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                     moduleNav.onNavigate(link.to);
                                                                 }}
                                                             >
-                                                                <span class="row-label">{link.label}</span>
+                                                                <span class="row-label">{t(link.label, language)}</span>
                                                                 {link.count !== null && link.count !== undefined && (
                                                                     <span class="row-count-badge">{link.count}</span>
                                                                 )}

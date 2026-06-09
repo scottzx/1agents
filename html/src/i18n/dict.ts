@@ -390,6 +390,7 @@ export const zhCN: Record<string, string> = {
     'settings.nav.security': '安全设置',
     'settings.nav.feedback': '反馈与联系',
     'settings.nav.about': '关于与维护',
+    'settings.nav.credits': '鸣谢',
 
     'settings.general.title': '通用设置',
     'settings.general.desc': '配置语言和语音识别选项。',
@@ -444,6 +445,57 @@ export const zhCN: Record<string, string> = {
     'settings.about.resetDesc': '清除所有本地缓存数据并重置应用到初始状态。',
     'settings.about.confirmReset': '确认重置',
     'settings.about.resetBtn': '重置应用数据',
+
+    // ── 鸣谢 ──
+    'settings.credits.title': '鸣谢',
+    'settings.credits.desc':
+        '1agents 站在巨人的肩膀上。下列开源项目共同支撑了本应用,在此向所有作者与维护者表达诚挚感谢。',
+    'settings.credits.group.frontend': '终端与前端',
+    'settings.credits.group.frontend.desc': '浏览器侧的终端模拟、UI 框架与构建工具链',
+    'settings.credits.group.bridge': 'AI / 消息平台桥接(cc-connect)',
+    'settings.credits.group.bridge.desc': '将 AI Agent 与各主流即时通讯平台对接的核心 SDK 与终端 UI 库',
+    'settings.credits.group.agents': 'AI Agent 工具链',
+    'settings.credits.group.agents.desc': '在 1agents 中直接编译/分发的 Agent 配置与技能管理工具',
+    'settings.credits.group.infra': '数据与基础设施',
+    'settings.credits.group.infra.desc': '后端进程使用的存储、配置、伪终端与定时任务库',
+    'settings.credits.note.title': '使用前请遵守各项目许可证',
+    'settings.credits.note.desc':
+        '本应用以源代码及二进制形式分发,使用上述项目时均遵循其原始许可证条款。如有遗漏,欢迎通过"反馈与联系"告知补充。',
+    'settings.credits.ttyd': '基于 Web 的终端服务,本项目的前端及 ttyd 子模块均 fork 自此项目',
+    'settings.credits.xterm': '高性能 Web 终端模拟器,为 xterm.js 加载项提供基础',
+    'settings.credits.preact': '3KB 体积的 React 兼容运行时,驱动整个 UI',
+    'settings.credits.marked': 'AI 输出消息的 Markdown 渲染器',
+    'settings.credits.trzsz': '基于 Web 的 trzsz 文件传输实现',
+    'settings.credits.webpack': '前端打包与 dev-server',
+    'settings.credits.bubbletea': 'Charm 团队出品的 Go TUI 框架,cc-connect CLI 的交互基础',
+    'settings.credits.discordgo': 'Discord 平台 Bot SDK',
+    'settings.credits.telegram': 'Telegram 平台 Bot SDK',
+    'settings.credits.slack': 'Slack 平台 Bot SDK',
+    'settings.credits.line': 'LINE 平台 Messaging API SDK',
+    'settings.credits.feishu': '飞书开放平台官方 SDK',
+    'settings.credits.dingtalk': '钉钉流式接入 SDK',
+    'settings.credits.websocket': 'cc-connect 与浏览器之间的 WebSocket 传输基础',
+    'settings.credits.ccswitch': 'farion1231 出品的 Claude Code / Codex / Gemini 等 AI Agent 多账号配置切换原型',
+    'settings.credits.ccswitchcli':
+        'cc-switch 的 Rust TUI/CLI 衍生版,作为 sidecar 被 1agents 编译并随发行版分发,负责供应商与会话管理',
+    'settings.credits.skillmanager':
+        '本地优先的 Skill / MCP / Slash 命令管理面板,以 git submodule 形式集成在 modules/1skills',
+    'settings.credits.sqlite': '纯 Go 实现的 SQLite,无需 CGO,支撑工作空间与会话持久化',
+    'settings.credits.toml': 'Go 的 TOML 配置解析,用于 1agents 与 cc-connect 配置文件',
+    'settings.credits.pty': 'Unix 伪终端绑定,远端终端会话的核心依赖',
+    'settings.credits.cron': 'Go 的 cron 表达式调度器,用于后台定时任务',
+
+    // ── Module nav: skills (registry.ts + 1skills FastAPI manifest) ──
+    'module.skills.nav.overview': '概览',
+    'module.skills.group.skills': '技能',
+    'module.skills.group.slashCommands': 'Slash 命令',
+    'module.skills.group.mcp': 'MCP',
+    'module.skills.group.marketplace': '市场',
+    'module.skills.link.inUse': '使用中',
+    'module.skills.link.review': '待审阅',
+    'module.skills.link.scanConfig': '扫描配置',
+    'module.skills.link.cli': 'CLI',
+    'module.skills.action.refresh': '刷新',
 
     // ── Mobile ──
     'sidebar.more': '更多',
@@ -859,6 +911,7 @@ export const enUS: Record<string, string> = {
     'settings.nav.security': 'Security',
     'settings.nav.feedback': 'Feedback & Contact',
     'settings.nav.about': 'About & Maintenance',
+    'settings.nav.credits': 'Acknowledgements',
 
     'settings.general.title': 'General Settings',
     'settings.general.desc': 'Configure language and dictation options.',
@@ -916,6 +969,62 @@ export const enUS: Record<string, string> = {
     'settings.about.resetDesc': 'Clear all local cached data and reset the app to its initial state.',
     'settings.about.confirmReset': 'Confirm Reset',
     'settings.about.resetBtn': 'Reset App Data',
+
+    // ── Acknowledgements ──
+    'settings.credits.title': 'Acknowledgements',
+    'settings.credits.desc':
+        '1agents stands on the shoulders of giants. The open-source projects listed below collectively power this application — heartfelt thanks to every author and maintainer.',
+    'settings.credits.group.frontend': 'Terminal & Frontend',
+    'settings.credits.group.frontend.desc': 'Browser-side terminal emulator, UI framework, and build toolchain',
+    'settings.credits.group.bridge': 'AI / Messaging Bridge (cc-connect)',
+    'settings.credits.group.bridge.desc':
+        'Core SDKs and terminal UI libraries that connect AI agents to mainstream chat platforms',
+    'settings.credits.group.agents': 'AI Agent Toolchain',
+    'settings.credits.group.agents.desc':
+        'Provider-switching and skill-management tools we compile and ship directly inside 1agents',
+    'settings.credits.group.infra': 'Data & Infrastructure',
+    'settings.credits.group.infra.desc':
+        'Storage, configuration, pseudo-terminal, and scheduling libraries used by the backend',
+    'settings.credits.note.title': 'License compliance',
+    'settings.credits.note.desc':
+        'This application is distributed in source and binary form, and uses the projects above under their original licenses. If anything is missing, please let us know via Feedback & Contact.',
+    'settings.credits.ttyd':
+        'Web-based terminal server — both the frontend and the ttyd sub-module are forked from this project',
+    'settings.credits.xterm': 'High-performance web terminal emulator that the xterm addons build upon',
+    'settings.credits.preact': '3 KB React-compatible runtime that powers the entire UI',
+    'settings.credits.marked': 'Markdown renderer for AI assistant messages',
+    'settings.credits.trzsz': 'Web-based trzsz file transfer implementation',
+    'settings.credits.webpack': 'Frontend bundler and dev server',
+    'settings.credits.bubbletea': 'Go TUI framework by Charm — interactive backbone of the cc-connect CLI',
+    'settings.credits.discordgo': 'Discord bot SDK',
+    'settings.credits.telegram': 'Telegram bot SDK',
+    'settings.credits.slack': 'Slack bot SDK',
+    'settings.credits.line': 'LINE Messaging API SDK',
+    'settings.credits.feishu': 'Official Feishu open-platform SDK',
+    'settings.credits.dingtalk': 'DingTalk stream-connection SDK',
+    'settings.credits.websocket': 'WebSocket transport between cc-connect and the browser',
+    'settings.credits.ccswitch':
+        "farion1231's original prototype for multi-account configuration switching across Claude Code, Codex, Gemini, and other AI agents",
+    'settings.credits.ccswitchcli':
+        'Rust TUI/CLI derivative of cc-switch — compiled by 1agents and shipped as a sidecar binary for provider and session management',
+    'settings.credits.skillmanager':
+        'Local-first control panel for Skills / MCP servers / slash commands, integrated as the modules/1skills git submodule',
+    'settings.credits.sqlite': 'Pure-Go SQLite (no CGO) backing workspace and session persistence',
+    'settings.credits.toml': 'TOML configuration parser for both 1agents and cc-connect config files',
+    'settings.credits.pty': 'Unix pseudo-terminal bindings — core dependency of the remote terminal sessions',
+    'settings.credits.cron': 'Go cron-expression scheduler used by background jobs',
+
+    // ── Module nav: skills (registry.ts + 1skills FastAPI manifest) ──
+    'module.skills.nav.overview': 'Overview',
+    'module.skills.group.skills': 'Skills',
+    'module.skills.group.slashCommands': 'Slash Commands',
+    'module.skills.group.mcp': 'MCP',
+    'module.skills.group.marketplace': 'Marketplace',
+    'module.skills.link.inUse': 'In Use',
+    'module.skills.link.review': 'Pending Review',
+    'module.skills.link.scanConfig': 'Scan Config',
+    'module.skills.link.cli': 'CLI',
+    'module.skills.action.refresh': 'Refresh',
 
     // ── Mobile ──
     'sidebar.more': 'More',

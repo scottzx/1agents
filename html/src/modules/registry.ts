@@ -44,48 +44,53 @@ const SKILLS_STATIC_MANIFEST: ModuleManifest = {
     moduleId: 'skills',
     version: 1,
     entryPath: '/overview',
-    topLinks: [{ key: 'overview', to: '/overview', label: '概览', iconKey: 'overview' }],
+    topLinks: [{ key: 'overview', to: '/overview', label: 'module.skills.nav.overview', iconKey: 'overview' }],
     groups: [
         {
             key: 'skills',
-            label: '技能',
+            label: 'module.skills.group.skills',
             iconKey: 'skills',
             links: [
-                { key: 'skills-use', to: '/skills/use', label: '使用中' },
-                { key: 'skills-review', to: '/skills/review', label: '待审阅', badge: 'review' },
-                { key: 'skills-scan-config', to: '/scan-config', label: '扫描配置' },
+                { key: 'skills-use', to: '/skills/use', label: 'module.skills.link.inUse' },
+                { key: 'skills-review', to: '/skills/review', label: 'module.skills.link.review', badge: 'review' },
+                { key: 'skills-scan-config', to: '/scan-config', label: 'module.skills.link.scanConfig' },
             ],
         },
         {
             key: 'slash-commands',
-            label: 'Slash 命令',
+            label: 'module.skills.group.slashCommands',
             iconKey: 'slash-commands',
             links: [
-                { key: 'slash-commands-use', to: '/slash-commands/use', label: '使用中' },
-                { key: 'slash-commands-review', to: '/slash-commands/review', label: '待审阅', badge: 'review' },
+                { key: 'slash-commands-use', to: '/slash-commands/use', label: 'module.skills.link.inUse' },
+                {
+                    key: 'slash-commands-review',
+                    to: '/slash-commands/review',
+                    label: 'module.skills.link.review',
+                    badge: 'review',
+                },
             ],
         },
         {
             key: 'mcp',
-            label: 'MCP',
+            label: 'module.skills.group.mcp',
             iconKey: 'mcp',
             links: [
-                { key: 'mcp-use', to: '/mcp/use', label: '使用中' },
-                { key: 'mcp-review', to: '/mcp/review', label: '待审阅', badge: 'review' },
+                { key: 'mcp-use', to: '/mcp/use', label: 'module.skills.link.inUse' },
+                { key: 'mcp-review', to: '/mcp/review', label: 'module.skills.link.review', badge: 'review' },
             ],
         },
         {
             key: 'marketplace',
-            label: '市场',
+            label: 'module.skills.group.marketplace',
             iconKey: 'marketplace',
             links: [
-                { key: 'marketplace-skills', to: '/marketplace', label: '技能' },
-                { key: 'marketplace-mcp', to: '/marketplace/mcp', label: 'MCP' },
-                { key: 'marketplace-clis', to: '/marketplace/clis', label: 'CLI' },
+                { key: 'marketplace-skills', to: '/marketplace', label: 'module.skills.group.skills' },
+                { key: 'marketplace-mcp', to: '/marketplace/mcp', label: 'module.skills.group.mcp' },
+                { key: 'marketplace-clis', to: '/marketplace/clis', label: 'module.skills.link.cli' },
             ],
         },
     ],
-    headerActions: [{ key: 'refresh', label: '刷新', iconKey: 'refresh' }],
+    headerActions: [{ key: 'refresh', label: 'module.skills.action.refresh', iconKey: 'refresh' }],
 };
 
 /**
