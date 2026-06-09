@@ -21,10 +21,7 @@ type ccConnectManagement struct {
 }
 
 func readManagementToken() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot find home directory: %w", err)
-	}
+	home := get1AgentsHome()
 	configPath := filepath.Join(home, ".cc-connect", "config.toml")
 	var cfg ccConnectManagement
 	if _, err := toml.DecodeFile(configPath, &cfg); err != nil {
@@ -37,10 +34,7 @@ func readManagementToken() (string, error) {
 }
 
 func readDaemonListenAddr() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ":8080"
-	}
+	home := get1AgentsHome()
 	data, err := os.ReadFile(filepath.Join(home, ".1agents", "daemon.json"))
 	if err != nil {
 		return ":8080"

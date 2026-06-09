@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
@@ -30,6 +32,7 @@ import (
 //
 //	/api/fs/*         → File system CRUD handlers (Go, local I/O)
 //	/api/workspace/*  → Workspace CRUD handlers (Go, JSON file storage)
+//	/api/agent/*      → 1agents-side chat session index (Go, JSON file storage)
 //	/api/terminal/*   → Tmux terminal session management (create/list/kill/switch)
 //	/api/system/*     → System management: version info, OTA self-update
 //	/ws               → Reverse-proxy to ttyd WebSocket endpoint
@@ -60,6 +63,20 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)           // DELETE ?id=xxx
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
 	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
+
+	// ── Agent (chat session) index API ─────────────────────────────────────
+	// 1agents-side metadata store. The actual conversation lives in
+	// cc-connect; these endpoints only index a session created via the
+	// cc-connect REST/WS so the sidebar can list it like a terminal session.
+	agentStore, err := agent.NewStore()
+	if err != nil {
+		log.Printf("[server] agent store init failed: %v", err)
+	} else {
+		agentHandler := agent.NewHandler(agentStore)
+		mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
+		mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
+		mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
+	}
 
 	mux.HandleFunc("/api/cc-connect/url", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -186,7 +203,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Bridge WebSocket proxy ──────────────────────────────────────────────
 	// Proxies /bridge/ws to the CC-Connect bridge server (dynamic port).
-	mux.Handle("/bridge/", gateway.NewBridgeProxy(ccconnect.BridgePort))
+	mux.Handle("/bridge/", gateway.NewBridgeProxy(ccconnect.BridgePort, ccconnect.BridgeToken))
 
 	// ── 1skills reverse proxy ────────────────────────────────────────────────
 	var skillsPort int

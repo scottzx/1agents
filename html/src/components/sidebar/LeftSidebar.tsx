@@ -1,6 +1,6 @@
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
-import { WorkspaceFolder, Workspace, RightDrawerTab, Session } from '../types';
+import { useState, useEffect, useRef } from 'preact/hooks';
+import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
 import { ModuleNav } from './ModuleNav';
 import type { ModuleManifest } from '../../modules/module-types';
@@ -39,6 +39,8 @@ interface LeftSidebarProps {
         activePath: string;
         onNavigate: (to: string) => void;
     };
+    onChatCreate: (workspaceId: string) => void;
+    onChatKill: (sessionId: string) => void;
 }
 
 export function LeftSidebar({
@@ -63,12 +65,16 @@ export function LeftSidebar({
     onReorderFolders,
     language,
     moduleNav,
+    onChatCreate,
+    onChatKill,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [killingSessionIndex, setKillingSessionIndex] = useState<number | null>(null);
+    const [killingSessionId, setKillingSessionId] = useState<string | null>(null);
+    const [openDropdownWsId, setOpenDropdownWsId] = useState<string | null>(null);
+    const dropdownRef = useRef<HTMLDivElement | null>(null);
 
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -128,8 +134,20 @@ export function LeftSidebar({
 
     useEffect(() => {
         setDeletingId(null);
-        setKillingSessionIndex(null);
+        setKillingSessionId(null);
     }, [folders]);
+
+    // Close the add-session dropdown on outside click.
+    useEffect(() => {
+        if (!openDropdownWsId) return;
+        const onDown = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setOpenDropdownWsId(null);
+            }
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [openDropdownWsId]);
 
     const handleDeleteClick = (e: MouseEvent, id: string) => {
         e.stopPropagation();
@@ -155,12 +173,20 @@ export function LeftSidebar({
         setConfirmDeleteId(null);
     };
 
+    const handleSessionKill = (e: MouseEvent, session: Session) => {
+        e.stopPropagation();
+        setKillingSessionId(session.id);
+        setTimeout(() => {
+            if (isChat(session)) onChatKill(session.id);
+            else onTerminalKill(session.index);
+        }, 300);
+    };
+
     return (
         <aside
             class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}
             style={leftSidebarOpen ? `width: ${leftSidebarWidth}px` : ''}
             onClick={(e: MouseEvent) => {
-                // If on mobile and clicking the backdrop (outside the sidebar container which is 280px wide on mobile)
                 if (window.innerWidth <= 768 && e.clientX > 280) {
                     toggleLeftSidebar();
                 }
@@ -252,6 +278,7 @@ export function LeftSidebar({
                                 const isConfirmingDelete = confirmDeleteId === folder.id;
                                 const isActive = folder.id === activeWorkspaceId;
                                 const isDeleting = deletingId === folder.id;
+                                const isDropdownOpen = openDropdownWsId === folder.id;
 
                                 return (
                                     <div
@@ -338,27 +365,58 @@ export function LeftSidebar({
                                                     onDragStart={e => e.preventDefault()}
                                                     onClick={(e: MouseEvent) => e.stopPropagation()}
                                                 >
-                                                    {/* Add session button — always visible */}
                                                     {ws && (
-                                                        <button
-                                                            class="ws-action-btn ws-action-add"
-                                                            title={t('sidebar.newTerminal', language)}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                onTerminalCreate(ws.id, ws.terminalDir || ws.path);
-                                                            }}
+                                                        <div
+                                                            class="ws-add-dropdown"
+                                                            ref={isDropdownOpen ? dropdownRef : null}
                                                         >
-                                                            <svg
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2.5"
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
+                                                            <button
+                                                                class="ws-action-btn ws-action-add"
+                                                                title={t('sidebar.newSession', language) || '新建会话'}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenDropdownWsId(isDropdownOpen ? null : folder.id);
+                                                                }}
                                                             >
-                                                                <path d="M5 12h14M12 5v14" />
-                                                            </svg>
-                                                        </button>
+                                                                <svg
+                                                                    viewBox="0 0 24 24"
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    stroke-width="2.5"
+                                                                    stroke-linecap="round"
+                                                                    stroke-linejoin="round"
+                                                                >
+                                                                    <path d="M5 12h14M12 5v14" />
+                                                                </svg>
+                                                            </button>
+                                                            {isDropdownOpen && (
+                                                                <div class="ws-add-dropdown-menu">
+                                                                    <button
+                                                                        class="ws-add-dropdown-item"
+                                                                        onClick={(e: MouseEvent) => {
+                                                                            e.stopPropagation();
+                                                                            setOpenDropdownWsId(null);
+                                                                            onTerminalCreate(
+                                                                                ws.id,
+                                                                                ws.terminalDir || ws.path
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        {t('sidebar.newTerminal', language)}
+                                                                    </button>
+                                                                    <button
+                                                                        class="ws-add-dropdown-item"
+                                                                        onClick={(e: MouseEvent) => {
+                                                                            e.stopPropagation();
+                                                                            setOpenDropdownWsId(null);
+                                                                            onChatCreate(ws.id);
+                                                                        }}
+                                                                    >
+                                                                        {t('sidebar.newChat', language) || '新建聊天'}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     )}
                                                     {isHovered &&
                                                         ws && [
@@ -415,54 +473,33 @@ export function LeftSidebar({
                                                         {t('sidebar.noSessions', language)}
                                                     </div>
                                                 ) : (
-                                                    folder.sessions.map(session => (
-                                                        <div
-                                                            key={session.id}
-                                                            class={`chat-item ${session.active ? 'active' : ''}${
-                                                                killingSessionIndex === session.index
-                                                                    ? ' chat-item-killing'
-                                                                    : ''
-                                                            }`}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                onSelectSession(session);
-                                                            }}
-                                                            onMouseEnter={() => setHoveredSessionId(session.id)}
-                                                            onMouseLeave={() =>
-                                                                setHoveredSessionId(prev =>
-                                                                    prev === session.id ? null : prev
-                                                                )
-                                                            }
-                                                        >
-                                                            <div class="chat-item-left">
-                                                                <span
-                                                                    class={`status-dot status-${session.status || 'none'}`}
-                                                                    title={t(
-                                                                        `sidebar.sessionStatus.${session.status || 'none'}`,
-                                                                        language
-                                                                    )}
-                                                                />
-                                                                <span class="chat-title" title={session.name}>
-                                                                    {session.name}
-                                                                </span>
-                                                            </div>
-                                                            {session.agent ? (
-                                                                <span class="chat-agent">
-                                                                    {session.agent === 'antigravity'
-                                                                        ? 'agy'
-                                                                        : session.agent.charAt(0).toUpperCase() +
-                                                                          session.agent.slice(1)}
-                                                                </span>
-                                                            ) : null}
-                                                            <div class="session-actions">
-                                                                {hoveredSessionId === session.id && (
+                                                    folder.sessions.map(session => {
+                                                        const killing = killingSessionId === session.id;
+                                                        if (isChat(session)) {
+                                                            return (
+                                                                <div
+                                                                    key={session.id}
+                                                                    class={`chat-item chat-row-kind-chat ${session.active ? 'active' : ''}${
+                                                                        killing ? ' chat-item-killing' : ''
+                                                                    }`}
+                                                                    onClick={(e: MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        onSelectSession(session);
+                                                                    }}
+                                                                >
+                                                                    <span class="chat-kind-icon" title={t('sidebar.chatSession', language) || '聊天会话'}>
+                                                                        💬
+                                                                    </span>
+                                                                    <span class="chat-title" title={session.name}>
+                                                                        {session.name || t('sidebar.chatSession', language) || '聊天会话'}
+                                                                    </span>
+                                                                    <span class={`chat-status-dot ${session.status}`} />
                                                                     <button
-                                                                        class="session-action-btn"
-                                                                        title={t('sidebar.renameSession', language)}
-                                                                        onClick={(e: MouseEvent) => {
-                                                                            e.stopPropagation();
-                                                                            onRenameSession(session);
-                                                                        }}
+                                                                        class="session-kill-btn"
+                                                                        title={t('sidebar.closeSession', language)}
+                                                                        onClick={(e: MouseEvent) =>
+                                                                            handleSessionKill(e, session)
+                                                                        }
                                                                     >
                                                                         <svg
                                                                             width="12"
@@ -472,40 +509,100 @@ export function LeftSidebar({
                                                                             stroke="currentColor"
                                                                             stroke-width="2"
                                                                             stroke-linecap="round"
-                                                                            stroke-linejoin="round"
                                                                         >
-                                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                            <line x1="18" x2="6" y1="6" y2="18" />
+                                                                            <line x1="6" x2="18" y1="6" y2="18" />
                                                                         </svg>
                                                                     </button>
-                                                                )}
-                                                                <button
-                                                                    class="session-kill-btn"
-                                                                    title={t('sidebar.closeSession', language)}
-                                                                    onClick={(e: MouseEvent) => {
-                                                                        e.stopPropagation();
-                                                                        setKillingSessionIndex(session.index);
-                                                                        setTimeout(() => {
-                                                                            onTerminalKill(session.index);
-                                                                        }, 300);
-                                                                    }}
-                                                                >
-                                                                    <svg
-                                                                        width="12"
-                                                                        height="12"
-                                                                        viewBox="0 0 24 24"
-                                                                        fill="none"
-                                                                        stroke="currentColor"
-                                                                        stroke-width="2"
-                                                                        stroke-linecap="round"
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <div
+                                                                key={session.id}
+                                                                class={`chat-item chat-row-kind-terminal ${session.active ? 'active' : ''}${
+                                                                    killing ? ' chat-item-killing' : ''
+                                                                }`}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    onSelectSession(session);
+                                                                }}
+                                                                onMouseEnter={() => setHoveredSessionId(session.id)}
+                                                                onMouseLeave={() =>
+                                                                    setHoveredSessionId(prev =>
+                                                                        prev === session.id ? null : prev
+                                                                    )
+                                                                }
+                                                            >
+                                                                <div class="chat-item-left">
+                                                                    <span
+                                                                        class={`status-dot status-${session.status || 'none'}`}
+                                                                        title={t(
+                                                                            `sidebar.sessionStatus.${session.status || 'none'}`,
+                                                                            language
+                                                                        )}
+                                                                    />
+                                                                    <span class="chat-title" title={session.name}>
+                                                                        {session.name}
+                                                                    </span>
+                                                                </div>
+                                                                {session.agent ? (
+                                                                    <span class="chat-agent">
+                                                                        {session.agent === 'antigravity'
+                                                                            ? 'agy'
+                                                                            : session.agent.charAt(0).toUpperCase() +
+                                                                              session.agent.slice(1)}
+                                                                    </span>
+                                                                ) : null}
+                                                                <div class="session-actions">
+                                                                    {hoveredSessionId === session.id && (
+                                                                        <button
+                                                                            class="session-action-btn"
+                                                                            title={t('sidebar.renameSession', language)}
+                                                                            onClick={(e: MouseEvent) => {
+                                                                                e.stopPropagation();
+                                                                                onRenameSession(session);
+                                                                            }}
+                                                                        >
+                                                                            <svg
+                                                                                width="12"
+                                                                                height="12"
+                                                                                viewBox="0 0 24 24"
+                                                                                fill="none"
+                                                                                stroke="currentColor"
+                                                                                stroke-width="2"
+                                                                                stroke-linecap="round"
+                                                                                stroke-linejoin="round"
+                                                                            >
+                                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                            </svg>
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        class="session-kill-btn"
+                                                                        title={t('sidebar.closeSession', language)}
+                                                                        onClick={(e: MouseEvent) =>
+                                                                            handleSessionKill(e, session)
+                                                                        }
                                                                     >
-                                                                        <line x1="18" x2="6" y1="6" y2="18" />
-                                                                        <line x1="6" x2="18" y1="6" y2="18" />
-                                                                    </svg>
-                                                                </button>
+                                                                        <svg
+                                                                            width="12"
+                                                                            height="12"
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            stroke-width="2"
+                                                                            stroke-linecap="round"
+                                                                        >
+                                                                            <line x1="18" x2="6" y1="6" y2="18" />
+                                                                            <line x1="6" x2="18" y1="6" y2="18" />
+                                                                        </svg>
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ))
+                                                        );
+                                                    })
                                                 )}
                                             </div>
                                         )}
@@ -577,7 +674,7 @@ export function LeftSidebar({
                         stroke-linejoin="round"
                     >
                         <circle cx="12" cy="12" r="10" />
-                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
                     </svg>
                     <span>{t('sidebar.discovery', language)}</span>
                 </div>

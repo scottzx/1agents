@@ -1,7 +1,57 @@
 import type { Lang } from './i18n';
 
+/**
+ * Agent plugin names registered in cc-connect. Keep in sync with
+ * backend/internal/agent/types.go SupportedAgentTypes.
+ */
+export type AgentType =
+    | 'claudecode'
+    | 'codex'
+    | 'acp'
+    | 'gemini'
+    | 'cursor'
+    | 'devin'
+    | 'iflow'
+    | 'kimi'
+    | 'opencode'
+    | 'pi'
+    | 'qoder'
+    | 'tmux';
+
+export const AGENT_TYPES: AgentType[] = [
+    'claudecode',
+    'codex',
+    'acp',
+    'gemini',
+    'cursor',
+    'devin',
+    'iflow',
+    'kimi',
+    'opencode',
+    'pi',
+    'qoder',
+    'tmux',
+];
+
+/** Human-readable labels for the agent-type picker. */
+export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
+    claudecode: 'Claude Code',
+    codex: 'Codex',
+    acp: 'ACP (通用)',
+    gemini: 'Gemini CLI',
+    cursor: 'Cursor',
+    devin: 'Devin',
+    iflow: 'iFlow',
+    kimi: 'Kimi',
+    opencode: 'OpenCode',
+    pi: 'Pi',
+    qoder: 'Qoder',
+    tmux: 'Tmux',
+};
+
 /** A terminal session — mirrors a tmux window, belongs to a workspace. */
-export interface Session {
+export interface TerminalSession {
+    kind: 'terminal';
     id: string;
     workspaceId: string;
     index: number;
@@ -11,6 +61,38 @@ export interface Session {
     status?: string;
     waitingFor?: string;
     agent?: string;
+}
+
+export type ChatStatus = 'idle' | 'streaming' | 'awaiting_permission' | 'error';
+
+/**
+ * A chat session — backed by a cc-connect session. The actual
+ * conversation lives in cc-connect; this is the 1agents-side index.
+ *
+ * Wire shape: mirrors backend/internal/agent.ChatSessionRecord.
+ */
+export interface ChatSession {
+    kind: 'chat';
+    id: string; // 1agents uuid
+    workspaceId: string;
+    name: string;
+    agentType: AgentType;
+    ccProject: string; // cc-connect project name
+    ccSessionId: string; // cc-connect session id
+    sessionKey: string; // cc-connect bridge session_key
+    status: ChatStatus;
+    lastEventAt?: string; // ISO timestamp
+    active: boolean;
+}
+
+export type Session = TerminalSession | ChatSession;
+
+export function isChat(s: Session): s is ChatSession {
+    return s.kind === 'chat';
+}
+
+export function isTerminal(s: Session): s is TerminalSession {
+    return s.kind === 'terminal';
 }
 
 export interface WorkspaceFolder {
@@ -28,6 +110,7 @@ export interface Workspace {
     status: string;
     terminalDir?: string;
     chatChannel?: string;
+    defaultAgent?: AgentType;
 }
 
 export type WorkspaceStatus = 'active' | 'inactive' | 'planning' | 'archived';

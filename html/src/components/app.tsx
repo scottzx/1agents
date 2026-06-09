@@ -1,10 +1,11 @@
 import { h, Component } from 'preact';
 
-import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session, isFullPageTab } from './types';
+import { WorkspaceFolder, Workspace, FsEntry, RightDrawerTab, TmuxWindow, Session, ChatSession, AgentType, isChat, isTerminal, isFullPageTab } from './types';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
 import { WorkspaceModal, DirPickerModal, AccessTokenModal, SessionRenameModal } from './modal';
+import { SessionCreateModal } from './chat/SessionCreateModal';
 import { workspaceService } from '../services/workspaceService';
 import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
@@ -22,6 +23,8 @@ import {
 import { DesktopAppLayout } from './desktop/DesktopAppLayout';
 import { MobileAppLayout } from './mobile/MobileAppLayout';
 import { BuiltinBrowser } from './browser/BuiltinBrowser';
+import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
+import { ccCreateSession, ccDeleteSession, getCcAuth, ccProjectName } from '../services/ccconnectClient';
 
 import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
 
@@ -69,8 +72,12 @@ export interface AppState {
     wsModalPath: string;
     wsModalTerminalDir: string;
     wsModalChatChannel: string;
+    wsModalDefaultAgent: AgentType;
     ccConnectUrl: string;
     ccProvidersUrl: string;
+    // ── Chat session creation modal state ──
+    chatCreateOpen: boolean;
+    chatCreateWsId: string;
     // ── Directory picker modal state ──
     dirPickerOpen: boolean;
     dirPickerOnSelect: ((path: string) => void) | null;
@@ -82,6 +89,8 @@ export interface AppState {
     sessionRenameModalOpen: boolean;
     sessionRenameTarget: Session | null;
     sessionRenameName: string;
+    // ── Chat session state (1agents-side index) ──
+    chatSessions: ChatSession[];
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -170,8 +179,11 @@ export class App extends Component<{}, AppState> {
             wsModalPath: '',
             wsModalTerminalDir: '',
             wsModalChatChannel: '',
+            wsModalDefaultAgent: DEFAULT_AGENT_TYPE,
             ccConnectUrl: '',
             ccProvidersUrl: '',
+            chatCreateOpen: false,
+            chatCreateWsId: '',
             dirPickerOpen: false,
             dirPickerOnSelect: null,
             terminalWindows: [],
@@ -180,6 +192,7 @@ export class App extends Component<{}, AppState> {
             sessionRenameModalOpen: false,
             sessionRenameTarget: null,
             sessionRenameName: '',
+            chatSessions: [],
             fsEntries: [],
             fsLoading: false,
             selectedFsEntry: null,
@@ -245,8 +258,13 @@ export class App extends Component<{}, AppState> {
         // Wait for both workspaces and terminal sessions to load in parallel
         await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
 
-        // Synchronize terminal windows into folders
-        this.mergeSessionsIntoFolders(this.state.terminalWindows);
+        // Synchronize terminal windows + cached chat sessions into folders
+        this.mergeSessionsIntoFolders(this.state.terminalWindows, this.state.chatSessions);
+
+        // If we already have an active workspace, also refresh its chat sessions.
+        if (this.state.activeWorkspaceId) {
+            this.loadChatSessions(this.state.activeWorkspaceId);
+        }
 
         // Select default workspace if none is active, otherwise sync backend root
         const { workspaces, activeWorkspaceId } = this.state;
@@ -431,7 +449,13 @@ export class App extends Component<{}, AppState> {
     };
 
     /** Create a new workspace via POST /api/workspace/create */
-    createWorkspace = async (name: string, path: string, terminalDir?: string, chatChannel?: string) => {
+    createWorkspace = async (
+        name: string,
+        path: string,
+        terminalDir?: string,
+        chatChannel?: string,
+        defaultAgent?: AgentType
+    ) => {
         let id = name
             .toLowerCase()
             .replace(/\s+/g, '-')
@@ -447,6 +471,7 @@ export class App extends Component<{}, AppState> {
             status: 'active',
             terminalDir: terminalDir?.trim() || undefined,
             chatChannel: chatChannel?.trim() || undefined,
+            defaultAgent: defaultAgent || DEFAULT_AGENT_TYPE,
         };
         try {
             await workspaceService.create(ws);
@@ -552,6 +577,7 @@ export class App extends Component<{}, AppState> {
                 wsModalPath: pickedPath,
                 wsModalTerminalDir: '',
                 wsModalChatChannel: '',
+                wsModalDefaultAgent: DEFAULT_AGENT_TYPE,
             });
         });
     };
@@ -579,6 +605,7 @@ export class App extends Component<{}, AppState> {
             wsModalPath: ws.path,
             wsModalTerminalDir: ws.terminalDir || '',
             wsModalChatChannel: ws.chatChannel || '',
+            wsModalDefaultAgent: ws.defaultAgent || DEFAULT_AGENT_TYPE,
         });
     };
 
@@ -590,6 +617,7 @@ export class App extends Component<{}, AppState> {
             wsModalPath: '',
             wsModalTerminalDir: '',
             wsModalChatChannel: '',
+            wsModalDefaultAgent: DEFAULT_AGENT_TYPE,
         });
     };
 
@@ -624,8 +652,15 @@ export class App extends Component<{}, AppState> {
     };
 
     submitWsModal = async () => {
-        const { wsModalMode, wsModalTarget, wsModalName, wsModalPath, wsModalTerminalDir, wsModalChatChannel } =
-            this.state;
+        const {
+            wsModalMode,
+            wsModalTarget,
+            wsModalName,
+            wsModalPath,
+            wsModalTerminalDir,
+            wsModalChatChannel,
+            wsModalDefaultAgent,
+        } = this.state;
         if (!wsModalName.trim()) return;
         this.closeWsModal();
         if (wsModalMode === 'create') {
@@ -633,7 +668,8 @@ export class App extends Component<{}, AppState> {
                 wsModalName.trim(),
                 wsModalPath.trim(),
                 wsModalTerminalDir.trim(),
-                wsModalChatChannel.trim()
+                wsModalChatChannel.trim(),
+                wsModalDefaultAgent
             );
         } else if (wsModalMode === 'rename' && wsModalTarget) {
             await this.updateWorkspace({
@@ -642,6 +678,7 @@ export class App extends Component<{}, AppState> {
                 path: wsModalPath.trim(),
                 terminalDir: wsModalTerminalDir.trim() || undefined,
                 chatChannel: wsModalChatChannel.trim() || undefined,
+                defaultAgent: wsModalDefaultAgent,
             });
         }
     };
@@ -653,7 +690,9 @@ export class App extends Component<{}, AppState> {
         this.setState({ terminalWindowsLoading: true });
         try {
             const windows = await terminalService.list();
-            this.mergeSessionsIntoFolders(windows);
+            // Use whatever chat sessions we have cached; the chat loader
+            // (loadChatSessions) will refresh them in parallel.
+            this.mergeSessionsIntoFolders(windows, this.state.chatSessions);
             this.setState({ terminalWindows: windows, terminalWindowsLoading: false });
         } catch (err) {
             console.error('[terminal] list error:', err);
@@ -661,14 +700,103 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    /** Sync tmux windows into workspace folders as sessions */
-    mergeSessionsIntoFolders(windows: TmuxWindow[]) {
+    /** Fetch chat session index for the active workspace from /api/agent/sessions */
+    loadChatSessions = async (workspaceId?: string) => {
+        const wsId = workspaceId ?? this.state.activeWorkspaceId;
+        if (!wsId) return;
+        try {
+            const chats = await agentService.list(wsId);
+            this.setState({ chatSessions: chats });
+            this.mergeSessionsIntoFolders(this.state.terminalWindows, chats);
+        } catch (err) {
+            console.error('[agent] list error:', err);
+        }
+    };
+
+    /**
+     * Create a new chat session.
+     *
+     * Flow:
+     *   1. Pick cc-connect project name from workspace + agent type
+     *   2. Generate a 1agents-side id + session_key
+     *   3. POST cc-connect to create the actual session
+     *   4. POST 1agents to index the mapping
+     *   5. Refresh local state + select the new session
+     */
+    createChatSession = async (workspaceId: string, name: string, agentType: AgentType) => {
+        const ws = this.state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) {
+            this.showToast('工作空间不存在');
+            return;
+        }
+        try {
+            this.showToast('正在创建聊天会话…');
+            const project = ccProjectName(ws.name || ws.id, agentType);
+            const { token } = await getCcAuth(workspaceId);
+            const sessionKey = `oneagents:${ws.id}:${agentType}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+            const cc = await ccCreateSession(project, { session_key: sessionKey, name: name || undefined }, token);
+            const indexed = await agentService.index({
+                workspace_id: workspaceId,
+                name: name || `${agentType} 会话`,
+                agent_type: agentType,
+                cc_project: project,
+                cc_session_id: cc.id,
+                session_key: sessionKey,
+            });
+            await this.loadChatSessions(workspaceId);
+            // Auto-select the new session and switch to the agents tab.
+            this.setState({
+                activeSession: { ...indexed, active: true },
+                activeTab: 'agents',
+            });
+            this.showToast('聊天会话已创建 ✓');
+        } catch (err) {
+            this.showToast(`创建聊天失败: ${(err as Error).message}`);
+        }
+    };
+
+    /** Open the chat-create modal for a given workspace. */
+    openChatCreate = (workspaceId: string) => {
+        this.setState({ chatCreateOpen: true, chatCreateWsId: workspaceId });
+    };
+    closeChatCreate = () => this.setState({ chatCreateOpen: false, chatCreateWsId: '' });
+
+    /** Kill a chat session: delete from cc-connect, then unindex from 1agents. */
+    killChatSession = async (sessionId: string) => {
+        const session = this.state.chatSessions.find(c => c.id === sessionId);
+        if (!session) return;
+        try {
+            try {
+                const { token } = await getCcAuth(session.workspaceId);
+                await ccDeleteSession(session.ccProject, session.ccSessionId, session.sessionKey, token);
+            } catch (err) {
+                // Log but don't block — the user may want to clean up a
+                // dangling index even when cc-connect side is already gone.
+                console.warn('[agent] cc-connect delete failed:', err);
+            }
+            await agentService.delete(sessionId);
+            await this.loadChatSessions(session.workspaceId);
+            if (
+                this.state.activeSession &&
+                isChat(this.state.activeSession) &&
+                this.state.activeSession.id === sessionId
+            ) {
+                this.setState({ activeSession: null, activeTab: 'terminal' });
+            }
+            this.showToast('聊天会话已关闭 ✓');
+        } catch (err) {
+            this.showToast(`关闭失败: ${(err as Error).message}`);
+        }
+    };
+
+    /** Sync tmux windows + chat sessions into workspace folders as sessions */
+    mergeSessionsIntoFolders(windows: TmuxWindow[], chats: ChatSession[]) {
         this.setState(prev => ({
-            folders: prev.folders.map(f => ({
-                ...f,
-                sessions: windows
+            folders: prev.folders.map(f => {
+                const termSessions: Session[] = windows
                     .filter(w => w.workspaceId === f.id)
                     .map(w => ({
+                        kind: 'terminal',
                         id: w.name,
                         workspaceId: w.workspaceId,
                         index: w.index,
@@ -678,23 +806,33 @@ export class App extends Component<{}, AppState> {
                         status: w.status,
                         waitingFor: w.waitingFor,
                         agent: w.agent,
-                    })),
-            })),
+                    }));
+                const chatSessions: Session[] = chats.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
+                // Chat sessions first (newer), then terminals.
+                return { ...f, sessions: [...chatSessions, ...termSessions] };
+            }),
         }));
+        // Preserve the currently-active chat session if it still exists; otherwise
+        // fall back to the most recently active terminal window.
+        const prevActive = this.state.activeSession;
+        const activeChat = prevActive && isChat(prevActive) ? chats.find(c => c.id === prevActive.id) : null;
         const activeWin = windows.find(w => w.active);
-        const activeSession: Session | null = activeWin
-            ? {
-                  id: activeWin.name,
-                  workspaceId: activeWin.workspaceId,
-                  index: activeWin.index,
-                  name: activeWin.customName || t('app.session.title', this.state.language, { index: activeWin.index }),
-                  active: true,
-                  cwd: activeWin.cwd,
-                  status: activeWin.status,
-                  waitingFor: activeWin.waitingFor,
-                  agent: activeWin.agent,
-              }
-            : null;
+        const activeSession: Session | null = activeChat
+            ? { ...activeChat, active: true }
+            : activeWin
+              ? {
+                    kind: 'terminal',
+                    id: activeWin.name,
+                    workspaceId: activeWin.workspaceId,
+                    index: activeWin.index,
+                    name: activeWin.customName || t('app.session.title', this.state.language, { index: activeWin.index }),
+                    active: true,
+                    cwd: activeWin.cwd,
+                    status: activeWin.status,
+                    waitingFor: activeWin.waitingFor,
+                    agent: activeWin.agent,
+                }
+              : null;
         this.setState({ activeSession });
     }
 
@@ -789,18 +927,21 @@ export class App extends Component<{}, AppState> {
         const oldWorkspaceId = this.state.activeWorkspaceId;
         const { workspaces } = this.state;
 
-        // 1. Optimistic UI update: Immediately mark the session as active and expand/set workspace ID
+        // 1. Optimistic UI update: mark the session active and switch tab.
         this.setState(prev => {
             const updatedFolders = prev.folders.map(f => ({
                 ...f,
-                sessions: f.sessions.map(s => ({
-                    ...s,
-                    active: s.index === session.index,
-                })),
+                sessions: f.sessions.map(s => {
+                    if (isChat(s) && isChat(session)) return { ...s, active: s.id === session.id };
+                    if (isTerminal(s) && isTerminal(session)) return { ...s, active: s.index === session.index };
+                    return { ...s, active: false };
+                }),
             }));
             localStorage.setItem('1agents-active-workspace', session.workspaceId);
             return {
                 activeSession: { ...session, active: true },
+                // Chat sessions live in the agents tab; terminals in the terminal tab.
+                activeTab: isChat(session) ? 'agents' : 'terminal',
                 folders:
                     session.workspaceId !== oldWorkspaceId
                         ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
@@ -809,10 +950,22 @@ export class App extends Component<{}, AppState> {
             };
         });
 
+        // Chat sessions don't need tmux / fs / git context switching; just
+        // ensure the workspace is loaded and we're done.
+        if (isChat(session)) {
+            if (session.workspaceId !== oldWorkspaceId) {
+                const ws = workspaces.find(w => w.id === session.workspaceId);
+                if (ws) await this.switchWorkspaceContext(ws);
+            }
+            this.loadChatSessions(session.workspaceId);
+            if (this.state.isMobile) this.setState({ leftSidebarOpen: false });
+            return;
+        }
+
         // Helper to perform the actual terminal window and workspace context switching
         const performSwitch = async () => {
             // Always switch the tmux window first
-            await this.switchTerminal(session.index);
+            await this.switchTerminal((session as Extract<Session, { kind: 'terminal' }>).index);
 
             if (session.workspaceId !== oldWorkspaceId) {
                 this.loadCcConnectUrl(session.workspaceId);
@@ -848,6 +1001,7 @@ export class App extends Component<{}, AppState> {
         this.setState({ activeWorkspaceId: ws.id }, () => {
             this.loadCcConnectUrl(ws.id);
             this.loadCcProvidersUrl(ws.id);
+            this.loadChatSessions(ws.id);
             localStorage.setItem('1agents-active-workspace', ws.id);
         });
 
@@ -1481,7 +1635,7 @@ export class App extends Component<{}, AppState> {
         if (!this.state.accessGateVisible) {
             this.loadDir('', null);
             await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
-            this.mergeSessionsIntoFolders(this.state.terminalWindows);
+            this.mergeSessionsIntoFolders(this.state.terminalWindows, this.state.chatSessions);
             const { workspaces, activeWorkspaceId } = this.state;
             if (!activeWorkspaceId && workspaces.length > 0) {
                 await this.selectWorkspace(workspaces[0]);
@@ -1666,6 +1820,11 @@ export class App extends Component<{}, AppState> {
             wsModalPath,
             wsModalTerminalDir,
             wsModalChatChannel,
+            wsModalDefaultAgent,
+            ccConnectUrl,
+            ccProvidersUrl,
+            chatCreateOpen,
+            chatCreateWsId,
             dirPickerOpen,
             favoriteFiles,
             isEditingDetail,
@@ -1683,6 +1842,10 @@ export class App extends Component<{}, AppState> {
             sessionRenameModalOpen,
             sessionRenameTarget,
             sessionRenameName,
+            accessAuthRequired,
+            tabs,
+            activeTabId,
+            chatSessions,
         } = this.state;
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
@@ -1792,16 +1955,38 @@ export class App extends Component<{}, AppState> {
                         path={wsModalPath}
                         terminalDir={wsModalTerminalDir}
                         chatChannel={wsModalChatChannel}
+                        defaultAgent={wsModalDefaultAgent}
                         onNameChange={val => this.setState({ wsModalName: val })}
                         onPathChange={val => this.setState({ wsModalPath: val })}
                         onTerminalDirChange={val => this.setState({ wsModalTerminalDir: val })}
                         onChatChannelChange={val => this.setState({ wsModalChatChannel: val })}
+                        onDefaultAgentChange={val => this.setState({ wsModalDefaultAgent: val })}
                         onClose={this.closeWsModal}
                         onBrowse={this.openDirPickerForModal}
                         onSubmit={this.submitWsModal}
                         language={language}
                     />
                 )}
+
+                {/* Chat session create modal */}
+                {chatCreateOpen &&
+                    chatCreateWsId &&
+                    (() => {
+                        const ws = workspaces.find(w => w.id === chatCreateWsId);
+                        if (!ws) return null;
+                        return (
+                            <SessionCreateModal
+                                workspaceId={chatCreateWsId}
+                                workspaceName={ws.name}
+                                defaultAgent={ws.defaultAgent || DEFAULT_AGENT_TYPE}
+                                onCancel={this.closeChatCreate}
+                                onSubmit={(name, agentType) => {
+                                    this.closeChatCreate();
+                                    this.createChatSession(chatCreateWsId, name, agentType);
+                                }}
+                            />
+                        );
+                    })()}
 
                 {/* Remote Directory Picker Modal */}
                 {dirPickerOpen && (
