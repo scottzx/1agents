@@ -140,17 +140,20 @@ export class App extends Component<{}, AppState> {
     private _terminalPollInterval: ReturnType<typeof setInterval> | null = null;
     private _crawlCounter = 0;
     private _searchTimeout: number | null = null;
-    // Module iframe contentWindows we've seen a NAV_CHANGE from — i.e. their
-    // React app is mounted and listening for postMessage. 1skills doesn't
-    // send an explicit READY signal, so we use the first NAV_CHANGE as the
-    // implicit handshake.
-    private _moduleIframesReady: WeakSet<Window> = new WeakSet();
+    // Module iframes we've seen a NAV_CHANGE from — i.e. their React app
+    // is mounted and listening for postMessage. 1skills doesn't send an
+    // explicit READY signal, so we use the first NAV_CHANGE as the
+    // implicit handshake. Keyed by the iframe element (not the Window)
+    // so the writer in handleModuleMessage and the reader in
+    // navigateInModule see the same key — contentWindow / e.source can
+    // be different Window proxies across reads.
+    private _moduleIframesReady: WeakSet<HTMLIFrameElement> = new WeakSet();
     // When the host pushes a NAVIGATE to a freshly mounted iframe, the
     // iframe goes through a short boot-up sequence (index route → Navigate
     // redirect) and emits several NAV_CHANGE messages before settling on
     // the path we asked for. We remember the requested path here and ignore
     // boot-up NAV_CHANGEs until the iframe confirms the move.
-    private _pendingModuleNav: WeakMap<Window, string> = new WeakMap();
+    private _pendingModuleNav: WeakMap<HTMLIFrameElement, string> = new WeakMap();
     private _workspaceTreeCache: Record<string, FsEntry[]> = {};
 
     constructor() {
@@ -1240,40 +1243,36 @@ export class App extends Component<{}, AppState> {
             const iframe = this.findActiveModuleIframe();
             const isFromActiveIframe =
                 iframe !== null && iframe.contentWindow !== null && e.source === iframe.contentWindow;
-            const isFirstFromThisSource = e.source instanceof Window && !this._moduleIframesReady.has(e.source);
-            if (isFirstFromThisSource) {
-                this._moduleIframesReady.add(e.source);
-                if (isFromActiveIframe && iframe) {
-                    // Re-push current theme/lang so a freshly mounted iframe
-                    // doesn't sit on its own defaults until the next change.
-                    postToModule(iframe, { type: 'THEME_CHANGE', theme: this.state.theme });
-                    postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
-                }
+            const isFirstFromThisIframe =
+                isFromActiveIframe && iframe !== null && !this._moduleIframesReady.has(iframe);
+            if (isFirstFromThisIframe && iframe) {
+                this._moduleIframesReady.add(iframe);
+                // Re-push current theme/lang so a freshly mounted iframe
+                // doesn't sit on its own defaults until the next change.
+                postToModule(iframe, { type: 'THEME_CHANGE', theme: this.state.theme });
+                postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
             }
             // Boot-up: host already had a desired path before the iframe
             // was listening. Push it and remember we did — subsequent
             // NAV_CHANGEs from the iframe's index → redirect boot-up
             // sequence must NOT clobber our state.
             if (
-                isFirstFromThisSource &&
-                isFromActiveIframe &&
+                isFirstFromThisIframe &&
                 iframe &&
                 this.state.activeModulePath &&
                 path !== this.state.activeModulePath
             ) {
                 postToModule(iframe, { type: 'NAVIGATE', to: this.state.activeModulePath });
-                if (e.source instanceof Window) {
-                    this._pendingModuleNav.set(e.source, this.state.activeModulePath);
-                }
+                this._pendingModuleNav.set(iframe, this.state.activeModulePath);
                 return;
             }
             // If we have a pending NAVIGATE and the iframe is still
             // emitting boot-up NAV_CHANGEs that don't match, ignore them.
-            if (e.source instanceof Window && this._pendingModuleNav.has(e.source)) {
-                const wanted = this._pendingModuleNav.get(e.source)!;
+            if (iframe && this._pendingModuleNav.has(iframe)) {
+                const wanted = this._pendingModuleNav.get(iframe)!;
                 if (path === wanted) {
                     // Iframe followed our push — clear the gate and accept.
-                    this._pendingModuleNav.delete(e.source);
+                    this._pendingModuleNav.delete(iframe);
                 } else {
                     // Still in boot-up. Don't touch host state.
                     return;
@@ -1287,7 +1286,7 @@ export class App extends Component<{}, AppState> {
             // and immediately push the current theme/lang/nav.
             const iframe = this.findActiveModuleIframe();
             if (!iframe) return;
-            if (iframe.contentWindow) this._moduleIframesReady.add(iframe.contentWindow);
+            this._moduleIframesReady.add(iframe);
             postToModule(iframe, { type: 'THEME_CHANGE', theme: this.state.theme });
             postToModule(iframe, { type: 'LANG_CHANGE', lang: this.state.language });
             if (this.state.activeModulePath) {
@@ -1308,10 +1307,9 @@ export class App extends Component<{}, AppState> {
      * Pushes a NAVIGATE message to the active module iframe and updates host
      * state. Called by `<ModuleNav />` when the user clicks a manifest link.
      *
-     * If the iframe isn't ready yet (its React app hasn't sent its first
-     * NAV_CHANGE), we only update host state — the first NAV_CHANGE handler
-     * in `handleModuleMessage` will see the mismatch and push the desired
-     * path then.
+     * The NAVIGATE is only posted when the iframe is known to be ready
+     * (its first NAV_CHANGE has been received). The readiness set is keyed
+     * by the iframe element so writer and reader see the same key.
      */
     navigateInModule = (to: string) => {
         if (!to) return;
@@ -1319,7 +1317,7 @@ export class App extends Component<{}, AppState> {
         const iframe = this.findActiveModuleIframe();
         this.setState({ activeModulePath: to });
         this.syncModuleUrl(to);
-        if (iframe && iframe.contentWindow && this._moduleIframesReady.has(iframe.contentWindow)) {
+        if (iframe && this._moduleIframesReady.has(iframe)) {
             postToModule(iframe, { type: 'NAVIGATE', to });
         }
     };
