@@ -37,6 +37,7 @@ import { MobileAppLayout } from './mobile/MobileAppLayout';
 import { BuiltinBrowser } from './browser/BuiltinBrowser';
 import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { ccCreateSession, ccDeleteSession, getCcAuth, ccProjectName } from '../services/ccconnectClient';
+import { globalBridgeManager } from './chat/hooks';
 
 import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
 
@@ -790,6 +791,8 @@ export class App extends Component<{}, AppState> {
                 // dangling index even when cc-connect side is already gone.
                 console.warn('[agent] cc-connect delete failed:', err);
             }
+            // Clean up global WebSocket bridge session
+            globalBridgeManager.destroy(sessionId);
             await agentService.delete(sessionId);
             await this.loadChatSessions(session.workspaceId);
             if (

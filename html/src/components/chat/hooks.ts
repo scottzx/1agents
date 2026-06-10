@@ -4,7 +4,7 @@
 // a React-friendly stream of "messages" (assistant text, tool calls,
 // permission requests, errors). The ChatPanel renders that stream.
 
-import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
+import { useEffect, useState, useCallback } from 'preact/hooks';
 import type { ChatSession } from '../types';
 
 export interface ToolCallInfo {
@@ -74,41 +74,63 @@ interface UseBridgeState {
     respondPermission: (requestId: string, allow: boolean) => void;
 }
 
-export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
-    const [items, setItems] = useState<ChatItem[]>(seed);
-    const [connection, setConnection] = useState<ConnectionState>('idle');
-    const [typing, setTyping] = useState(false);
-    const wsRef = useRef<WebSocket | null>(null);
+export interface SessionBridgeState {
+    items: ChatItem[];
+    connection: ConnectionState;
+    typing: boolean;
+    ws: WebSocket | null;
+    listeners: Set<() => void>;
+    turnStarted: boolean;
+}
 
-    const appendItem = useCallback((item: ChatItem) => {
-        setItems(prev => [...prev, item]);
-    }, []);
+export class ChatBridgeManager {
+    private sessions = new Map<string, SessionBridgeState>();
 
-    useEffect(() => {
-        if (!session) return;
-        let cancelled = false;
+    getOrCreate(session: ChatSession): SessionBridgeState {
+        let state = this.sessions.get(session.id);
+        if (!state) {
+            state = {
+                items: [],
+                connection: 'idle',
+                typing: false,
+                ws: null,
+                listeners: new Set(),
+                turnStarted: false,
+            };
+            this.sessions.set(session.id, state);
+            this.connect(session, state);
+        }
+        return state;
+    }
 
-        setConnection('connecting');
-        setItems([]);
+    destroy(sessionId: string) {
+        const state = this.sessions.get(sessionId);
+        if (state) {
+            if (state.ws) {
+                if (state.ws.readyState === WebSocket.OPEN) {
+                    state.ws.send(JSON.stringify({ action: 'close_session', sessionId }));
+                }
+                state.ws.close();
+            }
+            this.sessions.delete(sessionId);
+        }
+    }
+
+    private connect(session: ChatSession, state: SessionBridgeState) {
+        state.connection = 'connecting';
+        this.notify(state);
 
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const taskId = session.taskId || '';
         const wsUrl = `${wsProto}//${window.location.host}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}`;
 
-        console.log('[useBridge] Connecting to backend websocket:', wsUrl);
+        console.log('[useBridgeManager] Connecting to backend websocket:', wsUrl);
         const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
+        state.ws = ws;
 
         ws.onopen = () => {
-            if (cancelled) return;
-            setConnection('connected');
-            // The bridge-server needs the agent-type-native session id
-            // (e.g. the Claude Code UUID that names the JSONL on disk)
-            // to locate the historical conversation. The acpSessionId
-            // field is the canonical ACP-side identifier; the bridge-
-            // server prefers its own handle's agentSessionId, but
-            // passing it gives the server a hint in case the handle
-            // hasn't been populated yet.
+            state.connection = 'connected';
+            this.notify(state);
             ws.send(
                 JSON.stringify({
                     action: 'get_history',
@@ -120,7 +142,6 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         };
 
         ws.onmessage = e => {
-            if (cancelled) return;
             let payload: {
                 event: string;
                 text?: string;
@@ -137,60 +158,61 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
             try {
                 payload = JSON.parse(e.data) as typeof payload;
             } catch (err) {
-                console.error('[useBridge] Failed to parse message:', err);
+                console.error('[useBridgeManager] Failed to parse message:', err);
                 return;
             }
 
             const event = payload.event;
-            console.log('[useBridge] Received event:', event, payload);
+            console.log('[useBridgeManager] Received event:', event, payload);
 
             switch (event) {
                 case 'session_ready':
                     break;
                 case 'text_delta': {
+                    if (!state.turnStarted) break;
                     const delta = payload.text;
                     const type = payload.type || 'output';
                     if (!delta) return;
 
-                    setItems(prev => {
-                        const next = [...prev];
-                        const last = next[next.length - 1];
-                        if (type === 'thought') {
-                            if (last && last.kind === 'thinking') {
-                                next[next.length - 1] = {
-                                    ...last,
-                                    content: last.content + delta,
-                                };
-                            } else {
-                                next.push({
-                                    id: cryptoId(),
-                                    kind: 'thinking',
-                                    content: delta,
-                                    createdAt: Date.now(),
-                                });
-                            }
+                    const next = [...state.items];
+                    const last = next[next.length - 1];
+                    if (type === 'thought') {
+                        if (last && last.kind === 'thinking') {
+                            next[next.length - 1] = {
+                                ...last,
+                                content: last.content + delta,
+                            };
                         } else {
-                            if (last && last.kind === 'assistant_text' && last.streaming) {
-                                next[next.length - 1] = {
-                                    ...last,
-                                    content: last.content + delta,
-                                    streaming: true,
-                                };
-                            } else {
-                                next.push({
-                                    id: cryptoId(),
-                                    kind: 'assistant_text',
-                                    content: delta,
-                                    createdAt: Date.now(),
-                                    streaming: true,
-                                });
-                            }
+                            next.push({
+                                id: cryptoId(),
+                                kind: 'thinking',
+                                content: delta,
+                                createdAt: Date.now(),
+                            });
                         }
-                        return next;
-                    });
+                    } else {
+                        if (last && last.kind === 'assistant_text' && last.streaming) {
+                            next[next.length - 1] = {
+                                ...last,
+                                content: last.content + delta,
+                                streaming: true,
+                            };
+                        } else {
+                            next.push({
+                                id: cryptoId(),
+                                kind: 'assistant_text',
+                                content: delta,
+                                createdAt: Date.now(),
+                                streaming: true,
+                            });
+                        }
+                    }
+                    state.items = next;
+                    this.notify(state);
                     break;
                 }
                 case 'tool_call': {
+                    if (!state.turnStarted) break;
                     const argsString =
                         typeof payload.arguments === 'string'
                             ? payload.arguments
@@ -202,76 +224,88 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
                     if (payload.toolCallId) {
                         newCall.toolCallId = payload.toolCallId;
                     }
-                    setItems(prev => {
-                        const next = [...prev];
-                        const last = next[next.length - 1];
-                        if (last && last.kind === 'tool_use') {
-                            // Merge consecutive tool calls into the same card.
-                            next[next.length - 1] = {
-                                ...last,
-                                calls: [...last.calls, newCall],
-                            };
-                        } else {
-                            next.push({
-                                id: cryptoId(),
-                                kind: 'tool_use',
-                                toolName: newCall.toolName,
-                                input: newCall.input,
-                                calls: [newCall],
-                                createdAt: Date.now(),
-                                ...(newCall.toolCallId ? { toolCallId: newCall.toolCallId } : {}),
-                            });
-                        }
-                        return next;
-                    });
+                    const next = [...state.items];
+                    const last = next[next.length - 1];
+                    if (last && last.kind === 'tool_use') {
+                        next[next.length - 1] = {
+                            ...last,
+                            calls: [...last.calls, newCall],
+                        };
+                    } else {
+                        next.push({
+                            id: cryptoId(),
+                            kind: 'tool_use',
+                            toolName: newCall.toolName,
+                            input: newCall.input,
+                            calls: [newCall],
+                            createdAt: Date.now(),
+                            ...(newCall.toolCallId ? { toolCallId: newCall.toolCallId } : {}),
+                        });
+                    }
+                    state.items = next;
+                    this.notify(state);
                     break;
                 }
                 case 'permission_request': {
+                    if (!state.turnStarted) break;
                     const argsString =
                         typeof payload.arguments === 'string'
                             ? payload.arguments
                             : JSON.stringify(payload.arguments, null, 2);
-                    appendItem({
-                        id: cryptoId(),
-                        kind: 'permission',
-                        requestId: payload.requestId || '',
-                        toolName: payload.toolName || 'tool',
-                        input: argsString,
-                        createdAt: Date.now(),
-                        options: [],
-                    });
+                    state.items = [
+                        ...state.items,
+                        {
+                            id: cryptoId(),
+                            kind: 'permission',
+                            requestId: payload.requestId || '',
+                            toolName: payload.toolName || 'tool',
+                            input: argsString,
+                            createdAt: Date.now(),
+                            options: [],
+                        },
+                    ];
+                    this.notify(state);
                     break;
                 }
                 case 'permission_timeout': {
-                    setItems(prev =>
-                        prev.map(it =>
-                            it.kind === 'permission' && it.requestId === payload.requestId
-                                ? { ...it, resolved: 'deny' }
-                                : it
-                        )
+                    if (!state.turnStarted) break;
+                    state.items = state.items.map(it =>
+                        it.kind === 'permission' && it.requestId === payload.requestId
+                            ? { ...it, resolved: 'deny' }
+                            : it
                     );
-                    appendItem({
-                        id: cryptoId(),
-                        kind: 'error',
-                        content: payload.message || 'Permission request timed out.',
-                        createdAt: Date.now(),
-                    });
+                    state.items = [
+                        ...state.items,
+                        {
+                            id: cryptoId(),
+                            kind: 'error',
+                            content: payload.message || 'Permission request timed out.',
+                            createdAt: Date.now(),
+                        },
+                    ];
+                    this.notify(state);
                     break;
                 }
-                case 'done':
-                    setItems(prev => {
-                        const next = [...prev];
-                        const last = next[next.length - 1];
-                        if (last && last.kind === 'assistant_text' && last.streaming) {
-                            next[next.length - 1] = {
-                                ...last,
-                                streaming: false,
-                            };
-                        }
-                        return next;
-                    });
-                    setTyping(false);
+                case 'done': {
+                    const next = [...state.items];
+                    const last = next[next.length - 1];
+                    if (last && last.kind === 'assistant_text' && last.streaming) {
+                        next[next.length - 1] = {
+                            ...last,
+                            streaming: false,
+                        };
+                    }
+                    state.items = next;
+                    state.typing = false;
+                    const wasStarted = state.turnStarted;
+                    state.turnStarted = false;
+                    this.notify(state);
+                    if (!wasStarted) {
+                        console.log('[useBridgeManager] Reconnected turn finished, reloading history...');
+                        this.reloadHistory(session, state);
+                    }
                     break;
+                }
                 case 'history_response': {
                     const historyItems: HistoryItem[] =
                         payload.items && payload.items.length > 0
@@ -281,97 +315,164 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
                                   text: m.text,
                               }));
                     const converted: ChatItem[] = historyItems.map(it => historyItemToChatItem(it));
-                    setItems(converted);
+                    state.items = converted;
+                    this.notify(state);
                     break;
                 }
-                case 'error':
-                    appendItem({
-                        id: cryptoId(),
-                        kind: 'error',
-                        content: payload.message || payload.code || 'Unknown error',
-                        createdAt: Date.now(),
-                    });
-                    setTyping(false);
+                case 'error': {
+                    state.items = [
+                        ...state.items,
+                        {
+                            id: cryptoId(),
+                            kind: 'error',
+                            content: payload.message || payload.code || 'Unknown error',
+                            createdAt: Date.now(),
+                        },
+                    ];
+                    state.typing = false;
+                    const wasStarted = state.turnStarted;
+                    state.turnStarted = false;
+                    this.notify(state);
+                    if (!wasStarted) {
+                        console.log('[useBridgeManager] Reconnected turn error, reloading history...');
+                        this.reloadHistory(session, state);
+                    }
                     break;
+                }
             }
         };
 
         ws.onclose = () => {
-            if (cancelled) return;
-            setConnection('closed');
-            setTyping(false);
+            state.connection = 'closed';
+            state.typing = false;
+            this.notify(state);
         };
 
         ws.onerror = () => {
-            if (cancelled) return;
-            setConnection('error');
-            setTyping(false);
+            state.connection = 'error';
+            state.typing = false;
+            this.notify(state);
         };
+    }
 
-        return () => {
-            cancelled = true;
-            if (wsRef.current) {
-                if (wsRef.current.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({ action: 'close_session', sessionId: session.id }));
-                }
-                wsRef.current.close();
-                wsRef.current = null;
-            }
-            setConnection('closed');
-        };
-    }, [session?.id, session?.workspaceId, session?.taskId]);
-
-    const send = useCallback(
-        (content: string) => {
-            if (!session || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-            const msgId = cryptoId();
-            appendItem({
+    send(session: ChatSession, content: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        state.turnStarted = true;
+        const msgId = cryptoId();
+        state.items = [
+            ...state.items,
+            {
                 id: msgId,
                 kind: 'user',
                 content,
                 createdAt: Date.now(),
-            });
-            wsRef.current.send(
-                JSON.stringify({
-                    action: 'prompt',
-                    sessionId: session.id,
-                    text: content,
-                })
-            );
-            setTyping(true);
-        },
-        [session, appendItem]
-    );
+            },
+        ];
+        state.ws.send(
+            JSON.stringify({
+                action: 'prompt',
+                sessionId: session.id,
+                text: content,
+            })
+        );
+        state.typing = true;
+        this.notify(state);
+    }
 
-    const cancel = useCallback(() => {
-        if (!session || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-        wsRef.current.send(
+    cancel(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        state.ws.send(
             JSON.stringify({
                 action: 'cancel',
                 sessionId: session.id,
             })
         );
-        setTyping(false);
+        state.typing = false;
+        state.turnStarted = false;
+        this.notify(state);
+    }
+
+    respondPermission(session: ChatSession, requestId: string, allow: boolean) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        state.ws.send(
+            JSON.stringify({
+                action: 'respond_permission',
+                sessionId: session.id,
+                requestId,
+                behavior: allow ? 'allow' : 'deny',
+            })
+        );
+        state.items = state.items.map(it =>
+            it.kind === 'permission' && it.requestId === requestId ? { ...it, resolved: allow ? 'allow' : 'deny' } : it
+        );
+        this.notify(state);
+    }
+
+    private reloadHistory(session: ChatSession, state: SessionBridgeState) {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(
+                JSON.stringify({
+                    action: 'get_history',
+                    sessionId: session.id,
+                    agentType: session.agentType,
+                    acpSessionId: session.acpSessionId,
+                })
+            );
+        }
+    }
+
+    private notify(state: SessionBridgeState) {
+        for (const listener of state.listeners) {
+            listener();
+        }
+    }
+}
+
+export const globalBridgeManager = new ChatBridgeManager();
+
+export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
+    const [, forceUpdate] = useState({});
+
+    useEffect(() => {
+        if (!session) return;
+
+        const state = globalBridgeManager.getOrCreate(session);
+        const listener = () => forceUpdate({});
+        state.listeners.add(listener);
+
+        forceUpdate({});
+
+        return () => {
+            state.listeners.delete(listener);
+        };
+    }, [session?.id, session?.workspaceId, session?.taskId]);
+
+    const state = session ? globalBridgeManager.getOrCreate(session) : null;
+
+    const items = state ? state.items : seed;
+    const connection = state ? state.connection : 'idle';
+    const typing = state ? state.typing : false;
+
+    const send = useCallback(
+        (content: string) => {
+            if (!session) return;
+            globalBridgeManager.send(session, content);
+        },
+        [session]
+    );
+
+    const cancel = useCallback(() => {
+        if (!session) return;
+        globalBridgeManager.cancel(session);
     }, [session]);
 
     const respondPermission = useCallback(
         (requestId: string, allow: boolean) => {
-            if (!session || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-            wsRef.current.send(
-                JSON.stringify({
-                    action: 'respond_permission',
-                    sessionId: session.id,
-                    requestId,
-                    behavior: allow ? 'allow' : 'deny',
-                })
-            );
-            setItems(prev =>
-                prev.map(it =>
-                    it.kind === 'permission' && it.requestId === requestId
-                        ? { ...it, resolved: allow ? 'allow' : 'deny' }
-                        : it
-                )
-            );
+            if (!session) return;
+            globalBridgeManager.respondPermission(session, requestId, allow);
         },
         [session]
     );
