@@ -2414,31 +2414,93 @@ body {
 
       .chat-permission-btn {
         flex: 1;
-        padding: 6px 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 7px 12px;
         font-size: 12.5px;
         font-weight: 600;
         border-radius: 6px;
         cursor: pointer;
         border: 1px solid var(--border-color);
-        transition: background-color 0.15s, border-color 0.15s;
+        transition: background-color 0.15s, border-color 0.15s, color 0.15s,
+          box-shadow 0.15s, transform 0.05s;
 
+        // The svg icons rendered alongside the label inherit the button's
+        // currentColor so they re-tint automatically per state.
+        svg {
+          flex-shrink: 0;
+        }
+
+        &:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 3px var(--badge-glow);
+        }
+
+        &:active {
+          transform: translateY(1px);
+        }
+
+        // Neutral by default; on hover, shift toward danger red so the
+        // semantic intent ("block this tool call") becomes obvious without
+        // making the resting state shout.
         &.deny {
           background-color: var(--bg-card);
           color: var(--text-main);
 
           &:hover {
-            background-color: var(--bg-panel);
+            background-color: rgba(207, 34, 46, 0.08);
+            border-color: #cf222e;
+            color: #cf222e;
+          }
+
+          &:active {
+            background-color: rgba(207, 34, 46, 0.14);
           }
         }
 
+        // GitHub-style "success green" — distinct from the accent blue used
+        // for neutral primary actions elsewhere, so granting tool access
+        // reads as a deliberate "allow" rather than a generic confirm.
         &.allow {
-          background-color: var(--accent-color);
+          background-color: #1f883d;
           color: #fff;
-          border-color: var(--accent-color);
+          border-color: #1f883d;
 
           &:hover {
-            background-color: var(--accent-dark);
-            border-color: var(--accent-dark);
+            background-color: #1a7f37;
+            border-color: #1a7f37;
+          }
+
+          &:active {
+            background-color: #187330;
+            border-color: #187330;
+          }
+        }
+
+        // Brighter green / red on dark backgrounds to match GitHub Dark and
+        // keep visual weight equal to the light variant.
+        [data-theme="dark"] & {
+          &.deny:hover {
+            background-color: rgba(248, 81, 73, 0.12);
+            border-color: #f85149;
+            color: #f85149;
+          }
+          &.deny:active {
+            background-color: rgba(248, 81, 73, 0.2);
+          }
+          &.allow {
+            background-color: #238636;
+            border-color: #238636;
+          }
+          &.allow:hover {
+            background-color: #2ea043;
+            border-color: #2ea043;
+          }
+          &.allow:active {
+            background-color: #196c2e;
+            border-color: #196c2e;
           }
         }
       }
@@ -6736,6 +6798,14 @@ body {
   background: var(--accent-color, #0969da);
   color: #fff;
   border-bottom-right-radius: 2px;
+
+  // The global ::selection uses the same blue + white as this bubble,
+  // so text selection is invisible here. Invert to white bg / blue text
+  // for a clearly visible highlight.
+  ::selection {
+    background-color: #ffffff;
+    color: var(--accent-color, #0969da);
+  }
 }
 
 .chat-message-row-assistant {
@@ -7291,15 +7361,6 @@ body {
 .markdown-body {
   @include md-render;
 }
-
-.chat-permission-resolved {
-  margin-top: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.chat-permission-allow { color: #1a7f37; }
-.chat-permission-deny { color: #cf222e; }
-.chat-permission-hint { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
 
 // Composer
 .chat-composer {

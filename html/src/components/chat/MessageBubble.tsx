@@ -332,9 +332,35 @@ function PermissionBubble({
             ) : (
                 <div class="chat-permission-actions">
                     <button class="chat-permission-btn deny" onClick={() => onRespond && onRespond(requestId, false)}>
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M18 6 6 18M6 6l12 12" />
+                        </svg>
                         拒绝
                     </button>
                     <button class="chat-permission-btn allow" onClick={() => onRespond && onRespond(requestId, true)}>
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M5 12l5 5L20 7" />
+                        </svg>
                         允许
                     </button>
                 </div>
