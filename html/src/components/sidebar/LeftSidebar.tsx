@@ -287,6 +287,7 @@ export function LeftSidebar({
                                         class={`project-node${isActive ? ' ws-active' : ''}${
                                             isDeleting ? ' ws-deleting' : ''
                                         }`}
+                                        style={isDropdownOpen ? 'z-index: 200' : ''}
                                         onMouseEnter={() => setHoveredId(folder.id)}
                                         onMouseLeave={() => {
                                             setHoveredId(null);

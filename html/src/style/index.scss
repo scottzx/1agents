@@ -547,6 +547,7 @@ body {
     }
 
     .project-node {
+      position: relative;
       margin-bottom: 4px;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       max-height: 500px;
@@ -942,6 +943,14 @@ body {
           font-weight: 500;
         }
 
+        .chat-title {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-width: 0;
+          flex: 1;
+        }
+
         .chat-item-left {
           display: flex;
           align-items: center;
@@ -949,10 +958,8 @@ body {
           flex: 1;
 
           .chat-title {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
             max-width: 140px;
+            flex: none;
           }
         }
 
