@@ -194,25 +194,71 @@ function ToolGroupBubble({ calls }: { calls: GroupedToolCall[] }) {
     );
 }
 
+function FormatParamValue({ value }: { value: unknown }) {
+    const [wordWrap, setWordWrap] = useState(true);
+
+    if (value === null) return <span class="chat-tool-arg-value-null">null</span>;
+    if (value === undefined) return <span class="chat-tool-arg-value-undefined">undefined</span>;
+
+    if (typeof value === 'object') {
+        return (
+            <div class="chat-tool-arg-value-object-wrapper">
+                <button
+                    type="button"
+                    onClick={() => setWordWrap(!wordWrap)}
+                    class={`chat-tool-word-wrap-toggle ${wordWrap ? 'is-active' : ''}`}
+                    title="切换自动换行"
+                >
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6h16M4 12h10a4 4 0 0 1 0 8h-2" />
+                        <polyline points="14 16 10 20 14 24" />
+                    </svg>
+                </button>
+                <pre class={`chat-tool-arg-value-pre ${wordWrap ? 'whitespace-pre-wrap' : 'whitespace-pre'}`}>
+                    {JSON.stringify(value, null, 2)}
+                </pre>
+            </div>
+        );
+    }
+
+    if (typeof value === 'boolean') {
+        return (
+            <span class={`chat-tool-arg-value-bool ${value ? 'is-true' : 'is-false'}`}>{value ? 'true' : 'false'}</span>
+        );
+    }
+
+    return <span class="chat-tool-arg-value-text">{String(value)}</span>;
+}
+
 function GroupedToolCallItem({ call }: { call: GroupedToolCall }) {
     const [isExpanded, setIsExpanded] = useState(true);
 
     let args: Record<string, unknown> = {};
+    let parsedInput = false;
     try {
         if (call.input) {
             const parsed = JSON.parse(call.input);
             if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
                 args = parsed as Record<string, unknown>;
+                parsedInput = true;
             }
         }
     } catch {
         // input is not valid JSON
     }
 
-    const command = pickString(args, ['command', 'commandLine', 'CommandLine']);
+    // Skip rendering when the input parses to an empty object — likely a
+    // streaming/incomplete payload that will fill in shortly. Also skip when
+    // there's no input at all (the bridge may omit `arguments` while waiting
+    // for rawInput to arrive).
+    if (parsedInput && Object.keys(args).length === 0) {
+        return null;
+    }
+    if (!call.input) {
+        return null;
+    }
+
     const description = pickString(args, ['description', 'reason', 'Reason']);
-    const remaining = filterArgs(args, ['command', 'commandLine', 'CommandLine', 'description', 'reason', 'Reason']);
-    const remainingJson = Object.keys(remaining).length > 0 ? JSON.stringify(remaining, null, 2) : '';
     const inputWasInvalidJson = Object.keys(args).length === 0 && call.input && call.input.trim().length > 0;
 
     const hasOutput = call.output !== undefined;
@@ -253,32 +299,68 @@ function GroupedToolCallItem({ call }: { call: GroupedToolCall }) {
                 <div class="chat-tool-call-subcard-body">
                     {/* Input parameters section */}
                     <div class="chat-tool-subcard-section">
-                        <div class="chat-tool-section-title">输入参数</div>
+                        <div class="chat-tool-section-title">调用入参列表 (Arguments)</div>
                         <div class="chat-tool-section-content">
-                            {command !== undefined && (
-                                <div class="chat-tool-cmd-box">
-                                    <span class="chat-tool-cmd-prompt">$</span>
-                                    <span class="chat-tool-cmd-text">{command}</span>
+                            {Object.keys(args).length > 0 ? (
+                                <div class="chat-tool-args-grid">
+                                    {Object.entries(args).map(([paramName, paramVal]) => (
+                                        <div key={paramName} class="chat-tool-arg-item">
+                                            <div class="chat-tool-arg-indicator"></div>
+                                            <div class="chat-tool-arg-header">
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    width="10"
+                                                    height="10"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2.5"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    class="chat-tool-arg-arrow"
+                                                >
+                                                    <polyline points="15 10 20 15 15 20" />
+                                                    <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+                                                </svg>
+                                                <code class="chat-tool-arg-name">{paramName}</code>
+                                                <span class="chat-tool-arg-type">{typeof paramVal}</span>
+                                            </div>
+                                            <div class="chat-tool-arg-body">
+                                                <FormatParamValue value={paramVal} />
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            )}
-                            {remainingJson && <pre class="chat-tool-args">{remainingJson}</pre>}
-                            {inputWasInvalidJson && !command && <pre class="chat-tool-args">{call.input}</pre>}
-                            {!command && !remainingJson && !inputWasInvalidJson && (
-                                <div class="chat-tool-no-args">（无输入参数）</div>
+                            ) : inputWasInvalidJson ? (
+                                <pre class="chat-tool-args">{call.input}</pre>
+                            ) : (
+                                <div class="chat-tool-no-args">无附加调用参数 (No Arguments)</div>
                             )}
                         </div>
                     </div>
 
                     {/* Output result section */}
                     <div class="chat-tool-subcard-section">
-                        <div class="chat-tool-section-title">返回结果</div>
+                        <div class="chat-tool-section-title">工具返回结果 (Tool Output)</div>
                         <div class="chat-tool-section-content">
                             {!hasOutput ? (
                                 <div class="chat-tool-output-pending">正在执行，请稍候...</div>
                             ) : (
-                                <pre class={`chat-tool-output-box ${isError ? 'has-error' : ''}`}>
-                                    {call.output || '（执行完成，无返回内容）'}
-                                </pre>
+                                <div class="chat-tool-terminal-box">
+                                    <div class="chat-tool-terminal-header">
+                                        <div class="chat-tool-terminal-dots">
+                                            <span class="dot dot-close"></span>
+                                            <span class="dot dot-minimize"></span>
+                                            <span class="dot dot-expand"></span>
+                                        </div>
+                                        <span class="chat-tool-terminal-title">
+                                            {call.toolName.toLowerCase()} - output.log
+                                        </span>
+                                        <div class="chat-tool-terminal-spacer"></div>
+                                    </div>
+                                    <pre class={`chat-tool-terminal-body ${isError ? 'has-error' : ''}`}>
+                                        {call.output || '（执行完成，无返回内容）'}
+                                    </pre>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -296,16 +378,6 @@ function pickString(args: Record<string, unknown>, keys: string[]): string | und
         }
     }
     return undefined;
-}
-
-function filterArgs(args: Record<string, unknown>, exclude: string[]): Record<string, unknown> {
-    const remaining: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(args)) {
-        if (!exclude.includes(k)) {
-            remaining[k] = v;
-        }
-    }
-    return remaining;
 }
 
 function PermissionBubble({

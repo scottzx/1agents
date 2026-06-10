@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { MessageBubble, GroupedChatItem } from './MessageBubble';
+import { MessageBubble, GroupedChatItem, GroupedToolCall } from './MessageBubble';
 import type { ChatItem } from './hooks';
 import type { AgentType } from '../types';
 
@@ -43,31 +43,58 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 }
             }
         } else if (item.kind === 'tool_result') {
-            let lastGroup = grouped[grouped.length - 1];
-            if (!lastGroup || lastGroup.kind !== 'tool_group') {
-                lastGroup = {
-                    id: `group-${item.id}`,
-                    kind: 'tool_group',
-                    calls: [],
-                    createdAt: item.createdAt,
-                };
-                grouped.push(lastGroup);
-            }
-
             const callId = item.toolCallId;
-            let matchedCall = callId ? lastGroup.calls.find(c => c.toolCallId === callId) : null;
-            if (!matchedCall && lastGroup.calls.length > 0) {
-                matchedCall = lastGroup.calls.find(c => c.output === undefined) || null;
-            }
-            if (!matchedCall && lastGroup.calls.length > 0) {
-                matchedCall = lastGroup.calls[lastGroup.calls.length - 1];
+            let matchedCall: GroupedToolCall | null = null;
+            let matchedGroup: GroupedChatItem | null = null;
+
+            // Search backward for the most recent group that contains this callId
+            if (callId) {
+                for (let i = grouped.length - 1; i >= 0; i--) {
+                    const g = grouped[i];
+                    if (g.kind === 'tool_group') {
+                        const c = g.calls.find(call => call.toolCallId === callId);
+                        if (c) {
+                            matchedCall = c;
+                            matchedGroup = g;
+                            break;
+                        }
+                    }
+                }
             }
 
-            if (matchedCall) {
+            // Fallback: if not found by callId, check the latest tool_group
+            if (!matchedCall) {
+                for (let i = grouped.length - 1; i >= 0; i--) {
+                    if (grouped[i].kind === 'tool_group') {
+                        matchedGroup = grouped[i];
+                        break;
+                    }
+                }
+                if (matchedGroup && matchedGroup.kind === 'tool_group' && matchedGroup.calls.length > 0) {
+                    matchedCall = matchedGroup.calls.find(c => c.output === undefined) || null;
+                    if (!matchedCall) {
+                        matchedCall = matchedGroup.calls[matchedGroup.calls.length - 1];
+                    }
+                }
+            }
+
+            if (matchedCall && matchedGroup && matchedGroup.kind === 'tool_group') {
                 matchedCall.output = item.content;
                 matchedCall.isError = item.isError;
             } else {
-                lastGroup.calls.push({
+                let targetGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
+                if (matchedGroup && matchedGroup.kind === 'tool_group') {
+                    targetGroup = matchedGroup;
+                } else {
+                    targetGroup = {
+                        id: `group-${item.id}`,
+                        kind: 'tool_group',
+                        calls: [],
+                        createdAt: item.createdAt,
+                    };
+                    grouped.push(targetGroup);
+                }
+                targetGroup.calls.push({
                     id: `call-${callId || Math.random()}`,
                     toolCallId: callId,
                     toolName: 'tool',

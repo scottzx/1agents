@@ -53,6 +53,8 @@ type WsMessage struct {
 	RequestId       string          `json:"requestId,omitempty"`
 	Behavior        string          `json:"behavior,omitempty"`
 	ToolName        string          `json:"toolName,omitempty"`
+	ToolCallID      string          `json:"toolCallId,omitempty"`
+	IsError         bool            `json:"isError,omitempty"`
 	Arguments       json.RawMessage `json:"arguments,omitempty"`
 	Summary         string          `json:"summary,omitempty"`
 	Items           json.RawMessage `json:"items,omitempty"`

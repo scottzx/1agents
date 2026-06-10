@@ -152,6 +152,7 @@ export class ChatBridgeManager {
                 code?: string;
                 toolName?: string;
                 toolCallId?: string;
+                isError?: boolean;
                 messages?: Array<{ role: string; text: string }>;
                 items?: HistoryItem[];
             };
@@ -242,6 +243,21 @@ export class ChatBridgeManager {
                             ...(newCall.toolCallId ? { toolCallId: newCall.toolCallId } : {}),
                         });
                     }
+                    state.items = next;
+                    this.notify(state);
+                    break;
+                }
+                case 'tool_result': {
+                    if (!state.turnStarted) break;
+                    const next = [...state.items];
+                    next.push({
+                        id: cryptoId(),
+                        kind: 'tool_result',
+                        toolCallId: payload.toolCallId,
+                        content: payload.text || '',
+                        isError: !!payload.isError,
+                        createdAt: Date.now(),
+                    });
                     state.items = next;
                     this.notify(state);
                     break;
