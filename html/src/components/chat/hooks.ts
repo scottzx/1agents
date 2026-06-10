@@ -8,9 +8,12 @@ import { useEffect, useState, useCallback } from 'preact/hooks';
 import type { ChatSession } from '../types';
 
 export interface ToolCallInfo {
+    id?: string;
     toolName: string;
     input: string;
     toolCallId?: string;
+    output?: string;
+    isError?: boolean;
 }
 
 /**
@@ -128,6 +131,21 @@ export class ChatBridgeManager {
         const ws = new WebSocket(wsUrl);
         state.ws = ws;
 
+        // Flush the streaming cursor on the trailing assistant_text block. Called
+        // whenever a non-text_delta event arrives, so the blink stops at the
+        // boundary between text and whatever comes next (tool, permission, ...).
+        const stopAssistantStreaming = () => {
+            const items = state.items;
+            if (items.length === 0) return;
+            const last = items[items.length - 1];
+            if (last && last.kind === 'assistant_text' && last.streaming) {
+                state.items = [
+                    ...items.slice(0, -1),
+                    { ...last, streaming: false },
+                ];
+            }
+        };
+
         ws.onopen = () => {
             state.connection = 'connected';
             this.notify(state);
@@ -214,6 +232,7 @@ export class ChatBridgeManager {
                 }
                 case 'tool_call': {
                     if (!state.turnStarted) break;
+                    stopAssistantStreaming();
                     const argsString =
                         typeof payload.arguments === 'string'
                             ? payload.arguments
@@ -228,10 +247,30 @@ export class ChatBridgeManager {
                     const next = [...state.items];
                     const last = next[next.length - 1];
                     if (last && last.kind === 'tool_use') {
-                        next[next.length - 1] = {
-                            ...last,
-                            calls: [...last.calls, newCall],
-                        };
+                        // The runtime may emit multiple tool_call events for
+                        // the same toolCallId as more data streams in (e.g.
+                        // a placeholder `{}` first, then the real input).
+                        // Update the existing call in place rather than
+                        // appending a duplicate so tool_result lands on the
+                        // right call and the tool_group stays tidy.
+                        const existingIdx = newCall.toolCallId
+                            ? last.calls.findIndex(c => c.toolCallId === newCall.toolCallId)
+                            : -1;
+                        if (existingIdx >= 0) {
+                            next[next.length - 1] = {
+                                ...last,
+                                calls: last.calls.map((c, idx) =>
+                                    idx === existingIdx
+                                        ? { ...c, toolName: newCall.toolName, input: newCall.input }
+                                        : c
+                                ),
+                            };
+                        } else {
+                            next[next.length - 1] = {
+                                ...last,
+                                calls: [...last.calls, newCall],
+                            };
+                        }
                     } else {
                         next.push({
                             id: cryptoId(),
@@ -249,21 +288,90 @@ export class ChatBridgeManager {
                 }
                 case 'tool_result': {
                     if (!state.turnStarted) break;
-                    const next = [...state.items];
-                    next.push({
-                        id: cryptoId(),
-                        kind: 'tool_result',
-                        toolCallId: payload.toolCallId,
-                        content: payload.text || '',
-                        isError: !!payload.isError,
-                        createdAt: Date.now(),
-                    });
-                    state.items = next;
+                    stopAssistantStreaming();
+
+                    // Find the matching tool_use / call and fold the result onto
+                    // it in place. This mirrors the rendered history shape (a
+                    // call with both input and output attached) so the
+                    // tool_group can display the body during streaming, not
+                    // only after a history reload.
+                    const items = [...state.items];
+                    let matched = false;
+                    for (let i = items.length - 1; i >= 0; i--) {
+                        const item = items[i];
+                        if (item.kind !== 'tool_use') continue;
+                        if (payload.toolCallId) {
+                            const callIdx = item.calls.findIndex(
+                                c => c.toolCallId === payload.toolCallId
+                            );
+                            if (callIdx >= 0) {
+                                items[i] = {
+                                    ...item,
+                                    calls: item.calls.map((c, idx) =>
+                                        idx === callIdx
+                                            ? {
+                                                  ...c,
+                                                  output: payload.text || '',
+                                                  isError: !!payload.isError,
+                                              }
+                                            : c
+                                    ),
+                                };
+                                matched = true;
+                                break;
+                            }
+                        }
+                        // No toolCallId: attach to the most recent call in the
+                        // latest tool_use that doesn't have output yet.
+                        const openCallIdx = item.calls.findIndex(c => c.output === undefined);
+                        const targetIdx = openCallIdx >= 0 ? openCallIdx : item.calls.length - 1;
+                        if (targetIdx >= 0) {
+                            items[i] = {
+                                ...item,
+                                calls: item.calls.map((c, idx) =>
+                                    idx === targetIdx
+                                        ? {
+                                              ...c,
+                                              output: payload.text || '',
+                                              isError: !!payload.isError,
+                                          }
+                                        : c
+                                ),
+                            };
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        // No tool_use was seen (e.g. result arrived first over
+                        // a flaky socket). Synthesize a tool_use with just the
+                        // result so the user still sees the output.
+                        items.push({
+                            id: cryptoId(),
+                            kind: 'tool_use',
+                            toolName: payload.toolName || 'tool',
+                            input: '',
+                            calls: [
+                                {
+                                    id: `call-${payload.toolCallId || cryptoId()}`,
+                                    toolCallId: payload.toolCallId,
+                                    toolName: payload.toolName || 'tool',
+                                    input: '',
+                                    output: payload.text || '',
+                                    isError: !!payload.isError,
+                                },
+                            ],
+                            createdAt: Date.now(),
+                            ...(payload.toolCallId ? { toolCallId: payload.toolCallId } : {}),
+                        });
+                    }
+                    state.items = items;
                     this.notify(state);
                     break;
                 }
                 case 'permission_request': {
                     if (!state.turnStarted) break;
+                    stopAssistantStreaming();
                     const argsString =
                         typeof payload.arguments === 'string'
                             ? payload.arguments
@@ -285,6 +393,7 @@ export class ChatBridgeManager {
                 }
                 case 'permission_timeout': {
                     if (!state.turnStarted) break;
+                    stopAssistantStreaming();
                     state.items = state.items.map(it =>
                         it.kind === 'permission' && it.requestId === payload.requestId
                             ? { ...it, resolved: 'deny' }
@@ -332,6 +441,7 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'error': {
+                    stopAssistantStreaming();
                     state.items = [
                         ...state.items,
                         {

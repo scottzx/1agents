@@ -247,21 +247,22 @@ function GroupedToolCallItem({ call }: { call: GroupedToolCall }) {
         // input is not valid JSON
     }
 
-    // Skip rendering when the input parses to an empty object — likely a
-    // streaming/incomplete payload that will fill in shortly. Also skip when
-    // there's no input at all (the bridge may omit `arguments` while waiting
-    // for rawInput to arrive).
-    if (parsedInput && Object.keys(args).length === 0) {
+    const hasOutput = call.output !== undefined;
+    const inputWasInvalidJson = call.input && call.input.trim().length > 0 && Object.keys(args).length === 0;
+    const emptyParsedInput = parsedInput && Object.keys(args).length === 0;
+
+    // Skip rendering only when there's neither a usable input nor an output —
+    // i.e. a streaming placeholder that will fill in shortly. If we already
+    // have a result, render the subcard so the output body surfaces.
+    if (!call.input && !hasOutput) {
         return null;
     }
-    if (!call.input) {
+    if (emptyParsedInput && !inputWasInvalidJson && !hasOutput) {
         return null;
     }
 
     const description = pickString(args, ['description', 'reason', 'Reason']);
-    const inputWasInvalidJson = Object.keys(args).length === 0 && call.input && call.input.trim().length > 0;
 
-    const hasOutput = call.output !== undefined;
     const isError = call.isError;
 
     return (
@@ -393,50 +394,60 @@ function PermissionBubble({
     resolved?: 'allow' | 'deny';
     onRespond?: (requestId: string, allow: boolean) => void;
 }) {
+    // Once the user has responded, collapse the bubble to a single status line
+    // so it doesn't keep occupying space while later events stream in.
+    if (resolved) {
+        const label = resolved === 'allow' ? '已允许' : '已拒绝';
+        return (
+            <div class={`chat-bubble chat-bubble-permission is-resolved chat-permission-${resolved}`}>
+                <span class="chat-permission-resolved-mark" aria-hidden="true">
+                    {resolved === 'allow' ? '✓' : '✕'}
+                </span>
+                <span class="chat-permission-resolved-text">
+                    {label} · {toolName}
+                </span>
+            </div>
+        );
+    }
+
     return (
         <div class="chat-bubble chat-bubble-permission">
             <div class="chat-bubble-label">需要授权 · {toolName}</div>
             <pre class="chat-bubble-code">{input}</pre>
-            {resolved ? (
-                <div class={`chat-permission-resolved chat-permission-${resolved}`}>
-                    {resolved === 'allow' ? '已允许' : '已拒绝'}
-                </div>
-            ) : (
-                <div class="chat-permission-actions">
-                    <button class="chat-permission-btn deny" onClick={() => onRespond && onRespond(requestId, false)}>
-                        <svg
-                            viewBox="0 0 24 24"
-                            width="14"
-                            height="14"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                        >
-                            <path d="M18 6 6 18M6 6l12 12" />
-                        </svg>
-                        拒绝
-                    </button>
-                    <button class="chat-permission-btn allow" onClick={() => onRespond && onRespond(requestId, true)}>
-                        <svg
-                            viewBox="0 0 24 24"
-                            width="14"
-                            height="14"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                        >
-                            <path d="M5 12l5 5L20 7" />
-                        </svg>
-                        允许
-                    </button>
-                </div>
-            )}
+            <div class="chat-permission-actions">
+                <button class="chat-permission-btn deny" onClick={() => onRespond && onRespond(requestId, false)}>
+                    <svg
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                    拒绝
+                </button>
+                <button class="chat-permission-btn allow" onClick={() => onRespond && onRespond(requestId, true)}>
+                    <svg
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M5 12l5 5L20 7" />
+                    </svg>
+                    允许
+                </button>
+            </div>
         </div>
     );
 }

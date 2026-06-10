@@ -7331,6 +7331,36 @@ body {
   max-width: 90%;
 }
 
+// Collapsed state shown after the user responds to a permission request.
+// Keeps a one-line receipt so the timeline still records the decision,
+// but stops occupying the same vertical real estate as the active prompt.
+.chat-bubble-permission.is-resolved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-left-width: 2px;
+  background: transparent;
+  opacity: 0.85;
+
+  &.chat-permission-allow {
+    border-left-color: #1a7f37;
+    color: #1a7f37;
+  }
+
+  &.chat-permission-deny {
+    border-left-color: #cf222e;
+    color: #cf222e;
+  }
+}
+
+.chat-permission-resolved-mark {
+  font-weight: 700;
+  line-height: 1;
+}
+
 .chat-bubble-error {
   align-self: stretch;
   background: rgba(207, 34, 46, 0.08);

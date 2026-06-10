@@ -11,6 +11,23 @@ interface MessageListProps {
     onRespondPermission?: (requestId: string, allow: boolean) => void;
 }
 
+function isCallRenderable(call: GroupedToolCall): boolean {
+    // Mirrors the skip condition in GroupedToolCallItem so MessageList can
+    // suppress tool_groups that would render as a title-only placeholder.
+    if (call.output !== undefined) return true;
+    if (!call.input || !call.input.trim()) return false;
+    try {
+        const parsed = JSON.parse(call.input);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return Object.keys(parsed as Record<string, unknown>).length > 0;
+        }
+        return true;
+    } catch {
+        // Non-JSON but has content — render as raw.
+        return true;
+    }
+}
+
 function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     const grouped: GroupedChatItem[] = [];
 
@@ -132,7 +149,24 @@ export function MessageList({ items, agentType, emptyHint, onRespondPermission }
         );
     }
 
-    const groupedItems = groupChatItems(items);
+    const groupedItems: GroupedChatItem[] = [];
+    for (const item of groupChatItems(items)) {
+        if (item.kind !== 'tool_group') {
+            groupedItems.push(item);
+            continue;
+        }
+        // Drop empty calls so we don't briefly render "工具调用 1" with no
+        // body while waiting for the streaming input to land. If everything
+        // is empty, hide the whole group — it'll reappear once content
+        // arrives.
+        const renderable = item.calls.filter(isCallRenderable);
+        if (renderable.length === 0) continue;
+        if (renderable.length === item.calls.length) {
+            groupedItems.push(item);
+        } else {
+            groupedItems.push({ ...item, calls: renderable });
+        }
+    }
 
     return (
         <div class="chat-messages" ref={scrollRef}>
