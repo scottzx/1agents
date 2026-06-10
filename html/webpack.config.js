@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const { merge } = require('webpack-merge');
 const webpack = require('webpack');
 const ESLintPlugin = require('eslint-webpack-plugin');
@@ -23,6 +24,27 @@ function getBackendPort() {
 }
 
 const backendPort = getBackendPort();
+
+// ── Build-time version metadata (consumed by html/src/version.ts) ────────────
+// Order of precedence:
+//   1. Environment variables (CI passes these explicitly).
+//   2. `git describe` / `git rev-parse` (local dev).
+//   3. Hard-coded fallback (sandbox / no git available).
+function safeExec(cmd) {
+    try {
+        return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] })
+            .toString()
+            .trim();
+    } catch {
+        return '';
+    }
+}
+
+const buildMeta = {
+    version: process.env.APP_VERSION || safeExec('git describe --tags --always --dirty') || 'dev',
+    commit: process.env.GIT_COMMIT || safeExec('git rev-parse --short HEAD') || 'none',
+    buildTime: process.env.BUILD_TIME || new Date().toISOString(),
+};
 
 const baseConfig = {
     context: path.resolve(__dirname, 'src'),
@@ -52,6 +74,9 @@ const baseConfig = {
     plugins: [
         new webpack.DefinePlugin({
             IS_DESKTOP: JSON.stringify(process.env.IS_DESKTOP === 'true'),
+            __APP_VERSION__: JSON.stringify(buildMeta.version),
+            __GIT_COMMIT__: JSON.stringify(buildMeta.commit),
+            __BUILD_TIME__: JSON.stringify(buildMeta.buildTime),
         }),
         new ESLintPlugin({
             context: path.resolve(__dirname, '.'),

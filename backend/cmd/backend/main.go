@@ -24,6 +24,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/config"
 	"github.com/scottzx/1Agents/backend/internal/server"
 	"github.com/scottzx/1Agents/backend/internal/supervisor"
+	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
 )
 
@@ -35,6 +36,12 @@ var (
 
 func main() {
 	cfg := config.Default()
+
+	// Expose ldflags-injected version to the system package so the OTA
+	// manifest fallback can report the local version when GitHub is
+	// unreachable. Set BEFORE flag.Parse so -version output is unaffected
+	// (that path returns before reading system.LocalVersion).
+	system.LocalVersion = version
 
 	// ── CLI flags ─────────────────────────────────────────────────────────────
 	var noTtyd bool
@@ -124,6 +131,13 @@ func main() {
 		log.Printf("[main] Set ttyd path to: %s", cfg.TtydBinaryPath)
 		log.Printf("[main] Set static dir to: %s", cfg.StaticDir)
 		log.Printf("[main] Set PATH to: %s", newPath)
+
+		// Disable self-updating OTA in desktop mode: Tauri manages
+		// the sidecar binary + frontend via its own updater plugin.
+		cfg.OTA.Enabled = false
+		system.OTAEnabled = false
+	} else {
+		system.OTAEnabled = true
 	}
 
 	// Configure tunnel idle timeout (applies to both --tunnel and API-started tunnels)
