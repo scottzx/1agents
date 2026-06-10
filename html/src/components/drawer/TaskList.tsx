@@ -181,7 +181,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     };
 
     return (
-        <div class="task-dashboard-drawer">
+        <div class="task-dashboard-container">
             <div class="task-dashboard-header">
                 <button class="create-task-btn-toggle" onClick={() => setShowForm(!showForm)}>
                     {showForm ? '取消创建' : '+ 新建任务'}

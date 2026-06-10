@@ -1768,7 +1768,8 @@ body {
 
   /* Task Checkerboard matching screenshots */
   /* Tasks Dashboard Drawer */
-  .task-dashboard-drawer {
+  .task-dashboard-drawer,
+  .task-dashboard-container {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -2190,6 +2191,27 @@ body {
             }
           }
         }
+      }
+    }
+  }
+
+  .task-dashboard-container {
+    padding: 24px;
+    overflow-y: auto;
+
+    .task-list-scroller {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 768px) {
+      padding: 12px;
+
+      .task-list-scroller {
+        grid-template-columns: 1fr;
+        gap: 12px;
       }
     }
   }

@@ -5,7 +5,6 @@ import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
-import { TaskList } from './TaskList';
 import { t, type Lang } from '../i18n';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
@@ -77,7 +76,6 @@ export function RightPanel({
     rightPanelWidth,
     closeDrawer,
     ccConnectUrl,
-    onSelectSession,
 
     theme,
     toggleTheme,
@@ -160,8 +158,6 @@ export function RightPanel({
                 return t('drawer.title.skills', language);
             case 'discovery':
                 return t('drawer.title.discovery', language);
-            case 'tasks':
-                return '任务仪表盘';
             default:
                 return '';
         }
@@ -304,10 +300,6 @@ export function RightPanel({
                         onGenerateAccessToken={onGenerateAccessToken}
                         onRevokeAccessToken={onRevokeAccessToken}
                     />
-                )}
-
-                {activeDrawerTab === 'tasks' && (
-                    <TaskList workspaceId={activeWorkspaceId} onSelectSession={onSelectSession} />
                 )}
             </div>
         </aside>

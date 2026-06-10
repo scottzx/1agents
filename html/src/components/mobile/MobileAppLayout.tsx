@@ -8,6 +8,7 @@ import { RightPanel } from '../drawer/RightPanel';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { SystemSettings } from '../settings/SystemSettings';
 import { FileDetailView } from '../drawer/FileDetailView';
+import { TaskList } from '../drawer/TaskList';
 import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
@@ -1059,6 +1060,32 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                             </div>
                             <div class="mobile-subview-content">
                                 {tabs.filter(t => t.id === activeTabId).map(t => app.renderBuiltinBrowser(t))}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTabObj?.type === 'tasks' && (
+                        <div class="mobile-subview-layout">
+                            <div class="mobile-subview-header">
+                                <button class="mobile-subview-back-btn" onClick={() => app.selectTab('terminal')}>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <polyline points="15 18 9 12 15 6" />
+                                    </svg>
+                                </button>
+                                <div class="mobile-subview-title">任务看板</div>
+                            </div>
+                            <div
+                                class="mobile-subview-content scrollable"
+                                style="background-color: var(--bg-panel); padding: 12px 16px;"
+                            >
+                                <TaskList
+                                    workspaceId={selectedWorkspaceId || activeWorkspaceId}
+                                    onSelectSession={s => {
+                                        app.selectSession(s);
+                                        app.selectTab('terminal');
+                                        this.setState({ inSessionView: true });
+                                    }}
+                                />
                             </div>
                         </div>
                     )}

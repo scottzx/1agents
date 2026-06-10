@@ -54,7 +54,7 @@ export {
 export interface Tab {
     id: string; // 'terminal', 'preview-[path]', 'browser-[timestamp]'
     title: string;
-    type: 'terminal' | 'preview' | 'browser';
+    type: 'terminal' | 'preview' | 'browser' | 'tasks';
     path?: string;
     url?: string;
     closable: boolean;
@@ -170,6 +170,7 @@ export class App extends Component<{}, AppState> {
         } catch {
             /* ignore */
         }
+        const initialLang = (localStorage.getItem('1agents-language') || 'zh-CN') as Lang;
         this.state = {
             activeTab: 'terminal',
             activeDrawerTab: 'none',
@@ -226,14 +227,17 @@ export class App extends Component<{}, AppState> {
             isMobile: window.innerWidth <= 768,
             keyboardVisible: false,
             viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
-            language: (localStorage.getItem('1agents-language') || 'zh-CN') as Lang,
+            language: initialLang,
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
             accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
             hasLoadedWorkspaces: false,
-            tabs: [{ id: 'terminal', title: t('app.tab.workbench', 'zh-CN'), type: 'terminal', closable: false }],
+            tabs: [
+                { id: 'terminal', title: t('app.tab.workbench', initialLang), type: 'terminal', closable: false },
+                { id: 'tasks', title: t('app.tab.tasks', initialLang), type: 'tasks', closable: false },
+            ],
             activeTabId: 'terminal',
             activeModulePath: '',
             moduleManifests: {},
@@ -953,6 +957,7 @@ export class App extends Component<{}, AppState> {
             localStorage.setItem('1agents-active-workspace', session.workspaceId);
             return {
                 activeSession: { ...session, active: true },
+                activeTabId: 'terminal',
                 // Chat sessions live in the agents tab; terminals in the terminal tab.
                 activeTab: isChat(session) ? 'agents' : 'terminal',
                 folders:
@@ -1349,6 +1354,10 @@ export class App extends Component<{}, AppState> {
 
     // Coze click shortcut toggle dynamic drawer logic
     toggleDrawerTab = (tab: RightDrawerTab) => {
+        if (tab === 'tasks') {
+            this.selectTab('tasks');
+            return;
+        }
         if (this.state.activeDrawerTab === tab) {
             // Collapse the drawer
             this.setState({ activeDrawerTab: 'none', activeModulePath: '' });

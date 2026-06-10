@@ -28,6 +28,7 @@ export const zhCN: Record<string, string> = {
 
     // ── App shell (app.tsx) ───────────────────────────────────────────────
     'app.tab.workbench': '工作台',
+    'app.tab.tasks': '任务看板',
     'app.workbench': '更多应用',
     'app.session.title': '会话 #{index}',
     'app.session.titlePlain': '会话 #',
@@ -129,6 +130,7 @@ export const zhCN: Record<string, string> = {
     'sidebar.newTerminal': '新建终端',
     'sidebar.newSession': '新建会话',
     'sidebar.newChat': '新建聊天',
+    'sidebar.chatSession': '聊天会话',
     'sidebar.noSessions': '暂无会话 — 点击工作空间旁的 + 创建',
     'sidebar.closeSession': '关闭会话',
     'sidebar.renameSession': '重命名会话',
@@ -546,6 +548,7 @@ export const enUS: Record<string, string> = {
 
     // ── App shell ────────────────────────────────────────────────────────
     'app.tab.workbench': 'Workbench',
+    'app.tab.tasks': 'Tasks',
     'app.workbench': 'More Apps',
     'app.session.title': 'Session #{index}',
     'app.session.titlePlain': 'Session #',
@@ -646,6 +649,7 @@ export const enUS: Record<string, string> = {
     'sidebar.newTerminal': 'New terminal',
     'sidebar.newSession': 'New Session',
     'sidebar.newChat': 'New Chat',
+    'sidebar.chatSession': 'Chat Session',
     'sidebar.noSessions': 'No sessions — click + next to a workspace to create one',
     'sidebar.closeSession': 'Close session',
     'sidebar.renameSession': 'Rename session',
