@@ -32,8 +32,13 @@ export function MessageList({ items, emptyHint, onRespondPermission }: MessageLi
 
     return (
         <div class="chat-messages" ref={scrollRef}>
-            {items.map(item => (
-                <MessageBubble key={item.id} item={item} onRespondPermission={onRespondPermission} />
+            {items.map((item, index) => (
+                <MessageBubble
+                    key={item.id}
+                    item={item}
+                    isLast={index === items.length - 1}
+                    onRespondPermission={onRespondPermission}
+                />
             ))}
         </div>
     );

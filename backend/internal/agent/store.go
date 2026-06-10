@@ -184,6 +184,35 @@ func (s *Store) Touch(id string) error {
 	return ErrNotFound
 }
 
+// UpdateACP persists the agent-managed session id for a chat record. Used
+// when the bridge-server reports back the agent's session uuid via
+// session_ready, so that subsequent opens can resume the same session
+// (and find its native storage, e.g. Claude Code's <uuid>.jsonl).
+// If the record already has a non-empty AcpSessionID, the call is a no-op
+// — we don't want a stale value to be clobbered by a fresh acpxRecordId.
+func (s *Store) UpdateACP(id, acpSessionID string) error {
+	if acpSessionID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range cfg.Sessions {
+		if cfg.Sessions[i].ID == id {
+			if cfg.Sessions[i].AcpSessionID == "" {
+				cfg.Sessions[i].AcpSessionID = acpSessionID
+				return s.saveLocked(cfg)
+			}
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
 // Sentinel errors for store operations.
 var (
 	ErrDuplicate = fmt.Errorf("agent: duplicate record id")

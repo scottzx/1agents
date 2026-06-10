@@ -7,11 +7,49 @@
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import type { ChatSession } from '../types';
 
+export interface ToolCallInfo {
+    toolName: string;
+    input: string;
+    toolCallId?: string;
+}
+
+/**
+ * Shape of each item sent in a `history_response`. Mirrors the kind union
+ * the bridge-server produces when replaying an agent's native session
+ * storage (e.g. Claude Code's ~/.claude/projects/.../<sessionId>.jsonl).
+ */
+export type HistoryItem =
+    | { kind: 'user'; text: string; createdAt?: string }
+    | { kind: 'assistant_text'; text: string; createdAt?: string }
+    | { kind: 'thinking'; text: string; createdAt?: string }
+    | {
+          kind: 'tool_use';
+          toolName: string;
+          input: unknown;
+          toolCallId?: string;
+          createdAt?: string;
+      }
+    | {
+          kind: 'tool_result';
+          toolCallId?: string;
+          content: string;
+          isError: boolean;
+          createdAt?: string;
+      };
+
 export type ChatItem =
     | { id: string; kind: 'user'; content: string; createdAt: number }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
     | { id: string; kind: 'thinking'; content: string; createdAt: number }
-    | { id: string; kind: 'tool_use'; toolName: string; input: string; createdAt: number; toolCallId?: string }
+    | {
+          id: string;
+          kind: 'tool_use';
+          toolName: string;
+          input: string;
+          calls: ToolCallInfo[];
+          createdAt: number;
+          toolCallId?: string;
+      }
     | { id: string; kind: 'tool_result'; toolCallId?: string; content: string; createdAt: number; isError: boolean }
     | {
           id: string;
@@ -64,7 +102,21 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         ws.onopen = () => {
             if (cancelled) return;
             setConnection('connected');
-            ws.send(JSON.stringify({ action: 'get_history', sessionId: session.id }));
+            // The bridge-server needs the agent-type-native session id
+            // (e.g. the Claude Code UUID that names the JSONL on disk)
+            // to locate the historical conversation. The acpSessionId
+            // field is the canonical ACP-side identifier; the bridge-
+            // server prefers its own handle's agentSessionId, but
+            // passing it gives the server a hint in case the handle
+            // hasn't been populated yet.
+            ws.send(
+                JSON.stringify({
+                    action: 'get_history',
+                    sessionId: session.id,
+                    agentType: session.agentType,
+                    acpSessionId: session.acpSessionId,
+                })
+            );
         };
 
         ws.onmessage = e => {
@@ -78,7 +130,9 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
                 message?: string;
                 code?: string;
                 toolName?: string;
+                toolCallId?: string;
                 messages?: Array<{ role: string; text: string }>;
+                items?: HistoryItem[];
             };
             try {
                 payload = JSON.parse(e.data) as typeof payload;
@@ -141,12 +195,34 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
                         typeof payload.arguments === 'string'
                             ? payload.arguments
                             : JSON.stringify(payload.arguments, null, 2);
-                    appendItem({
-                        id: cryptoId(),
-                        kind: 'tool_use',
+                    const newCall: ToolCallInfo = {
                         toolName: payload.toolName || 'tool',
                         input: argsString,
-                        createdAt: Date.now(),
+                    };
+                    if (payload.toolCallId) {
+                        newCall.toolCallId = payload.toolCallId;
+                    }
+                    setItems(prev => {
+                        const next = [...prev];
+                        const last = next[next.length - 1];
+                        if (last && last.kind === 'tool_use') {
+                            // Merge consecutive tool calls into the same card.
+                            next[next.length - 1] = {
+                                ...last,
+                                calls: [...last.calls, newCall],
+                            };
+                        } else {
+                            next.push({
+                                id: cryptoId(),
+                                kind: 'tool_use',
+                                toolName: newCall.toolName,
+                                input: newCall.input,
+                                calls: [newCall],
+                                createdAt: Date.now(),
+                                ...(newCall.toolCallId ? { toolCallId: newCall.toolCallId } : {}),
+                            });
+                        }
+                        return next;
                     });
                     break;
                 }
@@ -197,14 +273,14 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
                     setTyping(false);
                     break;
                 case 'history_response': {
-                    const historyMessages = payload.messages || [];
-                    const converted: ChatItem[] = historyMessages.map(m => ({
-                        id: cryptoId(),
-                        kind: (m.role === 'user' ? 'user' : 'assistant_text') as 'user' | 'assistant_text',
-                        content: m.text,
-                        createdAt: Date.now(),
-                        streaming: false,
-                    }));
+                    const historyItems: HistoryItem[] =
+                        payload.items && payload.items.length > 0
+                            ? payload.items
+                            : (payload.messages || []).map(m => ({
+                                  kind: (m.role === 'user' ? 'user' : 'assistant_text') as 'user' | 'assistant_text',
+                                  text: m.text,
+                              }));
+                    const converted: ChatItem[] = historyItems.map(it => historyItemToChatItem(it));
                     setItems(converted);
                     break;
                 }
@@ -308,4 +384,54 @@ function cryptoId(): string {
         return (crypto as Crypto).randomUUID();
     }
     return `id-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+}
+
+function parseCreatedAt(value: string | undefined): number {
+    if (!value) return Date.now();
+    const ts = new Date(value).getTime();
+    return Number.isFinite(ts) ? ts : Date.now();
+}
+
+function historyItemToChatItem(it: HistoryItem): ChatItem {
+    const createdAt = parseCreatedAt(it.createdAt);
+    switch (it.kind) {
+        case 'user':
+            return { id: cryptoId(), kind: 'user', content: it.text, createdAt };
+        case 'assistant_text':
+            return {
+                id: cryptoId(),
+                kind: 'assistant_text',
+                content: it.text,
+                createdAt,
+                streaming: false,
+            };
+        case 'thinking':
+            return { id: cryptoId(), kind: 'thinking', content: it.text, createdAt };
+        case 'tool_use': {
+            const inputJson = typeof it.input === 'string' ? it.input : JSON.stringify(it.input ?? {}, null, 2);
+            const call: ToolCallInfo = {
+                toolName: it.toolName || 'tool',
+                input: inputJson,
+            };
+            if (it.toolCallId) call.toolCallId = it.toolCallId;
+            return {
+                id: cryptoId(),
+                kind: 'tool_use',
+                toolName: call.toolName,
+                input: call.input,
+                calls: [call],
+                createdAt,
+                ...(call.toolCallId ? { toolCallId: call.toolCallId } : {}),
+            };
+        }
+        case 'tool_result':
+            return {
+                id: cryptoId(),
+                kind: 'tool_result',
+                content: it.content,
+                isError: !!it.isError,
+                createdAt,
+                ...(it.toolCallId ? { toolCallId: it.toolCallId } : {}),
+            };
+    }
 }

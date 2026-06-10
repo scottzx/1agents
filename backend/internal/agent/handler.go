@@ -385,7 +385,16 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)
 	}
 
-	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, h.scheduler, h.tasksStore)
+	// Look up the 1agents-side chat record so we can pass any previously-
+	// recorded agent session id (e.g. Claude Code's UUID) as the
+	// resumeSessionId. This is the ACP-side identifier; the CC-side id
+	// (CcSessionID) is independent and only used for IM integration.
+	var acpSessionID string
+	if rec, ok, err := h.store.Get(sessionId); err == nil && ok {
+		acpSessionID = rec.AcpSessionID
+	}
+
+	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, h.scheduler, h.tasksStore, h.store, acpSessionID)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

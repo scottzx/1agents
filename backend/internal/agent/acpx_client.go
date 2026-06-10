@@ -27,25 +27,30 @@ func NewAcpxClient(serverPort int) *AcpxClient {
 }
 
 type WsMessage struct {
-	Action         string          `json:"action,omitempty"`
-	Event          string          `json:"event,omitempty"`
-	SessionID      string          `json:"sessionId,omitempty"`
-	WorkspacePath  string          `json:"workspacePath,omitempty"`
-	AgentType      string          `json:"agentType,omitempty"`
-	SystemContext  string          `json:"systemContext,omitempty"`
-	Text           string          `json:"text,omitempty"`
-	RequestId      string          `json:"requestId,omitempty"`
-	Behavior       string          `json:"behavior,omitempty"`
-	ToolName       string          `json:"toolName,omitempty"`
-	Arguments      json.RawMessage `json:"arguments,omitempty"`
-	Summary        string          `json:"summary,omitempty"`
-	Messages       json.RawMessage `json:"messages,omitempty"`
-	Code           string          `json:"code,omitempty"`
-	Message        string          `json:"message,omitempty"`
-	Type           string          `json:"type,omitempty"`
+	Action          string          `json:"action,omitempty"`
+	Event           string          `json:"event,omitempty"`
+	SessionID       string          `json:"sessionId,omitempty"`
+	WorkspacePath   string          `json:"workspacePath,omitempty"`
+	AgentType       string          `json:"agentType,omitempty"`
+	CCSessionID     string          `json:"ccSessionId,omitempty"`
+	AcpSessionID    string          `json:"acpSessionId,omitempty"`
+	SystemContext   string          `json:"systemContext,omitempty"`
+	Text            string          `json:"text,omitempty"`
+	RequestId       string          `json:"requestId,omitempty"`
+	Behavior        string          `json:"behavior,omitempty"`
+	ToolName        string          `json:"toolName,omitempty"`
+	Arguments       json.RawMessage `json:"arguments,omitempty"`
+	Summary         string          `json:"summary,omitempty"`
+	Items           json.RawMessage `json:"items,omitempty"`
+	Messages        json.RawMessage `json:"messages,omitempty"`
+	Code            string          `json:"code,omitempty"`
+	Message         string          `json:"message,omitempty"`
+	Type            string          `json:"type,omitempty"`
+	ResumeSessionID string          `json:"resumeSessionId,omitempty"`
+	AgentSessionID  string          `json:"agentSessionId,omitempty"`
 }
 
-func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePath, taskId, sessionId, agentType, systemContext string, scheduler *Scheduler, tasksStore *TasksStore) {
+func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePath, taskId, sessionId, agentType, systemContext string, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID string) {
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[acpx_client] upgrade failed: %v", err)
@@ -69,13 +74,18 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 	}
 	defer serverConn.Close()
 
-	// 1. Initialize session on bridge-server
+	// 1. Initialize session on bridge-server. If we have a previously-
+	// recorded agent session id (e.g. Claude Code's UUID) for this chat,
+	// pass it as resumeSessionId so the agent reuses the same JSONL
+	// instead of starting a brand-new session.
 	ensureMsg := WsMessage{
-		Action:        "ensure_session",
-		SessionID:     sessionId,
-		WorkspacePath: workspacePath,
-		AgentType:     agentType,
-		SystemContext: systemContext,
+		Action:          "ensure_session",
+		SessionID:       sessionId,
+		WorkspacePath:   workspacePath,
+		AgentType:       agentType,
+		AcpSessionID:    acpSessionID,
+		ResumeSessionID: acpSessionID,
+		SystemContext:   systemContext,
 	}
 	if err := serverConn.WriteJSON(ensureMsg); err != nil {
 		log.Printf("[acpx_client] Failed to send ensure_session: %v", err)
@@ -99,7 +109,19 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			}
 
 			// Intercept and update tasks.json status
-			if msg.Event == "done" {
+			if msg.Event == "session_ready" && msg.AgentSessionID != "" {
+				// First session_ready: the bridge-server reports the
+				// agent-managed session id (e.g. Claude Code's UUID,
+				// which is the JSONL filename on disk). Persist it so
+				// future opens can resume the same session.
+				if chatStore != nil {
+					if err := chatStore.UpdateACP(sessionId, msg.AgentSessionID); err != nil {
+						log.Printf("[acpx_client] UpdateACP(%s, %s) failed: %v", sessionId, msg.AgentSessionID, err)
+					} else {
+						log.Printf("[acpx_client] Persisted acpSessionId=%s for chat session %s", msg.AgentSessionID, sessionId)
+					}
+				}
+			} else if msg.Event == "done" {
 				log.Printf("[acpx_client] Turn done. Intercepted summary: %s", msg.Summary)
 				c.handleTaskSessionDone(workspacePath, taskId, sessionId, msg.Summary, tasksStore)
 				scheduler.Lock.Release(workspacePath)

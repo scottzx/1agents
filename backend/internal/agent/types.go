@@ -51,15 +51,20 @@ const DefaultAgentType = AgentTypeClaudecode
 // Fields map 1:1 to the JSON shape returned by /api/agent/sessions:
 //   {id, workspace_id, name, agent_type, cc_project, cc_session_id, session_key, created_at, last_event_at}
 type ChatSessionRecord struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Name        string    `json:"name"`
-	AgentType   AgentType `json:"agent_type"`
-	CcProject   string    `json:"cc_project"`
-	CcSessionID string    `json:"cc_session_id"`
-	SessionKey  string    `json:"session_key"`
-	CreatedAt   time.Time `json:"created_at"`
-	LastEventAt time.Time `json:"last_event_at,omitempty"`
+	ID           string    `json:"id"`
+	WorkspaceID  string    `json:"workspace_id"`
+	Name         string    `json:"name"`
+	AgentType    AgentType `json:"agent_type"`
+	CcProject    string    `json:"cc_project"`
+	CcSessionID  string    `json:"cc_session_id"`
+	// AcpSessionID is the agent-managed session id (e.g. Claude Code's
+	// JSONL filename) — set on first session_ready from the bridge-server
+	// and reused as resumeSessionId on subsequent opens. Independent of
+	// CcSessionID, which only identifies the cc-connect / IM side.
+	AcpSessionID string    `json:"acp_session_id,omitempty"`
+	SessionKey   string    `json:"session_key"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastEventAt  time.Time `json:"last_event_at,omitempty"`
 }
 
 // IndexRequest is the body of POST /api/agent/sessions.

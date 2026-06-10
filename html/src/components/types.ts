@@ -80,6 +80,13 @@ export interface ChatSession {
     agentType: AgentType;
     ccProject: string; // cc-connect project name
     ccSessionId: string; // cc-connect session id
+    /**
+     * ACP-side session id — the agent-managed identifier (e.g. Claude
+     * Code's JSONL UUID). Populated by the bridge-server on first
+     * session_ready and reused as resumeSessionId on subsequent opens.
+     * Independent of ccSessionId, which is for the cc-connect / IM path.
+     */
+    acpSessionId?: string;
     sessionKey: string; // cc-connect bridge session_key
     status: ChatStatus;
     lastEventAt?: string; // ISO timestamp

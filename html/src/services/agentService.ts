@@ -83,6 +83,7 @@ interface RawChatSession {
     agent_type?: string;
     cc_project?: string;
     cc_session_id?: string;
+    acp_session_id?: string;
     session_key?: string;
     status?: string;
     last_event_at?: string;
@@ -99,6 +100,7 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         agentType: (raw.agent_type ?? DEFAULT_AGENT_TYPE) as AgentType,
         ccProject: String(raw.cc_project ?? ''),
         ccSessionId: String(raw.cc_session_id ?? ''),
+        acpSessionId: raw.acp_session_id ? String(raw.acp_session_id) : undefined,
         sessionKey: String(raw.session_key ?? ''),
         status: (raw.status ?? 'idle') as ChatSession['status'],
         lastEventAt: raw.last_event_at || undefined,

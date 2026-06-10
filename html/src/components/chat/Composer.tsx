@@ -34,7 +34,7 @@ export function Composer({ onSend, onCancel, isRunning, disabled, placeholder }:
         const el = ref.current;
         if (!el) return;
         el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+        el.style.height = Math.min(el.scrollHeight, 320) + 'px';
     };
 
     return (
@@ -42,11 +42,12 @@ export function Composer({ onSend, onCancel, isRunning, disabled, placeholder }:
             <textarea
                 ref={ref}
                 class="chat-composer-input"
-                placeholder={placeholder ?? '输入消息，Enter 发送，Shift+Enter 换行'}
+                placeholder={placeholder ?? '输入消息，支持 Markdown，Enter 发送，Shift+Enter 换行'}
                 disabled={disabled}
                 onKeyDown={handleKeyDown}
                 onInput={handleInput}
                 rows={1}
+                wrap="soft"
             />
             {isRunning ? (
                 <button class="chat-composer-stop" onClick={onCancel} title="停止">

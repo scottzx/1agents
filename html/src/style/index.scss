@@ -1,5 +1,157 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* ── Shared Markdown Render Mixin ─────────────────────────────────────────
+ * Used by both the file browser (.fb-md-render) and the chat assistant
+ * bubble (.markdown-body) so the two surfaces stay visually consistent.
+ * `&` resolves to whichever class @includes it. */
+@mixin md-render {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-main);
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+
+  /* Headings */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 1.2em 0 0.5em;
+    color: var(--text-main);
+  }
+  h1 {
+    font-size: 1.75em;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.3em;
+  }
+  h2 {
+    font-size: 1.4em;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.25em;
+  }
+  h3 { font-size: 1.18em; }
+  h4 { font-size: 1.05em; }
+  h5, h6 { font-size: 0.95em; color: var(--text-secondary); }
+
+  /* Paragraph & spacing */
+  p { margin: 0.6em 0 0.9em; }
+
+  /* Links */
+  a {
+    color: var(--accent-color);
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+
+  /* Strong / Em */
+  strong { font-weight: 700; color: var(--text-main); }
+  em     { font-style: italic; }
+
+  /* Inline code */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--accent-color);
+    word-break: break-all;
+  }
+
+  /* Fenced code blocks */
+  pre {
+    margin: 1em 0;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    overflow-x: auto;
+    &::-webkit-scrollbar { height: 4px; }
+    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+    code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--text-main);
+      font-size: 12.5px;
+      line-height: 1.65;
+      word-break: normal;
+    }
+  }
+
+  /* Blockquote */
+  blockquote {
+    margin: 1em 0;
+    padding: 10px 16px;
+    border-left: 3px solid var(--accent-color);
+    background-color: var(--accent-light);
+    border-radius: 0 6px 6px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+
+    p { margin: 0; }
+  }
+
+  /* Lists */
+  ul, ol {
+    margin: 0.5em 0 0.8em;
+    padding-left: 1.6em;
+  }
+  li {
+    margin: 0.25em 0;
+    &::marker { color: var(--accent-color); }
+  }
+
+  /* Horizontal rule */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 1.5em 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: 13px;
+  }
+  th, td {
+    padding: 7px 12px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+  }
+  th {
+    background-color: var(--bg-card);
+    font-weight: 600;
+    color: var(--text-main);
+  }
+  tr:nth-child(even) td {
+    background-color: var(--bg-terminal-inner);
+  }
+
+  /* Images */
+  img {
+    max-width: 100%;
+    border-radius: 6px;
+    margin: 0.5em 0;
+    display: block;
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Task lists (GFM) */
+  input[type='checkbox'] {
+    accent-color: var(--accent-color);
+    margin-right: 6px;
+  }
+
+  /* First / last element spacing */
+  & > *:first-child { margin-top: 0; }
+  & > *:last-child  { margin-bottom: 0; }
+}
+
 :root {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
@@ -84,6 +236,37 @@
   .ws-status-archived {
     background: #451a03;
     color: #fcd34d;
+  }
+
+  // Dark theme chat tool call card overrides
+  .chat-bubble-tool {
+    background: rgba(56, 139, 253, 0.08);
+    border-left-color: #2f81f7;
+  }
+
+  .chat-bubble-header {
+    background-color: rgba(56, 139, 253, 0.06);
+    border-bottom-color: rgba(56, 139, 253, 0.16);
+
+    .chat-tool-icon {
+      background: linear-gradient(135deg, #2f81f7 0%, #1f6feb 100%);
+      box-shadow: 0 1px 2px rgba(47, 129, 247, 0.3);
+    }
+  }
+
+  .chat-tool-call-item {
+    border-top-color: rgba(56, 139, 253, 0.1);
+  }
+
+  .chat-tool-name {
+    background-color: rgba(56, 139, 253, 0.12);
+    border-color: rgba(56, 139, 253, 0.25);
+    color: #79c0ff;
+  }
+
+  .chat-tool-args {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary, #8d96a0);
   }
 }
 
@@ -4597,152 +4780,11 @@ body {
 
     /* ── Rendered Markdown ─────────────────────────────────────────────── */
     .fb-md-render {
+      // Container-specific styles (padding/cursor); the actual markdown
+      // content rules come from the shared `md-render` mixin.
       padding: 20px 22px;
-      font-family: var(--font-sans);
-      font-size: 14px;
-      line-height: 1.75;
-      color: var(--text-main);
       cursor: text;
-      overflow-wrap: break-word;
-
-      /* Headings */
-      h1, h2, h3, h4, h5, h6 {
-        font-weight: 700;
-        line-height: 1.3;
-        margin: 1.2em 0 0.5em;
-        color: var(--text-main);
-      }
-      h1 {
-        font-size: 1.75em;
-        border-bottom: 2px solid var(--border-color);
-        padding-bottom: 0.3em;
-      }
-      h2 {
-        font-size: 1.4em;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 0.25em;
-      }
-      h3 { font-size: 1.18em; }
-      h4 { font-size: 1.05em; }
-      h5, h6 { font-size: 0.95em; color: var(--text-secondary); }
-
-      /* Paragraph & spacing */
-      p { margin: 0.6em 0 0.9em; }
-
-      /* Links */
-      a {
-        color: var(--accent-color);
-        text-decoration: none;
-        &:hover { text-decoration: underline; }
-      }
-
-      /* Strong / Em */
-      strong { font-weight: 700; color: var(--text-main); }
-      em     { font-style: italic; }
-
-      /* Inline code */
-      code {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.85em;
-        padding: 2px 6px;
-        border-radius: 4px;
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-color);
-        color: var(--accent-color);
-        word-break: break-all;
-      }
-
-      /* Fenced code blocks */
-      pre {
-        margin: 1em 0;
-        padding: 14px 16px;
-        border-radius: 8px;
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-color);
-        overflow-x: auto;
-        &::-webkit-scrollbar { height: 4px; }
-        &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
-
-        code {
-          background: none;
-          border: none;
-          padding: 0;
-          color: var(--text-main);
-          font-size: 12.5px;
-          line-height: 1.65;
-          word-break: normal;
-        }
-      }
-
-      /* Blockquote */
-      blockquote {
-        margin: 1em 0;
-        padding: 10px 16px;
-        border-left: 3px solid var(--accent-color);
-        background-color: var(--accent-light);
-        border-radius: 0 6px 6px 0;
-        color: var(--text-secondary);
-        font-style: italic;
-
-        p { margin: 0; }
-      }
-
-      /* Lists */
-      ul, ol {
-        margin: 0.5em 0 0.8em;
-        padding-left: 1.6em;
-      }
-      li {
-        margin: 0.25em 0;
-        &::marker { color: var(--accent-color); }
-      }
-
-      /* Horizontal rule */
-      hr {
-        border: none;
-        border-top: 1px solid var(--border-color);
-        margin: 1.5em 0;
-      }
-
-      /* Tables */
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 1em 0;
-        font-size: 13px;
-      }
-      th, td {
-        padding: 7px 12px;
-        border: 1px solid var(--border-color);
-        text-align: left;
-      }
-      th {
-        background-color: var(--bg-card);
-        font-weight: 600;
-        color: var(--text-main);
-      }
-      tr:nth-child(even) td {
-        background-color: var(--bg-terminal-inner);
-      }
-
-      /* Images */
-      img {
-        max-width: 100%;
-        border-radius: 6px;
-        margin: 0.5em 0;
-        display: block;
-        box-shadow: var(--shadow-md);
-      }
-
-      /* Task lists (GFM) */
-      input[type='checkbox'] {
-        accent-color: var(--accent-color);
-        margin-right: 6px;
-      }
-
-      /* First element - remove top margin */
-      & > *:first-child { margin-top: 0; }
-      & > *:last-child  { margin-bottom: 0; }
+      @include md-render;
     }
   }
 }
@@ -6623,7 +6665,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
   word-wrap: break-word;
-  white-space: pre-wrap;
+  // Keep each bubble at its natural height; otherwise flex column children
+  // will compress older bubbles once new ones push the list past the viewport.
+  flex-shrink: 0;
 }
 
 .chat-bubble-label {
@@ -6653,6 +6697,91 @@ body {
   background: rgba(154, 103, 0, 0.08);
   border-left: 3px solid #b48600;
   font-size: 13px;
+  padding: 0;
+  overflow: hidden;
+  transition: background-color 0.2s ease;
+  // Cap thinking content so very long reasoning doesn't push the bubble
+  // out of the viewport; the body becomes scrollable past this limit.
+  max-width: 92%;
+
+  &.is-collapsed {
+    padding: 8px 12px;
+  }
+
+  &.is-expanded {
+    padding: 10px 14px;
+  }
+}
+
+.chat-thinking-body {
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin-top: 6px;
+  padding-right: 4px;
+
+  // Slim scrollbar for the thinking body
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(154, 103, 0, 0.3);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+}
+
+.chat-bubble-header-clickable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: rgba(154, 103, 0, 0.08);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #b48600;
+    outline-offset: 1px;
+  }
+
+  .chat-bubble-caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    font-size: 12px;
+    color: #b48600;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .chat-bubble-label {
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+}
+
+.chat-thinking-preview {
+  font-size: 12px;
+  color: var(--text-muted, #8c959f);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .chat-bubble-tool {
@@ -6660,7 +6789,200 @@ body {
   background: rgba(9, 105, 218, 0.06);
   border-left: 3px solid #0969da;
   font-size: 13px;
-  max-width: 90%;
+  max-width: 92%;
+  padding: 0;
+  overflow: hidden;
+
+  // When the list of tool calls grows, cap the visible area and let the
+  // inner list scroll. The header stays pinned at the top.
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-bubble-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(9, 105, 218, 0.12);
+  background-color: rgba(9, 105, 218, 0.04);
+  flex-shrink: 0;
+
+  &.chat-bubble-header-clickable {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: rgba(9, 105, 218, 0.1);
+    }
+
+    &:focus-visible {
+      outline: 2px solid #0969da;
+      outline-offset: -2px;
+    }
+
+    .chat-bubble-caret {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      font-size: 12px;
+      color: #0969da;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+  }
+
+  .chat-tool-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #0969da 0%, #0550ae 100%);
+    color: #ffffff;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(9, 105, 218, 0.25);
+
+    svg {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  .chat-bubble-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-main, #1f2328);
+    letter-spacing: 0.02em;
+    flex: 1;
+  }
+
+  .chat-bubble-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background-color: var(--accent-color, #0969da);
+    color: #ffffff;
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 1;
+  }
+}
+
+.chat-tool-calls-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  overflow-y: auto;
+  // Fill the remaining height of the capped .chat-bubble-tool
+  flex: 1;
+  min-height: 0;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(9, 105, 218, 0.3);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+}
+
+.chat-tool-call-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid rgba(9, 105, 218, 0.08);
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+.chat-tool-call-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.chat-tool-name {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-color, #0969da);
+  background-color: rgba(9, 105, 218, 0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(9, 105, 218, 0.18);
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.chat-tool-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #57606a);
+  line-height: 1.5;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.chat-tool-cmd-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.chat-tool-cmd-prompt {
+  color: #4ade80;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.chat-tool-cmd-text {
+  color: #e6edf3;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-tool-args {
+  margin: 0;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  color: var(--text-secondary, #57606a);
+  line-height: 1.5;
 }
 
 .chat-bubble-tool-result {
@@ -6707,6 +7029,14 @@ body {
   50% { opacity: 0; }
 }
 
+// Markdown body — styles the HTML emitted by `marked` inside an assistant
+// bubble. Keep this scoped to chat to avoid leaking into the rest of the app.
+// Shared with the file browser's `.fb-md-render` — see `md-render` mixin
+// at the top of this file. Keep them visually identical.
+.markdown-body {
+  @include md-render;
+}
+
 .chat-permission-resolved {
   margin-top: 6px;
   font-size: 12px;
@@ -6738,7 +7068,11 @@ body {
   background: var(--bg-input, #fff);
   color: var(--text-primary, #1f2328);
   outline: none;
-  max-height: 200px;
+  max-height: 320px;
+  // Make long pastes and markdown wrap inside the composer, not overflow.
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .chat-composer-input:focus { border-color: var(--accent-color, #0969da); }
 .chat-composer-input:disabled { opacity: 0.5; cursor: not-allowed; }
