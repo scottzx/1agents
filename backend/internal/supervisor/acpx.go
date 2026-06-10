@@ -113,12 +113,17 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, dir string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	stdin, err := cmd.StdinPipe()
+	if err == nil {
+		defer stdin.Close()
+	}
+
 	s.mu.Lock()
 	s.cmd = cmd
 	s.mu.Unlock()
 
 	log.Printf("[acpx-sup] exec: npx tsx bridge-server.js (Dir: %s)", dir)
-	err := cmd.Run()
+	err = cmd.Run()
 
 	if ctx.Err() != nil {
 		return nil

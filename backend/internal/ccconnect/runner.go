@@ -310,10 +310,11 @@ insecure = true
 				var updatedProjects []config.ProjectConfig
 
 				for _, ws := range wsCfg.Workspaces {
-					projName := ws.Name
-					if projName == "" {
-						projName = ws.ID
+					nameOrID := ws.Name
+					if nameOrID == "" {
+						nameOrID = ws.ID
 					}
+					projName := getCCProjectName(nameOrID, "claudecode")
 
 					if p, ok := existingProjects[projName]; ok {
 						if p.Agent.Options == nil {
@@ -1654,6 +1655,31 @@ func saveCCSwitchSettingsForWeb(updates map[string]string) error {
 func switchCCSwitchProviderForWeb(appType, providerID string) error {
 	go runCCSwitchSwitchCommand(appType, providerID)
 	return nil
+}
+
+func getCCProjectName(workspaceName string, agentType string) string {
+	var sb strings.Builder
+	inInvalidSeq := false
+	for _, r := range workspaceName {
+		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
+		if isValid {
+			sb.WriteRune(r)
+			inInvalidSeq = false
+		} else {
+			if !inInvalidSeq {
+				sb.WriteRune('_')
+				inInvalidSeq = true
+			}
+		}
+	}
+	slug := sb.String()
+	if len(slug) > 32 {
+		slug = slug[:32]
+	}
+	if slug == "" {
+		slug = "ws"
+	}
+	return fmt.Sprintf("%s__%s", slug, agentType)
 }
 
 

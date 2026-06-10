@@ -295,8 +295,8 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	sessionId := r.URL.Query().Get("session_id")
 	agentType := r.URL.Query().Get("agent_type")
 
-	if wsID == "" || taskId == "" || sessionId == "" || agentType == "" {
-		http.Error(w, "workspace_id, task_id, session_id, and agent_type query parameters are required", http.StatusBadRequest)
+	if wsID == "" || sessionId == "" || agentType == "" {
+		http.Error(w, "workspace_id, session_id, and agent_type query parameters are required", http.StatusBadRequest)
 		return
 	}
 
@@ -306,81 +306,85 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Load tasks configuration to find task and aggregate prior summaries
-	cfg, err := h.tasksStore.Load(wsPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var targetTask *Task
-	for i := range cfg.Tasks {
-		if cfg.Tasks[i].ID == taskId {
-			targetTask = &cfg.Tasks[i]
-			break
-		}
-	}
-
-	if targetTask == nil {
-		http.Error(w, "task not found", http.StatusNotFound)
-		return
-	}
-
-	// Context Chaining: Aggregate prior completed session summaries
 	var systemContext string
-	if len(targetTask.Sessions) > 0 {
-		var historyLines []string
-		historyLines = append(historyLines, fmt.Sprintf("[Task Context History]\nThe user is working on the task: %q.", targetTask.Title))
-		historyLines = append(historyLines, "Previous sessions have already achieved the following:")
-		count := 1
-		for _, s := range targetTask.Sessions {
-			if s.Summary != "" {
-				historyLines = append(historyLines, fmt.Sprintf("- Session %d (%s): %s", count, s.AgentType, s.Summary))
-				count++
-			}
-		}
-		historyLines = append(historyLines, "Please continue the task from here, focusing on any requested adjustments.")
-		systemContext = strings.Join(historyLines, "\n")
-	}
-
-	// Check state concurrency lock
-	if targetTask.Status != TaskStatusRunning {
-		// Try to acquire the execution lock
-		if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
-			// If already occupied, return 409 conflict
-			http.Error(w, "Another session is already running in this workspace", http.StatusConflict)
+	if taskId != "" {
+		// 1. Load tasks configuration to find task and aggregate prior summaries
+		cfg, err := h.tasksStore.Load(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// Update task state to running
-		targetTask.Status = TaskStatusRunning
-		now := time.Now().UTC()
-		targetTask.StartedAt = &now
-		targetTask.UpdatedAt = now
 
-		// Update or create session metadata
-		sessionExists := false
-		for i := range targetTask.Sessions {
-			if targetTask.Sessions[i].ID == sessionId {
-				targetTask.Sessions[i].Status = SessionStatusRunning
-				sessionExists = true
+		var targetTask *Task
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID == taskId {
+				targetTask = &cfg.Tasks[i]
 				break
 			}
 		}
-		if !sessionExists {
-			targetTask.Sessions = append(targetTask.Sessions, SessionMetadata{
-				ID:        sessionId,
-				Kind:      SessionKindChat,
-				Name:      "智能体排查与修复",
-				AgentType: agentType,
-				Status:    SessionStatusRunning,
-				CreatedAt: now,
-			})
+
+		if targetTask == nil {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
 		}
 
-		_ = h.tasksStore.Save(wsPath, cfg)
+		// Context Chaining: Aggregate prior completed session summaries
+		if len(targetTask.Sessions) > 0 {
+			var historyLines []string
+			historyLines = append(historyLines, fmt.Sprintf("[Task Context History]\nThe user is working on the task: %q.", targetTask.Title))
+			historyLines = append(historyLines, "Previous sessions have already achieved the following:")
+			count := 1
+			for _, s := range targetTask.Sessions {
+				if s.Summary != "" {
+					historyLines = append(historyLines, fmt.Sprintf("- Session %d (%s): %s", count, s.AgentType, s.Summary))
+					count++
+				}
+			}
+			historyLines = append(historyLines, "Please continue the task from here, focusing on any requested adjustments.")
+			systemContext = strings.Join(historyLines, "\n")
+		}
+
+		// Check state concurrency lock
+		if targetTask.Status != TaskStatusRunning {
+			// Try to acquire the execution lock
+			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
+				// If already occupied, return 409 conflict
+				http.Error(w, "Another session is already running in this workspace", http.StatusConflict)
+				return
+			}
+			// Update task state to running
+			targetTask.Status = TaskStatusRunning
+			now := time.Now().UTC()
+			targetTask.StartedAt = &now
+			targetTask.UpdatedAt = now
+
+			// Update or create session metadata
+			sessionExists := false
+			for i := range targetTask.Sessions {
+				if targetTask.Sessions[i].ID == sessionId {
+					targetTask.Sessions[i].Status = SessionStatusRunning
+					sessionExists = true
+					break
+				}
+			}
+			if !sessionExists {
+				targetTask.Sessions = append(targetTask.Sessions, SessionMetadata{
+					ID:        sessionId,
+					Kind:      SessionKindChat,
+					Name:      "智能体排查与修复",
+					AgentType: agentType,
+					Status:    SessionStatusRunning,
+					CreatedAt: now,
+				})
+			}
+
+			_ = h.tasksStore.Save(wsPath, cfg)
+		}
+		log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
+	} else {
+		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)
 	}
 
-	log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
 	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, h.scheduler, h.tasksStore)
 }
 

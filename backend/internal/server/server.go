@@ -141,10 +141,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 		} else if foundWS.ChatChannel != "" {
 			redirectPath = "/chat/" + foundWS.ChatChannel
 		} else {
-			projName := foundWS.Name
-			if projName == "" {
-				projName = foundWS.ID
+			nameOrID := foundWS.Name
+			if nameOrID == "" {
+				nameOrID = foundWS.ID
 			}
+			projName := getCCProjectName(nameOrID, "claudecode")
 			redirectPath = "/projects/" + projName
 		}
 
@@ -984,4 +985,29 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			strings.Join(candidates, ", "),
 		)
 	}
+}
+
+func getCCProjectName(workspaceName string, agentType string) string {
+	var sb strings.Builder
+	inInvalidSeq := false
+	for _, r := range workspaceName {
+		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
+		if isValid {
+			sb.WriteRune(r)
+			inInvalidSeq = false
+		} else {
+			if !inInvalidSeq {
+				sb.WriteRune('_')
+				inInvalidSeq = true
+			}
+		}
+	}
+	slug := sb.String()
+	if len(slug) > 32 {
+		slug = slug[:32]
+	}
+	if slug == "" {
+		slug = "ws"
+	}
+	return fmt.Sprintf("%s__%s", slug, agentType)
 }
