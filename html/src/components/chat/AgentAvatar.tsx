@@ -9,6 +9,7 @@ import opencodeLogo from '../../assets/harness-logos/opencode-logo.svg';
 interface AgentAvatarProps {
     agentType: AgentType;
     class?: string;
+    title?: string;
 }
 
 const AGENT_LOGOS: Record<string, string> = {
@@ -19,7 +20,7 @@ const AGENT_LOGOS: Record<string, string> = {
     openclaw: openclawLogo,
 };
 
-export function AgentAvatar({ agentType, class: className }: AgentAvatarProps) {
+export function AgentAvatar({ agentType, class: className, title }: AgentAvatarProps) {
     const logoSrc = AGENT_LOGOS[agentType];
     const classes = ['agent-avatar', className].filter(Boolean).join(' ');
 
@@ -27,14 +28,14 @@ export function AgentAvatar({ agentType, class: className }: AgentAvatarProps) {
         // Fallback: render first two letters in uppercase
         const label = agentType.slice(0, 2).toUpperCase();
         return (
-            <span class={classes} aria-hidden="true">
+            <span class={classes} title={title} aria-hidden="true">
                 <span class="agent-avatar-fallback">{label}</span>
             </span>
         );
     }
 
     return (
-        <span class={classes} aria-hidden="true">
+        <span class={classes} title={title} aria-hidden="true">
             <img class="agent-avatar-logo" src={logoSrc} alt={agentType} />
         </span>
     );

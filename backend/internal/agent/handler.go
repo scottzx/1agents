@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,6 +95,19 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
+		if rec.AcpSessionID != "" {
+			name := rec.Name
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") {
+				if wsPath, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
+					if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
+						rec.Name = title
+						go func(id, newName string) {
+							_ = h.store.UpdateName(id, newName)
+						}(rec.ID, title)
+					}
+				}
+			}
+		}
 		writeJSON(w, rec)
 	case http.MethodDelete:
 		if err := h.store.Delete(id); err != nil {
@@ -125,6 +140,29 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	if recs == nil {
 		recs = []ChatSessionRecord{}
 	}
+
+	var wsPath string
+	if len(recs) > 0 {
+		if path, err := h.resolveWorkspacePath(wsID); err == nil {
+			wsPath = path
+		}
+	}
+
+	for i := range recs {
+		rec := &recs[i]
+		if rec.AcpSessionID != "" {
+			name := rec.Name
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") {
+				if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
+					rec.Name = title
+					go func(id, newName string) {
+						_ = h.store.UpdateName(id, newName)
+					}(rec.ID, title)
+				}
+			}
+		}
+	}
+
 	writeJSON(w, recs)
 }
 
@@ -420,4 +458,59 @@ func indexByte(s string, c byte) int {
 		}
 	}
 	return -1
+}
+
+func getProjectSlug(path string) string {
+	var sb strings.Builder
+	for _, r := range path {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('-')
+		}
+	}
+	return sb.String()
+}
+
+func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) string {
+	if acpSessionID == "" {
+		return defaultName
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return defaultName
+	}
+	slug := getProjectSlug(workspacePath)
+	jsonlPath := filepath.Join(home, ".claude", "projects", slug, acpSessionID+".jsonl")
+
+	file, err := os.Open(jsonlPath)
+	if err != nil {
+		return defaultName
+	}
+	defer file.Close()
+
+	var resolvedTitle string
+	var foundSlug string
+
+	dec := json.NewDecoder(file)
+	for {
+		var line map[string]any
+		if err := dec.Decode(&line); err != nil {
+			break
+		}
+		if title, ok := line["aiTitle"].(string); ok && title != "" {
+			resolvedTitle = title
+		}
+		if slg, ok := line["slug"].(string); ok && slg != "" {
+			foundSlug = slg
+		}
+	}
+
+	if resolvedTitle != "" {
+		return resolvedTitle
+	}
+	if foundSlug != "" {
+		return foundSlug
+	}
+	return defaultName
 }

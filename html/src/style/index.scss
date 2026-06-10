@@ -6743,9 +6743,12 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  max-width: 80%;
+  width: 100%;
+  max-width: 92%;
 
   .chat-bubble-assistant {
+    flex: 1;
+    min-width: 0;
     max-width: 100%;
     align-self: unset;
   }
@@ -6773,6 +6776,7 @@ body {
   transition: background-color 0.2s ease;
   // Cap thinking content so very long reasoning doesn't push the bubble
   // out of the viewport; the body becomes scrollable past this limit.
+  width: 100%;
   max-width: 92%;
 
   &.is-collapsed {
@@ -6898,6 +6902,7 @@ body {
   background: rgba(9, 105, 218, 0.04);
   border-left: 3px solid #0969da;
   font-size: 13px;
+  width: 100%;
   max-width: 92%;
   padding: 0;
   overflow: hidden;
@@ -7423,6 +7428,30 @@ body {
 }
 .chat-row-kind-chat .chat-kind-icon { color: var(--accent-color, #0969da); }
 .chat-row-kind-terminal .chat-kind-icon { color: var(--text-secondary, #57606a); }
+
+.chat-sidebar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+
+  .agent-avatar-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .agent-avatar-fallback {
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-secondary);
+  }
+}
 
 .chat-status-dot {
   display: inline-block;

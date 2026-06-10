@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -184,12 +185,30 @@ func (s *Store) Touch(id string) error {
 	return ErrNotFound
 }
 
+// UpdateName updates the name/title of the session with the given id.
+func (s *Store) UpdateName(id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range cfg.Sessions {
+		if cfg.Sessions[i].ID == id {
+			cfg.Sessions[i].Name = name
+			return s.saveLocked(cfg)
+		}
+	}
+	return ErrNotFound
+}
+
 // UpdateACP persists the agent-managed session id for a chat record. Used
 // when the bridge-server reports back the agent's session uuid via
 // session_ready, so that subsequent opens can resume the same session
 // (and find its native storage, e.g. Claude Code's <uuid>.jsonl).
-// If the record already has a non-empty AcpSessionID, the call is a no-op
-// — we don't want a stale value to be clobbered by a fresh acpxRecordId.
+// It also tries to resolve a descriptive session title from Claude's sessions index
+// if the session currently has a default or empty name.
 func (s *Store) UpdateACP(id, acpSessionID string) error {
 	if acpSessionID == "" {
 		return nil
@@ -203,14 +222,113 @@ func (s *Store) UpdateACP(id, acpSessionID string) error {
 	}
 	for i := range cfg.Sessions {
 		if cfg.Sessions[i].ID == id {
+			updated := false
 			if cfg.Sessions[i].AcpSessionID == "" {
 				cfg.Sessions[i].AcpSessionID = acpSessionID
+				updated = true
+			}
+			// If current name is empty or a generic default, try to resolve it from Claude index
+			name := cfg.Sessions[i].Name
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") {
+				if title, err := ResolveClaudeSessionName(acpSessionID); err == nil && title != "" {
+					cfg.Sessions[i].Name = title
+					updated = true
+				}
+			}
+			if updated {
 				return s.saveLocked(cfg)
 			}
 			return nil
 		}
 	}
 	return ErrNotFound
+}
+
+// ResolveClaudeSessionName searches ~/.claude/projects/*/sessions-index.json
+// for the given acpSessionID, and returns the firstPrompt as the session title.
+func ResolveClaudeSessionName(acpSessionID string) (string, error) {
+	if acpSessionID == "" {
+		return "", nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	projectsDir := filepath.Join(home, ".claude", "projects")
+
+	// Read projects directory
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	type SessionEntry struct {
+		SessionID   string `json:"sessionId"`
+		FirstPrompt string `json:"firstPrompt"`
+	}
+	type SessionsIndex struct {
+		Entries []SessionEntry `json:"entries"`
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		indexPath := filepath.Join(projectsDir, entry.Name(), "sessions-index.json")
+		data, err := os.ReadFile(indexPath)
+		if err != nil {
+			continue
+		}
+
+		var idx SessionsIndex
+		if err := json.Unmarshal(data, &idx); err != nil {
+			continue
+		}
+
+		for _, item := range idx.Entries {
+			if item.SessionID == acpSessionID {
+				title := item.FirstPrompt
+				title = cleanSessionTitle(title)
+				return title, nil
+			}
+		}
+	}
+
+	return "", nil
+}
+
+func cleanSessionTitle(prompt string) string {
+	// Strip HTML tags like <ide_opened_file>...</ide_opened_file> or <command-message>...</command-message>
+	for {
+		start := strings.Index(prompt, "<")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(prompt[start:], ">")
+		if end == -1 {
+			break
+		}
+		prompt = prompt[:start] + prompt[start+end+1:]
+	}
+
+	prompt = strings.TrimSpace(prompt)
+	// Replace newlines/multiple spaces with a single space
+	prompt = strings.ReplaceAll(prompt, "\r", "")
+	prompt = strings.ReplaceAll(prompt, "\n", " ")
+	for strings.Contains(prompt, "  ") {
+		prompt = strings.ReplaceAll(prompt, "  ", " ")
+	}
+
+	// Truncate to N characters
+	const maxLen = 60
+	runes := []rune(prompt)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen-3]) + "..."
+	}
+	return prompt
 }
 
 // Sentinel errors for store operations.

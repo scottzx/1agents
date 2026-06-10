@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
+import { AgentAvatar } from '../chat/AgentAvatar';
 import { ModuleNav } from './ModuleNav';
 import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
@@ -489,15 +490,14 @@ export function LeftSidebar({
                                                                         onSelectSession(session);
                                                                     }}
                                                                 >
-                                                                    <span
-                                                                        class="chat-kind-icon"
+                                                                    <AgentAvatar
+                                                                        agentType={session.agentType}
+                                                                        class="chat-sidebar-avatar"
                                                                         title={
                                                                             t('sidebar.chatSession', language) ||
                                                                             '聊天会话'
                                                                         }
-                                                                    >
-                                                                        💬
-                                                                    </span>
+                                                                    />
                                                                     <span class="chat-title" title={session.name}>
                                                                         {session.name ||
                                                                             t('sidebar.chatSession', language) ||
