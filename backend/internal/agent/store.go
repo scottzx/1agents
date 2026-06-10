@@ -229,7 +229,7 @@ func (s *Store) UpdateACP(id, acpSessionID string) error {
 			}
 			// If current name is empty or a generic default, try to resolve it from Claude index
 			name := cfg.Sessions[i].Name
-			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") {
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
 				if title, err := ResolveClaudeSessionName(acpSessionID); err == nil && title != "" {
 					cfg.Sessions[i].Name = title
 					updated = true

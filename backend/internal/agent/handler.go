@@ -97,7 +97,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		}
 		if rec.AcpSessionID != "" {
 			name := rec.Name
-			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") {
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
 				if wsPath, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
 					if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
 						rec.Name = title
@@ -152,7 +152,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		rec := &recs[i]
 		if rec.AcpSessionID != "" {
 			name := rec.Name
-			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") {
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
 				if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
 					rec.Name = title
 					go func(id, newName string) {
