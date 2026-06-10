@@ -75,6 +75,7 @@ export interface ChatSession {
     kind: 'chat';
     id: string; // 1agents uuid
     workspaceId: string;
+    taskId?: string; // New: task ID this session belongs to
     name: string;
     agentType: AgentType;
     ccProject: string; // cc-connect project name
@@ -152,7 +153,16 @@ export interface TmuxWindow {
     agent?: string;
 }
 
-export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'settings' | 'discovery' | 'skills' | 'none';
+export type RightDrawerTab =
+    | 'files'
+    | 'git'
+    | 'channels'
+    | 'providers'
+    | 'settings'
+    | 'discovery'
+    | 'skills'
+    | 'tasks'
+    | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
     return tab === 'providers' || tab === 'discovery' || tab === 'skills' || tab === 'settings';

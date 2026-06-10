@@ -688,6 +688,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     accessTokenExists={state.accessAuthRequired}
                                                     onGenerateAccessToken={app.generateAccessToken}
                                                     onRevokeAccessToken={app.revokeAccessToken}
+                                                    onSelectSession={s => app.selectSession(s)}
                                                 />
                                             </div>
                                         )}

@@ -438,6 +438,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 accessTokenExists={state.accessAuthRequired}
                                                 onGenerateAccessToken={app.generateAccessToken}
                                                 onRevokeAccessToken={app.revokeAccessToken}
+                                                onSelectSession={s => app.selectSession(s)}
                                             />
                                         </Fragment>
                                     )}

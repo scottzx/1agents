@@ -6,9 +6,10 @@ import type { ChatItem } from './hooks';
 interface MessageListProps {
     items: ChatItem[];
     emptyHint?: string;
+    onRespondPermission?: (requestId: string, allow: boolean) => void;
 }
 
-export function MessageList({ items, emptyHint }: MessageListProps) {
+export function MessageList({ items, emptyHint, onRespondPermission }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
     // Auto-scroll to bottom on new content unless user has scrolled up.
@@ -32,7 +33,7 @@ export function MessageList({ items, emptyHint }: MessageListProps) {
     return (
         <div class="chat-messages" ref={scrollRef}>
             {items.map(item => (
-                <MessageBubble key={item.id} item={item} />
+                <MessageBubble key={item.id} item={item} onRespondPermission={onRespondPermission} />
             ))}
         </div>
     );

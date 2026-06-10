@@ -1,10 +1,11 @@
 import { h } from 'preact';
 import { useState, useCallback } from 'preact/hooks';
-import { FsEntry, RightDrawerTab } from '../types';
+import { FsEntry, RightDrawerTab, Session } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
+import { TaskList } from './TaskList';
 import { t, type Lang } from '../i18n';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
@@ -15,6 +16,7 @@ interface RightPanelProps {
     rightPanelWidth: number;
     closeDrawer: () => void;
     ccConnectUrl?: string;
+    onSelectSession?: (session: Session) => void;
 
     // Theme settings props
     theme: 'light' | 'dark';
@@ -75,6 +77,7 @@ export function RightPanel({
     rightPanelWidth,
     closeDrawer,
     ccConnectUrl,
+    onSelectSession,
 
     theme,
     toggleTheme,
@@ -157,6 +160,8 @@ export function RightPanel({
                 return t('drawer.title.skills', language);
             case 'discovery':
                 return t('drawer.title.discovery', language);
+            case 'tasks':
+                return '任务仪表盘';
             default:
                 return '';
         }
@@ -299,6 +304,10 @@ export function RightPanel({
                         onGenerateAccessToken={onGenerateAccessToken}
                         onRevokeAccessToken={onRevokeAccessToken}
                     />
+                )}
+
+                {activeDrawerTab === 'tasks' && (
+                    <TaskList workspaceId={activeWorkspaceId} onSelectSession={onSelectSession} />
                 )}
             </div>
         </aside>

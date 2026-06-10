@@ -189,3 +189,61 @@ var (
 	ErrDuplicate = fmt.Errorf("agent: duplicate record id")
 	ErrNotFound  = fmt.Errorf("agent: record not found")
 )
+
+type TasksStore struct {
+	mu sync.RWMutex
+}
+
+func NewTasksStore() *TasksStore {
+	return &TasksStore{}
+}
+
+func (s *TasksStore) getTasksFilePath(workspacePath string) string {
+	return filepath.Join(workspacePath, ".1agents", "tasks.json")
+}
+
+func (s *TasksStore) Load(workspacePath string) (*TasksConfig, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	filePath := s.getTasksFilePath(workspacePath)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &TasksConfig{Tasks: []Task{}}, nil
+		}
+		return nil, err
+	}
+
+	var cfg TasksConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("agent: parse tasks %s: %w", filePath, err)
+	}
+	if cfg.Tasks == nil {
+		cfg.Tasks = []Task{}
+	}
+	return &cfg, nil
+}
+
+func (s *TasksStore) Save(workspacePath string, cfg *TasksConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	filePath := s.getTasksFilePath(workspacePath)
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("agent: ensure workspace tasks config dir: %w", err)
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	tmp := filePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filePath)
+}
+

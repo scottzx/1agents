@@ -3,11 +3,13 @@ import { useRef } from 'preact/hooks';
 
 interface ComposerProps {
     onSend: (text: string) => void;
+    onCancel?: () => void;
+    isRunning?: boolean;
     disabled?: boolean;
     placeholder?: string;
 }
 
-export function Composer({ onSend, disabled, placeholder }: ComposerProps) {
+export function Composer({ onSend, onCancel, isRunning, disabled, placeholder }: ComposerProps) {
     const ref = useRef<HTMLTextAreaElement | null>(null);
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -46,9 +48,15 @@ export function Composer({ onSend, disabled, placeholder }: ComposerProps) {
                 onInput={handleInput}
                 rows={1}
             />
-            <button class="chat-composer-send" onClick={submit} disabled={disabled} title="发送 (Enter)">
-                发送
-            </button>
+            {isRunning ? (
+                <button class="chat-composer-stop" onClick={onCancel} title="停止">
+                    停止
+                </button>
+            ) : (
+                <button class="chat-composer-send" onClick={submit} disabled={disabled} title="发送 (Enter)">
+                    发送
+                </button>
+            )}
         </div>
     );
 }

@@ -1,11 +1,13 @@
 import { h } from 'preact';
+import { marked } from 'marked';
 import type { ChatItem } from './hooks';
 
 interface MessageBubbleProps {
     item: ChatItem;
+    onRespondPermission?: (requestId: string, allow: boolean) => void;
 }
 
-export function MessageBubble({ item }: MessageBubbleProps) {
+export function MessageBubble({ item, onRespondPermission }: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return <UserBubble content={item.content} />;
@@ -18,7 +20,15 @@ export function MessageBubble({ item }: MessageBubbleProps) {
         case 'tool_result':
             return <ToolResultBubble content={item.content} isError={item.isError} />;
         case 'permission':
-            return <PermissionBubble toolName={item.toolName} input={item.input} resolved={item.resolved} />;
+            return (
+                <PermissionBubble
+                    requestId={item.requestId}
+                    toolName={item.toolName}
+                    input={item.input}
+                    resolved={item.resolved}
+                    onRespond={onRespondPermission}
+                />
+            );
         case 'error':
             return <ErrorBubble content={item.content} />;
     }
@@ -33,10 +43,11 @@ function UserBubble({ content }: { content: string }) {
 }
 
 function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
+    const html = marked.parse(content, { async: false }) as string;
     return (
         <div class="chat-bubble chat-bubble-assistant">
             <div class="chat-bubble-body">
-                {content}
+                <div class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
                 {streaming && <span class="chat-cursor">▍</span>}
             </div>
         </div>
@@ -72,13 +83,17 @@ function ToolResultBubble({ content, isError }: { content: string; isError: bool
 }
 
 function PermissionBubble({
+    requestId,
     toolName,
     input,
     resolved,
+    onRespond,
 }: {
+    requestId: string;
     toolName: string;
     input: string;
     resolved?: 'allow' | 'deny';
+    onRespond?: (requestId: string, allow: boolean) => void;
 }) {
     return (
         <div class="chat-bubble chat-bubble-permission">
@@ -89,7 +104,14 @@ function PermissionBubble({
                     {resolved === 'allow' ? '已允许' : '已拒绝'}
                 </div>
             ) : (
-                <div class="chat-permission-hint">请在弹窗中确认（实现中）</div>
+                <div class="chat-permission-actions">
+                    <button class="chat-permission-btn deny" onClick={() => onRespond && onRespond(requestId, false)}>
+                        拒绝
+                    </button>
+                    <button class="chat-permission-btn allow" onClick={() => onRespond && onRespond(requestId, true)}>
+                        允许
+                    </button>
+                </div>
             )}
         </div>
     );

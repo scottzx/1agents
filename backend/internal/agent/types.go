@@ -80,3 +80,66 @@ type IndexRequest struct {
 type fileConfig struct {
 	Sessions []ChatSessionRecord `json:"sessions"`
 }
+
+type ScheduleType string
+
+const (
+	ScheduleTypeImmediate ScheduleType = "immediate"
+	ScheduleTypeScheduled ScheduleType = "scheduled"
+)
+
+type TaskStatus string
+
+const (
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusQueued    TaskStatus = "queued"
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusCancelled TaskStatus = "cancelled"
+	TaskStatusBlocked   TaskStatus = "blocked"
+)
+
+type SessionKind string
+
+const (
+	SessionKindChat SessionKind = "chat"
+)
+
+type SessionStatus string
+
+const (
+	SessionStatusIdle    SessionStatus = "idle"
+	SessionStatusRunning SessionStatus = "running"
+)
+
+type SessionMetadata struct {
+	ID        string        `json:"id"`
+	Kind      SessionKind   `json:"kind"`
+	Name      string        `json:"name"`
+	AgentType string        `json:"agentType"`
+	Status    SessionStatus `json:"status"`
+	Summary   string        `json:"summary,omitempty"`
+	CreatedAt time.Time     `json:"createdAt"`
+}
+
+type Task struct {
+	ID            string            `json:"id"`
+	Title         string            `json:"title"`
+	Status        TaskStatus        `json:"status"`
+	ScheduleType  ScheduleType      `json:"scheduleType"`
+	ScheduledAt   *time.Time        `json:"scheduledAt"`
+	DependsOn     []string          `json:"dependsOn"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	StartedAt     *time.Time        `json:"startedAt,omitempty"`
+	CompletedAt   *time.Time        `json:"completedAt,omitempty"`
+	Summary       string            `json:"summary,omitempty"`
+	Sessions      []SessionMetadata `json:"sessions"`
+	WorkspacePath string            `json:"-"`
+}
+
+type TasksConfig struct {
+	Tasks []Task `json:"tasks"`
+}
+

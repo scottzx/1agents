@@ -216,7 +216,11 @@ func main() {
 	skillsSup := supervisor.NewSkills(cfg)
 	skillsSup.Start(ctx)
 
+	acpxSup := supervisor.NewAcpx(cfg)
+	acpxSup.Start(ctx)
+
 	// ── 2. Start cc-connect Supervisor & engines ──────────────────────────────
+
 	ccconnect.Start(ctx, isDesktop)
 
 	// ── 3. Start HTTP gateway ─────────────────────────────────────────────────
@@ -351,8 +355,10 @@ func main() {
 
 	<-sup.Done()
 	<-skillsSup.Done()
+	<-acpxSup.Done()
 	log.Println("[main] Shutdown complete. Goodbye.")
 }
+
 
 // writeDaemonFile writes the daemon's listen address to a well-known location
 // so CLI subcommands (tunnel, etc.) can discover the port without flags.
