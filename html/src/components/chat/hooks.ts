@@ -297,13 +297,9 @@ export class ChatBridgeManager {
                     }
                     state.items = next;
                     state.typing = false;
-                    const wasStarted = state.turnStarted;
                     state.turnStarted = false;
                     this.notify(state);
-                    if (!wasStarted) {
-                        console.log('[useBridgeManager] Reconnected turn finished, reloading history...');
-                        this.reloadHistory(session, state);
-                    }
+                    this.reloadHistory(session, state);
                     break;
                 }
                 case 'history_response': {
@@ -330,13 +326,9 @@ export class ChatBridgeManager {
                         },
                     ];
                     state.typing = false;
-                    const wasStarted = state.turnStarted;
                     state.turnStarted = false;
                     this.notify(state);
-                    if (!wasStarted) {
-                        console.log('[useBridgeManager] Reconnected turn error, reloading history...');
-                        this.reloadHistory(session, state);
-                    }
+                    this.reloadHistory(session, state);
                     break;
                 }
             }

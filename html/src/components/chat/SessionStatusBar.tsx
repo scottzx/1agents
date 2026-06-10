@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { AGENT_TYPE_LABELS, type ChatSession } from '../types';
 import type { ConnectionState } from './hooks';
+import { AgentAvatar } from './AgentAvatar';
 
 interface SessionStatusBarProps {
     session: ChatSession;
@@ -12,6 +13,7 @@ export function SessionStatusBar({ session, connection, typing }: SessionStatusB
     const connLabel = connectionLabel(connection);
     return (
         <div class="chat-status-bar">
+            <AgentAvatar agentType={session.agentType} class="chat-status-avatar" />
             <span class="chat-status-agent">{AGENT_TYPE_LABELS[session.agentType] ?? session.agentType}</span>
             <span class={`chat-status-conn chat-status-${connection}`}>{connLabel}</span>
             {typing && <span class="chat-status-typing">正在生成…</span>}

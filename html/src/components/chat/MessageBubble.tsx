@@ -1,7 +1,8 @@
 import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { marked } from 'marked';
-import type { ChatItem, ToolCallInfo } from './hooks';
+import { AgentAvatar } from './AgentAvatar';
+import type { AgentType } from '../types';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -10,24 +11,53 @@ marked.setOptions({
     breaks: true,
 });
 
+export interface GroupedToolCall {
+    id: string;
+    toolCallId?: string;
+    toolName: string;
+    input: string;
+    output?: string;
+    isError?: boolean;
+}
+
+export type GroupedChatItem =
+    | { id: string; kind: 'user'; content: string; createdAt: number }
+    | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
+    | { id: string; kind: 'thinking'; content: string; createdAt: number }
+    | {
+          id: string;
+          kind: 'tool_group';
+          calls: GroupedToolCall[];
+          createdAt: number;
+      }
+    | {
+          id: string;
+          kind: 'permission';
+          requestId: string;
+          toolName: string;
+          input: string;
+          createdAt: number;
+          resolved?: 'allow' | 'deny';
+      }
+    | { id: string; kind: 'error'; content: string; createdAt: number };
+
 interface MessageBubbleProps {
-    item: ChatItem;
+    item: GroupedChatItem;
+    agentType?: AgentType;
     isLast: boolean;
     onRespondPermission?: (requestId: string, allow: boolean) => void;
 }
 
-export function MessageBubble({ item, isLast, onRespondPermission }: MessageBubbleProps) {
+export function MessageBubble({ item, agentType, isLast, onRespondPermission }: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return <UserBubble content={item.content} />;
         case 'assistant_text':
-            return <AssistantBubble content={item.content} streaming={item.streaming} />;
+            return <AssistantBubble content={item.content} streaming={item.streaming} agentType={agentType} />;
         case 'thinking':
             return <ThinkingBubble content={item.content} isLast={isLast} />;
-        case 'tool_use':
-            return <ToolUseBubble calls={item.calls} />;
-        case 'tool_result':
-            return <ToolResultBubble content={item.content} isError={item.isError} />;
+        case 'tool_group':
+            return <ToolGroupBubble calls={item.calls} />;
         case 'permission':
             return (
                 <PermissionBubble
@@ -51,13 +81,24 @@ function UserBubble({ content }: { content: string }) {
     );
 }
 
-function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
+function AssistantBubble({
+    content,
+    streaming,
+    agentType,
+}: {
+    content: string;
+    streaming: boolean;
+    agentType?: AgentType;
+}) {
     const html = marked.parse(content, { async: false }) as string;
     return (
-        <div class="chat-bubble chat-bubble-assistant">
-            <div class="chat-bubble-body">
-                <div class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
-                {streaming && <span class="chat-cursor">▍</span>}
+        <div class="chat-message-row chat-message-row-assistant">
+            {agentType && <AgentAvatar agentType={agentType} class="chat-message-avatar" />}
+            <div class="chat-bubble chat-bubble-assistant">
+                <div class="chat-bubble-body">
+                    <div class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                    {streaming && <span class="chat-cursor">▍</span>}
+                </div>
             </div>
         </div>
     );
@@ -73,6 +114,7 @@ function ThinkingBubble({ content, isLast }: { content: string; isLast: boolean 
 
     const previewText = content.trim().replace(/\s+/g, ' ');
     const preview = previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText;
+    const html = marked.parse(content, { async: false }) as string;
 
     return (
         <div class={`chat-bubble chat-bubble-thinking ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
@@ -94,16 +136,21 @@ function ThinkingBubble({ content, isLast }: { content: string; isLast: boolean 
                 <span class="chat-bubble-label">思考</span>
                 {!isExpanded && preview && <span class="chat-thinking-preview">{preview}</span>}
             </div>
-            {isExpanded && <div class="chat-bubble-body chat-thinking-body">{content}</div>}
+            {isExpanded && (
+                <div
+                    class="chat-bubble-body chat-thinking-body markdown-body"
+                    dangerouslySetInnerHTML={{ __html: html }}
+                />
+            )}
         </div>
     );
 }
 
-function ToolUseBubble({ calls }: { calls: ToolCallInfo[] }) {
+function ToolGroupBubble({ calls }: { calls: GroupedToolCall[] }) {
     const [isExpanded, setIsExpanded] = useState(true);
 
     return (
-        <div class={`chat-bubble chat-bubble-tool ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+        <div class={`chat-bubble chat-bubble-tool-group ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
             <div
                 class="chat-bubble-header chat-bubble-header-clickable"
                 role="button"
@@ -139,7 +186,7 @@ function ToolUseBubble({ calls }: { calls: ToolCallInfo[] }) {
             {isExpanded && (
                 <div class="chat-tool-calls-list">
                     {calls.map((call, idx) => (
-                        <ToolCallItem key={`${call.toolCallId ?? ''}-${idx}`} call={call} />
+                        <GroupedToolCallItem key={call.id || idx} call={call} />
                     ))}
                 </div>
             )}
@@ -147,37 +194,96 @@ function ToolUseBubble({ calls }: { calls: ToolCallInfo[] }) {
     );
 }
 
-function ToolCallItem({ call }: { call: ToolCallInfo }) {
+function GroupedToolCallItem({ call }: { call: GroupedToolCall }) {
+    const [isExpanded, setIsExpanded] = useState(true);
+
     let args: Record<string, unknown> = {};
     try {
-        const parsed = JSON.parse(call.input);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            args = parsed as Record<string, unknown>;
+        if (call.input) {
+            const parsed = JSON.parse(call.input);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                args = parsed as Record<string, unknown>;
+            }
         }
     } catch {
-        // input is not valid JSON; surface it as raw below
+        // input is not valid JSON
     }
 
-    const command = pickString(args, ['command', 'commandLine']);
-    const description = pickString(args, ['description', 'reason']);
-    const remaining = filterArgs(args, ['command', 'commandLine', 'description', 'reason']);
+    const command = pickString(args, ['command', 'commandLine', 'CommandLine']);
+    const description = pickString(args, ['description', 'reason', 'Reason']);
+    const remaining = filterArgs(args, ['command', 'commandLine', 'CommandLine', 'description', 'reason', 'Reason']);
     const remainingJson = Object.keys(remaining).length > 0 ? JSON.stringify(remaining, null, 2) : '';
-    const inputWasInvalidJson = Object.keys(args).length === 0 && call.input.trim().length > 0;
+    const inputWasInvalidJson = Object.keys(args).length === 0 && call.input && call.input.trim().length > 0;
+
+    const hasOutput = call.output !== undefined;
+    const isError = call.isError;
 
     return (
-        <div class="chat-tool-call-item">
-            <div class="chat-tool-call-meta">
-                <span class="chat-tool-name">{call.toolName}</span>
-                {description && <span class="chat-tool-desc">{description}</span>}
+        <div
+            class={`chat-tool-call-subcard ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${isError ? 'has-error' : ''}`}
+        >
+            <div
+                class="chat-tool-call-subcard-header"
+                role="button"
+                tabIndex={0}
+                onClick={() => setIsExpanded(prev => !prev)}
+                onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setIsExpanded(prev => !prev);
+                    }
+                }}
+            >
+                <span class="chat-tool-subcard-caret" aria-hidden="true">
+                    {isExpanded ? '▾' : '▸'}
+                </span>
+                <span class="chat-tool-name-badge">{call.toolName}</span>
+                {description && <span class="chat-tool-subcard-desc">{description}</span>}
+                <span class="chat-tool-subcard-status">
+                    {!hasOutput ? (
+                        <span class="status-badge status-running">执行中...</span>
+                    ) : isError ? (
+                        <span class="status-badge status-error">失败</span>
+                    ) : (
+                        <span class="status-badge status-success">成功</span>
+                    )}
+                </span>
             </div>
-            {command !== undefined && (
-                <div class="chat-tool-cmd-box">
-                    <span class="chat-tool-cmd-prompt">$</span>
-                    <span class="chat-tool-cmd-text">{command}</span>
+            {isExpanded && (
+                <div class="chat-tool-call-subcard-body">
+                    {/* Input parameters section */}
+                    <div class="chat-tool-subcard-section">
+                        <div class="chat-tool-section-title">输入参数</div>
+                        <div class="chat-tool-section-content">
+                            {command !== undefined && (
+                                <div class="chat-tool-cmd-box">
+                                    <span class="chat-tool-cmd-prompt">$</span>
+                                    <span class="chat-tool-cmd-text">{command}</span>
+                                </div>
+                            )}
+                            {remainingJson && <pre class="chat-tool-args">{remainingJson}</pre>}
+                            {inputWasInvalidJson && !command && <pre class="chat-tool-args">{call.input}</pre>}
+                            {!command && !remainingJson && !inputWasInvalidJson && (
+                                <div class="chat-tool-no-args">（无输入参数）</div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Output result section */}
+                    <div class="chat-tool-subcard-section">
+                        <div class="chat-tool-section-title">返回结果</div>
+                        <div class="chat-tool-section-content">
+                            {!hasOutput ? (
+                                <div class="chat-tool-output-pending">正在执行，请稍候...</div>
+                            ) : (
+                                <pre class={`chat-tool-output-box ${isError ? 'has-error' : ''}`}>
+                                    {call.output || '（执行完成，无返回内容）'}
+                                </pre>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
-            {remainingJson && <pre class="chat-tool-args">{remainingJson}</pre>}
-            {inputWasInvalidJson && !command && <pre class="chat-tool-args">{call.input}</pre>}
         </div>
     );
 }
@@ -200,14 +306,6 @@ function filterArgs(args: Record<string, unknown>, exclude: string[]): Record<st
         }
     }
     return remaining;
-}
-
-function ToolResultBubble({ content, isError }: { content: string; isError: boolean }) {
-    return (
-        <div class={`chat-bubble chat-bubble-tool-result ${isError ? 'is-error' : ''}`}>
-            <pre class="chat-bubble-code">{content}</pre>
-        </div>
-    );
 }
 
 function PermissionBubble({

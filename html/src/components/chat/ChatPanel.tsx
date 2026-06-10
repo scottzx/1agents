@@ -30,6 +30,7 @@ function ChatPanelInner({ session }: ChatPanelProps) {
             <SessionStatusBar session={session} connection={connection} typing={typing} />
             <MessageList
                 items={items}
+                agentType={session.agentType}
                 emptyHint={connection === 'connecting' ? '正在连接…' : '发送消息开始对话'}
                 onRespondPermission={respondPermission}
             />
