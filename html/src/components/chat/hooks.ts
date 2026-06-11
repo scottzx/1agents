@@ -14,6 +14,19 @@ export interface ToolCallInfo {
     toolCallId?: string;
     output?: string;
     isError?: boolean;
+    /**
+     * Inline permission request that the runtime emitted for this tool call.
+     * Lives as a sub-field (not a separate ChatItem) so the permission UI
+     * stays nested inside its tool_use card across both real-time streaming
+     * and history replay.
+     */
+    permission?: {
+        requestId: string;
+        toolName: string;
+        input: string;
+        options: Array<{ text: string; data: string }>;
+        resolved?: 'allow' | 'deny';
+    };
 }
 
 /**
@@ -54,16 +67,6 @@ export type ChatItem =
           toolCallId?: string;
       }
     | { id: string; kind: 'tool_result'; toolCallId?: string; content: string; createdAt: number; isError: boolean }
-    | {
-          id: string;
-          kind: 'permission';
-          requestId: string;
-          toolName: string;
-          input: string;
-          createdAt: number;
-          options: Array<{ text: string; data: string }>;
-          resolved?: 'allow' | 'deny';
-      }
     | { id: string; kind: 'error'; content: string; createdAt: number };
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
@@ -105,15 +108,14 @@ export class ChatBridgeManager {
                 ws: null,
                 listeners: new Set(),
                 turnStarted: false,
+                // The list endpoint (GET /api/agent/sessions?workspace_id=…)
+                // already serializes ChatSessionRecord.PermissionMode onto
+                // the ChatSession object, so we can trust the field
+                // verbatim instead of doing a second GET per session.
                 permissionMode: session.permissionMode ?? DEFAULT_PERMISSION_MODE,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
-            // The ChatSession passed in may be stale w.r.t. the backend
-            // ChatSessionRecord (the sidebar list endpoint elides the
-            // permission_mode field on older builds). Re-fetch the full
-            // record so the Composer toggle starts in the right state.
-            this.refreshPermissionMode(session, state);
         }
         return state;
     }
@@ -381,29 +383,90 @@ export class ChatBridgeManager {
                         typeof payload.arguments === 'string'
                             ? payload.arguments
                             : JSON.stringify(payload.arguments, null, 2);
-                    state.items = [
-                        ...state.items,
-                        {
-                            id: cryptoId(),
-                            kind: 'permission',
-                            requestId: payload.requestId || '',
-                            toolName: payload.toolName || 'tool',
-                            input: argsString,
-                            createdAt: Date.now(),
-                            options: [],
-                        },
-                    ];
+                    const requestId = payload.requestId || '';
+                    const toolCallId = payload.toolCallId;
+                    const toolName = payload.toolName || 'tool';
+                    const newPermission = {
+                        requestId,
+                        toolName,
+                        input: argsString,
+                        options: [] as Array<{ text: string; data: string }>,
+                    };
+
+                    // Mirror tool_result's reverse-scan + synthesize-fallback:
+                    // attach the permission to the matching tool_use so it
+                    // renders nested inside the tool card. If the permission
+                    // beat the tool_call over the wire, synthesize a stub
+                    // tool_use and let the later tool_call merge into it.
+                    const items = [...state.items];
+                    let matched = false;
+                    if (toolCallId) {
+                        for (let i = items.length - 1; i >= 0; i--) {
+                            const item = items[i];
+                            if (item.kind !== 'tool_use') continue;
+                            const callIdx = item.calls.findIndex(c => c.toolCallId === toolCallId);
+                            if (callIdx >= 0) {
+                                items[i] = {
+                                    ...item,
+                                    calls: item.calls.map((c, idx) =>
+                                        idx === callIdx ? { ...c, permission: newPermission } : c
+                                    ),
+                                };
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matched) {
+                        // Stub: only the permission is known so far. tool_call
+                        // (or a later tool_call_update) will hit the same
+                        // toolCallId and fill in toolName / input.
+                        const placeholder: ToolCallInfo = {
+                            toolName,
+                            input: '',
+                            toolCallId,
+                            permission: newPermission,
+                        };
+                        const last = items[items.length - 1];
+                        if (last && last.kind === 'tool_use') {
+                            items[items.length - 1] = {
+                                ...last,
+                                calls: [...last.calls, placeholder],
+                            };
+                        } else {
+                            items.push({
+                                id: cryptoId(),
+                                kind: 'tool_use',
+                                toolName,
+                                input: '',
+                                calls: [placeholder],
+                                createdAt: Date.now(),
+                                ...(toolCallId ? { toolCallId } : {}),
+                            });
+                        }
+                    }
+                    state.items = items;
                     this.notify(state);
                     break;
                 }
                 case 'permission_timeout': {
                     if (!state.turnStarted) break;
                     stopAssistantStreaming();
-                    state.items = state.items.map(it =>
-                        it.kind === 'permission' && it.requestId === payload.requestId
-                            ? { ...it, resolved: 'deny' }
-                            : it
-                    );
+                    const requestId = payload.requestId;
+                    // Mark the nested permission as denied so the inline UI
+                    // collapses, then surface the timeout as an error chip.
+                    state.items = state.items.map(it => {
+                        if (it.kind !== 'tool_use') return it;
+                        let touched = false;
+                        const calls = it.calls.map(c => {
+                            if (c.permission && c.permission.requestId === requestId) {
+                                touched = true;
+                                return { ...c, permission: { ...c.permission, resolved: 'deny' as const } };
+                            }
+                            return c;
+                        });
+                        return touched ? { ...it, calls } : it;
+                    });
                     state.items = [
                         ...state.items,
                         {
@@ -456,10 +519,21 @@ export class ChatBridgeManager {
                             createdAt: Date.now(),
                         },
                     ];
+                    // Only reload history when the error actually came from
+                    // inside a turn — that's the case where on-disk state
+                    // might be authoritative over what we have in memory.
+                    // Errors from out-of-turn control actions
+                    // (set_permission_mode, respond_permission for a stale
+                    // requestId, etc.) don't touch history; reloading then
+                    // just pulls a fresh history_response per error and
+                    // turns one bad input into a console storm.
+                    const wasInTurn = state.turnStarted;
                     state.typing = false;
                     state.turnStarted = false;
                     this.notify(state);
-                    this.reloadHistory(session, state);
+                    if (wasInTurn) {
+                        this.reloadHistory(session, state);
+                    }
                     break;
                 }
             }
@@ -520,18 +594,31 @@ export class ChatBridgeManager {
     respondPermission(session: ChatSession, requestId: string, decision: PermissionDecision) {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        // Find the nested permission sub-item and capture the originating
+        // toolCallId so the response can be linked back to the tool_use
+        // block in the audit/log chain.
+        let toolCallId: string | undefined;
+        for (const it of state.items) {
+            if (it.kind !== 'tool_use') continue;
+            const match = it.calls.find(c => c.permission?.requestId === requestId);
+            if (match) {
+                toolCallId = match.toolCallId;
+                break;
+            }
+        }
         state.ws.send(
             JSON.stringify({
                 action: 'respond_permission',
                 sessionId: session.id,
                 requestId,
+                toolCallId,
                 behavior: decision,
             })
         );
-        // `cancel` leaves the bubble interactive so the user can re-decide
+        // `cancel` leaves the inline UI interactive so the user can re-decide
         // (the runtime will time the request out on its own if nothing
-        // else happens). The four real decisions collapse the bubble
-        // into a one-line summary keyed on the allow/deny side.
+        // else happens). The four real decisions collapse the inline
+        // permission into a one-line summary keyed on the allow/deny side.
         const resolved: 'allow' | 'deny' | null =
             decision === 'allow_once' || decision === 'allow_always'
                 ? 'allow'
@@ -539,10 +626,25 @@ export class ChatBridgeManager {
                   ? 'deny'
                   : null;
         if (resolved) {
-            state.items = state.items.map(it =>
-                it.kind === 'permission' && it.requestId === requestId ? { ...it, resolved } : it
-            );
+            state.items = state.items.map(it => {
+                if (it.kind !== 'tool_use') return it;
+                let touched = false;
+                const calls = it.calls.map(c => {
+                    if (c.permission && c.permission.requestId === requestId) {
+                        touched = true;
+                        return { ...c, permission: { ...c.permission, resolved } };
+                    }
+                    return c;
+                });
+                return touched ? { ...it, calls } : it;
+            });
             this.notify(state);
+        } else if (toolCallId === undefined) {
+            // Should not happen: every permission_request has a matching
+            // toolCallId by the time the user clicks a button. Logged
+            // for visibility in case a future event source breaks the
+            // invariant.
+            console.warn('[useBridgeManager] respond_permission: no nested permission found for requestId', requestId);
         }
     }
 
@@ -557,12 +659,16 @@ export class ChatBridgeManager {
         // it survives reloads. Both calls are fire-and-forget — if PATCH
         // fails the local toggle still reflects the user intent for the
         // current process lifetime.
+        // Field name is `permissionMode` (not `mode`) to match the JSON
+        // tag on backend/internal/agent.WsMessage.PermissionMode —
+        // otherwise the Go struct drops the field on the ReadJSON →
+        // WriteJSON forward and the bridge-server sees a missing param.
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
             state.ws.send(
                 JSON.stringify({
                     action: 'set_permission_mode',
                     sessionId: session.id,
-                    mode,
+                    permissionMode: mode,
                 })
             );
         }
@@ -573,20 +679,6 @@ export class ChatBridgeManager {
         }).catch(err => {
             console.warn('[useBridgeManager] PATCH permission_mode failed:', err);
         });
-    }
-
-    private async refreshPermissionMode(session: ChatSession, state: SessionBridgeState) {
-        try {
-            const res = await fetch(`/api/agent/sessions/${encodeURIComponent(session.id)}`);
-            if (!res.ok) return;
-            const rec = (await res.json()) as { permission_mode?: PermissionMode };
-            if (rec.permission_mode && rec.permission_mode !== state.permissionMode) {
-                state.permissionMode = rec.permission_mode;
-                this.notify(state);
-            }
-        } catch (err) {
-            console.warn('[useBridgeManager] fetch permission_mode failed:', err);
-        }
     }
 
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {

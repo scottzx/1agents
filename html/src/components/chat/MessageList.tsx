@@ -12,9 +12,17 @@ interface MessageListProps {
 }
 
 function isCallRenderable(call: GroupedToolCall): boolean {
-    // Mirrors the skip condition in GroupedToolCallItem so MessageList can
-    // suppress tool_groups that would render as a title-only placeholder.
+    // A call is renderable as soon as we know *something* concrete about it:
+    //   - it has a toolCallId (the runtime committed to this call — render
+    //     a streaming placeholder even before the arguments JSON arrives)
+    //   - it has an inline permission request waiting on the user
+    //   - it already produced an output
+    //   - it has parseable input
+    // This fixes the "invisible tool card until arguments stream in" bug
+    // and keeps permission requests inside the matching tool group.
+    if (call.toolCallId) return true;
     if (call.output !== undefined) return true;
+    if (call.permission) return true;
     if (!call.input || !call.input.trim()) return false;
     try {
         const parsed = JSON.parse(call.input);
@@ -50,12 +58,14 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 if (existingCall) {
                     existingCall.toolName = call.toolName;
                     existingCall.input = call.input;
+                    if (call.permission) existingCall.permission = call.permission;
                 } else {
                     lastGroup.calls.push({
                         id: `call-${callId || Math.random()}`,
                         toolCallId: callId,
                         toolName: call.toolName,
                         input: call.input,
+                        ...(call.permission ? { permission: call.permission } : {}),
                     });
                 }
             }
