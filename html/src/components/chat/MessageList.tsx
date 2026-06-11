@@ -58,6 +58,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 if (existingCall) {
                     existingCall.toolName = call.toolName;
                     existingCall.input = call.input;
+                    existingCall.output = call.output;
+                    existingCall.isError = call.isError;
                     if (call.permission) existingCall.permission = call.permission;
                 } else {
                     lastGroup.calls.push({
@@ -65,6 +67,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         toolCallId: callId,
                         toolName: call.toolName,
                         input: call.input,
+                        output: call.output,
+                        isError: call.isError,
                         ...(call.permission ? { permission: call.permission } : {}),
                     });
                 }

@@ -244,10 +244,20 @@ export class ChatBridgeManager {
                 case 'tool_call': {
                     if (!state.turnStarted) break;
                     stopAssistantStreaming();
-                    const argsString =
-                        typeof payload.arguments === 'string'
+                    // The runtime may emit tool_call events for the same
+                    // toolCallId both with and without rawInput:
+                    //   - first an empty `{}` placeholder, then the real
+                    //     arguments as they stream in
+                    //   - after tool_result, a status-only update with no
+                    //     rawInput at all (e.g. when the call finishes)
+                    // Only the first shape carries new arguments; the
+                    // second must not clobber the input we already have.
+                    const hasArguments = payload.arguments !== undefined;
+                    const argsString = hasArguments
+                        ? typeof payload.arguments === 'string'
                             ? payload.arguments
-                            : JSON.stringify(payload.arguments, null, 2);
+                            : JSON.stringify(payload.arguments, null, 2)
+                        : '';
                     const newCall: ToolCallInfo = {
                         toolName: payload.toolName || 'tool',
                         input: argsString,
@@ -271,7 +281,19 @@ export class ChatBridgeManager {
                             next[next.length - 1] = {
                                 ...last,
                                 calls: last.calls.map((c, idx) =>
-                                    idx === existingIdx ? { ...c, toolName: newCall.toolName, input: newCall.input } : c
+                                    idx === existingIdx
+                                        ? {
+                                              ...c,
+                                              toolName: newCall.toolName,
+                                              // Preserve the streamed input
+                                              // when this event is a
+                                              // status-only update; refresh
+                                              // it only when the event
+                                              // actually carries new
+                                              // arguments.
+                                              ...(hasArguments ? { input: newCall.input } : {}),
+                                          }
+                                        : c
                                 ),
                             };
                         } else {
