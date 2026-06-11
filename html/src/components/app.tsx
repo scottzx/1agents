@@ -63,6 +63,8 @@ export interface Tab {
 export interface AppState {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
     activeDrawerTab: RightDrawerTab;
+    /** Selected discovery category, drives the sidebar second-level menu. */
+    discoveryCategory: string;
     tabs: Tab[];
     activeTabId: string;
     theme: 'light' | 'dark';
@@ -173,6 +175,7 @@ export class App extends Component<{}, AppState> {
         this.state = {
             activeTab: 'terminal',
             activeDrawerTab: 'none',
+            discoveryCategory: 'featured',
             theme: 'light',
             hostname: 'Ashley Walker',
             leftSidebarOpen: window.innerWidth > 768,
@@ -1375,6 +1378,12 @@ export class App extends Component<{}, AppState> {
                 }
             );
         }
+        this.triggerTerminalFit();
+    };
+
+    // Open the discovery panel (if needed) and scroll to a given category.
+    selectDiscoveryCategory = (category: string) => {
+        this.setState({ activeDrawerTab: 'discovery', discoveryCategory: category });
         this.triggerTerminalFit();
     };
 

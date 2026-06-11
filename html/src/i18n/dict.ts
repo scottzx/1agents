@@ -220,6 +220,11 @@ export const zhCN: Record<string, string> = {
     'discovery.nanoDesc':
         '垂直于营销领域的 AI Agent 技能库与发布平台。提供开箱即用的专业 AI 技能，助力增长与自动化营销操作。',
     'discovery.popular': '热门推荐',
+    'discovery.gatewayDesc':
+        '本地 LLM API 网关代理，透明转发 OpenAI / Claude 等请求，内置 SQLite 对话日志与可视化日志查看器。',
+    'discovery.opensourceBadge': '开源',
+    'discovery.catFeatured': '精选推荐',
+    'discovery.catOpensource': '开源项目',
     'discovery.intro': '精选各类实用的 AI 辅助工具与技能库，点击即可在内置浏览器中快速访问。',
     'discovery.exploreNow': '立即探索',
 
@@ -738,6 +743,11 @@ export const enUS: Record<string, string> = {
     'discovery.nanoDesc':
         'An AI Agent skill library and publishing platform focused on marketing. Provides turnkey, professional AI skills to grow and automate marketing operations.',
     'discovery.popular': 'Popular',
+    'discovery.gatewayDesc':
+        'A local LLM API gateway that transparently proxies requests to OpenAI / Claude, with built-in SQLite conversation logging and a web log viewer.',
+    'discovery.opensourceBadge': 'Open Source',
+    'discovery.catFeatured': 'Featured',
+    'discovery.catOpensource': 'Open Source',
     'discovery.intro':
         'A curated collection of practical AI tools and skill libraries — click to open in the built-in browser.',
     'discovery.exploreNow': 'Explore now',

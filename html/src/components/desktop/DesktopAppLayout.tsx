@@ -156,6 +156,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 toggleFolder={app.toggleFolder}
                                 toggleDrawerTab={app.toggleDrawerTab}
                                 activeDrawerTab={activeDrawerTab}
+                                activeDiscoveryCategory={state.discoveryCategory}
+                                onSelectDiscoveryCategory={app.selectDiscoveryCategory}
                                 onCreateWorkspace={app.openCreateWorkspacePicker}
                                 onRenameWorkspace={ws => app.openRenameWorkspaceModal(ws)}
                                 onDeleteWorkspace={app.deleteWorkspace}
@@ -273,6 +275,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     <DiscoveryPanel
                                                         onOpenBrowserTab={IS_DESKTOP ? app.openBrowserTab : undefined}
                                                         language={language}
+                                                        scrollToCategory={state.discoveryCategory}
                                                     />
                                                 </div>
                                             )}
