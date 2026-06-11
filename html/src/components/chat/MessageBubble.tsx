@@ -1,4 +1,8 @@
 import { h } from 'preact';
+// Referenced by the compiled output of JSX fragments (<>…</>) via the
+// jsxFragmentFactory compiler option, not by name in this file.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { Fragment } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { marked } from 'marked';
 import { AgentAvatar } from './AgentAvatar';
@@ -50,11 +54,26 @@ interface MessageBubbleProps {
     item: GroupedChatItem;
     agentType?: AgentType;
     isLast: boolean;
+    /**
+     * True while a turn is actively running. Distinguishes "no output
+     * yet because the tool is still executing" (spinner) from "no
+     * output recorded in history" (e.g. a cancelled turn replayed via
+     * resume — shown as a neutral incomplete state, not an eternal
+     * spinner).
+     */
+    active?: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
     onCancelQueued?: (queueRequestId: string) => void;
 }
 
-export function MessageBubble({ item, agentType, isLast, onRespondPermission, onCancelQueued }: MessageBubbleProps) {
+export function MessageBubble({
+    item,
+    agentType,
+    isLast,
+    active,
+    onRespondPermission,
+    onCancelQueued,
+}: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return (
@@ -68,10 +87,15 @@ export function MessageBubble({ item, agentType, isLast, onRespondPermission, on
         case 'assistant_text':
             return <AssistantBubble content={item.content} streaming={item.streaming} agentType={agentType} />;
         case 'thinking':
-            return <ThinkingBubble content={item.content} isLast={isLast} />;
+            return <ThinkingBubble content={item.content} streaming={!!active && isLast} />;
         case 'tool_group':
             return (
-                <ToolGroupBubble calls={item.calls} pending={item.pending} onRespondPermission={onRespondPermission} />
+                <ToolGroupBubble
+                    calls={item.calls}
+                    pending={item.pending}
+                    active={active}
+                    onRespondPermission={onRespondPermission}
+                />
             );
         case 'error':
             return <ErrorBubble content={item.content} />;
@@ -136,20 +160,32 @@ function AssistantBubble({
     );
 }
 
-function ThinkingBubble({ content, isLast }: { content: string; isLast: boolean }) {
-    const [isExpanded, setIsExpanded] = useState(isLast);
+/**
+ * Reasoning block. While the model is actively thinking (this is the
+ * last item of a running turn) the block stays expanded with a shimmer
+ * label; once the turn moves on it auto-collapses to a one-line
+ * preview the user can re-open. The same rule covers resume: replayed
+ * thinking blocks arrive with `streaming = false` and start collapsed.
+ */
+function ThinkingBubble({ content, streaming }: { content: string; streaming: boolean }) {
+    const [isExpanded, setIsExpanded] = useState(streaming);
 
-    // Auto-collapse when a newer item pushes this one out of the "last" position.
+    // Follow the streaming state: expand while the model thinks,
+    // collapse when the turn moves on. A manual toggle afterwards
+    // still works — this only fires on streaming transitions.
     useEffect(() => {
-        setIsExpanded(isLast);
-    }, [isLast]);
+        setIsExpanded(streaming);
+    }, [streaming]);
 
+    const lang = getLang();
     const previewText = content.trim().replace(/\s+/g, ' ');
     const preview = previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText;
     const html = marked.parse(content, { async: false }) as string;
 
     return (
-        <div class={`chat-bubble chat-bubble-thinking ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+        <div
+            class={`chat-bubble chat-bubble-thinking ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${streaming ? 'is-streaming' : ''}`}
+        >
             <div
                 class="chat-bubble-header-clickable"
                 role="button"
@@ -165,7 +201,9 @@ function ThinkingBubble({ content, isLast }: { content: string; isLast: boolean 
                 <span class="chat-bubble-caret" aria-hidden="true">
                     {isExpanded ? '▾' : '▸'}
                 </span>
-                <span class="chat-bubble-label">思考</span>
+                <span class="chat-bubble-label">
+                    {streaming ? t('chat.thinking.streaming', lang) : t('chat.thinking.label', lang)}
+                </span>
                 {!isExpanded && preview && <span class="chat-thinking-preview">{preview}</span>}
             </div>
             {isExpanded && (
@@ -178,23 +216,62 @@ function ThinkingBubble({ content, isLast }: { content: string; isLast: boolean 
     );
 }
 
+/**
+ * User expand/collapse choices per tool call, keyed by toolCallId.
+ * Module-level so the choice survives the component remount caused by
+ * the post-`done` history reload (history items get fresh ids, but
+ * toolCallId is stable across streaming and replay).
+ */
+const userExpandChoice = new Map<string, boolean>();
+
+type CallStatus = 'running' | 'waiting' | 'success' | 'error' | 'incomplete';
+
+function callStatus(call: GroupedToolCall, active: boolean): CallStatus {
+    if (call.permission && !call.permission.resolved) return 'waiting';
+    if (call.output !== undefined) return call.isError ? 'error' : 'success';
+    return active ? 'running' : 'incomplete';
+}
+
 function ToolGroupBubble({
     calls,
     pending,
+    active,
     onRespondPermission,
 }: {
     calls: GroupedToolCall[];
     pending?: boolean;
+    active?: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }) {
     const [isExpanded, setIsExpanded] = useState(true);
+    const lang = getLang();
+
+    const statuses = calls.map(c => callStatus(c, !!active));
+    const runningCount = statuses.filter(s => s === 'running').length;
+    const errorCount = statuses.filter(s => s === 'error').length;
+    const hasWaiting = statuses.includes('waiting');
+
+    // A pending permission must never be hidden behind a collapsed
+    // group — the turn is blocked on the user's decision.
+    useEffect(() => {
+        if (hasWaiting) setIsExpanded(true);
+    }, [hasWaiting]);
+
+    let summary: { cls: string; text: string } | null = null;
+    if (hasWaiting) {
+        summary = { cls: 'status-waiting', text: t('chat.tool.summary.waiting', lang) };
+    } else if (runningCount > 0) {
+        summary = { cls: 'status-running', text: t('chat.tool.summary.running', lang, { n: String(runningCount) }) };
+    } else if (errorCount > 0) {
+        summary = { cls: 'status-error', text: t('chat.tool.summary.error', lang, { n: String(errorCount) }) };
+    }
 
     return (
         <div
             class={`chat-bubble chat-bubble-tool-group ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
         >
             <div
-                class="chat-bubble-header chat-bubble-header-clickable"
+                class="chat-tool-group-header"
                 role="button"
                 tabIndex={0}
                 onClick={() => setIsExpanded(prev => !prev)}
@@ -208,22 +285,16 @@ function ToolGroupBubble({
                 <span class="chat-bubble-caret" aria-hidden="true">
                     {isExpanded ? '▾' : '▸'}
                 </span>
-                <span class="chat-tool-icon" aria-hidden="true">
-                    <svg
-                        viewBox="0 0 24 24"
-                        width="14"
-                        height="14"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <path d="M14.7 6.3a4.5 4.5 0 1 0-6.4 6.4l-6 6a2.1 2.1 0 1 0 3 3l6-6a4.5 4.5 0 0 0 6.4-6.4l-2.2 2.2-2.4-2.4 2.6-2.8z" />
-                    </svg>
+                <span class="chat-tool-group-title">
+                    {pending ? t('chat.tool.groupPending', lang) : t('chat.tool.groupTitle', lang)}
                 </span>
-                <span class="chat-bubble-title">{pending ? '待分配' : '工具调用'}</span>
-                <span class="chat-bubble-count">{calls.length}</span>
+                <span class="chat-tool-group-count">{calls.length}</span>
+                {summary && (
+                    <span class={`chat-tool-group-summary ${summary.cls}`}>
+                        {(hasWaiting || runningCount > 0) && <span class="chat-tool-spinner" aria-hidden="true" />}
+                        {summary.text}
+                    </span>
+                )}
             </div>
             {isExpanded && (
                 <div class="chat-tool-calls-list">
@@ -231,6 +302,7 @@ function ToolGroupBubble({
                         <GroupedToolCallItem
                             key={call.id || idx}
                             call={call}
+                            status={statuses[idx]}
                             onRespondPermission={onRespondPermission}
                         />
                     ))}
@@ -240,50 +312,116 @@ function ToolGroupBubble({
     );
 }
 
-function FormatParamValue({ value }: { value: unknown }) {
-    const [wordWrap, setWordWrap] = useState(true);
+/**
+ * Arg keys most likely to identify what a call is doing, in priority
+ * order. Used to surface a one-line summary in the collapsed row so
+ * the user can tell `Bash: git status` from `Read: foo.ts` without
+ * expanding anything.
+ */
+const SUMMARY_KEYS = [
+    'command',
+    'file_path',
+    'path',
+    'pattern',
+    'query',
+    'url',
+    'prompt',
+    'description',
+    'reason',
+    'Reason',
+];
 
-    if (value === null) return <span class="chat-tool-arg-value-null">null</span>;
-    if (value === undefined) return <span class="chat-tool-arg-value-undefined">undefined</span>;
-
-    if (typeof value === 'object') {
-        return (
-            <div class="chat-tool-arg-value-object-wrapper">
-                <button
-                    type="button"
-                    onClick={() => setWordWrap(!wordWrap)}
-                    class={`chat-tool-word-wrap-toggle ${wordWrap ? 'is-active' : ''}`}
-                    title="切换自动换行"
-                >
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 6h16M4 12h10a4 4 0 0 1 0 8h-2" />
-                        <polyline points="14 16 10 20 14 24" />
-                    </svg>
-                </button>
-                <pre class={`chat-tool-arg-value-pre ${wordWrap ? 'whitespace-pre-wrap' : 'whitespace-pre'}`}>
-                    {JSON.stringify(value, null, 2)}
-                </pre>
-            </div>
-        );
+function summarizeArgs(args: Record<string, unknown>): string | undefined {
+    for (const key of SUMMARY_KEYS) {
+        const value = args[key];
+        if (typeof value === 'string' && value.trim()) {
+            return value.replace(/\s+/g, ' ').trim();
+        }
     }
-
-    if (typeof value === 'boolean') {
-        return (
-            <span class={`chat-tool-arg-value-bool ${value ? 'is-true' : 'is-false'}`}>{value ? 'true' : 'false'}</span>
-        );
+    for (const value of Object.values(args)) {
+        if (typeof value === 'string' && value.trim()) {
+            return value.replace(/\s+/g, ' ').trim();
+        }
     }
+    return undefined;
+}
 
-    return <span class="chat-tool-arg-value-text">{String(value)}</span>;
+function StatusIcon({ status }: { status: CallStatus }) {
+    switch (status) {
+        case 'running':
+            return <span class="chat-tool-status-icon chat-tool-spinner" aria-hidden="true" />;
+        case 'waiting':
+            return (
+                <span class="chat-tool-status-icon is-waiting" aria-hidden="true">
+                    !
+                </span>
+            );
+        case 'success':
+            return (
+                <span class="chat-tool-status-icon is-success" aria-hidden="true">
+                    ✓
+                </span>
+            );
+        case 'error':
+            return (
+                <span class="chat-tool-status-icon is-error" aria-hidden="true">
+                    ✕
+                </span>
+            );
+        case 'incomplete':
+            return (
+                <span class="chat-tool-status-icon is-incomplete" aria-hidden="true">
+                    ◦
+                </span>
+            );
+    }
 }
 
 function GroupedToolCallItem({
     call,
+    status,
     onRespondPermission,
 }: {
     call: GroupedToolCall;
+    status: CallStatus;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const lang = getLang();
+    const hasPendingPermission = status === 'waiting';
+
+    // Rows start collapsed — the header already carries tool name,
+    // key-arg summary and status. A pending permission force-expands
+    // (the user must see the action buttons); an explicit user choice
+    // (persisted by toolCallId across history reloads) wins otherwise.
+    const [isExpanded, setIsExpanded] = useState(() => {
+        if (hasPendingPermission) return true;
+        if (call.toolCallId && userExpandChoice.has(call.toolCallId)) {
+            return userExpandChoice.get(call.toolCallId)!;
+        }
+        return false;
+    });
+
+    useEffect(() => {
+        if (hasPendingPermission) {
+            setIsExpanded(true);
+            return;
+        }
+        // Forced-open reason went away (permission resolved): fall back
+        // to the user's remembered choice, or collapsed.
+        if (call.toolCallId && userExpandChoice.has(call.toolCallId)) {
+            setIsExpanded(userExpandChoice.get(call.toolCallId)!);
+            return;
+        }
+        setIsExpanded(false);
+    }, [hasPendingPermission]);
+
+    const toggle = () => {
+        setIsExpanded(prev => {
+            const next = !prev;
+            if (call.toolCallId) userExpandChoice.set(call.toolCallId, next);
+            return next;
+        });
+    };
 
     let args: Record<string, unknown> = {};
     let parsedInput = false;
@@ -315,144 +453,100 @@ function GroupedToolCallItem({
         return null;
     }
 
-    const description = pickString(args, ['description', 'reason', 'Reason']);
-
-    const isError = call.isError;
+    const summary = Object.keys(args).length > 0 ? summarizeArgs(args) : undefined;
 
     return (
-        <div
-            class={`chat-tool-call-subcard ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${isError ? 'has-error' : ''} ${hasPermission && !call.permission?.resolved ? 'has-pending-permission' : ''}`}
-        >
+        <div class={`chat-tool-row ${isExpanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
             <div
-                class="chat-tool-call-subcard-header"
+                class="chat-tool-row-header"
                 role="button"
                 tabIndex={0}
-                onClick={() => setIsExpanded(prev => !prev)}
+                onClick={toggle}
                 onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setIsExpanded(prev => !prev);
+                        toggle();
                     }
                 }}
             >
-                <span class="chat-tool-subcard-caret" aria-hidden="true">
-                    {isExpanded ? '▾' : '▸'}
-                </span>
+                <StatusIcon status={status} />
                 <span class="chat-tool-name-badge">{call.toolName}</span>
-                {description && <span class="chat-tool-subcard-desc">{description}</span>}
-                <span class="chat-tool-subcard-status">
-                    {!hasOutput ? (
-                        <span class="status-badge status-running">执行中...</span>
-                    ) : isError ? (
-                        <span class="status-badge status-error">失败</span>
-                    ) : (
-                        <span class="status-badge status-success">成功</span>
-                    )}
+                {summary && <span class="chat-tool-row-summary">{summary}</span>}
+                {status === 'waiting' && (
+                    <span class="chat-tool-row-status is-waiting">{t('chat.tool.status.waiting', lang)}</span>
+                )}
+                {status === 'running' && (
+                    <span class="chat-tool-row-status is-running">{t('chat.tool.status.running', lang)}</span>
+                )}
+                <span class="chat-tool-row-caret" aria-hidden="true">
+                    {isExpanded ? '▾' : '▸'}
                 </span>
             </div>
             {isExpanded && (
-                <div class="chat-tool-call-subcard-body">
-                    {/* Input parameters section */}
-                    <div class="chat-tool-subcard-section">
-                        <div class="chat-tool-section-title">调用入参列表 (Arguments)</div>
-                        <div class="chat-tool-section-content">
-                            {Object.keys(args).length > 0 ? (
-                                <div class="chat-tool-args-grid">
-                                    {Object.entries(args).map(([paramName, paramVal]) => (
-                                        <div key={paramName} class="chat-tool-arg-item">
-                                            <div class="chat-tool-arg-indicator"></div>
-                                            <div class="chat-tool-arg-header">
-                                                <svg
-                                                    viewBox="0 0 24 24"
-                                                    width="10"
-                                                    height="10"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2.5"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    class="chat-tool-arg-arrow"
-                                                >
-                                                    <polyline points="15 10 20 15 15 20" />
-                                                    <path d="M4 4v7a4 4 0 0 0 4 4h12" />
-                                                </svg>
-                                                <code class="chat-tool-arg-name">{paramName}</code>
-                                                <span class="chat-tool-arg-type">{typeof paramVal}</span>
-                                            </div>
-                                            <div class="chat-tool-arg-body">
-                                                <FormatParamValue value={paramVal} />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : inputWasInvalidJson ? (
-                                <pre class="chat-tool-args">{call.input}</pre>
-                            ) : (
-                                <div class="chat-tool-no-args">无附加调用参数 (No Arguments)</div>
-                            )}
-                        </div>
+                <div class="chat-tool-row-body">
+                    {/* Arguments */}
+                    <div class="chat-tool-section">
+                        <div class="chat-tool-section-title">{t('chat.tool.args', lang)}</div>
+                        {Object.keys(args).length > 0 ? (
+                            <div class="chat-tool-args-list">
+                                {Object.entries(args).map(([paramName, paramVal]) => (
+                                    <div key={paramName} class="chat-tool-arg">
+                                        <code class="chat-tool-arg-name">{paramName}</code>
+                                        <ArgValue value={paramVal} />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : inputWasInvalidJson ? (
+                            <pre class="chat-tool-pre">{call.input}</pre>
+                        ) : (
+                            <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
+                        )}
                     </div>
 
-                    {/* Inline permission section. Replaces the old
-                        standalone PermissionBubble. Collapses to a single
-                        line once resolved so the card stays compact as
-                        more events stream in. */}
+                    {/* Inline permission: pending shows the action buttons,
+                        resolved collapses to a one-line receipt. */}
                     {hasPermission && (
-                        <div class="chat-tool-subcard-section">
-                            <div class="chat-tool-section-title">权限确认 (Permission)</div>
-                            <div class="chat-tool-section-content">
-                                {call.permission!.resolved ? (
-                                    <div
-                                        class={`chat-bubble chat-bubble-permission is-resolved chat-permission-${call.permission!.resolved}`}
-                                    >
-                                        <span class="chat-permission-resolved-mark" aria-hidden="true">
-                                            {call.permission!.resolved === 'allow' ? '✓' : '✕'}
-                                        </span>
-                                        <span class="chat-permission-resolved-text">
-                                            {t(
-                                                call.permission!.resolved === 'allow'
-                                                    ? 'chat.permission.resolved.allow'
-                                                    : 'chat.permission.resolved.deny',
-                                                getLang()
-                                            )}{' '}
-                                            · {call.permission!.toolName}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    <PermissionActionRow
-                                        permission={call.permission!}
-                                        onRespond={onRespondPermission}
-                                    />
-                                )}
-                            </div>
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.permission', lang)}</div>
+                            {call.permission!.resolved ? (
+                                <div
+                                    class={`chat-bubble chat-bubble-permission is-resolved chat-permission-${call.permission!.resolved}`}
+                                >
+                                    <span class="chat-permission-resolved-mark" aria-hidden="true">
+                                        {call.permission!.resolved === 'allow' ? '✓' : '✕'}
+                                    </span>
+                                    <span class="chat-permission-resolved-text">
+                                        {t(
+                                            call.permission!.resolved === 'allow'
+                                                ? 'chat.permission.resolved.allow'
+                                                : 'chat.permission.resolved.deny',
+                                            lang
+                                        )}{' '}
+                                        · {call.permission!.toolName}
+                                    </span>
+                                </div>
+                            ) : (
+                                <PermissionActionRow permission={call.permission!} onRespond={onRespondPermission} />
+                            )}
                         </div>
                     )}
 
-                    {/* Output result section */}
-                    <div class="chat-tool-subcard-section">
-                        <div class="chat-tool-section-title">工具返回结果 (Tool Output)</div>
-                        <div class="chat-tool-section-content">
-                            {!hasOutput ? (
-                                <div class="chat-tool-output-pending">正在执行，请稍候...</div>
-                            ) : (
-                                <div class="chat-tool-terminal-box">
-                                    <div class="chat-tool-terminal-header">
-                                        <div class="chat-tool-terminal-dots">
-                                            <span class="dot dot-close"></span>
-                                            <span class="dot dot-minimize"></span>
-                                            <span class="dot dot-expand"></span>
-                                        </div>
-                                        <span class="chat-tool-terminal-title">
-                                            {call.toolName.toLowerCase()} - output.log
-                                        </span>
-                                        <div class="chat-tool-terminal-spacer"></div>
-                                    </div>
-                                    <pre class={`chat-tool-terminal-body ${isError ? 'has-error' : ''}`}>
-                                        {call.output || '（执行完成，无返回内容）'}
-                                    </pre>
-                                </div>
-                            )}
-                        </div>
+                    {/* Output */}
+                    <div class="chat-tool-section">
+                        <div class="chat-tool-section-title">{t('chat.tool.output', lang)}</div>
+                        {!hasOutput ? (
+                            <div class="chat-tool-muted">
+                                {status === 'running'
+                                    ? t('chat.tool.outputPending', lang)
+                                    : t('chat.tool.outputMissing', lang)}
+                            </div>
+                        ) : call.output ? (
+                            <pre class={`chat-tool-pre chat-tool-output ${call.isError ? 'has-error' : ''}`}>
+                                {call.output}
+                            </pre>
+                        ) : (
+                            <div class="chat-tool-muted">{t('chat.tool.outputEmpty', lang)}</div>
+                        )}
                     </div>
                 </div>
             )}
@@ -460,14 +554,18 @@ function GroupedToolCallItem({
     );
 }
 
-function pickString(args: Record<string, unknown>, keys: string[]): string | undefined {
-    for (const key of keys) {
-        const value = args[key];
-        if (typeof value === 'string' && value.length > 0) {
-            return value;
-        }
+function ArgValue({ value }: { value: unknown }) {
+    if (value === null || value === undefined) {
+        return <span class="chat-tool-arg-empty">{value === null ? 'null' : 'undefined'}</span>;
     }
-    return undefined;
+    if (typeof value === 'object') {
+        return <pre class="chat-tool-pre">{JSON.stringify(value, null, 2)}</pre>;
+    }
+    const text = String(value);
+    if (text.includes('\n') || text.length > 120) {
+        return <pre class="chat-tool-pre">{text}</pre>;
+    }
+    return <span class="chat-tool-arg-value">{text}</span>;
 }
 
 function PermissionActionRow({
@@ -483,14 +581,11 @@ function PermissionActionRow({
     };
     // Four buttons, ordered left → right by escalation:
     //   deny-always · deny · allow · allow-always
-    // Reuses the same `chat-permission-btn` classes the old standalone
-    // PermissionBubble used, so colours and focus styles are identical.
     return (
         <div class="chat-permission-inline">
             <div class="chat-permission-inline-label">
                 {t('chat.permission.title', lang, { tool: permission.toolName })}
             </div>
-            {permission.input && <pre class="chat-bubble-code">{permission.input}</pre>}
             <div class="chat-permission-actions">
                 <button
                     type="button"

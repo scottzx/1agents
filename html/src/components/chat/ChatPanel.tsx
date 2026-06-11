@@ -52,6 +52,7 @@ function ChatPanelInner({ session }: ChatPanelProps) {
             <MessageList
                 items={items}
                 agentType={session.agentType}
+                typing={typing}
                 emptyHint={connection === 'connecting' ? '正在连接…' : '发送消息开始对话'}
                 loading={showInitLoading}
                 onRespondPermission={respondPermission}
