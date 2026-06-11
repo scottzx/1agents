@@ -64,6 +64,16 @@ type WsMessage struct {
 	Type            string          `json:"type,omitempty"`
 	ResumeSessionID string          `json:"resumeSessionId,omitempty"`
 	AgentSessionID  string          `json:"agentSessionId,omitempty"`
+	// PermissionMode is the per-session policy ("approve-reads" /
+	// "approve-all" / "deny-all"). Two paths use it:
+	//   1. set on the initial ensure_session message so the bridge-server
+	//      can seed activeSessions[sessionId].permissionMode from the
+	//      persisted ChatSessionRecord value.
+	//   2. carried by the set_permission_mode action from the client.
+	// The bridge-server reads the value out of the appropriate WS message;
+	// the Go side only needs to declare the JSON field so it survives the
+	// ReadJSON → WriteJSON round trip in readFromClientLoop.
+	PermissionMode string `json:"permissionMode,omitempty"`
 }
 
 func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePath, taskId, sessionId, agentType, systemContext string, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID string) {
@@ -90,6 +100,14 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		c.mu.Unlock()
 
 		// Send ensure_session again so the bridge-server updates its WS connection
+		// Also reseed permission policy in case the JSON store changed while
+		// the bridge stayed alive across page reloads.
+		var reconnectMode string
+		if chatStore != nil {
+			if rec, ok, err := chatStore.Get(sessionId); err == nil && ok {
+				reconnectMode = rec.PermissionMode
+			}
+		}
 		ensureMsg := WsMessage{
 			Action:          "ensure_session",
 			SessionID:       sessionId,
@@ -98,6 +116,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			AcpSessionID:    acpSessionID,
 			ResumeSessionID: acpSessionID,
 			SystemContext:   systemContext,
+			PermissionMode:  reconnectMode,
 		}
 		bridge.mu.Lock()
 		if bridge.ServerConn != nil {
@@ -138,6 +157,17 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 	c.bridges[sessionId] = bridge
 	c.mu.Unlock()
 
+	// Seed the per-session permission policy from the persisted record so
+	// the bridge-server gates handlePermissionRequestCallback on first
+	// turn — same value the Composer mode toggle later overwrites via
+	// set_permission_mode. Empty string means "use bridge-server default".
+	var initialMode string
+	if chatStore != nil {
+		if rec, ok, err := chatStore.Get(sessionId); err == nil && ok {
+			initialMode = rec.PermissionMode
+		}
+	}
+
 	// 1. Initialize session on bridge-server
 	ensureMsg := WsMessage{
 		Action:          "ensure_session",
@@ -147,6 +177,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		AcpSessionID:    acpSessionID,
 		ResumeSessionID: acpSessionID,
 		SystemContext:   systemContext,
+		PermissionMode:  initialMode,
 	}
 	if err := serverConn.WriteJSON(ensureMsg); err != nil {
 		log.Printf("[acpx_client] Failed to send ensure_session: %v", err)

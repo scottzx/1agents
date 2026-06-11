@@ -147,6 +147,26 @@ export const zhCN: Record<string, string> = {
     'sidebar.sessionStatus.shell': '命令行',
     'sidebar.sessionStatus.none': '未启动 Claude',
 
+    // ── Chat permission bubble & mode toggle (MessageBubble.tsx, Composer.tsx) ──
+    'chat.permission.title': '需要授权 · {tool}',
+    'chat.permission.allow': '允许',
+    'chat.permission.allowAlways': '总是允许',
+    'chat.permission.deny': '拒绝',
+    'chat.permission.denyAlways': '总是拒绝',
+    'chat.permission.resolved.allow': '已允许',
+    'chat.permission.resolved.deny': '已拒绝',
+    'chat.permission.mode.label': '权限模式',
+    'chat.permission.mode.approveReads': '读取放行',
+    'chat.permission.mode.approveAll': '全部放行',
+    'chat.permission.mode.denyAll': '全部拒绝',
+    'chat.permission.mode.tooltip.approveReads': '读类工具自动允许；写/执行类工具弹窗询问',
+    'chat.permission.mode.tooltip.approveAll': '所有工具自动允许（慎用）',
+    'chat.permission.mode.tooltip.denyAll': '所有工具自动拒绝',
+    'chat.composer.placeholder': '输入消息，支持 Markdown，Enter 发送，Shift+Enter 换行',
+    'chat.composer.send': '发送 (Enter)',
+    'chat.composer.stop': '停止',
+    'chat.bubble.error': '错误',
+
     // ── Auth (AccessTokenGate.tsx) ────────────────────────────────────────
     'auth.title': '需要访问令牌',
     'auth.descLine1': '此设备首次从非本地网络访问，请输入您的访问令牌以继续。',
@@ -665,6 +685,26 @@ export const enUS: Record<string, string> = {
     'sidebar.sessionStatus.waiting': 'Waiting for permission...',
     'sidebar.sessionStatus.shell': 'Interactive Shell',
     'sidebar.sessionStatus.none': 'Claude Not Started',
+
+    // ── Chat permission bubble & mode toggle (MessageBubble.tsx, Composer.tsx) ──
+    'chat.permission.title': 'Permission required · {tool}',
+    'chat.permission.allow': 'Allow',
+    'chat.permission.allowAlways': 'Always allow',
+    'chat.permission.deny': 'Deny',
+    'chat.permission.denyAlways': 'Always deny',
+    'chat.permission.resolved.allow': 'Allowed',
+    'chat.permission.resolved.deny': 'Denied',
+    'chat.permission.mode.label': 'Permission mode',
+    'chat.permission.mode.approveReads': 'Allow reads',
+    'chat.permission.mode.approveAll': 'Allow all',
+    'chat.permission.mode.denyAll': 'Deny all',
+    'chat.permission.mode.tooltip.approveReads': 'Read tools auto-allowed; write / execute tools prompt',
+    'chat.permission.mode.tooltip.approveAll': 'Every tool auto-allowed (use with care)',
+    'chat.permission.mode.tooltip.denyAll': 'Every tool auto-denied',
+    'chat.composer.placeholder': 'Type a message. Markdown supported. Enter to send, Shift+Enter for newline.',
+    'chat.composer.send': 'Send (Enter)',
+    'chat.composer.stop': 'Stop',
+    'chat.bubble.error': 'Error',
 
     // ── Auth ─────────────────────────────────────────────────────────────
     'auth.title': 'Access token required',

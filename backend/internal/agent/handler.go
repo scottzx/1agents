@@ -109,6 +109,45 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, rec)
+	case http.MethodPatch:
+		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" }
+		// Used by the Composer's permission-mode toggle. Validates the
+		// enum to keep bad client data out of the JSON store (since the
+		// bridge-server later trusts this string).
+		var body struct {
+			PermissionMode *string `json:"permission_mode,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if body.PermissionMode != nil {
+			mode := *body.PermissionMode
+			if !isValidPermissionMode(mode) {
+				http.Error(w, "permission_mode must be approve-reads, approve-all, or deny-all", http.StatusBadRequest)
+				return
+			}
+			if err := h.store.UpdatePermissionMode(id, mode); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("[agent] update permission_mode %s: %v", id, err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		rec, ok, err := h.store.Get(id)
+		if err != nil {
+			log.Printf("[agent] get %s after patch: %v", id, err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, rec)
 	case http.MethodDelete:
 		if err := h.store.Delete(id); err != nil {
 			if errors.Is(err, ErrNotFound) {
@@ -458,6 +497,18 @@ func indexByte(s string, c byte) int {
 		}
 	}
 	return -1
+}
+
+// isValidPermissionMode mirrors the bridge-server's accepted mode strings.
+// Kept here (not in types.go) because it's only consumed by the PATCH
+// validator above.
+func isValidPermissionMode(mode string) bool {
+	switch mode {
+	case "approve-reads", "approve-all", "deny-all":
+		return true
+	default:
+		return false
+	}
 }
 
 func getProjectSlug(path string) string {

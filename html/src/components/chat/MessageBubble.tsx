@@ -2,7 +2,8 @@ import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { marked } from 'marked';
 import { AgentAvatar } from './AgentAvatar';
-import type { AgentType } from '../types';
+import { t, getLang } from '../../i18n';
+import type { AgentType, PermissionDecision } from '../types';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -45,7 +46,7 @@ interface MessageBubbleProps {
     item: GroupedChatItem;
     agentType?: AgentType;
     isLast: boolean;
-    onRespondPermission?: (requestId: string, allow: boolean) => void;
+    onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }
 
 export function MessageBubble({ item, agentType, isLast, onRespondPermission }: MessageBubbleProps) {
@@ -392,30 +393,69 @@ function PermissionBubble({
     toolName: string;
     input: string;
     resolved?: 'allow' | 'deny';
-    onRespond?: (requestId: string, allow: boolean) => void;
+    onRespond?: (requestId: string, decision: PermissionDecision) => void;
 }) {
+    const lang = getLang();
     // Once the user has responded, collapse the bubble to a single status line
     // so it doesn't keep occupying space while later events stream in.
     if (resolved) {
-        const label = resolved === 'allow' ? '已允许' : '已拒绝';
+        const labelKey = resolved === 'allow' ? 'chat.permission.resolved.allow' : 'chat.permission.resolved.deny';
         return (
             <div class={`chat-bubble chat-bubble-permission is-resolved chat-permission-${resolved}`}>
                 <span class="chat-permission-resolved-mark" aria-hidden="true">
                     {resolved === 'allow' ? '✓' : '✕'}
                 </span>
                 <span class="chat-permission-resolved-text">
-                    {label} · {toolName}
+                    {t(labelKey, lang)} · {toolName}
                 </span>
             </div>
         );
     }
 
+    const respond = (decision: PermissionDecision) => {
+        if (onRespond) onRespond(requestId, decision);
+    };
+
+    // Layout: 4 buttons in a single row, ordered left → right by
+    // escalation:
+    //   deny-always · deny · allow · allow-always
+    // Each carries its own colour + icon so the user reads the action
+    // before the label:
+    //   deny-always  — red shield-X    (permanent block)
+    //   deny         — neutral red X   (one-off block)
+    //   allow        — green check     (one-off grant)
+    //   allow-always — blue shield-✓   (permanent grant)
     return (
         <div class="chat-bubble chat-bubble-permission">
-            <div class="chat-bubble-label">需要授权 · {toolName}</div>
+            <div class="chat-bubble-label">{t('chat.permission.title', lang, { tool: toolName })}</div>
             <pre class="chat-bubble-code">{input}</pre>
             <div class="chat-permission-actions">
-                <button class="chat-permission-btn deny" onClick={() => onRespond && onRespond(requestId, false)}>
+                <button
+                    class="chat-permission-btn deny-always"
+                    onClick={() => respond('reject_always')}
+                    title={t('chat.permission.denyAlways', lang)}
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z" />
+                        <path d="m9 9 6 6m0-6-6 6" />
+                    </svg>
+                    <span class="chat-permission-btn-label">{t('chat.permission.denyAlways', lang)}</span>
+                </button>
+                <button
+                    class="chat-permission-btn deny"
+                    onClick={() => respond('reject_once')}
+                    title={t('chat.permission.deny', lang)}
+                >
                     <svg
                         viewBox="0 0 24 24"
                         width="14"
@@ -429,9 +469,13 @@ function PermissionBubble({
                     >
                         <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
-                    拒绝
+                    <span class="chat-permission-btn-label">{t('chat.permission.deny', lang)}</span>
                 </button>
-                <button class="chat-permission-btn allow" onClick={() => onRespond && onRespond(requestId, true)}>
+                <button
+                    class="chat-permission-btn allow"
+                    onClick={() => respond('allow_once')}
+                    title={t('chat.permission.allow', lang)}
+                >
                     <svg
                         viewBox="0 0 24 24"
                         width="14"
@@ -445,7 +489,28 @@ function PermissionBubble({
                     >
                         <path d="M5 12l5 5L20 7" />
                     </svg>
-                    允许
+                    <span class="chat-permission-btn-label">{t('chat.permission.allow', lang)}</span>
+                </button>
+                <button
+                    class="chat-permission-btn allow-always"
+                    onClick={() => respond('allow_always')}
+                    title={t('chat.permission.allowAlways', lang)}
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z" />
+                        <path d="m9 12 2 2 4-4" />
+                    </svg>
+                    <span class="chat-permission-btn-label">{t('chat.permission.allowAlways', lang)}</span>
                 </button>
             </div>
         </div>
@@ -455,7 +520,7 @@ function PermissionBubble({
 function ErrorBubble({ content }: { content: string }) {
     return (
         <div class="chat-bubble chat-bubble-error">
-            <div class="chat-bubble-label">错误</div>
+            <div class="chat-bubble-label">{t('chat.bubble.error', getLang())}</div>
             <div class="chat-bubble-body">{content}</div>
         </div>
     );

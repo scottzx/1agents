@@ -2,13 +2,13 @@ import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { MessageBubble, GroupedChatItem, GroupedToolCall } from './MessageBubble';
 import type { ChatItem } from './hooks';
-import type { AgentType } from '../types';
+import type { AgentType, PermissionDecision } from '../types';
 
 interface MessageListProps {
     items: ChatItem[];
     agentType?: AgentType;
     emptyHint?: string;
-    onRespondPermission?: (requestId: string, allow: boolean) => void;
+    onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }
 
 function isCallRenderable(call: GroupedToolCall): boolean {

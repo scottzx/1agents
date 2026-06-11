@@ -203,6 +203,28 @@ func (s *Store) UpdateName(id, name string) error {
 	return ErrNotFound
 }
 
+// UpdatePermissionMode persists the per-session permission policy. The
+// bridge-server reads this on ensure_session (and on subsequent
+// set_permission_mode actions from the client) to gate the permission
+// prompt callback. Mode must be one of "approve-reads", "approve-all",
+// "deny-all"; the caller is expected to validate.
+func (s *Store) UpdatePermissionMode(id, mode string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range cfg.Sessions {
+		if cfg.Sessions[i].ID == id {
+			cfg.Sessions[i].PermissionMode = mode
+			return s.saveLocked(cfg)
+		}
+	}
+	return ErrNotFound
+}
+
 // UpdateACP persists the agent-managed session id for a chat record. Used
 // when the bridge-server reports back the agent's session uuid via
 // session_ready, so that subsequent opens can resume the same session

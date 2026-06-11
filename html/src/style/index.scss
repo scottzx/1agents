@@ -2415,17 +2415,22 @@ body {
   /* Inline Permission Bubble */
   .chat-bubble-permission {
     .chat-permission-actions {
+      // 4 buttons in a single row, equal width. Each carries its own
+      // colour + icon so you can read the action by glance, without
+      // parsing the label. Left → right is ordered by escalation:
+      //   deny-always · deny · allow · allow-always
       display: flex;
-      gap: 8px;
+      gap: 6px;
       margin-top: 8px;
 
       .chat-permission-btn {
-        flex: 1;
+        flex: 1 1 0;
+        min-width: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        padding: 7px 12px;
+        gap: 5px;
+        padding: 7px 8px;
         font-size: 12.5px;
         font-weight: 600;
         border-radius: 6px;
@@ -2434,10 +2439,18 @@ body {
         transition: background-color 0.15s, border-color 0.15s, color 0.15s,
           box-shadow 0.15s, transform 0.05s;
 
-        // The svg icons rendered alongside the label inherit the button's
-        // currentColor so they re-tint automatically per state.
+        // Icons inherit currentColor so the tint follows the button state.
         svg {
           flex-shrink: 0;
+        }
+
+        // Labels truncate with ellipsis when the bubble is narrow rather
+        // than wrapping into two lines (which would break the 4-column
+        // alignment).
+        .chat-permission-btn-label {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         &:focus-visible {
@@ -2449,27 +2462,44 @@ body {
           transform: translateY(1px);
         }
 
-        // Neutral by default; on hover, shift toward danger red so the
-        // semantic intent ("block this tool call") becomes obvious without
-        // making the resting state shout.
-        &.deny {
-          background-color: var(--bg-card);
-          color: var(--text-main);
+        // ── Four-colour palette ─────────────────────────────────────
+        //   deny-always  red (filled)     — permanent block, danger
+        //   deny         red (outline)    — one-off block, less weight
+        //   allow        green (filled)   — primary affirmative
+        //   allow-always blue (filled)    — permanent grant, "trust"
+        // Filled = "this commits to something"; outlined = "single shot".
+
+        &.deny-always {
+          background-color: #cf222e;
+          color: #fff;
+          border-color: #cf222e;
 
           &:hover {
-            background-color: rgba(207, 34, 46, 0.08);
-            border-color: #cf222e;
-            color: #cf222e;
+            background-color: #a40e26;
+            border-color: #a40e26;
           }
 
           &:active {
-            background-color: rgba(207, 34, 46, 0.14);
+            background-color: #8a0a1f;
+            border-color: #8a0a1f;
           }
         }
 
-        // GitHub-style "success green" — distinct from the accent blue used
-        // for neutral primary actions elsewhere, so granting tool access
-        // reads as a deliberate "allow" rather than a generic confirm.
+        &.deny {
+          background-color: var(--bg-card);
+          color: #cf222e;
+          border-color: rgba(207, 34, 46, 0.45);
+
+          &:hover {
+            background-color: rgba(207, 34, 46, 0.1);
+            border-color: #cf222e;
+          }
+
+          &:active {
+            background-color: rgba(207, 34, 46, 0.18);
+          }
+        }
+
         &.allow {
           background-color: #1f883d;
           color: #fff;
@@ -2486,16 +2516,40 @@ body {
           }
         }
 
-        // Brighter green / red on dark backgrounds to match GitHub Dark and
-        // keep visual weight equal to the light variant.
-        [data-theme="dark"] & {
-          &.deny:hover {
-            background-color: rgba(248, 81, 73, 0.12);
-            border-color: #f85149;
-            color: #f85149;
+        &.allow-always {
+          background-color: #0969da;
+          color: #fff;
+          border-color: #0969da;
+
+          &:hover {
+            background-color: #0860c7;
+            border-color: #0860c7;
           }
-          &.deny:active {
-            background-color: rgba(248, 81, 73, 0.2);
+
+          &:active {
+            background-color: #074fa0;
+            border-color: #074fa0;
+          }
+        }
+
+        // Brighter equivalents on dark backgrounds (GitHub Dark palette)
+        // so each button keeps the same perceived weight as light mode.
+        [data-theme="dark"] & {
+          &.deny-always {
+            background-color: #da3633;
+            border-color: #da3633;
+          }
+          &.deny-always:hover {
+            background-color: #f85149;
+            border-color: #f85149;
+          }
+          &.deny {
+            color: #f85149;
+            border-color: rgba(248, 81, 73, 0.45);
+          }
+          &.deny:hover {
+            background-color: rgba(248, 81, 73, 0.14);
+            border-color: #f85149;
           }
           &.allow {
             background-color: #238636;
@@ -2505,9 +2559,13 @@ body {
             background-color: #2ea043;
             border-color: #2ea043;
           }
-          &.allow:active {
-            background-color: #196c2e;
-            border-color: #196c2e;
+          &.allow-always {
+            background-color: #1f6feb;
+            border-color: #1f6feb;
+          }
+          &.allow-always:hover {
+            background-color: #388bfd;
+            border-color: #388bfd;
           }
         }
       }
@@ -2530,23 +2588,6 @@ body {
         background-color: #ffebe9;
         color: #cf222e;
       }
-    }
-  }
-
-  /* Chat Composer Stop Button */
-  .chat-composer-stop {
-    padding: 0 16px;
-    background-color: #cf222e;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s;
-
-    &:hover {
-      background-color: #a40e26;
     }
   }
 
@@ -7401,45 +7442,160 @@ body {
 // Composer
 .chat-composer {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border-color, #e5e7eb);
   background: var(--bg-panel, #fff);
 }
 
-.chat-composer-input {
+// Outer frame that draws the rounded border once, with the textarea and
+// toolbar stacked inside. Modeled after the terminal's
+// .panel-textarea-wrapper so chat and terminal feel like one product.
+.chat-composer-frame {
   flex: 1;
-  resize: none;
+  min-width: 0;
+  position: relative;
   border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 8px;
-  padding: 8px 12px;
+  background: var(--bg-input, #fff);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &:focus-within {
+    border-color: var(--accent-color, #0969da);
+    box-shadow: 0 0 0 3px var(--badge-glow, rgba(9, 105, 218, 0.18));
+  }
+}
+
+.chat-composer-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  padding: 10px 12px 4px 12px;
   font-size: 14px;
   font-family: inherit;
   line-height: 1.5;
-  background: var(--bg-input, #fff);
   color: var(--text-primary, #1f2328);
-  outline: none;
   max-height: 320px;
   // Make long pastes and markdown wrap inside the composer, not overflow.
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: anywhere;
-}
-.chat-composer-input:focus { border-color: var(--accent-color, #0969da); }
-.chat-composer-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.chat-composer-send {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent-color, #0969da);
-  color: #fff;
-  font-size: 14px;
-  cursor: pointer;
-  flex-shrink: 0;
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
-.chat-composer-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+// Bottom row inside the frame: mode toggle on the left, send/stop on
+// the right. Keeps the entire affordance visually owned by the input.
+.chat-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px 6px;
+  min-height: 32px;
+}
+
+.chat-composer-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 13px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg-card, #f6f8fa);
+  color: var(--text-secondary, #57606a);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    background: var(--bg-hover, #eef1f4);
+  }
+
+  // Each mode picks up its own colour so the active state is glanceable
+  // without reading the label.
+  &[data-mode="approve-reads"] {
+    border-color: rgba(31, 136, 61, 0.45);
+    color: #1f883d;
+  }
+  &[data-mode="approve-all"] {
+    border-color: rgba(191, 135, 0, 0.55);
+    color: #9a6700;
+    background: rgba(255, 212, 0, 0.12);
+  }
+  &[data-mode="deny-all"] {
+    border-color: rgba(207, 34, 46, 0.55);
+    color: #cf222e;
+    background: rgba(207, 34, 46, 0.08);
+  }
+}
+
+// Inline 28×28 icon buttons in the bottom-right corner. Style mirrors
+// .panel-send-inline-btn so the visual language is the same as the
+// terminal's mobile input.
+.chat-composer-send-inline,
+.chat-composer-stop-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.05s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    pointer-events: none;
+  }
+
+  &:hover {
+    opacity: 0.9;
+  }
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.chat-composer-send-inline {
+  background-color: var(--accent-color, #0969da);
+  color: #fff;
+
+  &:disabled {
+    background-color: transparent;
+    color: var(--text-muted, #8c959f);
+    cursor: not-allowed;
+    opacity: 0.5;
+    transform: none;
+  }
+}
+
+.chat-composer-stop-inline {
+  background-color: #cf222e;
+  color: #fff;
+
+  &:hover {
+    background-color: #a40e26;
+    opacity: 1;
+  }
+}
 
 // Permission modal
 .perm-overlay {

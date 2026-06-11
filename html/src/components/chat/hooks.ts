@@ -5,7 +5,7 @@
 // permission requests, errors). The ChatPanel renders that stream.
 
 import { useEffect, useState, useCallback } from 'preact/hooks';
-import type { ChatSession } from '../types';
+import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 
 export interface ToolCallInfo {
     id?: string;
@@ -72,9 +72,11 @@ interface UseBridgeState {
     items: ChatItem[];
     connection: ConnectionState;
     typing: boolean;
+    permissionMode: PermissionMode;
     send: (content: string) => void;
     cancel: () => void;
-    respondPermission: (requestId: string, allow: boolean) => void;
+    respondPermission: (requestId: string, decision: PermissionDecision) => void;
+    setPermissionMode: (mode: PermissionMode) => void;
 }
 
 export interface SessionBridgeState {
@@ -84,7 +86,11 @@ export interface SessionBridgeState {
     ws: WebSocket | null;
     listeners: Set<() => void>;
     turnStarted: boolean;
+    /** Per-session permission policy mirrored from the backend record. */
+    permissionMode: PermissionMode;
 }
+
+const DEFAULT_PERMISSION_MODE: PermissionMode = 'approve-reads';
 
 export class ChatBridgeManager {
     private sessions = new Map<string, SessionBridgeState>();
@@ -99,9 +105,15 @@ export class ChatBridgeManager {
                 ws: null,
                 listeners: new Set(),
                 turnStarted: false,
+                permissionMode: session.permissionMode ?? DEFAULT_PERMISSION_MODE,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
+            // The ChatSession passed in may be stale w.r.t. the backend
+            // ChatSessionRecord (the sidebar list endpoint elides the
+            // permission_mode field on older builds). Re-fetch the full
+            // record so the Composer toggle starts in the right state.
+            this.refreshPermissionMode(session, state);
         }
         return state;
     }
@@ -139,10 +151,7 @@ export class ChatBridgeManager {
             if (items.length === 0) return;
             const last = items[items.length - 1];
             if (last && last.kind === 'assistant_text' && last.streaming) {
-                state.items = [
-                    ...items.slice(0, -1),
-                    { ...last, streaming: false },
-                ];
+                state.items = [...items.slice(0, -1), { ...last, streaming: false }];
             }
         };
 
@@ -260,9 +269,7 @@ export class ChatBridgeManager {
                             next[next.length - 1] = {
                                 ...last,
                                 calls: last.calls.map((c, idx) =>
-                                    idx === existingIdx
-                                        ? { ...c, toolName: newCall.toolName, input: newCall.input }
-                                        : c
+                                    idx === existingIdx ? { ...c, toolName: newCall.toolName, input: newCall.input } : c
                                 ),
                             };
                         } else {
@@ -301,9 +308,7 @@ export class ChatBridgeManager {
                         const item = items[i];
                         if (item.kind !== 'tool_use') continue;
                         if (payload.toolCallId) {
-                            const callIdx = item.calls.findIndex(
-                                c => c.toolCallId === payload.toolCallId
-                            );
+                            const callIdx = item.calls.findIndex(c => c.toolCallId === payload.toolCallId);
                             if (callIdx >= 0) {
                                 items[i] = {
                                     ...item,
@@ -512,7 +517,7 @@ export class ChatBridgeManager {
         this.notify(state);
     }
 
-    respondPermission(session: ChatSession, requestId: string, allow: boolean) {
+    respondPermission(session: ChatSession, requestId: string, decision: PermissionDecision) {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
         state.ws.send(
@@ -520,13 +525,68 @@ export class ChatBridgeManager {
                 action: 'respond_permission',
                 sessionId: session.id,
                 requestId,
-                behavior: allow ? 'allow' : 'deny',
+                behavior: decision,
             })
         );
-        state.items = state.items.map(it =>
-            it.kind === 'permission' && it.requestId === requestId ? { ...it, resolved: allow ? 'allow' : 'deny' } : it
-        );
+        // `cancel` leaves the bubble interactive so the user can re-decide
+        // (the runtime will time the request out on its own if nothing
+        // else happens). The four real decisions collapse the bubble
+        // into a one-line summary keyed on the allow/deny side.
+        const resolved: 'allow' | 'deny' | null =
+            decision === 'allow_once' || decision === 'allow_always'
+                ? 'allow'
+                : decision === 'reject_once' || decision === 'reject_always'
+                  ? 'deny'
+                  : null;
+        if (resolved) {
+            state.items = state.items.map(it =>
+                it.kind === 'permission' && it.requestId === requestId ? { ...it, resolved } : it
+            );
+            this.notify(state);
+        }
+    }
+
+    setPermissionMode(session: ChatSession, mode: PermissionMode) {
+        const state = this.sessions.get(session.id);
+        if (!state) return;
+        if (state.permissionMode === mode) return;
+        state.permissionMode = mode;
         this.notify(state);
+        // Notify the bridge-server immediately so the gate flips before
+        // the next permission request; persist via the REST endpoint so
+        // it survives reloads. Both calls are fire-and-forget — if PATCH
+        // fails the local toggle still reflects the user intent for the
+        // current process lifetime.
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(
+                JSON.stringify({
+                    action: 'set_permission_mode',
+                    sessionId: session.id,
+                    mode,
+                })
+            );
+        }
+        void fetch(`/api/agent/sessions/${encodeURIComponent(session.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permission_mode: mode }),
+        }).catch(err => {
+            console.warn('[useBridgeManager] PATCH permission_mode failed:', err);
+        });
+    }
+
+    private async refreshPermissionMode(session: ChatSession, state: SessionBridgeState) {
+        try {
+            const res = await fetch(`/api/agent/sessions/${encodeURIComponent(session.id)}`);
+            if (!res.ok) return;
+            const rec = (await res.json()) as { permission_mode?: PermissionMode };
+            if (rec.permission_mode && rec.permission_mode !== state.permissionMode) {
+                state.permissionMode = rec.permission_mode;
+                this.notify(state);
+            }
+        } catch (err) {
+            console.warn('[useBridgeManager] fetch permission_mode failed:', err);
+        }
     }
 
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {
@@ -573,6 +633,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const items = state ? state.items : seed;
     const connection = state ? state.connection : 'idle';
     const typing = state ? state.typing : false;
+    const permissionMode = state ? state.permissionMode : DEFAULT_PERMISSION_MODE;
 
     const send = useCallback(
         (content: string) => {
@@ -588,14 +649,22 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     }, [session]);
 
     const respondPermission = useCallback(
-        (requestId: string, allow: boolean) => {
+        (requestId: string, decision: PermissionDecision) => {
             if (!session) return;
-            globalBridgeManager.respondPermission(session, requestId, allow);
+            globalBridgeManager.respondPermission(session, requestId, decision);
         },
         [session]
     );
 
-    return { items, connection, typing, send, cancel, respondPermission };
+    const setPermissionMode = useCallback(
+        (mode: PermissionMode) => {
+            if (!session) return;
+            globalBridgeManager.setPermissionMode(session, mode);
+        },
+        [session]
+    );
+
+    return { items, connection, typing, permissionMode, send, cancel, respondPermission, setPermissionMode };
 }
 
 function cryptoId(): string {

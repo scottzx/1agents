@@ -65,6 +65,12 @@ type ChatSessionRecord struct {
 	SessionKey   string    `json:"session_key"`
 	CreatedAt    time.Time `json:"created_at"`
 	LastEventAt  time.Time `json:"last_event_at,omitempty"`
+	// PermissionMode is the per-session permission policy forwarded to the
+	// bridge-server (which gates handlePermissionRequestCallback). One of
+	// "approve-reads" (default; auto-allow reads, prompt otherwise),
+	// "approve-all", "deny-all". Empty value means "use the bridge-server's
+	// global default".
+	PermissionMode string `json:"permission_mode,omitempty"`
 }
 
 // IndexRequest is the body of POST /api/agent/sessions.
