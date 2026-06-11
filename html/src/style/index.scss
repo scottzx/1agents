@@ -1257,8 +1257,19 @@ body {
 
 /* ==========================================================================
    WORKSPACE MAIN CONTENT AREA (Occupying right part of the viewport)
+
+   The .workspace-main-content stacks three layers in z-order:
+     - .kanban-background-layer  (z-index 0, absolute, always mounted) —
+       the project task kanban. Always present so tab switches don't flash
+       a white background.
+     - .workspace-header         (z-index 2, in normal flow) — for 'tasks'
+       and 'terminal' only.
+     - .workspace-body-container (z-index 1, in normal flow) — sits below
+       the header. Omitted when activeTabId === 'tasks', so the kanban
+       shows through; covers the kanban for 'terminal' and dynamic tabs.
    ========================================================================== */
 .workspace-main-content {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1267,19 +1278,32 @@ body {
   background-color: var(--bg-page);
 }
 
+.kanban-background-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background-color: var(--bg-panel);
+  padding: 12px 16px;
+  min-height: 0;
+}
+
 /* ==========================================================================
    COZE INTEGRATED PAGE HEADER (Replaces top global header)
    ========================================================================== */
 .workspace-header {
   position: relative;
   height: 48px;
+  flex-shrink: 0;
   background-color: var(--bg-header);
   border-bottom: 1px solid var(--border-color);
   padding: 0 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  z-index: 8;
+  z-index: 2;
   transition: background-color 0.3s ease, border-color 0.3s ease;
 
   .header-left {
@@ -1618,14 +1642,50 @@ body {
 }
 
 /* ==========================================================================
-   WORKSPACE BODY (Flex container below header)
+   WORKSPACE BODY (Flex container below header, on top of kanban layer)
    ========================================================================== */
 .workspace-body-container {
+  position: relative;
   display: flex;
   flex: 1;
+  min-height: 0;
   width: 100%;
-  height: calc(100vh - 48px);
   overflow: hidden;
+  z-index: 1;
+  background-color: var(--bg-page);
+}
+
+/* ==========================================================================
+   TASK KANBAN (lives inside .kanban-background-layer)
+   ========================================================================== */
+.task-dashboard-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+}
+
+.task-dashboard-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.create-task-btn-toggle {
+  /* intentionally minimal — concrete look lives in component-level styles
+     if/when the design system defines one. */
+  cursor: pointer;
+}
+
+.task-list-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ==========================================================================

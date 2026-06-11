@@ -53,8 +53,11 @@ export {
 } from './terminal/terminalConfig';
 
 export interface Tab {
-    id: string; // 'terminal', 'preview-[path]', 'browser-[timestamp]'
+    id: string; // 'tasks', 'terminal', 'preview-[path]', 'browser-[timestamp]'
     title: string;
+    // 'tasks' is the project landing / kanban background sentinel. It is
+    // fixed at the front of the tab bar, non-closable, and renders no
+    // overlay (the kanban lives in DesktopAppLayout's background layer).
     type: 'terminal' | 'preview' | 'browser' | 'tasks';
     path?: string;
     url?: string;
@@ -235,11 +238,17 @@ export class App extends Component<{}, AppState> {
             accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
             hasLoadedWorkspaces: false,
+            // Tab order: 'tasks' is the project landing (fixed first, non-closable).
+            // 'terminal' is the second non-closable default overlay. Dynamic
+            // preview/browser tabs are appended on demand.
             tabs: [
-                { id: 'terminal', title: t('app.tab.workbench', initialLang), type: 'terminal', closable: false },
                 { id: 'tasks', title: t('app.tab.tasks', initialLang), type: 'tasks', closable: false },
+                { id: 'terminal', title: t('app.tab.workbench', initialLang), type: 'terminal', closable: false },
             ],
-            activeTabId: 'terminal',
+            // 'tasks' is the "no overlay" sentinel — the kanban background layer
+            // is always mounted in DesktopAppLayout, so this lands on the
+            // project's task kanban by default.
+            activeTabId: 'tasks',
             activeModulePath: '',
             moduleManifests: {},
             activeSettingsCategory: SETTINGS_DEFAULT_CATEGORY,
@@ -1019,7 +1028,7 @@ export class App extends Component<{}, AppState> {
         const { activeWorkspaceId, terminalWindows } = this.state;
         if (ws.id === activeWorkspaceId) return;
 
-        this.setState({ activeWorkspaceId: ws.id }, () => {
+        this.setState({ activeWorkspaceId: ws.id, activeTabId: 'tasks' }, () => {
             this.loadCcConnectUrl(ws.id);
             this.loadCcProvidersUrl(ws.id);
             this.loadChatSessions(ws.id);
@@ -1324,8 +1333,11 @@ export class App extends Component<{}, AppState> {
         let nextActiveId = activeTabId;
 
         if (activeTabId === tabId) {
+            // When the active overlay tab is closed, fall back to the project
+            // landing ('tasks') — the kanban is always mounted underneath, so
+            // this shows the background instead of an empty pane.
             const nextActiveTab = nextTabs[index - 1] || nextTabs[index] || nextTabs[0];
-            nextActiveId = nextActiveTab ? nextActiveTab.id : 'terminal';
+            nextActiveId = nextActiveTab ? nextActiveTab.id : 'tasks';
         }
 
         this.setState({ tabs: nextTabs }, () => {

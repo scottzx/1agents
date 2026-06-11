@@ -71,11 +71,7 @@ export function MessageBubble({ item, agentType, isLast, onRespondPermission, on
             return <ThinkingBubble content={item.content} isLast={isLast} />;
         case 'tool_group':
             return (
-                <ToolGroupBubble
-                    calls={item.calls}
-                    pending={item.pending}
-                    onRespondPermission={onRespondPermission}
-                />
+                <ToolGroupBubble calls={item.calls} pending={item.pending} onRespondPermission={onRespondPermission} />
             );
         case 'error':
             return <ErrorBubble content={item.content} />;

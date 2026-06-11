@@ -156,7 +156,6 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
         } else if (item.kind === 'permission_request') {
             const callId = item.toolCallId;
             let matchedCall: GroupedToolCall | null = null;
-            let matchedGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
 
             if (callId) {
                 for (let i = grouped.length - 1; i >= 0; i--) {
@@ -165,7 +164,6 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         const c = g.calls.find(call => call.toolCallId === callId);
                         if (c) {
                             matchedCall = c;
-                            matchedGroup = g;
                             break;
                         }
                     }

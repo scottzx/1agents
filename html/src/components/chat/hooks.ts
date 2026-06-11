@@ -928,13 +928,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     // "待分配" tool_group when no matching tool_use exists. Once
     // history is reloaded the pools are cleared (see
     // `history_response`) and this list collapses back to state.items.
-    const items = state
-        ? [
-              ...state.items,
-              ...state.pendingResults,
-              ...state.pendingPermissions,
-          ]
-        : seed;
+    const items = state ? [...state.items, ...state.pendingResults, ...state.pendingPermissions] : seed;
     const connection = state ? state.connection : 'idle';
     const typing = state ? state.typing : false;
     // `ready` is only meaningful once a `SessionBridgeState` exists; for
@@ -1035,7 +1029,7 @@ function parseCreatedAt(value: string | undefined): number {
 function tryAssignPending(state: SessionBridgeState): void {
     if (state.pendingResults.length === 0 && state.pendingPermissions.length === 0) return;
     let items = state.items;
-    let nextResults: ChatItem[] = [];
+    const nextResults: ChatItem[] = [];
     for (const p of state.pendingResults) {
         if (p.kind !== 'tool_result') {
             nextResults.push(p);
@@ -1055,9 +1049,7 @@ function tryAssignPending(state: SessionBridgeState): void {
                     : {
                           ...entry,
                           calls: entry.calls.map((c, k) =>
-                              k !== callIdx
-                                  ? c
-                                  : { ...c, output: p.content, isError: p.isError }
+                              k !== callIdx ? c : { ...c, output: p.content, isError: p.isError }
                           ),
                       }
             );
@@ -1066,7 +1058,7 @@ function tryAssignPending(state: SessionBridgeState): void {
         }
         if (!matched) nextResults.push(p);
     }
-    let nextPermissions: ChatItem[] = [];
+    const nextPermissions: ChatItem[] = [];
     for (const p of state.pendingPermissions) {
         if (p.kind !== 'permission_request') {
             nextPermissions.push(p);
@@ -1076,9 +1068,7 @@ function tryAssignPending(state: SessionBridgeState): void {
         for (let i = items.length - 1; i >= 0; i--) {
             const it = items[i];
             if (it.kind !== 'tool_use') continue;
-            const callIdx = p.toolCallId
-                ? it.calls.findIndex(c => c.toolCallId === p.toolCallId)
-                : -1;
+            const callIdx = p.toolCallId ? it.calls.findIndex(c => c.toolCallId === p.toolCallId) : -1;
             if (callIdx < 0) continue;
             const newPermission = {
                 requestId: p.requestId,
@@ -1092,11 +1082,7 @@ function tryAssignPending(state: SessionBridgeState): void {
                     ? entry
                     : {
                           ...entry,
-                          calls: entry.calls.map((c, k) =>
-                              k !== callIdx
-                                  ? c
-                                  : { ...c, permission: newPermission }
-                          ),
+                          calls: entry.calls.map((c, k) => (k !== callIdx ? c : { ...c, permission: newPermission })),
                       }
             );
             matched = true;
