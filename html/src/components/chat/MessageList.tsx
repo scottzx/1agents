@@ -17,6 +17,12 @@ interface MessageListProps {
     loading?: boolean;
     loadingHint?: string;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
+    /**
+     * Per-queue-prompt cancel. Wired to the X button on queued user
+     * bubbles — distinct from the global "stop the current turn" cancel
+     * which only stops `activeTurn` and leaves the queue running.
+     */
+    onCancelQueued?: (queueRequestId: string) => void;
 }
 
 function isCallRenderable(call: GroupedToolCall): boolean {
@@ -46,11 +52,19 @@ function isCallRenderable(call: GroupedToolCall): boolean {
 
 function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     const grouped: GroupedChatItem[] = [];
+    // Calls assembled from tool_result / permission_request items
+    // that didn't find a matching tool_use yet. They get folded into
+    // a single "待分配" tool_group at the end of the stream so the
+    // user still sees the data instead of having it silently dropped.
+    const pendingCalls: GroupedToolCall[] = [];
 
     for (const item of items) {
         if (item.kind === 'tool_use') {
             let lastGroup = grouped[grouped.length - 1];
-            if (!lastGroup || lastGroup.kind !== 'tool_group') {
+            if (!lastGroup || lastGroup.kind !== 'tool_group' || lastGroup.pending) {
+                // Don't fold new tool_use items into the pending group
+                // — it only collects orphan results / permission
+                // requests waiting to be matched. Start a fresh group.
                 lastGroup = {
                     id: `group-${item.id}`,
                     kind: 'tool_group',
@@ -84,13 +98,16 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
         } else if (item.kind === 'tool_result') {
             const callId = item.toolCallId;
             let matchedCall: GroupedToolCall | null = null;
-            let matchedGroup: GroupedChatItem | null = null;
+            let matchedGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
 
-            // Search backward for the most recent group that contains this callId
+            // Search backward for the most recent non-pending group
+            // that contains this callId. The pending group is skipped
+            // — it's just a holding pen for unmatched entries, not a
+            // legitimate target for new attachments.
             if (callId) {
                 for (let i = grouped.length - 1; i >= 0; i--) {
                     const g = grouped[i];
-                    if (g.kind === 'tool_group') {
+                    if (g.kind === 'tool_group' && !g.pending) {
                         const c = g.calls.find(call => call.toolCallId === callId);
                         if (c) {
                             matchedCall = c;
@@ -101,15 +118,18 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 }
             }
 
-            // Fallback: if not found by callId, check the latest tool_group
+            // Fallback: if not found by callId, attach to the most
+            // recent non-pending group's last call (mirrors realtime
+            // tool_result's reverse-scan fallback).
             if (!matchedCall) {
                 for (let i = grouped.length - 1; i >= 0; i--) {
-                    if (grouped[i].kind === 'tool_group') {
-                        matchedGroup = grouped[i];
+                    const g = grouped[i];
+                    if (g.kind === 'tool_group' && !g.pending) {
+                        matchedGroup = g;
                         break;
                     }
                 }
-                if (matchedGroup && matchedGroup.kind === 'tool_group' && matchedGroup.calls.length > 0) {
+                if (matchedGroup && matchedGroup.calls.length > 0) {
                     matchedCall = matchedGroup.calls.find(c => c.output === undefined) || null;
                     if (!matchedCall) {
                         matchedCall = matchedGroup.calls[matchedGroup.calls.length - 1];
@@ -117,34 +137,79 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 }
             }
 
-            if (matchedCall && matchedGroup && matchedGroup.kind === 'tool_group') {
+            if (matchedCall) {
                 matchedCall.output = item.content;
                 matchedCall.isError = item.isError;
             } else {
-                let targetGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
-                if (matchedGroup && matchedGroup.kind === 'tool_group') {
-                    targetGroup = matchedGroup;
-                } else {
-                    targetGroup = {
-                        id: `group-${item.id}`,
-                        kind: 'tool_group',
-                        calls: [],
-                        createdAt: item.createdAt,
-                    };
-                    grouped.push(targetGroup);
-                }
-                targetGroup.calls.push({
-                    id: `call-${callId || Math.random()}`,
+                // No tool_use matched — park the result in the
+                // pending pool. A later tool_use with the right
+                // toolCallId (or a history reload) will attach it.
+                pendingCalls.push({
+                    id: `pending-result-${item.id}`,
                     toolCallId: callId,
-                    toolName: 'tool',
+                    toolName: item.toolName || 'tool',
                     input: '',
                     output: item.content,
                     isError: item.isError,
                 });
             }
+        } else if (item.kind === 'permission_request') {
+            const callId = item.toolCallId;
+            let matchedCall: GroupedToolCall | null = null;
+            let matchedGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
+
+            if (callId) {
+                for (let i = grouped.length - 1; i >= 0; i--) {
+                    const g = grouped[i];
+                    if (g.kind === 'tool_group' && !g.pending) {
+                        const c = g.calls.find(call => call.toolCallId === callId);
+                        if (c) {
+                            matchedCall = c;
+                            matchedGroup = g;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (matchedCall) {
+                matchedCall.permission = {
+                    requestId: item.requestId,
+                    toolName: item.toolName,
+                    input: item.input,
+                    options: item.options,
+                    ...(item.resolved ? { resolved: item.resolved } : {}),
+                };
+            } else {
+                pendingCalls.push({
+                    id: `pending-permission-${item.id}`,
+                    toolCallId: callId,
+                    toolName: item.toolName,
+                    input: '',
+                    output: undefined,
+                    isError: undefined,
+                    permission: {
+                        requestId: item.requestId,
+                        toolName: item.toolName,
+                        input: item.input,
+                        options: item.options,
+                        ...(item.resolved ? { resolved: item.resolved } : {}),
+                    },
+                });
+            }
         } else {
             grouped.push(item as GroupedChatItem);
         }
+    }
+
+    if (pendingCalls.length > 0) {
+        grouped.push({
+            id: 'pending-group',
+            kind: 'tool_group',
+            calls: pendingCalls,
+            createdAt: Date.now(),
+            pending: true,
+        });
     }
 
     return grouped;
@@ -157,6 +222,7 @@ export function MessageList({
     loading,
     loadingHint,
     onRespondPermission,
+    onCancelQueued,
 }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -219,6 +285,7 @@ export function MessageList({
                     agentType={agentType}
                     isLast={index === groupedItems.length - 1}
                     onRespondPermission={onRespondPermission}
+                    onCancelQueued={onCancelQueued}
                 />
             ))}
         </div>

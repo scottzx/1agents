@@ -21,8 +21,18 @@ export class ChatPanel extends Component<ChatPanelProps> {
  * symmetry with the rest of the codebase.
  */
 function ChatPanelInner({ session }: ChatPanelProps) {
-    const { items, connection, typing, ready, permissionMode, send, cancel, respondPermission, setPermissionMode } =
-        useBridge(session);
+    const {
+        items,
+        connection,
+        typing,
+        ready,
+        permissionMode,
+        send,
+        cancel,
+        cancelQueued,
+        respondPermission,
+        setPermissionMode,
+    } = useBridge(session);
 
     // The composer is only usable once BOTH the WS handshake finished
     // AND the bridge has confirmed the session is initialized. The
@@ -45,6 +55,7 @@ function ChatPanelInner({ session }: ChatPanelProps) {
                 emptyHint={connection === 'connecting' ? '正在连接…' : '发送消息开始对话'}
                 loading={showInitLoading}
                 onRespondPermission={respondPermission}
+                onCancelQueued={cancelQueued}
             />
             <Composer
                 onSend={send}

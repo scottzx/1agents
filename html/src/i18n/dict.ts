@@ -164,8 +164,11 @@ export const zhCN: Record<string, string> = {
     'chat.permission.mode.tooltip.denyAll': '所有工具自动拒绝',
     'chat.composer.placeholder': '输入消息，支持 Markdown，Enter 发送，Shift+Enter 换行',
     'chat.composer.send': '发送 (Enter)',
-    'chat.composer.stop': '停止',
+    'chat.composer.stop': '终止对话',
     'chat.bubble.error': '错误',
+    'chat.queue.queued': '排队中…',
+    'chat.queue.cancelAria': '从队列中移除该提示词',
+    'chat.queue.cancelTitle': '仅取消这一条，不影响当前正在执行的提示词',
 
     // ── Auth (AccessTokenGate.tsx) ────────────────────────────────────────
     'auth.title': '需要访问令牌',
@@ -703,8 +706,11 @@ export const enUS: Record<string, string> = {
     'chat.permission.mode.tooltip.denyAll': 'Every tool auto-denied',
     'chat.composer.placeholder': 'Type a message. Markdown supported. Enter to send, Shift+Enter for newline.',
     'chat.composer.send': 'Send (Enter)',
-    'chat.composer.stop': 'Stop',
+    'chat.composer.stop': 'Terminate session',
     'chat.bubble.error': 'Error',
+    'chat.queue.queued': 'Queued…',
+    'chat.queue.cancelAria': 'Remove this prompt from the queue',
+    'chat.queue.cancelTitle': 'Cancel just this queued prompt; the running turn is unaffected',
 
     // ── Auth ─────────────────────────────────────────────────────────────
     'auth.title': 'Access token required',

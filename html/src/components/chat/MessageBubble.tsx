@@ -29,7 +29,7 @@ export interface GroupedToolCall {
 }
 
 export type GroupedChatItem =
-    | { id: string; kind: 'user'; content: string; createdAt: number }
+    | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
     | { id: string; kind: 'thinking'; content: string; createdAt: number }
     | {
@@ -37,6 +37,12 @@ export type GroupedChatItem =
           kind: 'tool_group';
           calls: GroupedToolCall[];
           createdAt: number;
+          // True for groups assembled from the realtime pending pool
+          // (tool_result / permission_request without a matching
+          // tool_use yet). The renderer labels these "待分配" so the
+          // user can tell they're waiting for the runtime to pair
+          // them with the actual call.
+          pending?: boolean;
       }
     | { id: string; kind: 'error'; content: string; createdAt: number };
 
@@ -45,27 +51,68 @@ interface MessageBubbleProps {
     agentType?: AgentType;
     isLast: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
+    onCancelQueued?: (queueRequestId: string) => void;
 }
 
-export function MessageBubble({ item, agentType, isLast, onRespondPermission }: MessageBubbleProps) {
+export function MessageBubble({ item, agentType, isLast, onRespondPermission, onCancelQueued }: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
-            return <UserBubble content={item.content} />;
+            return (
+                <UserBubble
+                    content={item.content}
+                    queueStatus={item.queueStatus}
+                    queueRequestId={item.queueRequestId}
+                    onCancel={onCancelQueued}
+                />
+            );
         case 'assistant_text':
             return <AssistantBubble content={item.content} streaming={item.streaming} agentType={agentType} />;
         case 'thinking':
             return <ThinkingBubble content={item.content} isLast={isLast} />;
         case 'tool_group':
-            return <ToolGroupBubble calls={item.calls} onRespondPermission={onRespondPermission} />;
+            return (
+                <ToolGroupBubble
+                    calls={item.calls}
+                    pending={item.pending}
+                    onRespondPermission={onRespondPermission}
+                />
+            );
         case 'error':
             return <ErrorBubble content={item.content} />;
     }
 }
 
-function UserBubble({ content }: { content: string }) {
+function UserBubble({
+    content,
+    queueStatus,
+    queueRequestId,
+    onCancel,
+}: {
+    content: string;
+    queueStatus?: 'queued';
+    queueRequestId?: string;
+    onCancel?: (queueRequestId: string) => void;
+}) {
+    const isQueued = queueStatus === 'queued';
     return (
-        <div class="chat-bubble chat-bubble-user">
-            <div class="chat-bubble-body">{content}</div>
+        <div class={`chat-bubble chat-bubble-user${isQueued ? ' chat-bubble-user-queued' : ''}`}>
+            <div class="chat-bubble-body chat-bubble-body-queued">{content}</div>
+            {isQueued && (
+                <>
+                    <span class="chat-bubble-queue-badge">{t('chat.queue.queued', getLang())}</span>
+                    {queueRequestId && onCancel && (
+                        <button
+                            type="button"
+                            class="chat-bubble-queue-cancel"
+                            aria-label={t('chat.queue.cancelAria', getLang())}
+                            title={t('chat.queue.cancelTitle', getLang())}
+                            onClick={() => onCancel(queueRequestId)}
+                        >
+                            ×
+                        </button>
+                    )}
+                </>
+            )}
         </div>
     );
 }
@@ -137,15 +184,19 @@ function ThinkingBubble({ content, isLast }: { content: string; isLast: boolean 
 
 function ToolGroupBubble({
     calls,
+    pending,
     onRespondPermission,
 }: {
     calls: GroupedToolCall[];
+    pending?: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }) {
     const [isExpanded, setIsExpanded] = useState(true);
 
     return (
-        <div class={`chat-bubble chat-bubble-tool-group ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+        <div
+            class={`chat-bubble chat-bubble-tool-group ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
+        >
             <div
                 class="chat-bubble-header chat-bubble-header-clickable"
                 role="button"
@@ -175,7 +226,7 @@ function ToolGroupBubble({
                         <path d="M14.7 6.3a4.5 4.5 0 1 0-6.4 6.4l-6 6a2.1 2.1 0 1 0 3 3l6-6a4.5 4.5 0 0 0 6.4-6.4l-2.2 2.2-2.4-2.4 2.6-2.8z" />
                     </svg>
                 </span>
-                <span class="chat-bubble-title">工具调用</span>
+                <span class="chat-bubble-title">{pending ? '待分配' : '工具调用'}</span>
                 <span class="chat-bubble-count">{calls.length}</span>
             </div>
             {isExpanded && (

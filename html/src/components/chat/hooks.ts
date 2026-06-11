@@ -54,7 +54,7 @@ export type HistoryItem =
       };
 
 export type ChatItem =
-    | { id: string; kind: 'user'; content: string; createdAt: number }
+    | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
     | { id: string; kind: 'thinking'; content: string; createdAt: number }
     | {
@@ -67,6 +67,17 @@ export type ChatItem =
           toolCallId?: string;
       }
     | { id: string; kind: 'tool_result'; toolCallId?: string; content: string; createdAt: number; isError: boolean }
+    | {
+          id: string;
+          kind: 'permission_request';
+          toolCallId?: string;
+          requestId: string;
+          toolName: string;
+          input: string;
+          options: Array<{ text: string; data: string }>;
+          createdAt: number;
+          resolved?: 'allow' | 'deny';
+      }
     | { id: string; kind: 'error'; content: string; createdAt: number };
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
@@ -83,7 +94,15 @@ interface UseBridgeState {
     ready: boolean;
     permissionMode: PermissionMode;
     send: (content: string) => void;
+    /**
+     * Terminate the session. Cancels the running turn, drops every
+     * queued prompt, and closes the underlying ACP runtime. After
+     * this, the next `send` will re-initialize via `ensure_session`.
+     * Distinct from `cancelQueued`, which only removes a single
+     * queued entry.
+     */
     cancel: () => void;
+    cancelQueued: (requestId: string) => void;
     respondPermission: (requestId: string, decision: PermissionDecision) => void;
     setPermissionMode: (mode: PermissionMode) => void;
 }
@@ -95,6 +114,17 @@ export interface SessionBridgeState {
     ws: WebSocket | null;
     listeners: Set<() => void>;
     turnStarted: boolean;
+    /**
+     * Real-time-only holding pen for tool_result and permission_request
+     * events that arrived before (or without) their matching tool_call.
+     * Each new tool_call re-scans these lists and folds any matching
+     * entries into the call's tool_use; leftover entries are surfaced
+     * by the renderer as a "待分配" tool_group so the data is never
+     * silently dropped. The pool is cleared on history reload because
+     * the historical record is authoritative.
+     */
+    pendingResults: ChatItem[];
+    pendingPermissions: ChatItem[];
     /**
      * True once the bridge-server confirms the session is initialized
      * (`session_ready` event). New sessions sit at `ready = false` for a
@@ -122,6 +152,8 @@ export class ChatBridgeManager {
                 ws: null,
                 listeners: new Set(),
                 turnStarted: false,
+                pendingResults: [],
+                pendingPermissions: [],
                 // New sessions stay `ready: false` until the bridge-server
                 // emits `session_ready`; the UI gates input on this so we
                 // don't bounce prompts with SESSION_NOT_FOUND during the
@@ -227,6 +259,54 @@ export class ChatBridgeManager {
                     state.ready = true;
                     this.notify(state);
                     break;
+                case 'prompt_queued': {
+                    // Bridge accepted the prompt but couldn't start it
+                    // because another turn is already running. Mark the
+                    // most-recently-added user bubble as "queued" so the
+                    // UI can render a queue badge + per-item cancel
+                    // button on it. The bridge-supplied `requestId` is
+                    // stored on the bubble so the X button knows what
+                    // to send back in `cancel_queued`. When the next
+                    // turn starts (first text_delta after the active one
+                    // finishes), the FIFO drain in text_delta clears
+                    // this status.
+                    if (!state.turnStarted) break;
+                    const items = state.items;
+                    for (let i = items.length - 1; i >= 0; i--) {
+                        const it = items[i];
+                        if (it.kind !== 'user') continue;
+                        if (it.queueStatus === 'queued') break;
+                        state.items = [
+                            ...items.slice(0, i),
+                            { ...it, queueStatus: 'queued', queueRequestId: payload.requestId },
+                            ...items.slice(i + 1),
+                        ];
+                        this.notify(state);
+                        break;
+                    }
+                    break;
+                }
+                case 'prompt_cancelled': {
+                    // Bridge dropped a queued prompt without ever starting
+                    // it (e.g. user pressed cancel mid-flight). Clear
+                    // the queue badge from any still-queued user bubbles
+                    // — without this, the badge would linger forever
+                    // because the cancelled turn never produced a
+                    // text_delta to drain it.
+                    let mutated = false;
+                    const next = state.items.map(it => {
+                        if (it.kind === 'user' && it.queueStatus === 'queued') {
+                            mutated = true;
+                            return { ...it, queueStatus: undefined };
+                        }
+                        return it;
+                    });
+                    if (mutated) {
+                        state.items = next;
+                        this.notify(state);
+                    }
+                    break;
+                }
                 case 'text_delta': {
                     if (!state.turnStarted) break;
                     const delta = payload.text;
@@ -257,6 +337,18 @@ export class ChatBridgeManager {
                                 streaming: true,
                             };
                         } else {
+                            // First text_delta for a freshly dequeued turn.
+                            // Clear the queue badge from the oldest still-
+                            // queued user bubble — the bridge drains its
+                            // promptQueue FIFO, so the first remaining
+                            // queued bubble is the one that just started.
+                            for (let i = 0; i < next.length; i++) {
+                                const it = next[i];
+                                if (it.kind === 'user' && it.queueStatus === 'queued') {
+                                    next[i] = { ...it, queueStatus: undefined };
+                                    break;
+                                }
+                            }
                             next.push({
                                 id: cryptoId(),
                                 kind: 'assistant_text',
@@ -335,6 +427,16 @@ export class ChatBridgeManager {
                         });
                     }
                     state.items = next;
+                    // Re-scan the pending result/permission pools and
+                    // fold any entry that matches the new call (or
+                    // earlier calls in this turn) onto its call. This
+                    // is what reconciles out-of-order arrivals — e.g.
+                    // a permission_request that beat the tool_call to
+                    // the wire, or a tool_result that arrived before
+                    // its call. Each scan is O(pending × items) but
+                    // the pool is bounded by per-turn orphan count
+                    // (a handful at most).
+                    tryAssignPending(state);
                     this.notify(state);
                     break;
                 }
@@ -393,27 +495,26 @@ export class ChatBridgeManager {
                         }
                     }
                     if (!matched) {
-                        // No tool_use was seen (e.g. result arrived first over
-                        // a flaky socket). Synthesize a tool_use with just the
-                        // result so the user still sees the output.
-                        items.push({
-                            id: cryptoId(),
-                            kind: 'tool_use',
-                            toolName: payload.toolName || 'tool',
-                            input: '',
-                            calls: [
-                                {
-                                    id: `call-${payload.toolCallId || cryptoId()}`,
-                                    toolCallId: payload.toolCallId,
-                                    toolName: payload.toolName || 'tool',
-                                    input: '',
-                                    output: payload.text || '',
-                                    isError: !!payload.isError,
-                                },
-                            ],
-                            createdAt: Date.now(),
-                            ...(payload.toolCallId ? { toolCallId: payload.toolCallId } : {}),
-                        });
+                        // No tool_use yet — park the result in the
+                        // session-scoped pending pool. The next
+                        // tool_call will re-scan the pool and fold any
+                        // matching entry into its call. Leftover entries
+                        // are surfaced by the renderer as a "待分配"
+                        // tool_group so the data is never dropped.
+                        state.items = items;
+                        state.pendingResults = [
+                            ...state.pendingResults,
+                            {
+                                id: cryptoId(),
+                                kind: 'tool_result',
+                                toolCallId: payload.toolCallId,
+                                content: payload.text || '',
+                                isError: !!payload.isError,
+                                createdAt: Date.now(),
+                            },
+                        ];
+                        this.notify(state);
+                        break;
                     }
                     state.items = items;
                     this.notify(state);
@@ -461,32 +562,29 @@ export class ChatBridgeManager {
                         }
                     }
                     if (!matched) {
-                        // Stub: only the permission is known so far. tool_call
-                        // (or a later tool_call_update) will hit the same
-                        // toolCallId and fill in toolName / input.
-                        const placeholder: ToolCallInfo = {
-                            toolName,
-                            input: '',
-                            toolCallId,
-                            permission: newPermission,
-                        };
-                        const last = items[items.length - 1];
-                        if (last && last.kind === 'tool_use') {
-                            items[items.length - 1] = {
-                                ...last,
-                                calls: [...last.calls, placeholder],
-                            };
-                        } else {
-                            items.push({
+                        // No tool_use yet — park the permission in the
+                        // session-scoped pending pool. The next
+                        // tool_call will re-scan and fold any matching
+                        // entry into its call. Synthesizing a stub
+                        // tool_use with `input: ''` here is what used
+                        // to produce a phantom "permission" card that
+                        // visually replaced the real call card.
+                        state.items = items;
+                        state.pendingPermissions = [
+                            ...state.pendingPermissions,
+                            {
                                 id: cryptoId(),
-                                kind: 'tool_use',
+                                kind: 'permission_request',
+                                toolCallId,
+                                requestId,
                                 toolName,
-                                input: '',
-                                calls: [placeholder],
+                                input: argsString,
+                                options: [],
                                 createdAt: Date.now(),
-                                ...(toolCallId ? { toolCallId } : {}),
-                            });
-                        }
+                            },
+                        ];
+                        this.notify(state);
+                        break;
                     }
                     state.items = items;
                     this.notify(state);
@@ -548,6 +646,14 @@ export class ChatBridgeManager {
                               }));
                     const converted: ChatItem[] = historyItems.map(it => historyItemToChatItem(it));
                     state.items = converted;
+                    // History is authoritative: any entries the realtime
+                    // pool was holding (e.g. a tool_result that arrived
+                    // before the matching tool_call) are redundant now
+                    // that the on-disk record has been replayed. Drop
+                    // the pool so the renderer stops showing the
+                    // "待分配" group once the real history is in.
+                    state.pendingResults = [];
+                    state.pendingPermissions = [];
                     this.notify(state);
                     break;
                 }
@@ -639,14 +745,49 @@ export class ChatBridgeManager {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
         if (!state.ready) return;
+        // `cancel` on the wire is mapped to terminate-session: the only
+        // user-facing stop semantics are "终止对话" (cancels the active
+        // turn, drops the queue, closes the session). Stopping the
+        // current turn while letting the queue keep running isn't
+        // exposed in the UI.
         state.ws.send(
             JSON.stringify({
-                action: 'cancel',
+                action: 'close_session',
                 sessionId: session.id,
             })
         );
         state.typing = false;
         state.turnStarted = false;
+        this.notify(state);
+    }
+
+    /**
+     * Remove a single queued prompt (one the bridge has not started
+     * yet). Distinct from `cancel`, which only stops the active turn;
+     * the queue keeps running. Used by the X button on queued user
+     * bubbles — `requestId` is the queue id echoed back in
+     * `prompt_queued`.
+     */
+    cancelQueued(session: ChatSession, requestId: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        if (!state.ready) return;
+        state.ws.send(
+            JSON.stringify({
+                action: 'cancel_queued',
+                sessionId: session.id,
+                requestId,
+            })
+        );
+        // Optimistically clear the badge so the user gets immediate
+        // feedback; the bridge's `prompt_cancelled` event will
+        // arrive later and be a no-op.
+        state.items = state.items.map(it => {
+            if (it.kind === 'user' && it.queueRequestId === requestId) {
+                return { ...it, queueStatus: undefined, queueRequestId: undefined };
+            }
+            return it;
+        });
         this.notify(state);
     }
 
@@ -782,7 +923,18 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
 
     const state = session ? globalBridgeManager.getOrCreate(session) : null;
 
-    const items = state ? state.items : seed;
+    // The pending pools are flattened into the items stream so
+    // MessageList.groupChatItems can attach them to a synthesized
+    // "待分配" tool_group when no matching tool_use exists. Once
+    // history is reloaded the pools are cleared (see
+    // `history_response`) and this list collapses back to state.items.
+    const items = state
+        ? [
+              ...state.items,
+              ...state.pendingResults,
+              ...state.pendingPermissions,
+          ]
+        : seed;
     const connection = state ? state.connection : 'idle';
     const typing = state ? state.typing : false;
     // `ready` is only meaningful once a `SessionBridgeState` exists; for
@@ -803,6 +955,14 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         globalBridgeManager.cancel(session);
     }, [session]);
 
+    const cancelQueued = useCallback(
+        (requestId: string) => {
+            if (!session) return;
+            globalBridgeManager.cancelQueued(session, requestId);
+        },
+        [session]
+    );
+
     const respondPermission = useCallback(
         (requestId: string, decision: PermissionDecision) => {
             if (!session) return;
@@ -819,7 +979,18 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         [session]
     );
 
-    return { items, connection, typing, ready, permissionMode, send, cancel, respondPermission, setPermissionMode };
+    return {
+        items,
+        connection,
+        typing,
+        ready,
+        permissionMode,
+        send,
+        cancel,
+        cancelQueued,
+        respondPermission,
+        setPermissionMode,
+    };
 }
 
 function cryptoId(): string {
@@ -852,6 +1023,90 @@ function parseCreatedAt(value: string | undefined): number {
     if (!value) return Date.now();
     const ts = new Date(value).getTime();
     return Number.isFinite(ts) ? ts : Date.now();
+}
+
+// Walk the pending result/permission pools and fold any entries that
+// now match an existing tool_use in `items` straight into the call.
+// The number of pending entries is bounded by how many orphan
+// tool_results / permission_requests arrive in a single turn (a few
+// at most), so the linear scan is cheap. Returns the leftover
+// entries that still don't have a matching call — those stay in the
+// pool for the renderer to surface as a "待分配" tool_group.
+function tryAssignPending(state: SessionBridgeState): void {
+    if (state.pendingResults.length === 0 && state.pendingPermissions.length === 0) return;
+    let items = state.items;
+    let nextResults: ChatItem[] = [];
+    for (const p of state.pendingResults) {
+        if (p.kind !== 'tool_result') {
+            nextResults.push(p);
+            continue;
+        }
+        let matched = false;
+        for (let i = items.length - 1; i >= 0; i--) {
+            const it = items[i];
+            if (it.kind !== 'tool_use') continue;
+            const callIdx = p.toolCallId
+                ? it.calls.findIndex(c => c.toolCallId === p.toolCallId)
+                : it.calls.findIndex(c => c.output === undefined);
+            if (callIdx < 0) continue;
+            items = items.map((entry, idx) =>
+                idx !== i
+                    ? entry
+                    : {
+                          ...entry,
+                          calls: entry.calls.map((c, k) =>
+                              k !== callIdx
+                                  ? c
+                                  : { ...c, output: p.content, isError: p.isError }
+                          ),
+                      }
+            );
+            matched = true;
+            break;
+        }
+        if (!matched) nextResults.push(p);
+    }
+    let nextPermissions: ChatItem[] = [];
+    for (const p of state.pendingPermissions) {
+        if (p.kind !== 'permission_request') {
+            nextPermissions.push(p);
+            continue;
+        }
+        let matched = false;
+        for (let i = items.length - 1; i >= 0; i--) {
+            const it = items[i];
+            if (it.kind !== 'tool_use') continue;
+            const callIdx = p.toolCallId
+                ? it.calls.findIndex(c => c.toolCallId === p.toolCallId)
+                : -1;
+            if (callIdx < 0) continue;
+            const newPermission = {
+                requestId: p.requestId,
+                toolName: p.toolName,
+                input: p.input,
+                options: p.options,
+                ...(p.resolved ? { resolved: p.resolved } : {}),
+            };
+            items = items.map((entry, idx) =>
+                idx !== i
+                    ? entry
+                    : {
+                          ...entry,
+                          calls: entry.calls.map((c, k) =>
+                              k !== callIdx
+                                  ? c
+                                  : { ...c, permission: newPermission }
+                          ),
+                      }
+            );
+            matched = true;
+            break;
+        }
+        if (!matched) nextPermissions.push(p);
+    }
+    state.items = items;
+    state.pendingResults = nextResults;
+    state.pendingPermissions = nextPermissions;
 }
 
 function historyItemToChatItem(it: HistoryItem): ChatItem {

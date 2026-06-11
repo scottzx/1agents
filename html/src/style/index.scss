@@ -6878,6 +6878,57 @@ body {
   }
 }
 
+// Queued state: the bridge accepted the prompt but couldn't start it
+// because another turn is already running. Each queued prompt is
+// rendered as a single-line bubble with ellipsis (the user can read
+// the head of long prompts without the bubble growing tall) plus a
+// small X button on the right to cancel just that one entry.
+.chat-bubble-user-queued {
+  opacity: 0.7;
+  max-width: 60%;
+  // Flex layout puts the body (truncated) on the left and the X on
+  // the right; the bubble stays a single line even for long prompts.
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+
+  .chat-bubble-body-queued {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.chat-bubble-queue-badge {
+  font-size: 11px;
+  color: var(--text-secondary, #57606a);
+  background: var(--bg-secondary, #f6f8fa);
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #d0d7de);
+  flex-shrink: 0;
+}
+
+.chat-bubble-queue-cancel {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #57606a);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--bg-secondary, #f6f8fa);
+    color: var(--text-primary, #1f2328);
+  }
+}
+
 .chat-message-row-assistant {
   align-self: flex-start;
   display: flex;
