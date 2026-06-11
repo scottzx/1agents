@@ -90,6 +90,14 @@ func main() {
 
 	flag.Parse()
 
+	// If a custom tmux session is specified via flags and TtydArgs is the default tmux command,
+	// keep TtydArgs in sync with the new session name.
+	if cfg.TmuxSession != "" && runtime.GOOS != "windows" {
+		if len(cfg.TtydArgs) >= 5 && cfg.TtydArgs[0] == "tmux" && cfg.TtydArgs[1] == "new-session" && cfg.TtydArgs[2] == "-A" && cfg.TtydArgs[3] == "-s" && cfg.TtydArgs[4] == "1agents" {
+			cfg.TtydArgs[4] = cfg.TmuxSession
+		}
+	}
+
 	if showVersion {
 		fmt.Printf("1agents %s\ncommit:  %s\nbuilt:   %s\n", version, commit, buildTime)
 		return
@@ -216,7 +224,11 @@ func main() {
 	skillsSup := supervisor.NewSkills(cfg)
 	skillsSup.Start(ctx)
 
+	acpxSup := supervisor.NewAcpx(cfg)
+	acpxSup.Start(ctx)
+
 	// ── 2. Start cc-connect Supervisor & engines ──────────────────────────────
+
 	ccconnect.Start(ctx, isDesktop)
 
 	// ── 3. Start HTTP gateway ─────────────────────────────────────────────────
@@ -351,8 +363,10 @@ func main() {
 
 	<-sup.Done()
 	<-skillsSup.Done()
+	<-acpxSup.Done()
 	log.Println("[main] Shutdown complete. Goodbye.")
 }
+
 
 // writeDaemonFile writes the daemon's listen address to a well-known location
 // so CLI subcommands (tunnel, etc.) can discover the port without flags.

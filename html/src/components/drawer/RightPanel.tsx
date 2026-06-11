@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useState, useCallback } from 'preact/hooks';
-import { FsEntry, RightDrawerTab } from '../types';
+import { FsEntry, RightDrawerTab, Session } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
@@ -15,6 +15,7 @@ interface RightPanelProps {
     rightPanelWidth: number;
     closeDrawer: () => void;
     ccConnectUrl?: string;
+    onSelectSession?: (session: Session) => void;
 
     // Theme settings props
     theme: 'light' | 'dark';

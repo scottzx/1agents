@@ -280,10 +280,11 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Dynamically remove this workspace from CC-Connect projects config
-	projName := wsToDelete.Name
-	if projName == "" {
-		projName = wsToDelete.ID
+	nameOrID := wsToDelete.Name
+	if nameOrID == "" {
+		nameOrID = wsToDelete.ID
 	}
+	projName := getCCProjectName(nameOrID, "claudecode")
 	if config.ConfigPath != "" {
 		err = config.RemoveProject(projName)
 		if err != nil {
@@ -591,5 +592,30 @@ func expandTilde(path string) string {
 		}
 	}
 	return path
+}
+
+func getCCProjectName(workspaceName string, agentType string) string {
+	var sb strings.Builder
+	inInvalidSeq := false
+	for _, r := range workspaceName {
+		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
+		if isValid {
+			sb.WriteRune(r)
+			inInvalidSeq = false
+		} else {
+			if !inInvalidSeq {
+				sb.WriteRune('_')
+				inInvalidSeq = true
+			}
+		}
+	}
+	slug := sb.String()
+	if len(slug) > 32 {
+		slug = slug[:32]
+	}
+	if slug == "" {
+		slug = "ws"
+	}
+	return fmt.Sprintf("%s__%s", slug, agentType)
 }
 

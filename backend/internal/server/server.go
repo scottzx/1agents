@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -72,10 +73,30 @@ func NewRouter(cfg *config.Config) http.Handler {
 	if err != nil {
 		log.Printf("[server] agent store init failed: %v", err)
 	} else {
-		agentHandler := agent.NewHandler(agentStore)
+		tasksStore := agent.NewTasksStore()
+		acpxClient := agent.NewAcpxClient(38082)
+
+		scheduler := agent.NewScheduler(tasksStore, func() ([]string, error) {
+			wsHandler := workspace.NewHandler()
+			wsCfg, err := wsHandler.LoadWorkspacesConfig()
+			if err != nil {
+				return nil, err
+			}
+			paths := make([]string, len(wsCfg.Workspaces))
+			for i, ws := range wsCfg.Workspaces {
+				paths[i] = ws.Path
+			}
+			return paths, nil
+		})
+		scheduler.Start(context.Background())
+
+		agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler)
 		mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
 		mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
 		mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
+		mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)         // GET, POST
+		mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)        // DELETE /{id}
+		mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)          // WebSocket upgrade & bridge
 	}
 
 	mux.HandleFunc("/api/cc-connect/url", func(w http.ResponseWriter, r *http.Request) {
@@ -120,10 +141,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 		} else if foundWS.ChatChannel != "" {
 			redirectPath = "/chat/" + foundWS.ChatChannel
 		} else {
-			projName := foundWS.Name
-			if projName == "" {
-				projName = foundWS.ID
+			nameOrID := foundWS.Name
+			if nameOrID == "" {
+				nameOrID = foundWS.ID
 			}
+			projName := getCCProjectName(nameOrID, "claudecode")
 			redirectPath = "/projects/" + projName
 		}
 
@@ -963,4 +985,29 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			strings.Join(candidates, ", "),
 		)
 	}
+}
+
+func getCCProjectName(workspaceName string, agentType string) string {
+	var sb strings.Builder
+	inInvalidSeq := false
+	for _, r := range workspaceName {
+		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
+		if isValid {
+			sb.WriteRune(r)
+			inInvalidSeq = false
+		} else {
+			if !inInvalidSeq {
+				sb.WriteRune('_')
+				inInvalidSeq = true
+			}
+		}
+	}
+	slug := sb.String()
+	if len(slug) > 32 {
+		slug = slug[:32]
+	}
+	if slug == "" {
+		slug = "ws"
+	}
+	return fmt.Sprintf("%s__%s", slug, agentType)
 }

@@ -12,7 +12,13 @@ import (
 func newTestHandler(t *testing.T) (*Handler, *Store) {
 	t.Helper()
 	s := newTestStore(t)
-	return NewHandler(s), s
+	tasksStore := NewTasksStore()
+	acpxClient := NewAcpxClient(38082)
+	workspacesFn := func() ([]string, error) {
+		return []string{}, nil
+	}
+	scheduler := NewScheduler(tasksStore, workspacesFn)
+	return NewHandler(s, tasksStore, acpxClient, scheduler), s
 }
 
 func TestHandlerAgentTypes(t *testing.T) {

@@ -66,6 +66,30 @@ export interface TerminalSession {
 export type ChatStatus = 'idle' | 'streaming' | 'awaiting_permission' | 'error';
 
 /**
+ * Per-session permission policy mirrored from the backend
+ * ChatSessionRecord.permission_mode and from the bridge-server's
+ * activeSessions[sessionId].permissionMode. Empty string / undefined
+ * means "use the bridge-server runtime default".
+ */
+export type PermissionMode = 'approve-reads' | 'approve-all' | 'deny-all';
+
+export const PERMISSION_MODES: PermissionMode[] = ['approve-reads', 'approve-all', 'deny-all'];
+
+/** Cycle order for the Composer toggle button. */
+export function nextPermissionMode(mode: PermissionMode): PermissionMode {
+    const idx = PERMISSION_MODES.indexOf(mode);
+    return PERMISSION_MODES[(idx + 1) % PERMISSION_MODES.length];
+}
+
+/**
+ * The full ACP permission decision set the user can pick from a
+ * permission bubble. Mirrors `AcpPermissionDecision.outcome` in
+ * modules/1acp/src/types.ts. `cancel` collapses the bubble without
+ * picking a side (used by close affordances, currently unused by UI).
+ */
+export type PermissionDecision = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always' | 'cancel';
+
+/**
  * A chat session — backed by a cc-connect session. The actual
  * conversation lives in cc-connect; this is the 1agents-side index.
  *
@@ -75,14 +99,24 @@ export interface ChatSession {
     kind: 'chat';
     id: string; // 1agents uuid
     workspaceId: string;
+    taskId?: string; // New: task ID this session belongs to
     name: string;
     agentType: AgentType;
     ccProject: string; // cc-connect project name
     ccSessionId: string; // cc-connect session id
+    /**
+     * ACP-side session id — the agent-managed identifier (e.g. Claude
+     * Code's JSONL UUID). Populated by the bridge-server on first
+     * session_ready and reused as resumeSessionId on subsequent opens.
+     * Independent of ccSessionId, which is for the cc-connect / IM path.
+     */
+    acpSessionId?: string;
     sessionKey: string; // cc-connect bridge session_key
     status: ChatStatus;
     lastEventAt?: string; // ISO timestamp
     active: boolean;
+    /** Per-session permission policy. Persisted via PATCH /api/agent/sessions/{id}. */
+    permissionMode?: PermissionMode;
 }
 
 export type Session = TerminalSession | ChatSession;
@@ -152,7 +186,16 @@ export interface TmuxWindow {
     agent?: string;
 }
 
-export type RightDrawerTab = 'files' | 'git' | 'channels' | 'providers' | 'settings' | 'discovery' | 'skills' | 'none';
+export type RightDrawerTab =
+    | 'files'
+    | 'git'
+    | 'channels'
+    | 'providers'
+    | 'settings'
+    | 'discovery'
+    | 'skills'
+    | 'tasks'
+    | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
     return tab === 'providers' || tab === 'discovery' || tab === 'skills' || tab === 'settings';

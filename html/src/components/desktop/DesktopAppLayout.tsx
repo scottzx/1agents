@@ -8,6 +8,7 @@ import { RightPanel } from '../drawer/RightPanel';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { SystemSettings } from '../settings/SystemSettings';
 import { FileDetailView } from '../drawer/FileDetailView';
+import { TaskList } from '../drawer/TaskList';
 import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
@@ -438,6 +439,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 accessTokenExists={state.accessAuthRequired}
                                                 onGenerateAccessToken={app.generateAccessToken}
                                                 onRevokeAccessToken={app.revokeAccessToken}
+                                                onSelectSession={s => app.selectSession(s)}
                                             />
                                         </Fragment>
                                     )}
@@ -491,6 +493,17 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 <span>{t('app.loading.preview', language)}</span>
                                             </div>
                                         )}
+                                    </div>
+                                )}
+                                {activeTabObj?.type === 'tasks' && (
+                                    <div
+                                        class="tasks-tab-container"
+                                        style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;"
+                                    >
+                                        <TaskList
+                                            workspaceId={activeWorkspaceId}
+                                            onSelectSession={s => app.selectSession(s)}
+                                        />
                                     </div>
                                 )}
                                 <div

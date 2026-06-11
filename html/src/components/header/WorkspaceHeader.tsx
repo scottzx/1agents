@@ -134,6 +134,22 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
     );
+    // Tasks dashboard icon
+    const IconTasks = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="9" x2="15" y2="9" />
+            <line x1="9" y1="13" x2="15" y2="13" />
+            <line x1="9" y1="17" x2="15" y2="17" />
+        </svg>
+    );
 
     // Hamburger / Close icon
     const IconHamburger = (
@@ -291,6 +307,14 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             {IconChannels}
                         </button>
                         <button
+                            id="hdr-btn-tasks"
+                            class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
+                            onClick={() => toggleDrawerTab('tasks')}
+                            title="任务仪表盘"
+                        >
+                            {IconTasks}
+                        </button>
+                        <button
                             id="hdr-btn-files"
                             class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('files')}
@@ -360,6 +384,17 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconChannels}</span>
                     <span class="mob-menu-label">{t('header.mobile.channels', language)}</span>
                     {activeDrawerTab === 'channels' && (
+                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                    )}
+                </button>
+                <button
+                    id="mob-menu-tasks"
+                    class={`mobile-menu-item ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('tasks')}
+                >
+                    <span class="mob-menu-icon">{IconTasks}</span>
+                    <span class="mob-menu-label">任务仪表盘</span>
+                    {activeDrawerTab === 'tasks' && (
                         <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
                     )}
                 </button>
