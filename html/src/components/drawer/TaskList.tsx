@@ -1,17 +1,8 @@
 import { h } from 'preact';
 import { t, type Lang } from '../i18n';
-import type { Session } from '../types';
 
 interface TaskListProps {
     language: Lang;
-    // The full TaskList (on feat/chat-ui) takes these to scope tasks to the
-    // active project and let the user enter a session from a task card.
-    // The stub implementation on this branch ignores them; the props are
-    // declared so DesktopAppLayout can call <TaskList workspaceId=… /> here
-    // without the build breaking — the merge to feat/chat-ui will swap the
-    // real implementation in.
-    workspaceId?: string;
-    onSelectSession?: (session: Session) => void;
 }
 
 export function TaskList({ language }: TaskListProps) {
