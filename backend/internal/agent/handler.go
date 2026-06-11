@@ -5,22 +5,48 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
-// Handler exposes the REST surface for the chat session index.
-//
-// All endpoints are mounted under /api/agent and protected by the
-// outer server.authMiddleware. The handler itself does NO auth checks
-// — that is the responsibility of the parent mux.
+// Handler exposes the REST surface for the chat session and task index.
 type Handler struct {
-	store *Store
+	store      *Store
+	tasksStore *TasksStore
+	acpxClient *AcpxClient
+	scheduler  *Scheduler
 }
 
-// NewHandler returns a Handler backed by store.
-func NewHandler(store *Store) *Handler {
-	return &Handler{store: store}
+// NewHandler returns a Handler backed by stores and client.
+func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler) *Handler {
+	return &Handler{
+		store:      store,
+		tasksStore: tasksStore,
+		acpxClient: acpxClient,
+		scheduler:  scheduler,
+	}
+}
+
+// resolveWorkspacePath resolves workspaceID to its absolute physical path on host
+func (h *Handler) resolveWorkspacePath(workspaceID string) (string, error) {
+	wsHandler := workspace.NewHandler()
+	cfg, err := wsHandler.LoadWorkspacesConfig()
+	if err != nil {
+		return "", err
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == workspaceID {
+			return ws.Path, nil
+		}
+	}
+	return "", fmt.Errorf("workspace not found: %s", workspaceID)
 }
 
 // HandleAgentTypes serves GET /api/agent/agent-types
@@ -33,9 +59,6 @@ func (h *Handler) HandleAgentTypes(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleSessionsRoot handles /api/agent/sessions (root, no trailing slash).
-//
-// GET  → list by ?workspace_id=… (returns empty array if missing)
-// POST → add a new record (returns the record with id + created_at)
 func (h *Handler) HandleSessionsRoot(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -48,20 +71,13 @@ func (h *Handler) HandleSessionsRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleSessionsItem handles /api/agent/sessions/{id} (with trailing slash).
-//
-// GET    → fetch single record
-// DELETE → remove record (does NOT touch cc-connect; caller is responsible
-//
-//	for the cc-connect session lifecycle).
 func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
-	// Extract id from path: /api/agent/sessions/{id}
 	const prefix = "/api/agent/sessions/"
 	id := r.URL.Path[len(prefix):]
 	if id == "" {
 		http.Error(w, "missing id", http.StatusBadRequest)
 		return
 	}
-	// Strip any trailing sub-paths (none defined today; future-proofing).
 	if i := indexByte(id, '/'); i >= 0 {
 		http.Error(w, "unsupported sub-path", http.StatusNotFound)
 		return
@@ -72,6 +88,58 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		rec, ok, err := h.store.Get(id)
 		if err != nil {
 			log.Printf("[agent] get %s: %v", id, err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		if rec.AcpSessionID != "" {
+			name := rec.Name
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
+				if wsPath, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
+					if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
+						rec.Name = title
+						go func(id, newName string) {
+							_ = h.store.UpdateName(id, newName)
+						}(rec.ID, title)
+					}
+				}
+			}
+		}
+		writeJSON(w, rec)
+	case http.MethodPatch:
+		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" }
+		// Used by the Composer's permission-mode toggle. Validates the
+		// enum to keep bad client data out of the JSON store (since the
+		// bridge-server later trusts this string).
+		var body struct {
+			PermissionMode *string `json:"permission_mode,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if body.PermissionMode != nil {
+			mode := *body.PermissionMode
+			if !isValidPermissionMode(mode) {
+				http.Error(w, "permission_mode must be approve-reads, approve-all, or deny-all", http.StatusBadRequest)
+				return
+			}
+			if err := h.store.UpdatePermissionMode(id, mode); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("[agent] update permission_mode %s: %v", id, err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		rec, ok, err := h.store.Get(id)
+		if err != nil {
+			log.Printf("[agent] get %s after patch: %v", id, err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -111,6 +179,29 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	if recs == nil {
 		recs = []ChatSessionRecord{}
 	}
+
+	var wsPath string
+	if len(recs) > 0 {
+		if path, err := h.resolveWorkspacePath(wsID); err == nil {
+			wsPath = path
+		}
+	}
+
+	for i := range recs {
+		rec := &recs[i]
+		if rec.AcpSessionID != "" {
+			name := rec.Name
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
+				if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {
+					rec.Name = title
+					go func(id, newName string) {
+						_ = h.store.UpdateName(id, newName)
+					}(rec.ID, title)
+				}
+			}
+		}
+	}
+
 	writeJSON(w, recs)
 }
 
@@ -146,6 +237,243 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, rec)
 }
 
+// ── Tasks REST API ─────────────────────────────────────────────────────────
+
+// HandleTasksRoot handles GET and POST /api/agent/tasks
+func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		wsID := r.URL.Query().Get("workspace_id")
+		if wsID == "" {
+			http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		cfg, err := h.tasksStore.Load(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, cfg.Tasks)
+
+	case http.MethodPost:
+		var body struct {
+			WorkspaceID  string       `json:"workspace_id"`
+			Title        string       `json:"title"`
+			ScheduleType ScheduleType `json:"scheduleType"`
+			ScheduledAt  *time.Time   `json:"scheduledAt"`
+			DependsOn    []string     `json:"dependsOn"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" || body.Title == "" {
+			http.Error(w, "workspace_id and title are required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		cfg, err := h.tasksStore.Load(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		newTask := Task{
+			ID:           newID(),
+			Title:        body.Title,
+			Status:       TaskStatusPending,
+			ScheduleType: body.ScheduleType,
+			ScheduledAt:  body.ScheduledAt,
+			DependsOn:    body.DependsOn,
+			CreatedAt:    time.Now().UTC(),
+			UpdatedAt:    time.Now().UTC(),
+			Sessions:     []SessionMetadata{},
+		}
+		if newTask.ScheduleType == "" {
+			newTask.ScheduleType = ScheduleTypeImmediate
+		}
+
+		cfg.Tasks = append(cfg.Tasks, newTask)
+		if err := h.tasksStore.Save(wsPath, cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, newTask)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleTasksItem handles DELETE /api/agent/tasks/{id}
+func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
+	const prefix = "/api/agent/tasks/"
+	id := r.URL.Path[len(prefix):]
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodDelete:
+		wsID := r.URL.Query().Get("workspace_id")
+		if wsID == "" {
+			http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		cfg, err := h.tasksStore.Load(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		idx := -1
+		for i, t := range cfg.Tasks {
+			if t.ID == id {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
+
+		cfg.Tasks = append(cfg.Tasks[:idx], cfg.Tasks[idx+1:]...)
+		if err := h.tasksStore.Save(wsPath, cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleChatWs handles WebSocket connections at /api/agent/chat/ws
+func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
+	wsID := r.URL.Query().Get("workspace_id")
+	taskId := r.URL.Query().Get("task_id")
+	sessionId := r.URL.Query().Get("session_id")
+	agentType := r.URL.Query().Get("agent_type")
+
+	if wsID == "" || sessionId == "" || agentType == "" {
+		http.Error(w, "workspace_id, session_id, and agent_type query parameters are required", http.StatusBadRequest)
+		return
+	}
+
+	wsPath, err := h.resolveWorkspacePath(wsID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	var systemContext string
+	if taskId != "" {
+		// 1. Load tasks configuration to find task and aggregate prior summaries
+		cfg, err := h.tasksStore.Load(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var targetTask *Task
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID == taskId {
+				targetTask = &cfg.Tasks[i]
+				break
+			}
+		}
+
+		if targetTask == nil {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
+
+		// Context Chaining: Aggregate prior completed session summaries
+		if len(targetTask.Sessions) > 0 {
+			var historyLines []string
+			historyLines = append(historyLines, fmt.Sprintf("[Task Context History]\nThe user is working on the task: %q.", targetTask.Title))
+			historyLines = append(historyLines, "Previous sessions have already achieved the following:")
+			count := 1
+			for _, s := range targetTask.Sessions {
+				if s.Summary != "" {
+					historyLines = append(historyLines, fmt.Sprintf("- Session %d (%s): %s", count, s.AgentType, s.Summary))
+					count++
+				}
+			}
+			historyLines = append(historyLines, "Please continue the task from here, focusing on any requested adjustments.")
+			systemContext = strings.Join(historyLines, "\n")
+		}
+
+		// Check state concurrency lock
+		if targetTask.Status != TaskStatusRunning {
+			// Try to acquire the execution lock
+			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
+				// If already occupied, return 409 conflict
+				http.Error(w, "Another session is already running in this workspace", http.StatusConflict)
+				return
+			}
+			// Update task state to running
+			targetTask.Status = TaskStatusRunning
+			now := time.Now().UTC()
+			targetTask.StartedAt = &now
+			targetTask.UpdatedAt = now
+
+			// Update or create session metadata
+			sessionExists := false
+			for i := range targetTask.Sessions {
+				if targetTask.Sessions[i].ID == sessionId {
+					targetTask.Sessions[i].Status = SessionStatusRunning
+					sessionExists = true
+					break
+				}
+			}
+			if !sessionExists {
+				targetTask.Sessions = append(targetTask.Sessions, SessionMetadata{
+					ID:        sessionId,
+					Kind:      SessionKindChat,
+					Name:      "智能体排查与修复",
+					AgentType: agentType,
+					Status:    SessionStatusRunning,
+					CreatedAt: now,
+				})
+			}
+
+			_ = h.tasksStore.Save(wsPath, cfg)
+		}
+		log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
+	} else {
+		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)
+	}
+
+	// Look up the 1agents-side chat record so we can pass any previously-
+	// recorded agent session id (e.g. Claude Code's UUID) as the
+	// resumeSessionId. This is the ACP-side identifier; the CC-side id
+	// (CcSessionID) is independent and only used for IM integration.
+	var acpSessionID string
+	if rec, ok, err := h.store.Get(sessionId); err == nil && ok {
+		acpSessionID = rec.AcpSessionID
+	}
+
+	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, h.scheduler, h.tasksStore, h.store, acpSessionID)
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
@@ -153,20 +481,15 @@ func writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
-// newID returns a random 16-byte hex string, suitable as a session id.
+// newID returns a random 16-byte hex string.
 func newID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand should never fail on a healthy system; if it does,
-		// fall back to a non-cryptographic id so the request can still
-		// succeed. Collision is astronomically unlikely.
 		return "agent-fallback-id"
 	}
 	return hex.EncodeToString(b[:])
 }
 
-// indexByte is a tiny stdlib replacement to keep imports minimal in the
-// hot path of HandleSessionsItem.
 func indexByte(s string, c byte) int {
 	for i := 0; i < len(s); i++ {
 		if s[i] == c {
@@ -174,4 +497,71 @@ func indexByte(s string, c byte) int {
 		}
 	}
 	return -1
+}
+
+// isValidPermissionMode mirrors the bridge-server's accepted mode strings.
+// Kept here (not in types.go) because it's only consumed by the PATCH
+// validator above.
+func isValidPermissionMode(mode string) bool {
+	switch mode {
+	case "approve-reads", "approve-all", "deny-all":
+		return true
+	default:
+		return false
+	}
+}
+
+func getProjectSlug(path string) string {
+	var sb strings.Builder
+	for _, r := range path {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('-')
+		}
+	}
+	return sb.String()
+}
+
+func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) string {
+	if acpSessionID == "" {
+		return defaultName
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return defaultName
+	}
+	slug := getProjectSlug(workspacePath)
+	jsonlPath := filepath.Join(home, ".claude", "projects", slug, acpSessionID+".jsonl")
+
+	file, err := os.Open(jsonlPath)
+	if err != nil {
+		return defaultName
+	}
+	defer file.Close()
+
+	var resolvedTitle string
+	var foundSlug string
+
+	dec := json.NewDecoder(file)
+	for {
+		var line map[string]any
+		if err := dec.Decode(&line); err != nil {
+			break
+		}
+		if title, ok := line["aiTitle"].(string); ok && title != "" {
+			resolvedTitle = title
+		}
+		if slg, ok := line["slug"].(string); ok && slg != "" {
+			foundSlug = slg
+		}
+	}
+
+	if resolvedTitle != "" {
+		return resolvedTitle
+	}
+	if foundSlug != "" {
+		return foundSlug
+	}
+	return defaultName
 }

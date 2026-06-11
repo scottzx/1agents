@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -184,8 +185,234 @@ func (s *Store) Touch(id string) error {
 	return ErrNotFound
 }
 
+// UpdateName updates the name/title of the session with the given id.
+func (s *Store) UpdateName(id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range cfg.Sessions {
+		if cfg.Sessions[i].ID == id {
+			cfg.Sessions[i].Name = name
+			return s.saveLocked(cfg)
+		}
+	}
+	return ErrNotFound
+}
+
+// UpdatePermissionMode persists the per-session permission policy. The
+// bridge-server reads this on ensure_session (and on subsequent
+// set_permission_mode actions from the client) to gate the permission
+// prompt callback. Mode must be one of "approve-reads", "approve-all",
+// "deny-all"; the caller is expected to validate.
+func (s *Store) UpdatePermissionMode(id, mode string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range cfg.Sessions {
+		if cfg.Sessions[i].ID == id {
+			cfg.Sessions[i].PermissionMode = mode
+			return s.saveLocked(cfg)
+		}
+	}
+	return ErrNotFound
+}
+
+// UpdateACP persists the agent-managed session id for a chat record. Used
+// when the bridge-server reports back the agent's session uuid via
+// session_ready, so that subsequent opens can resume the same session
+// (and find its native storage, e.g. Claude Code's <uuid>.jsonl).
+// It also tries to resolve a descriptive session title from Claude's sessions index
+// if the session currently has a default or empty name.
+func (s *Store) UpdateACP(id, acpSessionID string) error {
+	if acpSessionID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range cfg.Sessions {
+		if cfg.Sessions[i].ID == id {
+			updated := false
+			if cfg.Sessions[i].AcpSessionID == "" {
+				cfg.Sessions[i].AcpSessionID = acpSessionID
+				updated = true
+			}
+			// If current name is empty or a generic default, try to resolve it from Claude index
+			name := cfg.Sessions[i].Name
+			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
+				if title, err := ResolveClaudeSessionName(acpSessionID); err == nil && title != "" {
+					cfg.Sessions[i].Name = title
+					updated = true
+				}
+			}
+			if updated {
+				return s.saveLocked(cfg)
+			}
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+// ResolveClaudeSessionName searches ~/.claude/projects/*/sessions-index.json
+// for the given acpSessionID, and returns the firstPrompt as the session title.
+func ResolveClaudeSessionName(acpSessionID string) (string, error) {
+	if acpSessionID == "" {
+		return "", nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	projectsDir := filepath.Join(home, ".claude", "projects")
+
+	// Read projects directory
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	type SessionEntry struct {
+		SessionID   string `json:"sessionId"`
+		FirstPrompt string `json:"firstPrompt"`
+	}
+	type SessionsIndex struct {
+		Entries []SessionEntry `json:"entries"`
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		indexPath := filepath.Join(projectsDir, entry.Name(), "sessions-index.json")
+		data, err := os.ReadFile(indexPath)
+		if err != nil {
+			continue
+		}
+
+		var idx SessionsIndex
+		if err := json.Unmarshal(data, &idx); err != nil {
+			continue
+		}
+
+		for _, item := range idx.Entries {
+			if item.SessionID == acpSessionID {
+				title := item.FirstPrompt
+				title = cleanSessionTitle(title)
+				return title, nil
+			}
+		}
+	}
+
+	return "", nil
+}
+
+func cleanSessionTitle(prompt string) string {
+	// Strip HTML tags like <ide_opened_file>...</ide_opened_file> or <command-message>...</command-message>
+	for {
+		start := strings.Index(prompt, "<")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(prompt[start:], ">")
+		if end == -1 {
+			break
+		}
+		prompt = prompt[:start] + prompt[start+end+1:]
+	}
+
+	prompt = strings.TrimSpace(prompt)
+	// Replace newlines/multiple spaces with a single space
+	prompt = strings.ReplaceAll(prompt, "\r", "")
+	prompt = strings.ReplaceAll(prompt, "\n", " ")
+	for strings.Contains(prompt, "  ") {
+		prompt = strings.ReplaceAll(prompt, "  ", " ")
+	}
+
+	// Truncate to N characters
+	const maxLen = 60
+	runes := []rune(prompt)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen-3]) + "..."
+	}
+	return prompt
+}
+
 // Sentinel errors for store operations.
 var (
 	ErrDuplicate = fmt.Errorf("agent: duplicate record id")
 	ErrNotFound  = fmt.Errorf("agent: record not found")
 )
+
+type TasksStore struct {
+	mu sync.RWMutex
+}
+
+func NewTasksStore() *TasksStore {
+	return &TasksStore{}
+}
+
+func (s *TasksStore) getTasksFilePath(workspacePath string) string {
+	return filepath.Join(workspacePath, ".1agents", "tasks.json")
+}
+
+func (s *TasksStore) Load(workspacePath string) (*TasksConfig, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	filePath := s.getTasksFilePath(workspacePath)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &TasksConfig{Tasks: []Task{}}, nil
+		}
+		return nil, err
+	}
+
+	var cfg TasksConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("agent: parse tasks %s: %w", filePath, err)
+	}
+	if cfg.Tasks == nil {
+		cfg.Tasks = []Task{}
+	}
+	return &cfg, nil
+}
+
+func (s *TasksStore) Save(workspacePath string, cfg *TasksConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	filePath := s.getTasksFilePath(workspacePath)
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("agent: ensure workspace tasks config dir: %w", err)
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	tmp := filePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filePath)
+}
+

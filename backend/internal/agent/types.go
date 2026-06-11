@@ -51,15 +51,26 @@ const DefaultAgentType = AgentTypeClaudecode
 // Fields map 1:1 to the JSON shape returned by /api/agent/sessions:
 //   {id, workspace_id, name, agent_type, cc_project, cc_session_id, session_key, created_at, last_event_at}
 type ChatSessionRecord struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Name        string    `json:"name"`
-	AgentType   AgentType `json:"agent_type"`
-	CcProject   string    `json:"cc_project"`
-	CcSessionID string    `json:"cc_session_id"`
-	SessionKey  string    `json:"session_key"`
-	CreatedAt   time.Time `json:"created_at"`
-	LastEventAt time.Time `json:"last_event_at,omitempty"`
+	ID           string    `json:"id"`
+	WorkspaceID  string    `json:"workspace_id"`
+	Name         string    `json:"name"`
+	AgentType    AgentType `json:"agent_type"`
+	CcProject    string    `json:"cc_project"`
+	CcSessionID  string    `json:"cc_session_id"`
+	// AcpSessionID is the agent-managed session id (e.g. Claude Code's
+	// JSONL filename) — set on first session_ready from the bridge-server
+	// and reused as resumeSessionId on subsequent opens. Independent of
+	// CcSessionID, which only identifies the cc-connect / IM side.
+	AcpSessionID string    `json:"acp_session_id,omitempty"`
+	SessionKey   string    `json:"session_key"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastEventAt  time.Time `json:"last_event_at,omitempty"`
+	// PermissionMode is the per-session permission policy forwarded to the
+	// bridge-server (which gates handlePermissionRequestCallback). One of
+	// "approve-reads" (default; auto-allow reads, prompt otherwise),
+	// "approve-all", "deny-all". Empty value means "use the bridge-server's
+	// global default".
+	PermissionMode string `json:"permission_mode,omitempty"`
 }
 
 // IndexRequest is the body of POST /api/agent/sessions.
@@ -80,3 +91,66 @@ type IndexRequest struct {
 type fileConfig struct {
 	Sessions []ChatSessionRecord `json:"sessions"`
 }
+
+type ScheduleType string
+
+const (
+	ScheduleTypeImmediate ScheduleType = "immediate"
+	ScheduleTypeScheduled ScheduleType = "scheduled"
+)
+
+type TaskStatus string
+
+const (
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusQueued    TaskStatus = "queued"
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusCancelled TaskStatus = "cancelled"
+	TaskStatusBlocked   TaskStatus = "blocked"
+)
+
+type SessionKind string
+
+const (
+	SessionKindChat SessionKind = "chat"
+)
+
+type SessionStatus string
+
+const (
+	SessionStatusIdle    SessionStatus = "idle"
+	SessionStatusRunning SessionStatus = "running"
+)
+
+type SessionMetadata struct {
+	ID        string        `json:"id"`
+	Kind      SessionKind   `json:"kind"`
+	Name      string        `json:"name"`
+	AgentType string        `json:"agentType"`
+	Status    SessionStatus `json:"status"`
+	Summary   string        `json:"summary,omitempty"`
+	CreatedAt time.Time     `json:"createdAt"`
+}
+
+type Task struct {
+	ID            string            `json:"id"`
+	Title         string            `json:"title"`
+	Status        TaskStatus        `json:"status"`
+	ScheduleType  ScheduleType      `json:"scheduleType"`
+	ScheduledAt   *time.Time        `json:"scheduledAt"`
+	DependsOn     []string          `json:"dependsOn"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	StartedAt     *time.Time        `json:"startedAt,omitempty"`
+	CompletedAt   *time.Time        `json:"completedAt,omitempty"`
+	Summary       string            `json:"summary,omitempty"`
+	Sessions      []SessionMetadata `json:"sessions"`
+	WorkspacePath string            `json:"-"`
+}
+
+type TasksConfig struct {
+	Tasks []Task `json:"tasks"`
+}
+

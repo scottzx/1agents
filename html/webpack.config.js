@@ -44,6 +44,10 @@ const baseConfig = {
                 test: /\.s?[ac]ss$/,
                 use: [devMode ? 'style-loader' : MiniCssExtractPlugin.loader, 'css-loader', 'sass-loader'],
             },
+            {
+                test: /\.svg$/,
+                type: 'asset/inline',
+            },
         ],
     },
     resolve: {
