@@ -75,6 +75,12 @@ interface UseBridgeState {
     items: ChatItem[];
     connection: ConnectionState;
     typing: boolean;
+    /**
+     * True once the bridge has emitted `session_ready` for this session.
+     * The UI uses this to gate the Composer and to render a "preparing
+     * session" placeholder during the brief init window for new chats.
+     */
+    ready: boolean;
     permissionMode: PermissionMode;
     send: (content: string) => void;
     cancel: () => void;
@@ -89,6 +95,14 @@ export interface SessionBridgeState {
     ws: WebSocket | null;
     listeners: Set<() => void>;
     turnStarted: boolean;
+    /**
+     * True once the bridge-server confirms the session is initialized
+     * (`session_ready` event). New sessions sit at `ready = false` for a
+     * brief window while the bridge spawns the agent process; during
+     * that window, prompt/cancel/set_permission_mode would all bounce
+     * with SESSION_NOT_FOUND, so the UI must gate input on this flag.
+     */
+    ready: boolean;
     /** Per-session permission policy mirrored from the backend record. */
     permissionMode: PermissionMode;
 }
@@ -108,6 +122,11 @@ export class ChatBridgeManager {
                 ws: null,
                 listeners: new Set(),
                 turnStarted: false,
+                // New sessions stay `ready: false` until the bridge-server
+                // emits `session_ready`; the UI gates input on this so we
+                // don't bounce prompts with SESSION_NOT_FOUND during the
+                // brief window the agent process is spawning.
+                ready: false,
                 // The list endpoint (GET /api/agent/sessions?workspace_id=…)
                 // already serializes ChatSessionRecord.PermissionMode onto
                 // the ChatSession object, so we can trust the field
@@ -135,6 +154,10 @@ export class ChatBridgeManager {
 
     private connect(session: ChatSession, state: SessionBridgeState) {
         state.connection = 'connecting';
+        // Reset `ready` on every (re)connect. The bridge-server emits a
+        // fresh `session_ready` after each `ensure_session`, so we wait
+        // for the new confirmation before letting the user act again.
+        state.ready = false;
         this.notify(state);
 
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -197,6 +220,12 @@ export class ChatBridgeManager {
 
             switch (event) {
                 case 'session_ready':
+                    // Flip the gate so the Composer / mode toggle unblock.
+                    // `state.typing` is intentionally untouched — the
+                    // bridge signals per-turn activity with `done` / `error`,
+                    // not with `session_ready`.
+                    state.ready = true;
+                    this.notify(state);
                     break;
                 case 'text_delta': {
                     if (!state.turnStarted) break;
@@ -243,21 +272,20 @@ export class ChatBridgeManager {
                 }
                 case 'tool_call': {
                     if (!state.turnStarted) break;
+                    // Backend's SSE safety fallback may emit tool_call events
+                    // without `arguments` (omitted) or with `arguments: {}`
+                    // (the runtime's no-input placeholder). Neither carries
+                    // any data we can render, and acting on them would
+                    // either synthesize a no-input call card or replace an
+                    // existing call's streamed input. Drop them here so the
+                    // next substantive event (or tool_result) is the only
+                    // thing that can move the call's state forward.
+                    if (!hasRenderableArguments(payload.arguments)) break;
                     stopAssistantStreaming();
-                    // The runtime may emit tool_call events for the same
-                    // toolCallId both with and without rawInput:
-                    //   - first an empty `{}` placeholder, then the real
-                    //     arguments as they stream in
-                    //   - after tool_result, a status-only update with no
-                    //     rawInput at all (e.g. when the call finishes)
-                    // Only the first shape carries new arguments; the
-                    // second must not clobber the input we already have.
-                    const hasArguments = payload.arguments !== undefined;
-                    const argsString = hasArguments
-                        ? typeof payload.arguments === 'string'
+                    const argsString =
+                        typeof payload.arguments === 'string'
                             ? payload.arguments
-                            : JSON.stringify(payload.arguments, null, 2)
-                        : '';
+                            : JSON.stringify(payload.arguments, null, 2);
                     const newCall: ToolCallInfo = {
                         toolName: payload.toolName || 'tool',
                         input: argsString,
@@ -268,12 +296,11 @@ export class ChatBridgeManager {
                     const next = [...state.items];
                     const last = next[next.length - 1];
                     if (last && last.kind === 'tool_use') {
-                        // The runtime may emit multiple tool_call events for
-                        // the same toolCallId as more data streams in (e.g.
-                        // a placeholder `{}` first, then the real input).
-                        // Update the existing call in place rather than
-                        // appending a duplicate so tool_result lands on the
-                        // right call and the tool_group stays tidy.
+                        // Multiple tool_call events for the same toolCallId
+                        // may arrive as more data streams in. Update the
+                        // existing call in place rather than appending a
+                        // duplicate so tool_result lands on the right call
+                        // and the tool_group stays tidy.
                         const existingIdx = newCall.toolCallId
                             ? last.calls.findIndex(c => c.toolCallId === newCall.toolCallId)
                             : -1;
@@ -285,13 +312,7 @@ export class ChatBridgeManager {
                                         ? {
                                               ...c,
                                               toolName: newCall.toolName,
-                                              // Preserve the streamed input
-                                              // when this event is a
-                                              // status-only update; refresh
-                                              // it only when the event
-                                              // actually carries new
-                                              // arguments.
-                                              ...(hasArguments ? { input: newCall.input } : {}),
+                                              input: newCall.input,
                                           }
                                         : c
                                 ),
@@ -531,6 +552,17 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'error': {
+                    // SESSION_NOT_FOUND arriving before `session_ready`
+                    // is the bridge's answer to any control action we
+                    // fired (or the Go backend re-fired) while the agent
+                    // was still spawning. Since the UI now gates input
+                    // on `ready`, the user can't trigger these anymore,
+                    // but we still defensively swallow them so the chat
+                    // stream doesn't get a misleading red banner during
+                    // the init window.
+                    if (payload.code === 'SESSION_NOT_FOUND' && !state.ready) {
+                        break;
+                    }
                     stopAssistantStreaming();
                     state.items = [
                         ...state.items,
@@ -577,6 +609,10 @@ export class ChatBridgeManager {
     send(session: ChatSession, content: string) {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        // Refuse prompts sent before the bridge confirms initialization.
+        // The bridge would answer with SESSION_NOT_FOUND and we'd be left
+        // with an orphan user bubble in the stream.
+        if (!state.ready) return;
         state.turnStarted = true;
         const msgId = cryptoId();
         state.items = [
@@ -602,6 +638,7 @@ export class ChatBridgeManager {
     cancel(session: ChatSession) {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        if (!state.ready) return;
         state.ws.send(
             JSON.stringify({
                 action: 'cancel',
@@ -616,6 +653,7 @@ export class ChatBridgeManager {
     respondPermission(session: ChatSession, requestId: string, decision: PermissionDecision) {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        if (!state.ready) return;
         // Find the nested permission sub-item and capture the originating
         // toolCallId so the response can be linked back to the tool_use
         // block in the audit/log chain.
@@ -747,6 +785,9 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const items = state ? state.items : seed;
     const connection = state ? state.connection : 'idle';
     const typing = state ? state.typing : false;
+    // `ready` is only meaningful once a `SessionBridgeState` exists; for
+    // a null session we report false so the UI treats it as "not yet".
+    const ready = state ? state.ready : false;
     const permissionMode = state ? state.permissionMode : DEFAULT_PERMISSION_MODE;
 
     const send = useCallback(
@@ -778,7 +819,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         [session]
     );
 
-    return { items, connection, typing, permissionMode, send, cancel, respondPermission, setPermissionMode };
+    return { items, connection, typing, ready, permissionMode, send, cancel, respondPermission, setPermissionMode };
 }
 
 function cryptoId(): string {
@@ -786,6 +827,25 @@ function cryptoId(): string {
         return (crypto as Crypto).randomUUID();
     }
     return `id-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+}
+
+// Treat a tool_call event's `arguments` as "renderable" only when it
+// carries real data the card can show. The backend's SSE safety fallback
+// either omits `arguments` entirely (rawInput wasn't streamed yet) or
+// sends `arguments: {}` (the runtime's no-input placeholder); neither
+// should drive a card into the "no args" empty state, so drop them at
+// the source. Primitive empties ("" / 0 / false) are also dropped —
+// they would render as "无附加调用参数" just like a true empty object.
+function hasRenderableArguments(args: unknown): boolean {
+    if (args === undefined || args === null) return false;
+    if (typeof args === 'string') return args.length > 0;
+    if (typeof args === 'number') return Number.isFinite(args);
+    if (typeof args === 'boolean') return true;
+    if (Array.isArray(args)) return args.length > 0;
+    if (typeof args === 'object') {
+        return Object.keys(args as Record<string, unknown>).length > 0;
+    }
+    return true;
 }
 
 function parseCreatedAt(value: string | undefined): number {

@@ -8,6 +8,14 @@ interface MessageListProps {
     items: ChatItem[];
     agentType?: AgentType;
     emptyHint?: string;
+    /**
+     * When true, render a centered spinner placeholder instead of the
+     * normal empty hint. Used during the bridge's `ensure_session` window
+     * for new chats so users see "preparing session" rather than a hint
+     * that implies they can type immediately.
+     */
+    loading?: boolean;
+    loadingHint?: string;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }
 
@@ -142,7 +150,14 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     return grouped;
 }
 
-export function MessageList({ items, agentType, emptyHint, onRespondPermission }: MessageListProps) {
+export function MessageList({
+    items,
+    agentType,
+    emptyHint,
+    loading,
+    loadingHint,
+    onRespondPermission,
+}: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
     // Auto-scroll to bottom on new content unless user has scrolled up.
@@ -154,6 +169,19 @@ export function MessageList({ items, agentType, emptyHint, onRespondPermission }
             el.scrollTop = el.scrollHeight;
         }
     }, [items]);
+
+    if (loading) {
+        // Spinner takes priority over the empty hint: while the bridge is
+        // spinning up the agent we don't want to advertise an "empty
+        // conversation, send a message" prompt that the composer can't
+        // honor yet (it would be disabled and the user would wonder why).
+        return (
+            <div class="chat-empty chat-loading">
+                <div class="chat-loading-spinner" aria-hidden="true" />
+                <p>{loadingHint ?? '会话正在初始化…'}</p>
+            </div>
+        );
+    }
 
     if (items.length === 0) {
         return (

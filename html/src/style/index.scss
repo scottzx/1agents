@@ -6821,6 +6821,28 @@ body {
   font-size: 14px;
 }
 
+// Center the spinner above the caption while a brand-new session is
+// still being initialized by the bridge (between ws.onopen and
+// session_ready). Reuses the flex column from .chat-empty so the same
+// panel layout is preserved when swapping hint ↔ loading.
+.chat-loading {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-loading-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-top-color: var(--accent-color, #0969da);
+  animation: chat-loading-spin 0.8s linear infinite;
+}
+
+@keyframes chat-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
 .chat-bubble {
   max-width: 80%;
   padding: 10px 14px;
