@@ -393,7 +393,16 @@ insecure = true
 			if err != nil {
 				log.Printf("[ccconnect] Error loading final validated config: %v", err)
 				runCancel()
-				time.Sleep(1 * time.Second)
+				// Block until a workspace is added (new RestartCh signal) or the
+				// daemon shuts down. This prevents a tight 1s retry loop flooding
+				// logs when the config is invalid (e.g., no projects configured).
+				select {
+				case <-ctx.Done():
+					return
+				case <-core.RestartCh:
+					log.Println("[ccconnect] Config changed, retrying engine start...")
+					time.Sleep(300 * time.Millisecond)
+				}
 				continue
 			}
 
