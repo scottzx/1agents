@@ -1,6 +1,6 @@
 package agent
 
-import "time"
+import "github.com/scottzx/1Agents/backend/internal/meta"
 
 // AgentType is the agent plugin name registered in cc-connect.
 // Matches the import list in backend/internal/ccconnect/runner.go.
@@ -42,25 +42,59 @@ var SupportedAgentTypes = []AgentType{
 // DefaultAgentType is the agent used when a workspace has none configured.
 const DefaultAgentType = AgentTypeClaudecode
 
-// ChatSessionRecord is the 1agents-side index of a chat session.
-//
-// A chat session is a tuple (cc-connect session, 1agents uuid). The actual
-// conversation lives in cc-connect; this record is just metadata that the
-// sidebar uses to list "my chat sessions" alongside terminal sessions.
-//
-// Fields map 1:1 to the JSON shape returned by /api/agent/sessions:
-//   {id, workspace_id, name, agent_type, cc_project, cc_session_id, session_key, created_at, last_event_at}
-type ChatSessionRecord struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Name        string    `json:"name"`
-	AgentType   AgentType `json:"agent_type"`
-	CcProject   string    `json:"cc_project"`
-	CcSessionID string    `json:"cc_session_id"`
-	SessionKey  string    `json:"session_key"`
-	CreatedAt   time.Time `json:"created_at"`
-	LastEventAt time.Time `json:"last_event_at,omitempty"`
-}
+// Model types live in internal/meta (the SQLite metadata layer) so the
+// server handlers and the CLI share one definition; the aliases below keep
+// this package's existing code and the wire JSON shapes unchanged.
+type (
+	ChatSessionRecord = meta.ChatSessionRecord
+	ScheduleType      = meta.ScheduleType
+	TaskStatus        = meta.TaskStatus
+	IssueState        = meta.IssueState
+	SessionKind       = meta.SessionKind
+	SessionStatus     = meta.SessionStatus
+	SessionMetadata   = meta.SessionMetadata
+	Author            = meta.Author
+	ReplyMode         = meta.ReplyMode
+	Reply             = meta.Reply
+	Task              = meta.Task
+	TasksConfig       = meta.TasksConfig
+	Priority          = meta.Priority
+	Recurrence        = meta.Recurrence
+	WorkspaceRef      = meta.WorkspaceRef
+)
+
+// PriorityRank re-exports the scheduler ordering helper.
+var PriorityRank = meta.PriorityRank
+
+const (
+	ScheduleTypeImmediate = meta.ScheduleTypeImmediate
+	ScheduleTypeScheduled = meta.ScheduleTypeScheduled
+
+	TaskStatusPending   = meta.TaskStatusPending
+	TaskStatusQueued    = meta.TaskStatusQueued
+	TaskStatusRunning   = meta.TaskStatusRunning
+	TaskStatusCompleted = meta.TaskStatusCompleted
+	TaskStatusFailed    = meta.TaskStatusFailed
+	TaskStatusCancelled = meta.TaskStatusCancelled
+	TaskStatusBlocked   = meta.TaskStatusBlocked
+
+	IssueOpen   = meta.IssueOpen
+	IssueClosed = meta.IssueClosed
+
+	PriorityUrgent = meta.PriorityUrgent
+	PriorityHigh   = meta.PriorityHigh
+	PriorityMedium = meta.PriorityMedium
+	PriorityLow    = meta.PriorityLow
+
+	SessionKindChat = meta.SessionKindChat
+
+	SessionStatusIdle    = meta.SessionStatusIdle
+	SessionStatusRunning = meta.SessionStatusRunning
+
+	ModeNewSession  = meta.ModeNewSession
+	ModeFollowUp    = meta.ModeFollowUp
+	ModePureComment = meta.ModePureComment
+)
 
 // IndexRequest is the body of POST /api/agent/sessions.
 //
@@ -71,12 +105,12 @@ type IndexRequest struct {
 	WorkspaceID string    `json:"workspace_id" binding:"required"`
 	Name        string    `json:"name"`
 	AgentType   AgentType `json:"agent_type" binding:"required"`
-	CcProject   string    `json:"cc_project" binding:"required"`
-	CcSessionID string    `json:"cc_session_id" binding:"required"`
-	SessionKey  string    `json:"session_key" binding:"required"`
-}
-
-// fileConfig is the top-level structure persisted to disk.
-type fileConfig struct {
-	Sessions []ChatSessionRecord `json:"sessions"`
+	// TaskID is the optional issue-model soft link; set when the session is
+	// spawned from a task timeline so the sidebar badge shows immediately.
+	TaskID string `json:"task_id"`
+	// cc_* / session_key identify the cc-connect (IM) side; empty for
+	// ACP-only sessions.
+	CcProject   string `json:"cc_project"`
+	CcSessionID string `json:"cc_session_id"`
+	SessionKey  string `json:"session_key"`
 }

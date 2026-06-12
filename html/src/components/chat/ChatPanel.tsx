@@ -1,11 +1,10 @@
 import { h, Component } from 'preact';
-import { useMemo } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import type { ChatSession } from '../types';
 import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { SessionStatusBar } from './SessionStatusBar';
-import { PermissionPrompt } from './PermissionPrompt';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -31,30 +30,60 @@ export class ChatPanel extends Component<ChatPanelProps> {
  * symmetry with the rest of the codebase.
  */
 function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialMessage }: ChatPanelProps) {
-    const { items, connection, typing, send, respondPermission } = useBridge(
-        session,
-        [],
-        pendingInitialMessage,
-        onClearPendingInitialMessage
-    );
+    const {
+        items,
+        connection,
+        typing,
+        ready,
+        permissionMode,
+        send,
+        cancel,
+        cancelQueued,
+        respondPermission,
+        setPermissionMode,
+    } = useBridge(session);
 
-    // Find the most recent unresolved permission request to surface as a modal.
-    const pendingPermission = useMemo(() => {
-        for (let i = items.length - 1; i >= 0; i--) {
-            const it = items[i];
-            if (it.kind === 'permission' && !it.resolved) return it;
-        }
-        return null;
-    }, [items]);
+    // The composer is only usable once BOTH the WS handshake finished
+    // AND the bridge has confirmed the session is initialized. The
+    // latter is the new gate — without it, the first user prompt on a
+    // brand-new session would race `session_ready` and bounce with
+    // SESSION_NOT_FOUND.
+    const composerDisabled = (connection !== 'connected' && connection !== 'reconnecting') || !ready;
 
-    const composerDisabled = connection !== 'connected' && connection !== 'reconnecting';
+    // New-chat home flow (192ab6a): fire the pending initial message once
+    // the session is usable, then clear it so reconnects don't resend.
+    useEffect(() => {
+        if (!pendingInitialMessage || composerDisabled) return;
+        send(pendingInitialMessage);
+        onClearPendingInitialMessage?.();
+        // (send/onClear identities churn per render; the two deps above are the real signals)
+    }, [pendingInitialMessage, composerDisabled]);
+
+    // Show a spinner placeholder while the WebSocket is open but the
+    // bridge hasn't confirmed the session yet. For reconnecting/error
+    // states the existing status bar / empty hint is more accurate.
+    const showInitLoading = connection === 'connected' && !ready;
 
     return (
         <div class="chat-panel">
             <SessionStatusBar session={session} connection={connection} typing={typing} />
-            <MessageList items={items} emptyHint={connection === 'connecting' ? '正在连接…' : '发送消息开始对话'} />
-            <Composer onSend={send} disabled={composerDisabled} />
-            {pendingPermission && <PermissionPrompt item={pendingPermission} onRespond={respondPermission} />}
+            <MessageList
+                items={items}
+                agentType={session.agentType}
+                typing={typing}
+                emptyHint={connection === 'connecting' ? '正在连接…' : '发送消息开始对话'}
+                loading={showInitLoading}
+                onRespondPermission={respondPermission}
+                onCancelQueued={cancelQueued}
+            />
+            <Composer
+                onSend={send}
+                onCancel={cancel}
+                isRunning={typing}
+                disabled={composerDisabled}
+                permissionMode={permissionMode}
+                onPermissionModeChange={setPermissionMode}
+            />
         </div>
     );
 }

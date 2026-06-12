@@ -12,9 +12,12 @@ export interface IndexChatSessionRequest {
     workspace_id: string;
     name: string;
     agent_type: AgentType;
-    cc_project: string;
-    cc_session_id: string;
-    session_key: string;
+    /** Optional issue-model soft link — set for sessions spawned from a task timeline. */
+    task_id?: string;
+    /** cc-connect (IM) identifiers — empty for ACP-only sessions. */
+    cc_project?: string;
+    cc_session_id?: string;
+    session_key?: string;
 }
 
 /** Default agent type used when a workspace has none configured. */
@@ -42,6 +45,17 @@ export const agentService = {
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawChatSession[];
         return data.map(normalizeChatSession);
+    },
+
+    /**
+     * GET /api/agent/sessions/{id}
+     * Returns the indexed record, or null when the id is unknown.
+     */
+    async get(id: string): Promise<ChatSession | null> {
+        const res = await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`);
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error(await res.text());
+        return normalizeChatSession((await res.json()) as RawChatSession);
     },
 
     /**
@@ -81,8 +95,10 @@ interface RawChatSession {
     workspace_id: string | number;
     name?: string;
     agent_type?: string;
+    task_id?: string;
     cc_project?: string;
     cc_session_id?: string;
+    acp_session_id?: string;
     session_key?: string;
     status?: string;
     last_event_at?: string;
@@ -95,10 +111,12 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         kind: 'chat',
         id: String(raw.id),
         workspaceId: String(raw.workspace_id),
+        taskId: raw.task_id ? String(raw.task_id) : undefined,
         name: String(raw.name ?? ''),
         agentType: (raw.agent_type ?? DEFAULT_AGENT_TYPE) as AgentType,
         ccProject: String(raw.cc_project ?? ''),
         ccSessionId: String(raw.cc_session_id ?? ''),
+        acpSessionId: raw.acp_session_id ? String(raw.acp_session_id) : undefined,
         sessionKey: String(raw.session_key ?? ''),
         status: (raw.status ?? 'idle') as ChatSession['status'],
         lastEventAt: raw.last_event_at || undefined,

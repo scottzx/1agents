@@ -1,22 +1,20 @@
 package agent
 
 import (
-	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 )
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	// Re-init the package-level configDir to use the test home.
-	configDir = filepath.Join(dir, ".1agents")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	// Each test gets its own ONEAGENTS_HOME, hence its own meta.db
+	// (meta.OpenDefault caches per resolved path).
+	t.Setenv("ONEAGENTS_HOME", t.TempDir())
+	s, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
 	}
-	return &Store{path: filepath.Join(configDir, configFile)}
+	return s
 }
 
 func TestStoreAddGetListDelete(t *testing.T) {
