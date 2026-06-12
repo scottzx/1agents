@@ -24,6 +24,7 @@ import {
     flowControl,
 } from '../terminal/terminalConfig';
 import { getModuleByTab } from '../../modules/registry';
+import * as fs from '../../stores/fsStore';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 interface DesktopAppLayoutProps {
@@ -46,24 +47,20 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
             tmuxMouseOn,
             ccProvidersUrl,
             ccConnectUrl,
-            flatFiles,
-            flatFilesLoading,
-            searchQuery,
-            selectedFilterTag,
-            viewMode,
-            favoriteFiles,
-            detailFullscreen,
-            isEditingDetail,
-            selectedFsEntry,
-            fileContent,
-            editedContent,
-            fileLoading,
-            fileSaving,
-            fileSaveMsg,
-            isImagePreview,
             accessAuthRequired,
             sidebarCollapsedGroups,
         } = state;
+        const searchQuery = fs.searchQuery.value;
+        const selectedFilterTag = fs.selectedFilterTag.value;
+        const favoriteFiles = fs.favoriteFiles.value;
+        const isEditingDetail = fs.isEditingDetail.value;
+        const selectedFsEntry = fs.selectedFsEntry.value;
+        const fileContent = fs.fileContent.value;
+        const editedContent = fs.editedContent.value;
+        const fileLoading = fs.fileLoading.value;
+        const fileSaving = fs.fileSaving.value;
+        const fileSaveMsg = fs.fileSaveMsg.value;
+        const isImagePreview = fs.isImagePreview.value;
         const language = ui.language.value;
         const theme = ui.theme.value;
         const leftSidebarOpen = ui.leftSidebarOpen.value;
@@ -398,33 +395,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             rightPanelWidth={ui.rightPanelWidth.value}
                                             closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
                                             ccConnectUrl={ccConnectUrl}
-                                            theme={theme}
-                                            toggleTheme={ui.toggleTheme}
-                                            language={language}
-                                            toggleLanguage={ui.toggleLanguage}
-                                            flatFiles={flatFiles}
-                                            flatFilesLoading={flatFilesLoading}
-                                            searchQuery={searchQuery}
-                                            selectedFilterTag={selectedFilterTag}
-                                            viewMode={viewMode}
-                                            favoriteFiles={favoriteFiles}
-                                            detailFullscreen={detailFullscreen}
-                                            isEditingDetail={isEditingDetail}
-                                            selectedFsEntry={selectedFsEntry}
-                                            fileContent={fileContent}
-                                            editedContent={editedContent}
-                                            fileLoading={fileLoading}
-                                            fileSaving={fileSaving}
-                                            fileSaveMsg={fileSaveMsg}
-                                            isImagePreview={isImagePreview}
-                                            imageUrl={fsService.imageUrl(selectedFsEntry?.path ?? '')}
-                                            onSearchQueryChange={app.handleSearchChange}
-                                            onFilterTagChange={app.handleFilterTagChange}
                                             onRefreshFlatFiles={async () => {
-                                                app.loadDir('', null);
+                                                fs.loadDir('', null);
                                                 const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
                                                 if (isSearching) {
-                                                    app.loadFlatFiles();
+                                                    fs.loadFlatFiles();
                                                 }
                                                 try {
                                                     await app.checkAccessStatus();
@@ -443,16 +418,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     console.error('Failed to reconnect/refresh:', e);
                                                 }
                                             }}
-                                            onOpenFileDetail={app.openFileDetail}
-                                            onBackToList={() =>
-                                                app.setState({ viewMode: 'list', detailFullscreen: false })
-                                            }
-                                            onToggleFavorite={app.toggleFavorite}
-                                            onCopyContent={app.copyFileContent}
-                                            onDownloadFile={app.downloadFile}
-                                            onRenameFile={app.renameFile}
                                             onToggleFullscreen={() => {
-                                                const { selectedFsEntry, workspaces, activeWorkspaceId } = app.state;
+                                                const { workspaces, activeWorkspaceId } = app.state;
+                                                const selectedFsEntry = fs.selectedFsEntry.value;
                                                 if (selectedFsEntry) {
                                                     const activeWorkspace = workspaces.find(
                                                         w => w.id === activeWorkspaceId
@@ -472,15 +440,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 }
                                             }}
                                             onShareFile={app.shareFile}
-                                            onSaveFile={app.saveFile}
-                                            onToggleEditing={isEditing => app.setState({ isEditingDetail: isEditing })}
-                                            onEditedContentChange={content => app.setState({ editedContent: content })}
                                             onOpenPreview={
                                                 IS_DESKTOP ? (path, name) => app.openPreviewTab(path, name) : undefined
                                             }
-                                            fsEntries={state.fsEntries}
-                                            fsLoading={state.fsLoading}
-                                            onToggleFsDir={app.toggleFsDir}
                                             accessTokenExists={state.accessAuthRequired}
                                             onGenerateAccessToken={app.generateAccessToken}
                                             onRevokeAccessToken={app.revokeAccessToken}
@@ -516,19 +478,15 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 isImagePreview={isImagePreview}
                                                 imageUrl={fsService.imageUrl(selectedFsEntry.path)}
                                                 onBackToList={() => app.closeTab(activeTabId)}
-                                                onToggleFavorite={app.toggleFavorite}
-                                                onCopyContent={app.copyFileContent}
-                                                onDownloadFile={app.downloadFile}
-                                                onRenameFile={app.renameFile}
+                                                onToggleFavorite={fs.toggleFavorite}
+                                                onCopyContent={fs.copyFileContent}
+                                                onDownloadFile={fs.downloadFile}
+                                                onRenameFile={fs.renameFile}
                                                 onToggleFullscreen={() => {}}
                                                 onShareFile={app.shareFile}
-                                                onSaveFile={app.saveFile}
-                                                onToggleEditing={isEditing =>
-                                                    app.setState({ isEditingDetail: isEditing })
-                                                }
-                                                onEditedContentChange={content =>
-                                                    app.setState({ editedContent: content })
-                                                }
+                                                onSaveFile={fs.saveFile}
+                                                onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
+                                                onEditedContentChange={content => (fs.editedContent.value = content)}
                                                 onOpenPreview={
                                                     IS_DESKTOP
                                                         ? (path, name) => app.openPreviewTab(path, name)

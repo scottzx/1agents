@@ -39,8 +39,8 @@ import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { ccCreateSession, ccDeleteSession, getCcAuth, ccProjectName } from '../services/ccconnectClient';
 import { globalBridgeManager } from './chat/hooks';
 
-import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
 import * as ui from '../stores/uiStore';
+import * as fs from '../stores/fsStore';
 
 export {
     wsUrl,
@@ -112,26 +112,6 @@ export interface AppState {
     // ── Chat session state (1agents-side index) ──
     chatSessions: ChatSession[];
     pendingInitialMessage: string | null;
-    // ── File system state ──
-    fsEntries: FsEntry[];
-    fsLoading: boolean;
-    selectedFsEntry: FsEntry | null;
-    fileContent: string;
-    editedContent: string;
-    fileLoading: boolean;
-    fileSaving: boolean;
-    fileSaveMsg: string;
-    // ── Image preview ──
-    isImagePreview: boolean;
-    // ── Flat file browser ──
-    flatFiles: FsEntry[];
-    flatFilesLoading: boolean;
-    searchQuery: string;
-    selectedFilterTag: 'all' | 'doc' | 'img' | 'code';
-    viewMode: 'list' | 'detail';
-    favoriteFiles: string[];
-    detailFullscreen: boolean;
-    isEditingDetail: boolean;
     activeSession: Session | null;
     // ── Access token state ──
     accessGateVisible: boolean;
@@ -162,18 +142,9 @@ let _resizerStartWidth = 0;
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
     private _terminalPollInterval: ReturnType<typeof setInterval> | null = null;
-    private _crawlCounter = 0;
-    private _searchTimeout: number | null = null;
-    private _workspaceTreeCache: Record<string, FsEntry[]> = {};
 
     constructor() {
         super();
-        let favs: string[] = [];
-        try {
-            favs = JSON.parse(localStorage.getItem('fav-files') || '[]');
-        } catch {
-            /* ignore */
-        }
         const initialLang = ui.language.value;
         this.state = {
             activeTab: 'terminal',
@@ -207,23 +178,6 @@ export class App extends Component<{}, AppState> {
             sessionRenameTarget: null,
             sessionRenameName: '',
             chatSessions: [],
-            fsEntries: [],
-            fsLoading: false,
-            selectedFsEntry: null,
-            fileContent: '',
-            editedContent: '',
-            fileLoading: false,
-            fileSaving: false,
-            fileSaveMsg: '',
-            isImagePreview: false,
-            flatFiles: [],
-            flatFilesLoading: false,
-            searchQuery: '',
-            selectedFilterTag: 'all',
-            viewMode: 'list',
-            favoriteFiles: favs,
-            detailFullscreen: false,
-            isEditingDetail: false,
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
@@ -287,10 +241,10 @@ export class App extends Component<{}, AppState> {
             if (ws) {
                 await this.switchWorkspaceContext(ws);
             } else {
-                this.loadDir('', null);
+                fs.loadDir('', null);
             }
         } else {
-            this.loadDir('', null);
+            fs.loadDir('', null);
         }
 
         this.loadTmuxMouse();
@@ -363,7 +317,7 @@ export class App extends Component<{}, AppState> {
     handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
-            this.saveFile();
+            fs.saveFile();
         }
     };
 
@@ -924,24 +878,7 @@ export class App extends Component<{}, AppState> {
      * Called by both selectWorkspace() and selectSession().
      */
     switchWorkspaceContext = async (ws: Workspace) => {
-        // Tell backend to update fs + git roots atomically
-        try {
-            await fsService.setContext(ws.path);
-        } catch (err) {
-            console.error('[context] set error:', err);
-        }
-
-        const cached = this._workspaceTreeCache[ws.id] || [];
-
-        // Reset file-browser state, using cache if available to prevent UI flashing
-        this.setState({
-            fsEntries: cached,
-            selectedFsEntry: null,
-            fileContent: '',
-            editedContent: '',
-            fsLoading: cached.length === 0,
-        });
-        this.loadDir('', null);
+        await fs.switchFsContext(ws);
     };
 
     selectSession = async (session: Session) => {
@@ -1047,132 +984,6 @@ export class App extends Component<{}, AppState> {
 
     // ── File system API helpers ──────────────────────────────────────────────
 
-    /** Fetch directory entries from /api/fs/list and merge into the tree */
-    loadDir = async (relPath: string, parent: FsEntry | null) => {
-        if (!parent) {
-            const hasCache = this.state.fsEntries && this.state.fsEntries.length > 0;
-            if (!hasCache) {
-                this.setState({ fsLoading: true });
-            }
-        }
-        try {
-            const entries = await fsService.list(relPath);
-
-            if (!parent) {
-                this.setState(prev => {
-                    let nextEntries = entries;
-                    if (prev.fsEntries && prev.fsEntries.length > 0) {
-                        nextEntries = mergeFreshEntries(prev.fsEntries, entries);
-                    }
-                    if (this.state.activeWorkspaceId) {
-                        this._workspaceTreeCache[this.state.activeWorkspaceId] = nextEntries;
-                    }
-                    return {
-                        fsEntries: nextEntries,
-                        fsLoading: false,
-                    };
-                });
-            } else {
-                // Merge children into the existing tree
-                this.setState(prev => {
-                    const nextEntries = mergeChildren(prev.fsEntries, parent.path, entries);
-                    if (this.state.activeWorkspaceId) {
-                        this._workspaceTreeCache[this.state.activeWorkspaceId] = nextEntries;
-                    }
-                    return {
-                        fsEntries: nextEntries,
-                    };
-                });
-            }
-        } catch (err) {
-            console.error('[fs] list error:', err);
-            if (!parent) this.setState({ fsLoading: false });
-        }
-    };
-
-    /** Toggle expand/collapse of a directory entry */
-    toggleFsDir = (entry: FsEntry) => {
-        if (!entry.isDir) return;
-        const willExpand = !entry.expanded;
-        this.setState(
-            prev => {
-                const nextEntries = setExpanded(prev.fsEntries, entry.path, willExpand);
-                if (this.state.activeWorkspaceId) {
-                    this._workspaceTreeCache[this.state.activeWorkspaceId] = nextEntries;
-                }
-                return {
-                    fsEntries: nextEntries,
-                };
-            },
-            () => {
-                // Lazy-load children only on first expand
-                if (willExpand && (!entry.children || entry.children.length === 0)) {
-                    this.loadDir(entry.path, entry);
-                }
-            }
-        );
-    };
-
-    /** Open a file and load its content from /api/fs/read */
-    selectFsFile = async (entry: FsEntry) => {
-        if (entry.isDir) {
-            this.toggleFsDir(entry);
-            return;
-        }
-        this.setState({
-            selectedFsEntry: entry,
-            fileLoading: true,
-            fileContent: '',
-            editedContent: '',
-            fileSaveMsg: '',
-            isImagePreview: false,
-        });
-
-        // Check if this is an image file
-        if (this.isImageFile(entry.name)) {
-            // Image is now rendered directly via <img src={fsService.imageUrl(path)}> —
-            // no need to fetch into state. Just mark the preview mode.
-            this.setState({ isImagePreview: true, fileLoading: false });
-            return;
-        }
-
-        try {
-            const text = await fsService.read(entry.path);
-            this.setState({ fileContent: text, editedContent: text, fileLoading: false });
-        } catch (err) {
-            console.error('[fs] read error:', err);
-            this.setState({ fileContent: `Error loading file: ${err}`, editedContent: '', fileLoading: false });
-        }
-    };
-
-    /** Check if a filename has an image extension */
-    isImageFile(name: string): boolean {
-        const ext = name.toLowerCase().split('.').pop() || '';
-        return ['gif', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'svg'].includes(ext);
-    }
-
-    /** Write editedContent back to the server via /api/fs/write */
-    saveFile = async () => {
-        const { selectedFsEntry, editedContent, fileSaving } = this.state;
-        if (!selectedFsEntry || selectedFsEntry.isDir || fileSaving) return;
-        this.setState({ fileSaving: true, fileSaveMsg: '' });
-        try {
-            await fsService.write(selectedFsEntry.path, editedContent);
-            this.setState({
-                fileContent: editedContent,
-                fileSaving: false,
-                fileSaveMsg: t('app.toast.fileSaved', ui.language.value),
-            });
-            setTimeout(() => this.setState({ fileSaveMsg: '' }), 2000);
-        } catch (err) {
-            console.error('[fs] write error:', err);
-            this.setState({
-                fileSaving: false,
-                fileSaveMsg: t('app.toast.fileSaveFailed', ui.language.value, { err: String(err) }),
-            });
-        }
-    };
-
     updateCcConnectUrlParams = (theme: 'light' | 'dark', lang: Lang) => {
         const urlStr = this.state.ccConnectUrl;
         if (!urlStr) return;
@@ -1224,7 +1035,7 @@ export class App extends Component<{}, AppState> {
                 size: 0,
                 modTime: 0,
             };
-            await this.openFileDetail(entry);
+            await fs.openFileDetail(entry);
         } else if (tab.type === 'terminal') {
             ui.triggerTerminalFit();
         }
@@ -1543,55 +1354,6 @@ export class App extends Component<{}, AppState> {
 
     // ── Flat file crawler & search ──────────────────────────────────────────
 
-    loadFlatFiles = async () => {
-        const { searchQuery, selectedFilterTag } = this.state;
-        const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
-        if (!isSearching) {
-            this.setState({ flatFiles: [], flatFilesLoading: false });
-            return;
-        }
-
-        this._crawlCounter++;
-        const currentCrawl = this._crawlCounter;
-        this.setState({ flatFilesLoading: true });
-        try {
-            const files = await fsService.search(searchQuery, selectedFilterTag);
-            if (currentCrawl === this._crawlCounter) {
-                this.setState({ flatFiles: files, flatFilesLoading: false });
-            }
-        } catch (err) {
-            if (currentCrawl === this._crawlCounter) {
-                console.error('[search] error:', err);
-                this.setState({ flatFilesLoading: false });
-            }
-        }
-    };
-
-    handleSearchChange = (query: string) => {
-        this.setState({ searchQuery: query });
-        if (this._searchTimeout) {
-            clearTimeout(this._searchTimeout);
-            this._searchTimeout = null;
-        }
-        if (query === '' && this.state.selectedFilterTag === 'all') {
-            this.setState({ flatFiles: [], flatFilesLoading: false });
-            return;
-        }
-        this._searchTimeout = setTimeout(() => {
-            this.loadFlatFiles();
-        }, 300) as unknown as number;
-    };
-
-    handleFilterTagChange = (tag: 'all' | 'doc' | 'img' | 'code') => {
-        this.setState({ selectedFilterTag: tag }, () => {
-            if (this._searchTimeout) {
-                clearTimeout(this._searchTimeout);
-                this._searchTimeout = null;
-            }
-            this.loadFlatFiles();
-        });
-    };
-
     // ── File detail action handlers ────────────────────────────────────────
 
     checkAccessStatus = async () => {
@@ -1614,7 +1376,7 @@ export class App extends Component<{}, AppState> {
     onAccessAuthenticated = async () => {
         await this.checkAccessStatus();
         if (!this.state.accessGateVisible) {
-            this.loadDir('', null);
+            fs.loadDir('', null);
             await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
             this.mergeSessionsIntoFolders(this.state.terminalWindows, this.state.chatSessions);
             const { workspaces, activeWorkspaceId } = this.state;
@@ -1651,105 +1413,9 @@ export class App extends Component<{}, AppState> {
         this.setState({ accessTokenModalToken: '' });
     };
 
-    openFileDetail = async (entry: FsEntry) => {
-        this.setState({
-            selectedFsEntry: entry,
-            viewMode: 'detail',
-            fileLoading: true,
-            fileContent: '',
-            editedContent: '',
-            isEditingDetail: false,
-            isImagePreview: false,
-        });
-
-        // Check if this is an image file
-        if (this.isImageFile(entry.name)) {
-            this.setState({ isImagePreview: true, fileLoading: false });
-            return;
-        }
-
-        try {
-            const text = await fsService.read(entry.path);
-            this.setState({ fileContent: text, editedContent: text, fileLoading: false });
-        } catch (err) {
-            this.setState({ fileContent: `Error: ${err}`, editedContent: '', fileLoading: false });
-        }
-    };
-
-    toggleFavorite = (path: string) => {
-        const favs = this.state.favoriteFiles.includes(path)
-            ? this.state.favoriteFiles.filter(p => p !== path)
-            : [...this.state.favoriteFiles, path];
-        this.setState({ favoriteFiles: favs });
-        try {
-            localStorage.setItem('fav-files', JSON.stringify(favs));
-        } catch {
-            /* ignore */
-        }
-    };
-
-    copyFileContent = async () => {
-        try {
-            await navigator.clipboard.writeText(this.state.fileContent);
-            ui.showToast(t('app.toast.copySuccess', ui.language.value));
-        } catch (_) {
-            ui.showToast(t('app.toast.copyFailed', ui.language.value));
-        }
-    };
-
-    duplicateFile = async () => {
-        const { selectedFsEntry, fileContent } = this.state;
-        if (!selectedFsEntry) return;
-        const dot = selectedFsEntry.name.lastIndexOf('.');
-        const base = dot > 0 ? selectedFsEntry.name.slice(0, dot) : selectedFsEntry.name;
-        const ext = dot > 0 ? selectedFsEntry.name.slice(dot) : '';
-        const dir = selectedFsEntry.path.includes('/')
-            ? selectedFsEntry.path.slice(0, selectedFsEntry.path.lastIndexOf('/') + 1)
-            : '';
-        const newPath = `${dir}${base}_copy${ext}`;
-        try {
-            await fsService.write(newPath, fileContent);
-            ui.showToast(t('app.toast.fileDuplicated', ui.language.value));
-            this.loadDir('', null);
-        } catch (err) {
-            ui.showToast(t('app.toast.fileDuplicateFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    downloadFile = () => {
-        const { selectedFsEntry, fileContent } = this.state;
-        if (!selectedFsEntry) return;
-        const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = selectedFsEntry.name;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
-
-    renameFile = async () => {
-        const { selectedFsEntry, fileContent } = this.state;
-        if (!selectedFsEntry) return;
-        const newName = window.prompt(t('app.prompt.rename', ui.language.value), selectedFsEntry.name);
-        if (!newName || newName === selectedFsEntry.name) return;
-        const dir = selectedFsEntry.path.includes('/')
-            ? selectedFsEntry.path.slice(0, selectedFsEntry.path.lastIndexOf('/') + 1)
-            : '';
-        const newPath = `${dir}${newName}`;
-        try {
-            // Write content to new path
-            await fsService.write(newPath, fileContent);
-            ui.showToast(t('app.toast.renameSuccess', ui.language.value));
-            this.setState({ selectedFsEntry: { ...selectedFsEntry, name: newName, path: newPath }, viewMode: 'list' });
-            this.loadDir('', null);
-        } catch (err) {
-            ui.showToast(t('app.toast.renameFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
     shareFile = async () => {
-        const { selectedFsEntry, workspaces, activeWorkspaceId } = this.state;
+        const { workspaces, activeWorkspaceId } = this.state;
+        const selectedFsEntry = fs.selectedFsEntry.value;
         if (!selectedFsEntry) return;
 
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
@@ -1783,12 +1449,10 @@ export class App extends Component<{}, AppState> {
             modTime: 0,
         };
 
-        this.setState({
-            activeDrawerTab: 'files',
-            viewMode: 'detail',
-            detailFullscreen: true,
-        });
-        await this.openFileDetail(entry);
+        this.setState({ activeDrawerTab: 'files' });
+        fs.viewMode.value = 'detail';
+        fs.detailFullscreen.value = true;
+        await fs.openFileDetail(entry);
     };
 
     render() {
@@ -1805,15 +1469,6 @@ export class App extends Component<{}, AppState> {
             chatCreateOpen,
             chatCreateWsId,
             dirPickerOpen,
-            favoriteFiles,
-            isEditingDetail,
-            selectedFsEntry,
-            fileContent,
-            editedContent,
-            fileLoading,
-            fileSaving,
-            fileSaveMsg,
-            isImagePreview,
             accessGateVisible,
             accessTokenModalToken,
             sessionRenameModalOpen,
@@ -1822,6 +1477,15 @@ export class App extends Component<{}, AppState> {
         } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;
+        const favoriteFiles = fs.favoriteFiles.value;
+        const isEditingDetail = fs.isEditingDetail.value;
+        const selectedFsEntry = fs.selectedFsEntry.value;
+        const fileContent = fs.fileContent.value;
+        const editedContent = fs.editedContent.value;
+        const fileLoading = fs.fileLoading.value;
+        const fileSaving = fs.fileSaving.value;
+        const fileSaveMsg = fs.fileSaveMsg.value;
+        const isImagePreview = fs.isImagePreview.value;
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} language={language} />;
@@ -1885,17 +1549,17 @@ export class App extends Component<{}, AppState> {
                             // Go back to the main workspace by clearing URL params
                             window.location.href = window.location.origin + window.location.pathname;
                         }}
-                        onToggleFavorite={this.toggleFavorite}
-                        onCopyContent={this.copyFileContent}
-                        onDownloadFile={this.downloadFile}
-                        onRenameFile={this.renameFile}
+                        onToggleFavorite={fs.toggleFavorite}
+                        onCopyContent={fs.copyFileContent}
+                        onDownloadFile={fs.downloadFile}
+                        onRenameFile={fs.renameFile}
                         onToggleFullscreen={() => {
                             window.location.href = window.location.origin + window.location.pathname;
                         }}
                         onShareFile={this.shareFile}
-                        onSaveFile={this.saveFile}
-                        onToggleEditing={isEditing => this.setState({ isEditingDetail: isEditing })}
-                        onEditedContentChange={content => this.setState({ editedContent: content })}
+                        onSaveFile={fs.saveFile}
+                        onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
+                        onEditedContentChange={content => (fs.editedContent.value = content)}
                         isStandalone={true}
                         language={language}
                     />

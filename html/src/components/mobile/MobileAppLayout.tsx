@@ -13,6 +13,7 @@ import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
+import * as fs from '../../stores/fsStore';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -199,23 +200,19 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             ccProvidersUrl,
             ccConnectUrl,
             activeDrawerTab,
-            flatFiles,
-            flatFilesLoading,
-            searchQuery,
-            selectedFilterTag,
-            viewMode,
-            favoriteFiles,
-            detailFullscreen,
-            isEditingDetail,
-            selectedFsEntry,
-            fileContent,
-            editedContent,
-            fileLoading,
-            fileSaving,
-            fileSaveMsg,
-            isImagePreview,
             accessAuthRequired,
         } = state;
+        const searchQuery = fs.searchQuery.value;
+        const selectedFilterTag = fs.selectedFilterTag.value;
+        const favoriteFiles = fs.favoriteFiles.value;
+        const isEditingDetail = fs.isEditingDetail.value;
+        const selectedFsEntry = fs.selectedFsEntry.value;
+        const fileContent = fs.fileContent.value;
+        const editedContent = fs.editedContent.value;
+        const fileLoading = fs.fileLoading.value;
+        const fileSaving = fs.fileSaving.value;
+        const fileSaveMsg = fs.fileSaveMsg.value;
+        const isImagePreview = fs.isImagePreview.value;
         const language = ui.language.value;
         const theme = ui.theme.value;
         const keyboardVisible = ui.keyboardVisible.value;
@@ -629,44 +626,14 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     rightPanelWidth={window.innerWidth}
                                                     closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
                                                     ccConnectUrl={ccConnectUrl}
-                                                    theme={theme}
-                                                    toggleTheme={ui.toggleTheme}
-                                                    language={language}
-                                                    toggleLanguage={ui.toggleLanguage}
-                                                    flatFiles={flatFiles}
-                                                    flatFilesLoading={flatFilesLoading}
-                                                    searchQuery={searchQuery}
-                                                    selectedFilterTag={selectedFilterTag}
-                                                    viewMode={viewMode}
-                                                    favoriteFiles={favoriteFiles}
-                                                    detailFullscreen={detailFullscreen}
-                                                    isEditingDetail={isEditingDetail}
-                                                    selectedFsEntry={selectedFsEntry}
-                                                    fileContent={fileContent}
-                                                    editedContent={editedContent}
-                                                    fileLoading={fileLoading}
-                                                    fileSaving={fileSaving}
-                                                    fileSaveMsg={fileSaveMsg}
-                                                    isImagePreview={isImagePreview}
-                                                    imageUrl={fsService.imageUrl(selectedFsEntry?.path ?? '')}
-                                                    onSearchQueryChange={app.handleSearchChange}
-                                                    onFilterTagChange={app.handleFilterTagChange}
                                                     onRefreshFlatFiles={async () => {
-                                                        app.loadDir('', null);
+                                                        fs.loadDir('', null);
                                                         const isSearching =
                                                             searchQuery !== '' || selectedFilterTag !== 'all';
                                                         if (isSearching) {
-                                                            app.loadFlatFiles();
+                                                            fs.loadFlatFiles();
                                                         }
                                                     }}
-                                                    onOpenFileDetail={app.openFileDetail}
-                                                    onBackToList={() =>
-                                                        app.setState({ viewMode: 'list', detailFullscreen: false })
-                                                    }
-                                                    onToggleFavorite={app.toggleFavorite}
-                                                    onCopyContent={app.copyFileContent}
-                                                    onDownloadFile={app.downloadFile}
-                                                    onRenameFile={app.renameFile}
                                                     onToggleFullscreen={() => {
                                                         if (selectedFsEntry) {
                                                             const encodedPath = selectedFsEntry.path
@@ -677,16 +644,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                         }
                                                     }}
                                                     onShareFile={app.shareFile}
-                                                    onSaveFile={app.saveFile}
-                                                    onToggleEditing={isEditing =>
-                                                        app.setState({ isEditingDetail: isEditing })
-                                                    }
-                                                    onEditedContentChange={content =>
-                                                        app.setState({ editedContent: content })
-                                                    }
-                                                    fsEntries={state.fsEntries}
-                                                    fsLoading={state.fsLoading}
-                                                    onToggleFsDir={app.toggleFsDir}
                                                     accessTokenExists={state.accessAuthRequired}
                                                     onGenerateAccessToken={app.generateAccessToken}
                                                     onRevokeAccessToken={app.revokeAccessToken}
@@ -1026,15 +983,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         isImagePreview={isImagePreview}
                                         imageUrl={fsService.imageUrl(selectedFsEntry.path)}
                                         onBackToList={() => app.closeTab(activeTabId)}
-                                        onToggleFavorite={app.toggleFavorite}
-                                        onCopyContent={app.copyFileContent}
-                                        onDownloadFile={app.downloadFile}
-                                        onRenameFile={app.renameFile}
+                                        onToggleFavorite={fs.toggleFavorite}
+                                        onCopyContent={fs.copyFileContent}
+                                        onDownloadFile={fs.downloadFile}
+                                        onRenameFile={fs.renameFile}
                                         onToggleFullscreen={() => {}}
                                         onShareFile={app.shareFile}
-                                        onSaveFile={app.saveFile}
-                                        onToggleEditing={isEditing => app.setState({ isEditingDetail: isEditing })}
-                                        onEditedContentChange={content => app.setState({ editedContent: content })}
+                                        onSaveFile={fs.saveFile}
+                                        onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
+                                        onEditedContentChange={content => (fs.editedContent.value = content)}
                                         onOpenPreview={undefined}
                                         isStandalone={true}
                                         language={language}
