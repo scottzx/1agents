@@ -42,6 +42,13 @@ interface LeftSidebarProps {
     };
     onChatCreate: (workspaceId: string) => void;
     onChatKill: (sessionId: string) => void;
+    /**
+     * Per-workspace collapse state for the 聊天 / 终端 sub-page groups.
+     * Owned by the parent so it survives LeftSidebar remounts and
+     * workspace switches.
+     */
+    collapsedGroups: Record<string, { chat?: boolean; term?: boolean }>;
+    onToggleGroup: (folderId: string, key: 'chat' | 'term') => void;
 }
 
 export function LeftSidebar({
@@ -68,9 +75,48 @@ export function LeftSidebar({
     moduleNav,
     onChatCreate,
     onChatKill,
+    collapsedGroups,
+    onToggleGroup,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+    // Task id → title map for the optional session task badge (issue
+    // model: sessions linked to a task show 📋 <task title>).
+    const [taskTitles, setTaskTitles] = useState<Record<string, string>>({});
+
+    const hasTaskLinkedSession = folders.some(f => f.sessions.some(s => isChat(s) && Boolean(s.taskId)));
+    const folderIdsKey = folders.map(f => f.id).join(',');
+    useEffect(() => {
+        if (!hasTaskLinkedSession) return;
+        let cancelled = false;
+        (async () => {
+            const titles: Record<string, string> = {};
+            for (const folder of folders) {
+                if (!folder.sessions.some(s => isChat(s) && Boolean(s.taskId))) continue;
+                try {
+                    const res = await fetch(`/api/agent/tasks?workspace_id=${encodeURIComponent(folder.id)}`);
+                    if (!res.ok) continue;
+                    const tasks = (await res.json()) as Array<{ id: string; title: string }>;
+                    for (const task of tasks || []) {
+                        titles[task.id] = task.title;
+                    }
+                } catch {
+                    // badge is decorative — ignore fetch failures
+                }
+            }
+            if (!cancelled) setTaskTitles(titles);
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // folders identity churns every render; folderIdsKey is the stable signal.
+    }, [folderIdsKey, hasTaskLinkedSession]);
+    // Per-workspace collapse state for the 聊天 / 终端 sub-page groups is
+    // owned by the parent App (see `sidebarCollapsedGroups` / `onToggleGroup`)
+    // so it survives LeftSidebar remounts and is preserved across workspace
+    // switches. Default (absent) = expanded; the 任务 entry is a leaf, not a
+    // group.
+
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [killingSessionId, setKillingSessionId] = useState<string | null>(null);
@@ -470,132 +516,120 @@ export function LeftSidebar({
                                             </div>
                                         )}
 
-                                        {folder.expanded && (
-                                            <div class="project-children">
-                                                {folder.sessions.length === 0 ? (
-                                                    <div class="ws-no-sessions">
-                                                        {t('sidebar.noSessions', language)}
-                                                    </div>
-                                                ) : (
-                                                    folder.sessions.map(session => {
-                                                        const killing = killingSessionId === session.id;
-                                                        if (isChat(session)) {
-                                                            return (
-                                                                <div
-                                                                    key={session.id}
-                                                                    class={`chat-item chat-row-kind-chat ${session.active ? 'active' : ''}${
-                                                                        killing ? ' chat-item-killing' : ''
-                                                                    }`}
-                                                                    onClick={(e: MouseEvent) => {
-                                                                        e.stopPropagation();
-                                                                        onSelectSession(session);
-                                                                    }}
-                                                                >
-                                                                    <AgentAvatar
-                                                                        agentType={session.agentType}
-                                                                        class="chat-sidebar-avatar"
-                                                                        title={
-                                                                            t('sidebar.chatSession', language) ||
-                                                                            '聊天会话'
-                                                                        }
-                                                                    />
-                                                                    <span class="chat-title" title={session.name}>
-                                                                        {session.name ||
-                                                                            t('sidebar.chatSession', language) ||
-                                                                            '聊天会话'}
-                                                                    </span>
-                                                                    <span class={`chat-status-dot ${session.status}`} />
-                                                                    <button
-                                                                        class="session-kill-btn"
-                                                                        title={t('sidebar.closeSession', language)}
-                                                                        onClick={(e: MouseEvent) =>
-                                                                            handleSessionKill(e, session)
-                                                                        }
-                                                                    >
-                                                                        <svg
-                                                                            width="12"
-                                                                            height="12"
-                                                                            viewBox="0 0 24 24"
-                                                                            fill="none"
-                                                                            stroke="currentColor"
-                                                                            stroke-width="2"
-                                                                            stroke-linecap="round"
-                                                                        >
-                                                                            <line x1="18" x2="6" y1="6" y2="18" />
-                                                                            <line x1="6" x2="18" y1="6" y2="18" />
-                                                                        </svg>
-                                                                    </button>
-                                                                </div>
-                                                            );
-                                                        }
+                                        {folder.expanded &&
+                                            (() => {
+                                                // Three fixed sub-pages per workspace: 📋 任务
+                                                // (default landing) + 💬 聊天 / 🖥️ 终端 groups,
+                                                // each holding its own session list.
+                                                const renderSession = (session: Session) => {
+                                                    const killing = killingSessionId === session.id;
+                                                    if (isChat(session)) {
                                                         return (
                                                             <div
                                                                 key={session.id}
-                                                                class={`chat-item chat-row-kind-terminal ${session.active ? 'active' : ''}${
+                                                                class={`chat-item chat-row-kind-chat ${session.active ? 'active' : ''}${
                                                                     killing ? ' chat-item-killing' : ''
                                                                 }`}
                                                                 onClick={(e: MouseEvent) => {
                                                                     e.stopPropagation();
                                                                     onSelectSession(session);
                                                                 }}
-                                                                onMouseEnter={() => setHoveredSessionId(session.id)}
-                                                                onMouseLeave={() =>
-                                                                    setHoveredSessionId(prev =>
-                                                                        prev === session.id ? null : prev
-                                                                    )
-                                                                }
                                                             >
-                                                                <div class="chat-item-left">
+                                                                <AgentAvatar
+                                                                    agentType={session.agentType}
+                                                                    class="chat-sidebar-avatar"
+                                                                    title={
+                                                                        t('sidebar.chatSession', language) || '聊天会话'
+                                                                    }
+                                                                />
+                                                                <span class="chat-title" title={session.name}>
+                                                                    {session.name ||
+                                                                        t('sidebar.chatSession', language) ||
+                                                                        '聊天会话'}
+                                                                </span>
+                                                                {session.taskId && (
                                                                     <span
-                                                                        class={`status-dot status-${session.status || 'none'}`}
-                                                                        title={t(
-                                                                            `sidebar.sessionStatus.${session.status || 'none'}`,
-                                                                            language
+                                                                        class="chat-task-badge"
+                                                                        title={`任务: ${taskTitles[session.taskId] || session.taskId}`}
+                                                                    >
+                                                                        {'\u{1F4CB}'}
+                                                                        {taskTitles[session.taskId] && (
+                                                                            <span class="chat-task-badge-title">
+                                                                                {taskTitles[session.taskId]}
+                                                                            </span>
                                                                         )}
-                                                                    />
-                                                                    <span class="chat-title" title={session.name}>
-                                                                        {session.name}
                                                                     </span>
-                                                                </div>
-                                                                {session.agent ? (
-                                                                    <span class="chat-agent">
-                                                                        {session.agent === 'antigravity'
-                                                                            ? 'agy'
-                                                                            : session.agent.charAt(0).toUpperCase() +
-                                                                              session.agent.slice(1)}
-                                                                    </span>
-                                                                ) : null}
-                                                                <div class="session-actions">
-                                                                    {hoveredSessionId === session.id && (
-                                                                        <button
-                                                                            class="session-action-btn"
-                                                                            title={t('sidebar.renameSession', language)}
-                                                                            onClick={(e: MouseEvent) => {
-                                                                                e.stopPropagation();
-                                                                                onRenameSession(session);
-                                                                            }}
-                                                                        >
-                                                                            <svg
-                                                                                width="12"
-                                                                                height="12"
-                                                                                viewBox="0 0 24 24"
-                                                                                fill="none"
-                                                                                stroke="currentColor"
-                                                                                stroke-width="2"
-                                                                                stroke-linecap="round"
-                                                                                stroke-linejoin="round"
-                                                                            >
-                                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                                                            </svg>
-                                                                        </button>
+                                                                )}
+                                                                <span class={`chat-status-dot ${session.status}`} />
+                                                                <button
+                                                                    class="session-kill-btn"
+                                                                    title={t('sidebar.closeSession', language)}
+                                                                    onClick={(e: MouseEvent) =>
+                                                                        handleSessionKill(e, session)
+                                                                    }
+                                                                >
+                                                                    <svg
+                                                                        width="12"
+                                                                        height="12"
+                                                                        viewBox="0 0 24 24"
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        stroke-width="2"
+                                                                        stroke-linecap="round"
+                                                                    >
+                                                                        <line x1="18" x2="6" y1="6" y2="18" />
+                                                                        <line x1="6" x2="18" y1="6" y2="18" />
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <div
+                                                            key={session.id}
+                                                            class={`chat-item chat-row-kind-terminal ${session.active ? 'active' : ''}${
+                                                                killing ? ' chat-item-killing' : ''
+                                                            }`}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onSelectSession(session);
+                                                            }}
+                                                            onMouseEnter={() => setHoveredSessionId(session.id)}
+                                                            onMouseLeave={() =>
+                                                                setHoveredSessionId(prev =>
+                                                                    prev === session.id ? null : prev
+                                                                )
+                                                            }
+                                                        >
+                                                            <div class="chat-item-left">
+                                                                <span
+                                                                    class={`status-dot status-${session.status || 'none'}`}
+                                                                    title={t(
+                                                                        `sidebar.sessionStatus.${session.status || 'none'}`,
+                                                                        language
                                                                     )}
+                                                                />
+                                                                <span class="chat-title" title={session.name}>
+                                                                    {session.name}
+                                                                </span>
+                                                            </div>
+                                                            {session.agent ? (
+                                                                <span class="chat-agent">
+                                                                    {session.agent === 'antigravity'
+                                                                        ? 'agy'
+                                                                        : session.agent.charAt(0).toUpperCase() +
+                                                                          session.agent.slice(1)}
+                                                                </span>
+                                                            ) : null}
+                                                            <div class="session-actions">
+                                                                {hoveredSessionId === session.id && (
                                                                     <button
-                                                                        class="session-kill-btn"
-                                                                        title={t('sidebar.closeSession', language)}
-                                                                        onClick={(e: MouseEvent) =>
-                                                                            handleSessionKill(e, session)
-                                                                        }
+                                                                        class="session-action-btn"
+                                                                        title={t('sidebar.renameSession', language)}
+                                                                        onClick={(e: MouseEvent) => {
+                                                                            e.stopPropagation();
+                                                                            onRenameSession(session);
+                                                                        }}
                                                                     >
                                                                         <svg
                                                                             width="12"
@@ -605,18 +639,148 @@ export function LeftSidebar({
                                                                             stroke="currentColor"
                                                                             stroke-width="2"
                                                                             stroke-linecap="round"
+                                                                            stroke-linejoin="round"
                                                                         >
-                                                                            <line x1="18" x2="6" y1="6" y2="18" />
-                                                                            <line x1="6" x2="18" y1="6" y2="18" />
+                                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                                                         </svg>
                                                                     </button>
-                                                                </div>
+                                                                )}
+                                                                <button
+                                                                    class="session-kill-btn"
+                                                                    title={t('sidebar.closeSession', language)}
+                                                                    onClick={(e: MouseEvent) =>
+                                                                        handleSessionKill(e, session)
+                                                                    }
+                                                                >
+                                                                    <svg
+                                                                        width="12"
+                                                                        height="12"
+                                                                        viewBox="0 0 24 24"
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        stroke-width="2"
+                                                                        stroke-linecap="round"
+                                                                    >
+                                                                        <line x1="18" x2="6" y1="6" y2="18" />
+                                                                        <line x1="6" x2="18" y1="6" y2="18" />
+                                                                    </svg>
+                                                                </button>
                                                             </div>
-                                                        );
-                                                    })
-                                                )}
-                                            </div>
-                                        )}
+                                                        </div>
+                                                    );
+                                                };
+
+                                                const chatSessions = folder.sessions.filter(isChat);
+                                                const termSessions = folder.sessions.filter(s => !isChat(s));
+                                                const collapsed = collapsedGroups[folder.id] || {};
+                                                const wsObj = workspaces.find(w => w.id === folder.id);
+
+                                                return (
+                                                    <div class="project-children">
+                                                        {/* 📋 任务 — default landing (task table) */}
+                                                        <div
+                                                            class={`subpage-item subpage-leaf${
+                                                                activeWorkspaceId === folder.id ? ' active' : ''
+                                                            }`}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                if (wsObj) onSelectWorkspace(wsObj);
+                                                            }}
+                                                        >
+                                                            <span class="subpage-icon">{'\u{1F4CB}'}</span>
+                                                            <span class="subpage-label">
+                                                                {t('sidebar.subpage.tasks', language) || '任务'}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* 💬 聊天 group */}
+                                                        <div
+                                                            class="subpage-item subpage-group-header"
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onToggleGroup(folder.id, 'chat');
+                                                            }}
+                                                        >
+                                                            <span
+                                                                class={`subpage-chevron${collapsed.chat ? '' : ' open'}`}
+                                                            >
+                                                                ▸
+                                                            </span>
+                                                            <span class="subpage-icon">{'\u{1F4AC}'}</span>
+                                                            <span class="subpage-label">
+                                                                {t('sidebar.subpage.chats', language) || '聊天'}
+                                                            </span>
+                                                            <span class="subpage-count">{chatSessions.length}</span>
+                                                            <button
+                                                                class="subpage-add-btn"
+                                                                title={t('sidebar.newChat', language) || '新建聊天'}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    onChatCreate(folder.id);
+                                                                }}
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                        {!collapsed.chat &&
+                                                            (chatSessions.length > 0 ? (
+                                                                <div class="subpage-children">
+                                                                    {chatSessions.map(renderSession)}
+                                                                </div>
+                                                            ) : (
+                                                                <div class="ws-no-sessions subpage-empty">
+                                                                    {t('sidebar.noSessions', language)}
+                                                                </div>
+                                                            ))}
+
+                                                        {/* 🖥️ 终端 group */}
+                                                        <div
+                                                            class="subpage-item subpage-group-header"
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                onToggleGroup(folder.id, 'term');
+                                                            }}
+                                                        >
+                                                            <span
+                                                                class={`subpage-chevron${collapsed.term ? '' : ' open'}`}
+                                                            >
+                                                                ▸
+                                                            </span>
+                                                            <span class="subpage-icon">{'\u{1F5A5}️'}</span>
+                                                            <span class="subpage-label">
+                                                                {t('sidebar.subpage.terminals', language) || '终端'}
+                                                            </span>
+                                                            <span class="subpage-count">{termSessions.length}</span>
+                                                            <button
+                                                                class="subpage-add-btn"
+                                                                title={t('sidebar.newTerminal', language) || '新建终端'}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    if (wsObj) {
+                                                                        onTerminalCreate(
+                                                                            wsObj.id,
+                                                                            wsObj.terminalDir || wsObj.path
+                                                                        );
+                                                                    }
+                                                                }}
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                        {!collapsed.term &&
+                                                            (termSessions.length > 0 ? (
+                                                                <div class="subpage-children">
+                                                                    {termSessions.map(renderSession)}
+                                                                </div>
+                                                            ) : (
+                                                                <div class="ws-no-sessions subpage-empty">
+                                                                    {t('sidebar.noSessions', language)}
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                );
+                                            })()}
                                     </div>
                                 );
                             })}

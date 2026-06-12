@@ -21,6 +21,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
@@ -73,30 +74,52 @@ func NewRouter(cfg *config.Config) http.Handler {
 	if err != nil {
 		log.Printf("[server] agent store init failed: %v", err)
 	} else {
-		tasksStore := agent.NewTasksStore()
-		acpxClient := agent.NewAcpxClient(38082)
-
-		scheduler := agent.NewScheduler(tasksStore, func() ([]string, error) {
-			wsHandler := workspace.NewHandler()
-			wsCfg, err := wsHandler.LoadWorkspacesConfig()
-			if err != nil {
-				return nil, err
+		// One-time import of the legacy JSON stores into ~/.1agents/meta.db
+		// (renames the source files to *.migrated; no-op afterwards).
+		if db, dbErr := meta.OpenDefault(); dbErr == nil {
+			if wsCfg, wsErr := wsHandler.LoadWorkspacesConfig(); wsErr == nil {
+				refs := make([]meta.WorkspaceRef, len(wsCfg.Workspaces))
+				for i, ws := range wsCfg.Workspaces {
+					refs[i] = meta.WorkspaceRef{ID: ws.ID, Name: ws.Name, Path: ws.Path}
+				}
+				if migErr := db.MigrateLegacy(refs); migErr != nil {
+					log.Printf("[server] legacy metadata migration: %v", migErr)
+				}
 			}
-			paths := make([]string, len(wsCfg.Workspaces))
-			for i, ws := range wsCfg.Workspaces {
-				paths[i] = ws.Path
-			}
-			return paths, nil
-		})
-		scheduler.Start(context.Background())
+			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
+		}
 
-		agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler)
-		mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
-		mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
-		mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
-		mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)         // GET, POST
-		mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)        // DELETE /{id}
-		mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)          // WebSocket upgrade & bridge
+		tasksStore, tsErr := agent.NewTasksStore()
+		if tsErr != nil {
+			log.Printf("[server] tasks store init failed: %v", tsErr)
+		} else {
+			acpxClient := agent.NewAcpxClient(38082)
+
+			scheduler := agent.NewScheduler(tasksStore, func() ([]agent.WorkspaceRef, error) {
+				wsHandler := workspace.NewHandler()
+				wsCfg, err := wsHandler.LoadWorkspacesConfig()
+				if err != nil {
+					return nil, err
+				}
+				refs := make([]agent.WorkspaceRef, len(wsCfg.Workspaces))
+				for i, ws := range wsCfg.Workspaces {
+					refs[i] = agent.WorkspaceRef{ID: ws.ID, Name: ws.Name, Path: ws.Path}
+				}
+				return refs, nil
+			})
+			// Headless executor: scheduler-triggered tasks run through the
+			// 1acp bridge with no frontend involved (automation-first).
+			scheduler.SetRunner(agent.NewTaskRunner(38082, tasksStore, agentStore, scheduler))
+			scheduler.Start(context.Background())
+
+			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler)
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)         // GET, POST
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)        // DELETE /{id}
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)          // WebSocket upgrade & bridge
+		}
 	}
 
 	mux.HandleFunc("/api/cc-connect/url", func(w http.ResponseWriter, r *http.Request) {

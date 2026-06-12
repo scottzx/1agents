@@ -100,6 +100,12 @@ export interface ChatSession {
     id: string; // 1agents uuid
     workspaceId: string;
     taskId?: string; // New: task ID this session belongs to
+    /**
+     * Transient: the timeline reply that triggered this session (issue
+     * model). Forwarded as reply_id on the chat WS so the backend can link
+     * Reply.sessionRef and attribute the agent's write-back. Not persisted.
+     */
+    replyId?: string;
     name: string;
     agentType: AgentType;
     ccProject: string; // cc-connect project name
