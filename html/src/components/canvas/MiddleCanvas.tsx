@@ -21,6 +21,8 @@ interface MiddleCanvasProps {
     language: Lang;
     /** The currently-active chat session (when activeTab === 'agents'). */
     activeChatSession?: ChatSession | null;
+    pendingInitialMessage?: string | null;
+    onClearPendingInitialMessage?: () => void;
 }
 
 export function MiddleCanvas({
@@ -37,6 +39,8 @@ export function MiddleCanvas({
     onTmuxMouseToggle,
     language,
     activeChatSession,
+    pendingInitialMessage,
+    onClearPendingInitialMessage,
 }: MiddleCanvasProps) {
     return (
         <main class="middle-canvas">
@@ -59,7 +63,11 @@ export function MiddleCanvas({
                     />
                 ) : activeTab === 'agents' ? (
                     activeChatSession ? (
-                        <ChatPanel session={activeChatSession} />
+                        <ChatPanel
+                            session={activeChatSession}
+                            pendingInitialMessage={pendingInitialMessage}
+                            onClearPendingInitialMessage={onClearPendingInitialMessage}
+                        />
                     ) : (
                         <div class="placeholder-view" style="margin: 0; border: none; border-radius: 0; height: 100%;">
                             <svg

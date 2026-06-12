@@ -1,4 +1,5 @@
 import { h, Component } from 'preact';
+import { useEffect } from 'preact/hooks';
 import type { ChatSession } from '../types';
 import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
@@ -7,11 +8,19 @@ import { SessionStatusBar } from './SessionStatusBar';
 
 interface ChatPanelProps {
     session: ChatSession;
+    pendingInitialMessage?: string | null;
+    onClearPendingInitialMessage?: () => void;
 }
 
 export class ChatPanel extends Component<ChatPanelProps> {
     render() {
-        return <ChatPanelInner session={this.props.session} />;
+        return (
+            <ChatPanelInner
+                session={this.props.session}
+                pendingInitialMessage={this.props.pendingInitialMessage}
+                onClearPendingInitialMessage={this.props.onClearPendingInitialMessage}
+            />
+        );
     }
 }
 
@@ -20,7 +29,7 @@ export class ChatPanel extends Component<ChatPanelProps> {
  * component rule) while keeping the public class-based API for
  * symmetry with the rest of the codebase.
  */
-function ChatPanelInner({ session }: ChatPanelProps) {
+function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialMessage }: ChatPanelProps) {
     const {
         items,
         connection,
@@ -40,6 +49,15 @@ function ChatPanelInner({ session }: ChatPanelProps) {
     // brand-new session would race `session_ready` and bounce with
     // SESSION_NOT_FOUND.
     const composerDisabled = (connection !== 'connected' && connection !== 'reconnecting') || !ready;
+
+    // New-chat home flow (192ab6a): fire the pending initial message once
+    // the session is usable, then clear it so reconnects don't resend.
+    useEffect(() => {
+        if (!pendingInitialMessage || composerDisabled) return;
+        send(pendingInitialMessage);
+        onClearPendingInitialMessage?.();
+        // (send/onClear identities churn per render; the two deps above are the real signals)
+    }, [pendingInitialMessage, composerDisabled]);
 
     // Show a spinner placeholder while the WebSocket is open but the
     // bridge hasn't confirmed the session yet. For reconnecting/error
