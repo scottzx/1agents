@@ -7,6 +7,13 @@ import type { AgentType, PermissionDecision } from '../types';
 interface MessageListProps {
     items: ChatItem[];
     agentType?: AgentType;
+    /**
+     * True while a turn is running. Drives the tool-call status icons
+     * (spinner vs. neutral "incomplete" for history replays of
+     * cancelled turns) and the typing indicator shown between the
+     * user's prompt and the first streamed token.
+     */
+    typing?: boolean;
     emptyHint?: string;
     /**
      * When true, render a centered spinner placeholder instead of the
@@ -84,8 +91,12 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     existingCall.isError = call.isError;
                     if (call.permission) existingCall.permission = call.permission;
                 } else {
+                    // Key falls back to the group-relative position when the
+                    // runtime didn't supply a toolCallId — stable across
+                    // re-renders, unlike Math.random() which remounted the
+                    // row (and dropped its expand state) on every render.
                     lastGroup.calls.push({
-                        id: `call-${callId || Math.random()}`,
+                        id: `call-${callId || lastGroup.calls.length}`,
                         toolCallId: callId,
                         toolName: call.toolName,
                         input: call.input,
@@ -183,7 +194,10 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     id: `pending-permission-${item.id}`,
                     toolCallId: callId,
                     toolName: item.toolName,
-                    input: '',
+                    // Surface the permission's tool input as the call input —
+                    // the row's args section is the only place the user can
+                    // inspect what the orphan request wants to run.
+                    input: item.input,
                     output: undefined,
                     isError: undefined,
                     permission: {
@@ -216,6 +230,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
 export function MessageList({
     items,
     agentType,
+    typing,
     emptyHint,
     loading,
     loadingHint,
@@ -232,7 +247,7 @@ export function MessageList({
         if (distanceFromBottom < 120) {
             el.scrollTop = el.scrollHeight;
         }
-    }, [items]);
+    }, [items, typing]);
 
     if (loading) {
         // Spinner takes priority over the empty hint: while the bridge is
@@ -274,6 +289,12 @@ export function MessageList({
         }
     }
 
+    // Show the typing indicator only in the gap between the user's
+    // prompt and the model's first event — once thinking/text/tool
+    // blocks exist, they carry their own streaming affordances.
+    const lastItem = groupedItems[groupedItems.length - 1];
+    const showTyping = !!typing && !!lastItem && lastItem.kind === 'user';
+
     return (
         <div class="chat-messages" ref={scrollRef}>
             {groupedItems.map((item, index) => (
@@ -282,10 +303,18 @@ export function MessageList({
                     item={item}
                     agentType={agentType}
                     isLast={index === groupedItems.length - 1}
+                    active={typing}
                     onRespondPermission={onRespondPermission}
                     onCancelQueued={onCancelQueued}
                 />
             ))}
+            {showTyping && (
+                <div class="chat-typing-row" aria-label="thinking">
+                    <span class="chat-typing-dot" />
+                    <span class="chat-typing-dot" />
+                    <span class="chat-typing-dot" />
+                </div>
+            )}
         </div>
     );
 }

@@ -70,6 +70,9 @@ export type ChatItem =
           id: string;
           kind: 'tool_result';
           toolCallId?: string;
+          /** Tool name echoed by the realtime event, when available.
+           * Lets the "待分配" fallback group label orphan results with
+           * the real tool instead of a generic placeholder. */
           toolName?: string;
           content: string;
           createdAt: number;
@@ -532,6 +535,7 @@ export class ChatBridgeManager {
                                 id: cryptoId(),
                                 kind: 'tool_result',
                                 toolCallId: payload.toolCallId,
+                                toolName: payload.toolName,
                                 content: payload.text || '',
                                 isError: !!payload.isError,
                                 createdAt: Date.now(),
@@ -668,7 +672,7 @@ export class ChatBridgeManager {
                                   kind: (m.role === 'user' ? 'user' : 'assistant_text') as 'user' | 'assistant_text',
                                   text: m.text,
                               }));
-                    const converted: ChatItem[] = historyItems.map(it => historyItemToChatItem(it));
+                    const converted: ChatItem[] = historyItems.map((it, idx) => historyItemToChatItem(it, idx));
                     state.items = converted;
                     // History is authoritative: any entries the realtime
                     // pool was holding (e.g. a tool_result that arrived
@@ -1077,16 +1081,14 @@ function tryAssignPending(state: SessionBridgeState): void {
                 ? it.calls.findIndex(c => c.toolCallId === p.toolCallId)
                 : it.calls.findIndex(c => c.output === undefined);
             if (callIdx < 0) continue;
-            items = items.map((entry, idx) =>
-                idx !== i
-                    ? entry
-                    : {
-                          ...it,
-                          calls: it.calls.map((c, k) =>
-                              k !== callIdx ? c : { ...c, output: p.content, isError: p.isError }
-                          ),
-                      }
-            );
+            // Build the replacement from `it` (already narrowed to
+            // tool_use) — the map callback's `entry` is the full union
+            // and TS can't see that idx === i implies tool_use.
+            const updated = {
+                ...it,
+                calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, output: p.content, isError: p.isError })),
+            };
+            items = items.map((entry, idx) => (idx === i ? updated : entry));
             matched = true;
             break;
         }
@@ -1111,14 +1113,11 @@ function tryAssignPending(state: SessionBridgeState): void {
                 options: p.options,
                 ...(p.resolved ? { resolved: p.resolved } : {}),
             };
-            items = items.map((entry, idx) =>
-                idx !== i
-                    ? entry
-                    : {
-                          ...it,
-                          calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, permission: newPermission })),
-                      }
-            );
+            const updated = {
+                ...it,
+                calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, permission: newPermission })),
+            };
+            items = items.map((entry, idx) => (idx === i ? updated : entry));
             matched = true;
             break;
         }
@@ -1129,21 +1128,27 @@ function tryAssignPending(state: SessionBridgeState): void {
     state.pendingPermissions = nextPermissions;
 }
 
-function historyItemToChatItem(it: HistoryItem): ChatItem {
+// History ids are derived from the item's position (and toolCallId for
+// tool_use) instead of cryptoId(). Each `done` triggers a history
+// reload that rebuilds the whole list; random ids changed every React
+// key on every reload, remounting every bubble (visible flicker, all
+// expand/collapse state lost). Positional ids are stable between
+// consecutive reloads of the same on-disk record.
+function historyItemToChatItem(it: HistoryItem, index: number): ChatItem {
     const createdAt = parseCreatedAt(it.createdAt);
     switch (it.kind) {
         case 'user':
-            return { id: cryptoId(), kind: 'user', content: it.text, createdAt };
+            return { id: `h-${index}`, kind: 'user', content: it.text, createdAt };
         case 'assistant_text':
             return {
-                id: cryptoId(),
+                id: `h-${index}`,
                 kind: 'assistant_text',
                 content: it.text,
                 createdAt,
                 streaming: false,
             };
         case 'thinking':
-            return { id: cryptoId(), kind: 'thinking', content: it.text, createdAt };
+            return { id: `h-${index}`, kind: 'thinking', content: it.text, createdAt };
         case 'tool_use': {
             const inputJson = typeof it.input === 'string' ? it.input : JSON.stringify(it.input ?? {}, null, 2);
             const call: ToolCallInfo = {
@@ -1152,7 +1157,7 @@ function historyItemToChatItem(it: HistoryItem): ChatItem {
             };
             if (it.toolCallId) call.toolCallId = it.toolCallId;
             return {
-                id: cryptoId(),
+                id: `h-tool-${it.toolCallId || index}`,
                 kind: 'tool_use',
                 toolName: call.toolName,
                 input: call.input,
@@ -1163,7 +1168,7 @@ function historyItemToChatItem(it: HistoryItem): ChatItem {
         }
         case 'tool_result':
             return {
-                id: cryptoId(),
+                id: `h-${index}`,
                 kind: 'tool_result',
                 content: it.content,
                 isError: !!it.isError,
