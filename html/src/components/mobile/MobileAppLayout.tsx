@@ -12,6 +12,7 @@ import { TaskList } from '../drawer/TaskList';
 import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
+import * as ui from '../../stores/uiStore';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -189,18 +190,14 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         const {
             workspaces,
             activeWorkspaceId,
-            language,
             tabs,
             activeTabId,
             folders,
             workspacesLoading,
-            keyboardVisible,
-            viewportHeight,
             activeSession,
             tmuxMouseOn,
             ccProvidersUrl,
             ccConnectUrl,
-            theme,
             activeDrawerTab,
             flatFiles,
             flatFilesLoading,
@@ -218,8 +215,12 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             fileSaveMsg,
             isImagePreview,
             accessAuthRequired,
-            isMobile,
         } = state;
+        const language = ui.language.value;
+        const theme = ui.theme.value;
+        const keyboardVisible = ui.keyboardVisible.value;
+        const viewportHeight = ui.viewportHeight.value;
+        const isMobile = ui.isMobile.value;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
         const termOptions = {
@@ -585,7 +586,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         activeTab={state.activeTab}
                                         setActiveTab={app.setActiveTab}
                                         theme={theme}
-                                        toggleTheme={app.toggleTheme}
+                                        toggleTheme={ui.toggleTheme}
                                         keyboardVisible={keyboardVisible}
                                         workspaceName={activeWorkspace?.name || ''}
                                         sessionName={activeSession?.name || ''}
@@ -608,7 +609,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 termOptions={termOptions}
                                                 flowControl={flowControl}
                                                 isMobile={isMobile}
-                                                onMobileDetect={isMobile => app.setState({ isMobile })}
+                                                onMobileDetect={isMobile => (ui.isMobile.value = isMobile)}
                                                 onKeyboardStateChange={app.handleKeyboardStateChange}
                                                 tmuxMouseOn={tmuxMouseOn}
                                                 onTmuxMouseToggle={app.toggleTmuxMouse}
@@ -629,9 +630,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
                                                     ccConnectUrl={ccConnectUrl}
                                                     theme={theme}
-                                                    toggleTheme={app.toggleTheme}
+                                                    toggleTheme={ui.toggleTheme}
                                                     language={language}
-                                                    toggleLanguage={app.toggleLanguage}
+                                                    toggleLanguage={ui.toggleLanguage}
                                                     flatFiles={flatFiles}
                                                     flatFilesLoading={flatFilesLoading}
                                                     searchQuery={searchQuery}
@@ -974,9 +975,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             ) : (
                                                 <SystemSettings
                                                     theme={theme}
-                                                    toggleTheme={app.toggleTheme}
+                                                    toggleTheme={ui.toggleTheme}
                                                     language={language}
-                                                    toggleLanguage={app.toggleLanguage}
+                                                    toggleLanguage={ui.toggleLanguage}
                                                     tmuxMouseOn={tmuxMouseOn}
                                                     onTmuxMouseToggle={app.toggleTmuxMouse}
                                                     accessTokenExists={accessAuthRequired}

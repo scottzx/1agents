@@ -40,6 +40,7 @@ import { ccCreateSession, ccDeleteSession, getCcAuth, ccProjectName } from '../s
 import { globalBridgeManager } from './chat/hooks';
 
 import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
+import * as ui from '../stores/uiStore';
 
 export {
     wsUrl,
@@ -71,12 +72,6 @@ export interface AppState {
     discoveryCategory: string;
     tabs: Tab[];
     activeTabId: string;
-    theme: 'light' | 'dark';
-    hostname: string;
-    leftSidebarOpen: boolean;
-    leftSidebarWidth: number;
-    rightPanelWidth: number;
-    bottomNavHidden: boolean;
     // ── Workspace state (from API) ──
     workspaces: Workspace[];
     workspacesLoading: boolean;
@@ -137,12 +132,7 @@ export interface AppState {
     favoriteFiles: string[];
     detailFullscreen: boolean;
     isEditingDetail: boolean;
-    toastMsg: string;
-    isMobile: boolean;
-    keyboardVisible: boolean;
-    viewportHeight: number;
     activeSession: Session | null;
-    language: Lang;
     // ── Access token state ──
     accessGateVisible: boolean;
     accessAuthRequired: boolean;
@@ -184,17 +174,11 @@ export class App extends Component<{}, AppState> {
         } catch {
             /* ignore */
         }
-        const initialLang = (localStorage.getItem('1agents-language') || 'zh-CN') as Lang;
+        const initialLang = ui.language.value;
         this.state = {
             activeTab: 'terminal',
             activeDrawerTab: 'none',
             discoveryCategory: 'featured',
-            theme: 'light',
-            hostname: 'Ashley Walker',
-            leftSidebarOpen: window.innerWidth > 768,
-            leftSidebarWidth: 260,
-            rightPanelWidth: 320,
-            bottomNavHidden: false,
             workspaces: [],
             workspacesLoading: true,
             folders: [],
@@ -240,11 +224,6 @@ export class App extends Component<{}, AppState> {
             favoriteFiles: favs,
             detailFullscreen: false,
             isEditingDetail: false,
-            toastMsg: '',
-            isMobile: window.innerWidth <= 768,
-            keyboardVisible: false,
-            viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
-            language: initialLang,
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
@@ -269,12 +248,6 @@ export class App extends Component<{}, AppState> {
     }
 
     async componentDidMount() {
-        const savedTheme = localStorage.getItem('1agents-theme') as 'light' | 'dark' | null;
-        const theme = savedTheme || 'light';
-        this.setState({ theme });
-        document.documentElement.setAttribute('data-theme', theme);
-        this.setState({ hostname: window.location.hostname || 'localhost' });
-
         // Check access token gate before loading any data
         await this.checkAccessStatus();
         if (this.state.accessGateVisible) {
@@ -369,24 +342,22 @@ export class App extends Component<{}, AppState> {
     }
 
     viewportResizeHandler = () => {
-        if (this.state.isMobile) {
-            this.setState({
-                viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
-            });
-            this.triggerTerminalFit();
+        if (ui.isMobile.value) {
+            ui.viewportHeight.value = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            ui.triggerTerminalFit();
         }
     };
 
     handleWindowResize = () => {
         const isMobile = window.innerWidth <= 768;
-        if (isMobile !== this.state.isMobile) {
-            this.setState({ isMobile });
+        if (isMobile !== ui.isMobile.value) {
+            ui.isMobile.value = isMobile;
         }
     };
 
     handleKeyboardStateChange = (visible: boolean) => {
-        this.setState({ keyboardVisible: visible });
-        this.triggerTerminalFit();
+        ui.keyboardVisible.value = visible;
+        ui.triggerTerminalFit();
     };
 
     handleKeyDown = (e: KeyboardEvent) => {
@@ -443,7 +414,7 @@ export class App extends Component<{}, AppState> {
         const wsId = workspaceId || this.state.activeWorkspaceId;
         if (!wsId) return;
         try {
-            const url = await workspaceService.getCcConnectUrl(wsId, this.state.theme, this.state.language || 'zh-CN');
+            const url = await workspaceService.getCcConnectUrl(wsId, ui.theme.value, ui.language.value || 'zh-CN');
             this.setState({ ccConnectUrl: url });
         } catch (err) {
             console.error('[ccconnect] failed to load url:', err);
@@ -456,8 +427,8 @@ export class App extends Component<{}, AppState> {
         try {
             const url = await workspaceService.getCcConnectUrl(
                 wsId,
-                this.state.theme,
-                this.state.language || 'zh-CN',
+                ui.theme.value,
+                ui.language.value || 'zh-CN',
                 '/providers'
             );
             this.setState({ ccProvidersUrl: url });
@@ -483,7 +454,7 @@ export class App extends Component<{}, AppState> {
             }
         } catch (err) {
             console.error('[workspace] failed to create temp workspace:', err);
-            this.showToast(t('app.toast.tempCreateFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.tempCreateFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -525,9 +496,9 @@ export class App extends Component<{}, AppState> {
                     await this.selectWorkspace(workspaces[0]);
                 }
             }
-            this.showToast(t('app.toast.workspaceCreated', this.state.language, { name }));
+            ui.showToast(t('app.toast.workspaceCreated', ui.language.value, { name }));
         } catch (err) {
-            this.showToast(t('app.toast.workspaceCreateFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.workspaceCreateFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -536,16 +507,16 @@ export class App extends Component<{}, AppState> {
         try {
             await workspaceService.update(ws);
             await this.loadWorkspaces();
-            this.showToast(t('app.toast.workspaceUpdated', this.state.language));
+            ui.showToast(t('app.toast.workspaceUpdated', ui.language.value));
         } catch (err) {
-            this.showToast(t('app.toast.workspaceUpdateFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.workspaceUpdateFailed', ui.language.value, { err: String(err) }));
         }
     };
 
     /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
     deleteWorkspace = async (id: string) => {
         if (this.state.workspaces.length <= 1) {
-            this.showToast(t('app.toast.workspaceDeleteLast', this.state.language));
+            ui.showToast(t('app.toast.workspaceDeleteLast', ui.language.value));
             return;
         }
         try {
@@ -558,9 +529,9 @@ export class App extends Component<{}, AppState> {
             await workspaceService.delete(id);
             await this.loadTerminals();
             await this.loadWorkspaces();
-            this.showToast(t('app.toast.workspaceDeleted', this.state.language));
+            ui.showToast(t('app.toast.workspaceDeleted', ui.language.value));
         } catch (err) {
-            this.showToast(t('app.toast.workspaceDeleteFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.workspaceDeleteFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -597,7 +568,7 @@ export class App extends Component<{}, AppState> {
             console.error('[workspace] reorder error:', err);
             // Rollback on error
             this.setState({ workspaces, folders });
-            this.showToast(t('app.toast.workspaceReorderFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.workspaceReorderFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -684,9 +655,9 @@ export class App extends Component<{}, AppState> {
             await terminalService.rename(sessionRenameTarget.id, trimmed);
             this.closeSessionRenameModal();
             await this.loadTerminals();
-            this.showToast(t('app.toast.sessionRenamed', this.state.language));
+            ui.showToast(t('app.toast.sessionRenamed', ui.language.value));
         } catch (err) {
-            this.showToast(t('app.toast.sessionRenameFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.sessionRenameFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -765,11 +736,11 @@ export class App extends Component<{}, AppState> {
     createChatSession = async (workspaceId: string, name: string, agentType: AgentType, initialMessage?: string) => {
         const ws = this.state.workspaces.find(w => w.id === workspaceId);
         if (!ws) {
-            this.showToast('工作空间不存在');
+            ui.showToast('工作空间不存在');
             return;
         }
         try {
-            this.showToast('正在创建聊天会话…');
+            ui.showToast('正在创建聊天会话…');
             const project = ccProjectName(ws.name || ws.id, agentType);
             const { token } = await getCcAuth(workspaceId);
             const sessionKey = `oneagents:${ws.id}:${agentType}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -789,9 +760,9 @@ export class App extends Component<{}, AppState> {
                 activeTab: 'agents',
                 pendingInitialMessage: initialMessage || null,
             });
-            this.showToast('聊天会话已创建 ✓');
+            ui.showToast('聊天会话已创建 ✓');
         } catch (err) {
-            this.showToast(`创建聊天失败: ${(err as Error).message}`);
+            ui.showToast(`创建聊天失败: ${(err as Error).message}`);
         }
     };
 
@@ -836,9 +807,9 @@ export class App extends Component<{}, AppState> {
             ) {
                 this.setState({ activeSession: null, activeTab: 'terminal' });
             }
-            this.showToast('聊天会话已关闭 ✓');
+            ui.showToast('聊天会话已关闭 ✓');
         } catch (err) {
-            this.showToast(`关闭失败: ${(err as Error).message}`);
+            ui.showToast(`关闭失败: ${(err as Error).message}`);
         }
     };
 
@@ -853,7 +824,7 @@ export class App extends Component<{}, AppState> {
                         id: w.name,
                         workspaceId: w.workspaceId,
                         index: w.index,
-                        name: w.customName || t('app.session.title', this.state.language, { index: w.index }),
+                        name: w.customName || t('app.session.title', ui.language.value, { index: w.index }),
                         active: w.active,
                         cwd: w.cwd,
                         status: w.status,
@@ -878,8 +849,7 @@ export class App extends Component<{}, AppState> {
                     id: activeWin.name,
                     workspaceId: activeWin.workspaceId,
                     index: activeWin.index,
-                    name:
-                        activeWin.customName || t('app.session.title', this.state.language, { index: activeWin.index }),
+                    name: activeWin.customName || t('app.session.title', ui.language.value, { index: activeWin.index }),
                     active: true,
                     cwd: activeWin.cwd,
                     status: activeWin.status,
@@ -895,9 +865,9 @@ export class App extends Component<{}, AppState> {
         try {
             await terminalService.create(workspaceId, cwd);
             await this.loadTerminals();
-            this.showToast(t('app.toast.sessionCreated', this.state.language));
+            ui.showToast(t('app.toast.sessionCreated', ui.language.value));
         } catch (err) {
-            this.showToast(t('app.toast.sessionCreateFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.sessionCreateFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -916,9 +886,9 @@ export class App extends Component<{}, AppState> {
         try {
             await terminalService.kill(windowIndex);
             await this.loadTerminals();
-            this.showToast(t('app.toast.sessionKilled', this.state.language));
+            ui.showToast(t('app.toast.sessionKilled', ui.language.value));
         } catch (err) {
-            this.showToast(t('app.toast.sessionKillFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.sessionKillFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -939,12 +909,12 @@ export class App extends Component<{}, AppState> {
             const actualState = await terminalService.setMouse(nextState);
             this.setState({ tmuxMouseOn: actualState });
             if (actualState) {
-                this.showToast(t('app.toast.mouseScrollOn', this.state.language));
+                ui.showToast(t('app.toast.mouseScrollOn', ui.language.value));
             } else {
-                this.showToast(t('app.toast.mouseSelectOn', this.state.language));
+                ui.showToast(t('app.toast.mouseSelectOn', ui.language.value));
             }
         } catch (err) {
-            this.showToast(t('app.toast.mouseToggleFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.mouseToggleFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -1013,7 +983,7 @@ export class App extends Component<{}, AppState> {
                 if (ws) await this.switchWorkspaceContext(ws);
             }
             this.loadChatSessions(session.workspaceId);
-            if (this.state.isMobile) this.setState({ leftSidebarOpen: false });
+            if (ui.isMobile.value) ui.leftSidebarOpen.value = false;
             return;
         }
 
@@ -1029,14 +999,14 @@ export class App extends Component<{}, AppState> {
                 const ws = workspaces.find(w => w.id === session.workspaceId);
                 if (ws) {
                     await this.switchWorkspaceContext(ws);
-                    this.showToast(t('app.toast.workspaceSwitched', this.state.language, { name: ws.name }));
+                    ui.showToast(t('app.toast.workspaceSwitched', ui.language.value, { name: ws.name }));
                 }
             }
         };
 
-        if (this.state.isMobile) {
+        if (ui.isMobile.value) {
             // Close sidebar immediately on mobile for instant visual response
-            this.setState({ leftSidebarOpen: false });
+            ui.leftSidebarOpen.value = false;
             // Delay the heavy backend connection operations by 200ms to let the slide-out CSS transition finish smoothly without main-thread jank
             setTimeout(performSwitch, 200);
         } else {
@@ -1072,7 +1042,7 @@ export class App extends Component<{}, AppState> {
 
         // Switch backend context (fs + git roots) and reload file browser
         await this.switchWorkspaceContext(ws);
-        this.showToast(t('app.toast.workspaceSwitched', this.state.language, { name: ws.name }));
+        ui.showToast(t('app.toast.workspaceSwitched', ui.language.value, { name: ws.name }));
     };
 
     // ── File system API helpers ──────────────────────────────────────────────
@@ -1191,14 +1161,14 @@ export class App extends Component<{}, AppState> {
             this.setState({
                 fileContent: editedContent,
                 fileSaving: false,
-                fileSaveMsg: t('app.toast.fileSaved', this.state.language),
+                fileSaveMsg: t('app.toast.fileSaved', ui.language.value),
             });
             setTimeout(() => this.setState({ fileSaveMsg: '' }), 2000);
         } catch (err) {
             console.error('[fs] write error:', err);
             this.setState({
                 fileSaving: false,
-                fileSaveMsg: t('app.toast.fileSaveFailed', this.state.language, { err: String(err) }),
+                fileSaveMsg: t('app.toast.fileSaveFailed', ui.language.value, { err: String(err) }),
             });
         }
     };
@@ -1235,61 +1205,9 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    toggleTheme = (themeMode?: 'light' | 'dark') => {
-        const targetTheme = themeMode || (this.state.theme === 'light' ? 'dark' : 'light');
-        this.setState({ theme: targetTheme }, () => {
-            // Also notify the CC-Connect iframe of the theme change
-            const iframe = document.getElementById('cc-connect-iframe') as HTMLIFrameElement | null;
-            if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
-            }
-            const providersIframe = document.getElementById('cc-providers-iframe') as HTMLIFrameElement | null;
-            if (providersIframe && providersIframe.contentWindow) {
-                providersIframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
-            }
-            const skillsIframe = document.getElementById('skills-iframe') as HTMLIFrameElement | null;
-            if (skillsIframe && skillsIframe.contentWindow) {
-                skillsIframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: targetTheme }, '*');
-            }
-        });
-        document.documentElement.setAttribute('data-theme', targetTheme);
-        localStorage.setItem('1agents-theme', targetTheme);
-        this.triggerTerminalFit();
-    };
-
-    toggleLanguage = (lang: Lang) => {
-        this.setState({ language: lang }, () => {
-            // Also notify the CC-Connect iframe of the language change
-            const iframe = document.getElementById('cc-connect-iframe') as HTMLIFrameElement | null;
-            if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
-            }
-            const providersIframe = document.getElementById('cc-providers-iframe') as HTMLIFrameElement | null;
-            if (providersIframe && providersIframe.contentWindow) {
-                providersIframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
-            }
-            const skillsIframe = document.getElementById('skills-iframe') as HTMLIFrameElement | null;
-            if (skillsIframe && skillsIframe.contentWindow) {
-                skillsIframe.contentWindow.postMessage({ type: 'LANG_CHANGE', lang: lang }, '*');
-            }
-        });
-        localStorage.setItem('1agents-language', lang);
-        const langName = t(lang === 'zh-CN' ? 'app.langName.zh' : 'app.langName.en', lang);
-        this.showToast(t('app.toast.langChanged', lang, { lang: langName }));
-    };
-
-    triggerTerminalFit = () => {
-        setTimeout(() => {
-            const term = (window as unknown as { term?: { fit?: () => void } }).term;
-            if (term && term.fit) {
-                term.fit();
-            }
-        }, 150);
-    };
-
     setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat') => {
         this.setState({ activeTab: tab });
-        this.triggerTerminalFit();
+        ui.triggerTerminalFit();
     };
 
     selectTab = async (tabId: string) => {
@@ -1300,7 +1218,7 @@ export class App extends Component<{}, AppState> {
 
         if (tab.type === 'preview' && tab.path) {
             const entry: FsEntry = {
-                name: tab.title.replace(t('app.preview.prefix', this.state.language), ''),
+                name: tab.title.replace(t('app.preview.prefix', ui.language.value), ''),
                 path: tab.path,
                 isDir: false,
                 size: 0,
@@ -1308,7 +1226,7 @@ export class App extends Component<{}, AppState> {
             };
             await this.openFileDetail(entry);
         } else if (tab.type === 'terminal') {
-            this.triggerTerminalFit();
+            ui.triggerTerminalFit();
         }
     };
 
@@ -1320,7 +1238,7 @@ export class App extends Component<{}, AppState> {
         if (!exists) {
             const newTab: Tab = {
                 id: tabId,
-                title: `${t('app.preview.prefix', this.state.language)}${fileName}`,
+                title: `${t('app.preview.prefix', ui.language.value)}${fileName}`,
                 type: 'preview',
                 path: path,
                 closable: true,
@@ -1337,7 +1255,7 @@ export class App extends Component<{}, AppState> {
         const tabId = `browser-${Date.now()}`;
         const newTab: Tab = {
             id: tabId,
-            title: t('app.browser.title', this.state.language),
+            title: t('app.browser.title', ui.language.value),
             type: 'browser',
             url: url,
             closable: true,
@@ -1387,7 +1305,7 @@ export class App extends Component<{}, AppState> {
                 tab={tab}
                 active={this.state.activeTabId === tab.id}
                 onUrlChange={this.updateBrowserUrl}
-                language={this.state.language}
+                language={ui.language.value}
             />
         );
     };
@@ -1405,32 +1323,30 @@ export class App extends Component<{}, AppState> {
             // Expand drawer with smart width: wider for channels, git, and files panels
             const smartWidth =
                 tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
-                    ? Math.max(this.state.rightPanelWidth, 450)
+                    ? Math.max(ui.rightPanelWidth.value, 450)
                     : 320;
 
             // Module-backed tabs get their entry path; non-module tabs clear it.
             const mod = getModuleByTab(tab);
             const newModulePath = mod ? mod.entryPath : '';
-            this.setState(
-                { activeDrawerTab: tab, rightPanelWidth: smartWidth, activeModulePath: newModulePath },
-                () => {
-                    if (tab === 'channels') {
-                        this.loadCcConnectUrl();
-                    } else if (tab === 'providers') {
-                        this.loadCcProvidersUrl();
-                    } else if (mod) {
-                        this.loadModuleManifest(mod);
-                    }
+            ui.rightPanelWidth.value = smartWidth;
+            this.setState({ activeDrawerTab: tab, activeModulePath: newModulePath }, () => {
+                if (tab === 'channels') {
+                    this.loadCcConnectUrl();
+                } else if (tab === 'providers') {
+                    this.loadCcProvidersUrl();
+                } else if (mod) {
+                    this.loadModuleManifest(mod);
                 }
-            );
+            });
         }
-        this.triggerTerminalFit();
+        ui.triggerTerminalFit();
     };
 
     // Open the discovery panel (if needed) and scroll to a given category.
     selectDiscoveryCategory = (category: string) => {
         this.setState({ activeDrawerTab: 'discovery', discoveryCategory: category });
-        this.triggerTerminalFit();
+        ui.triggerTerminalFit();
     };
 
     /**
@@ -1573,23 +1489,12 @@ export class App extends Component<{}, AppState> {
         this.setState({ activeSettingsCategory: category });
     };
 
-    toggleLeftSidebar = () => {
-        const opening = !this.state.leftSidebarOpen;
-        const leftSidebarWidth = opening
-            ? this.state.leftSidebarWidth > 40
-                ? this.state.leftSidebarWidth
-                : 260
-            : this.state.leftSidebarWidth;
-        this.setState({ leftSidebarOpen: opening, leftSidebarWidth });
-        this.triggerTerminalFit();
-    };
-
     // ── Resizer drag handlers ──
     handleResizerDown = (side: 'left' | 'right', e: MouseEvent) => {
         e.preventDefault();
         _resizerActive = side;
         _resizerStartX = e.clientX;
-        _resizerStartWidth = side === 'left' ? this.state.leftSidebarWidth : this.state.rightPanelWidth;
+        _resizerStartWidth = side === 'left' ? ui.leftSidebarWidth.value : ui.rightPanelWidth.value;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
     };
@@ -1599,12 +1504,12 @@ export class App extends Component<{}, AppState> {
         const dx = e.clientX - _resizerStartX;
         if (_resizerActive === 'left') {
             const w = Math.max(160, Math.min(480, _resizerStartWidth + dx));
-            this.setState({ leftSidebarWidth: w });
+            ui.leftSidebarWidth.value = w;
         } else {
             const w = Math.max(200, Math.min(600, _resizerStartWidth - dx));
-            this.setState({ rightPanelWidth: w });
+            ui.rightPanelWidth.value = w;
         }
-        this.triggerTerminalFit();
+        ui.triggerTerminalFit();
     };
 
     handleResizerUp = () => {
@@ -1612,7 +1517,7 @@ export class App extends Component<{}, AppState> {
         _resizerActive = null;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        this.triggerTerminalFit();
+        ui.triggerTerminalFit();
     };
 
     toggleFolder = (folderId: string) => {
@@ -1689,11 +1594,6 @@ export class App extends Component<{}, AppState> {
 
     // ── File detail action handlers ────────────────────────────────────────
 
-    showToast = (msg: string) => {
-        this.setState({ toastMsg: msg });
-        setTimeout(() => this.setState({ toastMsg: '' }), 2200);
-    };
-
     checkAccessStatus = async () => {
         try {
             const data = await accessService.checkStatus();
@@ -1733,17 +1633,17 @@ export class App extends Component<{}, AppState> {
             const token = await accessService.generateToken();
             this.setState({ accessTokenModalToken: token, accessAuthRequired: true });
         } catch (err) {
-            this.showToast(t('app.toast.tokenGenerateFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.tokenGenerateFailed', ui.language.value, { err: String(err) }));
         }
     };
 
     revokeAccessToken = async () => {
         try {
             await accessService.revokeToken();
-            this.showToast(t('app.toast.tokenRevoked', this.state.language));
+            ui.showToast(t('app.toast.tokenRevoked', ui.language.value));
             await this.checkAccessStatus();
         } catch (err) {
-            this.showToast(t('app.toast.tokenRevokeFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.tokenRevokeFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -1791,9 +1691,9 @@ export class App extends Component<{}, AppState> {
     copyFileContent = async () => {
         try {
             await navigator.clipboard.writeText(this.state.fileContent);
-            this.showToast(t('app.toast.copySuccess', this.state.language));
+            ui.showToast(t('app.toast.copySuccess', ui.language.value));
         } catch (_) {
-            this.showToast(t('app.toast.copyFailed', this.state.language));
+            ui.showToast(t('app.toast.copyFailed', ui.language.value));
         }
     };
 
@@ -1809,10 +1709,10 @@ export class App extends Component<{}, AppState> {
         const newPath = `${dir}${base}_copy${ext}`;
         try {
             await fsService.write(newPath, fileContent);
-            this.showToast(t('app.toast.fileDuplicated', this.state.language));
+            ui.showToast(t('app.toast.fileDuplicated', ui.language.value));
             this.loadDir('', null);
         } catch (err) {
-            this.showToast(t('app.toast.fileDuplicateFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.fileDuplicateFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -1831,7 +1731,7 @@ export class App extends Component<{}, AppState> {
     renameFile = async () => {
         const { selectedFsEntry, fileContent } = this.state;
         if (!selectedFsEntry) return;
-        const newName = window.prompt(t('app.prompt.rename', this.state.language), selectedFsEntry.name);
+        const newName = window.prompt(t('app.prompt.rename', ui.language.value), selectedFsEntry.name);
         if (!newName || newName === selectedFsEntry.name) return;
         const dir = selectedFsEntry.path.includes('/')
             ? selectedFsEntry.path.slice(0, selectedFsEntry.path.lastIndexOf('/') + 1)
@@ -1840,11 +1740,11 @@ export class App extends Component<{}, AppState> {
         try {
             // Write content to new path
             await fsService.write(newPath, fileContent);
-            this.showToast(t('app.toast.renameSuccess', this.state.language));
+            ui.showToast(t('app.toast.renameSuccess', ui.language.value));
             this.setState({ selectedFsEntry: { ...selectedFsEntry, name: newName, path: newPath }, viewMode: 'list' });
             this.loadDir('', null);
         } catch (err) {
-            this.showToast(t('app.toast.renameFailed', this.state.language, { err: String(err) }));
+            ui.showToast(t('app.toast.renameFailed', ui.language.value, { err: String(err) }));
         }
     };
 
@@ -1863,9 +1763,9 @@ export class App extends Component<{}, AppState> {
         )}`;
         try {
             await navigator.clipboard.writeText(shareUrl);
-            this.showToast(t('app.toast.shareCopied', this.state.language));
+            ui.showToast(t('app.toast.shareCopied', ui.language.value));
         } catch (_) {
-            this.showToast(t('app.toast.shareCopyFailed', this.state.language));
+            ui.showToast(t('app.toast.shareCopyFailed', ui.language.value));
         }
     };
 
@@ -1914,14 +1814,14 @@ export class App extends Component<{}, AppState> {
             fileSaving,
             fileSaveMsg,
             isImagePreview,
-            toastMsg,
-            language,
             accessGateVisible,
             accessTokenModalToken,
             sessionRenameModalOpen,
             sessionRenameTarget,
             sessionRenameName,
         } = this.state;
+        const toastMsg = ui.toastMsg.value;
+        const language = ui.language.value;
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} language={language} />;
@@ -2016,7 +1916,7 @@ export class App extends Component<{}, AppState> {
                         onCreateWorkspace={this.openCreateWorkspacePicker}
                         onUseTempWorkspace={this.onUseTempWorkspace}
                     />
-                ) : this.state.isMobile ? (
+                ) : ui.isMobile.value ? (
                     <MobileAppLayout app={this} state={this.state} />
                 ) : (
                     <DesktopAppLayout app={this} state={this.state} />
@@ -2073,7 +1973,7 @@ export class App extends Component<{}, AppState> {
                             }
                             this.setState({ dirPickerOpen: false });
                         }}
-                        onShowToast={this.showToast}
+                        onShowToast={ui.showToast}
                         language={language}
                     />
                 )}
@@ -2083,7 +1983,7 @@ export class App extends Component<{}, AppState> {
                     <AccessTokenModal
                         token={accessTokenModalToken}
                         onClose={this.closeAccessTokenModal}
-                        onShowToast={this.showToast}
+                        onShowToast={ui.showToast}
                         language={language}
                     />
                 )}

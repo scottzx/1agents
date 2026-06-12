@@ -13,6 +13,7 @@ import { TaskList } from '../drawer/TaskList';
 import { fsService } from '../../services/fsService';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
+import * as ui from '../../stores/uiStore';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -36,16 +37,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const {
             workspaces,
             activeWorkspaceId,
-            language,
             tabs,
             activeTabId,
             folders,
             workspacesLoading,
-            leftSidebarOpen,
-            leftSidebarWidth,
             activeDrawerTab,
-            theme,
-            keyboardVisible,
             activeSession,
             tmuxMouseOn,
             ccProvidersUrl,
@@ -66,9 +62,14 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
             fileSaveMsg,
             isImagePreview,
             accessAuthRequired,
-            isMobile,
             sidebarCollapsedGroups,
         } = state;
+        const language = ui.language.value;
+        const theme = ui.theme.value;
+        const leftSidebarOpen = ui.leftSidebarOpen.value;
+        const leftSidebarWidth = ui.leftSidebarWidth.value;
+        const keyboardVisible = ui.keyboardVisible.value;
+        const isMobile = ui.isMobile.value;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
         const termOptions = {
@@ -162,7 +163,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 leftSidebarOpen={leftSidebarOpen}
                                 leftSidebarWidth={leftSidebarWidth}
                                 activeWorkspaceId={activeWorkspaceId}
-                                toggleLeftSidebar={app.toggleLeftSidebar}
+                                toggleLeftSidebar={ui.toggleLeftSidebar}
                                 toggleFolder={app.toggleFolder}
                                 toggleDrawerTab={app.toggleDrawerTab}
                                 activeDrawerTab={activeDrawerTab}
@@ -222,13 +223,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         {isShell && (
                             <WorkspaceHeader
                                 leftSidebarOpen={leftSidebarOpen}
-                                toggleLeftSidebar={app.toggleLeftSidebar}
+                                toggleLeftSidebar={ui.toggleLeftSidebar}
                                 activeDrawerTab={activeDrawerTab}
                                 toggleDrawerTab={app.toggleDrawerTab}
                                 activeTab={state.activeTab}
                                 setActiveTab={app.setActiveTab}
                                 theme={theme}
-                                toggleTheme={app.toggleTheme}
+                                toggleTheme={ui.toggleTheme}
                                 keyboardVisible={keyboardVisible}
                                 workspaceName={activeWorkspace?.name || ''}
                                 sessionName={activeSession?.name || ''}
@@ -329,9 +330,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             >
                                                 <SystemSettings
                                                     theme={theme}
-                                                    toggleTheme={app.toggleTheme}
+                                                    toggleTheme={ui.toggleTheme}
                                                     language={language}
-                                                    toggleLanguage={app.toggleLanguage}
+                                                    toggleLanguage={ui.toggleLanguage}
                                                     tmuxMouseOn={tmuxMouseOn}
                                                     onTmuxMouseToggle={app.toggleTmuxMouse}
                                                     accessTokenExists={accessAuthRequired}
@@ -367,7 +368,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 termOptions={termOptions}
                                                 flowControl={flowControl}
                                                 isMobile={isMobile}
-                                                onMobileDetect={isMobile => app.setState({ isMobile })}
+                                                onMobileDetect={isMobile => (ui.isMobile.value = isMobile)}
                                                 onKeyboardStateChange={app.handleKeyboardStateChange}
                                                 tmuxMouseOn={tmuxMouseOn}
                                                 onTmuxMouseToggle={app.toggleTmuxMouse}
@@ -394,13 +395,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             activeDrawerTab={activeDrawerTab}
                                             activeWorkspaceId={activeWorkspaceId}
                                             activeWorkspacePath={activeWorkspacePath}
-                                            rightPanelWidth={state.rightPanelWidth}
+                                            rightPanelWidth={ui.rightPanelWidth.value}
                                             closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
                                             ccConnectUrl={ccConnectUrl}
                                             theme={theme}
-                                            toggleTheme={app.toggleTheme}
+                                            toggleTheme={ui.toggleTheme}
                                             language={language}
-                                            toggleLanguage={app.toggleLanguage}
+                                            toggleLanguage={ui.toggleLanguage}
                                             flatFiles={flatFiles}
                                             flatFilesLoading={flatFilesLoading}
                                             searchQuery={searchQuery}
