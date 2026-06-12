@@ -1,4 +1,5 @@
 import { h, Component, Fragment } from 'preact';
+import { effect } from '@preact/signals';
 import type { ITerminalOptions } from '@xterm/xterm';
 
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
@@ -14,6 +15,8 @@ import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
+import * as wsStore from '../../stores/workspaceStore';
+import * as sess from '../../stores/sessionStore';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -148,10 +151,34 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         pendingConfirm: null,
     };
 
-    componentWillReceiveProps(nextProps: MobileAppLayoutProps) {
-        if (nextProps.state.activeWorkspaceId !== this.props.state.activeWorkspaceId) {
-            this.setState({ selectedWorkspaceId: nextProps.state.activeWorkspaceId });
+    /**
+     * Mirrors workspace switches (auto-select on load, deletes, …) into the
+     * local navigation state. Replaces the former componentWillReceiveProps
+     * prop comparison now that activeWorkspaceId lives in a signal: the
+     * effect fires on every signal write, the previous-value guard keeps the
+     * original "only on change" semantics.
+     */
+    private _prevActiveWsId = wsStore.activeWorkspaceId.value;
+    private _disposeWsSync: (() => void) | null = null;
+
+    componentDidMount() {
+        this._disposeWsSync = effect(() => {
+            const id = wsStore.activeWorkspaceId.value;
+            if (id !== this._prevActiveWsId) {
+                this._prevActiveWsId = id;
+                this.setState({ selectedWorkspaceId: id });
+            }
+        });
+    }
+
+    componentWillUnmount() {
+        if (this._disposeWsSync) {
+            this._disposeWsSync();
+            this._disposeWsSync = null;
         }
+    }
+
+    componentWillReceiveProps(nextProps: MobileAppLayoutProps) {
         if (nextProps.state.activeTabId === 'terminal' && this.props.state.activeTabId !== 'terminal') {
             this.setState({ activeMobileTab: 'workspaces', inSessionView: true });
         }
@@ -188,20 +215,13 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeMoreSubView,
             activeSettingsCategory,
         } = this.state;
-        const {
-            workspaces,
-            activeWorkspaceId,
-            tabs,
-            activeTabId,
-            folders,
-            workspacesLoading,
-            activeSession,
-            tmuxMouseOn,
-            ccProvidersUrl,
-            ccConnectUrl,
-            activeDrawerTab,
-            accessAuthRequired,
-        } = state;
+        const { tabs, activeTabId, ccProvidersUrl, ccConnectUrl, activeDrawerTab, accessAuthRequired } = state;
+        const workspaces = wsStore.workspaces.value;
+        const activeWorkspaceId = wsStore.activeWorkspaceId.value;
+        const folders = wsStore.folders.value;
+        const workspacesLoading = wsStore.workspacesLoading.value;
+        const activeSession = sess.activeSession.value;
+        const tmuxMouseOn = sess.tmuxMouseOn.value;
         const searchQuery = fs.searchQuery.value;
         const selectedFilterTag = fs.selectedFilterTag.value;
         const favoriteFiles = fs.favoriteFiles.value;

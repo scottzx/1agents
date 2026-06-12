@@ -25,6 +25,8 @@ import {
 } from '../terminal/terminalConfig';
 import { getModuleByTab } from '../../modules/registry';
 import * as fs from '../../stores/fsStore';
+import * as wsStore from '../../stores/workspaceStore';
+import * as sess from '../../stores/sessionStore';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 interface DesktopAppLayoutProps {
@@ -35,21 +37,14 @@ interface DesktopAppLayoutProps {
 export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
     render() {
         const { app, state } = this.props;
-        const {
-            workspaces,
-            activeWorkspaceId,
-            tabs,
-            activeTabId,
-            folders,
-            workspacesLoading,
-            activeDrawerTab,
-            activeSession,
-            tmuxMouseOn,
-            ccProvidersUrl,
-            ccConnectUrl,
-            accessAuthRequired,
-            sidebarCollapsedGroups,
-        } = state;
+        const { tabs, activeTabId, activeDrawerTab, ccProvidersUrl, ccConnectUrl, accessAuthRequired } = state;
+        const workspaces = wsStore.workspaces.value;
+        const activeWorkspaceId = wsStore.activeWorkspaceId.value;
+        const folders = wsStore.folders.value;
+        const workspacesLoading = wsStore.workspacesLoading.value;
+        const sidebarCollapsedGroups = wsStore.sidebarCollapsedGroups.value;
+        const activeSession = sess.activeSession.value;
+        const tmuxMouseOn = sess.tmuxMouseOn.value;
         const searchQuery = fs.searchQuery.value;
         const selectedFilterTag = fs.selectedFilterTag.value;
         const favoriteFiles = fs.favoriteFiles.value;
@@ -161,7 +156,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 leftSidebarWidth={leftSidebarWidth}
                                 activeWorkspaceId={activeWorkspaceId}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
-                                toggleFolder={app.toggleFolder}
+                                toggleFolder={wsStore.toggleFolder}
                                 toggleDrawerTab={app.toggleDrawerTab}
                                 activeDrawerTab={activeDrawerTab}
                                 activeDiscoveryCategory={state.discoveryCategory}
@@ -180,7 +175,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onChatCreate={app.openChatCreate}
                                 onChatKill={app.killChatSession}
                                 collapsedGroups={sidebarCollapsedGroups}
-                                onToggleGroup={app.toggleSidebarGroup}
+                                onToggleGroup={wsStore.toggleSidebarGroup}
                                 onStartNewChat={app.onStartNewChat}
                                 activeTab={state.activeTab}
                             />
@@ -373,7 +368,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 activeChatSession={
                                                     activeSession && isChat(activeSession) ? activeSession : null
                                                 }
-                                                pendingInitialMessage={state.pendingInitialMessage}
+                                                pendingInitialMessage={sess.pendingInitialMessage.value}
                                                 onClearPendingInitialMessage={app.clearPendingInitialMessage}
                                             />
                                         )}
@@ -405,7 +400,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     await app.checkAccessStatus();
                                                     await Promise.all([app.loadWorkspaces(true), app.loadTerminals()]);
 
-                                                    const { workspaces, activeWorkspaceId } = app.state;
+                                                    const workspaces = wsStore.workspaces.value;
+                                                    const activeWorkspaceId = wsStore.activeWorkspaceId.value;
                                                     if (!activeWorkspaceId && workspaces.length > 0) {
                                                         await app.selectWorkspace(workspaces[0]);
                                                     } else if (activeWorkspaceId) {
@@ -419,11 +415,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 }
                                             }}
                                             onToggleFullscreen={() => {
-                                                const { workspaces, activeWorkspaceId } = app.state;
                                                 const selectedFsEntry = fs.selectedFsEntry.value;
                                                 if (selectedFsEntry) {
-                                                    const activeWorkspace = workspaces.find(
-                                                        w => w.id === activeWorkspaceId
+                                                    const activeWorkspace = wsStore.workspaces.value.find(
+                                                        w => w.id === wsStore.activeWorkspaceId.value
                                                     );
                                                     const activeWorkspacePath = activeWorkspace?.path || '.';
                                                     const absolutePath = selectedFsEntry.path.startsWith('/')

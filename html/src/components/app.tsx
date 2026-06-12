@@ -1,7 +1,6 @@
 import { h, Component } from 'preact';
 
 import {
-    WorkspaceFolder,
     Workspace,
     FsEntry,
     RightDrawerTab,
@@ -41,6 +40,8 @@ import { globalBridgeManager } from './chat/hooks';
 
 import * as ui from '../stores/uiStore';
 import * as fs from '../stores/fsStore';
+import * as wsStore from '../stores/workspaceStore';
+import * as sess from '../stores/sessionStore';
 
 export {
     wsUrl,
@@ -72,18 +73,6 @@ export interface AppState {
     discoveryCategory: string;
     tabs: Tab[];
     activeTabId: string;
-    // ── Workspace state (from API) ──
-    workspaces: Workspace[];
-    workspacesLoading: boolean;
-    folders: WorkspaceFolder[];
-    activeWorkspaceId: string;
-    /**
-     * Per-workspace collapse state for the sidebar's 聊天 / 终端 sub-page
-     * groups. Owned here (not inside LeftSidebar's local state) so it
-     * survives any remount of LeftSidebar and is preserved across
-     * workspace switches.
-     */
-    sidebarCollapsedGroups: Record<string, { chat?: boolean; term?: boolean }>;
     // ── Workspace modal state ──
     wsModalOpen: boolean;
     wsModalMode: 'create' | 'rename';
@@ -101,25 +90,16 @@ export interface AppState {
     // ── Directory picker modal state ──
     dirPickerOpen: boolean;
     dirPickerOnSelect: ((path: string) => void) | null;
-    // ── Terminal / tmux state ──
-    terminalWindows: TmuxWindow[];
-    terminalWindowsLoading: boolean;
-    tmuxMouseOn: boolean;
     // ── Session rename modal state ──
     sessionRenameModalOpen: boolean;
     sessionRenameTarget: Session | null;
     sessionRenameName: string;
-    // ── Chat session state (1agents-side index) ──
-    chatSessions: ChatSession[];
-    pendingInitialMessage: string | null;
-    activeSession: Session | null;
     // ── Access token state ──
     accessGateVisible: boolean;
     accessAuthRequired: boolean;
     accessAuthenticated: boolean;
     accessTokenModalToken: string;
     onboarded: boolean;
-    hasLoadedWorkspaces: boolean;
     // ── Module slot state ──
     /** Active sub-path inside the active module, e.g. "/skills/use". */
     activeModulePath: string;
@@ -150,13 +130,6 @@ export class App extends Component<{}, AppState> {
             activeTab: 'terminal',
             activeDrawerTab: 'none',
             discoveryCategory: 'featured',
-            workspaces: [],
-            workspacesLoading: true,
-            folders: [],
-            activeWorkspaceId: localStorage.getItem('1agents-active-workspace') || '',
-            sidebarCollapsedGroups: {},
-            activeSession: null,
-            pendingInitialMessage: null,
             wsModalOpen: false,
             wsModalMode: 'create',
             wsModalTarget: null,
@@ -171,19 +144,14 @@ export class App extends Component<{}, AppState> {
             chatCreateWsId: '',
             dirPickerOpen: false,
             dirPickerOnSelect: null,
-            terminalWindows: [],
-            terminalWindowsLoading: false,
-            tmuxMouseOn: true,
             sessionRenameModalOpen: false,
             sessionRenameTarget: null,
             sessionRenameName: '',
-            chatSessions: [],
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
             accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
-            hasLoadedWorkspaces: false,
             // Tab order: 'tasks' is the project landing (fixed first, non-closable).
             // 'terminal' is the second non-closable default overlay. Dynamic
             // preview/browser tabs are appended on demand.
@@ -225,15 +193,16 @@ export class App extends Component<{}, AppState> {
         await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
 
         // Synchronize terminal windows + cached chat sessions into folders
-        this.mergeSessionsIntoFolders(this.state.terminalWindows, this.state.chatSessions);
+        this.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
 
         // If we already have an active workspace, also refresh its chat sessions.
-        if (this.state.activeWorkspaceId) {
-            this.loadChatSessions(this.state.activeWorkspaceId);
+        if (wsStore.activeWorkspaceId.value) {
+            this.loadChatSessions(wsStore.activeWorkspaceId.value);
         }
 
         // Select default workspace if none is active, otherwise sync backend root
-        const { workspaces, activeWorkspaceId } = this.state;
+        const workspaces = wsStore.workspaces.value;
+        const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         if (!activeWorkspaceId && workspaces.length > 0) {
             await this.selectWorkspace(workspaces[0]);
         } else if (activeWorkspaceId) {
@@ -325,12 +294,12 @@ export class App extends Component<{}, AppState> {
 
     /** Fetch all workspaces from GET /api/workspace/list */
     loadWorkspaces = async (skipAutoSelect = false) => {
-        this.setState({ workspacesLoading: true });
+        wsStore.workspacesLoading.value = true;
         try {
             const workspaces = await workspaceService.list();
             // Preserve existing expand state by merging
-            const existing = this.state.folders;
-            const folders = workspaces.map(ws => {
+            const existing = wsStore.folders.value;
+            wsStore.folders.value = workspaces.map(ws => {
                 const prev = existing.find(f => f.id === ws.id);
                 return {
                     id: ws.id,
@@ -339,9 +308,11 @@ export class App extends Component<{}, AppState> {
                     sessions: prev ? prev.sessions : [],
                 };
             });
-            this.setState({ workspaces, folders, workspacesLoading: false, hasLoadedWorkspaces: true }, () => {
-                if (skipAutoSelect) return;
-                const { activeWorkspaceId } = this.state;
+            wsStore.workspaces.value = workspaces;
+            wsStore.workspacesLoading.value = false;
+            wsStore.hasLoadedWorkspaces.value = true;
+            if (!skipAutoSelect) {
+                const activeWorkspaceId = wsStore.activeWorkspaceId.value;
                 const activeStillExists = workspaces.some(ws => ws.id === activeWorkspaceId);
                 if (!activeWorkspaceId || !activeStillExists) {
                     // Active workspace was deleted or never set — switch to first available
@@ -349,23 +320,25 @@ export class App extends Component<{}, AppState> {
                         this.selectWorkspace(workspaces[0]);
                     } else {
                         // No workspaces left — clear stale state
-                        this.setState({ activeWorkspaceId: '', ccConnectUrl: '', ccProvidersUrl: '' });
+                        wsStore.activeWorkspaceId.value = '';
+                        this.setState({ ccConnectUrl: '', ccProvidersUrl: '' });
                     }
                 } else {
                     this.loadCcConnectUrl();
                     this.loadCcProvidersUrl();
                 }
-            });
+            }
             return workspaces;
         } catch (err) {
             console.error('[workspace] load error:', err);
-            this.setState({ workspacesLoading: false, hasLoadedWorkspaces: true });
+            wsStore.workspacesLoading.value = false;
+            wsStore.hasLoadedWorkspaces.value = true;
             return [];
         }
     };
 
     loadCcConnectUrl = async (workspaceId?: string) => {
-        const wsId = workspaceId || this.state.activeWorkspaceId;
+        const wsId = workspaceId || wsStore.activeWorkspaceId.value;
         if (!wsId) return;
         try {
             const url = await workspaceService.getCcConnectUrl(wsId, ui.theme.value, ui.language.value || 'zh-CN');
@@ -376,7 +349,7 @@ export class App extends Component<{}, AppState> {
     };
 
     loadCcProvidersUrl = async (workspaceId?: string) => {
-        const wsId = workspaceId || this.state.activeWorkspaceId;
+        const wsId = workspaceId || wsStore.activeWorkspaceId.value;
         if (!wsId) return;
         try {
             const url = await workspaceService.getCcConnectUrl(
@@ -469,7 +442,7 @@ export class App extends Component<{}, AppState> {
 
     /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
     deleteWorkspace = async (id: string) => {
-        if (this.state.workspaces.length <= 1) {
+        if (wsStore.workspaces.value.length <= 1) {
             ui.showToast(t('app.toast.workspaceDeleteLast', ui.language.value));
             return;
         }
@@ -477,8 +450,9 @@ export class App extends Component<{}, AppState> {
             // If we're deleting the currently active workspace, clear it first so
             // loadWorkspaces knows to auto-select a new one instead of re-fetching
             // the CC-Connect URL for a workspace that no longer exists.
-            if (this.state.activeWorkspaceId === id) {
-                this.setState({ activeWorkspaceId: '', ccConnectUrl: '' });
+            if (wsStore.activeWorkspaceId.value === id) {
+                wsStore.activeWorkspaceId.value = '';
+                this.setState({ ccConnectUrl: '' });
             }
             await workspaceService.delete(id);
             await this.loadTerminals();
@@ -491,7 +465,8 @@ export class App extends Component<{}, AppState> {
 
     /** Reorder workspaces on drag and drop */
     reorderFolders = async (draggedId: string, targetId: string, position: 'before' | 'after') => {
-        const { workspaces, folders } = this.state;
+        const workspaces = wsStore.workspaces.value;
+        const folders = wsStore.folders.value;
 
         const draggedIdx = workspaces.findIndex(w => w.id === draggedId);
         const targetIdx = workspaces.findIndex(w => w.id === targetId);
@@ -514,14 +489,16 @@ export class App extends Component<{}, AppState> {
         });
 
         // Optimistic UI update
-        this.setState({ workspaces: newWorkspaces, folders: newFolders });
+        wsStore.workspaces.value = newWorkspaces;
+        wsStore.folders.value = newFolders;
 
         try {
             await workspaceService.reorder(newWorkspaces.map(w => w.id));
         } catch (err) {
             console.error('[workspace] reorder error:', err);
             // Rollback on error
-            this.setState({ workspaces, folders });
+            wsStore.workspaces.value = workspaces;
+            wsStore.folders.value = folders;
             ui.showToast(t('app.toast.workspaceReorderFailed', ui.language.value, { err: String(err) }));
         }
     };
@@ -651,27 +628,28 @@ export class App extends Component<{}, AppState> {
 
     /** Fetch all tmux windows from GET /api/terminal/list and sync to folders */
     loadTerminals = async () => {
-        this.setState({ terminalWindowsLoading: true });
+        sess.terminalWindowsLoading.value = true;
         try {
             const windows = await terminalService.list();
             // Use whatever chat sessions we have cached; the chat loader
             // (loadChatSessions) will refresh them in parallel.
-            this.mergeSessionsIntoFolders(windows, this.state.chatSessions);
-            this.setState({ terminalWindows: windows, terminalWindowsLoading: false });
+            this.mergeSessionsIntoFolders(windows, sess.chatSessions.value);
+            sess.terminalWindows.value = windows;
+            sess.terminalWindowsLoading.value = false;
         } catch (err) {
             console.error('[terminal] list error:', err);
-            this.setState({ terminalWindowsLoading: false });
+            sess.terminalWindowsLoading.value = false;
         }
     };
 
     /** Fetch chat session index for the active workspace from /api/agent/sessions */
     loadChatSessions = async (workspaceId?: string) => {
-        const wsId = workspaceId ?? this.state.activeWorkspaceId;
+        const wsId = workspaceId ?? wsStore.activeWorkspaceId.value;
         if (!wsId) return;
         try {
             const chats = await agentService.list(wsId);
-            this.setState({ chatSessions: chats });
-            this.mergeSessionsIntoFolders(this.state.terminalWindows, chats);
+            sess.chatSessions.value = chats;
+            this.mergeSessionsIntoFolders(sess.terminalWindows.value, chats);
         } catch (err) {
             console.error('[agent] list error:', err);
         }
@@ -688,7 +666,7 @@ export class App extends Component<{}, AppState> {
      *   5. Refresh local state + select the new session
      */
     createChatSession = async (workspaceId: string, name: string, agentType: AgentType, initialMessage?: string) => {
-        const ws = this.state.workspaces.find(w => w.id === workspaceId);
+        const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
         if (!ws) {
             ui.showToast('工作空间不存在');
             return;
@@ -709,11 +687,9 @@ export class App extends Component<{}, AppState> {
             });
             await this.loadChatSessions(workspaceId);
             // Auto-select the new session and switch to the agents tab.
-            this.setState({
-                activeSession: { ...indexed, active: true },
-                activeTab: 'agents',
-                pendingInitialMessage: initialMessage || null,
-            });
+            sess.activeSession.value = { ...indexed, active: true };
+            sess.pendingInitialMessage.value = initialMessage || null;
+            this.setState({ activeTab: 'agents' });
             ui.showToast('聊天会话已创建 ✓');
         } catch (err) {
             ui.showToast(`创建聊天失败: ${(err as Error).message}`);
@@ -721,14 +697,12 @@ export class App extends Component<{}, AppState> {
     };
 
     onStartNewChat = () => {
-        this.setState({
-            activeSession: null,
-            activeTab: 'new_chat',
-        });
+        sess.activeSession.value = null;
+        this.setState({ activeTab: 'new_chat' });
     };
 
     clearPendingInitialMessage = () => {
-        this.setState({ pendingInitialMessage: null });
+        sess.pendingInitialMessage.value = null;
     };
 
     /** Open the chat-create modal for a given workspace. */
@@ -739,7 +713,7 @@ export class App extends Component<{}, AppState> {
 
     /** Kill a chat session: delete from cc-connect, then unindex from 1agents. */
     killChatSession = async (sessionId: string) => {
-        const session = this.state.chatSessions.find(c => c.id === sessionId);
+        const session = sess.chatSessions.value.find(c => c.id === sessionId);
         if (!session) return;
         try {
             try {
@@ -754,12 +728,10 @@ export class App extends Component<{}, AppState> {
             globalBridgeManager.destroy(sessionId);
             await agentService.delete(sessionId);
             await this.loadChatSessions(session.workspaceId);
-            if (
-                this.state.activeSession &&
-                isChat(this.state.activeSession) &&
-                this.state.activeSession.id === sessionId
-            ) {
-                this.setState({ activeSession: null, activeTab: 'terminal' });
+            const active = sess.activeSession.value;
+            if (active && isChat(active) && active.id === sessionId) {
+                sess.activeSession.value = null;
+                this.setState({ activeTab: 'terminal' });
             }
             ui.showToast('聊天会话已关闭 ✓');
         } catch (err) {
@@ -769,33 +741,31 @@ export class App extends Component<{}, AppState> {
 
     /** Sync tmux windows + chat sessions into workspace folders as sessions */
     mergeSessionsIntoFolders(windows: TmuxWindow[], chats: ChatSession[]) {
-        this.setState(prev => ({
-            folders: prev.folders.map(f => {
-                const termSessions: Session[] = windows
-                    .filter(w => w.workspaceId === f.id)
-                    .map(w => ({
-                        kind: 'terminal',
-                        id: w.name,
-                        workspaceId: w.workspaceId,
-                        index: w.index,
-                        name: w.customName || t('app.session.title', ui.language.value, { index: w.index }),
-                        active: w.active,
-                        cwd: w.cwd,
-                        status: w.status,
-                        waitingFor: w.waitingFor,
-                        agent: w.agent,
-                    }));
-                const chatSessions: Session[] = chats.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
-                // Chat sessions first (newer), then terminals.
-                return { ...f, sessions: [...chatSessions, ...termSessions] };
-            }),
-        }));
+        wsStore.folders.value = wsStore.folders.value.map(f => {
+            const termSessions: Session[] = windows
+                .filter(w => w.workspaceId === f.id)
+                .map(w => ({
+                    kind: 'terminal',
+                    id: w.name,
+                    workspaceId: w.workspaceId,
+                    index: w.index,
+                    name: w.customName || t('app.session.title', ui.language.value, { index: w.index }),
+                    active: w.active,
+                    cwd: w.cwd,
+                    status: w.status,
+                    waitingFor: w.waitingFor,
+                    agent: w.agent,
+                }));
+            const chatSessions: Session[] = chats.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
+            // Chat sessions first (newer), then terminals.
+            return { ...f, sessions: [...chatSessions, ...termSessions] };
+        });
         // Preserve the currently-active chat session if it still exists; otherwise
         // fall back to the most recently active terminal window.
-        const prevActive = this.state.activeSession;
+        const prevActive = sess.activeSession.value;
         const activeChat = prevActive && isChat(prevActive) ? chats.find(c => c.id === prevActive.id) : null;
         const activeWin = windows.find(w => w.active);
-        const activeSession: Session | null = activeChat
+        sess.activeSession.value = activeChat
             ? { ...activeChat, active: true }
             : activeWin
               ? {
@@ -811,7 +781,6 @@ export class App extends Component<{}, AppState> {
                     agent: activeWin.agent,
                 }
               : null;
-        this.setState({ activeSession });
     }
 
     /** Create a new terminal tab via POST /api/terminal/create */
@@ -850,7 +819,7 @@ export class App extends Component<{}, AppState> {
     loadTmuxMouse = async () => {
         try {
             const mouseOn = await terminalService.getMouse();
-            this.setState({ tmuxMouseOn: mouseOn });
+            sess.tmuxMouseOn.value = mouseOn;
         } catch (err) {
             console.error('[terminal] load mouse state error:', err);
         }
@@ -858,10 +827,10 @@ export class App extends Component<{}, AppState> {
 
     /** Toggle tmux mouse mode state */
     toggleTmuxMouse = async () => {
-        const nextState = !this.state.tmuxMouseOn;
+        const nextState = !sess.tmuxMouseOn.value;
         try {
             const actualState = await terminalService.setMouse(nextState);
-            this.setState({ tmuxMouseOn: actualState });
+            sess.tmuxMouseOn.value = actualState;
             if (actualState) {
                 ui.showToast(t('app.toast.mouseScrollOn', ui.language.value));
             } else {
@@ -885,31 +854,29 @@ export class App extends Component<{}, AppState> {
         if (isFullPageTab(this.state.activeDrawerTab)) {
             this.setState({ activeDrawerTab: 'none' });
         }
-        const oldWorkspaceId = this.state.activeWorkspaceId;
-        const { workspaces } = this.state;
+        const oldWorkspaceId = wsStore.activeWorkspaceId.value;
+        const workspaces = wsStore.workspaces.value;
 
         // 1. Optimistic UI update: mark the session active and switch tab.
-        this.setState(prev => {
-            const updatedFolders = prev.folders.map(f => ({
-                ...f,
-                sessions: f.sessions.map(s => {
-                    if (isChat(s) && isChat(session)) return { ...s, active: s.id === session.id };
-                    if (isTerminal(s) && isTerminal(session)) return { ...s, active: s.index === session.index };
-                    return { ...s, active: false };
-                }),
-            }));
-            localStorage.setItem('1agents-active-workspace', session.workspaceId);
-            return {
-                activeSession: { ...session, active: true },
-                activeTabId: 'terminal',
-                // Chat sessions live in the agents tab; terminals in the terminal tab.
-                activeTab: isChat(session) ? 'agents' : 'terminal',
-                folders:
-                    session.workspaceId !== oldWorkspaceId
-                        ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
-                        : updatedFolders,
-                activeWorkspaceId: session.workspaceId,
-            };
+        const updatedFolders = wsStore.folders.value.map(f => ({
+            ...f,
+            sessions: f.sessions.map(s => {
+                if (isChat(s) && isChat(session)) return { ...s, active: s.id === session.id };
+                if (isTerminal(s) && isTerminal(session)) return { ...s, active: s.index === session.index };
+                return { ...s, active: false };
+            }),
+        }));
+        localStorage.setItem('1agents-active-workspace', session.workspaceId);
+        sess.activeSession.value = { ...session, active: true };
+        wsStore.folders.value =
+            session.workspaceId !== oldWorkspaceId
+                ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
+                : updatedFolders;
+        wsStore.activeWorkspaceId.value = session.workspaceId;
+        this.setState({
+            activeTabId: 'terminal',
+            // Chat sessions live in the agents tab; terminals in the terminal tab.
+            activeTab: isChat(session) ? 'agents' : 'terminal',
         });
 
         // Chat sessions don't need tmux / fs / git context switching; just
@@ -957,15 +924,16 @@ export class App extends Component<{}, AppState> {
         if (isFullPageTab(this.state.activeDrawerTab)) {
             this.setState({ activeDrawerTab: 'none' });
         }
-        const { activeWorkspaceId, terminalWindows } = this.state;
+        const activeWorkspaceId = wsStore.activeWorkspaceId.value;
+        const terminalWindows = sess.terminalWindows.value;
         if (ws.id === activeWorkspaceId) return;
 
-        this.setState({ activeWorkspaceId: ws.id, activeTabId: 'tasks' }, () => {
-            this.loadCcConnectUrl(ws.id);
-            this.loadCcProvidersUrl(ws.id);
-            this.loadChatSessions(ws.id);
-            localStorage.setItem('1agents-active-workspace', ws.id);
-        });
+        wsStore.activeWorkspaceId.value = ws.id;
+        this.setState({ activeTabId: 'tasks' });
+        this.loadCcConnectUrl(ws.id);
+        this.loadCcProvidersUrl(ws.id);
+        this.loadChatSessions(ws.id);
+        localStorage.setItem('1agents-active-workspace', ws.id);
 
         // Find an existing window for this workspace, or create one
         const win =
@@ -1331,25 +1299,6 @@ export class App extends Component<{}, AppState> {
         ui.triggerTerminalFit();
     };
 
-    toggleFolder = (folderId: string) => {
-        this.setState({
-            folders: this.state.folders.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f)),
-        });
-    };
-
-    /** Toggle a per-workspace 聊天/终端 sub-page group's collapse state. */
-    toggleSidebarGroup = (folderId: string, key: 'chat' | 'term') => {
-        this.setState(prev => ({
-            sidebarCollapsedGroups: {
-                ...prev.sidebarCollapsedGroups,
-                [folderId]: {
-                    ...prev.sidebarCollapsedGroups[folderId],
-                    [key]: !prev.sidebarCollapsedGroups[folderId]?.[key],
-                },
-            },
-        }));
-    };
-
     // ── Flat file crawler ──────────────────────────────────────────────────
 
     // ── Flat file crawler & search ──────────────────────────────────────────
@@ -1378,8 +1327,9 @@ export class App extends Component<{}, AppState> {
         if (!this.state.accessGateVisible) {
             fs.loadDir('', null);
             await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
-            this.mergeSessionsIntoFolders(this.state.terminalWindows, this.state.chatSessions);
-            const { workspaces, activeWorkspaceId } = this.state;
+            this.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
+            const workspaces = wsStore.workspaces.value;
+            const activeWorkspaceId = wsStore.activeWorkspaceId.value;
             if (!activeWorkspaceId && workspaces.length > 0) {
                 await this.selectWorkspace(workspaces[0]);
             } else if (activeWorkspaceId) {
@@ -1414,11 +1364,10 @@ export class App extends Component<{}, AppState> {
     };
 
     shareFile = async () => {
-        const { workspaces, activeWorkspaceId } = this.state;
         const selectedFsEntry = fs.selectedFsEntry.value;
         if (!selectedFsEntry) return;
 
-        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+        const activeWorkspace = wsStore.workspaces.value.find(w => w.id === wsStore.activeWorkspaceId.value);
         const activeWorkspacePath = activeWorkspace?.path || '.';
         const absolutePath = selectedFsEntry.path.startsWith('/')
             ? selectedFsEntry.path
@@ -1457,8 +1406,6 @@ export class App extends Component<{}, AppState> {
 
     render() {
         const {
-            workspaces,
-            workspacesLoading,
             wsModalOpen,
             wsModalMode,
             wsModalName,
@@ -1477,6 +1424,9 @@ export class App extends Component<{}, AppState> {
         } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;
+        const workspaces = wsStore.workspaces.value;
+        const workspacesLoading = wsStore.workspacesLoading.value;
+        const hasLoadedWorkspaces = wsStore.hasLoadedWorkspaces.value;
         const favoriteFiles = fs.favoriteFiles.value;
         const isEditingDetail = fs.isEditingDetail.value;
         const selectedFsEntry = fs.selectedFsEntry.value;
@@ -1574,7 +1524,7 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container" style="display: flex; flex-direction: column;">
-                {this.state.hasLoadedWorkspaces && workspaces.length === 0 ? (
+                {hasLoadedWorkspaces && workspaces.length === 0 ? (
                     <WelcomeOnboarding
                         language={language}
                         onCreateWorkspace={this.openCreateWorkspacePicker}
