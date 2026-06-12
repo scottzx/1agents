@@ -320,6 +320,8 @@ export const switchFsContext = async (ws: Workspace) => {
     selectedFsEntry.value = null;
     fileContent.value = '';
     editedContent.value = '';
+    // Leave detail view too — a detail pane with no selected entry renders blank.
+    viewMode.value = 'list';
     fsLoading.value = cached.length === 0;
     loadDir('', null);
 };
