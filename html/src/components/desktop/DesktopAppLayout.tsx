@@ -27,6 +27,7 @@ import { getModuleByTab } from '../../modules/registry';
 import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
+import * as modal from '../../stores/modalStore';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 interface DesktopAppLayoutProps {
@@ -161,18 +162,18 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 activeDrawerTab={activeDrawerTab}
                                 activeDiscoveryCategory={state.discoveryCategory}
                                 onSelectDiscoveryCategory={app.selectDiscoveryCategory}
-                                onCreateWorkspace={app.openCreateWorkspacePicker}
-                                onRenameWorkspace={ws => app.openRenameWorkspaceModal(ws)}
+                                onCreateWorkspace={modal.openCreateWorkspacePicker}
+                                onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
                                 onDeleteWorkspace={app.deleteWorkspace}
                                 onSelectWorkspace={ws => app.selectWorkspace(ws)}
                                 onSelectSession={s => app.selectSession(s)}
                                 onTerminalCreate={(wsId, cwd) => app.createTerminal(wsId, cwd)}
                                 onTerminalKill={idx => app.killTerminal(idx)}
-                                onRenameSession={s => app.openRenameSessionModal(s)}
+                                onRenameSession={s => modal.openRenameSessionModal(s)}
                                 onReorderFolders={app.reorderFolders}
                                 language={language}
                                 moduleNav={app.buildModuleNav()}
-                                onChatCreate={app.openChatCreate}
+                                onChatCreate={modal.openChatCreate}
                                 onChatKill={app.killChatSession}
                                 collapsedGroups={sidebarCollapsedGroups}
                                 onToggleGroup={wsStore.toggleSidebarGroup}

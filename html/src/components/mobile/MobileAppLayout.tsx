@@ -17,6 +17,7 @@ import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
+import * as modal from '../../stores/modalStore';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -313,7 +314,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             </div>
                                                             <div class="item-actions">
                                                                 <button
-                                                                    onClick={() => app.openRenameWorkspaceModal(ws)}
+                                                                    onClick={() => modal.openRenameWorkspaceModal(ws)}
                                                                     class="action-btn"
                                                                     title="Edit"
                                                                 >
@@ -353,7 +354,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 </div>
                                                 <button
                                                     class="mobile-add-workspace-btn"
-                                                    onClick={app.openCreateWorkspacePicker}
+                                                    onClick={modal.openCreateWorkspacePicker}
                                                 >
                                                     + {t('app.workspace.create', language) || '新建工作空间'}
                                                 </button>
@@ -534,7 +535,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                         )}
                                                                                         onClick={e => {
                                                                                             e.stopPropagation();
-                                                                                            app.openRenameSessionModal(
+                                                                                            modal.openRenameSessionModal(
                                                                                                 s
                                                                                             );
                                                                                         }}

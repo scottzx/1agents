@@ -15,8 +15,7 @@ import {
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
-import { WorkspaceModal, DirPickerModal, AccessTokenModal, SessionRenameModal } from './modal';
-import { SessionCreateModal } from './chat/SessionCreateModal';
+import { ModalHost } from './modal/ModalHost';
 import { workspaceService } from '../services/workspaceService';
 import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
@@ -42,6 +41,7 @@ import * as ui from '../stores/uiStore';
 import * as fs from '../stores/fsStore';
 import * as wsStore from '../stores/workspaceStore';
 import * as sess from '../stores/sessionStore';
+import * as modal from '../stores/modalStore';
 
 export {
     wsUrl,
@@ -73,32 +73,12 @@ export interface AppState {
     discoveryCategory: string;
     tabs: Tab[];
     activeTabId: string;
-    // ── Workspace modal state ──
-    wsModalOpen: boolean;
-    wsModalMode: 'create' | 'rename';
-    wsModalTarget: Workspace | null;
-    wsModalName: string;
-    wsModalPath: string;
-    wsModalTerminalDir: string;
-    wsModalChatChannel: string;
-    wsModalDefaultAgent: AgentType;
     ccConnectUrl: string;
     ccProvidersUrl: string;
-    // ── Chat session creation modal state ──
-    chatCreateOpen: boolean;
-    chatCreateWsId: string;
-    // ── Directory picker modal state ──
-    dirPickerOpen: boolean;
-    dirPickerOnSelect: ((path: string) => void) | null;
-    // ── Session rename modal state ──
-    sessionRenameModalOpen: boolean;
-    sessionRenameTarget: Session | null;
-    sessionRenameName: string;
     // ── Access token state ──
     accessGateVisible: boolean;
     accessAuthRequired: boolean;
     accessAuthenticated: boolean;
-    accessTokenModalToken: string;
     onboarded: boolean;
     // ── Module slot state ──
     /** Active sub-path inside the active module, e.g. "/skills/use". */
@@ -130,27 +110,11 @@ export class App extends Component<{}, AppState> {
             activeTab: 'terminal',
             activeDrawerTab: 'none',
             discoveryCategory: 'featured',
-            wsModalOpen: false,
-            wsModalMode: 'create',
-            wsModalTarget: null,
-            wsModalName: '',
-            wsModalPath: '',
-            wsModalTerminalDir: '',
-            wsModalChatChannel: '',
-            wsModalDefaultAgent: DEFAULT_AGENT_TYPE,
             ccConnectUrl: '',
             ccProvidersUrl: '',
-            chatCreateOpen: false,
-            chatCreateWsId: '',
-            dirPickerOpen: false,
-            dirPickerOnSelect: null,
-            sessionRenameModalOpen: false,
-            sessionRenameTarget: null,
-            sessionRenameName: '',
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
-            accessTokenModalToken: '',
             onboarded: localStorage.getItem('1agents-onboarded') === 'true',
             // Tab order: 'tasks' is the project landing (fixed first, non-closable).
             // 'terminal' is the second non-closable default overlay. Dynamic
@@ -503,88 +467,13 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    /** Open custom directory picker and create workspace from selected directory */
-    openCreateWorkspacePicker = () => {
-        this.openDirPicker(pickedPath => {
-            const sep = pickedPath.includes('\\') ? '\\' : '/';
-            const dirName = pickedPath.split(sep).filter(Boolean).pop() || pickedPath;
-
-            // Open standard workspace create modal with prefilled data!
-            this.setState({
-                wsModalOpen: true,
-                wsModalMode: 'create',
-                wsModalTarget: null,
-                wsModalName: dirName,
-                wsModalPath: pickedPath,
-                wsModalTerminalDir: '',
-                wsModalChatChannel: '',
-                wsModalDefaultAgent: DEFAULT_AGENT_TYPE,
-            });
-        });
-    };
-
-    openDirPicker = (onSelect: (path: string) => void) => {
-        this.setState({
-            dirPickerOpen: true,
-            dirPickerOnSelect: onSelect,
-        });
-    };
-
-    openDirPickerForModal = () => {
-        this.openDirPicker(path => {
-            this.setState({ wsModalPath: path });
-        });
-    };
-
-    /** Open the modal for renaming/editing an existing workspace */
-    openRenameWorkspaceModal = (ws: Workspace) => {
-        this.setState({
-            wsModalOpen: true,
-            wsModalMode: 'rename',
-            wsModalTarget: ws,
-            wsModalName: ws.name,
-            wsModalPath: ws.path,
-            wsModalTerminalDir: ws.terminalDir || '',
-            wsModalChatChannel: ws.chatChannel || '',
-            wsModalDefaultAgent: ws.defaultAgent || DEFAULT_AGENT_TYPE,
-        });
-    };
-
-    closeWsModal = () => {
-        this.setState({
-            wsModalOpen: false,
-            wsModalTarget: null,
-            wsModalName: '',
-            wsModalPath: '',
-            wsModalTerminalDir: '',
-            wsModalChatChannel: '',
-            wsModalDefaultAgent: DEFAULT_AGENT_TYPE,
-        });
-    };
-
-    openRenameSessionModal = (s: Session) => {
-        this.setState({
-            sessionRenameModalOpen: true,
-            sessionRenameTarget: s,
-            sessionRenameName: s.name,
-        });
-    };
-
-    closeSessionRenameModal = () => {
-        this.setState({
-            sessionRenameModalOpen: false,
-            sessionRenameTarget: null,
-            sessionRenameName: '',
-        });
-    };
-
     submitRenameSession = async () => {
-        const { sessionRenameTarget, sessionRenameName } = this.state;
+        const sessionRenameTarget = modal.sessionRenameTarget.value;
         if (!sessionRenameTarget) return;
-        const trimmed = sessionRenameName.trim();
+        const trimmed = modal.sessionRenameName.value.trim();
         try {
             await terminalService.rename(sessionRenameTarget.id, trimmed);
-            this.closeSessionRenameModal();
+            modal.closeSessionRenameModal();
             await this.loadTerminals();
             ui.showToast(t('app.toast.sessionRenamed', ui.language.value));
         } catch (err) {
@@ -593,17 +482,15 @@ export class App extends Component<{}, AppState> {
     };
 
     submitWsModal = async () => {
-        const {
-            wsModalMode,
-            wsModalTarget,
-            wsModalName,
-            wsModalPath,
-            wsModalTerminalDir,
-            wsModalChatChannel,
-            wsModalDefaultAgent,
-        } = this.state;
+        const wsModalMode = modal.wsModalMode.value;
+        const wsModalTarget = modal.wsModalTarget.value;
+        const wsModalName = modal.wsModalName.value;
+        const wsModalPath = modal.wsModalPath.value;
+        const wsModalTerminalDir = modal.wsModalTerminalDir.value;
+        const wsModalChatChannel = modal.wsModalChatChannel.value;
+        const wsModalDefaultAgent = modal.wsModalDefaultAgent.value;
         if (!wsModalName.trim()) return;
-        this.closeWsModal();
+        modal.closeWsModal();
         if (wsModalMode === 'create') {
             await this.createWorkspace(
                 wsModalName.trim(),
@@ -704,12 +591,6 @@ export class App extends Component<{}, AppState> {
     clearPendingInitialMessage = () => {
         sess.pendingInitialMessage.value = null;
     };
-
-    /** Open the chat-create modal for a given workspace. */
-    openChatCreate = (workspaceId: string) => {
-        this.setState({ chatCreateOpen: true, chatCreateWsId: workspaceId });
-    };
-    closeChatCreate = () => this.setState({ chatCreateOpen: false, chatCreateWsId: '' });
 
     /** Kill a chat session: delete from cc-connect, then unindex from 1agents. */
     killChatSession = async (sessionId: string) => {
@@ -1343,7 +1224,8 @@ export class App extends Component<{}, AppState> {
     generateAccessToken = async () => {
         try {
             const token = await accessService.generateToken();
-            this.setState({ accessTokenModalToken: token, accessAuthRequired: true });
+            modal.accessTokenModalToken.value = token;
+            this.setState({ accessAuthRequired: true });
         } catch (err) {
             ui.showToast(t('app.toast.tokenGenerateFailed', ui.language.value, { err: String(err) }));
         }
@@ -1357,10 +1239,6 @@ export class App extends Component<{}, AppState> {
         } catch (err) {
             ui.showToast(t('app.toast.tokenRevokeFailed', ui.language.value, { err: String(err) }));
         }
-    };
-
-    closeAccessTokenModal = () => {
-        this.setState({ accessTokenModalToken: '' });
     };
 
     shareFile = async () => {
@@ -1405,23 +1283,7 @@ export class App extends Component<{}, AppState> {
     };
 
     render() {
-        const {
-            wsModalOpen,
-            wsModalMode,
-            wsModalName,
-            wsModalPath,
-            wsModalTerminalDir,
-            wsModalChatChannel,
-            wsModalDefaultAgent,
-            chatCreateOpen,
-            chatCreateWsId,
-            dirPickerOpen,
-            accessGateVisible,
-            accessTokenModalToken,
-            sessionRenameModalOpen,
-            sessionRenameTarget,
-            sessionRenameName,
-        } = this.state;
+        const { accessGateVisible } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;
         const workspaces = wsStore.workspaces.value;
@@ -1527,7 +1389,7 @@ export class App extends Component<{}, AppState> {
                 {hasLoadedWorkspaces && workspaces.length === 0 ? (
                     <WelcomeOnboarding
                         language={language}
-                        onCreateWorkspace={this.openCreateWorkspacePicker}
+                        onCreateWorkspace={modal.openCreateWorkspacePicker}
                         onUseTempWorkspace={this.onUseTempWorkspace}
                     />
                 ) : ui.isMobile.value ? (
@@ -1536,82 +1398,8 @@ export class App extends Component<{}, AppState> {
                     <DesktopAppLayout app={this} state={this.state} />
                 )}
 
-                {/* Workspace create/rename modal */}
-                {wsModalOpen && (
-                    <WorkspaceModal
-                        mode={wsModalMode}
-                        name={wsModalName}
-                        path={wsModalPath}
-                        terminalDir={wsModalTerminalDir}
-                        chatChannel={wsModalChatChannel}
-                        defaultAgent={wsModalDefaultAgent}
-                        onNameChange={val => this.setState({ wsModalName: val })}
-                        onPathChange={val => this.setState({ wsModalPath: val })}
-                        onTerminalDirChange={val => this.setState({ wsModalTerminalDir: val })}
-                        onChatChannelChange={val => this.setState({ wsModalChatChannel: val })}
-                        onDefaultAgentChange={val => this.setState({ wsModalDefaultAgent: val })}
-                        onClose={this.closeWsModal}
-                        onBrowse={this.openDirPickerForModal}
-                        onSubmit={this.submitWsModal}
-                        language={language}
-                    />
-                )}
-
-                {/* Chat session create modal */}
-                {chatCreateOpen &&
-                    chatCreateWsId &&
-                    (() => {
-                        const ws = workspaces.find(w => w.id === chatCreateWsId);
-                        if (!ws) return null;
-                        return (
-                            <SessionCreateModal
-                                workspaceId={chatCreateWsId}
-                                workspaceName={ws.name}
-                                defaultAgent={ws.defaultAgent || DEFAULT_AGENT_TYPE}
-                                onCancel={this.closeChatCreate}
-                                onSubmit={(name, agentType) => {
-                                    this.closeChatCreate();
-                                    this.createChatSession(chatCreateWsId, name, agentType);
-                                }}
-                            />
-                        );
-                    })()}
-
-                {/* Remote Directory Picker Modal */}
-                {dirPickerOpen && (
-                    <DirPickerModal
-                        onClose={() => this.setState({ dirPickerOpen: false })}
-                        onSelect={pickedPath => {
-                            if (this.state.dirPickerOnSelect) {
-                                this.state.dirPickerOnSelect(pickedPath);
-                            }
-                            this.setState({ dirPickerOpen: false });
-                        }}
-                        onShowToast={ui.showToast}
-                        language={language}
-                    />
-                )}
-
-                {/* Access Token Display Modal (one-time, shown after generation) */}
-                {accessTokenModalToken && (
-                    <AccessTokenModal
-                        token={accessTokenModalToken}
-                        onClose={this.closeAccessTokenModal}
-                        onShowToast={ui.showToast}
-                        language={language}
-                    />
-                )}
-
-                {/* Session Rename Modal */}
-                {sessionRenameModalOpen && sessionRenameTarget && (
-                    <SessionRenameModal
-                        title={sessionRenameName}
-                        onTitleChange={val => this.setState({ sessionRenameName: val })}
-                        onClose={this.closeSessionRenameModal}
-                        onSubmit={this.submitRenameSession}
-                        language={language}
-                    />
-                )}
+                {/* App-level modals (workspace, chat-create, dir picker, token, rename) */}
+                <ModalHost app={this} />
 
                 {/* Toast Notification */}
                 {toastMsg && (
