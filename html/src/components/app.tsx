@@ -82,6 +82,13 @@ export interface AppState {
     workspacesLoading: boolean;
     folders: WorkspaceFolder[];
     activeWorkspaceId: string;
+    /**
+     * Per-workspace collapse state for the sidebar's 聊天 / 终端 sub-page
+     * groups. Owned here (not inside LeftSidebar's local state) so it
+     * survives any remount of LeftSidebar and is preserved across
+     * workspace switches.
+     */
+    sidebarCollapsedGroups: Record<string, { chat?: boolean; term?: boolean }>;
     // ── Workspace modal state ──
     wsModalOpen: boolean;
     wsModalMode: 'create' | 'rename';
@@ -192,6 +199,7 @@ export class App extends Component<{}, AppState> {
             workspacesLoading: true,
             folders: [],
             activeWorkspaceId: localStorage.getItem('1agents-active-workspace') || '',
+            sidebarCollapsedGroups: {},
             activeSession: null,
             pendingInitialMessage: null,
             wsModalOpen: false,
@@ -1611,6 +1619,19 @@ export class App extends Component<{}, AppState> {
         this.setState({
             folders: this.state.folders.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f)),
         });
+    };
+
+    /** Toggle a per-workspace 聊天/终端 sub-page group's collapse state. */
+    toggleSidebarGroup = (folderId: string, key: 'chat' | 'term') => {
+        this.setState(prev => ({
+            sidebarCollapsedGroups: {
+                ...prev.sidebarCollapsedGroups,
+                [folderId]: {
+                    ...prev.sidebarCollapsedGroups[folderId],
+                    [key]: !prev.sidebarCollapsedGroups[folderId]?.[key],
+                },
+            },
+        }));
     };
 
     // ── Flat file crawler ──────────────────────────────────────────────────

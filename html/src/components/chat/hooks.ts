@@ -146,6 +146,12 @@ export interface SessionBridgeState {
     ready: boolean;
     /** Per-session permission policy mirrored from the backend record. */
     permissionMode: PermissionMode;
+    /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
+    reconnectAttempt: number;
+    /** Pending setTimeout handle for the next reconnect; null when idle. */
+    reconnectTimer: ReturnType<typeof setTimeout> | null;
+    /** True when destroy() was called; prevents the onclose handler from scheduling a reconnect. */
+    closedByUser: boolean;
 }
 
 const DEFAULT_PERMISSION_MODE: PermissionMode = 'approve-reads';
@@ -175,6 +181,9 @@ export class ChatBridgeManager {
                 // the ChatSession object, so we can trust the field
                 // verbatim instead of doing a second GET per session.
                 permissionMode: session.permissionMode ?? DEFAULT_PERMISSION_MODE,
+                reconnectAttempt: 0,
+                reconnectTimer: null,
+                closedByUser: false,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
@@ -185,6 +194,11 @@ export class ChatBridgeManager {
     destroy(sessionId: string) {
         const state = this.sessions.get(sessionId);
         if (state) {
+            state.closedByUser = true;
+            if (state.reconnectTimer) {
+                clearTimeout(state.reconnectTimer);
+                state.reconnectTimer = null;
+            }
             if (state.ws) {
                 if (state.ws.readyState === WebSocket.OPEN) {
                     state.ws.send(JSON.stringify({ action: 'close_session', sessionId }));
@@ -205,7 +219,8 @@ export class ChatBridgeManager {
 
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const taskId = session.taskId || '';
-        const wsUrl = `${wsProto}//${window.location.host}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}`;
+        const replyId = session.replyId || '';
+        const wsUrl = `${wsProto}//${window.location.host}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}`;
 
         console.log('[useBridgeManager] Connecting to backend websocket:', wsUrl);
         const ws = new WebSocket(wsUrl);
@@ -267,6 +282,7 @@ export class ChatBridgeManager {
                     // `state.typing` is intentionally untouched — the
                     // bridge signals per-turn activity with `done` / `error`,
                     // not with `session_ready`.
+                    state.reconnectAttempt = 0;
                     state.ready = true;
                     this.notify(state);
                     break;
@@ -712,15 +728,25 @@ export class ChatBridgeManager {
         };
 
         ws.onclose = () => {
-            state.connection = 'closed';
+            if (state.closedByUser) {
+                state.connection = 'closed';
+                this.notify(state);
+                return;
+            }
+            state.connection = 'reconnecting';
             state.typing = false;
             this.notify(state);
+            const delay = Math.min(30_000, 1_000 * Math.pow(2, state.reconnectAttempt));
+            state.reconnectAttempt++;
+            state.reconnectTimer = setTimeout(() => {
+                state.reconnectTimer = null;
+                this.connect(session, state);
+            }, delay);
         };
 
         ws.onerror = () => {
-            state.connection = 'error';
-            state.typing = false;
-            this.notify(state);
+            // onclose always fires after onerror in the browser WebSocket API;
+            // let onclose own the reconnect logic to avoid double-scheduling.
         };
     }
 

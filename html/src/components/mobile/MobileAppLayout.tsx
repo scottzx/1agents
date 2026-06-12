@@ -1072,7 +1072,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <polyline points="15 18 9 12 15 6" />
                                     </svg>
                                 </button>
-                                <div class="mobile-subview-title">任务看板</div>
+                                <div class="mobile-subview-title">项目任务</div>
                             </div>
                             <div
                                 class="mobile-subview-content scrollable"

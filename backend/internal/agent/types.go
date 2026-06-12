@@ -1,6 +1,6 @@
 package agent
 
-import "time"
+import "github.com/scottzx/1Agents/backend/internal/meta"
 
 // AgentType is the agent plugin name registered in cc-connect.
 // Matches the import list in backend/internal/ccconnect/runner.go.
@@ -42,36 +42,59 @@ var SupportedAgentTypes = []AgentType{
 // DefaultAgentType is the agent used when a workspace has none configured.
 const DefaultAgentType = AgentTypeClaudecode
 
-// ChatSessionRecord is the 1agents-side index of a chat session.
-//
-// A chat session is a tuple (cc-connect session, 1agents uuid). The actual
-// conversation lives in cc-connect; this record is just metadata that the
-// sidebar uses to list "my chat sessions" alongside terminal sessions.
-//
-// Fields map 1:1 to the JSON shape returned by /api/agent/sessions:
-//   {id, workspace_id, name, agent_type, cc_project, cc_session_id, session_key, created_at, last_event_at}
-type ChatSessionRecord struct {
-	ID           string    `json:"id"`
-	WorkspaceID  string    `json:"workspace_id"`
-	Name         string    `json:"name"`
-	AgentType    AgentType `json:"agent_type"`
-	CcProject    string    `json:"cc_project"`
-	CcSessionID  string    `json:"cc_session_id"`
-	// AcpSessionID is the agent-managed session id (e.g. Claude Code's
-	// JSONL filename) — set on first session_ready from the bridge-server
-	// and reused as resumeSessionId on subsequent opens. Independent of
-	// CcSessionID, which only identifies the cc-connect / IM side.
-	AcpSessionID string    `json:"acp_session_id,omitempty"`
-	SessionKey   string    `json:"session_key"`
-	CreatedAt    time.Time `json:"created_at"`
-	LastEventAt  time.Time `json:"last_event_at,omitempty"`
-	// PermissionMode is the per-session permission policy forwarded to the
-	// bridge-server (which gates handlePermissionRequestCallback). One of
-	// "approve-reads" (default; auto-allow reads, prompt otherwise),
-	// "approve-all", "deny-all". Empty value means "use the bridge-server's
-	// global default".
-	PermissionMode string `json:"permission_mode,omitempty"`
-}
+// Model types live in internal/meta (the SQLite metadata layer) so the
+// server handlers and the CLI share one definition; the aliases below keep
+// this package's existing code and the wire JSON shapes unchanged.
+type (
+	ChatSessionRecord = meta.ChatSessionRecord
+	ScheduleType      = meta.ScheduleType
+	TaskStatus        = meta.TaskStatus
+	IssueState        = meta.IssueState
+	SessionKind       = meta.SessionKind
+	SessionStatus     = meta.SessionStatus
+	SessionMetadata   = meta.SessionMetadata
+	Author            = meta.Author
+	ReplyMode         = meta.ReplyMode
+	Reply             = meta.Reply
+	Task              = meta.Task
+	TasksConfig       = meta.TasksConfig
+	Priority          = meta.Priority
+	Recurrence        = meta.Recurrence
+	WorkspaceRef      = meta.WorkspaceRef
+)
+
+// PriorityRank re-exports the scheduler ordering helper.
+var PriorityRank = meta.PriorityRank
+
+const (
+	ScheduleTypeImmediate = meta.ScheduleTypeImmediate
+	ScheduleTypeScheduled = meta.ScheduleTypeScheduled
+
+	TaskStatusPending   = meta.TaskStatusPending
+	TaskStatusQueued    = meta.TaskStatusQueued
+	TaskStatusRunning   = meta.TaskStatusRunning
+	TaskStatusCompleted = meta.TaskStatusCompleted
+	TaskStatusFailed    = meta.TaskStatusFailed
+	TaskStatusCancelled = meta.TaskStatusCancelled
+	TaskStatusBlocked   = meta.TaskStatusBlocked
+
+	IssueOpen   = meta.IssueOpen
+	IssueClosed = meta.IssueClosed
+
+	PriorityUrgent = meta.PriorityUrgent
+	PriorityHigh   = meta.PriorityHigh
+	PriorityMedium = meta.PriorityMedium
+	PriorityLow    = meta.PriorityLow
+
+	SessionKindChat = meta.SessionKindChat
+
+	SessionStatusIdle    = meta.SessionStatusIdle
+	SessionStatusRunning = meta.SessionStatusRunning
+
+	ModeNewSession  = meta.ModeNewSession
+	ModeFollowUp    = meta.ModeFollowUp
+	ModePureComment = meta.ModePureComment
+)
 
 // IndexRequest is the body of POST /api/agent/sessions.
 //
@@ -82,75 +105,12 @@ type IndexRequest struct {
 	WorkspaceID string    `json:"workspace_id" binding:"required"`
 	Name        string    `json:"name"`
 	AgentType   AgentType `json:"agent_type" binding:"required"`
-	CcProject   string    `json:"cc_project" binding:"required"`
-	CcSessionID string    `json:"cc_session_id" binding:"required"`
-	SessionKey  string    `json:"session_key" binding:"required"`
+	// TaskID is the optional issue-model soft link; set when the session is
+	// spawned from a task timeline so the sidebar badge shows immediately.
+	TaskID string `json:"task_id"`
+	// cc_* / session_key identify the cc-connect (IM) side; empty for
+	// ACP-only sessions.
+	CcProject   string `json:"cc_project"`
+	CcSessionID string `json:"cc_session_id"`
+	SessionKey  string `json:"session_key"`
 }
-
-// fileConfig is the top-level structure persisted to disk.
-type fileConfig struct {
-	Sessions []ChatSessionRecord `json:"sessions"`
-}
-
-type ScheduleType string
-
-const (
-	ScheduleTypeImmediate ScheduleType = "immediate"
-	ScheduleTypeScheduled ScheduleType = "scheduled"
-)
-
-type TaskStatus string
-
-const (
-	TaskStatusPending   TaskStatus = "pending"
-	TaskStatusQueued    TaskStatus = "queued"
-	TaskStatusRunning   TaskStatus = "running"
-	TaskStatusCompleted TaskStatus = "completed"
-	TaskStatusFailed    TaskStatus = "failed"
-	TaskStatusCancelled TaskStatus = "cancelled"
-	TaskStatusBlocked   TaskStatus = "blocked"
-)
-
-type SessionKind string
-
-const (
-	SessionKindChat SessionKind = "chat"
-)
-
-type SessionStatus string
-
-const (
-	SessionStatusIdle    SessionStatus = "idle"
-	SessionStatusRunning SessionStatus = "running"
-)
-
-type SessionMetadata struct {
-	ID        string        `json:"id"`
-	Kind      SessionKind   `json:"kind"`
-	Name      string        `json:"name"`
-	AgentType string        `json:"agentType"`
-	Status    SessionStatus `json:"status"`
-	Summary   string        `json:"summary,omitempty"`
-	CreatedAt time.Time     `json:"createdAt"`
-}
-
-type Task struct {
-	ID            string            `json:"id"`
-	Title         string            `json:"title"`
-	Status        TaskStatus        `json:"status"`
-	ScheduleType  ScheduleType      `json:"scheduleType"`
-	ScheduledAt   *time.Time        `json:"scheduledAt"`
-	DependsOn     []string          `json:"dependsOn"`
-	CreatedAt     time.Time         `json:"createdAt"`
-	UpdatedAt     time.Time         `json:"updatedAt"`
-	StartedAt     *time.Time        `json:"startedAt,omitempty"`
-	CompletedAt   *time.Time        `json:"completedAt,omitempty"`
-	Summary       string            `json:"summary,omitempty"`
-	Sessions      []SessionMetadata `json:"sessions"`
-	WorkspacePath string            `json:"-"`
-}
-
-type TasksConfig struct {
-	Tasks []Task `json:"tasks"`
-}
-

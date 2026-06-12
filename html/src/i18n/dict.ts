@@ -28,7 +28,7 @@ export const zhCN: Record<string, string> = {
 
     // ── App shell (app.tsx) ───────────────────────────────────────────────
     'app.tab.workbench': '工作台',
-    'app.tab.tasks': '任务看板',
+    'app.tab.tasks': '项目任务',
     'app.workbench': '更多应用',
     'app.session.title': '会话 #{index}',
     'app.session.titlePlain': '会话 #',
@@ -130,6 +130,9 @@ export const zhCN: Record<string, string> = {
     'sidebar.newTerminal': '新建终端',
     'sidebar.newSession': '新建会话',
     'sidebar.newChat': '新建聊天',
+    'sidebar.subpage.tasks': '任务',
+    'sidebar.subpage.chats': '聊天',
+    'sidebar.subpage.terminals': '终端',
     'sidebar.chatSession': '聊天会话',
     'sidebar.noSessions': '暂无会话 — 点击工作空间旁的 + 创建',
     'sidebar.closeSession': '关闭会话',
@@ -693,6 +696,9 @@ export const enUS: Record<string, string> = {
     'sidebar.newTerminal': 'New terminal',
     'sidebar.newSession': 'New Session',
     'sidebar.newChat': 'New Chat',
+    'sidebar.subpage.tasks': 'Tasks',
+    'sidebar.subpage.chats': 'Chats',
+    'sidebar.subpage.terminals': 'Terminals',
     'sidebar.chatSession': 'Chat Session',
     'sidebar.noSessions': 'No sessions — click + next to a workspace to create one',
     'sidebar.closeSession': 'Close session',

@@ -12,10 +12,13 @@ import (
 func newTestHandler(t *testing.T) (*Handler, *Store) {
 	t.Helper()
 	s := newTestStore(t)
-	tasksStore := NewTasksStore()
+	tasksStore, err := NewTasksStore()
+	if err != nil {
+		t.Fatalf("NewTasksStore: %v", err)
+	}
 	acpxClient := NewAcpxClient(38082)
-	workspacesFn := func() ([]string, error) {
-		return []string{}, nil
+	workspacesFn := func() ([]WorkspaceRef, error) {
+		return []WorkspaceRef{}, nil
 	}
 	scheduler := NewScheduler(tasksStore, workspacesFn)
 	return NewHandler(s, tasksStore, acpxClient, scheduler), s
@@ -155,4 +158,124 @@ func TestHandlerMethodNotAllowed(t *testing.T) {
 func jsonBody(v any) *bytes.Reader {
 	b, _ := json.Marshal(v)
 	return bytes.NewReader(b)
+}
+
+// ── Issue-model task endpoints ──────────────────────────────────────────────
+
+func seedTask(t *testing.T, h *Handler, ws string) Task {
+	t.Helper()
+	cfg, err := h.tasksStore.Load(ws)
+	if err != nil {
+		t.Fatalf("load tasks: %v", err)
+	}
+	task := Task{
+		ID:          "task-1",
+		Title:       "优化登录",
+		Description: "初始描述",
+		Status:      TaskStatusPending,
+		IssueState:  IssueOpen,
+	}
+	cfg.Tasks = append(cfg.Tasks, task)
+	if err := h.tasksStore.Save(ws, cfg); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+	return task
+}
+
+func TestHandlerTaskGetPatchReply(t *testing.T) {
+	h, _ := newTestHandler(t)
+	ws := t.TempDir()
+	seedTask(t, h, ws)
+
+	// GET single task
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/tasks/task-1", nil)
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get task status %d: %s", rr.Code, rr.Body.String())
+	}
+	var got Task
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Title != "优化登录" || got.Description != "初始描述" {
+		t.Fatalf("wrong task: %+v", got)
+	}
+
+	// GET missing → 404
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/agent/tasks/nope", nil)
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("get missing status %d, want 404", rr.Code)
+	}
+
+	// POST a user reply
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+		strings.NewReader(`{"text":"先调研","mode":"new","author":"scott"}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("reply status %d: %s", rr.Code, rr.Body.String())
+	}
+	var reply Reply
+	if err := json.NewDecoder(rr.Body).Decode(&reply); err != nil {
+		t.Fatalf("decode reply: %v", err)
+	}
+	if reply.ID == "" || reply.Author.Name != "scott" || reply.Mode != ModeNewSession {
+		t.Fatalf("wrong reply: %+v", reply)
+	}
+
+	// Empty text → 400
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+		strings.NewReader(`{"text":"  "}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("empty text status %d, want 400", rr.Code)
+	}
+
+	// PATCH description + close the issue
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/agent/tasks/task-1",
+		strings.NewReader(`{"description":"新描述","issueState":"closed"}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rr.Code, rr.Body.String())
+	}
+	var patched Task
+	if err := json.NewDecoder(rr.Body).Decode(&patched); err != nil {
+		t.Fatalf("decode patched: %v", err)
+	}
+	if patched.Description != "新描述" || patched.IssueState != IssueClosed {
+		t.Fatalf("patch not applied: %+v", patched)
+	}
+	if len(patched.Replies) != 1 || patched.Replies[0].Text != "先调研" {
+		t.Fatalf("timeline missing after patch: %+v", patched.Replies)
+	}
+
+	// Closed issue: new-session reply rejected with 422, pure comment OK
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+		strings.NewReader(`{"text":"再来一轮","mode":"new"}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("closed new-session status %d, want 422", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+		strings.NewReader(`{"text":"纯评论可以","mode":"pure_comment"}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("closed pure-comment status %d, want 200: %s", rr.Code, rr.Body.String())
+	}
+
+	// Invalid issueState → 400
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/agent/tasks/task-1",
+		strings.NewReader(`{"issueState":"banana"}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad issueState status %d, want 400", rr.Code)
+	}
 }

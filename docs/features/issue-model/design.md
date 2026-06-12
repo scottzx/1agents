@@ -1,9 +1,15 @@
 # Task as Issue: GitHub-style Topic Threading for 1agents
 
-**Status:** Design (not yet implemented)
+**Status:** Implemented (P0–P5 落地于 2026-06-12，存储层走 project-model 的 SQLite；P6 真实 agent 走查待手工验证)
 **Author:** scottzx + Claude
 **Date:** 2026-06-10
-**Scope:** `backend/internal/agent/`, `modules/1acp/bridge-server.js`, `html/src/`, Claude Code hook config
+**Updated:** 2026-06-12 — 评审后确认决策 E–H（§5.3），agent 回写从 Stop hook 改为 Go 后端拦截（§8）
+**Scope:** `backend/internal/agent/`, `modules/1acp/bridge-server.js`, `html/src/`
+
+> **⚠️ 存储层已被 [project-model](../project-model/design.md) 取代（2026-06-12）：**
+> 本文档中所有 `tasks.json` / `agent-sessions.json` / `TasksStore` 的引用，落地时一律换成根目录 SQLite（`~/.1agents/meta.db`，`internal/meta` 包）。
+> 同时新增"项目"层（Project → Task → Session），任务表格为落地页主视图。
+> 本文档的数据模型语义、时间线、回写、注入、详情卡 UI 设计**全部继续有效**。
 
 ---
 
@@ -24,7 +30,7 @@
 Issue (Task) ──► Description (背景说明)
            ──► Replies[] (时间线)
                 ├── user comment (纯文字)
-                ├── agent reply (回写自 session 结束)
+                ├── agent reply (回写自 turn 结束)
                 └── user "do X"  →  spawn / follow-up  Session
            ──► Sessions[] (执行索引, 由 replies 反向聚合)
 ```
@@ -187,16 +193,25 @@ graph TB
 | 1 | Status model | **Dual status** | Keep `pending/running/completed/...` workflow status, layer `open/closed` on top |
 | 2 | Reply mode | **Unified reply** | Single input box; submit can be ① open new session ② follow up existing session (via dropdown) |
 | 3 | Orphan handling | **Soft link / no enforcement** | Sessions can have empty `taskId`; list shows all chronologically; sessions with a task show `📋 Task: <title>` badge |
-| 4 | Reply write permission | **User + Agent** | Claude Code `Stop` hook auto-appends a reply with the final assistant message |
+| 4 | Reply write permission | **User + Agent** | Agent reply 由 Go 后端在 turn 结束时自动追加（§8） |
 
 ### 5.2 Sub-decisions (4)
 
 | # | Dimension | Choice | Notes |
 |---|---|---|---|
-| A | Hook extraction | **Full last assistant message, no truncation** | Take the last `assistant` message's `content` verbatim (join all text blocks if array) |
+| A | Write-back extraction | **Full last assistant message, no truncation** | 累积当前 turn 的 assistant 文本块，全文回写 |
 | B | System context format | **Plain text "background" block** | Description + all replies + task state concatenated as a single system message block |
 | C | Unfiled / archive | **No special handling** | Sidebar = all sessions chronologically, newest first. Some have task badge, some don't. No archive prompt, no reminder. |
 | D | Dual status UI | **Two badges** | Workflow status = text badge `[running]` / `[completed]` / ... Issue state = icon (🔓 open / 🔒 closed) |
+
+### 5.3 Review decisions (2026-06-12, 4)
+
+| # | Dimension | Choice | Notes |
+|---|---|---|---|
+| E | Agent 回写机制 | **Go 后端拦截** | 在 `acpx_client.go` 的 `done` 事件处 `AppendReply`；废弃 Stop hook 方案（原因见 §8） |
+| F | 回写粒度 | **每 turn 一条** | 同一 session 追问 N 轮 = N 条 agent reply，GitHub 评论流风格 |
+| G | follow_up 背景注入 | **不注入** | 只有 `mode=new` 注入完整时间线背景；resumed session 自带完整历史，再注入会重复（§9） |
+| H | closed 语义 | **可评论不可开会话** | closed 后允许 `pure_comment`，禁止 `new` / `follow_up`（API 返回 422，前端禁用对应选项） |
 
 ---
 
@@ -265,12 +280,13 @@ type SessionMetadata struct {
     CreatedAt time.Time     `json:"createdAt"`
 }
 
-// 已有（ACP 解耦后）
+// 已有（ACP 解耦后）+ 本次新增 TaskID
 type ChatSessionRecord struct {
     ID           string    `json:"id"`
     WorkspaceID  string    `json:"workspaceId"`
     Name         string    `json:"name"`
     AgentType    string    `json:"agentType"`
+    TaskID       string    `json:"taskId,omitempty"`  // 🆕 软关联：task 起的会话填，侧边栏徽章靠它渲染
     CcSessionID  string    `json:"ccSessionId"`    // IM 通道
     AcpSessionID string    `json:"acpSessionId"`   // ACP 通道（agent UUID）
     CcProject    string    `json:"ccProject"`
@@ -289,33 +305,37 @@ type ChatSessionRecord struct {
 ```
 GET    /api/agent/tasks/{id}                      🆕 single task, includes description + replies
 POST   /api/agent/tasks/{id}/replies              🆕 user reply (author=user)
-POST   /api/agent/tasks/{id}/replies/agent        🆕 hook write-back (author=agent, internal token auth)
 PATCH  /api/agent/tasks/{id}                      🆕 edit description / toggle issue state
 GET    /api/agent/tasks?unfiled=true              🆕 (optional) list sessions without taskId — used by sidebar
 ```
 
-### 7.2 The `agent` reply endpoint
+> 原设计的 `POST /tasks/{id}/replies/agent`（hook 回写端点 + `X-Internal-Token`）已随决策 E 移除：
+> agent 回写改为 Go 后端进程内调用，不再有外部 HTTP 入口，也就不存在伪造面。
 
-`POST /api/agent/tasks/{id}/replies/agent` requires a header:
+`POST /replies` 对 closed issue 的约束（决策 H）：`mode=pure_comment` 允许；`mode=new` / `mode=follow_up` 返回 `422`，错误信息提示先 reopen。
 
-```
-X-Internal-Token: <AGENT_HOOK_TOKEN>
-```
+### 7.2 编排时序（reply → session）
 
-Where `AGENT_HOOK_TOKEN` is a long-lived secret configured on the 1agents server (env var / config file) and shared with the Claude Code hook script.
+**mode=new**
 
-This is separate from the user-facing auth path so external callers cannot forge agent replies.
+1. 前端 `POST /api/agent/tasks/{id}/replies`，body `{text, mode:"new", agentType}` → 后端持久化 user Reply，返回 reply 对象
+2. 前端照常 `POST /api/agent/sessions` 创建 `ChatSessionRecord`（🆕 带 `taskId`）
+3. 前端打开 WS `/api/agent/chat/ws?...&task_id=<id>&session_id=<sid>&reply_id=<rid>`（🆕 reply_id 参数）
+4. `HandleChatWs` 沿用现有链路（加锁、创建/更新 `SessionMetadata`，见 handler.go "Context Chaining" 段，约 388–455 行，按内容定位不按行号），并新增回填：
+   - `Reply.SessionRef = sessionId`、`SessionMetadata.ReplyIDs += replyId`
+   - 系统背景注入（§9，仅此模式）
+5. turn done → §8 写回 agent reply
 
-Payload:
+**mode=follow_up**
 
-```json
-{
-  "text": "<full last assistant message content>",
-  "inReplyTo": "<replyId that triggered this session>",
-  "acpSessionId": "<agent UUID from session_ready>",
-  "agentType": "claude-opus-4-8"
-}
-```
+1. `POST /replies`，body `{text, mode:"follow_up", inReplyTo:<目标 reply.id>}` → 后端由 `inReplyTo` 反查目标 session
+2. 前端用已有 `sessionId` 开 WS → ACP resume 走 §2 机制（`resumeSessionId = acp_session_id`）
+3. 不注入背景（决策 G），用户文本作为普通 prompt 发送
+4. turn done → §8 写回 agent reply
+
+**mode=pure_comment**
+
+仅 `POST /replies`，无 session 动作。
 
 ### 7.3 Removed / kept
 
@@ -325,113 +345,48 @@ Payload:
 
 ---
 
-## 8. Hook Design (Claude Code Side)
+## 8. Agent Reply Write-back (Go 后端拦截)
 
-### 8.1 Configuration
+> **2026-06-12 决策 E：废弃原 Stop hook 方案，改为 Go 后端 in-band 拦截。** 原因：
+> 1. 1acp runtime 的 `ensureSession()`（`src/runtime/engine/manager.ts:671`）没有 per-session env 入参，agent 进程 spawn 直接继承 `process.env` —— 实现原方案的 env 注入（`AGENT_TASK_ID` 等）需要改上游子模块内核，成本与维护负担高。
+> 2. Claude Code 的 `Stop` hook 在**每个 turn 结束**触发，并非"session 结束"，与原设计语义不符。
+> 3. 原 hook 脚本的 jq 假设 transcript 是单 JSON 文档（`.messages[]`），实际 Claude Code transcript 是 JSONL（逐行 JSON，顶层 `type:"assistant"`），脚本未经实测，落地会静默失效。
+> 4. Go 后端已有现成挂载点：`acpx_client.go` 已拦截 `done` 事件并调用 `handleTaskSessionDone` 回写 task summary。
 
-In `~/.claude/settings.json` (or per-project `.claude/settings.json`):
+### 8.1 机制
 
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/usr/local/bin/1agents-post-session.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
+- Bridge 循环（`acpx_client.go`）在中继 WS 消息时，**累积当前 turn 的 assistant 文本块**（与前端渲染所用的是同一事件流）。
+- 收到 `done` 事件且 `taskId` 非空时，把累积的"最后一条 assistant 消息全文"追加为 reply：
+
+```go
+tasksStore.AppendReply(wsPath, taskId, Reply{
+    Author:       Author{Kind: "agent", Name: agentType},
+    AgentType:    agentType,
+    Text:         lastAssistantText,   // 全文，不截断（决策 A）
+    SessionRef:   sessionId,
+    AcpSessionID: acpSessionID,
+    InReplyTo:    replyID,             // 触发本 turn 的用户 reply（来自 WS 的 reply_id 参数）
+    Mode:         ModePureComment,     // agent reply 本身不再派生 session
+})
 ```
 
-### 8.2 The hook script
+- **粒度：每 turn 一条 agent reply**（决策 F）。同一 session 追问 N 轮，时间线就有 N 条 —— GitHub 评论流风格。
+- 现有 `handleTaskSessionDone` 的 summary 回写逻辑保留不变，二者并行。
 
-`/usr/local/bin/1agents-post-session.sh`:
+### 8.2 随决策 E 移除的内容（相对原设计）
 
-```bash
-#!/usr/bin/env bash
-# 1agents post-session hook
-# Triggered by Claude Code on Stop event.
-# Reads AGENT_TASK_ID / AGENT_REPLY_ID / AGENT_HOOK_TOKEN / ONEGENTS_API_BASE
-# from env (set by 1agents when spawning the Claude process).
-# Extracts the last assistant message from the transcript
-# and POSTs it back to 1agents as an agent reply.
+- `POST /api/agent/tasks/{id}/replies/agent` HTTP 端点与 `X-Internal-Token` 鉴权
+- `/usr/local/bin/1agents-post-session.sh` hook 脚本
+- `~/.claude/settings.json` 的 `Stop` hook 配置
+- `AGENT_TASK_ID` / `AGENT_REPLY_ID` / `AGENT_HOOK_TOKEN` / `ONEGENTS_API_BASE` env 注入及 bridge/runtime 透传改动
 
-set -euo pipefail
-
-EVENT=$(cat)  # hook event JSON on stdin
-TRANSCRIPT_PATH="$(echo "$EVENT" | jq -r '.transcript_path // empty')"
-SESSION_ID="$(echo "$EVENT" | jq -r '.session_id // empty')"
-
-TASK_ID="${AGENT_TASK_ID:-}"
-REPLY_ID="${AGENT_REPLY_ID:-}"
-TOKEN="${AGENT_HOOK_TOKEN:-}"
-API_BASE="${ONEGENTS_API_BASE:-http://127.0.0.1:8080}"
-
-# Bound check: only act if we have a task to write to
-if [ -z "$TASK_ID" ] || [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
-  exit 0
-fi
-
-# Extract the LAST assistant message's content, verbatim
-SUMMARY=$(jq -r '
-  [.messages[]? | select(.role == "assistant" and .message.content != null)]
-  | last
-  | if . == null then ""
-    elif (.message.content | type) == "array"
-      then [ .message.content[]? | select(.type == "text") | .text ] | join("\n")
-    else (.message.content // "" | tostring)
-    end
-' "$TRANSCRIPT_PATH")
-
-if [ -z "$SUMMARY" ]; then
-  exit 0
-fi
-
-# Build payload and POST
-PAYLOAD=$(jq -n \
-  --arg text "$SUMMARY" \
-  --arg replyId "$REPLY_ID" \
-  --arg acpSessionId "$SESSION_ID" \
-  --arg agentType "${AGENT_TYPE:-claude}" \
-  '{text: $text, inReplyTo: $replyId, acpSessionId: $acpSessionId, agentType: $agentType}')
-
-curl -fsS -X POST "${API_BASE}/api/agent/tasks/${TASK_ID}/replies/agent" \
-  -H "X-Internal-Token: ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "$PAYLOAD" >/dev/null
-```
-
-Make it executable and token-restricted:
-
-```bash
-chmod 700 /usr/local/bin/1agents-post-session.sh
-chown root:wheel /usr/local/bin/1agents-post-session.sh
-```
-
-### 8.3 Env injection in 1agents
-
-When `handler.go` spawns a Claude Code process for a new session under a task, it sets:
-
-```
-AGENT_TASK_ID=<task.id>
-AGENT_REPLY_ID=<reply.id of the user reply that triggered this session>
-AGENT_HOOK_TOKEN=<server-side secret>
-AGENT_TYPE=<e.g. claude-opus-4-8>
-ONEGENTS_API_BASE=<server base URL>
-```
-
-These propagate through the acpx bridge to the runtime that launches Claude Code.
+> 取舍说明：hook 方案唯一的额外覆盖是"用户在终端直接跑的 Claude Code"，但那类 session 本来不挂在任何 task 下（`TASK_ID` 为空时 hook 也直接退出），无实际收益。
 
 ---
 
 ## 9. System Context Template
 
-Upgrade `handler.go:332-345` (currently "拼接前序 session summaries") to use this template. Inject as a single system message **before** the user's current request.
+升级 `handler.go` 的 "Context Chaining" 段（原"拼接前序 session summaries"，按内容定位不按行号）为以下模板。**仅在 `mode=new` 的新 session 启动时**注入为一条 system message，置于用户首条请求之前；`follow_up`（resume）不注入（决策 G —— resumed session 自带完整历史，重复注入会膨胀且漂移）。
 
 ```
 === ISSUE BACKGROUND ===
@@ -469,7 +424,7 @@ End of background.
 Properties:
 - Pure text, no JSON / no structured field splitting
 - Clearly marked sections (`=== ISSUE BACKGROUND ===` / `=== USER'S CURRENT REQUEST ===`)
-- Full replies, no truncation
+- Full replies, no truncation（长任务时间线膨胀的截断策略 → Open Question #2）
 - Order is chronological
 
 ---
@@ -538,6 +493,8 @@ Properties:
 └──────────────────────────────────────────────────────┘
 ```
 
+注（决策 H）：issue 为 closed 时，输入区只保留"纯评论"模式，"启动新会话 / 追问"置灰并提示先 reopen。
+
 ### 10.3 Sidebar session item — with optional task badge
 
 ```
@@ -561,9 +518,9 @@ Properties:
 | `html/src/components/drawer/TaskList.tsx` | Replace execution-session list with timeline. Add description block (editable), reply input, issue-state toggle, dual badges. **Also: fix hardcoded `ccSessionId: ''` to use `acpSessionId` per Section 2 scope note** |
 | `html/src/components/drawer/TaskList.tsx` (more) | "新建服务会话" replaced by single reply input with mode radio |
 | `html/src/components/LeftSidebar.tsx` (or equivalent session list) | Each session item renders optional `📋 Task: <title>` badge when `taskId` is set |
-| `html/src/components/types.ts` | Add `Reply`, `Author`, `ReplyMode`, `IssueState` types |
-| `html/src/services/agentService.ts` | `addReply(taskId, payload)`, `patchTask(taskId, partial)`, `getTask(taskId)` |
-| `html/src/components/chat/hooks.ts` | No major change — chat panel still works off `ChatSession`; reads `acpSessionId` correctly per Section 2 |
+| `html/src/components/types.ts` | Add `Reply`, `Author`, `ReplyMode`, `IssueState` types; `ChatSession` 加 `taskId?: string` |
+| `html/src/services/agentService.ts` | `addReply(taskId, payload)`, `patchTask(taskId, partial)`, `getTask(taskId)`; session 创建载荷带 `taskId` |
+| `html/src/components/chat/hooks.ts` | No major change — chat panel still works off `ChatSession`; reads `acpSessionId` correctly per Section 2; WS URL 增加 `reply_id` 参数（§7.2） |
 | `html/src/i18n/dict.ts` | Add keys: `task.description`, `task.timeline`, `task.reply.pure`, `task.reply.new`, `task.reply.followUp`, `task.issue.open`, `task.issue.close` |
 | `html/src/style/index.scss` | Timeline component styles, dual-badge styles, reply input styles |
 
@@ -573,23 +530,24 @@ Properties:
 
 | Phase | Scope | Touches | Verification |
 |---|---|---|---|
-| **P0 Data layer** | Add `Description` / `IssueState` / `Replies` / `Reply` to `types.go`; add `AppendReply` / `UpdateDescription` / `SetIssueState` to `store.go`; add `UpdateACP` is already done | `backend/internal/agent/types.go`, `store.go` | `go build ./...` |
-| **P1 API layer** | `GET /tasks/{id}`, `POST /tasks/{id}/replies` (user), `POST /tasks/{id}/replies/agent` (hook + token auth), `PATCH /tasks/{id}` (description / state) | `backend/internal/agent/handler.go` | `go test ./internal/agent/...` |
-| **P2 Context injection** | Replace `handler.go:332-345` with the Section 9 template. Same injection point (system message before user's request) | `handler.go` | Manual: open a task with N replies, start new session, verify the system prompt contains the background block |
-| **P3 Hook side** | Write `1agents-post-session.sh`; configure `~/.claude/settings.json` Stop hook; ensure `AGENT_TASK_ID` / `AGENT_REPLY_ID` / `AGENT_HOOK_TOKEN` are exported when spawning Claude | `1agents-post-session.sh` (new), `bridge-server.js` env pass-through, `handler.go` env setting | Manual: run a session under a task, verify the timeline gets a new agent reply after Stop |
+| **P0 Data layer** | Add `Description` / `IssueState` / `Replies` / `Reply` to `types.go`; add `TaskID` to `ChatSessionRecord`; add `AppendReply` / `UpdateDescription` / `SetIssueState` to stores; `UpdateACP` is already done | `backend/internal/agent/types.go`, `store.go` | `go build ./...` |
+| **P1 API layer** | `GET /tasks/{id}`, `POST /tasks/{id}/replies` (user, incl. closed-state 约束), `PATCH /tasks/{id}` (description / state) | `backend/internal/agent/handler.go` | `go test ./internal/agent/...` |
+| **P2 Context injection** | Replace "Context Chaining" 段 with the Section 9 template；仅 `mode=new` 注入 | `handler.go` | Manual: open a task with N replies, start new session, verify the system prompt contains the background block; follow_up 验证不含背景块 |
+| **P3 Agent reply write-back** | `acpx_client.go` 累积 turn 内 assistant 文本；`done` 事件处 `AppendReply`（§8）；WS 链路透传 `reply_id` 并回填 `SessionRef` / `ReplyIDs` / `ChatSessionRecord.TaskID` | `acpx_client.go`, `handler.go` | Manual: run a session under a task, verify the timeline gets a new agent reply after each turn |
 | **P4 Task card UI** | Timeline + description + reply input + dual badges + issue state toggle. Fix hardcoded `ccSessionId` in `TaskList.tsx` | `drawer/TaskList.tsx`, `style/index.scss`, `i18n/dict.ts` | `make frontend`; visual + manual interaction |
 | **P5 Sidebar UI** | Add optional `📋 Task: <title>` badge to session list items when `taskId` is set | `LeftSidebar.tsx` (or equivalent) | `make frontend`; visual check |
-| **P6 E2E walkthrough** | Full flow: create task → write first user reply → choose "open new session" → Claude runs → hook writes back → write second user reply → choose "follow up session A" → Claude resumes → timeline shows full story → close issue | All of the above | Recorded in `walkthrough.md` per chat-ui precedent |
+| **P6 E2E walkthrough** | Full flow: create task → write first user reply → choose "open new session" → Claude runs → 后端回写 agent reply → write second user reply → choose "follow up session A" → Claude resumes → timeline shows full story → close issue → 验证 closed 下仅可评论 | All of the above | Recorded in `walkthrough.md` per chat-ui precedent |
 
 ---
 
 ## 13. Open Questions (for implementation phase, not blocking)
 
-1. **JSONL / transcript retention**: If `last assistant message` is the only thing we pull, and the user later edits their own input before sending it back, the system context can drift from the actual transcript. Acceptable trade-off given simplicity — out of scope.
-2. **Hook failures**: If the hook script errors (network down, 1agents not running, etc.), the agent's run still completes successfully but the reply is lost. Consider: add a local fallback queue in the hook script (write payload to a spool file, retry on next Stop). **Defer to v2.**
+1. **JSONL / transcript retention**: 时间线 reply 与实际 transcript 可能漂移（用户编辑后重发等）。Acceptable trade-off given simplicity — out of scope.
+2. **时间线膨胀**: "全部 replies 不截断"在长任务（决策 F 下每 turn 一条）会让 §9 背景块持续变长。先接受；若实际撑爆 context，v2 再考虑只注入最近 N 条 + 摘要。
 3. **Concurrent sessions under one task**: The current scheduler has a per-workspace lock. Multiple concurrent sessions under one task are not possible today. Not changed by this design.
 4. **Old sessions (s8/s9 era)**: Their `acpSessionID` is empty in the index. Reopening them gets a fresh UUID and an empty history (correct, since they never talked to Claude Code). To recover history, the user opens a new session. **Backfill via `~/.claude/projects/<slug>/` JSONL scan is fragile and out of scope.**
-5. **Hook agent vs user name**: We set `agentType` (e.g. `claude-opus-4-8`) as the author name for now. Future: let users name their agents (e.g. "Cody").
+5. **Agent author name**: We set `agentType` (e.g. `claude-opus-4-8`) as the author name for now. Future: let users name their agents (e.g. "Cody").
+6. **assistant 文本块的事件边界**: P3 累积逻辑需确认 bridge 中继的 assistant chunk 事件名与分块语义（实现时对照 bridge-server.js 实际事件流，必要时以 `done` 前最后一段连续 assistant 文本为准）。
 
 ---
 
@@ -597,8 +555,7 @@ Properties:
 
 - 回填 s8/s9 等老会话的历史（脆弱，不做）
 - 智能匹配 `~/.claude/projects/` 下的孤儿 JSONL 到现有 `ChatSessionRecord`（同上）
-- Web UI for editing the `1agents-post-session.sh` hook config
-- Multi-tenant hook token rotation
+- 覆盖"用户在终端直接跑的 Claude Code"的回写（不挂 task，无收益，见 §8.2）
 - Reply 编辑 / 删除 UI（先 append-only）
 - Task 之间的依赖图可视化（已有数据，暂无 UI）
 
@@ -611,10 +568,10 @@ P6 done = all of the following verifiable:
 1. ✅ Create a task with title + description
 2. ✅ Issue starts in `open` + `pending`
 3. ✅ Write user reply (mode=new) → new session starts → runs to completion
-4. ✅ Hook auto-appends an agent reply with the full last assistant message
+4. ✅ 后端在 turn done 时自动追加 agent reply（完整最后一条 assistant 消息，全文）
 5. ✅ Timeline shows: user / agent / user / agent in chronological order
 6. ✅ Open the same task again → click "+ reply" → choose mode=follow_up + target=session A → Claude resumes session A's UUID → previous chat history is visible
-7. ✅ System context block contains description + all 4 prior replies
-8. ✅ Toggle issue state from 🔓 open to 🔒 closed; UI shows the icon change
+7. ✅ System context block contains description + all prior replies（仅 mode=new；follow_up 无背景块）
+8. ✅ Toggle issue state from 🔓 open to 🔒 closed; UI shows the icon change；closed 下 new/follow_up 被拒绝、pure_comment 可用
 9. ✅ Sidebar session list shows `📋 Task: <title>` badge for sessions linked to a task; sessions without show no badge
 10. ✅ All P0–P5 tests pass; `make all` builds cleanly

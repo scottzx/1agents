@@ -67,6 +67,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
             isImagePreview,
             accessAuthRequired,
             isMobile,
+            sidebarCollapsedGroups,
         } = state;
 
         const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
@@ -180,6 +181,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 moduleNav={app.buildModuleNav()}
                                 onChatCreate={app.openChatCreate}
                                 onChatKill={app.killChatSession}
+                                collapsedGroups={sidebarCollapsedGroups}
+                                onToggleGroup={app.toggleSidebarGroup}
                                 onStartNewChat={app.onStartNewChat}
                                 activeTab={state.activeTab}
                             />

@@ -21,6 +21,7 @@ import (
 
 	"github.com/scottzx/1Agents/backend/internal/cert"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
+	"github.com/scottzx/1Agents/backend/internal/cli"
 	"github.com/scottzx/1Agents/backend/internal/config"
 	"github.com/scottzx/1Agents/backend/internal/server"
 	"github.com/scottzx/1Agents/backend/internal/supervisor"
@@ -101,6 +102,15 @@ func main() {
 	if showVersion {
 		fmt.Printf("1agents %s\ncommit:  %s\nbuilt:   %s\n", version, commit, buildTime)
 		return
+	}
+
+	// ── metadata CLI subcommands (project / task) ──────────────────────────────
+	// These write directly to ~/.1agents/meta.db (WAL), so they work whether
+	// or not the daemon is running.
+	if flag.NArg() > 0 {
+		if handled, code := cli.Run(flag.Args()); handled {
+			os.Exit(code)
+		}
 	}
 
 	// ── check if daemon is already running ─────────────────────────────────────
