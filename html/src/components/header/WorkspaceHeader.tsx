@@ -9,8 +9,8 @@ interface WorkspaceHeaderProps {
     toggleLeftSidebar: () => void;
     activeDrawerTab: RightDrawerTab;
     toggleDrawerTab: (tab: RightDrawerTab) => void;
-    activeTab: 'terminal' | 'agents' | 'console' | 'folders';
-    setActiveTab: (tab: 'terminal' | 'agents' | 'console' | 'folders') => void;
+    activeTab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat';
+    setActiveTab: (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat') => void;
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
     keyboardVisible?: boolean;

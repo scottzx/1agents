@@ -1080,6 +1080,58 @@ body {
         font-weight: 500;
       }
     }
+
+    /* Second-level menu — revealed under an active footer item (discovery). */
+    .footer-item-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .footer-submenu {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin: 2px 0 2px 11px;
+      padding-left: 12px;
+      border-left: 1px solid var(--border-sidebar);
+
+      .footer-subitem {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 8px;
+        font-size: 12px;
+        color: var(--text-sidebar-muted);
+        cursor: pointer;
+        border-radius: 6px;
+        transition: all 0.2s;
+
+        .subitem-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background-color: currentColor;
+          opacity: 0.5;
+          flex-shrink: 0;
+        }
+
+        &:hover {
+          color: var(--text-sidebar);
+          background-color: var(--bg-sidebar-hover);
+        }
+
+        &.active {
+          color: var(--text-sidebar);
+          font-weight: 500;
+
+          .subitem-dot {
+            opacity: 1;
+            background-color: var(--accent-color);
+          }
+        }
+      }
+    }
   }
 
   /* ── Module Slot navigation surface ────────────────────────────────────
@@ -3047,11 +3099,36 @@ body {
       border-bottom: 1px dashed var(--border-color);
     }
 
+    .discovery-section {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-margin-top: 16px;
+
+      .discovery-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        &::before {
+          content: '';
+          width: 3px;
+          height: 14px;
+          border-radius: 2px;
+          background-color: var(--accent-color);
+        }
+      }
+    }
+
     .discovery-cards-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 20px;
-      padding-bottom: 32px;
+      padding-bottom: 8px;
     }
 
     .discovery-card {
@@ -8054,4 +8131,325 @@ body {
   /* Same styling as other shortcut-btn; presence controls visibility */
 }
 .hdr-btn-agents[hidden] { display: none; }
+
+// Custom Modern Sidebar & Homepage Styles
+.sidebar-nav-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  margin-bottom: 8px;
+  padding: 0 4px;
+
+  .nav-control-btn.new-chat-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: linear-gradient(135deg, var(--accent-color), #4f46e5);
+    color: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
+
+    svg.btn-icon {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+    }
+
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(9, 105, 218, 0.3);
+      opacity: 0.95;
+    }
+
+    &:active {
+      transform: translateY(0.5px);
+    }
+  }
+
+  .nav-control-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-sidebar-muted);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+
+    svg.btn-icon {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+    }
+
+    &:hover {
+      color: var(--text-sidebar);
+      background-color: var(--bg-sidebar-hover);
+    }
+  }
+}
+
+[data-theme="dark"] {
+  .sidebar-nav-controls .nav-control-btn.new-chat-btn {
+    box-shadow: 0 4px 12px rgba(47, 129, 247, 0.25);
+    &:hover {
+      box-shadow: 0 6px 16px rgba(47, 129, 247, 0.35);
+    }
+  }
+}
+
+// Centered Main Chat Page styles
+.new-chat-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg-page);
+  padding: 40px;
+  box-sizing: border-box;
+  animation: fadeIn 0.4s ease-out;
+
+  .new-chat-ws-picker-container {
+    position: relative;
+    margin-bottom: 24px;
+    z-index: 50;
+  }
+
+  .new-chat-ws-picker-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: var(--shadow-sm);
+
+    &:hover {
+      background-color: var(--btn-hover);
+      border-color: var(--text-muted);
+    }
+
+    .folder-icon {
+      width: 14px;
+      height: 14px;
+      color: var(--accent-color);
+    }
+
+    .chevron {
+      width: 12px;
+      height: 12px;
+      opacity: 0.7;
+      transition: transform 0.2s;
+      &.open {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  .new-chat-ws-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    width: 240px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    .dropdown-header {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 4px;
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: none;
+      border: none;
+      color: var(--text-main);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s;
+
+      &:hover {
+        background-color: var(--bg-sidebar-hover);
+      }
+
+      &.active {
+        background-color: var(--accent-light);
+        color: var(--accent-color);
+        font-weight: 500;
+      }
+
+      .checkmark {
+        margin-left: auto;
+        font-weight: bold;
+      }
+    }
+  }
+
+  .new-chat-input-wrapper {
+    max-width: 720px;
+    width: 100%;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow-md);
+    transition: border-color 0.2s, box-shadow 0.2s;
+
+    &:focus-within {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-md);
+    }
+  }
+
+  .new-chat-textarea {
+    width: 100%;
+    min-height: 48px;
+    max-height: 200px;
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.5;
+    outline: none;
+    resize: none;
+    padding: 0;
+
+    &::placeholder {
+      color: var(--text-muted);
+    }
+  }
+
+  .new-chat-actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(128, 128, 128, 0.08);
+    padding-top: 12px;
+  }
+
+  .actions-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .action-btn-circle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      background-color: var(--bg-sidebar-hover);
+      color: var(--text-main);
+    }
+
+    &.plus-btn {
+      background-color: var(--bg-page);
+      &:hover {
+        background-color: var(--bg-sidebar-hover);
+      }
+    }
+  }
+
+  .select-dropdown-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .new-chat-select {
+    appearance: none;
+    background-color: var(--bg-page);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 5px 24px 5px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s;
+    max-width: 160px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover:not(:disabled) {
+      border-color: var(--text-muted);
+      color: var(--text-main);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+  }
+
+  .select-chevron {
+    position: absolute;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    color: var(--text-secondary);
+    opacity: 0.7;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
