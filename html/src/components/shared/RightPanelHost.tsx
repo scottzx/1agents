@@ -3,6 +3,8 @@ import { RightPanel } from '../drawer/RightPanel';
 import type { Session } from '../types';
 import type { App, AppState } from '../app';
 import * as fs from '../../stores/fsStore';
+import * as wsStore from '../../stores/workspaceStore';
+import * as tabsStore from '../../stores/tabsStore';
 
 interface RightPanelHostProps {
     app: App;
@@ -39,12 +41,12 @@ export function RightPanelHost({
 }: RightPanelHostProps) {
     return (
         <RightPanel
-            activeDrawerTab={state.activeDrawerTab}
+            activeDrawerTab={tabsStore.activeDrawerTab.value}
             activeWorkspaceId={activeWorkspaceId}
             activeWorkspacePath={activeWorkspacePath}
             rightPanelWidth={rightPanelWidth}
-            closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
-            ccConnectUrl={state.ccConnectUrl}
+            closeDrawer={() => (tabsStore.activeDrawerTab.value = 'none')}
+            ccConnectUrl={wsStore.ccConnectUrl.value}
             onRefreshFlatFiles={async () => {
                 fs.loadDir('', null);
                 const isSearching = fs.searchQuery.value !== '' || fs.selectedFilterTag.value !== 'all';

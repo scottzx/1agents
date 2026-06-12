@@ -6,17 +6,18 @@ import { AccessTokenModal } from './AccessTokenModal';
 import { SessionRenameModal } from './SessionRenameModal';
 import { SessionCreateModal } from '../chat/SessionCreateModal';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
-import type { App } from '../app';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
+import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 
 /**
  * Renders all app-level modals from modalStore signals. Pure open/close and
  * field-setter logic lives in modalStore; submit handlers that call services
- * (submitWsModal, submitRenameSession, createChatSession) stay on App.
+ * live in the domain stores (workspaceStore.submitWsModal,
+ * sessionStore.submitRenameSession / createChatSession).
  */
-export function ModalHost({ app }: { app: App }) {
+export function ModalHost() {
     const language = ui.language.value;
     const workspaces = wsStore.workspaces.value;
     const wsModalOpen = modal.wsModalOpen.value;
@@ -45,7 +46,7 @@ export function ModalHost({ app }: { app: App }) {
                     onDefaultAgentChange={val => (modal.wsModalDefaultAgent.value = val)}
                     onClose={modal.closeWsModal}
                     onBrowse={modal.openDirPickerForModal}
-                    onSubmit={app.submitWsModal}
+                    onSubmit={wsStore.submitWsModal}
                     language={language}
                 />
             )}
@@ -64,7 +65,7 @@ export function ModalHost({ app }: { app: App }) {
                             onCancel={modal.closeChatCreate}
                             onSubmit={(name, agentType) => {
                                 modal.closeChatCreate();
-                                app.createChatSession(chatCreateWsId, name, agentType);
+                                sess.createChatSession(chatCreateWsId, name, agentType);
                             }}
                         />
                     );
@@ -102,7 +103,7 @@ export function ModalHost({ app }: { app: App }) {
                     title={modal.sessionRenameName.value}
                     onTitleChange={val => (modal.sessionRenameName.value = val)}
                     onClose={modal.closeSessionRenameModal}
-                    onSubmit={app.submitRenameSession}
+                    onSubmit={sess.submitRenameSession}
                     language={language}
                 />
             )}

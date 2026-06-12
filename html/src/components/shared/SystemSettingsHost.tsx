@@ -26,7 +26,7 @@ export function SystemSettingsHost({ app, state, activeCategory }: SystemSetting
             language={ui.language.value}
             toggleLanguage={ui.toggleLanguage}
             tmuxMouseOn={sess.tmuxMouseOn.value}
-            onTmuxMouseToggle={app.toggleTmuxMouse}
+            onTmuxMouseToggle={sess.toggleTmuxMouse}
             accessTokenExists={state.accessAuthRequired}
             onGenerateAccessToken={app.generateAccessToken}
             onRevokeAccessToken={app.revokeAccessToken}

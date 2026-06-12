@@ -5,6 +5,7 @@ import { t } from '../../i18n';
 import type { App } from '../app';
 import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
+import * as tabsStore from '../../stores/tabsStore';
 
 interface FilePreviewContentProps {
     app: App;
@@ -37,7 +38,7 @@ export function FilePreviewContent({ app, activeTabId, onOpenPreview }: FilePrev
             fileSaveMsg={fs.fileSaveMsg.value}
             isImagePreview={fs.isImagePreview.value}
             imageUrl={fsService.imageUrl(selectedFsEntry.path)}
-            onBackToList={() => app.closeTab(activeTabId)}
+            onBackToList={() => tabsStore.closeTab(activeTabId)}
             onToggleFavorite={fs.toggleFavorite}
             onCopyContent={fs.copyFileContent}
             onDownloadFile={fs.downloadFile}

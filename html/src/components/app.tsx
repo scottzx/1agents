@@ -1,47 +1,22 @@
 import { h, Component } from 'preact';
 
-import {
-    Workspace,
-    FsEntry,
-    RightDrawerTab,
-    TmuxWindow,
-    Session,
-    ChatSession,
-    AgentType,
-    isChat,
-    isTerminal,
-    isFullPageTab,
-} from './types';
+import { FsEntry } from './types';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
 import { ModalHost } from './modal/ModalHost';
-import { workspaceService } from '../services/workspaceService';
-import { terminalService } from '../services/terminalService';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
-import { t, type Lang } from '../i18n';
-import { getModuleByTab, mergeManifests, type ModuleRegistration } from '../modules/registry';
-import type { ModuleManifest } from '../modules/module-types';
-import {
-    SETTINGS_MODULE_ID,
-    SETTINGS_DEFAULT_CATEGORY,
-    pathToSettingsCategory,
-    settingsCategoryToPath,
-    type SettingsCategory,
-} from '../modules/settings-manifest';
+import { t } from '../i18n';
 import { DesktopAppLayout } from './desktop/DesktopAppLayout';
 import { MobileAppLayout } from './mobile/MobileAppLayout';
-import { BuiltinBrowser } from './browser/BuiltinBrowser';
-import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
-import { ccCreateSession, ccDeleteSession, getCcAuth, ccProjectName } from '../services/ccconnectClient';
-import { globalBridgeManager } from './chat/hooks';
 
 import * as ui from '../stores/uiStore';
 import * as fs from '../stores/fsStore';
 import * as wsStore from '../stores/workspaceStore';
 import * as sess from '../stores/sessionStore';
 import * as modal from '../stores/modalStore';
+import * as tabsStore from '../stores/tabsStore';
 
 export {
     wsUrl,
@@ -54,44 +29,11 @@ export {
     isMobileDevice,
 } from './terminal/terminalConfig';
 
-export interface Tab {
-    id: string; // 'tasks', 'terminal', 'preview-[path]', 'browser-[timestamp]'
-    title: string;
-    // 'tasks' is the project landing / kanban background sentinel. It is
-    // fixed at the front of the tab bar, non-closable, and renders no
-    // overlay (the kanban lives in DesktopAppLayout's background layer).
-    type: 'terminal' | 'preview' | 'browser' | 'tasks';
-    path?: string;
-    url?: string;
-    closable: boolean;
-}
-
 export interface AppState {
-    activeTab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat';
-    activeDrawerTab: RightDrawerTab;
-    /** Selected discovery category, drives the sidebar second-level menu. */
-    discoveryCategory: string;
-    tabs: Tab[];
-    activeTabId: string;
-    ccConnectUrl: string;
-    ccProvidersUrl: string;
     // ── Access token state ──
     accessGateVisible: boolean;
     accessAuthRequired: boolean;
     accessAuthenticated: boolean;
-    onboarded: boolean;
-    // ── Module slot state ──
-    /** Active sub-path inside the active module, e.g. "/skills/use". */
-    activeModulePath: string;
-    /** Live manifest per module id (overlays the static fallback). */
-    moduleManifests: Record<string, ModuleManifest>;
-    /**
-     * Active sub-category inside the system settings page. The settings
-     * module is host-rendered (no iframe) and lives in the same chrome as
-     * 1skills, so we keep a separate piece of state for it rather than
-     * overloading `activeModulePath`.
-     */
-    activeSettingsCategory: SettingsCategory;
 }
 
 // Drag resizer state (module-level for perf)
@@ -105,31 +47,10 @@ export class App extends Component<{}, AppState> {
 
     constructor() {
         super();
-        const initialLang = ui.language.value;
         this.state = {
-            activeTab: 'terminal',
-            activeDrawerTab: 'none',
-            discoveryCategory: 'featured',
-            ccConnectUrl: '',
-            ccProvidersUrl: '',
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
-            onboarded: localStorage.getItem('1agents-onboarded') === 'true',
-            // Tab order: 'tasks' is the project landing (fixed first, non-closable).
-            // 'terminal' is the second non-closable default overlay. Dynamic
-            // preview/browser tabs are appended on demand.
-            tabs: [
-                { id: 'tasks', title: t('app.tab.tasks', initialLang), type: 'tasks', closable: false },
-                { id: 'terminal', title: t('app.tab.workbench', initialLang), type: 'terminal', closable: false },
-            ],
-            // 'tasks' is the "no overlay" sentinel — the kanban background layer
-            // is always mounted in DesktopAppLayout, so this lands on the
-            // project's task kanban by default.
-            activeTabId: 'tasks',
-            activeModulePath: '',
-            moduleManifests: {},
-            activeSettingsCategory: SETTINGS_DEFAULT_CATEGORY,
         };
     }
 
@@ -154,25 +75,25 @@ export class App extends Component<{}, AppState> {
         }
 
         // Wait for both workspaces and terminal sessions to load in parallel
-        await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
+        await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals()]);
 
         // Synchronize terminal windows + cached chat sessions into folders
-        this.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
+        sess.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
 
         // If we already have an active workspace, also refresh its chat sessions.
         if (wsStore.activeWorkspaceId.value) {
-            this.loadChatSessions(wsStore.activeWorkspaceId.value);
+            sess.loadChatSessions(wsStore.activeWorkspaceId.value);
         }
 
         // Select default workspace if none is active, otherwise sync backend root
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         if (!activeWorkspaceId && workspaces.length > 0) {
-            await this.selectWorkspace(workspaces[0]);
+            await wsStore.selectWorkspace(workspaces[0]);
         } else if (activeWorkspaceId) {
             const ws = workspaces.find(w => w.id === activeWorkspaceId);
             if (ws) {
-                await this.switchWorkspaceContext(ws);
+                await fs.switchFsContext(ws);
             } else {
                 fs.loadDir('', null);
             }
@@ -180,7 +101,7 @@ export class App extends Component<{}, AppState> {
             fs.loadDir('', null);
         }
 
-        this.loadTmuxMouse();
+        sess.loadTmuxMouse();
         this.checkUrlPreview();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
@@ -190,7 +111,7 @@ export class App extends Component<{}, AppState> {
         // bubble CustomEvent('navigate') up through the DOM when their
         // internal MemoryRouter routes change. The host mirrors the path
         // into its own URL state.
-        document.addEventListener('navigate', this.handleModuleNavigate);
+        document.addEventListener('navigate', tabsStore.handleModuleNavigate);
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', this.viewportResizeHandler);
         }
@@ -205,7 +126,7 @@ export class App extends Component<{}, AppState> {
 
         // Periodically poll terminal sessions (status indicator updates) every 3 seconds
         this._terminalPollInterval = setInterval(() => {
-            this.loadTerminals();
+            sess.loadTerminals();
         }, 3000);
     }
 
@@ -214,7 +135,7 @@ export class App extends Component<{}, AppState> {
         document.removeEventListener('mousemove', this.handleResizerMove);
         document.removeEventListener('mouseup', this.handleResizerUp);
         window.removeEventListener('resize', this.handleWindowResize);
-        document.removeEventListener('navigate', this.handleModuleNavigate);
+        document.removeEventListener('navigate', tabsStore.handleModuleNavigate);
         if (window.visualViewport) {
             window.visualViewport.removeEventListener('resize', this.viewportResizeHandler);
         }
@@ -254,901 +175,6 @@ export class App extends Component<{}, AppState> {
         }
     };
 
-    // ── Workspace API helpers ─────────────────────────────────────────────────
-
-    /** Fetch all workspaces from GET /api/workspace/list */
-    loadWorkspaces = async (skipAutoSelect = false) => {
-        wsStore.workspacesLoading.value = true;
-        try {
-            const workspaces = await workspaceService.list();
-            // Preserve existing expand state by merging
-            const existing = wsStore.folders.value;
-            wsStore.folders.value = workspaces.map(ws => {
-                const prev = existing.find(f => f.id === ws.id);
-                return {
-                    id: ws.id,
-                    name: ws.name,
-                    expanded: prev ? prev.expanded : false,
-                    sessions: prev ? prev.sessions : [],
-                };
-            });
-            wsStore.workspaces.value = workspaces;
-            wsStore.workspacesLoading.value = false;
-            wsStore.hasLoadedWorkspaces.value = true;
-            if (!skipAutoSelect) {
-                const activeWorkspaceId = wsStore.activeWorkspaceId.value;
-                const activeStillExists = workspaces.some(ws => ws.id === activeWorkspaceId);
-                if (!activeWorkspaceId || !activeStillExists) {
-                    // Active workspace was deleted or never set — switch to first available
-                    if (workspaces.length > 0) {
-                        this.selectWorkspace(workspaces[0]);
-                    } else {
-                        // No workspaces left — clear stale state
-                        wsStore.activeWorkspaceId.value = '';
-                        this.setState({ ccConnectUrl: '', ccProvidersUrl: '' });
-                    }
-                } else {
-                    this.loadCcConnectUrl();
-                    this.loadCcProvidersUrl();
-                }
-            }
-            return workspaces;
-        } catch (err) {
-            console.error('[workspace] load error:', err);
-            wsStore.workspacesLoading.value = false;
-            wsStore.hasLoadedWorkspaces.value = true;
-            return [];
-        }
-    };
-
-    loadCcConnectUrl = async (workspaceId?: string) => {
-        const wsId = workspaceId || wsStore.activeWorkspaceId.value;
-        if (!wsId) return;
-        try {
-            const url = await workspaceService.getCcConnectUrl(wsId, ui.theme.value, ui.language.value || 'zh-CN');
-            this.setState({ ccConnectUrl: url });
-        } catch (err) {
-            console.error('[ccconnect] failed to load url:', err);
-        }
-    };
-
-    loadCcProvidersUrl = async (workspaceId?: string) => {
-        const wsId = workspaceId || wsStore.activeWorkspaceId.value;
-        if (!wsId) return;
-        try {
-            const url = await workspaceService.getCcConnectUrl(
-                wsId,
-                ui.theme.value,
-                ui.language.value || 'zh-CN',
-                '/providers'
-            );
-            this.setState({ ccProvidersUrl: url });
-        } catch (err) {
-            console.error('[ccconnect] failed to load providers url:', err);
-        }
-    };
-
-    onUseTempWorkspace = async () => {
-        try {
-            await workspaceService.create({
-                id: 'temp',
-                name: 'temp',
-                path: 'temp',
-                status: 'active',
-            });
-            localStorage.setItem('1agents-onboarded', 'true');
-            this.setState({ onboarded: true });
-            const workspaces = await this.loadWorkspaces(true);
-            const tempWs = workspaces.find(w => w.id === 'temp');
-            if (tempWs) {
-                await this.selectWorkspace(tempWs);
-            }
-        } catch (err) {
-            console.error('[workspace] failed to create temp workspace:', err);
-            ui.showToast(t('app.toast.tempCreateFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /** Create a new workspace via POST /api/workspace/create */
-    createWorkspace = async (
-        name: string,
-        path: string,
-        terminalDir?: string,
-        chatChannel?: string,
-        defaultAgent?: AgentType
-    ) => {
-        let id = name
-            .toLowerCase()
-            .replace(/\s+/g, '-')
-            .replace(/[^a-z0-9-]/g, '');
-        if (!id) {
-            // Fallback for non-ASCII/Chinese names: generate a clean unique ID
-            id = 'ws-' + Math.random().toString(36).substring(2, 10);
-        }
-        const ws: Workspace = {
-            id,
-            name,
-            path,
-            status: 'active',
-            terminalDir: terminalDir?.trim() || undefined,
-            chatChannel: chatChannel?.trim() || undefined,
-            defaultAgent: defaultAgent || DEFAULT_AGENT_TYPE,
-        };
-        try {
-            await workspaceService.create(ws);
-            localStorage.setItem('1agents-onboarded', 'true');
-            this.setState({ onboarded: true });
-            const workspaces = await this.loadWorkspaces(true);
-            const newWs = workspaces.find(w => w.id === ws.id);
-            if (newWs) {
-                await this.selectWorkspace(newWs);
-            } else {
-                if (workspaces.length > 0) {
-                    await this.selectWorkspace(workspaces[0]);
-                }
-            }
-            ui.showToast(t('app.toast.workspaceCreated', ui.language.value, { name }));
-        } catch (err) {
-            ui.showToast(t('app.toast.workspaceCreateFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /** Update an existing workspace via POST /api/workspace/update */
-    updateWorkspace = async (ws: Workspace) => {
-        try {
-            await workspaceService.update(ws);
-            await this.loadWorkspaces();
-            ui.showToast(t('app.toast.workspaceUpdated', ui.language.value));
-        } catch (err) {
-            ui.showToast(t('app.toast.workspaceUpdateFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
-    deleteWorkspace = async (id: string) => {
-        if (wsStore.workspaces.value.length <= 1) {
-            ui.showToast(t('app.toast.workspaceDeleteLast', ui.language.value));
-            return;
-        }
-        try {
-            // If we're deleting the currently active workspace, clear it first so
-            // loadWorkspaces knows to auto-select a new one instead of re-fetching
-            // the CC-Connect URL for a workspace that no longer exists.
-            if (wsStore.activeWorkspaceId.value === id) {
-                wsStore.activeWorkspaceId.value = '';
-                this.setState({ ccConnectUrl: '' });
-            }
-            await workspaceService.delete(id);
-            await this.loadTerminals();
-            await this.loadWorkspaces();
-            ui.showToast(t('app.toast.workspaceDeleted', ui.language.value));
-        } catch (err) {
-            ui.showToast(t('app.toast.workspaceDeleteFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /** Reorder workspaces on drag and drop */
-    reorderFolders = async (draggedId: string, targetId: string, position: 'before' | 'after') => {
-        const workspaces = wsStore.workspaces.value;
-        const folders = wsStore.folders.value;
-
-        const draggedIdx = workspaces.findIndex(w => w.id === draggedId);
-        const targetIdx = workspaces.findIndex(w => w.id === targetId);
-
-        if (draggedIdx === -1 || targetIdx === -1 || draggedIdx === targetIdx) return;
-
-        const newWorkspaces = [...workspaces];
-        const [draggedItem] = newWorkspaces.splice(draggedIdx, 1);
-
-        let newTargetIdx = newWorkspaces.findIndex(w => w.id === targetId);
-        if (position === 'after') {
-            newTargetIdx += 1;
-        }
-
-        newWorkspaces.splice(newTargetIdx, 0, draggedItem);
-
-        const newFolders = newWorkspaces.map(ws => {
-            const f = folders.find(folder => folder.id === ws.id);
-            return f || { id: ws.id, name: ws.name, expanded: false, sessions: [] };
-        });
-
-        // Optimistic UI update
-        wsStore.workspaces.value = newWorkspaces;
-        wsStore.folders.value = newFolders;
-
-        try {
-            await workspaceService.reorder(newWorkspaces.map(w => w.id));
-        } catch (err) {
-            console.error('[workspace] reorder error:', err);
-            // Rollback on error
-            wsStore.workspaces.value = workspaces;
-            wsStore.folders.value = folders;
-            ui.showToast(t('app.toast.workspaceReorderFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    submitRenameSession = async () => {
-        const sessionRenameTarget = modal.sessionRenameTarget.value;
-        if (!sessionRenameTarget) return;
-        const trimmed = modal.sessionRenameName.value.trim();
-        try {
-            await terminalService.rename(sessionRenameTarget.id, trimmed);
-            modal.closeSessionRenameModal();
-            await this.loadTerminals();
-            ui.showToast(t('app.toast.sessionRenamed', ui.language.value));
-        } catch (err) {
-            ui.showToast(t('app.toast.sessionRenameFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    submitWsModal = async () => {
-        const wsModalMode = modal.wsModalMode.value;
-        const wsModalTarget = modal.wsModalTarget.value;
-        const wsModalName = modal.wsModalName.value;
-        const wsModalPath = modal.wsModalPath.value;
-        const wsModalTerminalDir = modal.wsModalTerminalDir.value;
-        const wsModalChatChannel = modal.wsModalChatChannel.value;
-        const wsModalDefaultAgent = modal.wsModalDefaultAgent.value;
-        if (!wsModalName.trim()) return;
-        modal.closeWsModal();
-        if (wsModalMode === 'create') {
-            await this.createWorkspace(
-                wsModalName.trim(),
-                wsModalPath.trim(),
-                wsModalTerminalDir.trim(),
-                wsModalChatChannel.trim(),
-                wsModalDefaultAgent
-            );
-        } else if (wsModalMode === 'rename' && wsModalTarget) {
-            await this.updateWorkspace({
-                ...wsModalTarget,
-                name: wsModalName.trim(),
-                path: wsModalPath.trim(),
-                terminalDir: wsModalTerminalDir.trim() || undefined,
-                chatChannel: wsModalChatChannel.trim() || undefined,
-                defaultAgent: wsModalDefaultAgent,
-            });
-        }
-    };
-
-    // ── Terminal (tmux) API helpers ────────────────────────────────────────────
-
-    /** Fetch all tmux windows from GET /api/terminal/list and sync to folders */
-    loadTerminals = async () => {
-        sess.terminalWindowsLoading.value = true;
-        try {
-            const windows = await terminalService.list();
-            // Use whatever chat sessions we have cached; the chat loader
-            // (loadChatSessions) will refresh them in parallel.
-            this.mergeSessionsIntoFolders(windows, sess.chatSessions.value);
-            sess.terminalWindows.value = windows;
-            sess.terminalWindowsLoading.value = false;
-        } catch (err) {
-            console.error('[terminal] list error:', err);
-            sess.terminalWindowsLoading.value = false;
-        }
-    };
-
-    /** Fetch chat session index for the active workspace from /api/agent/sessions */
-    loadChatSessions = async (workspaceId?: string) => {
-        const wsId = workspaceId ?? wsStore.activeWorkspaceId.value;
-        if (!wsId) return;
-        try {
-            const chats = await agentService.list(wsId);
-            sess.chatSessions.value = chats;
-            this.mergeSessionsIntoFolders(sess.terminalWindows.value, chats);
-        } catch (err) {
-            console.error('[agent] list error:', err);
-        }
-    };
-
-    /**
-     * Create a new chat session.
-     *
-     * Flow:
-     *   1. Pick cc-connect project name from workspace + agent type
-     *   2. Generate a 1agents-side id + session_key
-     *   3. POST cc-connect to create the actual session
-     *   4. POST 1agents to index the mapping
-     *   5. Refresh local state + select the new session
-     */
-    createChatSession = async (workspaceId: string, name: string, agentType: AgentType, initialMessage?: string) => {
-        const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
-        if (!ws) {
-            ui.showToast('工作空间不存在');
-            return;
-        }
-        try {
-            ui.showToast('正在创建聊天会话…');
-            const project = ccProjectName(ws.name || ws.id, agentType);
-            const { token } = await getCcAuth(workspaceId);
-            const sessionKey = `oneagents:${ws.id}:${agentType}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-            const cc = await ccCreateSession(project, { session_key: sessionKey, name: name || undefined }, token);
-            const indexed = await agentService.index({
-                workspace_id: workspaceId,
-                name: name || `${agentType} 会话`,
-                agent_type: agentType,
-                cc_project: project,
-                cc_session_id: cc.id,
-                session_key: sessionKey,
-            });
-            await this.loadChatSessions(workspaceId);
-            // Auto-select the new session and switch to the agents tab.
-            sess.activeSession.value = { ...indexed, active: true };
-            sess.pendingInitialMessage.value = initialMessage || null;
-            this.setState({ activeTab: 'agents' });
-            ui.showToast('聊天会话已创建 ✓');
-        } catch (err) {
-            ui.showToast(`创建聊天失败: ${(err as Error).message}`);
-        }
-    };
-
-    onStartNewChat = () => {
-        sess.activeSession.value = null;
-        this.setState({ activeTab: 'new_chat' });
-    };
-
-    clearPendingInitialMessage = () => {
-        sess.pendingInitialMessage.value = null;
-    };
-
-    /** Kill a chat session: delete from cc-connect, then unindex from 1agents. */
-    killChatSession = async (sessionId: string) => {
-        const session = sess.chatSessions.value.find(c => c.id === sessionId);
-        if (!session) return;
-        try {
-            try {
-                const { token } = await getCcAuth(session.workspaceId);
-                await ccDeleteSession(session.ccProject, session.ccSessionId, session.sessionKey, token);
-            } catch (err) {
-                // Log but don't block — the user may want to clean up a
-                // dangling index even when cc-connect side is already gone.
-                console.warn('[agent] cc-connect delete failed:', err);
-            }
-            // Clean up global WebSocket bridge session
-            globalBridgeManager.destroy(sessionId);
-            await agentService.delete(sessionId);
-            await this.loadChatSessions(session.workspaceId);
-            const active = sess.activeSession.value;
-            if (active && isChat(active) && active.id === sessionId) {
-                sess.activeSession.value = null;
-                this.setState({ activeTab: 'terminal' });
-            }
-            ui.showToast('聊天会话已关闭 ✓');
-        } catch (err) {
-            ui.showToast(`关闭失败: ${(err as Error).message}`);
-        }
-    };
-
-    /** Sync tmux windows + chat sessions into workspace folders as sessions */
-    mergeSessionsIntoFolders(windows: TmuxWindow[], chats: ChatSession[]) {
-        wsStore.folders.value = wsStore.folders.value.map(f => {
-            const termSessions: Session[] = windows
-                .filter(w => w.workspaceId === f.id)
-                .map(w => ({
-                    kind: 'terminal',
-                    id: w.name,
-                    workspaceId: w.workspaceId,
-                    index: w.index,
-                    name: w.customName || t('app.session.title', ui.language.value, { index: w.index }),
-                    active: w.active,
-                    cwd: w.cwd,
-                    status: w.status,
-                    waitingFor: w.waitingFor,
-                    agent: w.agent,
-                }));
-            const chatSessions: Session[] = chats.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
-            // Chat sessions first (newer), then terminals.
-            return { ...f, sessions: [...chatSessions, ...termSessions] };
-        });
-        // Preserve the currently-active chat session if it still exists; otherwise
-        // fall back to the most recently active terminal window.
-        const prevActive = sess.activeSession.value;
-        const activeChat = prevActive && isChat(prevActive) ? chats.find(c => c.id === prevActive.id) : null;
-        const activeWin = windows.find(w => w.active);
-        sess.activeSession.value = activeChat
-            ? { ...activeChat, active: true }
-            : activeWin
-              ? {
-                    kind: 'terminal',
-                    id: activeWin.name,
-                    workspaceId: activeWin.workspaceId,
-                    index: activeWin.index,
-                    name: activeWin.customName || t('app.session.title', ui.language.value, { index: activeWin.index }),
-                    active: true,
-                    cwd: activeWin.cwd,
-                    status: activeWin.status,
-                    waitingFor: activeWin.waitingFor,
-                    agent: activeWin.agent,
-                }
-              : null;
-    }
-
-    /** Create a new terminal tab via POST /api/terminal/create */
-    createTerminal = async (workspaceId: string, cwd: string) => {
-        try {
-            await terminalService.create(workspaceId, cwd);
-            await this.loadTerminals();
-            ui.showToast(t('app.toast.sessionCreated', ui.language.value));
-        } catch (err) {
-            ui.showToast(t('app.toast.sessionCreateFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /** Switch to a tmux window via POST /api/terminal/switch */
-    switchTerminal = async (windowIndex: number) => {
-        try {
-            await terminalService.switch(windowIndex);
-            await this.loadTerminals();
-        } catch (err) {
-            console.error('[terminal] switch error:', err);
-        }
-    };
-
-    /** Kill a terminal tab via POST /api/terminal/kill */
-    killTerminal = async (windowIndex: number) => {
-        try {
-            await terminalService.kill(windowIndex);
-            await this.loadTerminals();
-            ui.showToast(t('app.toast.sessionKilled', ui.language.value));
-        } catch (err) {
-            ui.showToast(t('app.toast.sessionKillFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /** Fetch current tmux mouse mode state */
-    loadTmuxMouse = async () => {
-        try {
-            const mouseOn = await terminalService.getMouse();
-            sess.tmuxMouseOn.value = mouseOn;
-        } catch (err) {
-            console.error('[terminal] load mouse state error:', err);
-        }
-    };
-
-    /** Toggle tmux mouse mode state */
-    toggleTmuxMouse = async () => {
-        const nextState = !sess.tmuxMouseOn.value;
-        try {
-            const actualState = await terminalService.setMouse(nextState);
-            sess.tmuxMouseOn.value = actualState;
-            if (actualState) {
-                ui.showToast(t('app.toast.mouseScrollOn', ui.language.value));
-            } else {
-                ui.showToast(t('app.toast.mouseSelectOn', ui.language.value));
-            }
-        } catch (err) {
-            ui.showToast(t('app.toast.mouseToggleFailed', ui.language.value, { err: String(err) }));
-        }
-    };
-
-    /**
-     * Core workspace context switch — tells the backend to change its fs+git roots,
-     * then resets all file-browser state and triggers a reload.
-     * Called by both selectWorkspace() and selectSession().
-     */
-    switchWorkspaceContext = async (ws: Workspace) => {
-        await fs.switchFsContext(ws);
-    };
-
-    selectSession = async (session: Session) => {
-        if (isFullPageTab(this.state.activeDrawerTab)) {
-            this.setState({ activeDrawerTab: 'none' });
-        }
-        const oldWorkspaceId = wsStore.activeWorkspaceId.value;
-        const workspaces = wsStore.workspaces.value;
-
-        // 1. Optimistic UI update: mark the session active and switch tab.
-        const updatedFolders = wsStore.folders.value.map(f => ({
-            ...f,
-            sessions: f.sessions.map(s => {
-                if (isChat(s) && isChat(session)) return { ...s, active: s.id === session.id };
-                if (isTerminal(s) && isTerminal(session)) return { ...s, active: s.index === session.index };
-                return { ...s, active: false };
-            }),
-        }));
-        localStorage.setItem('1agents-active-workspace', session.workspaceId);
-        sess.activeSession.value = { ...session, active: true };
-        wsStore.folders.value =
-            session.workspaceId !== oldWorkspaceId
-                ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
-                : updatedFolders;
-        wsStore.activeWorkspaceId.value = session.workspaceId;
-        this.setState({
-            activeTabId: 'terminal',
-            // Chat sessions live in the agents tab; terminals in the terminal tab.
-            activeTab: isChat(session) ? 'agents' : 'terminal',
-        });
-
-        // Chat sessions don't need tmux / fs / git context switching; just
-        // ensure the workspace is loaded and we're done.
-        if (isChat(session)) {
-            if (session.workspaceId !== oldWorkspaceId) {
-                const ws = workspaces.find(w => w.id === session.workspaceId);
-                if (ws) await this.switchWorkspaceContext(ws);
-            }
-            this.loadChatSessions(session.workspaceId);
-            if (ui.isMobile.value) ui.leftSidebarOpen.value = false;
-            return;
-        }
-
-        // Helper to perform the actual terminal window and workspace context switching
-        const performSwitch = async () => {
-            // Always switch the tmux window first
-            await this.switchTerminal((session as Extract<Session, { kind: 'terminal' }>).index);
-
-            if (session.workspaceId !== oldWorkspaceId) {
-                this.loadCcConnectUrl(session.workspaceId);
-                this.loadCcProvidersUrl(session.workspaceId);
-                // Switch backend context and reload file browser / git panel
-                const ws = workspaces.find(w => w.id === session.workspaceId);
-                if (ws) {
-                    await this.switchWorkspaceContext(ws);
-                    ui.showToast(t('app.toast.workspaceSwitched', ui.language.value, { name: ws.name }));
-                }
-            }
-        };
-
-        if (ui.isMobile.value) {
-            // Close sidebar immediately on mobile for instant visual response
-            ui.leftSidebarOpen.value = false;
-            // Delay the heavy backend connection operations by 200ms to let the slide-out CSS transition finish smoothly without main-thread jank
-            setTimeout(performSwitch, 200);
-        } else {
-            // Desktop: switch immediately
-            await performSwitch();
-        }
-    };
-
-    /** Switch active workspace and cd into it in a matching tmux window */
-    selectWorkspace = async (ws: Workspace) => {
-        if (isFullPageTab(this.state.activeDrawerTab)) {
-            this.setState({ activeDrawerTab: 'none' });
-        }
-        const activeWorkspaceId = wsStore.activeWorkspaceId.value;
-        const terminalWindows = sess.terminalWindows.value;
-        if (ws.id === activeWorkspaceId) return;
-
-        wsStore.activeWorkspaceId.value = ws.id;
-        this.setState({ activeTabId: 'tasks' });
-        this.loadCcConnectUrl(ws.id);
-        this.loadCcProvidersUrl(ws.id);
-        this.loadChatSessions(ws.id);
-        localStorage.setItem('1agents-active-workspace', ws.id);
-
-        // Find an existing window for this workspace, or create one
-        const win =
-            terminalWindows.find(w => w.workspaceId === ws.id && w.active) ||
-            terminalWindows.find(w => w.workspaceId === ws.id);
-        if (win) {
-            await this.switchTerminal(win.index);
-        } else {
-            await this.createTerminal(ws.id, ws.terminalDir || ws.path);
-        }
-
-        // Switch backend context (fs + git roots) and reload file browser
-        await this.switchWorkspaceContext(ws);
-        ui.showToast(t('app.toast.workspaceSwitched', ui.language.value, { name: ws.name }));
-    };
-
-    // ── File system API helpers ──────────────────────────────────────────────
-
-    updateCcConnectUrlParams = (theme: 'light' | 'dark', lang: Lang) => {
-        const urlStr = this.state.ccConnectUrl;
-        if (!urlStr) return;
-        try {
-            const dummyBase = 'http://dummy.com';
-            const parsed = new URL(urlStr, dummyBase);
-            parsed.searchParams.set('theme', theme);
-
-            // Map BCP-47 to CC-Connect codes
-            let normalLang = 'zh';
-            const langLower = (lang || '').toLowerCase();
-            if (langLower.startsWith('en')) {
-                normalLang = 'en';
-            } else if (langLower.startsWith('zh-tw') || langLower.startsWith('zh-hk')) {
-                normalLang = 'zh-TW';
-            } else if (langLower.startsWith('ja')) {
-                normalLang = 'ja';
-            } else if (langLower.startsWith('es')) {
-                normalLang = 'es';
-            }
-            parsed.searchParams.set('lang', normalLang);
-
-            let newUrl = parsed.pathname + parsed.search;
-            if (!urlStr.startsWith('/')) {
-                newUrl = parsed.toString();
-            }
-            this.setState({ ccConnectUrl: newUrl });
-        } catch (e) {
-            console.error('[ccconnect] failed to update url params:', e);
-        }
-    };
-
-    setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat') => {
-        this.setState({ activeTab: tab });
-        ui.triggerTerminalFit();
-    };
-
-    selectTab = async (tabId: string) => {
-        const tab = this.state.tabs.find(t => t.id === tabId);
-        if (!tab) return;
-
-        this.setState({ activeTabId: tabId });
-
-        if (tab.type === 'preview' && tab.path) {
-            const entry: FsEntry = {
-                name: tab.title.replace(t('app.preview.prefix', ui.language.value), ''),
-                path: tab.path,
-                isDir: false,
-                size: 0,
-                modTime: 0,
-            };
-            await fs.openFileDetail(entry);
-        } else if (tab.type === 'terminal') {
-            ui.triggerTerminalFit();
-        }
-    };
-
-    openPreviewTab = async (path: string, fileName: string) => {
-        const tabId = `preview-${path}`;
-        const { tabs } = this.state;
-        const exists = tabs.some(t => t.id === tabId);
-
-        if (!exists) {
-            const newTab: Tab = {
-                id: tabId,
-                title: `${t('app.preview.prefix', ui.language.value)}${fileName}`,
-                type: 'preview',
-                path: path,
-                closable: true,
-            };
-            this.setState({ tabs: [...tabs, newTab] }, () => {
-                this.selectTab(tabId);
-            });
-        } else {
-            this.selectTab(tabId);
-        }
-    };
-
-    openBrowserTab = (url = '') => {
-        const tabId = `browser-${Date.now()}`;
-        const newTab: Tab = {
-            id: tabId,
-            title: t('app.browser.title', ui.language.value),
-            type: 'browser',
-            url: url,
-            closable: true,
-        };
-        this.setState({ tabs: [...this.state.tabs, newTab] }, () => {
-            this.selectTab(tabId);
-        });
-    };
-
-    closeTab = (tabId: string) => {
-        const { tabs, activeTabId } = this.state;
-        if (tabs.length <= 1) return;
-
-        const index = tabs.findIndex(t => t.id === tabId);
-        if (index === -1) return;
-
-        const nextTabs = tabs.filter(t => t.id !== tabId);
-        let nextActiveId = activeTabId;
-
-        if (activeTabId === tabId) {
-            // When the active overlay tab is closed, fall back to the project
-            // landing ('tasks') — the kanban is always mounted underneath, so
-            // this shows the background instead of an empty pane.
-            const nextActiveTab = nextTabs[index - 1] || nextTabs[index] || nextTabs[0];
-            nextActiveId = nextActiveTab ? nextActiveTab.id : 'tasks';
-        }
-
-        this.setState({ tabs: nextTabs }, () => {
-            this.selectTab(nextActiveId);
-        });
-    };
-
-    updateBrowserUrl = (tabId: string, url: string) => {
-        this.setState(prev => ({
-            tabs: prev.tabs.map(t => {
-                if (t.id === tabId) {
-                    return { ...t, url };
-                }
-                return t;
-            }),
-        }));
-    };
-
-    renderBuiltinBrowser = (tab: Tab) => {
-        return (
-            <BuiltinBrowser
-                tab={tab}
-                active={this.state.activeTabId === tab.id}
-                onUrlChange={this.updateBrowserUrl}
-                language={ui.language.value}
-            />
-        );
-    };
-
-    // Coze click shortcut toggle dynamic drawer logic
-    toggleDrawerTab = (tab: RightDrawerTab) => {
-        if (tab === 'tasks') {
-            this.selectTab('tasks');
-            return;
-        }
-        if (this.state.activeDrawerTab === tab) {
-            // Collapse the drawer
-            this.setState({ activeDrawerTab: 'none', activeModulePath: '' });
-        } else {
-            // Expand drawer with smart width: wider for channels, git, and files panels
-            const smartWidth =
-                tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
-                    ? Math.max(ui.rightPanelWidth.value, 450)
-                    : 320;
-
-            // Module-backed tabs get their entry path; non-module tabs clear it.
-            const mod = getModuleByTab(tab);
-            const newModulePath = mod ? mod.entryPath : '';
-            ui.rightPanelWidth.value = smartWidth;
-            this.setState({ activeDrawerTab: tab, activeModulePath: newModulePath }, () => {
-                if (tab === 'channels') {
-                    this.loadCcConnectUrl();
-                } else if (tab === 'providers') {
-                    this.loadCcProvidersUrl();
-                } else if (mod) {
-                    this.loadModuleManifest(mod);
-                }
-            });
-        }
-        ui.triggerTerminalFit();
-    };
-
-    // Open the discovery panel (if needed) and scroll to a given category.
-    selectDiscoveryCategory = (category: string) => {
-        this.setState({ activeDrawerTab: 'discovery', discoveryCategory: category });
-        ui.triggerTerminalFit();
-    };
-
-    /**
-     * Module iframe reported a route change (NAV_CHANGE). Mirror it into host
-     * state and the main app URL. We use `replaceState` rather than `pushState`
-     * to avoid polluting the back/forward history when the user clicks around
-     * inside the iframe.
-     *
-     * The first NAV_CHANGE from a given contentWindow is also our implicit
-     * "iframe is ready" handshake — 1skills doesn't send an explicit READY.
-    /**
-     * Handles `CustomEvent('navigate', { detail: { path } })` bubbling up
-     * from a module custom element. Mirrors the path into host state and
-     * the main app URL — the same role that `handleModuleMessage` plays
-     * for the iframe postMessage NAV_CHANGE.
-     */
-    handleModuleNavigate = (e: Event) => {
-        const target = e.target as HTMLElement | null;
-        if (!target) return;
-        const tag = target.tagName ? target.tagName.toLowerCase() : '';
-        if (tag !== 'skills-panel' && tag !== 'cc-connect-panel') return;
-        const detail = (e as CustomEvent<{ path: string }>).detail;
-        if (!detail || typeof detail.path !== 'string' || !detail.path) return;
-        const path = detail.path;
-        if (path === this.state.activeModulePath) return;
-        this.setState({ activeModulePath: path });
-        this.syncModuleUrl(path);
-    };
-
-    /**
-     * Map an active drawer tab to the id of its module-side custom element.
-     * All three module-backed tabs (channels, providers, skills) now use
-     * custom elements instead of iframes.
-     */
-    getActiveModulePanelId = (): string | null => {
-        const tab = this.state.activeDrawerTab;
-        if (tab === 'channels') return 'cc-channels-panel';
-        if (tab === 'providers') return 'cc-providers-panel';
-        if (tab === 'skills') return 'skills-panel';
-        return null;
-    };
-
-    /**
-     * Pushes a route change to the active module panel. Called by
-     * `<ModuleNav />` when the user clicks a manifest link.
-     *
-     * Since all modules now use custom elements (no more iframes), we
-     * update host state and set the `route` attribute on the panel
-     * element directly. The element's `attributeChangedCallback`
-     * forwards this to its internal MemoryRouter via `EmbedBridge`.
-     */
-    navigateInModule = (to: string) => {
-        if (!to) return;
-        if (to === this.state.activeModulePath) return;
-        this.setState({ activeModulePath: to });
-        this.syncModuleUrl(to);
-        const panelId = this.getActiveModulePanelId();
-        if (panelId) {
-            const panel = document.getElementById(panelId);
-            if (panel) panel.setAttribute('route', to);
-        }
-    };
-
-    /**
-     * Mirrors the active module path into the main app URL as
-     * `/m/<moduleId>/<subPath>`. Uses `replaceState` so the iframe's
-     * internal back/forward doesn't get clobbered.
-     */
-    syncModuleUrl = (subPath: string) => {
-        const mod = getModuleByTab(this.state.activeDrawerTab);
-        if (!mod) return;
-        const url = new URL(window.location.href);
-        const cleanPath = subPath.startsWith('/') ? subPath : '/' + subPath;
-        url.search = '';
-        url.hash = `/m/${mod.moduleId}${cleanPath}`;
-        try {
-            window.history.replaceState({}, '', url.toString());
-        } catch {
-            /* ignore */
-        }
-    };
-
-    /**
-     * Fetches the live manifest for a module and merges it over the static
-     * one. Failures are silent — the static manifest keeps the sidebar
-     * functional even when the module is offline.
-     */
-    loadModuleManifest = async (mod: ModuleRegistration) => {
-        if (!mod.manifestUrl) return;
-        try {
-            const res = await fetch(mod.manifestUrl, { credentials: 'same-origin' });
-            if (!res.ok) return;
-            const live = (await res.json()) as ModuleManifest;
-            this.setState(prev => ({
-                moduleManifests: {
-                    ...prev.moduleManifests,
-                    [mod.moduleId]: mergeManifests(mod.staticManifest, live),
-                },
-            }));
-        } catch {
-            /* static manifest is the fallback — nothing to do */
-        }
-    };
-
-    /**
-     * Returns the module nav data to pass to `LeftSidebar`, or undefined if
-     * the active drawer tab isn't module-backed. The live manifest is used
-     * when available; the static manifest is the fallback.
-     *
-     * Settings is a special case: it's a host-rendered page (no iframe),
-     * so its `onNavigate` updates `activeSettingsCategory` and we use that
-     * state (not `activeModulePath`) to derive the active link.
-     */
-    buildModuleNav(): { manifest: ModuleManifest; activePath: string; onNavigate: (to: string) => void } | undefined {
-        const mod = getModuleByTab(this.state.activeDrawerTab);
-        if (!mod) return undefined;
-        const live = this.state.moduleManifests[mod.moduleId];
-        const manifest = live ?? mod.staticManifest;
-        if (mod.moduleId === SETTINGS_MODULE_ID) {
-            return {
-                manifest,
-                activePath: settingsCategoryToPath(this.state.activeSettingsCategory),
-                onNavigate: (to: string) => this.setSettingsCategory(pathToSettingsCategory(to)),
-            };
-        }
-        return {
-            manifest,
-            activePath: this.state.activeModulePath || mod.entryPath,
-            onNavigate: this.navigateInModule,
-        };
-    }
-
-    /**
-     * Switches the active sub-category in the system settings page. Called
-     * by the host's `LeftSidebar` `ModuleNav` (desktop) and by the mobile
-     * "more" menu when the user picks a settings category.
-     */
-    setSettingsCategory = (category: SettingsCategory) => {
-        if (this.state.activeSettingsCategory === category) return;
-        this.setState({ activeSettingsCategory: category });
-    };
-
     // ── Resizer drag handlers ──
     handleResizerDown = (side: 'left' | 'right', e: MouseEvent) => {
         e.preventDefault();
@@ -1180,11 +206,7 @@ export class App extends Component<{}, AppState> {
         ui.triggerTerminalFit();
     };
 
-    // ── Flat file crawler ──────────────────────────────────────────────────
-
-    // ── Flat file crawler & search ──────────────────────────────────────────
-
-    // ── File detail action handlers ────────────────────────────────────────
+    // ── Access token handlers ──────────────────────────────────────────────
 
     checkAccessStatus = async () => {
         try {
@@ -1207,16 +229,16 @@ export class App extends Component<{}, AppState> {
         await this.checkAccessStatus();
         if (!this.state.accessGateVisible) {
             fs.loadDir('', null);
-            await Promise.all([this.loadWorkspaces(true), this.loadTerminals()]);
-            this.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
+            await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals()]);
+            sess.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
             const workspaces = wsStore.workspaces.value;
             const activeWorkspaceId = wsStore.activeWorkspaceId.value;
             if (!activeWorkspaceId && workspaces.length > 0) {
-                await this.selectWorkspace(workspaces[0]);
+                await wsStore.selectWorkspace(workspaces[0]);
             } else if (activeWorkspaceId) {
-                await Promise.all([this.loadCcConnectUrl(), this.loadCcProvidersUrl()]);
+                await Promise.all([wsStore.loadCcConnectUrl(), wsStore.loadCcProvidersUrl()]);
             }
-            this.loadTmuxMouse();
+            sess.loadTmuxMouse();
             this.checkUrlPreview();
         }
     };
@@ -1276,7 +298,7 @@ export class App extends Component<{}, AppState> {
             modTime: 0,
         };
 
-        this.setState({ activeDrawerTab: 'files' });
+        tabsStore.activeDrawerTab.value = 'files';
         fs.viewMode.value = 'detail';
         fs.detailFullscreen.value = true;
         await fs.openFileDetail(entry);
@@ -1390,7 +412,7 @@ export class App extends Component<{}, AppState> {
                     <WelcomeOnboarding
                         language={language}
                         onCreateWorkspace={modal.openCreateWorkspacePicker}
-                        onUseTempWorkspace={this.onUseTempWorkspace}
+                        onUseTempWorkspace={wsStore.onUseTempWorkspace}
                     />
                 ) : ui.isMobile.value ? (
                     <MobileAppLayout app={this} state={this.state} />
@@ -1399,7 +421,7 @@ export class App extends Component<{}, AppState> {
                 )}
 
                 {/* App-level modals (workspace, chat-create, dir picker, token, rename) */}
-                <ModalHost app={this} />
+                <ModalHost />
 
                 {/* Toast Notification */}
                 {toastMsg && (

@@ -7,7 +7,8 @@ import { DEFAULT_AGENT_TYPE } from '../services/agentService';
  * Modal state (workspace create/rename modal, chat-create modal, directory
  * picker, session rename, access-token display). Previously lived on App's
  * god-state; now any consumer reads the signals directly. Submit handlers
- * that call services (submitWsModal, submitRenameSession, …) stay in App.
+ * that call services live with their domain (workspaceStore.submitWsModal,
+ * sessionStore.submitRenameSession, …).
  */
 
 // ── Workspace create/rename modal ──

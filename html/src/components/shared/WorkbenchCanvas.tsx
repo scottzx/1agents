@@ -2,9 +2,10 @@ import { h } from 'preact';
 import type { ITerminalOptions } from '@xterm/xterm';
 import { isChat } from '../types';
 import { MiddleCanvas } from '../canvas/MiddleCanvas';
-import type { App, AppState } from '../app';
+import type { App } from '../app';
 import * as ui from '../../stores/uiStore';
 import * as sess from '../../stores/sessionStore';
+import * as tabsStore from '../../stores/tabsStore';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -17,7 +18,6 @@ import {
 
 interface WorkbenchCanvasProps {
     app: App;
-    state: AppState;
     /** Terminal font size: 13 on desktop, 12 on mobile. */
     fontSize: number;
     pendingInitialMessage?: string | null;
@@ -33,7 +33,6 @@ interface WorkbenchCanvasProps {
  */
 export function WorkbenchCanvas({
     app,
-    state,
     fontSize,
     pendingInitialMessage,
     onClearPendingInitialMessage,
@@ -53,7 +52,7 @@ export function WorkbenchCanvas({
 
     return (
         <MiddleCanvas
-            activeTab={state.activeTab as 'terminal' | 'agents' | 'console' | 'folders'}
+            activeTab={tabsStore.activeTab.value as 'terminal' | 'agents' | 'console' | 'folders'}
             wsUrl={wsUrl}
             tokenUrl={tokenUrl}
             clientOptions={clientOptions}
@@ -63,7 +62,7 @@ export function WorkbenchCanvas({
             onMobileDetect={isMobile => (ui.isMobile.value = isMobile)}
             onKeyboardStateChange={app.handleKeyboardStateChange}
             tmuxMouseOn={tmuxMouseOn}
-            onTmuxMouseToggle={app.toggleTmuxMouse}
+            onTmuxMouseToggle={sess.toggleTmuxMouse}
             language={language}
             activeChatSession={activeSession && isChat(activeSession) ? activeSession : null}
             pendingInitialMessage={pendingInitialMessage}

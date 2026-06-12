@@ -10,6 +10,7 @@ import { RightPanelHost } from '../shared/RightPanelHost';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
+import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -18,6 +19,7 @@ import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
+import * as tabsStore from '../../stores/tabsStore';
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -27,7 +29,10 @@ interface DesktopAppLayoutProps {
 export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
     render() {
         const { app, state } = this.props;
-        const { tabs, activeTabId, activeDrawerTab, ccProvidersUrl } = state;
+        const tabs = tabsStore.tabs.value;
+        const activeTabId = tabsStore.activeTabId.value;
+        const activeDrawerTab = tabsStore.activeDrawerTab.value;
+        const ccProvidersUrl = wsStore.ccProvidersUrl.value;
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
@@ -63,7 +68,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     <div
                                         key={tab.id}
                                         class={`workspace-tab-item ${isActive ? 'active' : ''}`}
-                                        onClick={() => app.selectTab(tab.id)}
+                                        onClick={() => tabsStore.selectTab(tab.id)}
                                     >
                                         <span class="tab-title">{tab.title}</span>
                                         {tab.closable && (
@@ -71,7 +76,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 class="workspace-tab-close"
                                                 onClick={(e: MouseEvent) => {
                                                     e.stopPropagation();
-                                                    app.closeTab(tab.id);
+                                                    tabsStore.closeTab(tab.id);
                                                 }}
                                                 title={t('common.closeTab', language)}
                                             >
@@ -94,7 +99,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         </div>
                         <button
                             class="workspace-tab-add-btn"
-                            onClick={() => app.openBrowserTab('')}
+                            onClick={() => tabsStore.openBrowserTab('')}
                             title={t('common.openBrowserTab', language)}
                         >
                             <svg
@@ -128,27 +133,27 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 activeWorkspaceId={activeWorkspaceId}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
                                 toggleFolder={wsStore.toggleFolder}
-                                toggleDrawerTab={app.toggleDrawerTab}
+                                toggleDrawerTab={tabsStore.toggleDrawerTab}
                                 activeDrawerTab={activeDrawerTab}
-                                activeDiscoveryCategory={state.discoveryCategory}
-                                onSelectDiscoveryCategory={app.selectDiscoveryCategory}
+                                activeDiscoveryCategory={tabsStore.discoveryCategory.value}
+                                onSelectDiscoveryCategory={tabsStore.selectDiscoveryCategory}
                                 onCreateWorkspace={modal.openCreateWorkspacePicker}
                                 onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
-                                onDeleteWorkspace={app.deleteWorkspace}
-                                onSelectWorkspace={ws => app.selectWorkspace(ws)}
-                                onSelectSession={s => app.selectSession(s)}
-                                onTerminalCreate={(wsId, cwd) => app.createTerminal(wsId, cwd)}
-                                onTerminalKill={idx => app.killTerminal(idx)}
+                                onDeleteWorkspace={wsStore.deleteWorkspace}
+                                onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
+                                onSelectSession={s => sess.selectSession(s)}
+                                onTerminalCreate={(wsId, cwd) => sess.createTerminal(wsId, cwd)}
+                                onTerminalKill={idx => sess.killTerminal(idx)}
                                 onRenameSession={s => modal.openRenameSessionModal(s)}
-                                onReorderFolders={app.reorderFolders}
+                                onReorderFolders={wsStore.reorderFolders}
                                 language={language}
-                                moduleNav={app.buildModuleNav()}
+                                moduleNav={tabsStore.buildModuleNav()}
                                 onChatCreate={modal.openChatCreate}
-                                onChatKill={app.killChatSession}
+                                onChatKill={sess.killChatSession}
                                 collapsedGroups={sidebarCollapsedGroups}
                                 onToggleGroup={wsStore.toggleSidebarGroup}
-                                onStartNewChat={app.onStartNewChat}
-                                activeTab={state.activeTab}
+                                onStartNewChat={sess.onStartNewChat}
+                                activeTab={tabsStore.activeTab.value}
                             />
 
                             {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -174,7 +179,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           preview-* / browser-*) render an overlay on top.
                         */}
                         <div class="kanban-background-layer">
-                            <TaskList workspaceId={activeWorkspaceId} onSelectSession={s => app.selectSession(s)} />
+                            <TaskList workspaceId={activeWorkspaceId} onSelectSession={s => sess.selectSession(s)} />
                         </div>
 
                         {/*
@@ -188,18 +193,18 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 leftSidebarOpen={leftSidebarOpen}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
                                 activeDrawerTab={activeDrawerTab}
-                                toggleDrawerTab={app.toggleDrawerTab}
-                                activeTab={state.activeTab}
-                                setActiveTab={app.setActiveTab}
+                                toggleDrawerTab={tabsStore.toggleDrawerTab}
+                                activeTab={tabsStore.activeTab.value}
+                                setActiveTab={tabsStore.setActiveTab}
                                 theme={theme}
                                 toggleTheme={ui.toggleTheme}
                                 keyboardVisible={keyboardVisible}
                                 workspaceName={activeWorkspace?.name || ''}
                                 sessionName={activeSession?.name || ''}
                                 tmuxMouseOn={tmuxMouseOn}
-                                onTmuxMouseToggle={app.toggleTmuxMouse}
+                                onTmuxMouseToggle={sess.toggleTmuxMouse}
                                 language={language}
-                                moduleNav={app.buildModuleNav()}
+                                moduleNav={tabsStore.buildModuleNav()}
                                 hasChatSession={folders.some(
                                     f => f.id === activeWorkspaceId && f.sessions.some(isChat)
                                 )}
@@ -245,9 +250,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         {activeDrawerTab === 'skills' &&
                                             (() => {
                                                 const skillsMod = getModuleByTab('skills');
+                                                const activeModulePath = tabsStore.activeModulePath.value;
                                                 const initialRoute =
-                                                    skillsMod && state.activeModulePath && activeDrawerTab === 'skills'
-                                                        ? state.activeModulePath
+                                                    skillsMod && activeModulePath && activeDrawerTab === 'skills'
+                                                        ? activeModulePath
                                                         : skillsMod
                                                           ? skillsMod.entryPath
                                                           : '/overview';
@@ -271,9 +277,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         {activeDrawerTab === 'discovery' && (
                                             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                                                 <DiscoveryPanel
-                                                    onOpenBrowserTab={IS_DESKTOP ? app.openBrowserTab : undefined}
+                                                    onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
                                                     language={language}
-                                                    scrollToCategory={state.discoveryCategory}
+                                                    scrollToCategory={tabsStore.discoveryCategory.value}
                                                 />
                                             </div>
                                         )}
@@ -290,7 +296,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 <SystemSettingsHost
                                                     app={app}
                                                     state={state}
-                                                    activeCategory={state.activeSettingsCategory}
+                                                    activeCategory={tabsStore.activeSettingsCategory.value}
                                                 />
                                             </div>
                                         )}
@@ -298,24 +304,23 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 ) : (
                                     <Fragment>
                                         {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                        {state.activeTab === 'new_chat' ? (
+                                        {tabsStore.activeTab.value === 'new_chat' ? (
                                             <NewChatHome
                                                 workspaces={workspaces}
                                                 activeWorkspaceId={activeWorkspaceId}
-                                                onSelectWorkspace={ws => app.selectWorkspace(ws)}
+                                                onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
                                                 onSubmitChat={(wsId, agentType, prompt) => {
                                                     const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
-                                                    app.createChatSession(wsId, name, agentType, prompt);
+                                                    sess.createChatSession(wsId, name, agentType, prompt);
                                                 }}
                                                 language={language}
                                             />
                                         ) : (
                                             <WorkbenchCanvas
                                                 app={app}
-                                                state={state}
                                                 fontSize={13} // Desktop standard
                                                 pendingInitialMessage={sess.pendingInitialMessage.value}
-                                                onClearPendingInitialMessage={app.clearPendingInitialMessage}
+                                                onClearPendingInitialMessage={sess.clearPendingInitialMessage}
                                             />
                                         )}
 
@@ -338,16 +343,19 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             onExtraRefresh={async () => {
                                                 try {
                                                     await app.checkAccessStatus();
-                                                    await Promise.all([app.loadWorkspaces(true), app.loadTerminals()]);
+                                                    await Promise.all([
+                                                        wsStore.loadWorkspaces(true),
+                                                        sess.loadTerminals(),
+                                                    ]);
 
                                                     const workspaces = wsStore.workspaces.value;
                                                     const activeWorkspaceId = wsStore.activeWorkspaceId.value;
                                                     if (!activeWorkspaceId && workspaces.length > 0) {
-                                                        await app.selectWorkspace(workspaces[0]);
+                                                        await wsStore.selectWorkspace(workspaces[0]);
                                                     } else if (activeWorkspaceId) {
                                                         await Promise.all([
-                                                            app.loadCcConnectUrl(),
-                                                            app.loadCcProvidersUrl(),
+                                                            wsStore.loadCcConnectUrl(),
+                                                            wsStore.loadCcProvidersUrl(),
                                                         ]);
                                                     }
                                                 } catch (e) {
@@ -365,7 +373,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                         ? selectedFsEntry.path
                                                         : `${activeWorkspacePath}/${selectedFsEntry.path}`;
                                                     if (IS_DESKTOP) {
-                                                        app.openPreviewTab(absolutePath, selectedFsEntry.name);
+                                                        tabsStore.openPreviewTab(absolutePath, selectedFsEntry.name);
                                                     } else {
                                                         const shareUrl = `${window.location.origin}${
                                                             window.location.pathname
@@ -375,7 +383,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 }
                                             }}
                                             onOpenPreview={
-                                                IS_DESKTOP ? (path, name) => app.openPreviewTab(path, name) : undefined
+                                                IS_DESKTOP
+                                                    ? (path, name) => tabsStore.openPreviewTab(path, name)
+                                                    : undefined
                                             }
                                         />
                                     </Fragment>
@@ -399,7 +409,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             app={app}
                                             activeTabId={activeTabId}
                                             onOpenPreview={
-                                                IS_DESKTOP ? (path, name) => app.openPreviewTab(path, name) : undefined
+                                                IS_DESKTOP
+                                                    ? (path, name) => tabsStore.openPreviewTab(path, name)
+                                                    : undefined
                                             }
                                         />
                                     </div>
@@ -414,7 +426,16 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         overflow: 'hidden',
                                     }}
                                 >
-                                    {tabs.filter(t => t.type === 'browser').map(t => app.renderBuiltinBrowser(t))}
+                                    {tabs
+                                        .filter(t => t.type === 'browser')
+                                        .map(t => (
+                                            <BuiltinBrowser
+                                                tab={t}
+                                                active={activeTabId === t.id}
+                                                onUrlChange={tabsStore.updateBrowserUrl}
+                                                language={language}
+                                            />
+                                        ))}
                                 </div>
                             </div>
                         )}

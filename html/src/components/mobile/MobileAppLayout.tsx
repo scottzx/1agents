@@ -10,6 +10,7 @@ import { RightPanelHost } from '../shared/RightPanelHost';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
+import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -17,6 +18,7 @@ import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
+import * as tabsStore from '../../stores/tabsStore';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
 import './MobileAppLayout.scss';
 
@@ -150,6 +152,13 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
      */
     private _prevActiveWsId = wsStore.activeWorkspaceId.value;
     private _disposeWsSync: (() => void) | null = null;
+    /**
+     * Mirrors "the workbench tab became active" into the local navigation
+     * state. Replaces the former componentWillReceiveProps prop comparison
+     * now that activeTabId lives in a signal.
+     */
+    private _prevActiveTabId = tabsStore.activeTabId.value;
+    private _disposeTabSync: (() => void) | null = null;
 
     componentDidMount() {
         this._disposeWsSync = effect(() => {
@@ -159,6 +168,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                 this.setState({ selectedWorkspaceId: id });
             }
         });
+        this._disposeTabSync = effect(() => {
+            const id = tabsStore.activeTabId.value;
+            if (id !== this._prevActiveTabId) {
+                this._prevActiveTabId = id;
+                if (id === 'terminal') {
+                    this.setState({ activeMobileTab: 'workspaces', inSessionView: true });
+                }
+            }
+        });
     }
 
     componentWillUnmount() {
@@ -166,11 +184,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             this._disposeWsSync();
             this._disposeWsSync = null;
         }
-    }
-
-    componentWillReceiveProps(nextProps: MobileAppLayoutProps) {
-        if (nextProps.state.activeTabId === 'terminal' && this.props.state.activeTabId !== 'terminal') {
-            this.setState({ activeMobileTab: 'workspaces', inSessionView: true });
+        if (this._disposeTabSync) {
+            this._disposeTabSync();
+            this._disposeTabSync = null;
         }
     }
 
@@ -178,20 +194,20 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         this.setState({ activeMobileTab: tab, mountedSkillsPath: '' });
         if (tab === 'skills') {
             this.setState({ skillsInDetail: false });
-            if (this.props.state.activeDrawerTab !== 'skills') {
-                this.props.app.setState({ activeDrawerTab: 'skills' });
+            if (tabsStore.activeDrawerTab.value !== 'skills') {
+                tabsStore.activeDrawerTab.value = 'skills';
             }
         } else if (tab === 'providers') {
-            this.props.app.setState({ activeDrawerTab: 'none' });
+            tabsStore.activeDrawerTab.value = 'none';
             // ccProvidersUrl is loaded asynchronously; if it's not ready yet, trigger a reload
-            if (!this.props.state.ccProvidersUrl) {
-                this.props.app.loadCcProvidersUrl();
+            if (!wsStore.ccProvidersUrl.value) {
+                wsStore.loadCcProvidersUrl();
             }
         } else if (tab === 'more') {
             this.setState({ activeMoreSubView: 'menu', activeSettingsCategory: 'menu' });
-            this.props.app.setState({ activeDrawerTab: 'none' });
+            tabsStore.activeDrawerTab.value = 'none';
         } else {
-            this.props.app.setState({ activeDrawerTab: 'none' });
+            tabsStore.activeDrawerTab.value = 'none';
         }
     };
 
@@ -205,7 +221,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeMoreSubView,
             activeSettingsCategory,
         } = this.state;
-        const { tabs, activeTabId, ccProvidersUrl, activeDrawerTab } = state;
+        const tabs = tabsStore.tabs.value;
+        const activeTabId = tabsStore.activeTabId.value;
+        const ccProvidersUrl = wsStore.ccProvidersUrl.value;
+        const activeDrawerTab = tabsStore.activeDrawerTab.value;
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
@@ -233,7 +252,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeTabObj?.type !== 'preview' &&
             activeTabObj?.type !== 'browser';
 
-        const moduleNav = app.buildModuleNav();
+        const moduleNav = tabsStore.buildModuleNav();
 
         return (
             <div class="mobile-app-layout" style={viewportStyle}>
@@ -266,7 +285,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                 class="item-main"
                                                                 onClick={() => {
                                                                     this.setState({ selectedWorkspaceId: ws.id });
-                                                                    app.selectWorkspace(ws);
+                                                                    wsStore.selectWorkspace(ws);
                                                                 }}
                                                             >
                                                                 <div class="ws-icon-circle">
@@ -380,7 +399,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                         <button
                                                             class="mobile-new-session-inline-btn"
                                                             onClick={async () => {
-                                                                await app.createTerminal(
+                                                                await sess.createTerminal(
                                                                     selectedWorkspaceId,
                                                                     activeWorkspacePath
                                                                 );
@@ -410,7 +429,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             <button
                                                                 class="mobile-primary-btn"
                                                                 onClick={async () => {
-                                                                    await app.createTerminal(
+                                                                    await sess.createTerminal(
                                                                         selectedWorkspaceId,
                                                                         activeWorkspacePath
                                                                     );
@@ -439,7 +458,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                 key={s.id}
                                                                                 class={`mobile-session-item-row ${isActive ? 'active' : ''}`}
                                                                                 onClick={() => {
-                                                                                    app.selectSession(s);
+                                                                                    sess.selectSession(s);
                                                                                     this.setState({
                                                                                         inSessionView: true,
                                                                                     });
@@ -571,25 +590,23 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         toggleLeftSidebar={() => {}}
                                         onBack={() => this.setState({ inSessionView: false })}
                                         activeDrawerTab={activeDrawerTab}
-                                        toggleDrawerTab={app.toggleDrawerTab}
-                                        activeTab={state.activeTab}
-                                        setActiveTab={app.setActiveTab}
+                                        toggleDrawerTab={tabsStore.toggleDrawerTab}
+                                        activeTab={tabsStore.activeTab.value}
+                                        setActiveTab={tabsStore.setActiveTab}
                                         theme={theme}
                                         toggleTheme={ui.toggleTheme}
                                         keyboardVisible={keyboardVisible}
                                         workspaceName={activeWorkspace?.name || ''}
                                         sessionName={activeSession?.name || ''}
                                         tmuxMouseOn={tmuxMouseOn}
-                                        onTmuxMouseToggle={app.toggleTmuxMouse}
+                                        onTmuxMouseToggle={sess.toggleTmuxMouse}
                                         language={language}
                                         hasChatSession={folders.some(
                                             f => f.id === selectedWorkspaceId && f.sessions.some(isChat)
                                         )}
                                     />
                                     <div class="workspace-body-container" style="flex: 1; min-height: 0;">
-                                        {activeDrawerTab === 'none' && (
-                                            <WorkbenchCanvas app={app} state={state} fontSize={12} />
-                                        )}
+                                        {activeDrawerTab === 'none' && <WorkbenchCanvas app={app} fontSize={12} />}
 
                                         {activeDrawerTab !== 'none' && (
                                             <div class="mobile-drawer-flat-container">
@@ -608,7 +625,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             window.open(`/api/fs/view/${encodedPath}`, '_blank');
                                                         }
                                                     }}
-                                                    onSelectSession={s => app.selectSession(s)}
+                                                    onSelectSession={s => sess.selectSession(s)}
                                                 />
                                             </div>
                                         )}
@@ -746,7 +763,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <skills-panel
                                             id="skills-panel"
                                             route={
-                                                (activeMobileTab === 'skills' && state.activeModulePath) ||
+                                                (activeMobileTab === 'skills' && tabsStore.activeModulePath.value) ||
                                                 this.state.mountedSkillsPath ||
                                                 '/overview'
                                             }
@@ -908,7 +925,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     {activeTabObj?.type === 'preview' && (
                         <div class="mobile-subview-layout">
                             <div class="mobile-subview-header">
-                                <button class="mobile-subview-back-btn" onClick={() => app.closeTab(activeTabId)}>
+                                <button class="mobile-subview-back-btn" onClick={() => tabsStore.closeTab(activeTabId)}>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                         <polyline points="15 18 9 12 15 6" />
                                     </svg>
@@ -927,7 +944,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     {activeTabObj?.type === 'browser' && (
                         <div class="mobile-subview-layout">
                             <div class="mobile-subview-header">
-                                <button class="mobile-subview-back-btn" onClick={() => app.closeTab(activeTabId)}>
+                                <button class="mobile-subview-back-btn" onClick={() => tabsStore.closeTab(activeTabId)}>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                         <polyline points="15 18 9 12 15 6" />
                                     </svg>
@@ -935,7 +952,16 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                 <div class="mobile-subview-title">{t('mobile.browser', language) || 'Browser'}</div>
                             </div>
                             <div class="mobile-subview-content">
-                                {tabs.filter(t => t.id === activeTabId).map(t => app.renderBuiltinBrowser(t))}
+                                {tabs
+                                    .filter(t => t.id === activeTabId)
+                                    .map(t => (
+                                        <BuiltinBrowser
+                                            tab={t}
+                                            active={activeTabId === t.id}
+                                            onUrlChange={tabsStore.updateBrowserUrl}
+                                            language={language}
+                                        />
+                                    ))}
                             </div>
                         </div>
                     )}
@@ -943,7 +969,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     {activeTabObj?.type === 'tasks' && (
                         <div class="mobile-subview-layout">
                             <div class="mobile-subview-header">
-                                <button class="mobile-subview-back-btn" onClick={() => app.selectTab('terminal')}>
+                                <button class="mobile-subview-back-btn" onClick={() => tabsStore.selectTab('terminal')}>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                         <polyline points="15 18 9 12 15 6" />
                                     </svg>
@@ -957,8 +983,8 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                 <TaskList
                                     workspaceId={selectedWorkspaceId || activeWorkspaceId}
                                     onSelectSession={s => {
-                                        app.selectSession(s);
-                                        app.selectTab('terminal');
+                                        sess.selectSession(s);
+                                        tabsStore.selectTab('terminal');
                                         this.setState({ inSessionView: true });
                                     }}
                                 />
@@ -1066,12 +1092,12 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 if (!target) return;
                                                 if (target.kind === 'session') {
                                                     if (target.isChat && target.sessionId) {
-                                                        await app.killChatSession(target.sessionId);
+                                                        await sess.killChatSession(target.sessionId);
                                                     } else {
-                                                        await app.killTerminal(target.sessionIndex);
+                                                        await sess.killTerminal(target.sessionIndex);
                                                     }
                                                 } else {
-                                                    await app.deleteWorkspace(target.workspaceId);
+                                                    await wsStore.deleteWorkspace(target.workspaceId);
                                                 }
                                             }}
                                         >
