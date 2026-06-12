@@ -1,7 +1,8 @@
 import { h, Component, Fragment } from 'preact';
 import type { ITerminalOptions } from '@xterm/xterm';
-import { isFullPageTab, isChat } from '../types';
+import { isFullPageTab, isChat, AGENT_TYPE_LABELS } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
+import { NewChatHome } from '../chat/NewChatHome';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
 import { MiddleCanvas } from '../canvas/MiddleCanvas';
 import { RightPanel } from '../drawer/RightPanel';
@@ -171,6 +172,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 moduleNav={app.buildModuleNav()}
                                 onChatCreate={app.openChatCreate}
                                 onChatKill={app.killChatSession}
+                                onStartNewChat={app.onStartNewChat}
+                                activeTab={state.activeTab}
                             />
 
                             {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -307,25 +310,40 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     ) : (
                                         <Fragment>
                                             {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                            <MiddleCanvas
-                                                activeTab={
-                                                    state.activeTab as 'terminal' | 'agents' | 'console' | 'folders'
-                                                }
-                                                wsUrl={wsUrl}
-                                                tokenUrl={tokenUrl}
-                                                clientOptions={clientOptions}
-                                                termOptions={termOptions}
-                                                flowControl={flowControl}
-                                                isMobile={isMobile}
-                                                onMobileDetect={isMobile => app.setState({ isMobile })}
-                                                onKeyboardStateChange={app.handleKeyboardStateChange}
-                                                tmuxMouseOn={tmuxMouseOn}
-                                                onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                language={language}
-                                                activeChatSession={
-                                                    activeSession && isChat(activeSession) ? activeSession : null
-                                                }
-                                            />
+                                            {state.activeTab === 'new_chat' ? (
+                                                <NewChatHome
+                                                    workspaces={workspaces}
+                                                    activeWorkspaceId={activeWorkspaceId}
+                                                    onSelectWorkspace={ws => app.selectWorkspace(ws)}
+                                                    onSubmitChat={(wsId, agentType, prompt) => {
+                                                        const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
+                                                        app.createChatSession(wsId, name, agentType, prompt);
+                                                    }}
+                                                    language={language}
+                                                />
+                                            ) : (
+                                                <MiddleCanvas
+                                                    activeTab={
+                                                        state.activeTab as 'terminal' | 'agents' | 'console' | 'folders'
+                                                    }
+                                                    wsUrl={wsUrl}
+                                                    tokenUrl={tokenUrl}
+                                                    clientOptions={clientOptions}
+                                                    termOptions={termOptions}
+                                                    flowControl={flowControl}
+                                                    isMobile={isMobile}
+                                                    onMobileDetect={isMobile => app.setState({ isMobile })}
+                                                    onKeyboardStateChange={app.handleKeyboardStateChange}
+                                                    tmuxMouseOn={tmuxMouseOn}
+                                                    onTmuxMouseToggle={app.toggleTmuxMouse}
+                                                    language={language}
+                                                    activeChatSession={
+                                                        activeSession && isChat(activeSession) ? activeSession : null
+                                                    }
+                                                    pendingInitialMessage={state.pendingInitialMessage}
+                                                    onClearPendingInitialMessage={app.clearPendingInitialMessage}
+                                                />
+                                            )}
 
                                             {/* Resizer: between MIDDLE canvas and RIGHT panel */}
                                             {activeDrawerTab !== 'none' && (

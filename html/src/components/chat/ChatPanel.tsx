@@ -9,11 +9,19 @@ import { PermissionPrompt } from './PermissionPrompt';
 
 interface ChatPanelProps {
     session: ChatSession;
+    pendingInitialMessage?: string | null;
+    onClearPendingInitialMessage?: () => void;
 }
 
 export class ChatPanel extends Component<ChatPanelProps> {
     render() {
-        return <ChatPanelInner session={this.props.session} />;
+        return (
+            <ChatPanelInner
+                session={this.props.session}
+                pendingInitialMessage={this.props.pendingInitialMessage}
+                onClearPendingInitialMessage={this.props.onClearPendingInitialMessage}
+            />
+        );
     }
 }
 
@@ -22,8 +30,13 @@ export class ChatPanel extends Component<ChatPanelProps> {
  * component rule) while keeping the public class-based API for
  * symmetry with the rest of the codebase.
  */
-function ChatPanelInner({ session }: ChatPanelProps) {
-    const { items, connection, typing, send, respondPermission } = useBridge(session);
+function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialMessage }: ChatPanelProps) {
+    const { items, connection, typing, send, respondPermission } = useBridge(
+        session,
+        [],
+        pendingInitialMessage,
+        onClearPendingInitialMessage
+    );
 
     // Find the most recent unresolved permission request to surface as a modal.
     const pendingPermission = useMemo(() => {

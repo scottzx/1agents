@@ -44,6 +44,8 @@ interface LeftSidebarProps {
     };
     onChatCreate: (workspaceId: string) => void;
     onChatKill: (sessionId: string) => void;
+    onStartNewChat: () => void;
+    activeTab: string;
 }
 
 export function LeftSidebar({
@@ -72,6 +74,8 @@ export function LeftSidebar({
     moduleNav,
     onChatCreate,
     onChatKill,
+    onStartNewChat,
+    activeTab,
 }: LeftSidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
@@ -216,13 +220,66 @@ export function LeftSidebar({
                         </svg>
                     </div>
                 </div>
+
+                <div class="sidebar-nav-controls">
+                    <button
+                        class={`nav-control-btn new-chat-btn ${activeTab === 'new_chat' ? 'active' : ''}`}
+                        onClick={onStartNewChat}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        <span>New Conversation</span>
+                    </button>
+                    <div class="nav-control-item" onClick={() => alert('Conversation History: Placeholder')}>
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span>Conversation History</span>
+                    </div>
+                    <div class="nav-control-item" onClick={() => alert('Scheduled Tasks: Placeholder')}>
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <span>Scheduled Tasks</span>
+                    </div>
+                </div>
             </div>
 
-            {!moduleNav && (
-                <div class="sidebar-scroll">
+            <div class="sidebar-scroll">
+                {!moduleNav ? (
                     <div class="workspace-section">
                         <div class="section-header">
-                            <span>{t('sidebar.workspaces', language)}</span>
+                            <span>Projects</span>
                             <div class="header-actions">
                                 {/* Add workspace button */}
                                 <button
@@ -625,17 +682,15 @@ export function LeftSidebar({
                                 );
                             })}
                     </div>
-                </div>
-            )}
-
-            {moduleNav && (
-                <ModuleNav
-                    manifest={moduleNav.manifest}
-                    activePath={moduleNav.activePath}
-                    language={language}
-                    onNavigate={moduleNav.onNavigate}
-                />
-            )}
+                ) : (
+                    <ModuleNav
+                        manifest={moduleNav.manifest}
+                        activePath={moduleNav.activePath}
+                        language={language}
+                        onNavigate={moduleNav.onNavigate}
+                    />
+                )}
+            </div>
 
             <div class="sidebar-footer">
                 <div

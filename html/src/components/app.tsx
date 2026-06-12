@@ -61,7 +61,7 @@ export interface Tab {
 }
 
 export interface AppState {
-    activeTab: 'terminal' | 'agents' | 'console' | 'folders';
+    activeTab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat';
     activeDrawerTab: RightDrawerTab;
     /** Selected discovery category, drives the sidebar second-level menu. */
     discoveryCategory: string;
@@ -105,6 +105,7 @@ export interface AppState {
     sessionRenameName: string;
     // ── Chat session state (1agents-side index) ──
     chatSessions: ChatSession[];
+    pendingInitialMessage: string | null;
     // ── File system state ──
     fsEntries: FsEntry[];
     fsLoading: boolean;
@@ -187,6 +188,7 @@ export class App extends Component<{}, AppState> {
             folders: [],
             activeWorkspaceId: localStorage.getItem('1agents-active-workspace') || '',
             activeSession: null,
+            pendingInitialMessage: null,
             wsModalOpen: false,
             wsModalMode: 'create',
             wsModalTarget: null,
@@ -738,7 +740,7 @@ export class App extends Component<{}, AppState> {
      *   4. POST 1agents to index the mapping
      *   5. Refresh local state + select the new session
      */
-    createChatSession = async (workspaceId: string, name: string, agentType: AgentType) => {
+    createChatSession = async (workspaceId: string, name: string, agentType: AgentType, initialMessage?: string) => {
         const ws = this.state.workspaces.find(w => w.id === workspaceId);
         if (!ws) {
             this.showToast('工作空间不存在');
@@ -763,11 +765,23 @@ export class App extends Component<{}, AppState> {
             this.setState({
                 activeSession: { ...indexed, active: true },
                 activeTab: 'agents',
+                pendingInitialMessage: initialMessage || null,
             });
             this.showToast('聊天会话已创建 ✓');
         } catch (err) {
             this.showToast(`创建聊天失败: ${(err as Error).message}`);
         }
+    };
+
+    onStartNewChat = () => {
+        this.setState({
+            activeSession: null,
+            activeTab: 'new_chat',
+        });
+    };
+
+    clearPendingInitialMessage = () => {
+        this.setState({ pendingInitialMessage: null });
     };
 
     /** Open the chat-create modal for a given workspace. */
@@ -1248,7 +1262,7 @@ export class App extends Component<{}, AppState> {
         }, 150);
     };
 
-    setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders') => {
+    setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat') => {
         this.setState({ activeTab: tab });
         this.triggerTerminalFit();
     };

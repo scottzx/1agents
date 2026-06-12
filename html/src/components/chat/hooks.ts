@@ -43,12 +43,28 @@ interface UseBridgeState {
  * History replay: not handled here. Use ccconnectClient.ccGetSession on
  * mount to load the last N history entries and seed `items` with them.
  */
-export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
+export function useBridge(
+    session: ChatSession | null,
+    seed: ChatItem[] = [],
+    pendingInitialMessage?: string | null,
+    onClearPendingInitialMessage?: () => void
+): UseBridgeState {
     const [items, setItems] = useState<ChatItem[]>(seed);
     const [connection, setConnection] = useState<ConnectionState>('idle');
     const [typing, setTyping] = useState(false);
     const sockRef = useRef<BridgeSocket | null>(null);
     const itemsRef = useRef<ChatItem[]>(seed);
+
+    const pendingMsgRef = useRef(pendingInitialMessage);
+    const onClearPendingRef = useRef(onClearPendingInitialMessage);
+
+    useEffect(() => {
+        pendingMsgRef.current = pendingInitialMessage;
+    }, [pendingInitialMessage]);
+
+    useEffect(() => {
+        onClearPendingRef.current = onClearPendingInitialMessage;
+    }, [onClearPendingInitialMessage]);
 
     // Keep ref in sync so the bridge callbacks see the latest items.
     useEffect(() => {
@@ -81,6 +97,26 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
                             return;
                         case 'registered':
                             setConnection('connected');
+                            if (pendingMsgRef.current && sockRef.current) {
+                                const initialMsg = pendingMsgRef.current;
+                                pendingMsgRef.current = null;
+                                const msgId = cryptoId();
+                                appendItem({
+                                    id: msgId,
+                                    kind: 'user',
+                                    content: initialMsg,
+                                    createdAt: Date.now(),
+                                });
+                                sockRef.current.sendMessage({
+                                    msgId,
+                                    sessionKey: session.sessionKey,
+                                    userId: 'oneagents-user',
+                                    userName: 'You',
+                                    content: initialMsg,
+                                });
+                                setTyping(true);
+                                onClearPendingRef.current?.();
+                            }
                             return;
                         case 'close':
                             setConnection('reconnecting');
