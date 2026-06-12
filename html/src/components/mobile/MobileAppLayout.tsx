@@ -1,16 +1,15 @@
 import { h, Component, Fragment } from 'preact';
 import { effect } from '@preact/signals';
-import type { ITerminalOptions } from '@xterm/xterm';
 
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
 import { isChat } from '../types';
-import { MiddleCanvas } from '../canvas/MiddleCanvas';
-import { RightPanel } from '../drawer/RightPanel';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
-import { SystemSettings } from '../settings/SystemSettings';
-import { FileDetailView } from '../drawer/FileDetailView';
 import { TaskList } from '../drawer/TaskList';
-import { fsService } from '../../services/fsService';
+import { WorkbenchCanvas } from '../shared/WorkbenchCanvas';
+import { RightPanelHost } from '../shared/RightPanelHost';
+import { SystemSettingsHost } from '../shared/SystemSettingsHost';
+import { FilePreviewContent } from '../shared/FilePreviewContent';
+import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -18,17 +17,7 @@ import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
-import {
-    lightTermTheme,
-    darkTermTheme,
-    baseTermOptions,
-    wsUrl,
-    tokenUrl,
-    clientOptions,
-    flowControl,
-} from '../terminal/terminalConfig';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
-import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 import './MobileAppLayout.scss';
 
 /**
@@ -216,36 +205,18 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
             activeMoreSubView,
             activeSettingsCategory,
         } = this.state;
-        const { tabs, activeTabId, ccProvidersUrl, ccConnectUrl, activeDrawerTab, accessAuthRequired } = state;
+        const { tabs, activeTabId, ccProvidersUrl, activeDrawerTab } = state;
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
         const workspacesLoading = wsStore.workspacesLoading.value;
         const activeSession = sess.activeSession.value;
         const tmuxMouseOn = sess.tmuxMouseOn.value;
-        const searchQuery = fs.searchQuery.value;
-        const selectedFilterTag = fs.selectedFilterTag.value;
-        const favoriteFiles = fs.favoriteFiles.value;
-        const isEditingDetail = fs.isEditingDetail.value;
         const selectedFsEntry = fs.selectedFsEntry.value;
-        const fileContent = fs.fileContent.value;
-        const editedContent = fs.editedContent.value;
-        const fileLoading = fs.fileLoading.value;
-        const fileSaving = fs.fileSaving.value;
-        const fileSaveMsg = fs.fileSaveMsg.value;
-        const isImagePreview = fs.isImagePreview.value;
         const language = ui.language.value;
         const theme = ui.theme.value;
         const keyboardVisible = ui.keyboardVisible.value;
         const viewportHeight = ui.viewportHeight.value;
-        const isMobile = ui.isMobile.value;
-
-        const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
-        const termOptions = {
-            ...baseTermOptions,
-            theme: currentTheme,
-            fontSize: 12,
-        } as ITerminalOptions;
 
         const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId || w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
@@ -617,44 +588,17 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                     />
                                     <div class="workspace-body-container" style="flex: 1; min-height: 0;">
                                         {activeDrawerTab === 'none' && (
-                                            <MiddleCanvas
-                                                activeTab={
-                                                    state.activeTab as 'terminal' | 'agents' | 'console' | 'folders'
-                                                }
-                                                wsUrl={wsUrl}
-                                                tokenUrl={tokenUrl}
-                                                clientOptions={clientOptions}
-                                                termOptions={termOptions}
-                                                flowControl={flowControl}
-                                                isMobile={isMobile}
-                                                onMobileDetect={isMobile => (ui.isMobile.value = isMobile)}
-                                                onKeyboardStateChange={app.handleKeyboardStateChange}
-                                                tmuxMouseOn={tmuxMouseOn}
-                                                onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                language={language}
-                                                activeChatSession={
-                                                    activeSession && isChat(activeSession) ? activeSession : null
-                                                }
-                                            />
+                                            <WorkbenchCanvas app={app} state={state} fontSize={12} />
                                         )}
 
                                         {activeDrawerTab !== 'none' && (
                                             <div class="mobile-drawer-flat-container">
-                                                <RightPanel
-                                                    activeDrawerTab={activeDrawerTab}
+                                                <RightPanelHost
+                                                    app={app}
+                                                    state={state}
                                                     activeWorkspaceId={selectedWorkspaceId}
                                                     activeWorkspacePath={activeWorkspacePath}
                                                     rightPanelWidth={window.innerWidth}
-                                                    closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
-                                                    ccConnectUrl={ccConnectUrl}
-                                                    onRefreshFlatFiles={async () => {
-                                                        fs.loadDir('', null);
-                                                        const isSearching =
-                                                            searchQuery !== '' || selectedFilterTag !== 'all';
-                                                        if (isSearching) {
-                                                            fs.loadFlatFiles();
-                                                        }
-                                                    }}
                                                     onToggleFullscreen={() => {
                                                         if (selectedFsEntry) {
                                                             const encodedPath = selectedFsEntry.path
@@ -664,10 +608,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             window.open(`/api/fs/view/${encodedPath}`, '_blank');
                                                         }
                                                     }}
-                                                    onShareFile={app.shareFile}
-                                                    accessTokenExists={state.accessAuthRequired}
-                                                    onGenerateAccessToken={app.generateAccessToken}
-                                                    onRevokeAccessToken={app.revokeAccessToken}
                                                     onSelectSession={s => app.selectSession(s)}
                                                 />
                                             </div>
@@ -683,13 +623,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                         <div class="mobile-tab-content">
                             {ccProvidersUrl ? (
                                 <div class="mobile-iframe-container" style="flex: 1; min-height: 0; overflow: hidden;">
-                                    <cc-connect-panel
-                                        id="cc-providers-panel"
-                                        route={extractCcRedirect(ccProvidersUrl, '/providers')}
-                                        theme={theme}
-                                        lang={language}
-                                        auth-token={extractCcToken(ccProvidersUrl)}
-                                        style="width: 100%; height: 100%; display: flex; flex-direction: column;"
+                                    <CcProvidersPanel
+                                        ccProvidersUrl={ccProvidersUrl}
+                                        panelStyle="width: 100%; height: 100%; display: flex; flex-direction: column;"
                                     />
                                 </div>
                             ) : (
@@ -951,16 +887,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <SystemSettings
-                                                    theme={theme}
-                                                    toggleTheme={ui.toggleTheme}
-                                                    language={language}
-                                                    toggleLanguage={ui.toggleLanguage}
-                                                    tmuxMouseOn={tmuxMouseOn}
-                                                    onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                    accessTokenExists={accessAuthRequired}
-                                                    onGenerateAccessToken={app.generateAccessToken}
-                                                    onRevokeAccessToken={app.revokeAccessToken}
+                                                <SystemSettingsHost
+                                                    app={app}
+                                                    state={state}
                                                     activeCategory={activeSettingsCategory}
                                                 />
                                             ))}
@@ -990,39 +919,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                 class="mobile-subview-content"
                                 style="background-color: var(--bg-panel); padding: 12px 16px;"
                             >
-                                {selectedFsEntry ? (
-                                    <FileDetailView
-                                        selectedFsEntry={selectedFsEntry}
-                                        favoriteFiles={favoriteFiles}
-                                        detailFullscreen={false}
-                                        isEditingDetail={isEditingDetail}
-                                        fileContent={fileContent}
-                                        editedContent={editedContent}
-                                        fileLoading={fileLoading}
-                                        fileSaving={fileSaving}
-                                        fileSaveMsg={fileSaveMsg}
-                                        isImagePreview={isImagePreview}
-                                        imageUrl={fsService.imageUrl(selectedFsEntry.path)}
-                                        onBackToList={() => app.closeTab(activeTabId)}
-                                        onToggleFavorite={fs.toggleFavorite}
-                                        onCopyContent={fs.copyFileContent}
-                                        onDownloadFile={fs.downloadFile}
-                                        onRenameFile={fs.renameFile}
-                                        onToggleFullscreen={() => {}}
-                                        onShareFile={app.shareFile}
-                                        onSaveFile={fs.saveFile}
-                                        onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
-                                        onEditedContentChange={content => (fs.editedContent.value = content)}
-                                        onOpenPreview={undefined}
-                                        isStandalone={true}
-                                        language={language}
-                                    />
-                                ) : (
-                                    <div class="fb-loading">
-                                        <div class="fb-loading-spinner" />
-                                        <span>{t('app.loading.preview', language)}</span>
-                                    </div>
-                                )}
+                                <FilePreviewContent app={app} activeTabId={activeTabId} onOpenPreview={undefined} />
                             </div>
                         </div>
                     )}

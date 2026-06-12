@@ -1,34 +1,23 @@
 import { h, Component, Fragment } from 'preact';
-import type { ITerminalOptions } from '@xterm/xterm';
 import { isFullPageTab, isChat, AGENT_TYPE_LABELS } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
 import { NewChatHome } from '../chat/NewChatHome';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
-import { MiddleCanvas } from '../canvas/MiddleCanvas';
-import { RightPanel } from '../drawer/RightPanel';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
-import { SystemSettings } from '../settings/SystemSettings';
-import { FileDetailView } from '../drawer/FileDetailView';
 import { TaskList } from '../drawer/TaskList';
-import { fsService } from '../../services/fsService';
+import { WorkbenchCanvas } from '../shared/WorkbenchCanvas';
+import { RightPanelHost } from '../shared/RightPanelHost';
+import { SystemSettingsHost } from '../shared/SystemSettingsHost';
+import { FilePreviewContent } from '../shared/FilePreviewContent';
+import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
-import {
-    lightTermTheme,
-    darkTermTheme,
-    baseTermOptions,
-    wsUrl,
-    tokenUrl,
-    clientOptions,
-    flowControl,
-} from '../terminal/terminalConfig';
 import { getModuleByTab } from '../../modules/registry';
 import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
-import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -38,7 +27,7 @@ interface DesktopAppLayoutProps {
 export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
     render() {
         const { app, state } = this.props;
-        const { tabs, activeTabId, activeDrawerTab, ccProvidersUrl, ccConnectUrl, accessAuthRequired } = state;
+        const { tabs, activeTabId, activeDrawerTab, ccProvidersUrl } = state;
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
@@ -46,30 +35,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const sidebarCollapsedGroups = wsStore.sidebarCollapsedGroups.value;
         const activeSession = sess.activeSession.value;
         const tmuxMouseOn = sess.tmuxMouseOn.value;
-        const searchQuery = fs.searchQuery.value;
-        const selectedFilterTag = fs.selectedFilterTag.value;
-        const favoriteFiles = fs.favoriteFiles.value;
-        const isEditingDetail = fs.isEditingDetail.value;
-        const selectedFsEntry = fs.selectedFsEntry.value;
-        const fileContent = fs.fileContent.value;
-        const editedContent = fs.editedContent.value;
-        const fileLoading = fs.fileLoading.value;
-        const fileSaving = fs.fileSaving.value;
-        const fileSaveMsg = fs.fileSaveMsg.value;
-        const isImagePreview = fs.isImagePreview.value;
         const language = ui.language.value;
         const theme = ui.theme.value;
         const leftSidebarOpen = ui.leftSidebarOpen.value;
         const leftSidebarWidth = ui.leftSidebarWidth.value;
         const keyboardVisible = ui.keyboardVisible.value;
-        const isMobile = ui.isMobile.value;
-
-        const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
-        const termOptions = {
-            ...baseTermOptions,
-            theme: currentTheme,
-            fontSize: 13, // Desktop standard
-        } as ITerminalOptions;
 
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
@@ -260,13 +230,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         }}
                                     >
                                         {activeDrawerTab === 'providers' && ccProvidersUrl && (
-                                            <cc-connect-panel
-                                                id="cc-providers-panel"
-                                                route={extractCcRedirect(ccProvidersUrl, '/providers')}
-                                                theme={theme}
-                                                lang={language}
-                                                auth-token={extractCcToken(ccProvidersUrl)}
-                                                style={{
+                                            <CcProvidersPanel
+                                                ccProvidersUrl={ccProvidersUrl}
+                                                panelStyle={{
                                                     width: '100%',
                                                     height: '100%',
                                                     display: 'flex',
@@ -321,16 +287,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     height: '100%',
                                                 }}
                                             >
-                                                <SystemSettings
-                                                    theme={theme}
-                                                    toggleTheme={ui.toggleTheme}
-                                                    language={language}
-                                                    toggleLanguage={ui.toggleLanguage}
-                                                    tmuxMouseOn={tmuxMouseOn}
-                                                    onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                    accessTokenExists={accessAuthRequired}
-                                                    onGenerateAccessToken={app.generateAccessToken}
-                                                    onRevokeAccessToken={app.revokeAccessToken}
+                                                <SystemSettingsHost
+                                                    app={app}
+                                                    state={state}
                                                     activeCategory={state.activeSettingsCategory}
                                                 />
                                             </div>
@@ -351,24 +310,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 language={language}
                                             />
                                         ) : (
-                                            <MiddleCanvas
-                                                activeTab={
-                                                    state.activeTab as 'terminal' | 'agents' | 'console' | 'folders'
-                                                }
-                                                wsUrl={wsUrl}
-                                                tokenUrl={tokenUrl}
-                                                clientOptions={clientOptions}
-                                                termOptions={termOptions}
-                                                flowControl={flowControl}
-                                                isMobile={isMobile}
-                                                onMobileDetect={isMobile => (ui.isMobile.value = isMobile)}
-                                                onKeyboardStateChange={app.handleKeyboardStateChange}
-                                                tmuxMouseOn={tmuxMouseOn}
-                                                onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                language={language}
-                                                activeChatSession={
-                                                    activeSession && isChat(activeSession) ? activeSession : null
-                                                }
+                                            <WorkbenchCanvas
+                                                app={app}
+                                                state={state}
+                                                fontSize={13} // Desktop standard
                                                 pendingInitialMessage={sess.pendingInitialMessage.value}
                                                 onClearPendingInitialMessage={app.clearPendingInitialMessage}
                                             />
@@ -384,19 +329,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         )}
 
                                         {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                                        <RightPanel
-                                            activeDrawerTab={activeDrawerTab}
+                                        <RightPanelHost
+                                            app={app}
+                                            state={state}
                                             activeWorkspaceId={activeWorkspaceId}
                                             activeWorkspacePath={activeWorkspacePath}
                                             rightPanelWidth={ui.rightPanelWidth.value}
-                                            closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
-                                            ccConnectUrl={ccConnectUrl}
-                                            onRefreshFlatFiles={async () => {
-                                                fs.loadDir('', null);
-                                                const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
-                                                if (isSearching) {
-                                                    fs.loadFlatFiles();
-                                                }
+                                            onExtraRefresh={async () => {
                                                 try {
                                                     await app.checkAccessStatus();
                                                     await Promise.all([app.loadWorkspaces(true), app.loadTerminals()]);
@@ -435,13 +374,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     }
                                                 }
                                             }}
-                                            onShareFile={app.shareFile}
                                             onOpenPreview={
                                                 IS_DESKTOP ? (path, name) => app.openPreviewTab(path, name) : undefined
                                             }
-                                            accessTokenExists={state.accessAuthRequired}
-                                            onGenerateAccessToken={app.generateAccessToken}
-                                            onRevokeAccessToken={app.revokeAccessToken}
                                         />
                                     </Fragment>
                                 )}
@@ -460,43 +395,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         class="fb-detail-view-tab-container"
                                         style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;"
                                     >
-                                        {selectedFsEntry ? (
-                                            <FileDetailView
-                                                selectedFsEntry={selectedFsEntry}
-                                                favoriteFiles={favoriteFiles}
-                                                detailFullscreen={false}
-                                                isEditingDetail={isEditingDetail}
-                                                fileContent={fileContent}
-                                                editedContent={editedContent}
-                                                fileLoading={fileLoading}
-                                                fileSaving={fileSaving}
-                                                fileSaveMsg={fileSaveMsg}
-                                                isImagePreview={isImagePreview}
-                                                imageUrl={fsService.imageUrl(selectedFsEntry.path)}
-                                                onBackToList={() => app.closeTab(activeTabId)}
-                                                onToggleFavorite={fs.toggleFavorite}
-                                                onCopyContent={fs.copyFileContent}
-                                                onDownloadFile={fs.downloadFile}
-                                                onRenameFile={fs.renameFile}
-                                                onToggleFullscreen={() => {}}
-                                                onShareFile={app.shareFile}
-                                                onSaveFile={fs.saveFile}
-                                                onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
-                                                onEditedContentChange={content => (fs.editedContent.value = content)}
-                                                onOpenPreview={
-                                                    IS_DESKTOP
-                                                        ? (path, name) => app.openPreviewTab(path, name)
-                                                        : undefined
-                                                }
-                                                isStandalone={true}
-                                                language={language}
-                                            />
-                                        ) : (
-                                            <div class="fb-loading">
-                                                <div class="fb-loading-spinner" />
-                                                <span>{t('app.loading.preview', language)}</span>
-                                            </div>
-                                        )}
+                                        <FilePreviewContent
+                                            app={app}
+                                            activeTabId={activeTabId}
+                                            onOpenPreview={
+                                                IS_DESKTOP ? (path, name) => app.openPreviewTab(path, name) : undefined
+                                            }
+                                        />
                                     </div>
                                 )}
                                 <div
