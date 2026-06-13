@@ -13,6 +13,10 @@
   },
   "permissions": [
     "core:default",
-    "allow-browser-commands"
+    "allow-browser-commands",
+    "allow-updater",
+    "updater:default",
+    "process:default",
+    "dialog:default"
   ]
 }

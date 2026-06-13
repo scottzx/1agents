@@ -415,6 +415,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/version", sysHandler.Version)             // GET  — current & latest version, has_update flag
 	mux.HandleFunc("/api/system/update", sysHandler.Update)               // POST — trigger OTA update (non-blocking, returns 202)
 	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)  // GET  — real-time update progress log
+	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)              // GET  — frontend OTA manifest (proxied from GitHub Releases)
 
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)

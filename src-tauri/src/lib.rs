@@ -1,3 +1,5 @@
+mod updater;
+
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
@@ -98,8 +100,12 @@ pub fn run() {
     let child_process_clone = Arc::clone(&child_process);
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            open_in_external_browser
+            open_in_external_browser,
+            updater::check_desktop_update,
         ])
         .setup(move |app| {
             if cfg!(debug_assertions) {

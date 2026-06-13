@@ -1,0 +1,49 @@
+name: OTA Verify
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/build-manifest.py'
+      - 'scripts/build-tauri-manifest.py'
+      - 'backend/internal/system/**'
+      - '.github/workflows/auto-release.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Dry-run manifest generation
+        run: |
+          # Create a fake artifacts directory with empty tarballs
+          # so the script exercises all code paths.
+          mkdir -p _fake
+          touch _fake/1agents-linux-amd64.tar.gz
+          touch _fake/1agents-linux-arm64.tar.gz
+          touch _fake/1agents-darwin-arm64.tar.gz
+          touch _fake/1agents-windows-amd64.tar.gz
+          touch _fake/frontend-vTEST.tar.gz
+
+          python3 scripts/build-manifest.py \
+            --version vTEST \
+            --artifacts _fake \
+            --output _fake/manifest.json
+
+          python3 scripts/build-tauri-manifest.py \
+            --version vTEST \
+            --artifacts _fake \
+            --output-dir _fake/desktop
+
+          # Validate JSON schema (minimal check: required keys)
+          python3 -c "
+import json
+
+with open('_fake/manifest.json') as f:
+    m = json.load(f)
+assert 'components' in m, 'missing components'
+assert 'frontend' in m['components'], 'missing frontend'
+assert 'backend' in m['components'], 'missing backend'
+assert m['channel'] == 'stable'
+print('OK: manifest.json passes schema check')
+          "

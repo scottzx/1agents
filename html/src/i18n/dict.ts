@@ -565,6 +565,10 @@ export const zhCN: Record<string, string> = {
     'mobile.confirmDeleteSession.message': '确定要删除会话 “{name}” 吗?此操作无法撤销。',
     'mobile.confirmDeleteWorkspace.title': '删除工作空间',
     'mobile.confirmDeleteWorkspace.message': '确定要删除工作空间 “{name}” 吗?此操作无法撤销。',
+    // ── OTA update banner ──
+    'app.ota.banner.body': '发现新版本: {current} → {latest}',
+    'app.ota.banner.refresh': '立即刷新',
+    'app.ota.banner.dismiss': '稍后再说',
 };
 
 // English dictionary.
@@ -1145,4 +1149,8 @@ export const enUS: Record<string, string> = {
     'mobile.confirmDeleteSession.message': 'Delete session "{name}"? This action cannot be undone.',
     'mobile.confirmDeleteWorkspace.title': 'Delete workspace',
     'mobile.confirmDeleteWorkspace.message': 'Delete workspace "{name}"? This action cannot be undone.',
+    // ── OTA update banner ──
+    'app.ota.banner.body': 'New version available: {current} → {latest}',
+    'app.ota.banner.refresh': 'Refresh now',
+    'app.ota.banner.dismiss': 'Dismiss',
 };
