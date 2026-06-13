@@ -156,7 +156,7 @@ function ModuleLink({ link, active, onClick, language }: ModuleLinkProps) {
             {link.count !== null && link.count !== undefined && (
                 <span class="module-nav-link__count">{link.count}</span>
             )}
-            {link.badge === 'review' && <span class="module-nav-link__badge">!</span>}
+            {link.badge === 'review' && (link.count ?? 0) > 0 && <span class="module-nav-link__badge">!</span>}
         </button>
     );
 }
