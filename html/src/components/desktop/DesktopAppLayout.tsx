@@ -240,7 +240,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         }}
                                     >
                                         <ContentViewHost
-                                            view={primaryViewFor(activeTabId, tabsStore.activeTab.value, activeDrawerTab)}
+                                            view={primaryViewFor(
+                                                activeTabId,
+                                                tabsStore.activeTab.value,
+                                                activeDrawerTab
+                                            )}
                                             app={app}
                                             state={state}
                                         />
@@ -249,7 +253,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     <Fragment>
                                         {/* [PRIMARY PANE]: terminal / chat / new-chat workbench */}
                                         <ContentViewHost
-                                            view={primaryViewFor(activeTabId, tabsStore.activeTab.value, activeDrawerTab)}
+                                            view={primaryViewFor(
+                                                activeTabId,
+                                                tabsStore.activeTab.value,
+                                                activeDrawerTab
+                                            )}
                                             app={app}
                                             state={state}
                                             fontSize={13}

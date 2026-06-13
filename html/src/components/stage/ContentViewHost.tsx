@@ -104,7 +104,10 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
-                    <TaskList workspaceId={wsStore.activeWorkspaceId.value} onSelectSession={s => sess.selectSession(s)} />
+                    <TaskList
+                        workspaceId={wsStore.activeWorkspaceId.value}
+                        onSelectSession={s => sess.selectSession(s)}
+                    />
                 </div>
             );
         case 'channels':
@@ -138,7 +141,11 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
         case 'settings':
             return (
                 <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                    <SystemSettingsHost app={app} state={state} activeCategory={tabsStore.activeSettingsCategory.value} />
+                    <SystemSettingsHost
+                        app={app}
+                        state={state}
+                        activeCategory={tabsStore.activeSettingsCategory.value}
+                    />
                 </div>
             );
         default:
