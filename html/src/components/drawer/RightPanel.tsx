@@ -1,12 +1,15 @@
 import { h } from 'preact';
-import { useState, useCallback } from 'preact/hooks';
-import { FsEntry, RightDrawerTab, Session } from '../types';
+import { useState } from 'preact/hooks';
+import { RightDrawerTab, Session } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
-import { t, type Lang } from '../i18n';
+import { t } from '../../i18n';
+import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
+import * as ui from '../../stores/uiStore';
+import * as fs from '../../stores/fsStore';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -17,56 +20,16 @@ interface RightPanelProps {
     ccConnectUrl?: string;
     onSelectSession?: (session: Session) => void;
 
-    // Theme settings props
-    theme: 'light' | 'dark';
-    toggleTheme: (themeMode?: 'light' | 'dark') => void;
-    language: Lang;
-    toggleLanguage: (lang: Lang) => void;
-
-    // File Browser / Detail State
-    flatFiles: FsEntry[];
-    flatFilesLoading: boolean;
-    searchQuery: string;
-    selectedFilterTag: 'all' | 'doc' | 'img' | 'code';
-    viewMode: 'list' | 'detail';
-    favoriteFiles: string[];
-    detailFullscreen: boolean;
-    isEditingDetail: boolean;
-    selectedFsEntry: FsEntry | null;
-    fileContent: string;
-    editedContent: string;
-    fileLoading: boolean;
-    fileSaving: boolean;
-    fileSaveMsg: string;
-    isImagePreview: boolean;
-    imageUrl: string;
-
-    // File Handlers
-    onSearchQueryChange: (query: string) => void;
-    onFilterTagChange: (tag: 'all' | 'doc' | 'img' | 'code') => void;
+    // Context-dependent file actions (need app/workspace knowledge)
     onRefreshFlatFiles: () => void;
-    onOpenFileDetail: (entry: FsEntry) => void;
-    onBackToList: () => void;
-    onToggleFavorite: (path: string) => void;
-    onCopyContent: () => void;
-    onDownloadFile: () => void;
-    onRenameFile: () => void;
     onToggleFullscreen: () => void;
     onShareFile: () => void;
-    onSaveFile: () => void;
-    onToggleEditing: (isEditing: boolean) => void;
-    onEditedContentChange: (content: string) => void;
     onOpenPreview?: (path: string, name: string) => void;
 
     // Access token props
     accessTokenExists: boolean;
     onGenerateAccessToken: () => void;
     onRevokeAccessToken: () => void;
-
-    // Tree system props
-    fsEntries: FsEntry[];
-    fsLoading: boolean;
-    onToggleFsDir: (entry: FsEntry) => void;
 }
 
 export function RightPanel({
@@ -76,69 +39,25 @@ export function RightPanel({
     rightPanelWidth,
     closeDrawer,
     ccConnectUrl,
-
-    theme,
-    toggleTheme,
-    language,
-    toggleLanguage,
-
-    flatFiles,
-    flatFilesLoading,
-    searchQuery,
-    selectedFilterTag,
-    viewMode,
-    favoriteFiles,
-    detailFullscreen,
-    isEditingDetail,
-    selectedFsEntry,
-    fileContent,
-    editedContent,
-    fileLoading,
-    fileSaving,
-    fileSaveMsg,
-    isImagePreview,
-    imageUrl,
-
-    onSearchQueryChange,
-    onFilterTagChange,
     onRefreshFlatFiles,
-    onOpenFileDetail,
-    onBackToList,
-    onToggleFavorite,
-    onCopyContent,
-    onDownloadFile,
-    onRenameFile,
     onToggleFullscreen,
     onShareFile,
-    onSaveFile,
-    onToggleEditing,
-    onEditedContentChange,
     onOpenPreview,
-
-    // Access token props
     accessTokenExists,
     onGenerateAccessToken,
     onRevokeAccessToken,
-
-    // Tree props
-    fsEntries,
-    fsLoading,
-    onToggleFsDir,
 }: RightPanelProps) {
     const [gitLoading, setGitLoading] = useState(false);
     const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
 
-    // Stable callback identity so FlatFileBrowser's referential-equality
-    // short-circuits (and the parent toggleFsDir's stable reference downstream)
-    // don't churn on every RightPanel re-render (e.g. when activeDrawerTab or
-    // gitLoading toggles). Without useCallback, every RightPanel render would
-    // hand FlatFileBrowser a new onToggleFsDir prop reference and force a
-    // re-render of the entire tree.
-    const handleToggleFsDir = useCallback((entry: FsEntry) => onToggleFsDir(entry), [onToggleFsDir]);
+    const language = ui.language.value;
+    const theme = ui.theme.value;
+    const viewMode = fs.viewMode.value;
+    const selectedFsEntry = fs.selectedFsEntry.value;
 
     let isSpinning = false;
     if (activeDrawerTab === 'files') {
-        isSpinning = fsLoading || flatFilesLoading;
+        isSpinning = fs.fsLoading.value || fs.flatFilesLoading.value;
     } else if (activeDrawerTab === 'git') {
         isSpinning = gitLoading;
     }
@@ -237,43 +156,46 @@ export function RightPanel({
                 {activeDrawerTab === 'files' &&
                     (viewMode === 'list' ? (
                         <FlatFileBrowser
-                            flatFiles={flatFiles}
-                            flatFilesLoading={flatFilesLoading}
-                            searchQuery={searchQuery}
-                            selectedFilterTag={selectedFilterTag}
-                            favoriteFiles={favoriteFiles}
-                            onSearchQueryChange={onSearchQueryChange}
-                            onFilterTagChange={onFilterTagChange}
-                            onOpenFileDetail={onOpenFileDetail}
-                            fsEntries={fsEntries}
-                            fsLoading={fsLoading}
-                            onToggleFsDir={handleToggleFsDir}
+                            flatFiles={fs.flatFiles.value}
+                            flatFilesLoading={fs.flatFilesLoading.value}
+                            searchQuery={fs.searchQuery.value}
+                            selectedFilterTag={fs.selectedFilterTag.value}
+                            favoriteFiles={fs.favoriteFiles.value}
+                            onSearchQueryChange={fs.handleSearchChange}
+                            onFilterTagChange={fs.handleFilterTagChange}
+                            onOpenFileDetail={fs.openFileDetail}
+                            fsEntries={fs.fsEntries.value}
+                            fsLoading={fs.fsLoading.value}
+                            onToggleFsDir={fs.toggleFsDir}
                             language={language}
                         />
                     ) : (
                         selectedFsEntry && (
                             <FileDetailView
                                 selectedFsEntry={selectedFsEntry}
-                                favoriteFiles={favoriteFiles}
-                                detailFullscreen={detailFullscreen}
-                                isEditingDetail={isEditingDetail}
-                                fileContent={fileContent}
-                                editedContent={editedContent}
-                                fileLoading={fileLoading}
-                                fileSaving={fileSaving}
-                                fileSaveMsg={fileSaveMsg}
-                                isImagePreview={isImagePreview}
-                                imageUrl={imageUrl}
-                                onBackToList={onBackToList}
-                                onToggleFavorite={onToggleFavorite}
-                                onCopyContent={onCopyContent}
-                                onDownloadFile={onDownloadFile}
-                                onRenameFile={onRenameFile}
+                                favoriteFiles={fs.favoriteFiles.value}
+                                detailFullscreen={fs.detailFullscreen.value}
+                                isEditingDetail={fs.isEditingDetail.value}
+                                fileContent={fs.fileContent.value}
+                                editedContent={fs.editedContent.value}
+                                fileLoading={fs.fileLoading.value}
+                                fileSaving={fs.fileSaving.value}
+                                fileSaveMsg={fs.fileSaveMsg.value}
+                                isImagePreview={fs.isImagePreview.value}
+                                imageUrl={fsService.imageUrl(selectedFsEntry.path)}
+                                onBackToList={() => {
+                                    fs.viewMode.value = 'list';
+                                    fs.detailFullscreen.value = false;
+                                }}
+                                onToggleFavorite={fs.toggleFavorite}
+                                onCopyContent={fs.copyFileContent}
+                                onDownloadFile={fs.downloadFile}
+                                onRenameFile={fs.renameFile}
                                 onToggleFullscreen={onToggleFullscreen}
                                 onShareFile={onShareFile}
-                                onSaveFile={onSaveFile}
-                                onToggleEditing={onToggleEditing}
-                                onEditedContentChange={onEditedContentChange}
+                                onSaveFile={fs.saveFile}
+                                onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
+                                onEditedContentChange={content => (fs.editedContent.value = content)}
                                 onOpenPreview={onOpenPreview}
                                 language={language}
                             />
@@ -293,9 +215,9 @@ export function RightPanel({
                 {activeDrawerTab === 'settings' && (
                     <ThemeSettings
                         theme={theme}
-                        toggleTheme={toggleTheme}
+                        toggleTheme={ui.toggleTheme}
                         language={language}
-                        toggleLanguage={toggleLanguage}
+                        toggleLanguage={ui.toggleLanguage}
                         accessTokenExists={accessTokenExists}
                         onGenerateAccessToken={onGenerateAccessToken}
                         onRevokeAccessToken={onRevokeAccessToken}

@@ -1,29 +1,25 @@
 import { h, Component, Fragment } from 'preact';
-import type { ITerminalOptions } from '@xterm/xterm';
 import { isFullPageTab, isChat, AGENT_TYPE_LABELS } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
 import { NewChatHome } from '../chat/NewChatHome';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
-import { MiddleCanvas } from '../canvas/MiddleCanvas';
-import { RightPanel } from '../drawer/RightPanel';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
-import { SystemSettings } from '../settings/SystemSettings';
-import { FileDetailView } from '../drawer/FileDetailView';
 import { TaskList } from '../drawer/TaskList';
-import { fsService } from '../../services/fsService';
+import { WorkbenchCanvas } from '../shared/WorkbenchCanvas';
+import { RightPanelHost } from '../shared/RightPanelHost';
+import { SystemSettingsHost } from '../shared/SystemSettingsHost';
+import { FilePreviewContent } from '../shared/FilePreviewContent';
+import { CcProvidersPanel } from '../shared/CcProvidersPanel';
+import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
-import {
-    lightTermTheme,
-    darkTermTheme,
-    baseTermOptions,
-    wsUrl,
-    tokenUrl,
-    clientOptions,
-    flowControl,
-} from '../terminal/terminalConfig';
+import * as ui from '../../stores/uiStore';
 import { getModuleByTab } from '../../modules/registry';
-import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
+import * as fs from '../../stores/fsStore';
+import * as wsStore from '../../stores/workspaceStore';
+import * as sess from '../../stores/sessionStore';
+import * as modal from '../../stores/modalStore';
+import * as tabsStore from '../../stores/tabsStore';
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -33,49 +29,22 @@ interface DesktopAppLayoutProps {
 export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
     render() {
         const { app, state } = this.props;
-        const {
-            workspaces,
-            activeWorkspaceId,
-            language,
-            tabs,
-            activeTabId,
-            folders,
-            workspacesLoading,
-            leftSidebarOpen,
-            leftSidebarWidth,
-            activeDrawerTab,
-            theme,
-            keyboardVisible,
-            activeSession,
-            tmuxMouseOn,
-            ccProvidersUrl,
-            ccConnectUrl,
-            flatFiles,
-            flatFilesLoading,
-            searchQuery,
-            selectedFilterTag,
-            viewMode,
-            favoriteFiles,
-            detailFullscreen,
-            isEditingDetail,
-            selectedFsEntry,
-            fileContent,
-            editedContent,
-            fileLoading,
-            fileSaving,
-            fileSaveMsg,
-            isImagePreview,
-            accessAuthRequired,
-            isMobile,
-            sidebarCollapsedGroups,
-        } = state;
-
-        const currentTheme = theme === 'light' ? lightTermTheme : darkTermTheme;
-        const termOptions = {
-            ...baseTermOptions,
-            theme: currentTheme,
-            fontSize: 13, // Desktop standard
-        } as ITerminalOptions;
+        const tabs = tabsStore.tabs.value;
+        const activeTabId = tabsStore.activeTabId.value;
+        const activeDrawerTab = tabsStore.activeDrawerTab.value;
+        const ccProvidersUrl = wsStore.ccProvidersUrl.value;
+        const workspaces = wsStore.workspaces.value;
+        const activeWorkspaceId = wsStore.activeWorkspaceId.value;
+        const folders = wsStore.folders.value;
+        const workspacesLoading = wsStore.workspacesLoading.value;
+        const sidebarCollapsedGroups = wsStore.sidebarCollapsedGroups.value;
+        const activeSession = sess.activeSession.value;
+        const tmuxMouseOn = sess.tmuxMouseOn.value;
+        const language = ui.language.value;
+        const theme = ui.theme.value;
+        const leftSidebarOpen = ui.leftSidebarOpen.value;
+        const leftSidebarWidth = ui.leftSidebarWidth.value;
+        const keyboardVisible = ui.keyboardVisible.value;
 
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
@@ -99,7 +68,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     <div
                                         key={tab.id}
                                         class={`workspace-tab-item ${isActive ? 'active' : ''}`}
-                                        onClick={() => app.selectTab(tab.id)}
+                                        onClick={() => tabsStore.selectTab(tab.id)}
                                     >
                                         <span class="tab-title">{tab.title}</span>
                                         {tab.closable && (
@@ -107,7 +76,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                 class="workspace-tab-close"
                                                 onClick={(e: MouseEvent) => {
                                                     e.stopPropagation();
-                                                    app.closeTab(tab.id);
+                                                    tabsStore.closeTab(tab.id);
                                                 }}
                                                 title={t('common.closeTab', language)}
                                             >
@@ -130,7 +99,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         </div>
                         <button
                             class="workspace-tab-add-btn"
-                            onClick={() => app.openBrowserTab('')}
+                            onClick={() => tabsStore.openBrowserTab('')}
                             title={t('common.openBrowserTab', language)}
                         >
                             <svg
@@ -162,29 +131,29 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 leftSidebarOpen={leftSidebarOpen}
                                 leftSidebarWidth={leftSidebarWidth}
                                 activeWorkspaceId={activeWorkspaceId}
-                                toggleLeftSidebar={app.toggleLeftSidebar}
-                                toggleFolder={app.toggleFolder}
-                                toggleDrawerTab={app.toggleDrawerTab}
+                                toggleLeftSidebar={ui.toggleLeftSidebar}
+                                toggleFolder={wsStore.toggleFolder}
+                                toggleDrawerTab={tabsStore.toggleDrawerTab}
                                 activeDrawerTab={activeDrawerTab}
-                                activeDiscoveryCategory={state.discoveryCategory}
-                                onSelectDiscoveryCategory={app.selectDiscoveryCategory}
-                                onCreateWorkspace={app.openCreateWorkspacePicker}
-                                onRenameWorkspace={ws => app.openRenameWorkspaceModal(ws)}
-                                onDeleteWorkspace={app.deleteWorkspace}
-                                onSelectWorkspace={ws => app.selectWorkspace(ws)}
-                                onSelectSession={s => app.selectSession(s)}
-                                onTerminalCreate={(wsId, cwd) => app.createTerminal(wsId, cwd)}
-                                onTerminalKill={idx => app.killTerminal(idx)}
-                                onRenameSession={s => app.openRenameSessionModal(s)}
-                                onReorderFolders={app.reorderFolders}
+                                activeDiscoveryCategory={tabsStore.discoveryCategory.value}
+                                onSelectDiscoveryCategory={tabsStore.selectDiscoveryCategory}
+                                onCreateWorkspace={modal.openCreateWorkspacePicker}
+                                onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
+                                onDeleteWorkspace={wsStore.deleteWorkspace}
+                                onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
+                                onSelectSession={s => sess.selectSession(s)}
+                                onTerminalCreate={(wsId, cwd) => sess.createTerminal(wsId, cwd)}
+                                onTerminalKill={idx => sess.killTerminal(idx)}
+                                onRenameSession={s => modal.openRenameSessionModal(s)}
+                                onReorderFolders={wsStore.reorderFolders}
                                 language={language}
-                                moduleNav={app.buildModuleNav()}
-                                onChatCreate={app.openChatCreate}
-                                onChatKill={app.killChatSession}
+                                moduleNav={tabsStore.buildModuleNav()}
+                                onChatCreate={modal.openChatCreate}
+                                onChatKill={sess.killChatSession}
                                 collapsedGroups={sidebarCollapsedGroups}
-                                onToggleGroup={app.toggleSidebarGroup}
-                                onStartNewChat={app.onStartNewChat}
-                                activeTab={state.activeTab}
+                                onToggleGroup={wsStore.toggleSidebarGroup}
+                                onStartNewChat={sess.onStartNewChat}
+                                activeTab={tabsStore.activeTab.value}
                             />
 
                             {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -210,7 +179,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           preview-* / browser-*) render an overlay on top.
                         */}
                         <div class="kanban-background-layer">
-                            <TaskList workspaceId={activeWorkspaceId} onSelectSession={s => app.selectSession(s)} />
+                            <TaskList workspaceId={activeWorkspaceId} onSelectSession={s => sess.selectSession(s)} />
                         </div>
 
                         {/*
@@ -222,20 +191,20 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         {isShell && (
                             <WorkspaceHeader
                                 leftSidebarOpen={leftSidebarOpen}
-                                toggleLeftSidebar={app.toggleLeftSidebar}
+                                toggleLeftSidebar={ui.toggleLeftSidebar}
                                 activeDrawerTab={activeDrawerTab}
-                                toggleDrawerTab={app.toggleDrawerTab}
-                                activeTab={state.activeTab}
-                                setActiveTab={app.setActiveTab}
+                                toggleDrawerTab={tabsStore.toggleDrawerTab}
+                                activeTab={tabsStore.activeTab.value}
+                                setActiveTab={tabsStore.setActiveTab}
                                 theme={theme}
-                                toggleTheme={app.toggleTheme}
+                                toggleTheme={ui.toggleTheme}
                                 keyboardVisible={keyboardVisible}
                                 workspaceName={activeWorkspace?.name || ''}
                                 sessionName={activeSession?.name || ''}
                                 tmuxMouseOn={tmuxMouseOn}
-                                onTmuxMouseToggle={app.toggleTmuxMouse}
+                                onTmuxMouseToggle={sess.toggleTmuxMouse}
                                 language={language}
-                                moduleNav={app.buildModuleNav()}
+                                moduleNav={tabsStore.buildModuleNav()}
                                 hasChatSession={folders.some(
                                     f => f.id === activeWorkspaceId && f.sessions.some(isChat)
                                 )}
@@ -266,13 +235,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         }}
                                     >
                                         {activeDrawerTab === 'providers' && ccProvidersUrl && (
-                                            <cc-connect-panel
-                                                id="cc-providers-panel"
-                                                route={extractCcRedirect(ccProvidersUrl, '/providers')}
-                                                theme={theme}
-                                                lang={language}
-                                                auth-token={extractCcToken(ccProvidersUrl)}
-                                                style={{
+                                            <CcProvidersPanel
+                                                ccProvidersUrl={ccProvidersUrl}
+                                                panelStyle={{
                                                     width: '100%',
                                                     height: '100%',
                                                     display: 'flex',
@@ -285,9 +250,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         {activeDrawerTab === 'skills' &&
                                             (() => {
                                                 const skillsMod = getModuleByTab('skills');
+                                                const activeModulePath = tabsStore.activeModulePath.value;
                                                 const initialRoute =
-                                                    skillsMod && state.activeModulePath && activeDrawerTab === 'skills'
-                                                        ? state.activeModulePath
+                                                    skillsMod && activeModulePath && activeDrawerTab === 'skills'
+                                                        ? activeModulePath
                                                         : skillsMod
                                                           ? skillsMod.entryPath
                                                           : '/overview';
@@ -311,9 +277,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         {activeDrawerTab === 'discovery' && (
                                             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                                                 <DiscoveryPanel
-                                                    onOpenBrowserTab={IS_DESKTOP ? app.openBrowserTab : undefined}
+                                                    onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
                                                     language={language}
-                                                    scrollToCategory={state.discoveryCategory}
+                                                    scrollToCategory={tabsStore.discoveryCategory.value}
                                                 />
                                             </div>
                                         )}
@@ -327,17 +293,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     height: '100%',
                                                 }}
                                             >
-                                                <SystemSettings
-                                                    theme={theme}
-                                                    toggleTheme={app.toggleTheme}
-                                                    language={language}
-                                                    toggleLanguage={app.toggleLanguage}
-                                                    tmuxMouseOn={tmuxMouseOn}
-                                                    onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                    accessTokenExists={accessAuthRequired}
-                                                    onGenerateAccessToken={app.generateAccessToken}
-                                                    onRevokeAccessToken={app.revokeAccessToken}
-                                                    activeCategory={state.activeSettingsCategory}
+                                                <SystemSettingsHost
+                                                    app={app}
+                                                    state={state}
+                                                    activeCategory={tabsStore.activeSettingsCategory.value}
                                                 />
                                             </div>
                                         )}
@@ -345,38 +304,23 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 ) : (
                                     <Fragment>
                                         {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                        {state.activeTab === 'new_chat' ? (
+                                        {tabsStore.activeTab.value === 'new_chat' ? (
                                             <NewChatHome
                                                 workspaces={workspaces}
                                                 activeWorkspaceId={activeWorkspaceId}
-                                                onSelectWorkspace={ws => app.selectWorkspace(ws)}
+                                                onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
                                                 onSubmitChat={(wsId, agentType, prompt) => {
                                                     const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
-                                                    app.createChatSession(wsId, name, agentType, prompt);
+                                                    sess.createChatSession(wsId, name, agentType, prompt);
                                                 }}
                                                 language={language}
                                             />
                                         ) : (
-                                            <MiddleCanvas
-                                                activeTab={
-                                                    state.activeTab as 'terminal' | 'agents' | 'console' | 'folders'
-                                                }
-                                                wsUrl={wsUrl}
-                                                tokenUrl={tokenUrl}
-                                                clientOptions={clientOptions}
-                                                termOptions={termOptions}
-                                                flowControl={flowControl}
-                                                isMobile={isMobile}
-                                                onMobileDetect={isMobile => app.setState({ isMobile })}
-                                                onKeyboardStateChange={app.handleKeyboardStateChange}
-                                                tmuxMouseOn={tmuxMouseOn}
-                                                onTmuxMouseToggle={app.toggleTmuxMouse}
-                                                language={language}
-                                                activeChatSession={
-                                                    activeSession && isChat(activeSession) ? activeSession : null
-                                                }
-                                                pendingInitialMessage={state.pendingInitialMessage}
-                                                onClearPendingInitialMessage={app.clearPendingInitialMessage}
+                                            <WorkbenchCanvas
+                                                app={app}
+                                                fontSize={13} // Desktop standard
+                                                pendingInitialMessage={sess.pendingInitialMessage.value}
+                                                onClearPendingInitialMessage={sess.clearPendingInitialMessage}
                                             />
                                         )}
 
@@ -390,78 +334,46 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         )}
 
                                         {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
-                                        <RightPanel
-                                            activeDrawerTab={activeDrawerTab}
+                                        <RightPanelHost
+                                            app={app}
+                                            state={state}
                                             activeWorkspaceId={activeWorkspaceId}
                                             activeWorkspacePath={activeWorkspacePath}
-                                            rightPanelWidth={state.rightPanelWidth}
-                                            closeDrawer={() => app.setState({ activeDrawerTab: 'none' })}
-                                            ccConnectUrl={ccConnectUrl}
-                                            theme={theme}
-                                            toggleTheme={app.toggleTheme}
-                                            language={language}
-                                            toggleLanguage={app.toggleLanguage}
-                                            flatFiles={flatFiles}
-                                            flatFilesLoading={flatFilesLoading}
-                                            searchQuery={searchQuery}
-                                            selectedFilterTag={selectedFilterTag}
-                                            viewMode={viewMode}
-                                            favoriteFiles={favoriteFiles}
-                                            detailFullscreen={detailFullscreen}
-                                            isEditingDetail={isEditingDetail}
-                                            selectedFsEntry={selectedFsEntry}
-                                            fileContent={fileContent}
-                                            editedContent={editedContent}
-                                            fileLoading={fileLoading}
-                                            fileSaving={fileSaving}
-                                            fileSaveMsg={fileSaveMsg}
-                                            isImagePreview={isImagePreview}
-                                            imageUrl={fsService.imageUrl(selectedFsEntry?.path ?? '')}
-                                            onSearchQueryChange={app.handleSearchChange}
-                                            onFilterTagChange={app.handleFilterTagChange}
-                                            onRefreshFlatFiles={async () => {
-                                                app.loadDir('', null);
-                                                const isSearching = searchQuery !== '' || selectedFilterTag !== 'all';
-                                                if (isSearching) {
-                                                    app.loadFlatFiles();
-                                                }
+                                            rightPanelWidth={ui.rightPanelWidth.value}
+                                            onExtraRefresh={async () => {
                                                 try {
                                                     await app.checkAccessStatus();
-                                                    await Promise.all([app.loadWorkspaces(true), app.loadTerminals()]);
+                                                    await Promise.all([
+                                                        wsStore.loadWorkspaces(true),
+                                                        sess.loadTerminals(),
+                                                    ]);
 
-                                                    const { workspaces, activeWorkspaceId } = app.state;
+                                                    const workspaces = wsStore.workspaces.value;
+                                                    const activeWorkspaceId = wsStore.activeWorkspaceId.value;
                                                     if (!activeWorkspaceId && workspaces.length > 0) {
-                                                        await app.selectWorkspace(workspaces[0]);
+                                                        await wsStore.selectWorkspace(workspaces[0]);
                                                     } else if (activeWorkspaceId) {
                                                         await Promise.all([
-                                                            app.loadCcConnectUrl(),
-                                                            app.loadCcProvidersUrl(),
+                                                            wsStore.loadCcConnectUrl(),
+                                                            wsStore.loadCcProvidersUrl(),
                                                         ]);
                                                     }
                                                 } catch (e) {
                                                     console.error('Failed to reconnect/refresh:', e);
                                                 }
                                             }}
-                                            onOpenFileDetail={app.openFileDetail}
-                                            onBackToList={() =>
-                                                app.setState({ viewMode: 'list', detailFullscreen: false })
-                                            }
-                                            onToggleFavorite={app.toggleFavorite}
-                                            onCopyContent={app.copyFileContent}
-                                            onDownloadFile={app.downloadFile}
-                                            onRenameFile={app.renameFile}
                                             onToggleFullscreen={() => {
-                                                const { selectedFsEntry, workspaces, activeWorkspaceId } = app.state;
+                                                const selectedFsEntry = fs.selectedFsEntry.value;
                                                 if (selectedFsEntry) {
-                                                    const activeWorkspace = workspaces.find(
-                                                        w => w.id === activeWorkspaceId
+                                                    const activeWorkspace = wsStore.workspaces.value.find(
+                                                        w => w.id === wsStore.activeWorkspaceId.value
                                                     );
                                                     const activeWorkspacePath = activeWorkspace?.path || '.';
                                                     const absolutePath = selectedFsEntry.path.startsWith('/')
                                                         ? selectedFsEntry.path
                                                         : `${activeWorkspacePath}/${selectedFsEntry.path}`;
                                                     if (IS_DESKTOP) {
-                                                        app.openPreviewTab(absolutePath, selectedFsEntry.name);
+                                                        tabsStore.openPreviewTab(absolutePath, selectedFsEntry.name);
                                                     } else {
                                                         const shareUrl = `${window.location.origin}${
                                                             window.location.pathname
@@ -470,19 +382,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     }
                                                 }
                                             }}
-                                            onShareFile={app.shareFile}
-                                            onSaveFile={app.saveFile}
-                                            onToggleEditing={isEditing => app.setState({ isEditingDetail: isEditing })}
-                                            onEditedContentChange={content => app.setState({ editedContent: content })}
                                             onOpenPreview={
-                                                IS_DESKTOP ? (path, name) => app.openPreviewTab(path, name) : undefined
+                                                IS_DESKTOP
+                                                    ? (path, name) => tabsStore.openPreviewTab(path, name)
+                                                    : undefined
                                             }
-                                            fsEntries={state.fsEntries}
-                                            fsLoading={state.fsLoading}
-                                            onToggleFsDir={app.toggleFsDir}
-                                            accessTokenExists={state.accessAuthRequired}
-                                            onGenerateAccessToken={app.generateAccessToken}
-                                            onRevokeAccessToken={app.revokeAccessToken}
                                         />
                                     </Fragment>
                                 )}
@@ -501,47 +405,15 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         class="fb-detail-view-tab-container"
                                         style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;"
                                     >
-                                        {selectedFsEntry ? (
-                                            <FileDetailView
-                                                selectedFsEntry={selectedFsEntry}
-                                                favoriteFiles={favoriteFiles}
-                                                detailFullscreen={false}
-                                                isEditingDetail={isEditingDetail}
-                                                fileContent={fileContent}
-                                                editedContent={editedContent}
-                                                fileLoading={fileLoading}
-                                                fileSaving={fileSaving}
-                                                fileSaveMsg={fileSaveMsg}
-                                                isImagePreview={isImagePreview}
-                                                imageUrl={fsService.imageUrl(selectedFsEntry.path)}
-                                                onBackToList={() => app.closeTab(activeTabId)}
-                                                onToggleFavorite={app.toggleFavorite}
-                                                onCopyContent={app.copyFileContent}
-                                                onDownloadFile={app.downloadFile}
-                                                onRenameFile={app.renameFile}
-                                                onToggleFullscreen={() => {}}
-                                                onShareFile={app.shareFile}
-                                                onSaveFile={app.saveFile}
-                                                onToggleEditing={isEditing =>
-                                                    app.setState({ isEditingDetail: isEditing })
-                                                }
-                                                onEditedContentChange={content =>
-                                                    app.setState({ editedContent: content })
-                                                }
-                                                onOpenPreview={
-                                                    IS_DESKTOP
-                                                        ? (path, name) => app.openPreviewTab(path, name)
-                                                        : undefined
-                                                }
-                                                isStandalone={true}
-                                                language={language}
-                                            />
-                                        ) : (
-                                            <div class="fb-loading">
-                                                <div class="fb-loading-spinner" />
-                                                <span>{t('app.loading.preview', language)}</span>
-                                            </div>
-                                        )}
+                                        <FilePreviewContent
+                                            app={app}
+                                            activeTabId={activeTabId}
+                                            onOpenPreview={
+                                                IS_DESKTOP
+                                                    ? (path, name) => tabsStore.openPreviewTab(path, name)
+                                                    : undefined
+                                            }
+                                        />
                                     </div>
                                 )}
                                 <div
@@ -554,7 +426,16 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         overflow: 'hidden',
                                     }}
                                 >
-                                    {tabs.filter(t => t.type === 'browser').map(t => app.renderBuiltinBrowser(t))}
+                                    {tabs
+                                        .filter(t => t.type === 'browser')
+                                        .map(t => (
+                                            <BuiltinBrowser
+                                                tab={t}
+                                                active={activeTabId === t.id}
+                                                onUrlChange={tabsStore.updateBrowserUrl}
+                                                language={language}
+                                            />
+                                        ))}
                                 </div>
                             </div>
                         )}

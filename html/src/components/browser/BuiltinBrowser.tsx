@@ -1,6 +1,6 @@
 import { h, Component } from 'preact';
 import { t, type Lang } from '../../i18n';
-import type { Tab } from '../app';
+import type { Tab } from '../../stores/tabsStore';
 
 export interface BuiltinBrowserProps {
     tab: Tab;

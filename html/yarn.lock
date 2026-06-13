@@ -801,6 +801,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@preact/signals-core@npm:^1.14.0":
+  version: 1.14.2
+  resolution: "@preact/signals-core@npm:1.14.2"
+  checksum: 3281f3ea5d443e433306157ba432d73f72b7fecdce4e023edd302eae533894043ba057761cba3ee8307359b8df0024720a0f2ab5c40240d5e6c5a8223a3955c9
+  languageName: node
+  linkType: hard
+
+"@preact/signals@npm:^2.9.1":
+  version: 2.9.1
+  resolution: "@preact/signals@npm:2.9.1"
+  dependencies:
+    "@preact/signals-core": ^1.14.0
+  peerDependencies:
+    preact: ">= 10.25.0 || >=11.0.0-0"
+  checksum: 6914044b0e64321b3545ee93cc14271acfe3c13dc1e23486c85be44259ad93fc7d9aa1ddc18b3f748e431ec9e153bc2c12e53485de22b09c81ad20e8b37d20e9
+  languageName: node
+  linkType: hard
+
 "@sinclair/typebox@npm:^0.27.8":
   version: 0.27.10
   resolution: "@sinclair/typebox@npm:0.27.10"
@@ -10314,6 +10332,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "ttyd@workspace:."
   dependencies:
+    "@preact/signals": ^2.9.1
     "@typescript-eslint/eslint-plugin": ^7.1.1
     "@xterm/addon-canvas": ^0.7.0
     "@xterm/addon-clipboard": ^0.1.0
