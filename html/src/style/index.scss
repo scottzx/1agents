@@ -156,23 +156,23 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
   /* Light Theme Variables */
-  --bg-page: #f5f6f8;
-  --bg-header: #ffffff;
+  --bg-page: #f4f6f9;
+  --bg-header: rgba(255, 255, 255, 0.75);
   --bg-card: #ffffff;
-  --bg-sidebar: #fafafa;       /* Light sidebar unified with terminal inner background */
+  --bg-sidebar: rgba(255, 255, 255, 0.65);       /* Frosted sidebar */
   --bg-sidebar-hover: #eaeef2;
   --bg-sidebar-active: rgba(9, 105, 218, 0.08);
-  --bg-panel: #ffffff;         /* Right dynamic function panel background */
+  --bg-panel: rgba(255, 255, 255, 0.75);         /* Frosted panel */
   --bg-terminal-inner: #fafafa;
   --text-main: #1f2328;
   --text-secondary: #57606a;
   --text-muted: #8c959f;
-  --text-sidebar: #1f2328;     /* Light sidebar text unified with theme main text */
+  --text-sidebar: #1f2328;
   --text-sidebar-muted: #57606a;
-  --border-color: #d0d7de;
-  --border-sidebar: #d0d7de;
+  --border-color: #e1e4e8;
+  --border-sidebar: rgba(0, 0, 0, 0.08);
   --accent-color: #0969da;
-  --accent-light: #ddf4ff;
+  --accent-light: rgba(9, 105, 218, 0.06);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 8px 24px rgba(149, 157, 165, 0.1);
@@ -183,6 +183,12 @@
   --code-string: #0a3069;
   --code-comment: #6e7781;
   --code-tag: #116329;
+
+  /* Premium additions */
+  --border-glass: rgba(9, 105, 218, 0.08);
+  --accent-gradient: linear-gradient(135deg, #0969da, #8250df);
+  --glow-active: 0 0 10px rgba(9, 105, 218, 0.15);
+  --backdrop-blur: blur(12px);
 
   /* Typography */
   --font-mono: 'JetBrains Mono', Consolas, monospace;
@@ -218,9 +224,9 @@
 
   /* Bento design language — shared by every modular card surface */
   --bento-gap: 16px;
-  --bento-radius: 12px;
-  --bento-radius-sm: 8px;
-  --bento-radius-lg: 16px;
+  --bento-radius: 10px;
+  --bento-radius-sm: 6px;
+  --bento-radius-lg: 14px;
   --bento-pad: 16px;
   --bento-pad-lg: 20px;
   --bento-min-col: 280px;
@@ -234,33 +240,37 @@
 
 [data-theme="dark"] {
   /* Dark Theme Variables */
-  --bg-page: #0d1117;
-  --bg-header: #161b22;
-  --bg-card: #161b22;
-  --bg-sidebar: #0d1117;       /* Very sleek black sidebar */
-  --bg-sidebar-hover: #21262d;
-  --bg-sidebar-active: rgba(56, 139, 253, 0.1);
-  --bg-panel: #161b22;
-  --bg-terminal-inner: #0d1117;
+  --bg-page: #080b11;
+  --bg-header: rgba(13, 17, 26, 0.75);
+  --bg-card: #0d111a;
+  --bg-sidebar: rgba(13, 17, 26, 0.7);       /* Sleek slate transparent sidebar */
+  --bg-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --bg-sidebar-active: rgba(56, 139, 253, 0.08);
+  --bg-panel: #0d111a;
+  --bg-terminal-inner: #07090e;
   --text-main: #e6edf3;
   --text-secondary: #8d96a0;
   --text-muted: #484f58;
   --text-sidebar: #e6edf3;
   --text-sidebar-muted: #484f58;
-  --border-color: #30363d;
-  --border-sidebar: #30363d;
-  --accent-color: #2f81f7;
-  --accent-light: rgba(56, 139, 253, 0.1);
+  --border-color: #1e2535;
+  --border-sidebar: rgba(255, 255, 255, 0.08);
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --accent-color: #388bfd;
+  --accent-light: rgba(56, 139, 253, 0.06);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --badge-glow: rgba(47, 129, 247, 0.4);
-  --btn-hover: #21262d;
+  --badge-glow: rgba(56, 139, 253, 0.25);
+  --btn-hover: #161b22;
   --tab-active-border: #f0f6fc;
   --code-keyword: #ff7b72;
   --code-string: #a5d6ff;
   --code-comment: #8b949e;
   --code-tag: #7ee787;
+  --accent-gradient: linear-gradient(135deg, #388bfd, #8250df);
+  --glow-active: 0 0 15px rgba(130, 80, 223, 0.25);
+  --backdrop-blur: blur(12px);
 
   /* Semantic color tokens — dark (GitHub Dark palette) */
   --accent-hover: #388bfd;
@@ -453,6 +463,7 @@ body {
   padding: 0;
   overflow: hidden;
   font-family: var(--font-sans);
+  letter-spacing: -0.011em;
   background-color: var(--bg-page);
   color: var(--text-main);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -689,8 +700,20 @@ body {
       &.ws-active .project-folder {
         background-color: var(--bg-sidebar-active);
         color: var(--text-main);
-        border-left: 3px solid var(--tab-active-border);
-        padding-left: 5px;
+        position: relative;
+        padding-left: 10px;
+        
+        &::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 6px;
+          bottom: 6px;
+          width: 3px;
+          background: var(--accent-gradient);
+          border-radius: 2px;
+          box-shadow: 0 0 8px var(--accent-color);
+        }
       }
 
       &.ws-active .ws-delete-confirm {
@@ -1070,9 +1093,23 @@ body {
         }
 
         &.active {
-          background-color: var(--bg-sidebar-hover);
+          background-color: var(--bg-sidebar-active);
           color: var(--text-sidebar);
           font-weight: 500;
+          position: relative;
+          padding-left: 10px;
+
+          &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 4px;
+            bottom: 4px;
+            width: 2px;
+            background: var(--accent-gradient);
+            border-radius: 1px;
+            box-shadow: 0 0 6px var(--accent-color);
+          }
         }
 
         .chat-title {
@@ -1414,7 +1451,9 @@ body {
   height: 48px;
   flex-shrink: 0;
   background-color: var(--bg-header);
-  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border-bottom: 1px solid var(--border-glass, var(--border-color));
   padding: 0 20px;
   display: flex;
   justify-content: space-between;
@@ -4480,8 +4519,8 @@ body {
 .ws-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(8px);
   z-index: 2000;
   display: flex;
   align-items: center;
@@ -4650,8 +4689,8 @@ body {
 .dp-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(8px);
   z-index: 2100;
   display: flex;
   align-items: center;
@@ -5328,6 +5367,9 @@ body {
   flex-direction: column;
   height: 100%;
   background-color: var(--bg-panel);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border-left: 1px solid var(--border-glass, var(--border-color));
   animation: fb-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   
@@ -7276,7 +7318,9 @@ body {
   align-items: center;
   height: 38px;
   background-color: var(--bg-header);
-  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border-bottom: 1px solid var(--border-glass, var(--border-color));
   padding: 0 8px;
   box-sizing: border-box;
   gap: 8px;
@@ -7302,8 +7346,8 @@ body {
   align-items: center;
   gap: 8px;
   padding: 0 16px;
-  height: 32px;
-  border-radius: 8px 8px 0 0;
+  height: 30px;
+  border-radius: 6px 6px 0 0;
   background-color: transparent;
   border: 1px solid transparent;
   border-bottom: none;
@@ -7322,11 +7366,24 @@ body {
   }
 
   &.active {
-    color: var(--accent-color);
-    background-color: var(--bg-panel);
-    border-color: var(--border-color);
+    color: var(--text-main);
+    background-color: var(--bg-card);
+    border-color: var(--border-glass, var(--border-color));
     font-weight: 600;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+    position: relative;
+    box-shadow: var(--glow-active);
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent-gradient);
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+    }
   }
 
   .tab-title {
