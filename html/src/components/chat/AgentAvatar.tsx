@@ -7,7 +7,8 @@ import openclawLogo from '../../assets/harness-logos/openclaw-logo.svg';
 import opencodeLogo from '../../assets/harness-logos/opencode-logo.svg';
 
 interface AgentAvatarProps {
-    agentType: AgentType;
+    /** Known agent type, or a free string (e.g. a terminal's detected agent). */
+    agentType: AgentType | string;
     class?: string;
     title?: string;
 }

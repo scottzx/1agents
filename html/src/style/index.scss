@@ -8857,6 +8857,13 @@ body {
   }
 }
 
+// Generic terminal/shell glyph shown as the leading icon when a terminal
+// session has no detected agent. Reuses the .chat-sidebar-avatar box so it
+// lines up with agent avatars.
+.chat-terminal-icon {
+  color: var(--text-sidebar-muted);
+}
+
 .chat-status-dot {
   display: inline-block;
   width: 6px;
@@ -8869,6 +8876,13 @@ body {
 .chat-status-dot.streaming { background: var(--accent-color); animation: chat-dot-pulse 1.2s infinite; }
 .chat-status-dot.awaiting_permission { background: var(--warning-fg); }
 .chat-status-dot.error { background: var(--danger-fg); }
+// Terminal status palette on the same trailing dot (mirrors the old left
+// `.status-dot` colours: green=idle, blue=busy, amber=waiting, purple=shell).
+.chat-status-dot.term-idle { background: var(--success-fg); }
+.chat-status-dot.term-busy { background: var(--accent-color); animation: chat-dot-pulse 1.2s infinite; }
+.chat-status-dot.term-waiting { background: var(--warning-fg); animation: chat-dot-pulse 1.2s infinite; }
+.chat-status-dot.term-shell { background: var(--purple-fg); }
+.chat-status-dot.term-none { background: transparent; }
 @keyframes chat-dot-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
