@@ -43,10 +43,7 @@ function stripPath(text: string, path: string): string {
     return lines.join('\n');
 }
 
-export function useFileAttachments(
-    getText: () => string,
-    setText: (next: string) => void
-): FileAttachmentsState {
+export function useFileAttachments(getText: () => string, setText: (next: string) => void): FileAttachmentsState {
     const [attachments, setAttachments] = useState<FileAttachment[]>([]);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState('');
