@@ -1,10 +1,12 @@
 import { h, Component } from 'preact';
 import { useEffect } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import type { ChatSession } from '../types';
 import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { SessionStatusBar } from './SessionStatusBar';
+import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -41,7 +43,15 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         cancelQueued,
         respondPermission,
         setPermissionMode,
+        takenOver,
+        retry,
     } = useBridge(session);
+
+    // Local dismiss state for the takeover banner. useSignal (not useState):
+    // plain useState toggles are known to not re-render under @preact/signals
+    // v2 in this repo. Reset to "not dismissed" whenever a new takeover fires.
+    const bannerDismissed = useSignal(false);
+    if (!takenOver && bannerDismissed.value) bannerDismissed.value = false;
 
     // The composer is only usable once BOTH the WS handshake finished
     // AND the bridge has confirmed the session is initialized. The
@@ -67,6 +77,17 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     return (
         <div class="chat-panel">
             <SessionStatusBar session={session} connection={connection} typing={typing} />
+            {takenOver && !bannerDismissed.value && (
+                <SessionTakenOverBanner
+                    onRetry={() => {
+                        bannerDismissed.value = false;
+                        retry();
+                    }}
+                    onDismiss={() => {
+                        bannerDismissed.value = true;
+                    }}
+                />
+            )}
             <MessageList
                 items={items}
                 agentType={session.agentType}

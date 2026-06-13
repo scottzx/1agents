@@ -135,6 +135,14 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		log.Printf("[acpx_client] Reconnecting client to existing active bridge for session: %s", sessionId)
 		bridge.mu.Lock()
 		if bridge.ClientConn != nil {
+			// Tell the old client it was taken over by a newer connection
+			// BEFORE closing it. The frontend uses this to suppress its
+			// auto-reconnect (which would otherwise ping-pong the bridge
+			// back and forth between two tabs) and show a banner instead.
+			_ = bridge.ClientConn.WriteJSON(WsMessage{
+				Event:     "session_taken_over",
+				SessionID: sessionId,
+			})
 			_ = bridge.ClientConn.Close() // Close old client connection
 		}
 		bridge.ClientConn = clientConn
