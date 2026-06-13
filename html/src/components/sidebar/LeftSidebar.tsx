@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat } from '../types';
+import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat, isTerminal } from '../types';
 import { t, type Lang } from '../i18n';
 import { SessionRow } from './SessionRow';
 import { ModuleNav } from './ModuleNav';
@@ -43,15 +43,12 @@ interface LeftSidebarProps {
     };
     onChatCreate: (workspaceId: string) => void;
     onChatKill: (sessionId: string) => void;
-    /**
-     * Per-workspace collapse state for the 聊天 / 终端 sub-page groups.
-     * Owned by the parent so it survives LeftSidebar remounts and
-     * workspace switches.
-     */
-    collapsedGroups: Record<string, { chat?: boolean; term?: boolean }>;
-    onToggleGroup: (folderId: string, key: 'chat' | 'term') => void;
     onStartNewChat: () => void;
     activeTab: string;
+    /** The user's currently-selected session (drives the sidebar row highlight). */
+    activeSession: Session | null;
+    /** Top-level tab id; 'tasks' means the 任务 landing is showing. */
+    activeTabId: string;
 }
 
 export function LeftSidebar({
@@ -78,11 +75,23 @@ export function LeftSidebar({
     moduleNav,
     onChatCreate,
     onChatKill,
-    collapsedGroups,
-    onToggleGroup,
     onStartNewChat,
     activeTab,
+    activeSession,
+    activeTabId,
 }: LeftSidebarProps) {
+    // On the 任务 landing, no session row is selected. Otherwise a row is
+    // highlighted iff it matches the globally-active session (chat by id,
+    // terminal by tmux index) — one highlight at a time, never alongside 任务.
+    const isTaskView = activeTabId === 'tasks';
+    const isSelectedSession = (s: Session): boolean => {
+        if (isTaskView || !activeSession) return false;
+        if (isChat(s) && isChat(activeSession)) return s.id === activeSession.id;
+        if (isTerminal(s) && isTerminal(activeSession)) {
+            return s.index === activeSession.index && s.workspaceId === activeSession.workspaceId;
+        }
+        return false;
+    };
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
     // Task id → title map for the optional session task badge (issue
@@ -116,11 +125,6 @@ export function LeftSidebar({
         };
         // folders identity churns every render; folderIdsKey is the stable signal.
     }, [folderIdsKey, hasTaskLinkedSession]);
-    // Per-workspace collapse state for the 聊天 / 终端 sub-page groups is
-    // owned by the parent App (see `sidebarCollapsedGroups` / `onToggleGroup`)
-    // so it survives LeftSidebar remounts and is preserved across workspace
-    // switches. Default (absent) = expanded; the 任务 entry is a leaf, not a
-    // group.
 
     const confirmDeleteId = useSignal<string | null>(null);
     const deletingId = useSignal<string | null>(null);
@@ -561,6 +565,7 @@ export function LeftSidebar({
                                                     <SessionRow
                                                         key={session.id}
                                                         session={session}
+                                                        selected={isSelectedSession(session)}
                                                         killing={killingSessionId.value === session.id}
                                                         isHovered={hoveredSessionId === session.id}
                                                         taskTitles={taskTitles}
@@ -574,111 +579,41 @@ export function LeftSidebar({
 
                                                 const chatSessions = folder.sessions.filter(isChat);
                                                 const termSessions = folder.sessions.filter(s => !isChat(s));
-                                                const collapsed = collapsedGroups[folder.id] || {};
                                                 const wsObj = workspaces.find(w => w.id === folder.id);
 
+                                                // One unified list under each workspace: the 任务
+                                                // landing plus every 会话 / 终端 session, all using
+                                                // the same `.chat-item` row style (no group headers).
                                                 return (
                                                     <div class="project-children">
                                                         {/* 📋 任务 — default landing (task table) */}
                                                         <div
-                                                            class={`subpage-item subpage-leaf${
-                                                                activeWorkspaceId === folder.id ? ' active' : ''
+                                                            class={`chat-item chat-row-kind-task${
+                                                                isTaskView && activeWorkspaceId === folder.id
+                                                                    ? ' active'
+                                                                    : ''
                                                             }`}
                                                             onClick={(e: MouseEvent) => {
                                                                 e.stopPropagation();
                                                                 if (wsObj) onSelectWorkspace(wsObj);
                                                             }}
                                                         >
-                                                            <span class="subpage-icon">{'\u{1F4CB}'}</span>
-                                                            <span class="subpage-label">
-                                                                {t('sidebar.subpage.tasks', language) || '任务'}
-                                                            </span>
+                                                            <div class="chat-item-left">
+                                                                <span
+                                                                    class="chat-sidebar-avatar chat-task-icon"
+                                                                    aria-hidden="true"
+                                                                >
+                                                                    {'\u{1F4CB}'}
+                                                                </span>
+                                                                <span class="chat-title">
+                                                                    {t('sidebar.subpage.tasks', language) || '任务'}
+                                                                </span>
+                                                            </div>
                                                         </div>
 
-                                                        {/* 💬 聊天 group */}
-                                                        <div
-                                                            class="subpage-item subpage-group-header"
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                onToggleGroup(folder.id, 'chat');
-                                                            }}
-                                                        >
-                                                            <span
-                                                                class={`subpage-chevron${collapsed.chat ? '' : ' open'}`}
-                                                            >
-                                                                ▸
-                                                            </span>
-                                                            <span class="subpage-icon">{'\u{1F4AC}'}</span>
-                                                            <span class="subpage-label">
-                                                                {t('sidebar.subpage.chats', language) || '聊天'}
-                                                            </span>
-                                                            <span class="subpage-count">{chatSessions.length}</span>
-                                                            <button
-                                                                class="subpage-add-btn"
-                                                                title={t('sidebar.newChat', language) || '新建聊天'}
-                                                                onClick={(e: MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    onChatCreate(folder.id);
-                                                                }}
-                                                            >
-                                                                +
-                                                            </button>
-                                                        </div>
-                                                        {!collapsed.chat &&
-                                                            (chatSessions.length > 0 ? (
-                                                                <div class="subpage-children">
-                                                                    {chatSessions.map(renderSession)}
-                                                                </div>
-                                                            ) : (
-                                                                <div class="ws-no-sessions subpage-empty">
-                                                                    {t('sidebar.noSessions', language)}
-                                                                </div>
-                                                            ))}
-
-                                                        {/* 🖥️ 终端 group */}
-                                                        <div
-                                                            class="subpage-item subpage-group-header"
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                onToggleGroup(folder.id, 'term');
-                                                            }}
-                                                        >
-                                                            <span
-                                                                class={`subpage-chevron${collapsed.term ? '' : ' open'}`}
-                                                            >
-                                                                ▸
-                                                            </span>
-                                                            <span class="subpage-icon">{'\u{1F5A5}️'}</span>
-                                                            <span class="subpage-label">
-                                                                {t('sidebar.subpage.terminals', language) || '终端'}
-                                                            </span>
-                                                            <span class="subpage-count">{termSessions.length}</span>
-                                                            <button
-                                                                class="subpage-add-btn"
-                                                                title={t('sidebar.newTerminal', language) || '新建终端'}
-                                                                onClick={(e: MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    if (wsObj) {
-                                                                        onTerminalCreate(
-                                                                            wsObj.id,
-                                                                            wsObj.terminalDir || wsObj.path
-                                                                        );
-                                                                    }
-                                                                }}
-                                                            >
-                                                                +
-                                                            </button>
-                                                        </div>
-                                                        {!collapsed.term &&
-                                                            (termSessions.length > 0 ? (
-                                                                <div class="subpage-children">
-                                                                    {termSessions.map(renderSession)}
-                                                                </div>
-                                                            ) : (
-                                                                <div class="ws-no-sessions subpage-empty">
-                                                                    {t('sidebar.noSessions', language)}
-                                                                </div>
-                                                            ))}
+                                                        {/* 会话 (chat) + 终端 (terminal) sessions */}
+                                                        {chatSessions.map(renderSession)}
+                                                        {termSessions.map(renderSession)}
                                                     </div>
                                                 );
                                             })()}

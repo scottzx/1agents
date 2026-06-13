@@ -18,6 +18,8 @@ interface WorkspaceHeaderProps {
     sessionName: string;
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
+    /** True when the primary pane is the xterm terminal (gates the tmux mouse toggle). */
+    isTerminalView?: boolean;
     language: Lang;
     /**
      * Optional module manifest for the active drawer tab. When set, the
@@ -53,6 +55,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         sessionName,
         tmuxMouseOn,
         onTmuxMouseToggle,
+        isTerminalView,
         language,
         onBack,
         hasChatSession,
@@ -258,7 +261,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                 {!isFullPageTab(activeDrawerTab) && (
                     <div class="header-right">
-                        {onTmuxMouseToggle && (
+                        {onTmuxMouseToggle && isTerminalView && (
                             <button
                                 class={`tmux-mouse-toggle ${tmuxMouseOn ? 'active' : ''}`}
                                 onClick={onTmuxMouseToggle}
@@ -286,18 +289,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )}
 
-                        {onTmuxMouseToggle && <div class="divider" />}
+                        {onTmuxMouseToggle && isTerminalView && <div class="divider" />}
 
-                        {hasChatSession && (
-                            <button
-                                id="hdr-btn-agents"
-                                class={`shortcut-btn ${activeTab === 'agents' ? 'active' : ''}`}
-                                onClick={() => setActiveTab('agents')}
-                                title="智能体聊天"
-                            >
-                                {IconAgents}
-                            </button>
-                        )}
                         <button
                             id="hdr-btn-channels"
                             class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}

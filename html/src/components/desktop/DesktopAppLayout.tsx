@@ -50,7 +50,6 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
         const workspacesLoading = wsStore.workspacesLoading.value;
-        const sidebarCollapsedGroups = wsStore.sidebarCollapsedGroups.value;
         const activeSession = sess.activeSession.value;
         const tmuxMouseOn = sess.tmuxMouseOn.value;
         const language = ui.language.value;
@@ -62,6 +61,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
         const activeTabObj = tabs.find(t => t.id === activeTabId);
+        // The primary pane's content kind. The tmux mouse toggle only makes
+        // sense when the xterm terminal is the one showing.
+        const primaryView = primaryViewFor(activeTabId, tabsStore.activeTab.value, activeDrawerTab);
 
         // Shell layout (LeftSidebar + WorkspaceHeader) is shared by the
         // project landing ('tasks') and the workbench ('terminal'). Dynamic
@@ -167,10 +169,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 moduleNav={tabsStore.buildModuleNav()}
                                 onChatCreate={modal.openChatCreate}
                                 onChatKill={sess.killChatSession}
-                                collapsedGroups={sidebarCollapsedGroups}
-                                onToggleGroup={wsStore.toggleSidebarGroup}
                                 onStartNewChat={sess.onStartNewChat}
                                 activeTab={tabsStore.activeTab.value}
+                                activeSession={activeSession}
+                                activeTabId={activeTabId}
                             />
 
                             {/* Resizer: between LEFT sidebar and MIDDLE canvas */}
@@ -207,6 +209,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 sessionName={activeSession?.name || ''}
                                 tmuxMouseOn={tmuxMouseOn}
                                 onTmuxMouseToggle={sess.toggleTmuxMouse}
+                                isTerminalView={primaryView.kind === 'terminal'}
                                 language={language}
                                 moduleNav={tabsStore.buildModuleNav()}
                                 hasChatSession={folders.some(
@@ -240,29 +243,12 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             overflow: 'hidden',
                                         }}
                                     >
-                                        <ContentViewHost
-                                            view={primaryViewFor(
-                                                activeTabId,
-                                                tabsStore.activeTab.value,
-                                                activeDrawerTab
-                                            )}
-                                            app={app}
-                                            state={state}
-                                        />
+                                        <ContentViewHost view={primaryView} app={app} state={state} />
                                     </div>
                                 ) : (
                                     <Fragment>
                                         {/* [PRIMARY PANE]: terminal / chat / new-chat workbench */}
-                                        <ContentViewHost
-                                            view={primaryViewFor(
-                                                activeTabId,
-                                                tabsStore.activeTab.value,
-                                                activeDrawerTab
-                                            )}
-                                            app={app}
-                                            state={state}
-                                            fontSize={13}
-                                        />
+                                        <ContentViewHost view={primaryView} app={app} state={state} fontSize={13} />
 
                                         {/* Resizer: between PRIMARY pane and SECONDARY drawer pane */}
                                         {activeDrawerTab !== 'none' && (
