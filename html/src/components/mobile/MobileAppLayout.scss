@@ -403,9 +403,9 @@
       }
 
       &.delete:active {
-        color: #ef4444;
-        border-color: #fca5a5;
-        background-color: #fef2f2;
+        color: var(--danger-fg);
+        border-color: rgba(var(--danger-rgb), 0.4);
+        background-color: var(--danger-bg);
       }
     }
   }
@@ -740,7 +740,7 @@
       }
 
       &.active, &.running {
-        background-color: rgba(34, 197, 94, 0.15);
+        background-color: rgba(var(--success-rgb), 0.15);
         color: #22c55e;
       }
     }
@@ -772,9 +772,9 @@
       }
 
       &.delete:active {
-        color: #ef4444;
-        border-color: #fca5a5;
-        background-color: #fef2f2;
+        color: var(--danger-fg);
+        border-color: rgba(var(--danger-rgb), 0.4);
+        background-color: var(--danger-bg);
       }
     }
   }
@@ -855,8 +855,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #fef2f2;
-  color: #ef4444;
+  background-color: var(--danger-bg);
+  color: var(--danger-fg);
   flex-shrink: 0;
 
   svg {
@@ -909,12 +909,12 @@
   }
 
   &.danger {
-    background-color: #ef4444;
+    background-color: var(--danger-fg);
     color: #fff;
-    border-color: #ef4444;
+    border-color: var(--danger-fg);
 
     &:active {
-      background-color: #dc2626;
+      background-color: var(--danger-fg);
     }
   }
 }
