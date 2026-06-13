@@ -6,6 +6,7 @@ import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import { pickableAgents } from '../../stores/agentCatalogStore';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { MicButton } from './input/MicButton';
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
@@ -356,26 +357,13 @@ export function NewChatHome({
                             dictation. `speech.available` further requires the API +
                             a secure context. */}
                         {!IS_DESKTOP && speech.available && (
-                            <button
-                                type="button"
-                                class={`action-btn-circle mic-btn ${speech.isRecording ? 'recording' : ''}`}
-                                title={speech.error || t('terminal.action.voice', language)}
+                            <MicButton
+                                className="action-btn-circle mic-btn"
+                                recording={speech.isRecording}
                                 onClick={speech.toggle}
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                </svg>
-                            </button>
+                                title={speech.error || t('terminal.action.voice', language)}
+                                ariaLabel={t('terminal.action.voice', language)}
+                            />
                         )}
                     </div>
                 </div>

@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 import { Modal } from '../modal';
 import { t, type Lang } from '../i18n';
 import { createSpeechController, type SpeechController } from '../../utils/speechRecognition';
+import { MicButton } from '../chat/input/MicButton';
 
 interface Props extends XtermOptions {
     id: string;
@@ -257,25 +258,13 @@ export class Terminal extends Component<Props, State> {
                     <div class="mobile-input-panel">
                         <div class="panel-inner">
                             {isHttps && (
-                                <button
-                                    class={`panel-btn key-btn-mic ${isRecording ? 'recording' : ''}`}
-                                    title={t('terminal.action.voice', language)}
+                                <MicButton
+                                    className="panel-btn key-btn-mic"
+                                    recording={isRecording}
                                     onClick={this.toggleSpeech}
-                                >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-                                        <line x1="12" y1="19" x2="12" y2="23" />
-                                        <line x1="8" y1="23" x2="16" y2="23" />
-                                    </svg>
-                                </button>
+                                    title={t('terminal.action.voice', language)}
+                                    ariaLabel={t('terminal.action.voice', language)}
+                                />
                             )}
                             <div class={`panel-textarea-wrapper ${isRecording ? 'recording-active' : ''}`}>
                                 <textarea
