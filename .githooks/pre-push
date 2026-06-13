@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# pre-push: check submodules before parent push.
+# - Uncommitted changes in any submodule: abort push, ask user to commit first.
+# - Unpushed commits in any submodule: auto-push branch and create PR.
+
+set -uo pipefail   # no -e: gh pr create failure must not abort parent push
+
+PARENT_ROOT=$(git rev-parse --show-toplevel)
+GITMODULES="$PARENT_ROOT/.gitmodules"
+
+[ -f "$GITMODULES" ] || exit 0
+
+DIRTY_FOUND=false
+
+check_submodule() {
+    local subpath="$1"
+    local fullpath="$PARENT_ROOT/$subpath"
+
+    [ -d "$fullpath/.git" ] || [ -f "$fullpath/.git" ] || return 0
+
+    cd "$fullpath"
+
+    local branch
+    branch=$(git branch --show-current 2>/dev/null) || { cd "$PARENT_ROOT"; return 0; }
+    [ -n "$branch" ] || { echo "  [skip] $subpath: detached HEAD"; cd "$PARENT_ROOT"; return 0; }
+
+    local dirty
+    dirty=$(git status --porcelain 2>/dev/null)
+    if [ -n "$dirty" ]; then
+        echo ""
+        echo "  [error] submodule '$subpath' has uncommitted changes — commit or stash before pushing:"
+        git status --short
+        DIRTY_FOUND=true
+        cd "$PARENT_ROOT"
+        return 0
+    fi
+
+    local needs_push=false
+    local ahead_label=""
+
+    if git rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
+        local ahead
+        ahead=$(git rev-list --count "origin/$branch..HEAD" 2>/dev/null || echo 0)
+        if [ "$ahead" -gt 0 ]; then
+            needs_push=true
+            ahead_label="$ahead unpushed commit(s)"
+        fi
+    else
+        needs_push=true
+        ahead_label="new branch"
+    fi
+
+    if $needs_push; then
+        echo ""
+        echo "  submodule '$subpath' ($ahead_label) on '$branch' — pushing..."
+        git push -u origin "$branch"
+
+        if command -v gh >/dev/null 2>&1; then
+            if gh pr view --json number -q .number >/dev/null 2>&1; then
+                echo "  PR already open for '$subpath', skipping."
+            else
+                echo "  creating PR for '$subpath'..."
+                if gh pr create --fill; then
+                    echo "  PR created for '$subpath'."
+                else
+                    echo "  [warn] gh pr create failed for '$subpath' — branch pushed, create PR manually."
+                fi
+            fi
+        else
+            echo "  [warn] gh CLI not found — branch pushed, create PR manually."
+        fi
+    fi
+
+    cd "$PARENT_ROOT"
+}
+
+echo "[pre-push] checking submodules..."
+
+while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*path[[:space:]]*=[[:space:]]*(.*) ]]; then
+        check_submodule "${BASH_REMATCH[1]}"
+    fi
+done < "$GITMODULES"
+
+if $DIRTY_FOUND; then
+    echo ""
+    echo "[pre-push] aborted: commit or stash submodule changes before pushing."
+    exit 1
+fi
+
+echo "[pre-push] submodule check done."

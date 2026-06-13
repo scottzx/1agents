@@ -20,7 +20,7 @@ AGENT_LDFLAGS := -s -w \
   -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
   -X main.buildTime=$(BUILD_TIME)
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package clean help
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package clean help install-hooks
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
@@ -36,6 +36,7 @@ help:
 	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
+	@echo "  make install-hooks     - Install git hooks (auto-push submodules + create PRs on git push)"
 
 all: frontend ttyd cc-connect cc-switch backend
 
@@ -108,6 +109,12 @@ package: all
 	cp -r html/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
 	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
 	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
+
+install-hooks:
+	@echo "=== Installing git hooks..."
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-push
+	@echo "Hooks installed. 'git push' will now auto-check submodules."
 
 clean:
 	@echo "=== Cleaning build artifacts..."
