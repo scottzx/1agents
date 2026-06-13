@@ -11,7 +11,6 @@ import {
 } from '../components/types';
 import { terminalService } from '../services/terminalService';
 import { agentService } from '../services/agentService';
-import { ccCreateSession, ccDeleteSession, getCcAuth, ccProjectName } from '../services/ccconnectClient';
 import { globalBridgeManager } from '../components/chat/hooks';
 import { t } from '../i18n';
 import * as ui from './uiStore';
@@ -142,17 +141,11 @@ export const createChatSession = async (
         if (wsStore.activeWorkspaceId.value !== workspaceId) {
             await wsStore.selectWorkspace(ws);
         }
-        const project = ccProjectName(ws.name || ws.id, agentType);
-        const { token } = await getCcAuth(workspaceId);
-        const sessionKey = `oneagents:${ws.id}:${agentType}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-        const cc = await ccCreateSession(project, { session_key: sessionKey, name: name || undefined }, token);
+        // Web 会话纯走 1acp:直接登记到 1agents 索引,不再在 cc-connect 建会话。
         const indexed = await agentService.index({
             workspace_id: workspaceId,
             name: name || `${agentType} 会话`,
             agent_type: agentType,
-            cc_project: project,
-            cc_session_id: cc.id,
-            session_key: sessionKey,
         });
         await loadChatSessions(workspaceId);
         // Auto-select the new session and switch to the agents tab.
@@ -188,19 +181,11 @@ export const clearPendingInitialMessage = () => {
     pendingInitialMessage.value = null;
 };
 
-/** Kill a chat session: delete from cc-connect, then unindex from 1agents. */
+/** Kill a chat session: tear down the 1acp bridge, then unindex from 1agents. */
 export const killChatSession = async (sessionId: string) => {
     const session = chatSessions.value.find(c => c.id === sessionId);
     if (!session) return;
     try {
-        try {
-            const { token } = await getCcAuth(session.workspaceId);
-            await ccDeleteSession(session.ccProject, session.ccSessionId, session.sessionKey, token);
-        } catch (err) {
-            // Log but don't block — the user may want to clean up a
-            // dangling index even when cc-connect side is already gone.
-            console.warn('[agent] cc-connect delete failed:', err);
-        }
         // Clean up global WebSocket bridge session
         globalBridgeManager.destroy(sessionId);
         await agentService.delete(sessionId);
@@ -216,11 +201,21 @@ export const killChatSession = async (sessionId: string) => {
     }
 };
 
-/** Create a new terminal tab via POST /api/terminal/create */
-export const createTerminal = async (workspaceId: string, cwd: string) => {
+/**
+ * Create a new terminal tab via POST /api/terminal/create. When
+ * initialCommand is given (e.g. `claude "..."`), the backend types it into
+ * the new window's shell. After creation we switch the pane to the freshly
+ * created (now active) terminal so its xterm view shows immediately.
+ */
+export const createTerminal = async (workspaceId: string, cwd: string, initialCommand?: string) => {
     try {
-        await terminalService.create(workspaceId, cwd);
+        await terminalService.create(workspaceId, cwd, initialCommand);
         await loadTerminals();
+        // The backend selects the new window; loadTerminals marks it active.
+        // Surface it in the main pane via the normal selection path.
+        const folder = wsStore.folders.value.find(f => f.id === workspaceId);
+        const newTerm = folder?.sessions.find(s => isTerminal(s) && s.active);
+        if (newTerm) await selectSession(newTerm);
         ui.showToast(t('app.toast.sessionCreated', ui.language.value));
     } catch (err) {
         ui.showToast(t('app.toast.sessionCreateFailed', ui.language.value, { err: String(err) }));

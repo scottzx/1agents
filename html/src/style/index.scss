@@ -3684,7 +3684,7 @@ body {
         &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
     }
 
-    .sys-settings-section { max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+    .sys-settings-section { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
     .sys-settings-section-title {
         font-size: 18px;
@@ -9106,6 +9106,37 @@ body {
         border-top: 1px solid var(--border-color);
         border-radius: 0 0 8px 8px;
         color: var(--text-secondary);
+      }
+    }
+  }
+
+  .new-chat-mode-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 16px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+
+    .new-chat-mode-btn {
+      padding: 6px 18px;
+      border: none;
+      border-radius: 999px;
+      background: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+
+      &:hover {
+        color: var(--text-main);
+      }
+
+      &.active {
+        background-color: var(--accent-emphasis);
+        color: var(--on-accent);
       }
     }
   }

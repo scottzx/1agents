@@ -8,11 +8,13 @@ export const terminalService = {
         return data.windows || [];
     },
 
-    async create(workspaceId: string, cwd: string): Promise<void> {
+    async create(workspaceId: string, cwd: string, initialCommand?: string): Promise<void> {
+        const body: { workspaceId: string; cwd: string; initialCommand?: string } = { workspaceId, cwd };
+        if (initialCommand) body.initialCommand = initialCommand;
         const res = await fetch('/api/terminal/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId, cwd }),
+            body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error(await res.text());
     },

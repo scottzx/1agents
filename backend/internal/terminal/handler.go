@@ -31,6 +31,11 @@ type TmuxWindow struct {
 type CreateRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	Cwd         string `json:"cwd"`
+	// InitialCommand, when non-empty, is typed into the new window's shell and
+	// run (followed by Enter) right after creation — e.g. `claude "do X"` so the
+	// terminal boots straight into an agent. The cwd is already handled by the
+	// window's working directory, so the command itself need not cd.
+	InitialCommand string `json:"initialCommand,omitempty"`
 }
 
 // KillRequest is the body for POST /api/terminal/kill.
@@ -130,9 +135,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		if out, err := renameCmd.CombinedOutput(); err != nil {
 			log.Printf("[terminal] rename placeholder error: %v (output: %s)", err, string(out))
 		} else {
-			// Synchronize shell directory to workspace Cwd
-			if req.Cwd != "" {
-				cdCmd := exec.Command("tmux", "send-keys", "-t", h.session+":0", fmt.Sprintf("cd %q && clear", req.Cwd), "C-m")
+			// Synchronize shell directory to workspace Cwd, then optionally run
+			// the initial command (e.g. `claude "..."`).
+			if req.Cwd != "" || req.InitialCommand != "" {
+				line := "clear"
+				if req.Cwd != "" {
+					line = fmt.Sprintf("cd %q && clear", req.Cwd)
+				}
+				if req.InitialCommand != "" {
+					line = line + " && " + req.InitialCommand
+				}
+				cdCmd := exec.Command("tmux", "send-keys", "-t", h.session+":0", line, "C-m")
 				_ = cdCmd.Run()
 			}
 			// Switch to the renamed window
@@ -166,6 +179,13 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Switch to the new window
 	h.selectWindow(win.Index)
+
+	// Run the optional initial command in the new window's shell. The window
+	// was created with -c <cwd>, so the command runs in the workspace dir.
+	if req.InitialCommand != "" {
+		cmdCmd := exec.Command("tmux", "send-keys", "-t", fmt.Sprintf("%s:%d", h.session, win.Index), req.InitialCommand, "C-m")
+		_ = cmdCmd.Run()
+	}
 
 	writeJSON(w, http.StatusCreated, win)
 }

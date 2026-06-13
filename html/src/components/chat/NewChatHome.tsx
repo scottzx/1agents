@@ -10,13 +10,46 @@ interface NewChatHomeProps {
     workspaces: Workspace[];
     activeWorkspaceId: string;
     onSubmitChat: (workspaceId: string, agentType: AgentType, prompt: string) => void;
+    /**
+     * Terminal mode: open a terminal in the workspace dir and optionally run
+     * an initial command (e.g. `claude "..."`). cwd resolves to the
+     * workspace's terminalDir || path; initialCommand is '' for a bare shell.
+     */
+    onSubmitTerminal?: (workspaceId: string, cwd: string, initialCommand: string) => void;
     onOpenFolder: () => void;
     language: Lang;
 }
 
-export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpenFolder, language }: NewChatHomeProps) {
+type TerminalPreset = 'claude' | 'codex' | 'gemini' | 'shell';
+
+/** Preset → CLI binary. A missing `bin` means "plain shell, run nothing". */
+const TERMINAL_PRESETS: { value: TerminalPreset; label: string; bin?: string }[] = [
+    { value: 'claude', label: 'Claude', bin: 'claude' },
+    { value: 'codex', label: 'Codex', bin: 'codex' },
+    { value: 'gemini', label: 'Gemini', bin: 'gemini' },
+    { value: 'shell', label: '纯 Shell' },
+];
+
+/** Wrap a prompt as a single double-quoted bash argument, escaping the chars
+ *  that stay special inside double quotes. */
+function quoteArg(s: string): string {
+    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$') + '"';
+}
+
+export function NewChatHome({
+    workspaces,
+    activeWorkspaceId,
+    onSubmitChat,
+    onSubmitTerminal,
+    onOpenFolder,
+    language,
+}: NewChatHomeProps) {
     const [prompt, setPrompt] = useState('');
     const [selectedAgent, setSelectedAgent] = useState<AgentType>('claudecode');
+    const [selectedPreset, setSelectedPreset] = useState<TerminalPreset>('claude');
+    // useSignal (not useState) for the mode toggle — plain useState toggles
+    // can fail to re-render under @preact/signals.
+    const mode = useSignal<'chat' | 'terminal'>('chat');
     // Frontend-only pre-selection. Switching the actual workspace context is
     // deferred until the user sends a message (see handleSubmit → onSubmitChat).
     const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(activeWorkspaceId);
@@ -67,8 +100,20 @@ export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpe
 
     const handleSubmit = (e?: Event) => {
         if (e) e.preventDefault();
+        if (!activeWorkspace) return;
         const trimmed = prompt.trim();
-        if (!trimmed || !activeWorkspace) return;
+
+        if (mode.value === 'terminal') {
+            const cwd = activeWorkspace.terminalDir || activeWorkspace.path;
+            const preset = TERMINAL_PRESETS.find(p => p.value === selectedPreset) ?? TERMINAL_PRESETS[0];
+            // No bin → bare shell; bin without prompt → launch the CLI alone.
+            const initialCommand = preset.bin ? (trimmed ? `${preset.bin} ${quoteArg(trimmed)}` : preset.bin) : '';
+            onSubmitTerminal?.(activeWorkspace.id, cwd, initialCommand);
+            setPrompt('');
+            return;
+        }
+
+        if (!trimmed) return;
         onSubmitChat(activeWorkspace.id, selectedAgent, trimmed);
         setPrompt('');
     };
@@ -166,11 +211,31 @@ export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpe
                 </div>
             )}
 
+            {/* Mode toggle: conversation vs terminal */}
+            <div class="new-chat-mode-toggle">
+                <button
+                    class={`new-chat-mode-btn ${mode.value === 'chat' ? 'active' : ''}`}
+                    onClick={() => (mode.value = 'chat')}
+                >
+                    对话
+                </button>
+                <button
+                    class={`new-chat-mode-btn ${mode.value === 'terminal' ? 'active' : ''}`}
+                    onClick={() => (mode.value = 'terminal')}
+                >
+                    终端
+                </button>
+            </div>
+
             {/* Central Chat Input Box */}
             <div class="new-chat-input-wrapper">
                 <textarea
                     class="new-chat-textarea"
-                    placeholder="Ask anything, @ to mention, / for actions"
+                    placeholder={
+                        mode.value === 'terminal'
+                            ? '描述要让命令行执行什么（纯 Shell 可留空）'
+                            : 'Ask anything, @ to mention, / for actions'
+                    }
                     value={prompt}
                     onInput={(e: Event) => setPrompt((e.target as HTMLTextAreaElement).value)}
                     onKeyDown={handleKeyDown}
@@ -193,21 +258,37 @@ export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpe
                             </svg>
                         </button>
 
-                        {/* Model / Agent Selector Dropdown */}
+                        {/* Model / Agent selector (chat) — or preset selector (terminal) */}
                         <div class="select-dropdown-wrapper">
-                            <select
-                                class="new-chat-select model-select"
-                                value={selectedAgent}
-                                onChange={(e: Event) =>
-                                    setSelectedAgent((e.target as HTMLSelectElement).value as AgentType)
-                                }
-                            >
-                                {agentOptions.map(o => (
-                                    <option key={o.type} value={o.type}>
-                                        {o.label}
-                                    </option>
-                                ))}
-                            </select>
+                            {mode.value === 'terminal' ? (
+                                <select
+                                    class="new-chat-select model-select"
+                                    value={selectedPreset}
+                                    onChange={(e: Event) =>
+                                        setSelectedPreset((e.target as HTMLSelectElement).value as TerminalPreset)
+                                    }
+                                >
+                                    {TERMINAL_PRESETS.map(p => (
+                                        <option key={p.value} value={p.value}>
+                                            {p.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <select
+                                    class="new-chat-select model-select"
+                                    value={selectedAgent}
+                                    onChange={(e: Event) =>
+                                        setSelectedAgent((e.target as HTMLSelectElement).value as AgentType)
+                                    }
+                                >
+                                    {agentOptions.map(o => (
+                                        <option key={o.type} value={o.type}>
+                                            {o.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
                             <svg
                                 class="select-chevron"
                                 viewBox="0 0 24 24"

@@ -356,6 +356,29 @@ insecure = true
 					}
 				}
 
+				// Preserve projects the workspace→claudecode sync doesn't own — e.g.
+				// sibling `<slug>__<otherAgent>` projects created from the cc-connect
+				// agent switcher. Stale `<slug>__claudecode` projects whose workspace
+				// was removed are still dropped, preserving the existing delete semantics.
+				ownedClaudecode := make(map[string]bool, len(wsCfg.Workspaces))
+				for _, ws := range wsCfg.Workspaces {
+					nameOrID := ws.Name
+					if nameOrID == "" {
+						nameOrID = ws.ID
+					}
+					ownedClaudecode[getCCProjectName(nameOrID, "claudecode")] = true
+				}
+				for i := range cfg.Projects {
+					p := cfg.Projects[i]
+					if ownedClaudecode[p.Name] {
+						continue // already rebuilt in the workspace loop above
+					}
+					if strings.HasSuffix(p.Name, "__claudecode") {
+						continue // orphaned claudecode project for a removed workspace → drop
+					}
+					updatedProjects = append(updatedProjects, p)
+				}
+
 				cfg.Projects = updatedProjects
 			}
 

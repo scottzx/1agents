@@ -233,6 +233,9 @@ function renderNewChat(language: Lang) {
                 const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
                 sess.createChatSession(wsId, name, agentType, prompt);
             }}
+            onSubmitTerminal={(wsId, cwd, initialCommand) => {
+                sess.createTerminal(wsId, cwd, initialCommand);
+            }}
             onOpenFolder={modal.openCreateWorkspacePicker}
             language={language}
         />
