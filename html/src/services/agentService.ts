@@ -1,10 +1,9 @@
 // Chat session index — thin fetch wrapper around the 1agents backend
-// /api/agent/* endpoints. Does NOT talk to cc-connect directly.
+// /api/agent/* endpoints.
 //
-// The actual cc-connect session lifecycle (create / send / receive
-// events / delete) is owned by ccconnectClient.ts, which consumes
-// /api/v1/* and /bridge/ws. This service only manages the 1agents-side
-// metadata that the sidebar uses to list "my chat sessions".
+// Web chat runs purely on 1acp (via the /api/agent/chat/ws bridge). This
+// service only manages the 1agents-side metadata that the sidebar uses to
+// list "my chat sessions"; the live conversation is owned by 1acp.
 
 import { AGENT_TYPES, type AgentType, type ChatSession } from '../components/types';
 
@@ -14,10 +13,6 @@ export interface IndexChatSessionRequest {
     agent_type: AgentType;
     /** Optional issue-model soft link — set for sessions spawned from a task timeline. */
     task_id?: string;
-    /** cc-connect (IM) identifiers — empty for ACP-only sessions. */
-    cc_project?: string;
-    cc_session_id?: string;
-    session_key?: string;
 }
 
 /** Default agent type used when a workspace has none configured. */
@@ -61,9 +56,8 @@ export const agentService = {
     /**
      * POST /api/agent/sessions
      *
-     * Indexes an already-created cc-connect session. The caller MUST have
-     * created the cc-connect session first (via ccconnectClient) so we
-     * have cc_session_id + session_key to record.
+     * Registers a chat session in the 1agents index. Web sessions are
+     * ACP-only — the live conversation runs on 1acp via the chat WS bridge.
      */
     async index(req: IndexChatSessionRequest): Promise<ChatSession> {
         const res = await fetch('/api/agent/sessions', {
@@ -78,9 +72,8 @@ export const agentService = {
     /**
      * DELETE /api/agent/sessions/{id}
      *
-     * Only removes the 1agents-side index. Does NOT touch cc-connect;
-     * the caller should call ccconnectClient.ccDeleteSession first if
-     * they want the underlying session gone too.
+     * Removes the 1agents-side index. The live 1acp session is torn down
+     * separately via the chat WS bridge (globalBridgeManager.destroy).
      */
     async delete(id: string): Promise<void> {
         const res = await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`, {
