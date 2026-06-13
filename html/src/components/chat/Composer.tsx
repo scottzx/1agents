@@ -4,6 +4,7 @@ import { t, getLang } from '../../i18n';
 import { nextPermissionMode } from '../types';
 import type { PermissionMode } from '../types';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { MicButton } from './input/MicButton';
 
 interface ComposerProps {
     onSend: (text: string) => void;
@@ -130,31 +131,14 @@ export function Composer({
                             the native webview lacks a working Web Speech API; also
                             gated on API support + secure context via speech.available. */}
                         {!IS_DESKTOP && speech.available && (
-                            <button
-                                type="button"
-                                class={`chat-composer-mic-inline ${speech.isRecording ? 'recording' : ''}`}
+                            <MicButton
+                                className="chat-composer-mic-inline"
+                                recording={speech.isRecording}
                                 onClick={speech.toggle}
                                 disabled={disabled}
                                 title={speech.error || t('terminal.action.voice', lang)}
-                                aria-label={t('terminal.action.voice', lang)}
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    width="14"
-                                    height="14"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    aria-hidden="true"
-                                >
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                </svg>
-                            </button>
+                                ariaLabel={t('terminal.action.voice', lang)}
+                            />
                         )}
                         {isRunning ? (
                             <button
