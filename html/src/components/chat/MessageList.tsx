@@ -238,15 +238,30 @@ export function MessageList({
     onCancelQueued,
 }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    // Whether the user is currently stuck to the bottom. Tracked from
+    // real scroll events (before content updates) rather than measured
+    // after a render — a large streamed chunk can push the post-render
+    // distance past the threshold and would otherwise break auto-follow.
+    const pinnedRef = useRef(true);
+    // A pointer is pressed inside the list. While true we suspend
+    // auto-follow so a streamed token can't snap scrollTop between a
+    // header's mousedown and mouseup and silently swallow the click.
+    const interactingRef = useRef(false);
 
-    // Auto-scroll to bottom on new content unless user has scrolled up.
+    const handleScroll = () => {
+        const el = scrollRef.current;
+        if (!el) return;
+        pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    };
+
+    // Follow new content only when the user is pinned to the bottom and
+    // not mid-click, so the scroll never yanks an element out from under
+    // a pointer press.
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
-        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (distanceFromBottom < 120) {
-            el.scrollTop = el.scrollHeight;
-        }
+        if (!pinnedRef.current || interactingRef.current) return;
+        el.scrollTop = el.scrollHeight;
     }, [items, typing]);
 
     if (loading) {
@@ -296,7 +311,20 @@ export function MessageList({
     const showTyping = !!typing && !!lastItem && lastItem.kind === 'user';
 
     return (
-        <div class="chat-messages" ref={scrollRef}>
+        <div
+            class="chat-messages"
+            ref={scrollRef}
+            onScroll={handleScroll}
+            onPointerDown={() => {
+                interactingRef.current = true;
+            }}
+            onPointerUp={() => {
+                interactingRef.current = false;
+            }}
+            onPointerCancel={() => {
+                interactingRef.current = false;
+            }}
+        >
             {groupedItems.map((item, index) => (
                 <MessageBubble
                     key={item.id}

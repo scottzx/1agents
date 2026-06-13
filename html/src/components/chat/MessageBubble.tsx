@@ -3,7 +3,7 @@ import { h } from 'preact';
 // jsxFragmentFactory compiler option, not by name in this file.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Fragment } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState, useRef, useMemo } from 'preact/hooks';
 import { marked } from 'marked';
 import { AgentAvatar } from './AgentAvatar';
 import { t, getLang } from '../../i18n';
@@ -170,17 +170,42 @@ function AssistantBubble({
 function ThinkingBubble({ content, streaming }: { content: string; streaming: boolean }) {
     const [isExpanded, setIsExpanded] = useState(streaming);
 
-    // Follow the streaming state: expand while the model thinks,
-    // collapse when the turn moves on. A manual toggle afterwards
-    // still works — this only fires on streaming transitions.
+    // Auto-expand while the model is actively thinking and auto-collapse
+    // once the turn moves on — but ONLY in response to an actual change of
+    // `streaming`, never on mount and never on an unrelated re-render.
+    //
+    // The previous version called `setIsExpanded(streaming)` on every run
+    // of this effect, including mount. That mount-time state write (even
+    // to the same value) raced with the frequent parent re-renders during
+    // streaming and detached this component instance from Preact's update
+    // queue: later header clicks ran their handler but never re-rendered,
+    // so the block looked permanently stuck collapsed. Gating on a real
+    // transition removes the spurious write — matching the tool-group
+    // bubble, which never had the bug because it only writes state
+    // conditionally. A manual toggle in between sticks until the next
+    // genuine streaming transition.
+    const prevStreaming = useRef(streaming);
     useEffect(() => {
+        if (prevStreaming.current === streaming) return;
+        prevStreaming.current = streaming;
         setIsExpanded(streaming);
     }, [streaming]);
 
+    const toggle = () => setIsExpanded(prev => !prev);
+
     const lang = getLang();
-    const previewText = content.trim().replace(/\s+/g, ' ');
-    const preview = previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText;
-    const html = marked.parse(content, { async: false }) as string;
+    // Parse markdown and build the preview once per content change, not on
+    // every render. Toggling only flips `isExpanded`, so without this memo
+    // each click re-ran marked.parse over the whole reasoning block —
+    // exactly the kind of per-click hitch that makes expand/collapse feel
+    // laggy. Memoised, a toggle is just a cheap show/hide.
+    const { preview, html } = useMemo(() => {
+        const previewText = content.trim().replace(/\s+/g, ' ');
+        return {
+            preview: previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText,
+            html: marked.parse(content, { async: false }) as string,
+        };
+    }, [content]);
 
     return (
         <div
@@ -190,11 +215,11 @@ function ThinkingBubble({ content, streaming }: { content: string; streaming: bo
                 class="chat-bubble-header-clickable"
                 role="button"
                 tabIndex={0}
-                onClick={() => setIsExpanded(prev => !prev)}
+                onClick={toggle}
                 onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setIsExpanded(prev => !prev);
+                        toggle();
                     }
                 }}
             >
@@ -224,6 +249,21 @@ function ThinkingBubble({ content, streaming }: { content: string; streaming: bo
  */
 const userExpandChoice = new Map<string, boolean>();
 
+/**
+ * User collapse choices per tool *group*. Like userExpandChoice above,
+ * this is module-level so the choice survives the remount caused by the
+ * post-`done` history reload — the group's React key changes from
+ * `group-<cryptoId>` (streaming) to `group-h-tool-<id>` (replay), which
+ * would otherwise reset the local `useState(true)` and silently re-open
+ * a group the user had collapsed. Keyed by the first call's toolCallId,
+ * which is stable across streaming and replay.
+ */
+const groupCollapseChoice = new Map<string, boolean>();
+
+function groupKey(calls: GroupedToolCall[]): string | undefined {
+    return calls[0]?.toolCallId;
+}
+
 type CallStatus = 'running' | 'waiting' | 'success' | 'error' | 'incomplete';
 
 function callStatus(call: GroupedToolCall, active: boolean): CallStatus {
@@ -243,7 +283,11 @@ function ToolGroupBubble({
     active?: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const key = groupKey(calls);
+    const [isExpanded, setIsExpanded] = useState(() => {
+        if (key && groupCollapseChoice.has(key)) return groupCollapseChoice.get(key)!;
+        return true;
+    });
     const lang = getLang();
 
     const statuses = calls.map(c => callStatus(c, !!active));
@@ -252,10 +296,26 @@ function ToolGroupBubble({
     const hasWaiting = statuses.includes('waiting');
 
     // A pending permission must never be hidden behind a collapsed
-    // group — the turn is blocked on the user's decision.
+    // group — the turn is blocked on the user's decision. Force-expand
+    // only on the transition INTO the waiting state, never on mount or
+    // every render (a mount-time state write is what broke the thinking
+    // bubble). This is a transient override, so it doesn't touch
+    // groupCollapseChoice: once the permission resolves the group falls
+    // back to the user's choice.
+    const prevWaiting = useRef(hasWaiting);
     useEffect(() => {
+        if (prevWaiting.current === hasWaiting) return;
+        prevWaiting.current = hasWaiting;
         if (hasWaiting) setIsExpanded(true);
     }, [hasWaiting]);
+
+    const toggle = () => {
+        setIsExpanded(prev => {
+            const next = !prev;
+            if (key) groupCollapseChoice.set(key, next);
+            return next;
+        });
+    };
 
     let summary: { cls: string; text: string } | null = null;
     if (hasWaiting) {
@@ -274,11 +334,11 @@ function ToolGroupBubble({
                 class="chat-tool-group-header"
                 role="button"
                 tabIndex={0}
-                onClick={() => setIsExpanded(prev => !prev)}
+                onClick={toggle}
                 onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setIsExpanded(prev => !prev);
+                        toggle();
                     }
                 }}
             >
