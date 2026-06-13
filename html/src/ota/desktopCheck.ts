@@ -12,15 +12,25 @@ interface DesktopUpdateInfo {
     notes: string | null;
 }
 
+interface TauriWindow {
+    __TAURI__?: {
+        core: {
+            invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+        };
+    };
+}
+
+const tauriCore = () => (window as unknown as TauriWindow).__TAURI__?.core;
+
 export function isTauri(): boolean {
-    return typeof (window as any).__TAURI__ !== 'undefined';
+    return tauriCore() !== undefined;
 }
 
 export async function checkDesktopUpdate(): Promise<DesktopUpdateInfo | null> {
-    if (!isTauri()) return null;
+    const core = tauriCore();
+    if (!core) return null;
     try {
-        const { invoke } = (window as any).__TAURI__.core;
-        const info: DesktopUpdateInfo = await invoke('check_desktop_update');
+        const info = await core.invoke<DesktopUpdateInfo>('check_desktop_update');
         return info;
     } catch (err) {
         if (typeof console !== 'undefined') {
@@ -31,10 +41,10 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateInfo | null> {
 }
 
 export async function downloadAndInstallDesktop(version: string): Promise<void> {
-    if (!isTauri()) return;
+    const core = tauriCore();
+    if (!core) return;
     try {
-        const { invoke } = (window as any).__TAURI__.core;
-        await invoke('open_in_external_browser', {
+        await core.invoke('open_in_external_browser', {
             url: `https://github.com/scottzx/1Agents/releases/tag/${version}`,
         });
     } catch (err) {
