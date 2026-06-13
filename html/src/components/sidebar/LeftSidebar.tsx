@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
 import { AgentAvatar } from '../chat/AgentAvatar';
@@ -126,10 +127,10 @@ export function LeftSidebar({
     // switches. Default (absent) = expanded; the 任务 entry is a leaf, not a
     // group.
 
-    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-    const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [killingSessionId, setKillingSessionId] = useState<string | null>(null);
-    const [openDropdownWsId, setOpenDropdownWsId] = useState<string | null>(null);
+    const confirmDeleteId = useSignal<string | null>(null);
+    const deletingId = useSignal<string | null>(null);
+    const killingSessionId = useSignal<string | null>(null);
+    const openDropdownWsId = useSignal<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
 
     const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -137,7 +138,7 @@ export function LeftSidebar({
     const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null);
 
     const handleDragStart = (e: DragEvent, id: string) => {
-        if (confirmDeleteId === id) {
+        if (confirmDeleteId.value === id) {
             e.preventDefault();
             return;
         }
@@ -189,36 +190,36 @@ export function LeftSidebar({
     };
 
     useEffect(() => {
-        setDeletingId(null);
-        setKillingSessionId(null);
+        deletingId.value = null;
+        killingSessionId.value = null;
     }, [folders]);
 
     // Close the add-session dropdown on outside click.
     useEffect(() => {
-        if (!openDropdownWsId) return;
+        if (!openDropdownWsId.value) return;
         const onDown = (e: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-                setOpenDropdownWsId(null);
+                openDropdownWsId.value = null;
             }
         };
         document.addEventListener('mousedown', onDown);
         return () => document.removeEventListener('mousedown', onDown);
-    }, [openDropdownWsId]);
+    }, [openDropdownWsId.value]);
 
     const handleDeleteClick = (e: MouseEvent, id: string) => {
         e.stopPropagation();
-        setConfirmDeleteId(id);
+        confirmDeleteId.value = id;
     };
 
     const confirmDelete = (e: MouseEvent, id: string) => {
         e.stopPropagation();
         if (workspaces.length <= 1) {
-            setConfirmDeleteId(null);
+            confirmDeleteId.value = null;
             onDeleteWorkspace(id);
             return;
         }
-        setConfirmDeleteId(null);
-        setDeletingId(id);
+        confirmDeleteId.value = null;
+        deletingId.value = id;
         setTimeout(() => {
             onDeleteWorkspace(id);
         }, 300);
@@ -226,12 +227,12 @@ export function LeftSidebar({
 
     const cancelDelete = (e: MouseEvent) => {
         e.stopPropagation();
-        setConfirmDeleteId(null);
+        confirmDeleteId.value = null;
     };
 
     const handleSessionKill = (e: MouseEvent, session: Session) => {
         e.stopPropagation();
-        setKillingSessionId(session.id);
+        killingSessionId.value = session.id;
         setTimeout(() => {
             if (isChat(session)) onChatKill(session.id);
             else onTerminalKill(session.index);
@@ -384,10 +385,10 @@ export function LeftSidebar({
                             folders.map(folder => {
                                 const ws = workspaces.find(w => w.id === folder.id);
                                 const isHovered = hoveredId === folder.id;
-                                const isConfirmingDelete = confirmDeleteId === folder.id;
+                                const isConfirmingDelete = confirmDeleteId.value === folder.id;
                                 const isActive = folder.id === activeWorkspaceId;
-                                const isDeleting = deletingId === folder.id;
-                                const isDropdownOpen = openDropdownWsId === folder.id;
+                                const isDeleting = deletingId.value === folder.id;
+                                const isDropdownOpen = openDropdownWsId.value === folder.id;
 
                                 return (
                                     <div
@@ -399,7 +400,7 @@ export function LeftSidebar({
                                         onMouseEnter={() => setHoveredId(folder.id)}
                                         onMouseLeave={() => {
                                             setHoveredId(null);
-                                            if (confirmDeleteId === folder.id) setConfirmDeleteId(null);
+                                            if (confirmDeleteId.value === folder.id) confirmDeleteId.value = null;
                                         }}
                                     >
                                         {isConfirmingDelete ? (
@@ -485,9 +486,9 @@ export function LeftSidebar({
                                                                 title={t('sidebar.newSession', language) || '新建会话'}
                                                                 onClick={(e: MouseEvent) => {
                                                                     e.stopPropagation();
-                                                                    setOpenDropdownWsId(
-                                                                        isDropdownOpen ? null : folder.id
-                                                                    );
+                                                                    openDropdownWsId.value = isDropdownOpen
+                                                                        ? null
+                                                                        : folder.id;
                                                                 }}
                                                             >
                                                                 <svg
@@ -507,7 +508,7 @@ export function LeftSidebar({
                                                                         class="ws-add-dropdown-item"
                                                                         onClick={(e: MouseEvent) => {
                                                                             e.stopPropagation();
-                                                                            setOpenDropdownWsId(null);
+                                                                            openDropdownWsId.value = null;
                                                                             onTerminalCreate(
                                                                                 ws.id,
                                                                                 ws.terminalDir || ws.path
@@ -520,7 +521,7 @@ export function LeftSidebar({
                                                                         class="ws-add-dropdown-item"
                                                                         onClick={(e: MouseEvent) => {
                                                                             e.stopPropagation();
-                                                                            setOpenDropdownWsId(null);
+                                                                            openDropdownWsId.value = null;
                                                                             onChatCreate(ws.id);
                                                                         }}
                                                                     >
@@ -584,7 +585,7 @@ export function LeftSidebar({
                                                 // (default landing) + 💬 聊天 / 🖥️ 终端 groups,
                                                 // each holding its own session list.
                                                 const renderSession = (session: Session) => {
-                                                    const killing = killingSessionId === session.id;
+                                                    const killing = killingSessionId.value === session.id;
                                                     if (isChat(session)) {
                                                         return (
                                                             <div

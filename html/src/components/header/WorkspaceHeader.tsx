@@ -1,5 +1,5 @@
 import { h, Fragment } from 'preact';
-import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { RightDrawerTab, isFullPageTab } from '../types';
 import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
@@ -59,10 +59,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     } = props;
 
     // Mobile hamburger menu open state
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const mobileMenuOpen = useSignal(false);
 
-    const toggleMobileMenu = () => setMobileMenuOpen(v => !v);
-    const closeMobileMenu = () => setMobileMenuOpen(false);
+    const toggleMobileMenu = () => (mobileMenuOpen.value = !mobileMenuOpen.value);
+    const closeMobileMenu = () => (mobileMenuOpen.value = false);
 
     // ── Shared SVG icons ──────────────────────────────────────────────────
     const IconFiles = (
@@ -328,19 +328,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                 {/* Mobile: hamburger button (only visible on mobile via CSS) */}
                 <button
                     id="mob-hamburger-btn"
-                    class={`mobile-hamburger-btn ${mobileMenuOpen ? 'open' : ''}`}
+                    class={`mobile-hamburger-btn ${mobileMenuOpen.value ? 'open' : ''}`}
                     onClick={toggleMobileMenu}
                     title={t('header.menu', language)}
                     aria-label={t('header.openMenu', language)}
-                    aria-expanded={mobileMenuOpen}
+                    aria-expanded={mobileMenuOpen.value}
                 >
-                    {mobileMenuOpen ? IconClose : IconHamburger}
+                    {mobileMenuOpen.value ? IconClose : IconHamburger}
                 </button>
             </header>
 
             {/* Mobile: slide-down drawer menu */}
-            {mobileMenuOpen && <div class="mobile-menu-backdrop" onClick={closeMobileMenu} />}
-            <div class={`mobile-menu-drawer ${mobileMenuOpen ? 'open' : ''}`}>
+            {mobileMenuOpen.value && <div class="mobile-menu-backdrop" onClick={closeMobileMenu} />}
+            <div class={`mobile-menu-drawer ${mobileMenuOpen.value ? 'open' : ''}`}>
                 <div class="mobile-menu-section-title">{t('header.mobile.switchView', language)}</div>
 
                 <button

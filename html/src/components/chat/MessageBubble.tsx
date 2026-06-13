@@ -3,7 +3,8 @@ import { h } from 'preact';
 // jsxFragmentFactory compiler option, not by name in this file.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Fragment } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useMemo } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { marked } from 'marked';
 import { AgentAvatar } from './AgentAvatar';
 import { t, getLang } from '../../i18n';
@@ -168,45 +169,68 @@ function AssistantBubble({
  * thinking blocks arrive with `streaming = false` and start collapsed.
  */
 function ThinkingBubble({ content, streaming }: { content: string; streaming: boolean }) {
-    const [isExpanded, setIsExpanded] = useState(streaming);
+    // Expansion is held in a signal, not useState. The app re-renders
+    // through @preact/signals; a plain `useState` setter in this component
+    // fired its updater but never re-rendered (the header click ran yet the
+    // block stayed collapsed). Reading `isExpanded.value` during render
+    // subscribes this component to the signal, so toggling it re-renders
+    // reliably via the same mechanism the rest of the UI uses.
+    const isExpanded = useSignal(streaming);
 
-    // Follow the streaming state: expand while the model thinks,
-    // collapse when the turn moves on. A manual toggle afterwards
-    // still works — this only fires on streaming transitions.
+    // Auto-expand while the model is actively thinking and auto-collapse
+    // once the turn moves on — only on an actual change of `streaming`, so
+    // a manual toggle in between sticks until the next real transition.
+    const prevStreaming = useRef(streaming);
     useEffect(() => {
-        setIsExpanded(streaming);
+        if (prevStreaming.current === streaming) return;
+        prevStreaming.current = streaming;
+        isExpanded.value = streaming;
     }, [streaming]);
 
+    const toggle = () => {
+        isExpanded.value = !isExpanded.value;
+    };
+
+    const expanded = isExpanded.value;
     const lang = getLang();
-    const previewText = content.trim().replace(/\s+/g, ' ');
-    const preview = previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText;
-    const html = marked.parse(content, { async: false }) as string;
+    // Parse markdown and build the preview once per content change, not on
+    // every render. Toggling only flips `isExpanded`, so without this memo
+    // each click re-ran marked.parse over the whole reasoning block —
+    // exactly the kind of per-click hitch that makes expand/collapse feel
+    // laggy. Memoised, a toggle is just a cheap show/hide.
+    const { preview, html } = useMemo(() => {
+        const previewText = content.trim().replace(/\s+/g, ' ');
+        return {
+            preview: previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText,
+            html: marked.parse(content, { async: false }) as string,
+        };
+    }, [content]);
 
     return (
         <div
-            class={`chat-bubble chat-bubble-thinking ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${streaming ? 'is-streaming' : ''}`}
+            class={`chat-bubble chat-bubble-thinking ${expanded ? 'is-expanded' : 'is-collapsed'} ${streaming ? 'is-streaming' : ''}`}
         >
             <div
                 class="chat-bubble-header-clickable"
                 role="button"
                 tabIndex={0}
-                onClick={() => setIsExpanded(prev => !prev)}
+                onClick={toggle}
                 onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setIsExpanded(prev => !prev);
+                        toggle();
                     }
                 }}
             >
                 <span class="chat-bubble-caret" aria-hidden="true">
-                    {isExpanded ? '▾' : '▸'}
+                    {expanded ? '▾' : '▸'}
                 </span>
                 <span class="chat-bubble-label">
                     {streaming ? t('chat.thinking.streaming', lang) : t('chat.thinking.label', lang)}
                 </span>
-                {!isExpanded && preview && <span class="chat-thinking-preview">{preview}</span>}
+                {!expanded && preview && <span class="chat-thinking-preview">{preview}</span>}
             </div>
-            {isExpanded && (
+            {expanded && (
                 <div
                     class="chat-bubble-body chat-thinking-body markdown-body"
                     dangerouslySetInnerHTML={{ __html: html }}
@@ -223,6 +247,21 @@ function ThinkingBubble({ content, streaming }: { content: string; streaming: bo
  * toolCallId is stable across streaming and replay).
  */
 const userExpandChoice = new Map<string, boolean>();
+
+/**
+ * User collapse choices per tool *group*. Like userExpandChoice above,
+ * this is module-level so the choice survives the remount caused by the
+ * post-`done` history reload — the group's React key changes from
+ * `group-<cryptoId>` (streaming) to `group-h-tool-<id>` (replay), which
+ * would otherwise reset the local `useState(true)` and silently re-open
+ * a group the user had collapsed. Keyed by the first call's toolCallId,
+ * which is stable across streaming and replay.
+ */
+const groupCollapseChoice = new Map<string, boolean>();
+
+function groupKey(calls: GroupedToolCall[]): string | undefined {
+    return calls[0]?.toolCallId;
+}
 
 type CallStatus = 'running' | 'waiting' | 'success' | 'error' | 'incomplete';
 
@@ -243,7 +282,12 @@ function ToolGroupBubble({
     active?: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const key = groupKey(calls);
+    // Expansion lives in a signal, not useState — see ThinkingBubble: the
+    // app re-renders through @preact/signals, and a plain useState setter
+    // in these chat bubbles fired its updater but didn't re-render, so the
+    // header click did nothing. Reading `.value` subscribes this component.
+    const isExpanded = useSignal(key && groupCollapseChoice.has(key) ? groupCollapseChoice.get(key)! : true);
     const lang = getLang();
 
     const statuses = calls.map(c => callStatus(c, !!active));
@@ -252,10 +296,24 @@ function ToolGroupBubble({
     const hasWaiting = statuses.includes('waiting');
 
     // A pending permission must never be hidden behind a collapsed
-    // group — the turn is blocked on the user's decision.
+    // group — the turn is blocked on the user's decision. Force-expand
+    // only on the transition INTO the waiting state. This is a transient
+    // override, so it doesn't touch groupCollapseChoice: once the
+    // permission resolves the group falls back to the user's choice.
+    const prevWaiting = useRef(hasWaiting);
     useEffect(() => {
-        if (hasWaiting) setIsExpanded(true);
+        if (prevWaiting.current === hasWaiting) return;
+        prevWaiting.current = hasWaiting;
+        if (hasWaiting) isExpanded.value = true;
     }, [hasWaiting]);
+
+    const toggle = () => {
+        const next = !isExpanded.value;
+        isExpanded.value = next;
+        if (key) groupCollapseChoice.set(key, next);
+    };
+
+    const expanded = isExpanded.value;
 
     let summary: { cls: string; text: string } | null = null;
     if (hasWaiting) {
@@ -268,22 +326,22 @@ function ToolGroupBubble({
 
     return (
         <div
-            class={`chat-bubble chat-bubble-tool-group ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
+            class={`chat-bubble chat-bubble-tool-group ${expanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
         >
             <div
                 class="chat-tool-group-header"
                 role="button"
                 tabIndex={0}
-                onClick={() => setIsExpanded(prev => !prev)}
+                onClick={toggle}
                 onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setIsExpanded(prev => !prev);
+                        toggle();
                     }
                 }}
             >
                 <span class="chat-bubble-caret" aria-hidden="true">
-                    {isExpanded ? '▾' : '▸'}
+                    {expanded ? '▾' : '▸'}
                 </span>
                 <span class="chat-tool-group-title">
                     {pending ? t('chat.tool.groupPending', lang) : t('chat.tool.groupTitle', lang)}
@@ -296,7 +354,7 @@ function ToolGroupBubble({
                     </span>
                 )}
             </div>
-            {isExpanded && (
+            {expanded && (
                 <div class="chat-tool-calls-list">
                     {calls.map((call, idx) => (
                         <GroupedToolCallItem
@@ -393,34 +451,38 @@ function GroupedToolCallItem({
     // key-arg summary and status. A pending permission force-expands
     // (the user must see the action buttons); an explicit user choice
     // (persisted by toolCallId across history reloads) wins otherwise.
-    const [isExpanded, setIsExpanded] = useState(() => {
-        if (hasPendingPermission) return true;
-        if (call.toolCallId && userExpandChoice.has(call.toolCallId)) {
-            return userExpandChoice.get(call.toolCallId)!;
-        }
-        return false;
-    });
+    // Held in a signal (not useState) so the header click re-renders
+    // reliably under @preact/signals — see ThinkingBubble.
+    const isExpanded = useSignal(
+        hasPendingPermission
+            ? true
+            : call.toolCallId && userExpandChoice.has(call.toolCallId)
+              ? userExpandChoice.get(call.toolCallId)!
+              : false
+    );
 
+    // Sync only on the waiting transition: force-open when a permission
+    // arrives, and on resolution fall back to the user's remembered choice
+    // (or collapsed). Gating on the transition avoids a mount-time write.
+    const prevPending = useRef(hasPendingPermission);
     useEffect(() => {
+        if (prevPending.current === hasPendingPermission) return;
+        prevPending.current = hasPendingPermission;
         if (hasPendingPermission) {
-            setIsExpanded(true);
+            isExpanded.value = true;
             return;
         }
-        // Forced-open reason went away (permission resolved): fall back
-        // to the user's remembered choice, or collapsed.
         if (call.toolCallId && userExpandChoice.has(call.toolCallId)) {
-            setIsExpanded(userExpandChoice.get(call.toolCallId)!);
+            isExpanded.value = userExpandChoice.get(call.toolCallId)!;
             return;
         }
-        setIsExpanded(false);
+        isExpanded.value = false;
     }, [hasPendingPermission]);
 
     const toggle = () => {
-        setIsExpanded(prev => {
-            const next = !prev;
-            if (call.toolCallId) userExpandChoice.set(call.toolCallId, next);
-            return next;
-        });
+        const next = !isExpanded.value;
+        isExpanded.value = next;
+        if (call.toolCallId) userExpandChoice.set(call.toolCallId, next);
     };
 
     let args: Record<string, unknown> = {};
@@ -454,9 +516,10 @@ function GroupedToolCallItem({
     }
 
     const summary = Object.keys(args).length > 0 ? summarizeArgs(args) : undefined;
+    const expanded = isExpanded.value;
 
     return (
-        <div class={`chat-tool-row ${isExpanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
+        <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
             <div
                 class="chat-tool-row-header"
                 role="button"
@@ -479,10 +542,10 @@ function GroupedToolCallItem({
                     <span class="chat-tool-row-status is-running">{t('chat.tool.status.running', lang)}</span>
                 )}
                 <span class="chat-tool-row-caret" aria-hidden="true">
-                    {isExpanded ? '▾' : '▸'}
+                    {expanded ? '▾' : '▸'}
                 </span>
             </div>
-            {isExpanded && (
+            {expanded && (
                 <div class="chat-tool-row-body">
                     {/* Arguments */}
                     <div class="chat-tool-section">

@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 
 import type { Session } from '../../types';
 import { CreateTaskForm } from './CreateTaskForm';
@@ -17,7 +18,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-    const [showForm, setShowForm] = useState(false);
+    const showForm = useSignal(false);
 
     const fetchTasks = useCallback(async () => {
         if (!workspaceId) return;
@@ -86,12 +87,14 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     return (
         <div class="task-dashboard-container">
             <div class="task-dashboard-header">
-                <button class="create-task-btn-toggle" onClick={() => setShowForm(!showForm)}>
-                    {showForm ? '取消创建' : '+ 新建任务'}
+                <button class="create-task-btn-toggle" onClick={() => (showForm.value = !showForm.value)}>
+                    {showForm.value ? '取消创建' : '+ 新建任务'}
                 </button>
             </div>
 
-            {showForm && <CreateTaskForm workspaceId={workspaceId} tasks={tasks} onCreated={() => fetchTasks()} />}
+            {showForm.value && (
+                <CreateTaskForm workspaceId={workspaceId} tasks={tasks} onCreated={() => fetchTasks()} />
+            )}
 
             {error && <div class="task-error">{error}</div>}
 
