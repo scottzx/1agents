@@ -20,6 +20,12 @@ check_submodule() {
 
     cd "$fullpath"
 
+    # `git push` exports GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE pointing at the
+    # parent repo. Without clearing them the git commands below run against the
+    # parent (not this submodule), so detached HEAD is never detected and every
+    # submodule file is misreported as untracked — aborting every push.
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
     local branch
     branch=$(git branch --show-current 2>/dev/null) || { cd "$PARENT_ROOT"; return 0; }
     [ -n "$branch" ] || { echo "  [skip] $subpath: detached HEAD"; cd "$PARENT_ROOT"; return 0; }
