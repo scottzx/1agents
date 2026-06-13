@@ -112,8 +112,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			scheduler.SetRunner(agent.NewTaskRunner(38082, tasksStore, agentStore, scheduler))
 			scheduler.Start(context.Background())
 
-			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler)
+			// Probe installed agent CLIs once at startup; cached behind an
+			// RWMutex and re-probable via /api/agent/catalog?refresh=1.
+			catalogStore := agent.NewCatalogStore()
+
+			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore)
 			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)    // GET (?refresh=1)
 			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
 			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
 			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)         // GET, POST

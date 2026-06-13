@@ -4,6 +4,7 @@ import { useSignal } from '@preact/signals';
 import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS } from '../types';
 import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
+import { pickableAgents } from '../../stores/agentCatalogStore';
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
@@ -23,6 +24,17 @@ export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpe
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
+
+    // Offer only installed agents (falls back to the full static list before
+    // the catalog loads). Keep the current selection present even if it isn't
+    // installed, so a workspace's defaultAgent still renders.
+    const pickable = pickableAgents.value;
+    const agentOptions: { type: AgentType; label: string }[] = pickable.length
+        ? pickable.map(a => ({ type: a.type, label: a.label }))
+        : AGENT_TYPES.map(ty => ({ type: ty, label: AGENT_TYPE_LABELS[ty] ?? ty }));
+    if (selectedAgent && !agentOptions.some(o => o.type === selectedAgent)) {
+        agentOptions.unshift({ type: selectedAgent, label: AGENT_TYPE_LABELS[selectedAgent] ?? selectedAgent });
+    }
 
     // Align local state agent selector with workspace's default agent if it changes
     useEffect(() => {
@@ -190,9 +202,9 @@ export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpe
                                     setSelectedAgent((e.target as HTMLSelectElement).value as AgentType)
                                 }
                             >
-                                {AGENT_TYPES.map(t => (
-                                    <option key={t} value={t}>
-                                        {AGENT_TYPE_LABELS[t] ?? t}
+                                {agentOptions.map(o => (
+                                    <option key={o.type} value={o.type}>
+                                        {o.label}
                                     </option>
                                 ))}
                             </select>

@@ -2,6 +2,7 @@ import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
 import { t, type Lang } from '../../i18n';
 import type { SettingsCategory } from '../../modules/settings-manifest';
+import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
 
 export type { SettingsCategory };
 
@@ -47,6 +48,8 @@ export function SystemSettings(props: SystemSettingsProps) {
     } = props;
 
     const confirmReset = useSignal(false);
+    // Agent type whose install command was just copied (transient checkmark).
+    const copiedAgent = useSignal('');
 
     const handleResetCache = () => {
         if (!confirmReset.value) {
@@ -861,12 +864,119 @@ export function SystemSettings(props: SystemSettingsProps) {
         </div>
     );
 
+    const copyInstall = (key: string, cmd: string) => {
+        const done = () => {
+            copiedAgent.value = key;
+            window.setTimeout(() => {
+                if (copiedAgent.value === key) copiedAgent.value = '';
+            }, 1500);
+        };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(cmd).then(done).catch(() => done());
+        } else {
+            done();
+        }
+    };
+
+    const renderAgents = () => {
+        const list = agentCatalog.value;
+        const installedCount = list.filter(a => a.installed).length;
+        return (
+            <div class="sys-settings-section">
+                <div class="sys-settings-section-title">{t('settings.agents.title', language)}</div>
+                <div class="sys-settings-section-desc">{t('settings.agents.desc', language)}</div>
+
+                <div class="sys-settings-action-row" style="justify-content: space-between; align-items: center;">
+                    <span class="sys-settings-card-subtitle">
+                        {t('settings.agents.summary', language, {
+                            '0': installedCount,
+                            '1': list.length,
+                        })}
+                    </span>
+                    <button
+                        class="sys-settings-btn ghost"
+                        disabled={agentCatalogLoading.value}
+                        onClick={() => loadAgentCatalog(true)}
+                    >
+                        {agentCatalogLoading.value
+                            ? t('settings.agents.refreshing', language)
+                            : t('settings.agents.refresh', language)}
+                    </button>
+                </div>
+
+                <div class="agent-catalog-list">
+                    {list.map(a => (
+                        <div class="agent-catalog-row" key={a.type}>
+                            <div class="agent-catalog-header">
+                                <div class="agent-catalog-main">
+                                    <span
+                                        class={`agent-catalog-dot ${a.installed ? 'installed' : 'missing'}`}
+                                        aria-hidden="true"
+                                    />
+                                    <div class="agent-catalog-text">
+                                        <div class="agent-catalog-name">{a.label}</div>
+                                        <div class="agent-catalog-meta">
+                                            {a.installed
+                                                ? a.path || t('settings.agents.installed', language)
+                                                : t('settings.agents.notInstalled', language)}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="agent-catalog-badges">
+                                    {a.acpCapable && (
+                                        <span class="agent-cap-badge acp">
+                                            {t('settings.agents.capAcp', language)}
+                                        </span>
+                                    )}
+                                    {a.cliCapable && (
+                                        <span class="agent-cap-badge cli">
+                                            {t('settings.agents.capCli', language)}
+                                        </span>
+                                    )}
+                                    {a.integrated ? (
+                                        <span class="agent-transport-badge">
+                                            {a.ccTransport === 'acp'
+                                                ? t('settings.agents.transportAcp', language)
+                                                : t('settings.agents.transportCli', language)}
+                                        </span>
+                                    ) : (
+                                        <span class="agent-transport-badge detect-only">
+                                            {t('settings.agents.detectOnly', language)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {!a.installed && a.installCommand && (
+                                <div class="agent-catalog-install">
+                                    <code class="agent-catalog-cmd" title={a.installCommand}>
+                                        {a.installCommand}
+                                    </code>
+                                    <button
+                                        class="agent-catalog-copy"
+                                        onClick={() => copyInstall(a.type, a.installCommand!)}
+                                    >
+                                        {copiedAgent.value === a.type
+                                            ? t('settings.agents.copied', language)
+                                            : t('settings.agents.copy', language)}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     const renderContent = () => {
         switch (activeCategory) {
             case 'general':
                 return renderGeneral();
             case 'appearance':
                 return renderAppearance();
+            case 'agents':
+                return renderAgents();
             case 'security':
                 return renderSecurity();
             case 'feedback':

@@ -23,6 +23,28 @@ export interface IndexChatSessionRequest {
 /** Default agent type used when a workspace has none configured. */
 export const DEFAULT_AGENT_TYPE: AgentType = 'claudecode';
 
+/** How cc-connect actually drives an agent today. */
+export type CcTransport = 'acp' | 'cli-stream';
+
+/** Per-host install + capability status for one agent application. */
+export interface AgentStatus {
+    type: AgentType;
+    label: string;
+    binary: string;
+    installed: boolean;
+    path?: string;
+    /** Upstream app supports the ACP standard protocol. */
+    acpCapable: boolean;
+    /** Upstream app supports a CLI mode. */
+    cliCapable: boolean;
+    /** Transport cc-connect currently uses ('' when not integrated). */
+    ccTransport: CcTransport | '';
+    /** Whether this backend can drive the agent (only these reach the picker). */
+    integrated: boolean;
+    /** Terminal command to install the agent (shown when not installed). */
+    installCommand?: string;
+}
+
 export const agentService = {
     /**
      * GET /api/agent/agent-types
@@ -35,6 +57,20 @@ export const agentService = {
         // Defensive: backend may have a different list. Filter to the
         // ones we know how to render, then return backend's order.
         return data.filter((t): t is AgentType => (AGENT_TYPES as string[]).includes(t));
+    },
+
+    /**
+     * GET /api/agent/catalog
+     *
+     * Returns the per-host install + capability status for every real agent
+     * application. Pass refresh=true to force a fresh PATH re-probe on the
+     * backend (?refresh=1).
+     */
+    async getCatalog(refresh = false): Promise<AgentStatus[]> {
+        const res = await fetch(`/api/agent/catalog${refresh ? '?refresh=1' : ''}`);
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as RawAgentStatus[];
+        return data.map(normalizeAgentStatus);
     },
 
     /**
@@ -103,6 +139,35 @@ interface RawChatSession {
     status?: string;
     last_event_at?: string;
     active?: boolean;
+}
+
+interface RawAgentStatus {
+    type?: string;
+    label?: string;
+    binary?: string;
+    installed?: boolean;
+    path?: string;
+    acp_capable?: boolean;
+    cli_capable?: boolean;
+    cc_transport?: string;
+    integrated?: boolean;
+    install_command?: string;
+}
+
+/** Coerce the snake_case wire shape into the canonical AgentStatus. */
+function normalizeAgentStatus(raw: RawAgentStatus): AgentStatus {
+    return {
+        type: (raw.type ?? '') as AgentType,
+        label: String(raw.label ?? raw.type ?? ''),
+        binary: String(raw.binary ?? ''),
+        installed: Boolean(raw.installed),
+        path: raw.path || undefined,
+        acpCapable: Boolean(raw.acp_capable),
+        cliCapable: Boolean(raw.cli_capable),
+        ccTransport: (raw.cc_transport ?? '') as CcTransport | '',
+        integrated: Boolean(raw.integrated),
+        installCommand: raw.install_command || undefined,
+    };
 }
 
 /** Coerce unknown / missing fields into the canonical ChatSession shape. */

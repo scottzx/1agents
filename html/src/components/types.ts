@@ -16,7 +16,13 @@ export type AgentType =
     | 'opencode'
     | 'pi'
     | 'qoder'
-    | 'tmux';
+    | 'tmux'
+    // Detection-only frameworks (settings catalog; not yet drivable in chat).
+    | 'antigravity'
+    | 'openhands'
+    | 'trae'
+    | 'openclaw'
+    | 'hermes';
 
 export const AGENT_TYPES: AgentType[] = [
     'claudecode',
@@ -47,6 +53,11 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
     pi: 'Pi',
     qoder: 'Qoder',
     tmux: 'Tmux',
+    antigravity: 'Antigravity',
+    openhands: 'OpenHands',
+    trae: 'Trae',
+    openclaw: 'OpenClaw',
+    hermes: 'Hermes',
 };
 
 /** A terminal session — mirrors a tmux window, belongs to a workspace. */
