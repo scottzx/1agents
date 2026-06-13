@@ -5,6 +5,7 @@ import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS } from '../types';
 import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import { pickableAgents } from '../../stores/agentCatalogStore';
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
@@ -57,6 +58,10 @@ export function NewChatHome({
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
+
+    // System speech-to-text for the prompt box. Reuses the terminal's
+    // voice-input logic via a shared hook; appends to whatever is typed.
+    const speech = useSpeechRecognition(language, () => prompt, setPrompt);
 
     // Offer only installed agents (falls back to the full static list before
     // the catalog loads). Keep the current selection present even if it isn't
@@ -211,30 +216,16 @@ export function NewChatHome({
                 </div>
             )}
 
-            {/* Mode toggle: conversation vs terminal */}
-            <div class="new-chat-mode-toggle">
-                <button
-                    class={`new-chat-mode-btn ${mode.value === 'chat' ? 'active' : ''}`}
-                    onClick={() => (mode.value = 'chat')}
-                >
-                    对话
-                </button>
-                <button
-                    class={`new-chat-mode-btn ${mode.value === 'terminal' ? 'active' : ''}`}
-                    onClick={() => (mode.value = 'terminal')}
-                >
-                    终端
-                </button>
-            </div>
-
             {/* Central Chat Input Box */}
             <div class="new-chat-input-wrapper">
                 <textarea
                     class="new-chat-textarea"
                     placeholder={
-                        mode.value === 'terminal'
-                            ? '描述要让命令行执行什么（纯 Shell 可留空）'
-                            : 'Ask anything, @ to mention, / for actions'
+                        speech.isRecording
+                            ? t('terminal.speech.listening', language)
+                            : mode.value === 'terminal'
+                              ? '描述要让命令行执行什么（纯 Shell 可留空）'
+                              : 'Ask anything, @ to mention, / for actions'
                     }
                     value={prompt}
                     onInput={(e: Event) => setPrompt((e.target as HTMLTextAreaElement).value)}
@@ -243,6 +234,47 @@ export function NewChatHome({
                 />
                 <div class="new-chat-actions-row">
                     <div class="actions-left">
+                        {/* Mode toggle: chat vs terminal — icon segmented control */}
+                        <div class="new-chat-mode-switch" role="group" aria-label="模式切换">
+                            <button
+                                type="button"
+                                class={`mode-switch-btn ${mode.value === 'chat' ? 'active' : ''}`}
+                                title="对话"
+                                aria-pressed={mode.value === 'chat'}
+                                onClick={() => (mode.value = 'chat')}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                class={`mode-switch-btn ${mode.value === 'terminal' ? 'active' : ''}`}
+                                title="终端"
+                                aria-pressed={mode.value === 'terminal'}
+                                onClick={() => (mode.value = 'terminal')}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="4 17 10 11 4 5" />
+                                    <line x1="12" y1="19" x2="20" y2="19" />
+                                </svg>
+                            </button>
+                        </div>
+
                         {/* + Button placeholder */}
                         <button class="action-btn-circle plus-btn" title="Add attachment">
                             <svg
@@ -318,22 +350,33 @@ export function NewChatHome({
                     </div>
 
                     <div class="actions-right">
-                        {/* Mic Button placeholder */}
-                        <button class="action-btn-circle mic-btn" title="Voice Input (Placeholder)">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
+                        {/* Mic Button — system speech-to-text. Hidden in the
+                            desktop (Tauri) build, where the native webview lacks
+                            a working Web Speech API and users have their own IME /
+                            dictation. `speech.available` further requires the API +
+                            a secure context. */}
+                        {!IS_DESKTOP && speech.available && (
+                            <button
+                                type="button"
+                                class={`action-btn-circle mic-btn ${speech.isRecording ? 'recording' : ''}`}
+                                title={speech.error || t('terminal.action.voice', language)}
+                                onClick={speech.toggle}
                             >
-                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                <line x1="12" y1="19" x2="12" y2="23" />
-                                <line x1="8" y1="23" x2="16" y2="23" />
-                            </svg>
-                        </button>
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

@@ -8737,11 +8737,19 @@ body {
   }
 }
 
+// Right-side cluster: voice mic sits immediately left of send/stop.
+.chat-composer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 // Inline 28×28 icon buttons in the bottom-right corner. Style mirrors
 // .panel-send-inline-btn so the visual language is the same as the
 // terminal's mobile input.
 .chat-composer-send-inline,
-.chat-composer-stop-inline {
+.chat-composer-stop-inline,
+.chat-composer-mic-inline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -8789,6 +8797,42 @@ body {
   &:hover {
     background-color: var(--danger-emphasis);
     opacity: 1;
+  }
+}
+
+// Ghost mic button — neutral until recording, then red pulse like the
+// terminal/new-chat mic. Sits left of the send button.
+.chat-composer-mic-inline {
+  background-color: transparent;
+  color: var(--text-secondary);
+
+  &:hover {
+    background-color: var(--btn-hover);
+    color: var(--text-main);
+    opacity: 1;
+  }
+
+  &:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.5;
+    transform: none;
+  }
+
+  &.recording {
+    background: linear-gradient(135deg, var(--danger-fg) 0%, rgba(var(--danger-rgb), 0.78) 100%);
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(var(--danger-rgb), 0.45);
+    animation: micButtonPulse 1.5s infinite ease-in-out;
+
+    &:hover {
+      background: linear-gradient(135deg, var(--danger-fg) 0%, rgba(var(--danger-rgb), 0.78) 100%);
+      color: #ffffff;
+    }
+
+    svg {
+      animation: wiggle 0.6s infinite alternate;
+    }
   }
 }
 
@@ -9167,33 +9211,48 @@ body {
     }
   }
 
-  .new-chat-mode-toggle {
+  // Inline icon segmented toggle (chat vs terminal), pinned to the left of
+  // the actions row. Native `title` provides the hover label.
+  .new-chat-mode-switch {
     display: inline-flex;
-    gap: 4px;
-    padding: 4px;
-    margin-bottom: 16px;
-    background-color: var(--bg-card);
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background-color: var(--bg-page);
     border: 1px solid var(--border-color);
     border-radius: 999px;
 
-    .new-chat-mode-btn {
-      padding: 6px 18px;
+    .mode-switch-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
       border: none;
       border-radius: 999px;
       background: none;
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 500;
+      // Unselected: muted gray so the active one clearly stands out.
+      color: var(--text-muted);
       cursor: pointer;
       transition: all 0.15s;
 
-      &:hover {
-        color: var(--text-main);
+      svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      // Hover only lifts an *unselected* icon toward the main text color;
+      // the active pill keeps its filled look.
+      &:not(.active):hover {
+        color: var(--text-secondary);
       }
 
       &.active {
-        background-color: var(--accent-emphasis);
+        // Blue solid fill + white icon. (`--accent-emphasis` isn't defined
+        // in the theme, so use the defined accent blue.)
+        background-color: var(--accent-color);
         color: var(--on-accent);
+        box-shadow: 0 1px 3px rgba(var(--accent-color-rgb), 0.35);
       }
     }
   }
@@ -9277,6 +9336,22 @@ body {
       background-color: var(--bg-page);
       &:hover {
         background-color: var(--bg-sidebar-hover);
+      }
+    }
+
+    &.mic-btn.recording {
+      background: linear-gradient(135deg, var(--danger-fg) 0%, rgba(var(--danger-rgb), 0.78) 100%);
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(var(--danger-rgb), 0.45);
+      animation: micButtonPulse 1.5s infinite ease-in-out;
+
+      &:hover {
+        background: linear-gradient(135deg, var(--danger-fg) 0%, rgba(var(--danger-rgb), 0.78) 100%);
+        color: #ffffff;
+      }
+
+      svg {
+        animation: wiggle 0.6s infinite alternate;
       }
     }
   }

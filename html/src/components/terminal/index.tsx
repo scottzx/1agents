@@ -5,6 +5,7 @@ import { Xterm, XtermOptions } from './xterm';
 import '@xterm/xterm/css/xterm.css';
 import { Modal } from '../modal';
 import { t, type Lang } from '../i18n';
+import { createSpeechController, type SpeechController } from '../../utils/speechRecognition';
 
 interface Props extends XtermOptions {
     id: string;
@@ -16,41 +17,11 @@ interface Props extends XtermOptions {
     language: Lang;
 }
 
-interface SpeechResultEvent {
-    resultIndex: number;
-    results: {
-        length: number;
-        [index: number]: {
-            isFinal: boolean;
-            [index: number]: {
-                transcript: string;
-            };
-        };
-    };
-}
-
-interface SpeechErrorEvent {
-    error: string;
-}
-
-interface SpeechRecognitionInstance {
-    continuous: boolean;
-    interimResults: boolean;
-    lang: string;
-    onstart: () => void;
-    onresult: (event: SpeechResultEvent) => void;
-    onerror: (event: SpeechErrorEvent) => void;
-    onend: () => void;
-    start: () => void;
-    abort: () => void;
-}
-
 interface State {
     modal: boolean;
     showInputPanel: boolean;
     panelInputValue: string;
     isRecording: boolean;
-    speechText: string;
     speechError: string;
     activeSubMenu: 'commands' | 'directions' | null;
 }
@@ -59,9 +30,8 @@ export class Terminal extends Component<Props, State> {
     private container: HTMLElement;
     private xterm: Xterm;
     private panelInputRef: HTMLTextAreaElement | null = null;
-    private recognition: SpeechRecognitionInstance | null = null;
+    private speech: SpeechController;
     private isUnmounted = false;
-    private speechStartValue = '';
     private touchStartY = 0;
     private isScrolling = false;
     private hasScrolled = false;
@@ -74,10 +44,21 @@ export class Terminal extends Component<Props, State> {
             showInputPanel: false,
             panelInputValue: '',
             isRecording: false,
-            speechText: '',
             speechError: '',
             activeSubMenu: null,
         };
+        // Voice input for the mobile panel; shares its logic with the
+        // NewChatHome mic via the same controller.
+        this.speech = createSpeechController({
+            getLanguage: () => this.props.language,
+            getBaseValue: () => this.state.panelInputValue,
+            onTranscript: next => this.setState({ panelInputValue: next }),
+            onRecordingChange: isRecording => this.setState({ isRecording }),
+            onError: msg => {
+                this.setState({ speechError: msg });
+                setTimeout(() => this.setState({ speechError: '' }), 4000);
+            },
+        });
     }
 
     async componentDidMount() {
@@ -92,7 +73,7 @@ export class Terminal extends Component<Props, State> {
 
     componentWillUnmount() {
         this.isUnmounted = true;
-        this.cleanupSpeech();
+        this.speech.dispose();
         this.xterm.dispose();
         delete window.xterm;
     }
@@ -233,154 +214,7 @@ export class Terminal extends Component<Props, State> {
 
     @bind
     toggleSpeech() {
-        if (this.state.isRecording) {
-            this.stopSpeech();
-            return;
-        }
-
-        const SpeechRecognition =
-            (
-                window as unknown as {
-                    SpeechRecognition?: new () => SpeechRecognitionInstance;
-                    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-                }
-            ).SpeechRecognition ||
-            (
-                window as unknown as {
-                    SpeechRecognition?: new () => SpeechRecognitionInstance;
-                    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-                }
-            ).webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            this.setState({ speechError: t('terminal.speech.unsupported', this.props.language) });
-            setTimeout(() => this.setState({ speechError: '' }), 4000);
-            return;
-        }
-
-        try {
-            this.recognition = new SpeechRecognition();
-            this.recognition.continuous = true;
-            this.recognition.interimResults = true;
-
-            const lang = this.props.language;
-            this.recognition.lang = lang;
-
-            this.recognition.onstart = () => {
-                this.speechStartValue = this.state.panelInputValue;
-                this.setState({
-                    isRecording: true,
-                    speechText: '',
-                    speechError: '',
-                });
-            };
-
-            this.recognition.onresult = (event: SpeechResultEvent) => {
-                const finalParts: string[] = [];
-                let interimText = '';
-
-                const isChinese = lang.toLowerCase().startsWith('zh');
-                const period = t(isChinese ? 'terminal.period.zh' : 'terminal.period.en', this.props.language);
-
-                for (let i = 0; i < event.results.length; ++i) {
-                    const result = event.results[i];
-                    const transcript = result[0].transcript.trim();
-                    if (result.isFinal) {
-                        if (transcript) {
-                            if (finalParts.length > 0) {
-                                const prev = finalParts[finalParts.length - 1];
-                                const endsWithPunct = /[.,!?;:。，？！、：；\s]$/.test(prev);
-                                if (!endsWithPunct) {
-                                    finalParts[finalParts.length - 1] = prev + period;
-                                }
-                            }
-                            finalParts.push(transcript);
-                        }
-                    } else {
-                        interimText += transcript;
-                    }
-                }
-
-                if (interimText.trim() && finalParts.length > 0) {
-                    const lastFinal = finalParts[finalParts.length - 1];
-                    const endsWithPunct = /[.,!?;:。，？！、：；\s]$/.test(lastFinal);
-                    if (!endsWithPunct) {
-                        finalParts[finalParts.length - 1] = lastFinal + period;
-                    }
-                }
-
-                let currentText = finalParts.join(' ');
-                if (interimText.trim()) {
-                    if (currentText) {
-                        currentText += ' ' + interimText.trim();
-                    } else {
-                        currentText = interimText.trim();
-                    }
-                }
-
-                const updatedValue = (this.speechStartValue + (this.speechStartValue ? ' ' : '') + currentText).trim();
-                this.setState({
-                    speechText: currentText,
-                    panelInputValue: updatedValue,
-                });
-            };
-
-            this.recognition.onerror = (event: SpeechErrorEvent) => {
-                console.error('Speech recognition error:', event.error);
-                let errMsg = t('terminal.speech.error', this.props.language);
-                if (event.error === 'not-allowed') {
-                    errMsg = t('terminal.speech.micDenied', this.props.language);
-                } else if (event.error === 'no-speech') {
-                    this.cleanupSpeech();
-                    return;
-                } else if (event.error === 'network') {
-                    errMsg = t('terminal.speech.network', this.props.language);
-                }
-                this.setState({ speechError: errMsg });
-                setTimeout(() => this.setState({ speechError: '' }), 4000);
-                this.cleanupSpeech();
-            };
-
-            this.recognition.onend = () => {
-                if (this.state.isRecording) {
-                    this.stopSpeech();
-                }
-            };
-
-            this.recognition.start();
-        } catch (err) {
-            console.error('Failed to start speech recognition:', err);
-            this.setState({ speechError: t('terminal.speech.startFailed', this.props.language) });
-            setTimeout(() => this.setState({ speechError: '' }), 4000);
-            this.cleanupSpeech();
-        }
-    }
-
-    private cleanupSpeech() {
-        if (this.recognition) {
-            try {
-                this.recognition.abort();
-            } catch (e) {
-                // Ignore abort errors
-            }
-            this.recognition = null;
-        }
-        this.setState({ isRecording: false });
-    }
-
-    @bind
-    cancelSpeech() {
-        this.cleanupSpeech();
-        this.setState({
-            panelInputValue: this.speechStartValue || '',
-            speechText: '',
-            speechError: '',
-        });
-    }
-
-    @bind
-    stopSpeech() {
-        this.cleanupSpeech();
-        this.setState({ speechText: '', speechError: '' });
+        this.speech.toggle();
     }
 
     render(
