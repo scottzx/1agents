@@ -13,14 +13,7 @@
 
 import type { ModuleManifest } from './module-types';
 
-export type SettingsCategory =
-    | 'general'
-    | 'appearance'
-    | 'agents'
-    | 'security'
-    | 'feedback'
-    | 'about'
-    | 'credits';
+export type SettingsCategory = 'general' | 'appearance' | 'agents' | 'security' | 'feedback' | 'about' | 'credits';
 
 export interface SettingsNavItem {
     key: SettingsCategory;

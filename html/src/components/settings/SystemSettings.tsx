@@ -872,7 +872,10 @@ export function SystemSettings(props: SystemSettingsProps) {
             }, 1500);
         };
         if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(cmd).then(done).catch(() => done());
+            navigator.clipboard
+                .writeText(cmd)
+                .then(done)
+                .catch(() => done());
         } else {
             done();
         }
@@ -924,14 +927,10 @@ export function SystemSettings(props: SystemSettingsProps) {
                                 </div>
                                 <div class="agent-catalog-badges">
                                     {a.acpCapable && (
-                                        <span class="agent-cap-badge acp">
-                                            {t('settings.agents.capAcp', language)}
-                                        </span>
+                                        <span class="agent-cap-badge acp">{t('settings.agents.capAcp', language)}</span>
                                     )}
                                     {a.cliCapable && (
-                                        <span class="agent-cap-badge cli">
-                                            {t('settings.agents.capCli', language)}
-                                        </span>
+                                        <span class="agent-cap-badge cli">{t('settings.agents.capCli', language)}</span>
                                     )}
                                     {a.integrated ? (
                                         <span class="agent-transport-badge">
