@@ -11,6 +11,8 @@ interface LinkCard {
     url: string;
     iconColor?: string;
     category: CategoryId;
+    /** Featured cards occupy a double-width bento cell when space allows. */
+    span2?: boolean;
 }
 
 const CATEGORIES: { id: CategoryId; titleKey: string }[] = [
@@ -26,6 +28,7 @@ const QUICK_LINKS: LinkCard[] = [
         url: 'http://nanoskill.ai/',
         iconColor: '#4f46e5', // Royal Indigo
         category: 'featured',
+        span2: true,
     },
     {
         title: '1gateway',
@@ -65,11 +68,11 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }:
                     onOpenBrowserTab(card.url);
                 }
             }}
-            class="discovery-card"
+            class={`discovery-card${card.span2 ? ' bento-span-2' : ''}`}
         >
-            <div class="card-top">
+            <div class="bento-zone-header">
                 <div
-                    class="card-icon-wrapper"
+                    class="bento-card-icon"
                     style={`background-color: ${card.iconColor}15; color: ${card.iconColor};`}
                 >
                     <svg
@@ -79,20 +82,19 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }:
                         stroke-width="2"
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        class="card-icon"
                     >
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                     </svg>
                 </div>
-                {card.badgeKey && <span class="card-badge">{t(card.badgeKey, language)}</span>}
+                {card.badgeKey && <span class="bento-card-badge">{t(card.badgeKey, language)}</span>}
             </div>
 
-            <div class="card-content">
-                <h3 class="card-title">{card.title}</h3>
-                <p class="card-description">{t(card.descriptionKey, language)}</p>
+            <div class="bento-zone-body">
+                <h3 class="bento-card-title">{card.title}</h3>
+                <p class="bento-card-desc">{t(card.descriptionKey, language)}</p>
             </div>
 
-            <div class="card-footer">
+            <div class="bento-zone-footer">
                 <span class="card-action-text">{t('discovery.exploreNow', language)}</span>
                 <svg
                     viewBox="0 0 24 24"
@@ -120,7 +122,7 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }:
                 return (
                     <section class="discovery-section" id={`discovery-section-${cat.id}`} key={cat.id}>
                         <h2 class="discovery-section-title">{t(cat.titleKey, language)}</h2>
-                        <div class="discovery-cards-list">{cards.map(renderCard)}</div>
+                        <div class="discovery-cards-list bento-grid">{cards.map(renderCard)}</div>
                     </section>
                 );
             })}

@@ -79,6 +79,36 @@ Remote Agent is a Web-based remote workbench integrating terminal access (xterm.
 - Yarn 3 is specified via `packageManager: yarn@3.6.3` in package.json
 - Enable Corepack: `corepack enable` if `yarn --version` doesn't show 3.6.3
 
+## Frontend Design Language (html/)
+
+All styles live in `html/src/style/index.scss` (global SCSS, no CSS modules). The design system has two pillars — **always use these instead of ad-hoc values**:
+
+### 1. Semantic Color Tokens
+
+Never write raw hex/rgba for status or UI colors in SCSS. Use the tokens defined in `:root` (light) and `[data-theme="dark"]` (dark) — consumers adapt to theme switching for free:
+
+- **Families**: `--accent-*`, `--success-*`, `--danger-*`, `--warning-*`, `--purple-*`, `--orange-*`
+- **Dimensions per family**: `-fg` (text/icons), `-emphasis` (solid fills, hover of filled buttons), `-bg` (tinted badge/banner surface), `-rgb` (triplet for `rgba(var(--danger-rgb), 0.1)` washes)
+- **Accent extras**: `--accent-hover`, `--accent-active`, `--accent-light`, `--on-accent`
+- **Neutrals**: `--text-main/-secondary/-muted`, `--bg-page/-card/-panel`, `--border-color`, `--btn-hover`
+- **Misc**: `--icon-folder`, `--bg-tooltip`/`--text-tooltip`, `--font-mono`
+
+Never reference an undefined variable with a hex fallback (`var(--bg-hover, #f3f4f6)`) — this silently breaks dark mode. If a token is missing, define it in both theme blocks.
+
+Intentional hardcoded exceptions (do not tokenize): always-dark terminal-style boxes (`.chat-tool-output-box`), theme preview swatches in settings, and data-driven colors in TSX (Git author avatar palette, brand `iconColor`s).
+
+### 2. Bento Card System
+
+Card surfaces share the Bento primitives in `index.scss` (search "Bento Design Language"):
+
+- `.bento-grid` — responsive modular grid (`auto-fill` + `minmax(var(--bento-min-col), 1fr)`, dense flow, container query enabled)
+- `.bento-span-2` / `.bento-row-2` / `.bento-span-full` — varying cell sizes; spans only activate when the grid container is ≥600px wide, so narrow panels degrade to single column
+- `.bento-card` (or `@extend %bento-card` in SCSS) — base card; add `%bento-card-interactive` (hover lift + accent ring) for clickable cards or `%bento-card-static-hover` (ring only) for info cards
+- `.bento-zone-header` / `.bento-zone-body` / `.bento-zone-footer` — information zoning inside a card, with `.bento-card-icon/-badge/-title/-desc` helpers
+- Layout tokens: `--bento-gap`, `--bento-pad(-lg)`, `--bento-radius(-sm/-lg)`, `--bento-transition`
+
+New card-like UI must extend these primitives rather than redefining its own padding/radius/hover. Reference implementations: `DiscoveryPanel` (grid + zoning + span-2), `.task-card-item`, `.sys-settings-card`.
+
 ## Build & Package Workflow
 
 ### 1. Unified Root Build System (Recommended)

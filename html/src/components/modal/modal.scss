@@ -42,7 +42,7 @@
     align-items: center;
     justify-content: center;
     padding: 32px;
-    border-radius: 12px;
+    border-radius: var(--bento-radius);
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-lg);
     text-align: center;
@@ -99,9 +99,9 @@
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
     &:hover {
-      background-color: #0056b3;
+      background-color: var(--accent-hover);
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(9, 105, 218, 0.25);
+      box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.25);
     }
     
     &:active {
