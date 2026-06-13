@@ -50,6 +50,19 @@ export const fsService = {
         if (!res.ok) throw new Error(await res.text());
     },
 
+    /**
+     * Upload an arbitrary file. The backend saves it to /tmp under a randomized
+     * name (preserving the original base name + extension) and returns the
+     * absolute path, which the chat input drops in as text for the local agent.
+     */
+    async upload(file: File): Promise<{ path: string; name: string }> {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/fs/upload', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    },
+
     async search(query: string, tag: string): Promise<FsEntry[]> {
         const res = await fetch(`/api/fs/search?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}`);
         if (!res.ok) throw new Error(await res.text());

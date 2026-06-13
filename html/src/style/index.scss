@@ -8678,7 +8678,8 @@ body {
 // terminal's mobile input.
 .chat-composer-send-inline,
 .chat-composer-stop-inline,
-.chat-composer-mic-inline {
+.chat-composer-mic-inline,
+.chat-composer-attach-inline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -8750,6 +8751,90 @@ body {
 
   &.recording {
     @extend %mic-recording;
+  }
+}
+
+// Ghost attach (+) button — same neutral/hover language as the inline mic.
+.chat-composer-attach-inline {
+  background-color: transparent;
+  color: var(--text-secondary);
+
+  &:hover {
+    background-color: var(--btn-hover);
+    color: var(--text-main);
+    opacity: 1;
+  }
+
+  &:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.5;
+    transform: none;
+  }
+}
+
+// Attachment chip strip — shared by NewChatHome + Composer. Sits above the
+// textarea inside the input frame; each chip shows an image thumbnail (or a
+// generic file icon) + the original name + a remove (✕) button.
+.composer-attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.composer-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 3px 6px 3px 4px;
+  border-radius: 8px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.composer-attachment-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.composer-attachment-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.composer-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+}
+
+.composer-attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover {
+    background-color: rgba(var(--danger-rgb), 0.12);
+    color: var(--danger-fg);
   }
 }
 

@@ -376,6 +376,77 @@ func (h *Handler) Write(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
+// sanitizeUploadName reduces an arbitrary client-supplied filename component to
+// a safe, readable token: only [A-Za-z0-9._-] survive, anything else (path
+// separators, control chars, spaces) becomes '-'. Used so the temp filename
+// keeps the original name without letting it escape /tmp or inject patterns.
+func sanitizeUploadName(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
+// Upload handles POST /api/fs/upload (multipart/form-data, field "file").
+// The uploaded file is saved to /tmp under a randomized name that preserves
+// the original base name + extension, and the absolute path is returned so the
+// frontend can drop it into the chat prompt for the local agent to read.
+func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	const maxBytes = 50 << 20 // 50 MB
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	if err := r.ParseMultipartForm(maxBytes); err != nil {
+		http.Error(w, "invalid multipart form (or too large, >50 MB)", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file field", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Split the client filename into a readable base + extension, sanitized.
+	orig := filepath.Base(header.Filename)
+	ext := sanitizeUploadName(filepath.Ext(orig))
+	name := sanitizeUploadName(strings.TrimSuffix(orig, filepath.Ext(orig)))
+	name = strings.Trim(name, "-.")
+	if name == "" {
+		name = "upload"
+	}
+
+	// CreateTemp fills the '*' with a random token → /tmp/1agents-<name>-<rand><ext>.
+	tmp, err := os.CreateTemp("/tmp", "1agents-"+name+"-*"+ext)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tmp.Close()
+
+	if _, err := io.Copy(tmp, file); err != nil {
+		_ = os.Remove(tmp.Name())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"path": tmp.Name(),
+		"name": orig,
+	})
+}
+
 // Mkdir handles POST /api/fs/mkdir?path=<relative-path>
 // Creates the directory (and all parents) at the given path.
 func (h *Handler) Mkdir(w http.ResponseWriter, r *http.Request) {

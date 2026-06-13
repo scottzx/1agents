@@ -4,7 +4,10 @@ import { t, getLang } from '../../i18n';
 import { nextPermissionMode } from '../types';
 import type { PermissionMode } from '../types';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
+import { AttachButton } from './input/AttachButton';
+import { AttachmentPreview } from './input/AttachmentPreview';
 
 interface ComposerProps {
     onSend: (text: string) => void;
@@ -57,6 +60,7 @@ export function Composer({
         if (!text) return;
         onSend(text);
         el.value = '';
+        attach.clear();
         // Reset height
         el.style.height = 'auto';
     };
@@ -81,6 +85,18 @@ export function Composer({
         }
     );
 
+    // File upload — uncontrolled textarea, so the hook reads/writes its value
+    // via the same getter/setter the speech hook uses, then re-grows it.
+    const attach = useFileAttachments(
+        () => ref.current?.value ?? '',
+        next => {
+            const el = ref.current;
+            if (!el) return;
+            el.value = next;
+            handleInput();
+        }
+    );
+
     const cycleMode = () => {
         onPermissionModeChange(nextPermissionMode(permissionMode));
     };
@@ -92,6 +108,7 @@ export function Composer({
     return (
         <div class="chat-composer">
             <div class="chat-composer-frame">
+                <AttachmentPreview attachments={attach.attachments} onRemove={attach.remove} />
                 <textarea
                     ref={ref}
                     class="chat-composer-input"
@@ -127,6 +144,14 @@ export function Composer({
                         <span class="chat-composer-mode-label">{t(MODE_LABEL_KEY[permissionMode], lang)}</span>
                     </button>
                     <div class="chat-composer-actions">
+                        <AttachButton
+                            className="chat-composer-attach-inline"
+                            onSelect={attach.upload}
+                            uploading={attach.uploading}
+                            disabled={disabled}
+                            title={attach.error || t('chat.composer.attach', lang)}
+                            ariaLabel={t('chat.composer.attach', lang)}
+                        />
                         {/* Voice input — hidden in the desktop (Tauri) build where
                             the native webview lacks a working Web Speech API; also
                             gated on API support + secure context via speech.available. */}
