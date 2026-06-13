@@ -170,6 +170,13 @@ export const createChatSession = async (
 };
 
 export const onStartNewChat = () => {
+    // A full-page drawer tab (providers/skills/discovery/settings) overrides
+    // the primary pane, so without closing it the new-chat landing stays
+    // hidden behind the footer panel — the "New Conversation does nothing
+    // from the sidebar-footer" bug.
+    if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
+        tabsStore.activeDrawerTab.value = 'none';
+    }
     activeSession.value = null;
     // Move the primary pane onto the new-chat landing, leaving the project
     // landing ('tasks') so the new-chat home actually renders on top.

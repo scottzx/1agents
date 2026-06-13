@@ -72,6 +72,9 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         // layer, so the body is shown for both.
         const isShell = activeTabId === 'tasks' || activeTabId === 'terminal';
         const isDynamicTab = activeTabObj?.type === 'preview' || activeTabObj?.type === 'browser';
+        // The new-chat landing is a focused full-bleed page, so hide the
+        // workspace header (it has no active session/workspace context yet).
+        const isNewChat = tabsStore.activeTab.value === 'new_chat' && !isFullPageTab(activeDrawerTab);
 
         return (
             <Fragment>
@@ -191,7 +194,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           always has access to theme / language / drawer tabs
                           regardless of which view is on top.
                         */}
-                        {isShell && (
+                        {isShell && !isNewChat && (
                             <WorkspaceHeader
                                 leftSidebarOpen={leftSidebarOpen}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
