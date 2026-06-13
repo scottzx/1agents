@@ -11,6 +11,7 @@ import * as fs from '../../stores/fsStore';
 import * as sess from '../../stores/sessionStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as tabsStore from '../../stores/tabsStore';
+import * as modal from '../../stores/modalStore';
 import { getModuleByTab } from '../../modules/registry';
 import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
@@ -228,7 +229,6 @@ function renderNewChat(language: Lang) {
         <NewChatHome
             workspaces={wsStore.workspaces.value}
             activeWorkspaceId={wsStore.activeWorkspaceId.value}
-            onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
             onSubmitChat={(wsId, agentType, prompt) => {
                 const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
                 sess.createChatSession(wsId, name, agentType, prompt);
@@ -236,6 +236,7 @@ function renderNewChat(language: Lang) {
             onSubmitTerminal={(wsId, cwd, initialCommand) => {
                 sess.createTerminal(wsId, cwd, initialCommand);
             }}
+            onOpenFolder={modal.openCreateWorkspacePicker}
             language={language}
         />
     );

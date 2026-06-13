@@ -619,45 +619,6 @@ body {
       letter-spacing: 0.5px;
       color: var(--text-sidebar-muted);
       padding: 8px 4px;
-      
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        svg {
-          width: 12px;
-          height: 12px;
-          cursor: pointer;
-          &:hover {
-            color: var(--text-sidebar);
-          }
-        }
-
-        .ws-add-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 18px;
-          height: 18px;
-          border: none;
-          background: transparent;
-          color: var(--text-sidebar-muted);
-          cursor: pointer;
-          border-radius: 4px;
-          padding: 0;
-          transition: all 0.15s;
-
-          svg {
-            width: 12px;
-            height: 12px;
-          }
-
-          &:hover {
-            background-color: var(--bg-sidebar-hover);
-            color: var(--accent-color);
-          }
-        }
-      }
     }
 
     /* Loading skeleton */
@@ -1249,58 +1210,6 @@ body {
         color: var(--text-sidebar);
         background-color: var(--bg-sidebar-hover);
         font-weight: 500;
-      }
-    }
-
-    /* Second-level menu — revealed under an active footer item (discovery). */
-    .footer-item-group {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .footer-submenu {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      margin: 2px 0 2px 11px;
-      padding-left: 12px;
-      border-left: 1px solid var(--border-sidebar);
-
-      .footer-subitem {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 8px;
-        font-size: 12px;
-        color: var(--text-sidebar-muted);
-        cursor: pointer;
-        border-radius: 6px;
-        transition: all 0.2s;
-
-        .subitem-dot {
-          width: 5px;
-          height: 5px;
-          border-radius: 50%;
-          background-color: currentColor;
-          opacity: 0.5;
-          flex-shrink: 0;
-        }
-
-        &:hover {
-          color: var(--text-sidebar);
-          background-color: var(--bg-sidebar-hover);
-        }
-
-        &.active {
-          color: var(--text-sidebar);
-          font-weight: 500;
-
-          .subitem-dot {
-            opacity: 1;
-            background-color: var(--accent-color);
-          }
-        }
       }
     }
   }
@@ -3981,6 +3890,18 @@ body {
 
     .discovery-cards-list {
       padding-bottom: 8px;
+
+      /* Fixed column count keyed to the viewport breakpoint (overrides the
+       * bento-grid auto-fill): 2 on mobile → 3 on tablet → 4 on full screen. */
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+
+      @media (min-width: 768px) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      @media (min-width: 1280px) {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
     }
 
     .discovery-card {
@@ -8857,6 +8778,13 @@ body {
   }
 }
 
+// Generic terminal/shell glyph shown as the leading icon when a terminal
+// session has no detected agent. Reuses the .chat-sidebar-avatar box so it
+// lines up with agent avatars.
+.chat-terminal-icon {
+  color: var(--text-sidebar-muted);
+}
+
 .chat-status-dot {
   display: inline-block;
   width: 6px;
@@ -8869,6 +8797,13 @@ body {
 .chat-status-dot.streaming { background: var(--accent-color); animation: chat-dot-pulse 1.2s infinite; }
 .chat-status-dot.awaiting_permission { background: var(--warning-fg); }
 .chat-status-dot.error { background: var(--danger-fg); }
+// Terminal status palette on the same trailing dot (mirrors the old left
+// `.status-dot` colours: green=idle, blue=busy, amber=waiting, purple=shell).
+.chat-status-dot.term-idle { background: var(--success-fg); }
+.chat-status-dot.term-busy { background: var(--accent-color); animation: chat-dot-pulse 1.2s infinite; }
+.chat-status-dot.term-waiting { background: var(--warning-fg); animation: chat-dot-pulse 1.2s infinite; }
+.chat-status-dot.term-shell { background: var(--purple-fg); }
+.chat-status-dot.term-none { background: transparent; }
 @keyframes chat-dot-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -9002,6 +8937,8 @@ body {
 
   .new-chat-ws-picker-container {
     position: relative;
+    width: 100%;
+    max-width: 720px;
     margin-bottom: 24px;
     z-index: 50;
   }
@@ -9046,8 +8983,7 @@ body {
   .new-chat-ws-dropdown {
     position: absolute;
     top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
     margin-top: 8px;
     width: 240px;
     background-color: var(--bg-panel);
@@ -9096,6 +9032,14 @@ body {
       .checkmark {
         margin-left: auto;
         font-weight: bold;
+      }
+
+      &.open-folder {
+        margin-top: 4px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-color);
+        border-radius: 0 0 8px 8px;
+        color: var(--text-secondary);
       }
     }
   }

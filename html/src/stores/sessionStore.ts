@@ -137,6 +137,11 @@ export const createChatSession = async (
     }
     try {
         ui.showToast('正在创建聊天会话…');
+        // Switch the real workspace context (terminal/fs/chat list) only now,
+        // when a message is actually sent — the new-chat picker is frontend-only.
+        if (wsStore.activeWorkspaceId.value !== workspaceId) {
+            await wsStore.selectWorkspace(ws);
+        }
         const project = ccProjectName(ws.name || ws.id, agentType);
         const { token } = await getCcAuth(workspaceId);
         const sessionKey = `oneagents:${ws.id}:${agentType}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -165,6 +170,13 @@ export const createChatSession = async (
 };
 
 export const onStartNewChat = () => {
+    // A full-page drawer tab (providers/skills/discovery/settings) overrides
+    // the primary pane, so without closing it the new-chat landing stays
+    // hidden behind the footer panel — the "New Conversation does nothing
+    // from the sidebar-footer" bug.
+    if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
+        tabsStore.activeDrawerTab.value = 'none';
+    }
     activeSession.value = null;
     // Move the primary pane onto the new-chat landing, leaving the project
     // landing ('tasks') so the new-chat home actually renders on top.
