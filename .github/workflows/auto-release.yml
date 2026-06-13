@@ -660,6 +660,17 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: Build OTA manifests
+        run: |
+          python3 scripts/build-manifest.py \
+            --version "${{ needs.prepare.outputs.tag }}" \
+            --artifacts . \
+            --output manifest.json
+          python3 scripts/build-tauri-manifest.py \
+            --version "${{ needs.prepare.outputs.tag }}" \
+            --artifacts . \
+            --notes "Release ${{ needs.prepare.outputs.tag }}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -669,6 +680,8 @@ jobs:
           prerelease: false
           files: |
             1agents-*.tar.gz
+            manifest.json
+            desktop-*.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v6

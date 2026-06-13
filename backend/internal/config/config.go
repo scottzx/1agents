@@ -53,6 +53,19 @@ type Config struct {
 
 	// SkillsBinaryPath is the path to the python executable to run 1skills.
 	SkillsBinaryPath string
+
+	// OTA configures the over-the-air self-update behaviour.
+	// When Enabled is false the /api/system/update endpoint still accepts
+	// requests but reports "disabled".
+	OTA OTAConfig
+}
+
+// OTAConfig holds settings for the GitHub-Releases-based self-updater.
+type OTAConfig struct {
+	// Enabled controls whether the self-update machinery is active.
+	// False in desktop mode (Tauri manages updates) and in Docker
+	// (user manages updates via docker pull).
+	Enabled bool
 }
 
 // Default returns a Config populated with safe default values.

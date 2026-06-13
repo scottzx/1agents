@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-updater"
+description = "Enable OTA update check and relaunch commands"
+
+[permission.commands]
+allow = [
+  "check_desktop_update",
+  "dismiss_desktop_update",
+]
