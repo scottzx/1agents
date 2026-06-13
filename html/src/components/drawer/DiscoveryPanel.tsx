@@ -71,10 +71,7 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }:
             class={`discovery-card${card.span2 ? ' bento-span-2' : ''}`}
         >
             <div class="bento-zone-header">
-                <div
-                    class="bento-card-icon"
-                    style={`background-color: ${card.iconColor}15; color: ${card.iconColor};`}
-                >
+                <div class="bento-card-icon" style={`background-color: ${card.iconColor}15; color: ${card.iconColor};`}>
                     <svg
                         viewBox="0 0 24 24"
                         fill="none"
