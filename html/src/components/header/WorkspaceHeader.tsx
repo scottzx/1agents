@@ -307,14 +307,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             {IconChannels}
                         </button>
                         <button
-                            id="hdr-btn-tasks"
-                            class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
-                            onClick={() => toggleDrawerTab('tasks')}
-                            title="任务仪表盘"
-                        >
-                            {IconTasks}
-                        </button>
-                        <button
                             id="hdr-btn-files"
                             class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('files')}

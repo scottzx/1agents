@@ -153,6 +153,10 @@ export const createChatSession = async (
         // Auto-select the new session and switch to the agents tab.
         activeSession.value = { ...indexed, active: true };
         pendingInitialMessage.value = initialMessage || null;
+        // Switch the primary pane to the new chat. activeTabId must move off
+        // 'tasks' too, otherwise the kanban stays on top and the new session
+        // never shows (the project-landing → session switch bug).
+        tabsStore.activeTabId.value = 'terminal';
         tabsStore.activeTab.value = 'agents';
         ui.showToast('聊天会话已创建 ✓');
     } catch (err) {
@@ -162,6 +166,9 @@ export const createChatSession = async (
 
 export const onStartNewChat = () => {
     activeSession.value = null;
+    // Move the primary pane onto the new-chat landing, leaving the project
+    // landing ('tasks') so the new-chat home actually renders on top.
+    tabsStore.activeTabId.value = 'terminal';
     tabsStore.activeTab.value = 'new_chat';
 };
 

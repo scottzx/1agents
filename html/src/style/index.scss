@@ -1481,15 +1481,11 @@ body {
 /* ==========================================================================
    WORKSPACE MAIN CONTENT AREA (Occupying right part of the viewport)
 
-   The .workspace-main-content stacks three layers in z-order:
-     - .kanban-background-layer  (z-index 0, absolute, always mounted) —
-       the project task kanban. Always present so tab switches don't flash
-       a white background.
-     - .workspace-header         (z-index 2, in normal flow) — for 'tasks'
-       and 'terminal' only.
-     - .workspace-body-container (z-index 1, in normal flow) — sits below
-       the header. Omitted when activeTabId === 'tasks', so the kanban
-       shows through; covers the kanban for 'terminal' and dynamic tabs.
+   Normal flow, top to bottom:
+     - .workspace-header         — for 'tasks' and 'terminal' only.
+     - .workspace-body-container — the content area (primary pane + optional
+       secondary drawer pane). For 'tasks' the primary pane is the kanban;
+       for 'terminal' it's the terminal/chat workbench.
    ========================================================================== */
 .workspace-main-content {
   position: relative;
@@ -1499,21 +1495,6 @@ body {
   height: 100%;
   overflow: hidden;
   background-color: var(--bg-page);
-}
-
-.kanban-background-layer {
-  position: absolute;
-  /* Start below the 48px .workspace-header (z-index 2, normal flow) —
-     otherwise the layer's own header row (e.g. the create-task button)
-     renders underneath it and is unreachable. */
-  inset: 48px 0 0 0;
-  z-index: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  background-color: var(--bg-panel);
-  padding: 12px 16px;
-  min-height: 0;
 }
 
 /* ==========================================================================
@@ -1882,7 +1863,7 @@ body {
 }
 
 /* ==========================================================================
-   TASK KANBAN (lives inside .kanban-background-layer)
+   TASK KANBAN (rendered in the primary pane as the 'tasks' ContentView)
    ========================================================================== */
 .task-dashboard-container {
   display: flex;
