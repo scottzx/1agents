@@ -328,28 +328,6 @@ export function LeftSidebar({
                     <div class="workspace-section">
                         <div class="section-header">
                             <span>Projects</span>
-                            <div class="header-actions">
-                                {/* Add workspace button */}
-                                <button
-                                    class="ws-add-btn"
-                                    onClick={(e: MouseEvent) => {
-                                        e.stopPropagation();
-                                        onCreateWorkspace();
-                                    }}
-                                    title={t('sidebar.newWorkspace', language)}
-                                >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2.5"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M5 12h14M12 5v14" />
-                                    </svg>
-                                </button>
-                            </div>
                         </div>
 
                         {/* Loading skeleton */}

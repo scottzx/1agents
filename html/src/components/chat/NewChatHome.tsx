@@ -3,35 +3,43 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS } from '../types';
 import { t, type Lang } from '../i18n';
+import * as wsStore from '../../stores/workspaceStore';
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
     activeWorkspaceId: string;
-    onSelectWorkspace: (ws: Workspace) => void;
     onSubmitChat: (workspaceId: string, agentType: AgentType, prompt: string) => void;
+    onOpenFolder: () => void;
     language: Lang;
 }
 
-export function NewChatHome({
-    workspaces,
-    activeWorkspaceId,
-    onSelectWorkspace,
-    onSubmitChat,
-    language,
-}: NewChatHomeProps) {
+export function NewChatHome({ workspaces, activeWorkspaceId, onSubmitChat, onOpenFolder, language }: NewChatHomeProps) {
     const [prompt, setPrompt] = useState('');
     const [selectedAgent, setSelectedAgent] = useState<AgentType>('claudecode');
+    // Frontend-only pre-selection. Switching the actual workspace context is
+    // deferred until the user sends a message (see handleSubmit → onSubmitChat).
+    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(activeWorkspaceId);
     const wsDropdownOpen = useSignal(false);
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
-    const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+    const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
 
     // Align local state agent selector with workspace's default agent if it changes
     useEffect(() => {
         if (activeWorkspace?.defaultAgent && AGENT_TYPES.includes(activeWorkspace.defaultAgent)) {
             setSelectedAgent(activeWorkspace.defaultAgent);
         }
-    }, [activeWorkspaceId, activeWorkspace]);
+    }, [selectedWorkspaceId, activeWorkspace]);
+
+    // Adopt a workspace freshly created via "Open folder…" as the picker
+    // selection, without leaving the new-chat landing. One-shot: consume + clear.
+    useEffect(() => {
+        const injected = wsStore.newChatWorkspaceId.value;
+        if (injected) {
+            setSelectedWorkspaceId(injected);
+            wsStore.newChatWorkspaceId.value = '';
+        }
+    }, [wsStore.newChatWorkspaceId.value]);
 
     // Handle outside click for the workspace dropdown
     useEffect(() => {
@@ -100,9 +108,9 @@ export function NewChatHome({
                             {workspaces.map(ws => (
                                 <button
                                     key={ws.id}
-                                    class={`dropdown-item ${ws.id === activeWorkspaceId ? 'active' : ''}`}
+                                    class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
                                     onClick={() => {
-                                        onSelectWorkspace(ws);
+                                        setSelectedWorkspaceId(ws.id);
                                         wsDropdownOpen.value = false;
                                     }}
                                 >
@@ -116,9 +124,31 @@ export function NewChatHome({
                                         <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                                     </svg>
                                     <span class="item-name">{ws.name}</span>
-                                    {ws.id === activeWorkspaceId && <span class="checkmark">✓</span>}
+                                    {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
                                 </button>
                             ))}
+                            <button
+                                class="dropdown-item open-folder"
+                                onClick={() => {
+                                    onOpenFolder();
+                                    wsDropdownOpen.value = false;
+                                }}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    style="width: 14px; height: 14px; opacity: 0.7;"
+                                >
+                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                    <line x1="12" y1="10" x2="12" y2="16" />
+                                    <line x1="9" y1="13" x2="15" y2="13" />
+                                </svg>
+                                <span class="item-name">{t('sidebar.newWorkspace', language)}</span>
+                            </button>
                         </div>
                     )}
                 </div>
