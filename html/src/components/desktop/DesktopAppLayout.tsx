@@ -1,25 +1,39 @@
 import { h, Component, Fragment } from 'preact';
-import { isFullPageTab, isChat, AGENT_TYPE_LABELS } from '../types';
+import { isFullPageTab, isChat, type RightDrawerTab } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
-import { NewChatHome } from '../chat/NewChatHome';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
-import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
-import { TaskList } from '../drawer/TaskList';
-import { WorkbenchCanvas } from '../shared/WorkbenchCanvas';
 import { RightPanelHost } from '../shared/RightPanelHost';
-import { SystemSettingsHost } from '../shared/SystemSettingsHost';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
-import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { BuiltinBrowser } from '../browser/BuiltinBrowser';
+import { ContentViewHost } from '../stage/ContentViewHost';
+import type { ContentView } from '../../stores/stageStore';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
-import { getModuleByTab } from '../../modules/registry';
 import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
+
+/**
+ * Maps the active tab state to the primary pane's `ContentView`. Tasks is
+ * now a peer primary view (the project landing), not a z-index background
+ * layer. Full-page modules (providers/skills/discovery/settings) take the
+ * primary pane full-width (secondary closed); otherwise it's the
+ * tasks/terminal/chat/new-chat content. Bridge from the legacy signals
+ * onto the unified pane renderer.
+ */
+function primaryViewFor(activeTabId: string, activeTab: string, drawerTab: RightDrawerTab): ContentView {
+    if (isFullPageTab(drawerTab)) {
+        // isFullPageTab guarantees one of providers/skills/discovery/settings.
+        return { kind: drawerTab } as ContentView;
+    }
+    if (activeTabId === 'tasks') return { kind: 'tasks' };
+    if (activeTab === 'new_chat') return { kind: 'newChat' };
+    if (activeTab === 'agents') return { kind: 'chat' };
+    return { kind: 'terminal' };
+}
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -32,7 +46,6 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const tabs = tabsStore.tabs.value;
         const activeTabId = tabsStore.activeTabId.value;
         const activeDrawerTab = tabsStore.activeDrawerTab.value;
-        const ccProvidersUrl = wsStore.ccProvidersUrl.value;
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
@@ -53,8 +66,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         // Shell layout (LeftSidebar + WorkspaceHeader) is shared by the
         // project landing ('tasks') and the workbench ('terminal'). Dynamic
         // tabs (preview/browser) cover the whole content area without the shell.
+        // The shell (LeftSidebar + WorkspaceHeader + workbench body) hosts
+        // both the project landing ('tasks') and the workbench ('terminal').
+        // Tasks now renders as a primary-pane ContentView, not a background
+        // layer, so the body is shown for both.
         const isShell = activeTabId === 'tasks' || activeTabId === 'terminal';
-        const isTerminal = activeTabId === 'terminal';
         const isDynamicTab = activeTabObj?.type === 'preview' || activeTabObj?.type === 'browser';
 
         return (
@@ -170,19 +186,6 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                     {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
                     <div class="workspace-main-content">
                         {/*
-                          [BACKGROUND LAYER]: the project task kanban is always
-                          mounted underneath, so it persists across tab switches
-                          and prevents the white-flash that occurred when the
-                          'terminal' overlay unmounted/remounted. The 'tasks'
-                          activeTabId sentinel means "no overlay; show the
-                          background"; other activeTabIds (terminal /
-                          preview-* / browser-*) render an overlay on top.
-                        */}
-                        <div class="kanban-background-layer">
-                            <TaskList workspaceId={activeWorkspaceId} onSelectSession={s => sess.selectSession(s)} />
-                        </div>
-
-                        {/*
                           [SHELL HEADER]: shown for both 'tasks' (project
                           landing) and 'terminal' (workbench), so the user
                           always has access to theme / language / drawer tabs
@@ -212,18 +215,20 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         )}
 
                         {/*
-                          [TERMINAL BODY]: rendered on top of the kanban. For
-                          'tasks' this is omitted, so the kanban background is
-                          the visible body. Full-page drawer tabs (providers /
-                          skills / discovery / settings) replace the canvas +
-                          right panel; otherwise the standard MiddleCanvas +
-                          Resizer + RightPanel is shown.
+                          [WORKBENCH BODY]: the content area = primary pane
+                          (+ optional secondary drawer pane). Renders for both
+                          'tasks' (primary = kanban) and 'terminal' (primary =
+                          terminal/chat/new-chat). Full-page drawer tabs
+                          (providers/skills/discovery/settings) fill the
+                          primary pane; otherwise primary + Resizer + drawer.
                         */}
-                        {isTerminal && (
+                        {isShell && (
                             <div
                                 class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
                             >
                                 {isFullPageTab(activeDrawerTab) ? (
+                                    // [SINGLE PANE]: full-page module fills the primary pane;
+                                    // the secondary drawer is closed (single column).
                                     <div
                                         style={{
                                             flex: 1,
@@ -234,97 +239,31 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             overflow: 'hidden',
                                         }}
                                     >
-                                        {activeDrawerTab === 'providers' && ccProvidersUrl && (
-                                            <CcProvidersPanel
-                                                ccProvidersUrl={ccProvidersUrl}
-                                                panelStyle={{
-                                                    width: '100%',
-                                                    height: '100%',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    minHeight: 0,
-                                                    overflow: 'hidden',
-                                                }}
-                                            />
-                                        )}
-                                        {activeDrawerTab === 'skills' &&
-                                            (() => {
-                                                const skillsMod = getModuleByTab('skills');
-                                                const activeModulePath = tabsStore.activeModulePath.value;
-                                                const initialRoute =
-                                                    skillsMod && activeModulePath && activeDrawerTab === 'skills'
-                                                        ? activeModulePath
-                                                        : skillsMod
-                                                          ? skillsMod.entryPath
-                                                          : '/overview';
-                                                return (
-                                                    <skills-panel
-                                                        id="skills-panel"
-                                                        route={initialRoute}
-                                                        theme={theme}
-                                                        lang={language}
-                                                        style={{
-                                                            width: '100%',
-                                                            height: '100%',
-                                                            display: 'flex',
-                                                            flexDirection: 'column',
-                                                            minHeight: 0,
-                                                            overflow: 'hidden',
-                                                        }}
-                                                    />
-                                                );
-                                            })()}
-                                        {activeDrawerTab === 'discovery' && (
-                                            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                                                <DiscoveryPanel
-                                                    onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
-                                                    language={language}
-                                                    scrollToCategory={tabsStore.discoveryCategory.value}
-                                                />
-                                            </div>
-                                        )}
-                                        {activeDrawerTab === 'settings' && (
-                                            <div
-                                                style={{
-                                                    flex: 1,
-                                                    overflow: 'hidden',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    height: '100%',
-                                                }}
-                                            >
-                                                <SystemSettingsHost
-                                                    app={app}
-                                                    state={state}
-                                                    activeCategory={tabsStore.activeSettingsCategory.value}
-                                                />
-                                            </div>
-                                        )}
+                                        <ContentViewHost
+                                            view={primaryViewFor(
+                                                activeTabId,
+                                                tabsStore.activeTab.value,
+                                                activeDrawerTab
+                                            )}
+                                            app={app}
+                                            state={state}
+                                        />
                                     </div>
                                 ) : (
                                     <Fragment>
-                                        {/* [COLUMN 2]: MIDDLE main workspace Terminal container */}
-                                        {tabsStore.activeTab.value === 'new_chat' ? (
-                                            <NewChatHome
-                                                workspaces={workspaces}
-                                                activeWorkspaceId={activeWorkspaceId}
-                                                onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
-                                                onSubmitChat={(wsId, agentType, prompt) => {
-                                                    const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
-                                                    sess.createChatSession(wsId, name, agentType, prompt);
-                                                }}
-                                                language={language}
-                                            />
-                                        ) : (
-                                            <WorkbenchCanvas
-                                                app={app}
-                                                fontSize={13} // Desktop standard
-                                                pendingInitialMessage={sess.pendingInitialMessage.value}
-                                                onClearPendingInitialMessage={sess.clearPendingInitialMessage}
-                                            />
-                                        )}
+                                        {/* [PRIMARY PANE]: terminal / chat / new-chat workbench */}
+                                        <ContentViewHost
+                                            view={primaryViewFor(
+                                                activeTabId,
+                                                tabsStore.activeTab.value,
+                                                activeDrawerTab
+                                            )}
+                                            app={app}
+                                            state={state}
+                                            fontSize={13}
+                                        />
 
-                                        {/* Resizer: between MIDDLE canvas and RIGHT panel */}
+                                        {/* Resizer: between PRIMARY pane and SECONDARY drawer pane */}
                                         {activeDrawerTab !== 'none' && (
                                             <div
                                                 class="resizer resizer-right"

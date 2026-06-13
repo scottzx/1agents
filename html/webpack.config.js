@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 const { merge } = require('webpack-merge');
 const webpack = require('webpack');
 const ESLintPlugin = require('eslint-webpack-plugin');
@@ -23,6 +24,31 @@ function getBackendPort() {
 }
 
 const backendPort = getBackendPort();
+
+// Find the first free port at or above `startPort` so `yarn start` never
+// crashes with EADDRINUSE — it just rolls forward to the next open port.
+function findFreePort(startPort, maxTries = 50) {
+    return new Promise((resolve, reject) => {
+        let port = startPort;
+        let tries = 0;
+        const tryPort = () => {
+            const tester = net
+                .createServer()
+                .once('error', err => {
+                    if (err.code === 'EADDRINUSE' && tries < maxTries) {
+                        tries++;
+                        port++;
+                        tryPort();
+                    } else {
+                        reject(err);
+                    }
+                })
+                .once('listening', () => tester.once('close', () => resolve(port)).close())
+                .listen(port, '0.0.0.0');
+        };
+        tryPort();
+    });
+}
 
 const baseConfig = {
     context: path.resolve(__dirname, 'src'),
@@ -142,4 +168,13 @@ const prodConfig = {
     devtool: 'source-map',
 };
 
-module.exports = merge(baseConfig, devMode ? devConfig : prodConfig);
+module.exports = async () => {
+    if (!devMode) return merge(baseConfig, prodConfig);
+    // `port` in devConfig is the preferred base; roll forward if it's taken.
+    const basePort = Number(process.env.PORT) || devConfig.devServer.port;
+    const port = await findFreePort(basePort);
+    if (port !== basePort) {
+        console.log(`[webpack-dev-server] port ${basePort} busy → using ${port}`);
+    }
+    return merge(baseConfig, devConfig, { devServer: { port } });
+};
