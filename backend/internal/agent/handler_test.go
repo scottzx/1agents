@@ -21,7 +21,7 @@ func newTestHandler(t *testing.T) (*Handler, *Store) {
 		return []WorkspaceRef{}, nil
 	}
 	scheduler := NewScheduler(tasksStore, workspacesFn)
-	return NewHandler(s, tasksStore, acpxClient, scheduler), s
+	return NewHandler(s, tasksStore, acpxClient, scheduler, NewCatalogStore()), s
 }
 
 func TestHandlerAgentTypes(t *testing.T) {

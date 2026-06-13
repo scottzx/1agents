@@ -19,6 +19,7 @@ import * as wsStore from '../stores/workspaceStore';
 import * as sess from '../stores/sessionStore';
 import * as modal from '../stores/modalStore';
 import * as tabsStore from '../stores/tabsStore';
+import * as agentCatalog from '../stores/agentCatalogStore';
 
 export {
     wsUrl,
@@ -80,7 +81,7 @@ export class App extends Component<{}, AppState> {
         }
 
         // Wait for both workspaces and terminal sessions to load in parallel
-        await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals()]);
+        await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals(), agentCatalog.loadAgentCatalog()]);
 
         // Synchronize terminal windows + cached chat sessions into folders
         sess.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);

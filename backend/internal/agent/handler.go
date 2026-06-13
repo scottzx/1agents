@@ -22,15 +22,17 @@ type Handler struct {
 	tasksStore *TasksStore
 	acpxClient *AcpxClient
 	scheduler  *Scheduler
+	catalog    *CatalogStore
 }
 
 // NewHandler returns a Handler backed by stores and client.
-func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler) *Handler {
+func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler, catalog *CatalogStore) *Handler {
 	return &Handler{
 		store:      store,
 		tasksStore: tasksStore,
 		acpxClient: acpxClient,
 		scheduler:  scheduler,
+		catalog:    catalog,
 	}
 }
 
@@ -56,6 +58,25 @@ func (h *Handler) HandleAgentTypes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, SupportedAgentTypes)
+}
+
+// HandleAgentCatalog serves GET /api/agent/catalog.
+//
+// Returns the cached per-host install + capability snapshot for every real
+// agent application. A ?refresh=1 query forces a fresh PATH re-probe before
+// responding (the manual refresh endpoint).
+func (h *Handler) HandleAgentCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var statuses []AgentStatus
+	if r.URL.Query().Get("refresh") != "" {
+		statuses = h.catalog.Scan()
+	} else {
+		statuses = h.catalog.Snapshot()
+	}
+	writeJSON(w, statuses)
 }
 
 // HandleSessionsRoot handles /api/agent/sessions (root, no trailing slash).
