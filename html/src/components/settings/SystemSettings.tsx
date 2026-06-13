@@ -1,5 +1,5 @@
 import { h, Fragment } from 'preact';
-import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { t, type Lang } from '../../i18n';
 import type { SettingsCategory } from '../../modules/settings-manifest';
 
@@ -46,11 +46,11 @@ export function SystemSettings(props: SystemSettingsProps) {
         activeCategory,
     } = props;
 
-    const [confirmReset, setConfirmReset] = useState(false);
+    const confirmReset = useSignal(false);
 
     const handleResetCache = () => {
-        if (!confirmReset) {
-            setConfirmReset(true);
+        if (!confirmReset.value) {
+            confirmReset.value = true;
             return;
         }
         try {
@@ -810,14 +810,14 @@ export function SystemSettings(props: SystemSettingsProps) {
                     <div>
                         <div class="sys-settings-card-title">{t('settings.about.reset', language)}</div>
                         <div class="sys-settings-card-subtitle">
-                            {confirmReset
+                            {confirmReset.value
                                 ? t('settings.about.resetWarning', language)
                                 : t('settings.about.resetDesc', language)}
                         </div>
                     </div>
                 </div>
                 <div class="sys-settings-action-row">
-                    {confirmReset ? (
+                    {confirmReset.value ? (
                         <Fragment>
                             <button class="sys-settings-btn danger" onClick={handleResetCache}>
                                 <svg
@@ -834,7 +834,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                 </svg>
                                 {t('settings.about.confirmReset', language)}
                             </button>
-                            <button class="sys-settings-btn ghost" onClick={() => setConfirmReset(false)}>
+                            <button class="sys-settings-btn ghost" onClick={() => (confirmReset.value = false)}>
                                 {t('common.cancel', language)}
                             </button>
                         </Fragment>

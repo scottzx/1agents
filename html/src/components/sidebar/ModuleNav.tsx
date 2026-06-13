@@ -8,7 +8,7 @@
  */
 
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 
 import type { Lang } from '../i18n';
 import { t } from '../i18n';
@@ -74,18 +74,18 @@ interface ModuleGroupProps {
 }
 
 function ModuleGroup({ group, activePath, defaultCollapsed, onNavigate, language }: ModuleGroupProps) {
-    const [collapsed, setCollapsed] = useState(defaultCollapsed);
+    const collapsed = useSignal(defaultCollapsed);
     const collapsible = group.collapsible !== false;
     const groupIcon = getModuleIconPath(group.iconKey);
     const groupActive = group.links.some(l => isPathActive(l.to, activePath));
 
     return (
-        <div class={`module-nav-group${groupActive ? ' has-active' : ''}`} data-collapsed={collapsed}>
+        <div class={`module-nav-group${groupActive ? ' has-active' : ''}`} data-collapsed={collapsed.value}>
             <button
                 type="button"
                 class="module-nav-group__header"
-                onClick={collapsible ? () => setCollapsed(v => !v) : undefined}
-                aria-expanded={!collapsed}
+                onClick={collapsible ? () => (collapsed.value = !collapsed.value) : undefined}
+                aria-expanded={!collapsed.value}
             >
                 {groupIcon && (
                     <svg
@@ -120,7 +120,7 @@ function ModuleGroup({ group, activePath, defaultCollapsed, onNavigate, language
                     </svg>
                 )}
             </button>
-            {!collapsed && (
+            {!collapsed.value && (
                 <div class="module-nav-group__items">
                     {group.links.map(link => (
                         <ModuleLink

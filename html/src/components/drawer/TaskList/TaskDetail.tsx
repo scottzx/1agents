@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 
 import { agentService } from '../../../services/agentService';
 import type { AgentType, ChatSession, Session } from '../../types';
@@ -21,11 +22,11 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
     const [error, setError] = useState('');
 
     // Description editing
-    const [editingDesc, setEditingDesc] = useState(false);
+    const editingDesc = useSignal(false);
     const [descDraft, setDescDraft] = useState('');
 
     // Acceptance criteria editing
-    const [editingAccept, setEditingAccept] = useState(false);
+    const editingAccept = useSignal(false);
     const [acceptDraft, setAcceptDraft] = useState('');
 
     // Reply composer
@@ -72,7 +73,7 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
     const saveDescription = async () => {
         try {
             await patchTask({ description: descDraft });
-            setEditingDesc(false);
+            editingDesc.value = false;
         } catch (err) {
             alert((err as Error).message);
         }
@@ -81,7 +82,7 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
     const saveAcceptance = async () => {
         try {
             await patchTask({ acceptanceCriteria: acceptDraft });
-            setEditingAccept(false);
+            editingAccept.value = false;
         } catch (err) {
             alert((err as Error).message);
         }
@@ -240,19 +241,19 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
                 <div class="task-desc-section">
                     <div class="task-section-header">
                         <h5>{'\u{1F4DD}'} 描述</h5>
-                        {!editingDesc && (
+                        {!editingDesc.value && (
                             <button
                                 class="task-desc-edit-btn"
                                 onClick={() => {
                                     setDescDraft(task.description || '');
-                                    setEditingDesc(true);
+                                    editingDesc.value = true;
                                 }}
                             >
                                 编辑
                             </button>
                         )}
                     </div>
-                    {editingDesc ? (
+                    {editingDesc.value ? (
                         <div class="task-desc-editor">
                             <textarea
                                 rows={5}
@@ -261,7 +262,7 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
                             />
                             <div class="task-desc-editor-actions">
                                 <button onClick={saveDescription}>保存</button>
-                                <button onClick={() => setEditingDesc(false)}>取消</button>
+                                <button onClick={() => (editingDesc.value = false)}>取消</button>
                             </div>
                         </div>
                     ) : (
@@ -279,19 +280,19 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
                 <div class="task-desc-section task-accept-section">
                     <div class="task-section-header">
                         <h5>✅ 验收标准</h5>
-                        {!editingAccept && (
+                        {!editingAccept.value && (
                             <button
                                 class="task-desc-edit-btn"
                                 onClick={() => {
                                     setAcceptDraft(task.acceptanceCriteria || '');
-                                    setEditingAccept(true);
+                                    editingAccept.value = true;
                                 }}
                             >
                                 编辑
                             </button>
                         )}
                     </div>
-                    {editingAccept ? (
+                    {editingAccept.value ? (
                         <div class="task-desc-editor">
                             <textarea
                                 rows={3}
@@ -300,7 +301,7 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
                             />
                             <div class="task-desc-editor-actions">
                                 <button onClick={saveAcceptance}>保存</button>
-                                <button onClick={() => setEditingAccept(false)}>取消</button>
+                                <button onClick={() => (editingAccept.value = false)}>取消</button>
                             </div>
                         </div>
                     ) : (
