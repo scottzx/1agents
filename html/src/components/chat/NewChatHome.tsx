@@ -6,7 +6,10 @@ import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import { pickableAgents } from '../../stores/agentCatalogStore';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
+import { AttachButton } from './input/AttachButton';
+import { AttachmentPreview } from './input/AttachmentPreview';
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
@@ -64,6 +67,10 @@ export function NewChatHome({
     // voice-input logic via a shared hook; appends to whatever is typed.
     const speech = useSpeechRecognition(language, () => prompt, setPrompt);
 
+    // File upload — appends each /tmp path into the prompt text and tracks a
+    // chip; shares the same getter/setter shape as the speech hook.
+    const attach = useFileAttachments(() => prompt, setPrompt);
+
     // Offer only installed agents (falls back to the full static list before
     // the catalog loads). Keep the current selection present even if it isn't
     // installed, so a workspace's defaultAgent still renders.
@@ -116,12 +123,14 @@ export function NewChatHome({
             const initialCommand = preset.bin ? (trimmed ? `${preset.bin} ${quoteArg(trimmed)}` : preset.bin) : '';
             onSubmitTerminal?.(activeWorkspace.id, cwd, initialCommand);
             setPrompt('');
+            attach.clear();
             return;
         }
 
         if (!trimmed) return;
         onSubmitChat(activeWorkspace.id, selectedAgent, trimmed);
         setPrompt('');
+        attach.clear();
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -219,6 +228,7 @@ export function NewChatHome({
 
             {/* Central Chat Input Box */}
             <div class="new-chat-input-wrapper">
+                <AttachmentPreview attachments={attach.attachments} onRemove={attach.remove} />
                 <textarea
                     class="new-chat-textarea"
                     placeholder={
@@ -276,20 +286,14 @@ export function NewChatHome({
                             </button>
                         </div>
 
-                        {/* + Button placeholder */}
-                        <button class="action-btn-circle plus-btn" title="Add attachment">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                        </button>
+                        {/* File upload trigger */}
+                        <AttachButton
+                            className="action-btn-circle plus-btn"
+                            onSelect={attach.upload}
+                            uploading={attach.uploading}
+                            title={attach.error || t('chat.composer.attach', language)}
+                            ariaLabel={t('chat.composer.attach', language)}
+                        />
 
                         {/* Model / Agent selector (chat) — or preset selector (terminal) */}
                         <div class="select-dropdown-wrapper">

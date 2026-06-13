@@ -53,6 +53,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/fs/image", fsHandler.Image)     // GET  ?path=./image.png (returns base64 data URL, deprecated)
 	mux.HandleFunc("/api/fs/image/", fsHandler.ImageStream) // GET  /api/fs/image/relative/path (streams raw bytes; preferred)
 	mux.HandleFunc("/api/fs/write", fsHandler.Write)   // POST ?path=./main.go
+	mux.HandleFunc("/api/fs/upload", fsHandler.Upload) // POST multipart/form-data (field "file") → saves to /tmp, returns {path,name}
 	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)   // POST ?path=./newdir
 	mux.HandleFunc("/api/fs/delete", fsHandler.Delete) // DELETE ?path=./main.go
 
