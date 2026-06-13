@@ -12,15 +12,23 @@ interface DesktopUpdateInfo {
     notes: string | null;
 }
 
+interface TauriGlobal {
+    core: { invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T> };
+}
+
+function tauri(): TauriGlobal | undefined {
+    return (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
+}
+
 export function isTauri(): boolean {
-    return typeof (window as any).__TAURI__ !== 'undefined';
+    return tauri() !== undefined;
 }
 
 export async function checkDesktopUpdate(): Promise<DesktopUpdateInfo | null> {
-    if (!isTauri()) return null;
+    const t = tauri();
+    if (!t) return null;
     try {
-        const { invoke } = (window as any).__TAURI__.core;
-        const info: DesktopUpdateInfo = await invoke('check_desktop_update');
+        const info = await t.core.invoke<DesktopUpdateInfo>('check_desktop_update');
         return info;
     } catch (err) {
         if (typeof console !== 'undefined') {
@@ -31,10 +39,10 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateInfo | null> {
 }
 
 export async function downloadAndInstallDesktop(version: string): Promise<void> {
-    if (!isTauri()) return;
+    const t = tauri();
+    if (!t) return;
     try {
-        const { invoke } = (window as any).__TAURI__.core;
-        await invoke('open_in_external_browser', {
+        await t.core.invoke('open_in_external_browser', {
             url: `https://github.com/scottzx/1Agents/releases/tag/${version}`,
         });
     } catch (err) {

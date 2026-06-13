@@ -72,7 +72,6 @@ const buildMeta = {
     buildTime: process.env.BUILD_TIME || new Date().toISOString(),
 };
 
-
 const baseConfig = {
     context: path.resolve(__dirname, 'src'),
     entry: {
