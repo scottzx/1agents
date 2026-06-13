@@ -3,6 +3,7 @@ import { useRef } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
 import { nextPermissionMode } from '../types';
 import type { PermissionMode } from '../types';
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 
 interface ComposerProps {
     onSend: (text: string) => void;
@@ -66,6 +67,19 @@ export function Composer({
         el.style.height = Math.min(el.scrollHeight, 320) + 'px';
     };
 
+    // System speech-to-text. The textarea is uncontrolled, so the hook reads
+    // it live via getText and writes the appended transcript back into it.
+    const speech = useSpeechRecognition(
+        lang,
+        () => ref.current?.value ?? '',
+        next => {
+            const el = ref.current;
+            if (!el) return;
+            el.value = next;
+            handleInput();
+        }
+    );
+
     const cycleMode = () => {
         onPermissionModeChange(nextPermissionMode(permissionMode));
     };
@@ -111,43 +125,75 @@ export function Composer({
                         </svg>
                         <span class="chat-composer-mode-label">{t(MODE_LABEL_KEY[permissionMode], lang)}</span>
                     </button>
-                    {isRunning ? (
-                        <button
-                            type="button"
-                            class="chat-composer-stop-inline"
-                            onClick={onCancel}
-                            title={t('chat.composer.stop', lang)}
-                            aria-label={t('chat.composer.stop', lang)}
-                        >
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-                                <rect x="6" y="6" width="12" height="12" rx="2" />
-                            </svg>
-                        </button>
-                    ) : (
-                        <button
-                            type="button"
-                            class="chat-composer-send-inline"
-                            onClick={submit}
-                            disabled={disabled}
-                            title={t('chat.composer.send', lang)}
-                            aria-label={t('chat.composer.send', lang)}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                width="14"
-                                height="14"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
+                    <div class="chat-composer-actions">
+                        {/* Voice input — hidden in the desktop (Tauri) build where
+                            the native webview lacks a working Web Speech API; also
+                            gated on API support + secure context via speech.available. */}
+                        {!IS_DESKTOP && speech.available && (
+                            <button
+                                type="button"
+                                class={`chat-composer-mic-inline ${speech.isRecording ? 'recording' : ''}`}
+                                onClick={speech.toggle}
+                                disabled={disabled}
+                                title={speech.error || t('terminal.action.voice', lang)}
+                                aria-label={t('terminal.action.voice', lang)}
                             >
-                                <line x1="22" y1="2" x2="11" y2="13" />
-                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                            </svg>
-                        </button>
-                    )}
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    width="14"
+                                    height="14"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                            </button>
+                        )}
+                        {isRunning ? (
+                            <button
+                                type="button"
+                                class="chat-composer-stop-inline"
+                                onClick={onCancel}
+                                title={t('chat.composer.stop', lang)}
+                                aria-label={t('chat.composer.stop', lang)}
+                            >
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                                </svg>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                class="chat-composer-send-inline"
+                                onClick={submit}
+                                disabled={disabled}
+                                title={t('chat.composer.send', lang)}
+                                aria-label={t('chat.composer.send', lang)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    width="14"
+                                    height="14"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <line x1="22" y1="2" x2="11" y2="13" />
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
