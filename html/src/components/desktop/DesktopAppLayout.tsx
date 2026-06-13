@@ -151,8 +151,6 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 toggleFolder={wsStore.toggleFolder}
                                 toggleDrawerTab={tabsStore.toggleDrawerTab}
                                 activeDrawerTab={activeDrawerTab}
-                                activeDiscoveryCategory={tabsStore.discoveryCategory.value}
-                                onSelectDiscoveryCategory={tabsStore.selectDiscoveryCategory}
                                 onCreateWorkspace={modal.openCreateWorkspacePicker}
                                 onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
                                 onDeleteWorkspace={wsStore.deleteWorkspace}

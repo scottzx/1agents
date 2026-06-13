@@ -15,6 +15,7 @@
 import type { RightDrawerTab } from '../components/types';
 import type { ModuleId, ModuleManifest } from './module-types';
 import { SETTINGS_MODULE_ID, SETTINGS_STATIC_MANIFEST, SETTINGS_ENTRY_PATH } from './settings-manifest';
+import { DISCOVERY_MODULE_ID, DISCOVERY_STATIC_MANIFEST, DISCOVERY_ENTRY_PATH } from './discovery-manifest';
 
 export interface ModuleRegistration {
     moduleId: ModuleId;
@@ -131,6 +132,16 @@ export const MODULES: Record<ModuleId, ModuleRegistration> = {
         iframeBase: '',
         staticManifest: SETTINGS_STATIC_MANIFEST,
         entryPath: SETTINGS_ENTRY_PATH,
+    },
+    discovery: {
+        moduleId: DISCOVERY_MODULE_ID,
+        ownerTab: 'discovery',
+        // Host-rendered like settings — `DiscoveryPanel` is the content body
+        // (no iframe), so `iframeBase` is empty and only `ModuleNav` consumes
+        // the manifest to render the category navigation in the sidebar.
+        iframeBase: '',
+        staticManifest: DISCOVERY_STATIC_MANIFEST,
+        entryPath: DISCOVERY_ENTRY_PATH,
     },
 };
 

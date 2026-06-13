@@ -11,6 +11,7 @@ import {
     settingsCategoryToPath,
     type SettingsCategory,
 } from '../modules/settings-manifest';
+import { DISCOVERY_MODULE_ID, pathToDiscoveryCategory, discoveryCategoryToPath } from '../modules/discovery-manifest';
 import * as ui from './uiStore';
 import * as fs from './fsStore';
 import * as wsStore from './workspaceStore';
@@ -316,6 +317,16 @@ export const buildModuleNav = ():
             manifest,
             activePath: settingsCategoryToPath(activeSettingsCategory.value),
             onNavigate: (to: string) => setSettingsCategory(pathToSettingsCategory(to)),
+        };
+    }
+    if (mod.moduleId === DISCOVERY_MODULE_ID) {
+        // Discovery, like settings, is host-rendered: its `onNavigate`
+        // updates `discoveryCategory` (which drives the panel's scroll) and
+        // we derive the active link from that state, not `activeModulePath`.
+        return {
+            manifest,
+            activePath: discoveryCategoryToPath(discoveryCategory.value),
+            onNavigate: (to: string) => selectDiscoveryCategory(pathToDiscoveryCategory(to)),
         };
     }
     return {

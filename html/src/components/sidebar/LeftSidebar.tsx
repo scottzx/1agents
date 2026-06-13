@@ -20,9 +20,6 @@ interface LeftSidebarProps {
     toggleFolder: (id: string) => void;
     toggleDrawerTab: (tab: RightDrawerTab) => void;
     activeDrawerTab: RightDrawerTab;
-    /** Active discovery category, drives the second-level menu highlight. */
-    activeDiscoveryCategory?: string;
-    onSelectDiscoveryCategory?: (category: string) => void;
     onCreateWorkspace: () => void;
     onRenameWorkspace: (ws: Workspace) => void;
     onDeleteWorkspace: (id: string) => void;
@@ -68,8 +65,6 @@ export function LeftSidebar({
     toggleFolder,
     toggleDrawerTab,
     activeDrawerTab,
-    activeDiscoveryCategory,
-    onSelectDiscoveryCategory,
     onCreateWorkspace,
     onRenameWorkspace,
     onDeleteWorkspace,
@@ -739,44 +734,23 @@ export function LeftSidebar({
                     </svg>
                     <span>{t('sidebar.skills', language)}</span>
                 </div>
-                <div class="footer-item-group">
-                    <div
-                        class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
-                        onClick={() => toggleDrawerTab('discovery')}
-                        title={t('sidebar.discoveryTitle', language)}
+                <div
+                    class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('discovery')}
+                    title={t('sidebar.discoveryTitle', language)}
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
                     >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
-                        </svg>
-                        <span>{t('sidebar.discovery', language)}</span>
-                    </div>
-                    {activeDrawerTab === 'discovery' && (
-                        <div class="footer-submenu">
-                            {(['featured', 'opensource'] as const).map(cat => (
-                                <div
-                                    key={cat}
-                                    class={`footer-subitem${activeDiscoveryCategory === cat ? ' active' : ''}`}
-                                    onClick={() => onSelectDiscoveryCategory?.(cat)}
-                                >
-                                    <span class="subitem-dot" />
-                                    <span>
-                                        {t(
-                                            cat === 'featured' ? 'discovery.catFeatured' : 'discovery.catOpensource',
-                                            language
-                                        )}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                        <circle cx="12" cy="12" r="10" />
+                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
+                    </svg>
+                    <span>{t('sidebar.discovery', language)}</span>
                 </div>
                 <div
                     class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}

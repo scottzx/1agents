@@ -1212,58 +1212,6 @@ body {
         font-weight: 500;
       }
     }
-
-    /* Second-level menu — revealed under an active footer item (discovery). */
-    .footer-item-group {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .footer-submenu {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      margin: 2px 0 2px 11px;
-      padding-left: 12px;
-      border-left: 1px solid var(--border-sidebar);
-
-      .footer-subitem {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 8px;
-        font-size: 12px;
-        color: var(--text-sidebar-muted);
-        cursor: pointer;
-        border-radius: 6px;
-        transition: all 0.2s;
-
-        .subitem-dot {
-          width: 5px;
-          height: 5px;
-          border-radius: 50%;
-          background-color: currentColor;
-          opacity: 0.5;
-          flex-shrink: 0;
-        }
-
-        &:hover {
-          color: var(--text-sidebar);
-          background-color: var(--bg-sidebar-hover);
-        }
-
-        &.active {
-          color: var(--text-sidebar);
-          font-weight: 500;
-
-          .subitem-dot {
-            opacity: 1;
-            background-color: var(--accent-color);
-          }
-        }
-      }
-    }
   }
 
   /* ── Module Slot navigation surface ────────────────────────────────────
@@ -3942,6 +3890,18 @@ body {
 
     .discovery-cards-list {
       padding-bottom: 8px;
+
+      /* Fixed column count keyed to the viewport breakpoint (overrides the
+       * bento-grid auto-fill): 2 on mobile → 3 on tablet → 4 on full screen. */
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+
+      @media (min-width: 768px) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      @media (min-width: 1280px) {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
     }
 
     .discovery-card {
