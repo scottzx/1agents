@@ -3748,6 +3748,30 @@ body {
             font-size: 14px;
         }
     }
+ 
+    .sys-settings-sub-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+        margin-top: 16px;
+        margin-bottom: -4px;
+        padding-left: 8px;
+        border-left: 3px solid var(--accent-color);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        opacity: 0.9;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        
+        svg {
+            width: 14px;
+            height: 14px;
+            stroke: var(--accent-color);
+            opacity: 0.8;
+            flex-shrink: 0;
+        }
+    }
 
     .sys-settings-card {
         @extend %bento-card;

@@ -50,6 +50,7 @@ export function SystemSettings(props: SystemSettingsProps) {
     const confirmReset = useSignal(false);
     // Agent type whose install command was just copied (transient checkmark).
     const copiedAgent = useSignal('');
+    const creditsExpanded = useSignal(false);
 
     const handleResetCache = () => {
         if (!confirmReset.value) {
@@ -64,10 +65,81 @@ export function SystemSettings(props: SystemSettingsProps) {
         window.location.reload();
     };
 
+    const copyInstall = (key: string, cmd: string) => {
+        const done = () => {
+            copiedAgent.value = key;
+            window.setTimeout(() => {
+                if (copiedAgent.value === key) copiedAgent.value = '';
+            }, 1500);
+        };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard
+                .writeText(cmd)
+                .then(done)
+                .catch(() => done());
+        } else {
+            done();
+        }
+    };
+
     const renderGeneral = () => (
         <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.general.title', language)}</div>
+            <div class="sys-settings-section-title">{t('settings.nav.general', language)}</div>
             <div class="sys-settings-section-desc">{t('settings.general.desc', language)}</div>
+
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+                {t('settings.general.title', language)}
+            </div>
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="2" y1="12" x2="22" y2="12" />
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('settings.general.uiLang', language)}</div>
+                        <div class="sys-settings-card-subtitle">{t('settings.general.uiLangDesc', language)}</div>
+                    </div>
+                </div>
+                <div class="sys-settings-toggle-group">
+                    <button
+                        class={`sys-settings-option-btn ${language === 'zh-CN' ? 'active' : ''}`}
+                        onClick={() => toggleLanguage('zh-CN')}
+                    >
+                        {t('settings.general.uiLangZh', language)}
+                    </button>
+                    <button
+                        class={`sys-settings-option-btn ${language === 'en-US' ? 'active' : ''}`}
+                        onClick={() => toggleLanguage('en-US')}
+                    >
+                        {t('settings.general.uiLangEn', language)}
+                    </button>
+                </div>
+            </div>
 
             <div class="sys-settings-card">
                 <div class="sys-settings-card-header">
@@ -109,49 +181,21 @@ export function SystemSettings(props: SystemSettingsProps) {
                 </div>
             </div>
 
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('settings.general.uiLang', language)}</div>
-                        <div class="sys-settings-card-subtitle">{t('settings.general.uiLangDesc', language)}</div>
-                    </div>
-                </div>
-                <div class="sys-settings-toggle-group">
-                    <button
-                        class={`sys-settings-option-btn ${language === 'zh-CN' ? 'active' : ''}`}
-                        onClick={() => toggleLanguage('zh-CN')}
-                    >
-                        {t('settings.general.uiLangZh', language)}
-                    </button>
-                    <button
-                        class={`sys-settings-option-btn ${language === 'en-US' ? 'active' : ''}`}
-                        onClick={() => toggleLanguage('en-US')}
-                    >
-                        {t('settings.general.uiLangEn', language)}
-                    </button>
-                </div>
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                </svg>
+                {t('settings.appearance.title', language)}
             </div>
-        </div>
-    );
-
-    const renderAppearance = () => (
-        <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.appearance.title', language)}</div>
-            <div class="sys-settings-section-desc">{t('settings.appearance.desc', language)}</div>
 
             <div class="sys-settings-card">
                 <div class="sys-settings-card-header">
@@ -311,7 +355,7 @@ export function SystemSettings(props: SystemSettingsProps) {
 
     const renderSecurity = () => (
         <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.security.title', language)}</div>
+            <div class="sys-settings-section-title">{t('settings.nav.security', language)}</div>
             <div class="sys-settings-section-desc">{t('settings.security.desc', language)}</div>
 
             <div class="sys-settings-card">
@@ -421,109 +465,102 @@ export function SystemSettings(props: SystemSettingsProps) {
         </div>
     );
 
-    const renderFeedback = () => (
-        <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.feedback.title', language)}</div>
-            <div class="sys-settings-section-desc">{t('settings.feedback.desc', language)}</div>
+    const renderAgents = () => {
+        const list = agentCatalog.value;
+        const installedCount = list.filter(a => a.installed).length;
+        return (
+            <div class="sys-settings-section">
+                <div class="sys-settings-section-title">{t('settings.nav.agents', language)}</div>
+                <div class="sys-settings-section-desc">{t('settings.agents.desc', language)}</div>
 
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                            <polyline points="9 22 9 12 15 12 15 22" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('settings.feedback.company', language)}</div>
-                        <div class="sys-settings-card-subtitle">{t('settings.feedback.companyName', language)}</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                            <polyline points="22,6 12,13 2,6" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('settings.feedback.email', language)}</div>
-                        <div class="sys-settings-card-subtitle">
-                            <a
-                                href="mailto:xiaofengzeng93@outlook.com"
-                                class="meta-link"
-                                style="word-break: break-all;"
-                            >
-                                xiaofengzeng93@outlook.com
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('settings.feedback.form', language)}</div>
-                        <div class="sys-settings-card-subtitle">{t('settings.feedback.formDesc', language)}</div>
-                    </div>
-                </div>
-                <div class="sys-settings-action-row">
-                    <a
-                        class="sys-settings-btn primary"
-                        href="https://my.feishu.cn/share/base/form/shrcn0OGqn5ZBCiPEpmJuJ3Djtc"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
+                <div class="sys-settings-card">
+                    <div
+                        class="sys-settings-action-row"
+                        style="justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px;"
                     >
-                        <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
+                        <span class="sys-settings-card-subtitle" style="font-size: 12px; font-weight: 500;">
+                            {t('settings.agents.summary', language, {
+                                '0': installedCount,
+                                '1': list.length,
+                            })}
+                        </span>
+                        <button
+                            class="sys-settings-btn ghost"
+                            disabled={agentCatalogLoading.value}
+                            onClick={() => loadAgentCatalog(true)}
+                            style="height: 30px; padding: 0 12px; font-size: 11.5px;"
                         >
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                        {t('settings.feedback.open', language)}
-                    </a>
+                            {agentCatalogLoading.value
+                                ? t('settings.agents.refreshing', language)
+                                : t('settings.agents.refresh', language)}
+                        </button>
+                    </div>
+
+                    <div class="agent-catalog-list" style="margin-top: 0;">
+                        {list.map(a => (
+                            <div class="agent-catalog-row" key={a.type}>
+                                <div class="agent-catalog-header">
+                                    <div class="agent-catalog-main">
+                                        <span
+                                            class={`agent-catalog-dot ${a.installed ? 'installed' : 'missing'}`}
+                                            aria-hidden="true"
+                                        />
+                                        <div class="agent-catalog-text">
+                                            <div class="agent-catalog-name">{a.label}</div>
+                                            <div class="agent-catalog-meta">
+                                                {a.installed
+                                                    ? a.path || t('settings.agents.installed', language)
+                                                    : t('settings.agents.notInstalled', language)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-catalog-badges">
+                                        {a.acpCapable && (
+                                            <span class="agent-cap-badge acp">
+                                                {t('settings.agents.capAcp', language)}
+                                            </span>
+                                        )}
+                                        {a.cliCapable && (
+                                            <span class="agent-cap-badge cli">
+                                                {t('settings.agents.capCli', language)}
+                                            </span>
+                                        )}
+                                        {a.integrated ? (
+                                            <span class="agent-transport-badge">
+                                                {a.ccTransport === 'acp'
+                                                    ? t('settings.agents.transportAcp', language)
+                                                    : t('settings.agents.transportCli', language)}
+                                            </span>
+                                        ) : (
+                                            <span class="agent-transport-badge detect-only">
+                                                {t('settings.agents.detectOnly', language)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {!a.installed && a.installCommand && (
+                                    <div class="agent-catalog-install">
+                                        <code class="agent-catalog-cmd" title={a.installCommand}>
+                                            {a.installCommand}
+                                        </code>
+                                        <button
+                                            class="agent-catalog-copy"
+                                            onClick={() => copyInstall(a.type, a.installCommand!)}
+                                        >
+                                            {copiedAgent.value === a.type
+                                                ? t('settings.agents.copied', language)
+                                                : t('settings.agents.copy', language)}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     /**
      * Curated list of major open-source projects we depend on. Kept short
@@ -683,86 +720,27 @@ export function SystemSettings(props: SystemSettingsProps) {
         },
     ];
 
-    const renderCredits = () => (
-        <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.credits.title', language)}</div>
-            <div class="sys-settings-section-desc">{t('settings.credits.desc', language)}</div>
-
-            {CREDITS_GROUPS.map(group => (
-                <div class="sys-settings-card" key={group.key}>
-                    <div class="sys-settings-card-header">
-                        <div class="sys-settings-card-icon">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <div class="sys-settings-card-title">
-                                {t(`settings.credits.group.${group.key}`, language)}
-                            </div>
-                            <div class="sys-settings-card-subtitle">
-                                {t(`settings.credits.group.${group.key}.desc`, language)}
-                            </div>
-                        </div>
-                    </div>
-                    <ul style="margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px;">
-                        {group.items.map(item => (
-                            <li key={item.url} style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
-                                <a
-                                    class="meta-link"
-                                    href={item.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style="font-weight: 600;"
-                                >
-                                    {item.name}
-                                </a>
-                                <span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; opacity: 0.6;">
-                                    {item.license}
-                                </span>
-                                <span style="opacity: 0.75; font-size: 13px;">— {t(item.descKey, language)}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            ))}
-
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="8" x2="12" y2="12" />
-                            <line x1="12" y1="16" x2="12.01" y2="16" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('settings.credits.note.title', language)}</div>
-                        <div class="sys-settings-card-subtitle">{t('settings.credits.note.desc', language)}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
     const renderAbout = () => (
         <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.about.title', language)}</div>
+            <div class="sys-settings-section-title">{t('settings.nav.about', language)}</div>
             <div class="sys-settings-section-desc">{t('settings.about.desc', language)}</div>
+
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                {t('settings.about.title', language)}
+            </div>
 
             <div class="sys-settings-card sys-settings-about-card">
                 <div class="sys-settings-about-brand">
@@ -793,6 +771,134 @@ export function SystemSettings(props: SystemSettingsProps) {
                         </a>
                     </div>
                 </div>
+            </div>
+
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+                {t('settings.feedback.title', language)}
+            </div>
+
+            <div class="sys-settings-card">
+                <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                    <div class="sys-settings-card-header">
+                        <div class="sys-settings-card-icon">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                                <polyline points="9 22 9 12 15 12 15 22" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="sys-settings-card-title">{t('settings.feedback.company', language)}</div>
+                            <div class="sys-settings-card-subtitle">{t('settings.feedback.companyName', language)}</div>
+                        </div>
+                    </div>
+
+                    <div class="sys-settings-card-header">
+                        <div class="sys-settings-card-icon">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                <polyline points="22,6 12,13 2,6" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="sys-settings-card-title">{t('settings.feedback.email', language)}</div>
+                            <div class="sys-settings-card-subtitle">
+                                <a
+                                    href="mailto:xiaofengzeng93@outlook.com"
+                                    class="meta-link"
+                                    style="word-break: break-all;"
+                                >
+                                    xiaofengzeng93@outlook.com
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('settings.feedback.form', language)}</div>
+                        <div class="sys-settings-card-subtitle">{t('settings.feedback.formDesc', language)}</div>
+                    </div>
+                </div>
+                <div class="sys-settings-action-row">
+                    <a
+                        class="sys-settings-btn primary"
+                        href="https://my.feishu.cn/share/base/form/shrcn0OGqn5ZBCiPEpmJuJ3Djtc"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        {t('settings.feedback.open', language)}
+                    </a>
+                </div>
+            </div>
+
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" />
+                </svg>
+                {t('settings.about.reset', language)}
             </div>
 
             <div class="sys-settings-card">
@@ -829,7 +935,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
-                                    stroke-width="2"
+                                    stroke-width="2.5"
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                 >
@@ -861,129 +967,117 @@ export function SystemSettings(props: SystemSettingsProps) {
                     )}
                 </div>
             </div>
+
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                </svg>
+                {t('settings.credits.title', language)}
+            </div>
+
+            <div class="sys-settings-card credits-card" style="flex-direction: column; align-items: stretch;">
+                <div
+                    class="sys-settings-card-header"
+                    onClick={() => (creditsExpanded.value = !creditsExpanded.value)}
+                    style="cursor: pointer; user-select: none; width: 100%;"
+                >
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="sys-settings-card-title">{t('settings.credits.title', language)}</div>
+                        <div class="sys-settings-card-subtitle">{t('settings.credits.desc', language)}</div>
+                    </div>
+                    <div
+                        style={`transform: rotate(${creditsExpanded.value ? 180 : 0}deg); transition: transform 0.2s ease; display: flex; align-items: center; justify-content: center; opacity: 0.6;`}
+                    >
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </div>
+                </div>
+
+                {creditsExpanded.value && (
+                    <div
+                        class="credits-expanded-content"
+                        style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 16px; width: 100%;"
+                    >
+                        {CREDITS_GROUPS.map(group => (
+                            <div key={group.key} style="margin-bottom: 20px;">
+                                <div style="font-size: 13px; font-weight: 600; color: var(--text-main); margin-bottom: 6px; opacity: 0.9;">
+                                    {t(`settings.credits.group.${group.key}`, language)}
+                                </div>
+                                <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px;">
+                                    {t(`settings.credits.group.${group.key}.desc`, language)}
+                                </div>
+                                <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px;">
+                                    {group.items.map(item => (
+                                        <li
+                                            key={item.url}
+                                            style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;"
+                                        >
+                                            <a
+                                                class="meta-link"
+                                                href={item.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style="font-weight: 600; font-size: 12.5px;"
+                                            >
+                                                {item.name}
+                                            </a>
+                                            <span style="font-size: 10px; padding: 1px 5px; border-radius: 4px; border: 1px solid currentColor; opacity: 0.6; font-family: var(--font-mono);">
+                                                {item.license}
+                                            </span>
+                                            <span style="opacity: 0.75; font-size: 12px;">
+                                                — {t(item.descKey, language)}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
-
-    const copyInstall = (key: string, cmd: string) => {
-        const done = () => {
-            copiedAgent.value = key;
-            window.setTimeout(() => {
-                if (copiedAgent.value === key) copiedAgent.value = '';
-            }, 1500);
-        };
-        if (navigator.clipboard?.writeText) {
-            navigator.clipboard
-                .writeText(cmd)
-                .then(done)
-                .catch(() => done());
-        } else {
-            done();
-        }
-    };
-
-    const renderAgents = () => {
-        const list = agentCatalog.value;
-        const installedCount = list.filter(a => a.installed).length;
-        return (
-            <div class="sys-settings-section">
-                <div class="sys-settings-section-title">{t('settings.agents.title', language)}</div>
-                <div class="sys-settings-section-desc">{t('settings.agents.desc', language)}</div>
-
-                <div class="sys-settings-action-row" style="justify-content: space-between; align-items: center;">
-                    <span class="sys-settings-card-subtitle">
-                        {t('settings.agents.summary', language, {
-                            '0': installedCount,
-                            '1': list.length,
-                        })}
-                    </span>
-                    <button
-                        class="sys-settings-btn ghost"
-                        disabled={agentCatalogLoading.value}
-                        onClick={() => loadAgentCatalog(true)}
-                    >
-                        {agentCatalogLoading.value
-                            ? t('settings.agents.refreshing', language)
-                            : t('settings.agents.refresh', language)}
-                    </button>
-                </div>
-
-                <div class="agent-catalog-list">
-                    {list.map(a => (
-                        <div class="agent-catalog-row" key={a.type}>
-                            <div class="agent-catalog-header">
-                                <div class="agent-catalog-main">
-                                    <span
-                                        class={`agent-catalog-dot ${a.installed ? 'installed' : 'missing'}`}
-                                        aria-hidden="true"
-                                    />
-                                    <div class="agent-catalog-text">
-                                        <div class="agent-catalog-name">{a.label}</div>
-                                        <div class="agent-catalog-meta">
-                                            {a.installed
-                                                ? a.path || t('settings.agents.installed', language)
-                                                : t('settings.agents.notInstalled', language)}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="agent-catalog-badges">
-                                    {a.acpCapable && (
-                                        <span class="agent-cap-badge acp">{t('settings.agents.capAcp', language)}</span>
-                                    )}
-                                    {a.cliCapable && (
-                                        <span class="agent-cap-badge cli">{t('settings.agents.capCli', language)}</span>
-                                    )}
-                                    {a.integrated ? (
-                                        <span class="agent-transport-badge">
-                                            {a.ccTransport === 'acp'
-                                                ? t('settings.agents.transportAcp', language)
-                                                : t('settings.agents.transportCli', language)}
-                                        </span>
-                                    ) : (
-                                        <span class="agent-transport-badge detect-only">
-                                            {t('settings.agents.detectOnly', language)}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {!a.installed && a.installCommand && (
-                                <div class="agent-catalog-install">
-                                    <code class="agent-catalog-cmd" title={a.installCommand}>
-                                        {a.installCommand}
-                                    </code>
-                                    <button
-                                        class="agent-catalog-copy"
-                                        onClick={() => copyInstall(a.type, a.installCommand!)}
-                                    >
-                                        {copiedAgent.value === a.type
-                                            ? t('settings.agents.copied', language)
-                                            : t('settings.agents.copy', language)}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
 
     const renderContent = () => {
         switch (activeCategory) {
             case 'general':
                 return renderGeneral();
-            case 'appearance':
-                return renderAppearance();
-            case 'agents':
-                return renderAgents();
             case 'security':
                 return renderSecurity();
-            case 'feedback':
-                return renderFeedback();
+            case 'agents':
+                return renderAgents();
             case 'about':
                 return renderAbout();
-            case 'credits':
-                return renderCredits();
             default:
                 return null;
         }
