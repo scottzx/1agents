@@ -1097,7 +1097,8 @@ body {
           color: var(--text-sidebar);
           font-weight: 500;
           position: relative;
-          padding-left: 10px;
+          // Keep the base left padding (12px) so the accent bar at left:0
+          // doesn't shift the icon/text — active and inactive rows stay aligned.
 
           &::before {
             content: '';
@@ -1123,6 +1124,7 @@ body {
         .chat-item-left {
           display: flex;
           align-items: center;
+          gap: 8px;
           min-width: 0;
           flex: 1;
 
@@ -2406,100 +2408,6 @@ body {
       }
     }
   }
-}
-
-/* ── Sidebar workspace sub-pages (📋 任务 / 💬 聊天 / 🖥️ 终端) ── */
-.subpage-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 10px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: var(--text-sidebar);
-  cursor: pointer;
-  user-select: none;
-
-  &:hover {
-    background-color: var(--bg-sidebar-hover);
-
-    .subpage-add-btn {
-      opacity: 1;
-    }
-  }
-
-  &.subpage-leaf.active {
-    background-color: var(--accent-light);
-    color: var(--accent-color);
-    font-weight: 600;
-  }
-
-  .subpage-chevron {
-    width: 12px;
-    font-size: 10px;
-    color: var(--text-sidebar-muted);
-    transition: transform 0.15s;
-
-    &.open {
-      transform: rotate(90deg);
-    }
-  }
-
-  .subpage-icon {
-    font-size: 12px;
-  }
-
-  .subpage-label {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .subpage-count {
-    font-size: 10.5px;
-    color: var(--text-sidebar-muted);
-    background-color: var(--bg-sidebar-hover);
-    border-radius: 8px;
-    padding: 0 6px;
-  }
-
-  .subpage-add-btn {
-    opacity: 0;
-    width: 18px;
-    height: 18px;
-    line-height: 1;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text-sidebar-muted);
-    font-size: 14px;
-    cursor: pointer;
-    transition: opacity 0.15s;
-
-    &:hover {
-      background-color: var(--btn-hover);
-      color: var(--text-sidebar);
-    }
-  }
-}
-
-.subpage-leaf {
-  /* 任务 entry has no chevron — indent to align with group labels */
-  padding-left: 22px;
-}
-
-.subpage-children {
-  /* session rows nested under a 聊天/终端 group */
-  margin-left: 14px;
-  border-left: 1px solid var(--border-color);
-  padding-left: 4px;
-}
-
-.subpage-empty {
-  margin-left: 22px;
-  font-size: 11.5px;
-  padding: 2px 0 6px;
 }
 
 /* ── Priority badges + label/recurrence tags (table & detail card) ── */
@@ -8877,19 +8785,38 @@ body {
 .chat-row-kind-chat .chat-kind-icon { color: var(--accent-color); }
 .chat-row-kind-terminal .chat-kind-icon { color: var(--text-secondary); }
 
+// 任务 landing row — same `.chat-item` shape as chat/terminal sessions,
+// with an emoji glyph in the shared avatar box.
+.chat-row-kind-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-task-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
 .chat-sidebar-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
+  // Force a uniform 16px box for every leading icon (task emoji / agent
+  // logo / terminal glyph) so titles align. `flex` overrides AgentAvatar's
+  // `.agent-avatar { flex: 0 0 28px }` (flex-basis would otherwise win over
+  // width inside the flex row), and the chip styles are reset to a bare icon.
+  flex: 0 0 16px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
   border-radius: 4px;
   overflow: hidden;
-  flex-shrink: 0;
 
   .agent-avatar-logo {
-    width: 100%;
-    height: 100%;
+    width: 14px;
+    height: 14px;
     object-fit: contain;
   }
 

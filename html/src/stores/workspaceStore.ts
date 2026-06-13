@@ -32,13 +32,6 @@ export const activeWorkspaceId = signal(localStorage.getItem('1agents-active-wor
  * The real context switch stays deferred until a message is sent.
  */
 export const newChatWorkspaceId = signal<string>('');
-/**
- * Per-workspace collapse state for the sidebar's 聊天 / 终端 sub-page
- * groups. Owned here (not inside LeftSidebar's local state) so it
- * survives any remount of LeftSidebar and is preserved across
- * workspace switches.
- */
-export const sidebarCollapsedGroups = signal<Record<string, { chat?: boolean; term?: boolean }>>({});
 export const hasLoadedWorkspaces = signal(false);
 export const onboarded = signal(localStorage.getItem('1agents-onboarded') === 'true');
 
@@ -48,17 +41,6 @@ export const ccProvidersUrl = signal('');
 
 export const toggleFolder = (folderId: string) => {
     folders.value = folders.value.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f));
-};
-
-/** Toggle a per-workspace 聊天/终端 sub-page group's collapse state. */
-export const toggleSidebarGroup = (folderId: string, key: 'chat' | 'term') => {
-    sidebarCollapsedGroups.value = {
-        ...sidebarCollapsedGroups.value,
-        [folderId]: {
-            ...sidebarCollapsedGroups.value[folderId],
-            [key]: !sidebarCollapsedGroups.value[folderId]?.[key],
-        },
-    };
 };
 
 /** Fetch all workspaces from GET /api/workspace/list */
@@ -312,26 +294,19 @@ export const selectWorkspace = async (ws: Workspace) => {
     if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
         tabsStore.activeDrawerTab.value = 'none';
     }
+    // Always land on the 任务 view — even when this workspace is already
+    // active (e.g. clicking 任务 while a terminal/chat in the same workspace
+    // is showing). No terminal is auto-created or switched here.
+    tabsStore.activeTabId.value = 'tasks';
+
     const activeId = activeWorkspaceId.value;
-    const terminalWindows = sess.terminalWindows.value;
     if (ws.id === activeId) return;
 
     activeWorkspaceId.value = ws.id;
-    tabsStore.activeTabId.value = 'tasks';
     loadCcConnectUrl(ws.id);
     loadCcProvidersUrl(ws.id);
     sess.loadChatSessions(ws.id);
     localStorage.setItem('1agents-active-workspace', ws.id);
-
-    // Find an existing window for this workspace, or create one
-    const win =
-        terminalWindows.find(w => w.workspaceId === ws.id && w.active) ||
-        terminalWindows.find(w => w.workspaceId === ws.id);
-    if (win) {
-        await sess.switchTerminal(win.index);
-    } else {
-        await sess.createTerminal(ws.id, ws.terminalDir || ws.path);
-    }
 
     // Switch backend context (fs + git roots) and reload file browser
     await fs.switchFsContext(ws);

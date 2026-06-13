@@ -6,6 +6,13 @@ import { AgentAvatar } from '../chat/AgentAvatar';
 interface SessionRowProps {
     /** Session to render. `kind` ('chat' | 'terminal') drives the type-specific bits. */
     session: Session;
+    /**
+     * Whether this row is the user's current selection. Single source of
+     * truth for the highlight — derived from `activeSession` identity, NOT
+     * from the per-session `active` flag (the tmux backend keeps exactly one
+     * window flagged `active`, which would otherwise fight chat selection).
+     */
+    selected: boolean;
     /** Currently collapsing (kill animation) — adds `chat-item-killing`. */
     killing: boolean;
     /** Pointer is over this row — gates the terminal rename action. */
@@ -68,6 +75,7 @@ const TerminalIcon = () => (
  */
 export function SessionRow({
     session,
+    selected,
     killing,
     isHovered,
     taskTitles,
@@ -103,7 +111,7 @@ export function SessionRow({
 
     return (
         <div
-            class={`chat-item chat-row-kind-${session.kind} ${session.active ? 'active' : ''}${
+            class={`chat-item chat-row-kind-${session.kind} ${selected ? 'active' : ''}${
                 killing ? ' chat-item-killing' : ''
             }`}
             onClick={(e: MouseEvent) => {
