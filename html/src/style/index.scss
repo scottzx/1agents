@@ -619,45 +619,6 @@ body {
       letter-spacing: 0.5px;
       color: var(--text-sidebar-muted);
       padding: 8px 4px;
-      
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        svg {
-          width: 12px;
-          height: 12px;
-          cursor: pointer;
-          &:hover {
-            color: var(--text-sidebar);
-          }
-        }
-
-        .ws-add-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 18px;
-          height: 18px;
-          border: none;
-          background: transparent;
-          color: var(--text-sidebar-muted);
-          cursor: pointer;
-          border-radius: 4px;
-          padding: 0;
-          transition: all 0.15s;
-
-          svg {
-            width: 12px;
-            height: 12px;
-          }
-
-          &:hover {
-            background-color: var(--bg-sidebar-hover);
-            color: var(--accent-color);
-          }
-        }
-      }
     }
 
     /* Loading skeleton */
@@ -9002,6 +8963,8 @@ body {
 
   .new-chat-ws-picker-container {
     position: relative;
+    width: 100%;
+    max-width: 720px;
     margin-bottom: 24px;
     z-index: 50;
   }
@@ -9046,8 +9009,7 @@ body {
   .new-chat-ws-dropdown {
     position: absolute;
     top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
     margin-top: 8px;
     width: 240px;
     background-color: var(--bg-panel);
@@ -9096,6 +9058,14 @@ body {
       .checkmark {
         margin-left: auto;
         font-weight: bold;
+      }
+
+      &.open-folder {
+        margin-top: 4px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-color);
+        border-radius: 0 0 8px 8px;
+        color: var(--text-secondary);
       }
     }
   }

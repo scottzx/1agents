@@ -26,6 +26,13 @@ export const workspacesLoading = signal(true);
 export const folders = signal<WorkspaceFolder[]>([]);
 export const activeWorkspaceId = signal(localStorage.getItem('1agents-active-workspace') || '');
 /**
+ * One-shot injection of a workspace id into the new-chat picker's selection.
+ * Set when a workspace is created from the new-chat landing so it gets
+ * pre-selected without navigating away; NewChatHome consumes and clears it.
+ * The real context switch stays deferred until a message is sent.
+ */
+export const newChatWorkspaceId = signal<string>('');
+/**
  * Per-workspace collapse state for the sidebar's 聊天 / 终端 sub-page
  * groups. Owned here (not inside LeftSidebar's local state) so it
  * survives any remount of LeftSidebar and is preserved across
@@ -210,12 +217,14 @@ export const createWorkspace = async (
         localStorage.setItem('1agents-onboarded', 'true');
         onboarded.value = true;
         const list = await loadWorkspaces(true);
-        const newWs = list.find(w => w.id === ws.id);
+        const newWs = list.find(w => w.id === ws.id) || (list.length > 0 ? list[0] : undefined);
         if (newWs) {
-            await selectWorkspace(newWs);
-        } else {
-            if (list.length > 0) {
-                await selectWorkspace(list[0]);
+            if (tabsStore.activeTab.value === 'new_chat') {
+                // Created from the new-chat picker's "Open folder…": stay on the
+                // landing and only pre-select; the real switch is deferred to send.
+                newChatWorkspaceId.value = newWs.id;
+            } else {
+                await selectWorkspace(newWs);
             }
         }
         ui.showToast(t('app.toast.workspaceCreated', ui.language.value, { name }));
