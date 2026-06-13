@@ -3684,7 +3684,7 @@ body {
         &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
     }
 
-    .sys-settings-section { max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+    .sys-settings-section { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
     .sys-settings-section-title {
         font-size: 18px;
