@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,6 +121,11 @@ func (s *Supervisor) startProcess(ctx context.Context) error {
 
 	cmd := exec.CommandContext(ctx, s.cfg.TtydBinaryPath, args...)
 
+	// ttyd attaches tmux as its terminal client; if that client's locale isn't
+	// UTF-8, tmux replaces every multibyte char with '_' (so Chinese shows as
+	// "____"). Force a UTF-8 ctype for the ttyd subprocess when none is set.
+	cmd.Env = utf8Env()
+
 	// Mirror ttyd stdout/stderr into our own logs for easy debugging.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -146,6 +153,34 @@ func (s *Supervisor) stopProcess() {
 		log.Println("[supervisor] Sending SIGINT to ttyd...")
 		_ = s.cmd.Process.Signal(os.Interrupt)
 	}
+}
+
+// utf8Env returns the process environment with a UTF-8 locale guaranteed for
+// ttyd. If the inherited environment already advertises UTF-8 (via LC_ALL,
+// LC_CTYPE or LANG) it is passed through untouched; otherwise the stale
+// LC_ALL/LC_CTYPE/LANG entries are dropped and LANG/LC_CTYPE are set to a
+// UTF-8 locale so tmux streams multibyte (e.g. Chinese) output verbatim.
+func utf8Env() []string {
+	base := os.Environ()
+	isUTF8 := func(v string) bool {
+		v = strings.ToLower(v)
+		return strings.Contains(v, "utf-8") || strings.Contains(v, "utf8")
+	}
+	if isUTF8(os.Getenv("LC_ALL")) || isUTF8(os.Getenv("LC_CTYPE")) || isUTF8(os.Getenv("LANG")) {
+		return base
+	}
+	locale := "C.UTF-8"
+	if runtime.GOOS == "darwin" {
+		locale = "en_US.UTF-8" // macOS has no C.UTF-8
+	}
+	out := make([]string, 0, len(base)+2)
+	for _, kv := range base {
+		if strings.HasPrefix(kv, "LC_ALL=") || strings.HasPrefix(kv, "LC_CTYPE=") || strings.HasPrefix(kv, "LANG=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, "LANG="+locale, "LC_CTYPE="+locale)
 }
 
 // portFrom extracts the port string from an "addr:port" string.

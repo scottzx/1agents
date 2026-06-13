@@ -204,11 +204,21 @@ export const killChatSession = async (sessionId: string) => {
     }
 };
 
-/** Create a new terminal tab via POST /api/terminal/create */
-export const createTerminal = async (workspaceId: string, cwd: string) => {
+/**
+ * Create a new terminal tab via POST /api/terminal/create. When
+ * initialCommand is given (e.g. `claude "..."`), the backend types it into
+ * the new window's shell. After creation we switch the pane to the freshly
+ * created (now active) terminal so its xterm view shows immediately.
+ */
+export const createTerminal = async (workspaceId: string, cwd: string, initialCommand?: string) => {
     try {
-        await terminalService.create(workspaceId, cwd);
+        await terminalService.create(workspaceId, cwd, initialCommand);
         await loadTerminals();
+        // The backend selects the new window; loadTerminals marks it active.
+        // Surface it in the main pane via the normal selection path.
+        const folder = wsStore.folders.value.find(f => f.id === workspaceId);
+        const newTerm = folder?.sessions.find(s => isTerminal(s) && s.active);
+        if (newTerm) await selectSession(newTerm);
         ui.showToast(t('app.toast.sessionCreated', ui.language.value));
     } catch (err) {
         ui.showToast(t('app.toast.sessionCreateFailed', ui.language.value, { err: String(err) }));

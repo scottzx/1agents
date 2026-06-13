@@ -9100,6 +9100,37 @@ body {
     }
   }
 
+  .new-chat-mode-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 16px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+
+    .new-chat-mode-btn {
+      padding: 6px 18px;
+      border: none;
+      border-radius: 999px;
+      background: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+
+      &:hover {
+        color: var(--text-main);
+      }
+
+      &.active {
+        background-color: var(--accent-emphasis);
+        color: var(--on-accent);
+      }
+    }
+  }
+
   .new-chat-input-wrapper {
     max-width: 720px;
     width: 100%;
