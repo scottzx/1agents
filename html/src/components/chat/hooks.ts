@@ -116,6 +116,10 @@ interface UseBridgeState {
     cancelQueued: (requestId: string) => void;
     respondPermission: (requestId: string, decision: PermissionDecision) => void;
     setPermissionMode: (mode: PermissionMode) => void;
+    /** True when this connection was taken over by another tab/browser. */
+    takenOver: boolean;
+    /** Reconnect and reclaim ownership of the session (重试 button). */
+    retry: () => void;
 }
 
 export interface SessionBridgeState {
@@ -152,6 +156,14 @@ export interface SessionBridgeState {
     reconnectTimer: ReturnType<typeof setTimeout> | null;
     /** True when destroy() was called; prevents the onclose handler from scheduling a reconnect. */
     closedByUser: boolean;
+    /**
+     * True once this connection was taken over by a newer one (the bridge
+     * emitted `session_taken_over` right before closing us). Suppresses the
+     * onclose auto-reconnect so two tabs don't ping-pong the bridge, and
+     * drives the "session opened elsewhere" banner. Cleared on the next
+     * connect() (i.e. when the user hits 重试).
+     */
+    takenOver: boolean;
 }
 
 const DEFAULT_PERMISSION_MODE: PermissionMode = 'approve-reads';
@@ -184,6 +196,7 @@ export class ChatBridgeManager {
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
+                takenOver: false,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
@@ -209,12 +222,27 @@ export class ChatBridgeManager {
         }
     }
 
+    /**
+     * Reclaim a session that was taken over by another tab/browser. Used by
+     * the "重试" button on the takeover banner — reconnecting makes THIS
+     * connection the newest, so the bridge hands ownership back here (and the
+     * other tab gets its own takeover banner). connect() clears `takenOver`.
+     */
+    retry(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state) return;
+        this.connect(session, state);
+    }
+
     private connect(session: ChatSession, state: SessionBridgeState) {
         state.connection = 'connecting';
         // Reset `ready` on every (re)connect. The bridge-server emits a
         // fresh `session_ready` after each `ensure_session`, so we wait
         // for the new confirmation before letting the user act again.
         state.ready = false;
+        // A fresh connect (incl. the user hitting 重试 after being taken
+        // over) reclaims ownership, so clear the takeover flag/banner.
+        state.takenOver = false;
         this.notify(state);
 
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -284,6 +312,19 @@ export class ChatBridgeManager {
                     // not with `session_ready`.
                     state.reconnectAttempt = 0;
                     state.ready = true;
+                    this.notify(state);
+                    break;
+                case 'session_taken_over':
+                    // A newer connection (another tab/browser) took over this
+                    // session. The bridge closes us right after this event;
+                    // mark takenOver so onclose skips the auto-reconnect (no
+                    // ping-pong) and ChatPanel surfaces the banner.
+                    state.takenOver = true;
+                    state.ready = false;
+                    if (state.reconnectTimer) {
+                        clearTimeout(state.reconnectTimer);
+                        state.reconnectTimer = null;
+                    }
                     this.notify(state);
                     break;
                 case 'prompt_queued': {
@@ -728,7 +769,10 @@ export class ChatBridgeManager {
         };
 
         ws.onclose = () => {
-            if (state.closedByUser) {
+            // closedByUser: explicit destroy(). takenOver: a newer connection
+            // claimed the session. Either way, do NOT auto-reconnect — the
+            // takeover path is what would otherwise ping-pong two tabs.
+            if (state.closedByUser || state.takenOver) {
                 state.connection = 'closed';
                 this.notify(state);
                 return;
@@ -973,6 +1017,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     // a null session we report false so the UI treats it as "not yet".
     const ready = state ? state.ready : false;
     const permissionMode = state ? state.permissionMode : DEFAULT_PERMISSION_MODE;
+    const takenOver = state ? state.takenOver : false;
 
     const send = useCallback(
         (content: string) => {
@@ -1011,6 +1056,11 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         [session]
     );
 
+    const retry = useCallback(() => {
+        if (!session) return;
+        globalBridgeManager.retry(session);
+    }, [session]);
+
     return {
         items,
         connection,
@@ -1022,6 +1072,8 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         cancelQueued,
         respondPermission,
         setPermissionMode,
+        takenOver,
+        retry,
     };
 }
 

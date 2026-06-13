@@ -7617,6 +7617,54 @@ body {
   background: var(--bg-panel);
 }
 
+// Banner shown when the session was taken over by a newer connection
+// (another tab/browser). Sits between the status bar and the message list.
+.chat-session-takeover-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+
+  &__icon {
+    flex: 0 0 auto;
+    font-size: 13px;
+  }
+
+  &__text {
+    flex: 1 1 auto;
+  }
+
+  &__action {
+    flex: 0 0 auto;
+    padding: 2px 10px;
+    border: 1px solid var(--warning-fg);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--warning-fg);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+  }
+
+  &__dismiss {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--warning-fg);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+}
+
 .chat-status-agent {
   font-weight: 600;
   color: var(--accent-color);
