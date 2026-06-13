@@ -11,8 +11,6 @@ interface LinkCard {
     url: string;
     iconColor?: string;
     category: CategoryId;
-    /** Featured cards occupy a double-width bento cell when space allows. */
-    span2?: boolean;
 }
 
 const CATEGORIES: { id: CategoryId; titleKey: string }[] = [
@@ -28,7 +26,6 @@ const QUICK_LINKS: LinkCard[] = [
         url: 'http://nanoskill.ai/',
         iconColor: '#4f46e5', // Royal Indigo
         category: 'featured',
-        span2: true,
     },
     {
         title: '1gateway',
@@ -68,7 +65,7 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }:
                     onOpenBrowserTab(card.url);
                 }
             }}
-            class={`discovery-card${card.span2 ? ' bento-span-2' : ''}`}
+            class="discovery-card"
         >
             <div class="bento-zone-header">
                 <div class="bento-card-icon" style={`background-color: ${card.iconColor}15; color: ${card.iconColor};`}>
