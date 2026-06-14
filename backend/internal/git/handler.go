@@ -504,12 +504,12 @@ func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		var parents []string
+		parents := []string{}
 		if parts[2] != "" {
 			parents = strings.Fields(parts[2])
 		}
 
-		var refs []string
+		refs := []string{}
 		if parts[3] != "" {
 			for _, ref := range strings.Split(parts[3], ", ") {
 				ref = strings.TrimSpace(ref)

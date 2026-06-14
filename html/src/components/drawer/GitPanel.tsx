@@ -489,7 +489,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         try {
             const res = await fetch('/api/git/graph?limit=100');
             if (!res.ok) throw new Error(await res.text());
-            const graph: GraphCommit[] = await res.json();
+            const raw: GraphCommit[] = await res.json();
+            // Normalize: root commits have no parents/refs → backend may emit null
+            const graph = raw.map(c => ({
+                ...c,
+                parents: c.parents || [],
+                refs: c.refs || [],
+            }));
             this.setState({ graph, graphLoading: false });
         } catch (err) {
             console.error('[git] graph error:', err);
