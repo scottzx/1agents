@@ -14,6 +14,9 @@ interface DirPickerModalState {
     dirPickerParentPath: string;
     dirPickerDirs: { name: string; path: string }[];
     dirPickerLoading: boolean;
+    showNewFolderInput: boolean;
+    newFolderName: string;
+    recentPaths: string[];
 }
 
 export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModalState> {
@@ -24,12 +27,48 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
             dirPickerParentPath: '',
             dirPickerDirs: [],
             dirPickerLoading: false,
+            showNewFolderInput: false,
+            newFolderName: '',
+            recentPaths: [],
         };
     }
 
     componentDidMount() {
         this.loadDirs('');
+        this.loadRecentPaths();
     }
+
+    loadRecentPaths = () => {
+        try {
+            const raw = localStorage.getItem('1agents_recent_dirs');
+            if (raw) {
+                const paths = JSON.parse(raw);
+                if (Array.isArray(paths)) {
+                    this.setState({ recentPaths: paths });
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error('Failed to parse recent paths', e);
+        }
+        this.setState({ recentPaths: [] });
+    };
+
+    handleCreateFolder = async () => {
+        const { newFolderName, dirPickerPath } = this.state;
+        const { onShowToast, language } = this.props;
+        const name = newFolderName.trim();
+        if (!name) return;
+
+        try {
+            const newPath = await workspaceService.createDirectory(dirPickerPath, name);
+            onShowToast(t('modal.dirPicker.createSuccess', language));
+            this.setState({ showNewFolderInput: false, newFolderName: '' });
+            this.loadDirs(newPath);
+        } catch (err) {
+            onShowToast(t('modal.dirPicker.createFailed', language, { err: String(err) }));
+        }
+    };
 
     loadDirs = async (path: string) => {
         this.setState({ dirPickerLoading: true });
@@ -49,7 +88,21 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
 
     render() {
         const { onClose, onSelect, language } = this.props;
-        const { dirPickerPath, dirPickerParentPath, dirPickerDirs, dirPickerLoading } = this.state;
+        const {
+            dirPickerPath,
+            dirPickerParentPath,
+            dirPickerDirs,
+            dirPickerLoading,
+            showNewFolderInput,
+            newFolderName,
+            recentPaths,
+        } = this.state;
+
+        const presets = [
+            { labelKey: 'modal.dirPicker.presetHome', path: '~' },
+            { labelKey: 'modal.dirPicker.presetDesktop', path: '~/Desktop' },
+            { labelKey: 'modal.dirPicker.presetDocuments', path: '~/Documents' },
+        ];
 
         return (
             <div class="dp-modal-overlay" onClick={onClose}>
@@ -96,6 +149,85 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                             <button class="dp-go-btn" onClick={() => this.loadDirs(dirPickerPath)}>
                                 {t('modal.dirPicker.go', language)}
                             </button>
+                            <button
+                                class="dp-new-folder-btn"
+                                onClick={() =>
+                                    this.setState({ showNewFolderInput: !showNewFolderInput, newFolderName: '' })
+                                }
+                                title={t('modal.dirPicker.newFolder', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                </svg>
+                            </button>
+                        </div>
+
+                        {showNewFolderInput && (
+                            <div class="dp-new-folder-row">
+                                <input
+                                    class="dp-new-folder-input"
+                                    value={newFolderName}
+                                    onInput={(e: Event) =>
+                                        this.setState({ newFolderName: (e.target as HTMLInputElement).value })
+                                    }
+                                    placeholder={t('modal.dirPicker.newFolderPlaceholder', language)}
+                                    onKeyDown={(e: KeyboardEvent) => {
+                                        if (e.key === 'Enter') this.handleCreateFolder();
+                                    }}
+                                    autoFocus
+                                />
+                                <button class="dp-new-folder-confirm" onClick={this.handleCreateFolder}>
+                                    {t('common.confirm', language)}
+                                </button>
+                                <button
+                                    class="dp-new-folder-cancel"
+                                    onClick={() => this.setState({ showNewFolderInput: false, newFolderName: '' })}
+                                >
+                                    {t('common.cancel', language)}
+                                </button>
+                            </div>
+                        )}
+
+                        <div class="dp-shortcuts-bar">
+                            <div class="dp-presets">
+                                {presets.map(p => (
+                                    <button
+                                        key={p.path}
+                                        class="dp-shortcut-btn"
+                                        onClick={() => this.loadDirs(p.path)}
+                                        title={p.path}
+                                    >
+                                        {t(p.labelKey, language)}
+                                    </button>
+                                ))}
+                            </div>
+                            {recentPaths.length > 0 && (
+                                <div class="dp-recents">
+                                    <span class="dp-recents-label">{t('modal.dirPicker.recent', language)}:</span>
+                                    {recentPaths.map(p => {
+                                        const parts = p.split(new RegExp('[\\\\/]'));
+                                        const name = parts[parts.length - 1] || p;
+                                        return (
+                                            <button
+                                                key={p}
+                                                class="dp-shortcut-btn dp-recent-btn"
+                                                onClick={() => this.loadDirs(p)}
+                                                title={p}
+                                            >
+                                                {name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
 
                         <div class="dp-dir-list-wrap">

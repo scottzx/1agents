@@ -47,11 +47,33 @@ export const closeDirPicker = () => {
     dirPickerOpen.value = false;
 };
 
+const recordRecentPath = (path: string) => {
+    if (!path) return;
+    try {
+        const raw = localStorage.getItem('1agents_recent_dirs');
+        let paths: string[] = [];
+        if (raw) {
+            paths = JSON.parse(raw);
+        }
+        if (!Array.isArray(paths)) {
+            paths = [];
+        }
+        paths = paths.filter(p => p !== path);
+        paths.unshift(path);
+        paths = paths.slice(0, 3);
+        localStorage.setItem('1agents_recent_dirs', JSON.stringify(paths));
+    } catch (e) {
+        console.error('Failed to save recent path', e);
+    }
+};
+
 /** Open custom directory picker, then the workspace create modal prefilled from the pick. */
 export const openCreateWorkspacePicker = () => {
     openDirPicker(pickedPath => {
         const sep = pickedPath.includes('\\') ? '\\' : '/';
         const dirName = pickedPath.split(sep).filter(Boolean).pop() || pickedPath;
+
+        recordRecentPath(pickedPath);
 
         // Open standard workspace create modal with prefilled data!
         wsModalOpen.value = true;
@@ -68,6 +90,13 @@ export const openCreateWorkspacePicker = () => {
 export const openDirPickerForModal = () => {
     openDirPicker(path => {
         wsModalPath.value = path;
+        recordRecentPath(path);
+
+        if (!wsModalName.value.trim() && path) {
+            const sep = path.includes('\\') ? '\\' : '/';
+            const dirName = path.split(sep).filter(Boolean).pop() || path;
+            wsModalName.value = dirName;
+        }
     });
 };
 

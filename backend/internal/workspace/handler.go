@@ -619,3 +619,64 @@ func getCCProjectName(workspaceName string, agentType string) string {
 	return fmt.Sprintf("%s__%s", slug, agentType)
 }
 
+// CreateDirectory handles POST /api/workspace/create-directory
+func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ParentPath string `json:"parentPath"`
+		Name       string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		http.Error(w, "directory name cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if strings.Contains(req.Name, "/") || strings.Contains(req.Name, "\\") || req.Name == ".." || req.Name == "." {
+		http.Error(w, "invalid directory name", http.StatusBadRequest)
+		return
+	}
+
+	parent := expandTilde(req.ParentPath)
+	if parent == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "unable to determine home directory", http.StatusInternalServerError)
+			return
+		}
+		parent = home
+	}
+	parentAbs, err := filepath.Abs(parent)
+	if err != nil {
+		http.Error(w, "invalid parent path: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	targetPath := filepath.Join(parentAbs, req.Name)
+	targetPath = filepath.Clean(targetPath)
+	parentAbs = filepath.Clean(parentAbs)
+
+	// Verify path safety (prevent directory traversal)
+	if !strings.HasPrefix(targetPath, parentAbs) {
+		http.Error(w, "path traversal detected", http.StatusBadRequest)
+		return
+	}
+
+	if err := os.MkdirAll(targetPath, 0755); err != nil {
+		http.Error(w, "failed to create directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"ok":   true,
+		"path": targetPath,
+	})
+}
+
