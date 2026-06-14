@@ -122,4 +122,7 @@ type IndexRequest struct {
 	CcProject   string `json:"cc_project"`
 	CcSessionID string `json:"cc_session_id"`
 	SessionKey  string `json:"session_key"`
+	// Role marks a special-purpose session ("pm" = AI Project Manager).
+	// Empty for an ordinary chat. See meta.ChatSessionRecord.Role.
+	Role string `json:"role"`
 }

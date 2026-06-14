@@ -2364,6 +2364,32 @@ body {
   }
 }
 
+/* Header action cluster: AI PM entry + create-task toggle sit together. */
+.task-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* AI Project Manager entry — purple family signals the conversational AI
+   surface, distinct from the primary accent create-task button. */
+.pm-chat-btn {
+  padding: 6px 14px;
+  background-color: var(--purple-bg);
+  color: var(--purple-fg);
+  border: 1px solid rgba(var(--purple-rgb), 0.35);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+
+  &:hover {
+    background-color: rgba(var(--purple-rgb), 0.18);
+    border-color: rgba(var(--purple-rgb), 0.55);
+  }
+}
+
 /* Create-task form (same look as the legacy drawer version, re-scoped for
    the kanban landing layer). */
 .create-task-form {

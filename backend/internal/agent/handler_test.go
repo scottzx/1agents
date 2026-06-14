@@ -21,7 +21,7 @@ func newTestHandler(t *testing.T) (*Handler, *Store) {
 		return []WorkspaceRef{}, nil
 	}
 	scheduler := NewScheduler(tasksStore, workspacesFn)
-	return NewHandler(s, tasksStore, acpxClient, scheduler, NewCatalogStore()), s
+	return NewHandler(s, tasksStore, acpxClient, scheduler, NewCatalogStore(), "http://127.0.0.1:0"), s
 }
 
 func TestHandlerAgentTypes(t *testing.T) {

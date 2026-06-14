@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
@@ -21,6 +22,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
@@ -95,7 +97,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 		if tsErr != nil {
 			log.Printf("[server] tasks store init failed: %v", tsErr)
 		} else {
-			acpxClient := agent.NewAcpxClient(38082)
+			acpxPort := acpxBridgePort()
+			acpxClient := agent.NewAcpxClient(acpxPort)
 
 			scheduler := agent.NewScheduler(tasksStore, func() ([]agent.WorkspaceRef, error) {
 				wsHandler := workspace.NewHandler()
@@ -111,14 +114,20 @@ func NewRouter(cfg *config.Config) http.Handler {
 			})
 			// Headless executor: scheduler-triggered tasks run through the
 			// 1acp bridge with no frontend involved (automation-first).
-			scheduler.SetRunner(agent.NewTaskRunner(38082, tasksStore, agentStore, scheduler))
+			scheduler.SetRunner(agent.NewTaskRunner(acpxPort, tasksStore, agentStore, scheduler))
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
 			// RWMutex and re-probable via /api/agent/catalog?refresh=1.
 			catalogStore := agent.NewCatalogStore()
 
-			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore)
+			// Loopback base for the PM task-tool MCP subprocess to call back
+			// into this daemon's HTTP API (always http on 127.0.0.1; the
+			// internal-token bypass in authMiddleware accepts it).
+			_, selfPort, _ := net.SplitHostPort(cfg.ListenAddr)
+			selfBaseURL := "http://127.0.0.1:" + selfPort
+
+			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
 			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
 			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)    // GET (?refresh=1)
 			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
@@ -450,6 +459,20 @@ func NewRouter(cfg *config.Config) http.Handler {
 //     file, all non-localhost requests must present it. Localhost always bypasses.
 func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ── Layer 0: internal loopback bearer ───────────────────────────────
+		// Loopback helper subprocesses (e.g. the `1agents mcp-tasks` MCP server
+		// the AI Project Manager session spawns) present the process-scoped
+		// internal token. Accept it only from localhost so the bypass can never
+		// be reached over the tunnel, then skip both auth layers below.
+		if isLocalhost(r) {
+			if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+				if strings.TrimPrefix(authHeader, "Bearer ") == localtoken.Token {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+		}
+
 		// ── Layer 1: Tunnel session auth ────────────────────────────────────
 		if tunnel.DefaultSupervisor.HasAnyActive() {
 			// Bypass tunnel auth for tunnel control APIs
@@ -589,6 +612,19 @@ func isLocalhost(r *http.Request) bool {
 		host = r.RemoteAddr
 	}
 	return host == "127.0.0.1" || host == "::1"
+}
+
+// acpxBridgePort is the port the 1acp bridge-server listens on and the backend
+// dials. Defaults to 38082, overridable via ACPX_PORT — the same env var the
+// supervisor passes to the spawned bridge-server — so an isolated second
+// instance can run without colliding with a primary one.
+func acpxBridgePort() int {
+	if v := os.Getenv("ACPX_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			return p
+		}
+	}
+	return 38082
 }
 
 // ── Access Token Handlers ───────────────────────────────────────────────────────

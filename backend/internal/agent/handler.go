@@ -23,16 +23,22 @@ type Handler struct {
 	acpxClient *AcpxClient
 	scheduler  *Scheduler
 	catalog    *CatalogStore
+	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
+	// http://127.0.0.1:8080), injected into the AI Project Manager's
+	// task-tool MCP subprocess so it can call back into the task API.
+	selfBaseURL string
 }
 
-// NewHandler returns a Handler backed by stores and client.
-func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler, catalog *CatalogStore) *Handler {
+// NewHandler returns a Handler backed by stores and client. selfBaseURL is the
+// daemon's own loopback HTTP base used by the PM task-tool MCP subprocess.
+func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler, catalog *CatalogStore, selfBaseURL string) *Handler {
 	return &Handler{
-		store:      store,
-		tasksStore: tasksStore,
-		acpxClient: acpxClient,
-		scheduler:  scheduler,
-		catalog:    catalog,
+		store:       store,
+		tasksStore:  tasksStore,
+		acpxClient:  acpxClient,
+		scheduler:   scheduler,
+		catalog:     catalog,
+		selfBaseURL: selfBaseURL,
 	}
 }
 
@@ -249,6 +255,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		CcProject:   body.CcProject,
 		CcSessionID: body.CcSessionID,
 		SessionKey:  body.SessionKey,
+		Role:        body.Role,
 	}
 	if err := h.store.Add(rec); err != nil {
 		if errors.Is(err, ErrDuplicate) {
@@ -702,11 +709,14 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	// which both skips the background injection (issue-model decision G)
 	// and is passed to the bridge as resumeSessionId.
 	var acpSessionID string
+	var sessionRole string
 	if rec, ok, err := h.store.Get(sessionId); err == nil && ok {
 		acpSessionID = rec.AcpSessionID
+		sessionRole = rec.Role
 	}
 
 	var systemContext string
+	var mcpServers json.RawMessage
 	if taskId != "" {
 		cfg, err := h.tasksStore.Load(wsPath)
 		if err != nil {
@@ -783,11 +793,20 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 			_ = h.tasksStore.Save(wsPath, cfg)
 		}
 		log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
+	} else if sessionRole == SessionRolePM {
+		// AI Project Manager session: inject the PM system prompt (new
+		// sessions only — resumed ones already carry their history) and a
+		// task-tool MCP server locked to this workspace.
+		if acpSessionID == "" {
+			systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID)
+		}
+		mcpServers = h.buildPMMcpServers(wsID)
+		log.Printf("[agent] Bridging AI Project Manager WebSocket for session %s (workspace %s)", sessionId, wsID)
 	} else {
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)
 	}
 
-	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
+	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
 }
 
 // buildIssueBackground renders the issue-model §9 plain-text background

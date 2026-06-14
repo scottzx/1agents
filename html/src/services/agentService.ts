@@ -13,6 +13,8 @@ export interface IndexChatSessionRequest {
     agent_type: AgentType;
     /** Optional issue-model soft link — set for sessions spawned from a task timeline. */
     task_id?: string;
+    /** Special-purpose session role. 'pm' = in-app AI Project Manager (project-locked task tools + PM system prompt). */
+    role?: string;
 }
 
 /** Default agent type used when a workspace has none configured. */

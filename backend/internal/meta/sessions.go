@@ -19,7 +19,7 @@ func NewSessionStore(db *DB) *SessionStore {
 }
 
 const sessionCols = `id, project_id, task_id, name, agent_type, cc_project,
-	cc_session_id, acp_session_id, session_key, permission_mode,
+	cc_session_id, acp_session_id, session_key, permission_mode, role,
 	created_at, last_event_at`
 
 func scanSession(r rowScanner) (ChatSessionRecord, error) {
@@ -27,7 +27,7 @@ func scanSession(r rowScanner) (ChatSessionRecord, error) {
 	var createdAt, lastEventAt string
 	if err := r.Scan(&rec.ID, &rec.WorkspaceID, &rec.TaskID, &rec.Name, &rec.AgentType,
 		&rec.CcProject, &rec.CcSessionID, &rec.AcpSessionID, &rec.SessionKey,
-		&rec.PermissionMode, &createdAt, &lastEventAt); err != nil {
+		&rec.PermissionMode, &rec.Role, &createdAt, &lastEventAt); err != nil {
 		return ChatSessionRecord{}, err
 	}
 	rec.CreatedAt = strToTime(createdAt)
@@ -76,12 +76,12 @@ func (s *SessionStore) Add(rec ChatSessionRecord) error {
 	}
 	res, err := s.db.sql.Exec(`
 		INSERT INTO sessions (id, project_id, task_id, name, agent_type, cc_project,
-			cc_session_id, acp_session_id, session_key, permission_mode,
+			cc_session_id, acp_session_id, session_key, permission_mode, role,
 			created_at, last_event_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`,
 		rec.ID, rec.WorkspaceID, rec.TaskID, rec.Name, rec.AgentType, rec.CcProject,
-		rec.CcSessionID, rec.AcpSessionID, rec.SessionKey, rec.PermissionMode,
+		rec.CcSessionID, rec.AcpSessionID, rec.SessionKey, rec.PermissionMode, rec.Role,
 		timeToStr(rec.CreatedAt), timeToStr(rec.LastEventAt))
 	if err != nil {
 		return err

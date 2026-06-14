@@ -19,10 +19,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/scottzx/1Agents/backend/internal/cert"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
+	"github.com/scottzx/1Agents/backend/internal/cert"
 	"github.com/scottzx/1Agents/backend/internal/cli"
 	"github.com/scottzx/1Agents/backend/internal/config"
+	"github.com/scottzx/1Agents/backend/internal/mcptasks"
 	"github.com/scottzx/1Agents/backend/internal/server"
 	"github.com/scottzx/1Agents/backend/internal/supervisor"
 	"github.com/scottzx/1Agents/backend/internal/system"
@@ -47,6 +48,20 @@ func get1AgentsHome() string {
 }
 
 func main() {
+	// ── `1agents mcp-tasks` MCP subcommand ─────────────────────────────────────
+	// Dispatched before flag parsing and the daemon check so stdout stays a
+	// clean JSON-RPC channel (all logging goes to stderr). The AI Project
+	// Manager session spawns this via the resolved binary path; it speaks the
+	// Model Context Protocol over stdio and proxies task CRUD back to the
+	// running daemon's HTTP API, locked to one workspace via env.
+	if len(os.Args) > 1 && os.Args[1] == "mcp-tasks" {
+		if err := mcptasks.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "mcp-tasks:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	cfg := config.Default()
 
 	// Expose ldflags-injected version to the system package so the OTA
@@ -285,7 +300,7 @@ func main() {
 		fmt.Printf("   ⚙️  CC-Connect Mgmt Port   : :%d (Dynamic)\n", ccconnect.ManagementPort)
 		fmt.Printf("   🛠️  1skills Microservice   : %s\n", cfg.SkillsAddr)
 		fmt.Println("==================================================================")
-		
+
 		var err error
 		if enableSSL {
 			var tsDomain string
@@ -338,7 +353,7 @@ func main() {
 				time.Sleep(500 * time.Millisecond) // Let the server bind to the port first
 				log.Println("[main] --tunnel flag passed on boot. Initializing secure public Web Tunnel...")
 				port := tunnel.PortFrom(cfg.ListenAddr)
-				
+
 				publicURL, token, err := tunnel.DefaultSupervisor.Start(port, 0)
 				if err != nil {
 					log.Printf("[main] ERROR: Failed to start public Web Tunnel: %v", err)
@@ -350,7 +365,7 @@ func main() {
 				fmt.Printf("🔗 Secure Link: %s/?token=%s\n", publicURL, token)
 				fmt.Println("==================================================================")
 				fmt.Println("[main] Scan the high-contrast QR code below to connect instantly:")
-				
+
 				tunnel.RenderTerminalQR(fmt.Sprintf("%s/?token=%s", publicURL, token))
 			}()
 		}
@@ -361,7 +376,7 @@ func main() {
 		} else {
 			err = httpServer.ListenAndServe()
 		}
-		
+
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[main] HTTP server fatal error: %v", err)
 		}
@@ -390,7 +405,6 @@ func main() {
 	<-acpxSup.Done()
 	log.Println("[main] Shutdown complete. Goodbye.")
 }
-
 
 // writeDaemonFile writes the daemon's listen address to a well-known location
 // so CLI subcommands (tunnel, etc.) can discover the port without flags.

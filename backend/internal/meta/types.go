@@ -56,6 +56,10 @@ type ChatSessionRecord struct {
 	// "approve-all", "deny-all". Empty value means "use the bridge-server's
 	// global default".
 	PermissionMode string `json:"permission_mode,omitempty"`
+	// Role marks a special-purpose session. Empty for an ordinary chat. "pm"
+	// is the in-app AI Project Manager: HandleChatWs injects a PM system
+	// prompt plus a project-locked task-tool MCP server for these sessions.
+	Role string `json:"role,omitempty"`
 }
 
 type ScheduleType string
@@ -206,8 +210,8 @@ type Reply struct {
 type Task struct {
 	ID           string       `json:"id"`
 	Title        string       `json:"title"`
-	Description  string       `json:"description"`          // issue-model: Markdown body; ALSO the agent's work instruction
-	IssueState   IssueState   `json:"issueState"`           // issue-model: open | closed
+	Description  string       `json:"description"` // issue-model: Markdown body; ALSO the agent's work instruction
+	IssueState   IssueState   `json:"issueState"`  // issue-model: open | closed
 	Status       TaskStatus   `json:"status"`
 	ScheduleType ScheduleType `json:"scheduleType"`
 	ScheduledAt  *time.Time   `json:"scheduledAt"`
@@ -219,8 +223,8 @@ type Task struct {
 	DependsOn    []string   `json:"dependsOn"`
 
 	// ── PM fields (schema v2) ──
-	Priority  Priority `json:"priority,omitempty"`  // urgent|high|medium|low
-	Assignee  string   `json:"assignee,omitempty"`  // executing agent type; empty = claudecode
+	Priority  Priority `json:"priority,omitempty"` // urgent|high|medium|low
+	Assignee  string   `json:"assignee,omitempty"` // executing agent type; empty = claudecode
 	Labels    []string `json:"labels,omitempty"`
 	CreatedBy string   `json:"createdBy,omitempty"` // user | agent | scheduler
 	ParentID  string   `json:"parentId,omitempty"`  // one-level hierarchy; subtasks gate the parent

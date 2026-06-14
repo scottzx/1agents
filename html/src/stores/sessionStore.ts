@@ -10,7 +10,7 @@ import {
     type AgentType,
 } from '../components/types';
 import { terminalService } from '../services/terminalService';
-import { agentService } from '../services/agentService';
+import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
 import { t } from '../i18n';
 import * as ui from './uiStore';
@@ -159,6 +159,39 @@ export const createChatSession = async (
         ui.showToast('聊天会话已创建 ✓');
     } catch (err) {
         ui.showToast(`创建聊天失败: ${(err as Error).message}`);
+    }
+};
+
+/**
+ * Open the in-app AI Project Manager: a chat session whose agent gets a PM
+ * system prompt plus task tools locked to this workspace (role = 'pm', wired
+ * server-side in HandleChatWs). Mirrors createChatSession but pins the role.
+ */
+export const createPMSession = async (workspaceId: string) => {
+    const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
+    if (!ws) {
+        ui.showToast('工作空间不存在');
+        return;
+    }
+    try {
+        ui.showToast('正在召唤 AI 项目经理…');
+        if (wsStore.activeWorkspaceId.value !== workspaceId) {
+            await wsStore.selectWorkspace(ws);
+        }
+        const indexed = await agentService.index({
+            workspace_id: workspaceId,
+            name: 'AI 项目经理',
+            agent_type: DEFAULT_AGENT_TYPE,
+            role: 'pm',
+        });
+        await loadChatSessions(workspaceId);
+        activeSession.value = { ...indexed, active: true };
+        // Leave the project landing ('tasks') so the chat actually renders.
+        tabsStore.activeTabId.value = 'terminal';
+        tabsStore.activeTab.value = 'agents';
+        ui.showToast('AI 项目经理已就绪 ✓');
+    } catch (err) {
+        ui.showToast(`召唤失败: ${(err as Error).message}`);
     }
 };
 

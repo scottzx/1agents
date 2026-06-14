@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -130,6 +130,11 @@ func (db *DB) migrateSchema() error {
 	if version < 5 {
 		if _, err := db.sql.Exec(schemaV5); err != nil {
 			return fmt.Errorf("meta: apply schema v5: %w", err)
+		}
+	}
+	if version < 6 {
+		if _, err := db.sql.Exec(schemaV6); err != nil {
+			return fmt.Errorf("meta: apply schema v6: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -233,7 +238,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 `
 
 // schemaV3 adds the sprint label (free-text PM grouping, e.g. "Sprint 23").
-// Backward-compat: the DEFAULT '' means existing v2 rows survive untouched
+// Backward-compat: the DEFAULT ” means existing v2 rows survive untouched
 // and report Sprint == "" until the user opts a task into a sprint.
 const schemaV3 = `
 ALTER TABLE tasks ADD COLUMN sprint TEXT NOT NULL DEFAULT '';
@@ -260,6 +265,13 @@ UPDATE tasks SET number = sub.rn FROM (
 ) AS sub WHERE tasks.id = sub.id;
 `
 
+// schemaV6 adds the session role discriminator. DEFAULT ” keeps every
+// existing session an ordinary chat; role = 'pm' marks the in-app AI Project
+// Manager session (PM system prompt + project-locked task-tool MCP server).
+const schemaV6 = `
+ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT '';
+`
+
 // ── shared helpers ──────────────────────────────────────────────────────────
 
 // newID returns a random 16-byte hex string (same format as agent.newID).
@@ -275,7 +287,7 @@ func newID() string {
 // records themselves.
 func NewID() string { return newID() }
 
-// timeToStr serializes a time for storage; zero time becomes ''.
+// timeToStr serializes a time for storage; zero time becomes ”.
 func timeToStr(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -283,7 +295,7 @@ func timeToStr(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-// strToTime parses a stored timestamp; '' becomes the zero time.
+// strToTime parses a stored timestamp; ” becomes the zero time.
 func strToTime(s string) time.Time {
 	if s == "" {
 		return time.Time{}
