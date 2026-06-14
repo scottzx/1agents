@@ -185,8 +185,15 @@ export const createWorkspace = async (
         // Fallback for non-ASCII/Chinese names: generate a clean unique ID
         id = 'ws-' + Math.random().toString(36).substring(2, 10);
     }
+    let finalId = id;
+    let counter = 1;
+    const existingIds = new Set(workspaces.value.map(w => w.id));
+    while (existingIds.has(finalId)) {
+        finalId = `${id}-${counter}`;
+        counter++;
+    }
     const ws: Workspace = {
-        id,
+        id: finalId,
         name,
         path,
         status: 'active',
