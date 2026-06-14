@@ -59,6 +59,7 @@ type (
 	Reply             = meta.Reply
 	Task              = meta.Task
 	TasksConfig       = meta.TasksConfig
+	TaskLink          = meta.TaskLink
 	Priority          = meta.Priority
 	Recurrence        = meta.Recurrence
 	WorkspaceRef      = meta.WorkspaceRef
@@ -81,6 +82,13 @@ const (
 
 	IssueOpen   = meta.IssueOpen
 	IssueClosed = meta.IssueClosed
+
+	TaskTypeTask        = meta.TaskTypeTask
+	TaskTypeRequirement = meta.TaskTypeRequirement
+	TaskTypeBug         = meta.TaskTypeBug
+
+	LinkCloses  = meta.LinkCloses
+	LinkRelates = meta.LinkRelates
 
 	PriorityUrgent = meta.PriorityUrgent
 	PriorityHigh   = meta.PriorityHigh

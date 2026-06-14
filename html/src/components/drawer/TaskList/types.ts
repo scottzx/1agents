@@ -27,6 +27,15 @@ export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
 export type TaskType = 'task' | 'requirement' | 'bug';
 
+// A GitHub-style peer cross-reference between work items (not hierarchy —
+// subtasks use parentId). target is the referenced task's id.
+export type LinkRel = 'closes' | 'relates';
+
+export interface TaskLink {
+    target: string;
+    rel: LinkRel;
+}
+
 export interface TaskRecurrence {
     freq: 'daily' | 'weekly' | 'monthly';
     weekday?: number;
@@ -52,6 +61,8 @@ export interface Task {
     parentId?: string;
     milestone?: string;
     type?: TaskType;
+    number?: number;
+    links?: TaskLink[];
     acceptanceCriteria?: string;
     recurrence?: TaskRecurrence | null;
     maxRetries?: number;

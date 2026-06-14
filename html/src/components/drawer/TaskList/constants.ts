@@ -22,6 +22,11 @@ export const TYPE_LABELS: Record<string, string> = {
     bug: '缺陷',
 };
 
+export const LINK_REL_LABELS: Record<string, string> = {
+    closes: '修复 / 关闭',
+    relates: '关联',
+};
+
 export const STATUS_LABELS: Record<string, string> = {
     pending: '等待中',
     queued: '排队中',

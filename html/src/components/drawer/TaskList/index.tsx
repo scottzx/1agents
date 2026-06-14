@@ -103,6 +103,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                     fetchTasks();
                 }}
                 onDelete={handleDeleteTask}
+                onNavigate={setSelectedTaskId}
                 onSelectSession={onSelectSession}
             />
         );
