@@ -20,7 +20,7 @@ AGENT_LDFLAGS := -s -w \
   -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
   -X main.buildTime=$(BUILD_TIME)
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package clean help install-hooks
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package clean help install-hooks submodules submodule-cc-connect submodule-cc-switch
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
@@ -28,6 +28,7 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, cc-switch, backend)"
+	@echo "  make submodules        - Init/update all git submodules (cc-connect, cc-switch-cli, 1acp, 1skills)"
 	@echo "  make frontend          - Build frontend assets (html/) and generate modules/ttyd/src/html.h"
 	@echo "  make ttyd              - Compile native ttyd C server natively on the current host"
 	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
@@ -39,6 +40,22 @@ help:
 	@echo "  make install-hooks     - Install git hooks (auto-push submodules + create PRs on git push)"
 
 all: frontend ttyd cc-connect cc-switch backend
+
+# --- Git submodules ---------------------------------------------------------
+# All four submodules are pinned gitlinks. Check them out before building any
+# component that compiles from submodule sources. These commands are idempotent:
+# re-running is a fast no-op when the submodule is already at the recorded commit.
+submodules:
+	@echo "=== Initializing/updating all git submodules..."
+	git submodule update --init --recursive
+
+submodule-cc-connect:
+	@echo "=== Ensuring cc-connect submodule is checked out..."
+	git submodule update --init modules/cc-connect
+
+submodule-cc-switch:
+	@echo "=== Ensuring cc-switch-cli submodule is checked out..."
+	git submodule update --init modules/cc-switch-cli
 
 frontend:
 	@echo "=== Building Frontend (html/)..."
@@ -57,7 +74,7 @@ ttyd:
 		codesign --force --deep --sign - build/ttyd ; \
 	fi
 
-cc-connect:
+cc-connect: submodule-cc-connect
 	@echo "=== Building cc-connect daemon..."
 	$(MAKE) -C modules/cc-connect build
 	@mkdir -p build
@@ -67,7 +84,7 @@ cc-connect:
 		codesign --force --deep --sign - build/cc-connect ; \
 	fi
 
-cc-connect-noweb:
+cc-connect-noweb: submodule-cc-connect
 	@echo "=== Building cc-connect daemon (no web build)..."
 	$(MAKE) -C modules/cc-connect build-noweb
 	@mkdir -p build
@@ -77,7 +94,7 @@ cc-connect-noweb:
 		codesign --force --deep --sign - build/cc-connect ; \
 	fi
 
-cc-switch:
+cc-switch: submodule-cc-switch
 	@echo "=== Building cc-switch CLI..."
 	cargo build --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml --release
 	@mkdir -p build
