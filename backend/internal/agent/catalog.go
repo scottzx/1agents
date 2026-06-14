@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -40,6 +42,12 @@ type AgentDescriptor struct {
 	// InstallCommand is the terminal command a user runs to install the agent.
 	// Surfaced as a copyable button when the agent isn't installed.
 	InstallCommand string
+	// AdapterPackage is the npm package of the ACP adapter the web chat path
+	// (1acp bridge) launches for this agent, when it differs from the CLI
+	// Binary probed above. The adapter is resolved from modules/1acp's
+	// node_modules, so an agent can be chat-ready without its own CLI on
+	// PATH. Empty when the agent has no dedicated vendored ACP adapter.
+	AdapterPackage string
 }
 
 // AgentCatalog is the canonical capability table.
@@ -56,10 +64,10 @@ type AgentDescriptor struct {
 // both an ACP mode and a CLI mode.
 var AgentCatalog = []AgentDescriptor{
 	// ── Integrated: drivable by this backend ────────────────────────────────
-	{Type: AgentTypeClaudecode, Label: "Claude Code", Binary: "claude", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @anthropic-ai/claude-code"},
+	{Type: AgentTypeClaudecode, Label: "Claude Code", Binary: "claude", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @anthropic-ai/claude-code", AdapterPackage: "@agentclientprotocol/claude-agent-acp"},
 	// codex also has an app_server (WebSocket RPC) mode, but cc-connect's
 	// default "exec" backend drives it as a CLI stream.
-	{Type: AgentTypeCodex, Label: "Codex", Binary: "codex", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @openai/codex"},
+	{Type: AgentTypeCodex, Label: "Codex", Binary: "codex", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @openai/codex", AdapterPackage: "@agentclientprotocol/codex-acp"},
 	{Type: AgentTypeCursor, Label: "Cursor Agent", Binary: "agent", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "curl https://cursor.com/install -fsS | bash"},
 	{Type: AgentTypeGemini, Label: "Gemini", Binary: "gemini", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @google/gemini-cli"},
 	{Type: AgentTypeDevin, Label: "Devin", Binary: "devin", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://cli.devin.ai/install.sh | bash"},
@@ -90,6 +98,11 @@ type AgentStatus struct {
 	CcTransport    CcTransport `json:"cc_transport"`
 	Integrated     bool        `json:"integrated"`
 	InstallCommand string      `json:"install_command,omitempty"`
+	// ChatReady is true when the web chat path can launch this agent: either
+	// its CLI binary is installed, or its ACP adapter is vendored in
+	// modules/1acp/node_modules. The chat picker gates on this; the settings
+	// detection list keeps using Installed (the CLI probe).
+	ChatReady bool `json:"chat_ready"`
 }
 
 // CatalogStore holds the globally-detected agent install state. It probes the
@@ -111,6 +124,7 @@ func NewCatalogStore() *CatalogStore {
 // Scan re-probes every descriptor's binary via exec.LookPath (instant; no
 // --version exec) and atomically replaces the cached snapshot.
 func (c *CatalogStore) Scan() []AgentStatus {
+	adapterDir := acpAdapterDir()
 	statuses := make([]AgentStatus, 0, len(AgentCatalog))
 	for _, d := range AgentCatalog {
 		st := AgentStatus{
@@ -127,6 +141,10 @@ func (c *CatalogStore) Scan() []AgentStatus {
 			st.Installed = true
 			st.Path = path
 		}
+		// Web chat launches the ACP adapter (from modules/1acp), not the CLI,
+		// so an agent is chat-ready when either the CLI is on PATH or its
+		// adapter package is vendored.
+		st.ChatReady = st.Installed || adapterVendored(adapterDir, d.AdapterPackage)
 		statuses = append(statuses, st)
 	}
 
@@ -136,6 +154,40 @@ func (c *CatalogStore) Scan() []AgentStatus {
 	c.mu.Unlock()
 
 	return statuses
+}
+
+// acpAdapterDir resolves modules/1acp/node_modules by walking up from the
+// working directory (mirrors the lookup in internal/supervisor/acpx.go).
+// Returns "" if modules/1acp can't be located.
+func acpAdapterDir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	dir := cwd
+	for {
+		candidate := filepath.Join(dir, "modules", "1acp")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return filepath.Join(candidate, "node_modules")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// adapterVendored reports whether the named ACP adapter package is installed
+// under modules/1acp/node_modules (so the web chat path can launch it without
+// a runtime npx download). A blank pkg or unresolved adapter dir returns false.
+func adapterVendored(adapterDir, pkg string) bool {
+	if adapterDir == "" || pkg == "" {
+		return false
+	}
+	manifest := filepath.Join(adapterDir, filepath.FromSlash(pkg), "package.json")
+	_, err := os.Stat(manifest)
+	return err == nil
 }
 
 // Snapshot returns a copy of the cached statuses under a read lock.
