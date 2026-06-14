@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sort"
 	"sync"
@@ -242,6 +243,38 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 				t.UpdatedAt = now
 				modified = true
 			}
+		}
+	}
+
+	// 3.6 Closes-link auto-close: when a task completes, any task it links to
+	//      with rel=="closes" is itself closed (GitHub-style "fixes #N").
+	//      "relates" links are pure cross-references and never auto-act.
+	//      Idempotent: an already-closed target is skipped.
+	for i := range cfg.Tasks {
+		src := &cfg.Tasks[i]
+		if src.Status != TaskStatusCompleted {
+			continue
+		}
+		for _, link := range src.Links {
+			if link.Rel != LinkCloses {
+				continue
+			}
+			tgt, ok := taskMap[link.Target]
+			if !ok || tgt.IssueState == IssueClosed {
+				continue
+			}
+			tgt.Status = TaskStatusCompleted
+			tgt.IssueState = IssueClosed
+			tgt.CompletedAt = &now
+			tgt.UpdatedAt = now
+			tgt.Replies = append(tgt.Replies, Reply{
+				Author:    Author{Kind: "scheduler", Name: "scheduler"},
+				Text:      fmt.Sprintf("由 #%d 修复并关闭", src.Number),
+				Mode:      ModePureComment,
+				CreatedAt: now,
+			})
+			modified = true
+			log.Printf("[scheduler] Task %s closed by #%d (closes link)", tgt.ID, src.Number)
 		}
 	}
 

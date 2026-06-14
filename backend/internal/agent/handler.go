@@ -305,6 +305,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			PlannedStart       *time.Time   `json:"plannedStart"`
 			PlannedEnd         *time.Time   `json:"plannedEnd"`
 			DependsOn          []string     `json:"dependsOn"`
+			Links              []TaskLink   `json:"links"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -350,6 +351,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			PlannedStart:       body.PlannedStart,
 			PlannedEnd:         body.PlannedEnd,
 			DependsOn:          body.DependsOn,
+			Links:              body.Links,
 			CreatedAt:          time.Now().UTC(),
 			UpdatedAt:          time.Now().UTC(),
 			Replies:            []Reply{},
@@ -364,7 +366,9 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, newTask)
+		// Save assigns the short number (#N) on the stored slice element, so
+		// return that one rather than the pre-save copy.
+		writeJSON(w, cfg.Tasks[len(cfg.Tasks)-1])
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -479,6 +483,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
 		PlannedEnd         *time.Time   `json:"plannedEnd,omitempty"`
+		Links              *[]TaskLink  `json:"links,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -576,6 +581,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if body.Type != nil {
 		target.Type = TaskType(*body.Type)
+	}
+	if body.Links != nil {
+		target.Links = *body.Links
 	}
 	if body.Recurrence != nil {
 		target.Recurrence = *body.Recurrence

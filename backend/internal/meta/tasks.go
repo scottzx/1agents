@@ -33,18 +33,18 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	summary, created_at, updated_at,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-	sprint, type`
+	sprint, type, number, links`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt sql.NullString
-	var createdAt, updatedAt, labels, recurrence string
+	var createdAt, updatedAt, labels, recurrence, links string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
 		&t.Priority, &t.Assignee, &labels, &t.CreatedBy, &t.ParentID, &t.Milestone,
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
-		&t.TimeoutMinutes, &t.Sprint, &t.Type); err != nil {
+		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links); err != nil {
 		return Task{}, err
 	}
 	t.ScheduledAt = valToTimePtr(scheduledAt)
@@ -56,6 +56,7 @@ func scanTask(r rowScanner) (Task, error) {
 	t.UpdatedAt = strToTime(updatedAt)
 	t.Labels = jsonToStrings(labels)
 	t.Recurrence = jsonToRecurrence(recurrence)
+	t.Links = jsonToLinks(links)
 	t.DependsOn = []string{}
 	t.Replies = []Reply{}
 	t.Sessions = []SessionMetadata{}
@@ -78,6 +79,28 @@ func jsonToStrings(s string) []string {
 		return nil
 	}
 	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func linksToJSON(v []TaskLink) string {
+	if len(v) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+func jsonToLinks(s string) []TaskLink {
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var out []TaskLink
 	if err := json.Unmarshal([]byte(s), &out); err != nil {
 		return nil
 	}
@@ -287,14 +310,24 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 	if t.Type == "" {
 		t.Type = TaskTypeTask
 	}
+	// Assign the per-project short id on first save. Runs inside the tx and
+	// after any earlier task in the same Save has been inserted, so MAX is
+	// always current and concurrent Saves can't collide.
+	if t.Number == 0 {
+		if err := tx.QueryRow(
+			`SELECT COALESCE(MAX(number), 0) + 1 FROM tasks WHERE project_id = ?`,
+			projectID).Scan(&t.Number); err != nil {
+			return err
+		}
+	}
 	_, err := tx.Exec(`
 		INSERT INTO tasks (id, project_id, title, description, issue_state, status,
 			schedule_type, scheduled_at, planned_start, planned_end, started_at,
 			completed_at, summary, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-			sprint, type)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sprint, type, number, links)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -321,14 +354,17 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			retry_count = excluded.retry_count,
 			timeout_minutes = excluded.timeout_minutes,
 			sprint = excluded.sprint,
-			type = excluded.type`,
+			type = excluded.type,
+			number = excluded.number,
+			links = excluded.links`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
 		t.Summary, timeToStr(t.CreatedAt), timeToStr(t.UpdatedAt),
 		t.Priority, t.Assignee, stringsToJSON(t.Labels), t.CreatedBy, t.ParentID,
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
-		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type)
+		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type,
+		t.Number, linksToJSON(t.Links))
 	if err != nil {
 		return err
 	}

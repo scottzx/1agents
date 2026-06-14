@@ -4,8 +4,8 @@ import { useSignal } from '@preact/signals';
 
 import { agentService } from '../../../services/agentService';
 import type { AgentType, ChatSession, Session } from '../../types';
-import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
-import type { Reply, ReplyMode, Task } from './types';
+import { LINK_REL_LABELS, PRIORITY_LABELS, STATUS_LABELS } from './constants';
+import type { LinkRel, Reply, ReplyMode, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 
 interface TaskDetailProps {
@@ -14,12 +14,25 @@ interface TaskDetailProps {
     allTasks: Task[];
     onBack: () => void;
     onDelete: (taskId: string) => void;
+    onNavigate?: (taskId: string) => void;
     onSelectSession?: (session: Session) => void;
 }
 
-export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, onSelectSession }: TaskDetailProps) {
+export function TaskDetail({
+    workspaceId,
+    taskId,
+    allTasks,
+    onBack,
+    onDelete,
+    onNavigate,
+    onSelectSession,
+}: TaskDetailProps) {
     const [task, setTask] = useState<Task | null>(null);
     const [error, setError] = useState('');
+
+    // Add-link form
+    const [linkTarget, setLinkTarget] = useState('');
+    const [linkRel, setLinkRel] = useState<LinkRel>('relates');
 
     // Description editing
     const editingDesc = useSignal(false);
@@ -58,6 +71,7 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
         description?: string;
         issueState?: 'open' | 'closed';
         acceptanceCriteria?: string;
+        links?: TaskLink[];
     }) => {
         const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`, {
             method: 'PATCH',
@@ -93,6 +107,29 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
         const next = task.issueState === 'closed' ? 'open' : 'closed';
         try {
             await patchTask({ issueState: next });
+        } catch (err) {
+            alert((err as Error).message);
+        }
+    };
+
+    const addLink = async () => {
+        if (!task || !linkTarget) return;
+        const links = task.links || [];
+        if (links.some(l => l.target === linkTarget && l.rel === linkRel)) return; // already linked
+        try {
+            await patchTask({ links: [...links, { target: linkTarget, rel: linkRel }] });
+            setLinkTarget('');
+            setLinkRel('relates');
+        } catch (err) {
+            alert((err as Error).message);
+        }
+    };
+
+    const removeLink = async (link: TaskLink) => {
+        if (!task) return;
+        const links = (task.links || []).filter(l => !(l.target === link.target && l.rel === link.rel));
+        try {
+            await patchTask({ links });
         } catch (err) {
             alert((err as Error).message);
         }
@@ -211,6 +248,14 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
     const subtasks = allTasks.filter(t => t.parentId === task.id);
     const replies = task.replies || [];
 
+    // Peer cross-references (#N links). Outgoing come from this task; backlinks
+    // are other tasks that reference this one. Both resolve titles via allTasks.
+    const taskById = new Map(allTasks.map(t => [t.id, t]));
+    const outgoing = task.links || [];
+    const backlinks = allTasks.filter(t => t.id !== task.id && (t.links || []).some(l => l.target === task.id));
+    const linkOptions = allTasks.filter(t => t.id !== task.id);
+    const linkLabel = (t?: Task) => (t ? `${t.number ? `#${t.number} ` : ''}${t.title}` : '（未知任务）');
+
     return (
         <div class="task-dashboard-container task-detail-view">
             <div class="task-detail-header">
@@ -219,7 +264,8 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
                 </button>
                 <div class="task-detail-title-group">
                     <h3 class="task-detail-title">
-                        {'\u{1F4CB}'} {task.title}
+                        {'\u{1F4CB}'} {task.number ? <span class="task-number">#{task.number}</span> : null}{' '}
+                        {task.title}
                     </h3>
                     <span class="task-issue-icon" title={closed ? 'closed' : 'open'}>
                         {closed ? '\u{1F512}' : '\u{1F513}'}
@@ -375,6 +421,95 @@ export function TaskDetail({ workspaceId, taskId, allTasks, onBack, onDelete, on
                         ))}
                     </div>
                 )}
+
+                {/* Cross-reference links (#N) */}
+                <div class="task-links-section">
+                    <div class="task-section-header">
+                        <h5>{'\u{1F517}'} 关联</h5>
+                    </div>
+
+                    {outgoing.length > 0 && (
+                        <div class="task-links-group">
+                            {outgoing.map(link => {
+                                const tgt = taskById.get(link.target);
+                                return (
+                                    <div key={`${link.target}-${link.rel}`} class="task-link-row">
+                                        <span class={`task-link-rel rel-${link.rel}`}>
+                                            {LINK_REL_LABELS[link.rel] || link.rel}
+                                        </span>
+                                        <button
+                                            class="task-link-target"
+                                            disabled={!tgt || !onNavigate}
+                                            onClick={() => tgt && onNavigate && onNavigate(tgt.id)}
+                                        >
+                                            {linkLabel(tgt)}
+                                        </button>
+                                        <button
+                                            class="task-link-remove"
+                                            title="移除关联"
+                                            onClick={() => removeLink(link)}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {backlinks.length > 0 && (
+                        <div class="task-links-group task-backlinks">
+                            <div class="task-links-subhead">被引用</div>
+                            {backlinks.map(src => {
+                                const link = (src.links || []).find(l => l.target === task.id);
+                                return (
+                                    <div key={src.id} class="task-link-row">
+                                        <span class={`task-link-rel rel-${link?.rel || 'relates'}`}>
+                                            {LINK_REL_LABELS[link?.rel || 'relates']}
+                                        </span>
+                                        <button
+                                            class="task-link-target"
+                                            disabled={!onNavigate}
+                                            onClick={() => onNavigate && onNavigate(src.id)}
+                                        >
+                                            {linkLabel(src)}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {outgoing.length === 0 && backlinks.length === 0 && (
+                        <div class="task-desc-empty">暂无关联 —— 在下方选择目标与关系建立引用。</div>
+                    )}
+
+                    <div class="task-link-add">
+                        <select
+                            class="task-link-target-select"
+                            value={linkTarget}
+                            onChange={(e: Event) => setLinkTarget((e.target as HTMLSelectElement).value)}
+                        >
+                            <option value="">选择目标…</option>
+                            {linkOptions.map(t => (
+                                <option key={t.id} value={t.id}>
+                                    {linkLabel(t)}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            class="task-link-rel-select"
+                            value={linkRel}
+                            onChange={(e: Event) => setLinkRel((e.target as HTMLSelectElement).value as LinkRel)}
+                        >
+                            <option value="relates">关联</option>
+                            <option value="closes">修复 / 关闭</option>
+                        </select>
+                        <button class="task-link-add-btn" disabled={!linkTarget} onClick={addLink}>
+                            添加关联
+                        </button>
+                    </div>
+                </div>
 
                 {/* Timeline */}
                 <div class="task-timeline-section">

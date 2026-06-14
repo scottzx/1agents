@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -125,6 +125,11 @@ func (db *DB) migrateSchema() error {
 	if version < 4 {
 		if _, err := db.sql.Exec(schemaV4); err != nil {
 			return fmt.Errorf("meta: apply schema v4: %w", err)
+		}
+	}
+	if version < 5 {
+		if _, err := db.sql.Exec(schemaV5); err != nil {
+			return fmt.Errorf("meta: apply schema v5: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -239,6 +244,20 @@ ALTER TABLE tasks ADD COLUMN sprint TEXT NOT NULL DEFAULT '';
 // requirement cards (the "需求池") are just tasks with type != 'task'.
 const schemaV4 = `
 ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'task';
+`
+
+// schemaV5 adds the per-project short id (#N) and peer cross-reference links.
+// number is backfilled per project in (created_at, id) order so existing rows
+// get stable, gap-free #N; links holds a JSON array of {target, rel} mirroring
+// the labels column. New tasks get their number assigned at upsert time.
+const schemaV5 = `
+ALTER TABLE tasks ADD COLUMN number INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN links  TEXT    NOT NULL DEFAULT '[]';
+UPDATE tasks SET number = sub.rn FROM (
+    SELECT id, ROW_NUMBER() OVER (
+        PARTITION BY project_id ORDER BY created_at, id
+    ) AS rn FROM tasks
+) AS sub WHERE tasks.id = sub.id;
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────
