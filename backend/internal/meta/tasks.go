@@ -150,6 +150,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 		return nil, err
 	}
 	tasks := []Task{}
+	taskMap := make(map[string]*Task)
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -162,12 +163,107 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	if len(tasks) == 0 {
+		return &TasksConfig{Tasks: tasks}, nil
+	}
 
 	for i := range tasks {
-		if err := s.loadTaskChildren(&tasks[i]); err != nil {
+		taskMap[tasks[i].ID] = &tasks[i]
+	}
+
+	// 1. Bulk load dependencies
+	depRows, err := s.db.sql.Query(`
+		SELECT td.task_id, td.depends_on
+		FROM task_deps td
+		JOIN tasks t ON t.id = td.task_id
+		WHERE t.project_id = ?
+		ORDER BY td.seq`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for depRows.Next() {
+		var taskID, dep string
+		if err := depRows.Scan(&taskID, &dep); err != nil {
+			depRows.Close()
 			return nil, err
 		}
+		if t, ok := taskMap[taskID]; ok {
+			t.DependsOn = append(t.DependsOn, dep)
+		}
 	}
+	if err := depRows.Close(); err != nil {
+		return nil, err
+	}
+
+	// 2. Bulk load replies
+	replyIDsBySession := make(map[string]map[string][]string) // taskID -> sessionRef -> replyIDs
+	replyRows, err := s.db.sql.Query(`
+		SELECT r.task_id, r.id, r.author_kind, r.author_name, r.agent_type,
+		       r.text, r.session_ref, r.acp_session_id, r.in_reply_to, r.mode, r.created_at
+		FROM replies r
+		JOIN tasks t ON t.id = r.task_id
+		WHERE t.project_id = ?
+		ORDER BY r.seq, r.created_at`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for replyRows.Next() {
+		var taskID string
+		var rp Reply
+		var createdAt string
+		if err := replyRows.Scan(&taskID, &rp.ID, &rp.Author.Kind, &rp.Author.Name, &rp.AgentType,
+			&rp.Text, &rp.SessionRef, &rp.AcpSessionID, &rp.InReplyTo, &rp.Mode,
+			&createdAt); err != nil {
+			replyRows.Close()
+			return nil, err
+		}
+		rp.CreatedAt = strToTime(createdAt)
+		if t, ok := taskMap[taskID]; ok {
+			t.Replies = append(t.Replies, rp)
+			if rp.SessionRef != "" {
+				if _, ok := replyIDsBySession[taskID]; !ok {
+					replyIDsBySession[taskID] = make(map[string][]string)
+				}
+				replyIDsBySession[taskID][rp.SessionRef] = append(replyIDsBySession[taskID][rp.SessionRef], rp.ID)
+			}
+		}
+	}
+	if err := replyRows.Close(); err != nil {
+		return nil, err
+	}
+
+	// 3. Bulk load sessions
+	sessRows, err := s.db.sql.Query(`
+		SELECT s.task_id, s.id, s.name, s.agent_type, s.exec_status, s.exec_summary, s.created_at
+		FROM sessions s
+		JOIN tasks t ON t.id = s.task_id
+		WHERE t.project_id = ?
+		ORDER BY s.created_at, s.id`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for sessRows.Next() {
+		var taskID string
+		var sm SessionMetadata
+		var createdAt string
+		if err := sessRows.Scan(&taskID, &sm.ID, &sm.Name, &sm.AgentType, &sm.Status,
+			&sm.Summary, &createdAt); err != nil {
+			sessRows.Close()
+			return nil, err
+		}
+		sm.Kind = SessionKindChat
+		sm.CreatedAt = strToTime(createdAt)
+		if t, ok := taskMap[taskID]; ok {
+			if sessMap, ok := replyIDsBySession[taskID]; ok {
+				sm.ReplyIDs = sessMap[sm.ID]
+			}
+			t.Sessions = append(t.Sessions, sm)
+		}
+	}
+	if err := sessRows.Close(); err != nil {
+		return nil, err
+	}
+
 	return &TasksConfig{Tasks: tasks}, nil
 }
 
