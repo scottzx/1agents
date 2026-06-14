@@ -438,13 +438,10 @@ export const zhCN: Record<string, string> = {
     'welcome.cta2': '直接进入 temp 空间',
 
     // ── Settings (SystemSettings.tsx) ────────────────────────────────────
-    'settings.nav.general': '通用设置',
-    'settings.nav.appearance': '外观与终端',
-    'settings.nav.agents': '智能体',
+    'settings.nav.general': '通用与外观',
     'settings.nav.security': '安全设置',
-    'settings.nav.feedback': '反馈与联系',
-    'settings.nav.about': '关于与维护',
-    'settings.nav.credits': '鸣谢',
+    'settings.nav.agents': '智能体',
+    'settings.nav.about': '关于与支持',
 
     'settings.agents.title': '智能体检测',
     'settings.agents.desc': '检测本机已安装的智能体应用，以及各自支持的接入方式。',
@@ -462,8 +459,8 @@ export const zhCN: Record<string, string> = {
     'settings.agents.detectOnly': '仅检测',
     'settings.agents.installHint': '安装命令',
 
-    'settings.general.title': '通用设置',
-    'settings.general.desc': '配置语言和语音识别选项。',
+    'settings.general.title': '语言与识别',
+    'settings.general.desc': '配置系统语言、外观主题与终端行为。',
     'settings.general.dictationLang': '语音识别语言',
     'settings.general.dictationLangDesc': '选择语音输入使用的语言',
     'settings.general.dictationLangZh': '中文 (Chinese)',
@@ -485,8 +482,8 @@ export const zhCN: Record<string, string> = {
     'settings.appearance.scrollLabel': '滚轮滑动',
     'settings.appearance.selectLabel': '选择复制',
 
-    'settings.security.title': '安全设置',
-    'settings.security.desc': '管理访问令牌，保护您的远程访问安全。',
+    'settings.security.title': '访问控制',
+    'settings.security.desc': '管理访问令牌和本机智能体，确保协同安全与连接。',
     'settings.security.token': '访问令牌',
     'settings.security.tokenSet': '已设置访问令牌。非本地网络访问需要提供此令牌验证。',
     'settings.security.tokenUnset': '未设置访问令牌。生成后，非本地访问将需要令牌验证。',
@@ -504,8 +501,8 @@ export const zhCN: Record<string, string> = {
     'settings.feedback.formDesc': '提交功能建议或问题反馈，帮助我们改进产品。',
     'settings.feedback.open': '打开反馈表',
 
-    'settings.about.title': '关于与维护',
-    'settings.about.desc': '查看应用信息，管理本地缓存。',
+    'settings.about.title': '关于系统',
+    'settings.about.desc': '查看应用信息、提供反馈联系、进行数据重置或查看开源鸣谢。',
     'settings.about.tagline': '智能 AI 工作空间管理器',
     'settings.about.version': '版本',
     'settings.about.platform': '平台',
@@ -1033,13 +1030,10 @@ export const enUS: Record<string, string> = {
     'welcome.cta2': 'Directly Enter Temp Space',
 
     // ── Settings ─────────────────────────────────────────────────────────
-    'settings.nav.general': 'General',
-    'settings.nav.appearance': 'Appearance & Terminal',
-    'settings.nav.agents': 'Agents',
+    'settings.nav.general': 'General & Appearance',
     'settings.nav.security': 'Security',
-    'settings.nav.feedback': 'Feedback & Contact',
-    'settings.nav.about': 'About & Maintenance',
-    'settings.nav.credits': 'Acknowledgements',
+    'settings.nav.agents': 'Agents',
+    'settings.nav.about': 'About & Support',
 
     'settings.agents.title': 'Agent Detection',
     'settings.agents.desc': 'Detect agent applications installed on this host and how each one integrates.',
@@ -1057,8 +1051,8 @@ export const enUS: Record<string, string> = {
     'settings.agents.detectOnly': 'Detect-only',
     'settings.agents.installHint': 'Install command',
 
-    'settings.general.title': 'General Settings',
-    'settings.general.desc': 'Configure language and dictation options.',
+    'settings.general.title': 'Language & Dictation',
+    'settings.general.desc': 'Configure language, appearance theme, and terminal behavior.',
     'settings.general.dictationLang': 'Voice Dictation Language',
     'settings.general.dictationLangDesc': 'Choose the language for voice input',
     'settings.general.dictationLangZh': 'Chinese (中文)',
@@ -1080,8 +1074,8 @@ export const enUS: Record<string, string> = {
     'settings.appearance.scrollLabel': 'Scroll Mode',
     'settings.appearance.selectLabel': 'Selection Mode',
 
-    'settings.security.title': 'Security Settings',
-    'settings.security.desc': 'Manage access tokens to secure remote access.',
+    'settings.security.title': 'Access Control',
+    'settings.security.desc': 'Manage access tokens and host agents to ensure safe collaboration and connection.',
     'settings.security.token': 'Access Token',
     'settings.security.tokenSet': 'Access token is set. Non-local access requires this token for verification.',
     'settings.security.tokenUnset':
@@ -1101,8 +1095,8 @@ export const enUS: Record<string, string> = {
     'settings.feedback.formDesc': 'Submit feature requests or bug reports to help us improve.',
     'settings.feedback.open': 'Open Feedback Form',
 
-    'settings.about.title': 'About & Maintenance',
-    'settings.about.desc': 'View app information and manage local cache.',
+    'settings.about.title': 'About System',
+    'settings.about.desc': 'View application info, feedback, reset data, and open-source acknowledgements.',
     'settings.about.tagline': 'Intelligent AI Workspace Manager',
     'settings.about.version': 'Version',
     'settings.about.platform': 'Platform',
