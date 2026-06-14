@@ -91,6 +91,34 @@ type BranchEntry struct {
 	Current bool   `json:"current"`
 }
 
+// WorktreeEntry represents a single git worktree.
+type WorktreeEntry struct {
+	Path      string `json:"path"`
+	HEAD      string `json:"head"`
+	Short     string `json:"short"`
+	Branch    string `json:"branch"`
+	Message   string `json:"message"`
+	IsMain    bool   `json:"isMain"`
+	IsCurrent bool   `json:"isCurrent"`
+}
+
+// GraphCommit is a single commit entry for graph visualization.
+type GraphCommit struct {
+	Hash    string   `json:"hash"`
+	Short   string   `json:"short"`
+	Parents []string `json:"parents"`
+	Refs    []string `json:"refs"`
+	Author  string   `json:"author"`
+	Time    int64    `json:"time"`
+	Message string   `json:"message"`
+}
+
+// CommitFileEntry is a file changed in a specific commit.
+type CommitFileEntry struct {
+	Status string `json:"status"`
+	Path   string `json:"path"`
+}
+
 // --- HTTP handlers ---
 
 // Status handles GET /api/git/status
@@ -382,6 +410,203 @@ func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// Worktrees handles GET /api/git/worktrees
+func (h *Handler) Worktrees(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !h.isRepo() {
+		writeJSON(w, []WorktreeEntry{})
+		return
+	}
+
+	out, err := h.git("worktree", "list", "--porcelain")
+	if err != nil {
+		writeJSON(w, []WorktreeEntry{})
+		return
+	}
+
+	currentClean := filepath.Clean(h.root)
+	var entries []WorktreeEntry
+
+	for i, block := range strings.Split(strings.TrimSpace(out), "\n\n") {
+		var entry WorktreeEntry
+		entry.IsMain = (i == 0)
+
+		for _, line := range strings.Split(block, "\n") {
+			line = strings.TrimSpace(line)
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				entry.Path = strings.TrimPrefix(line, "worktree ")
+			case strings.HasPrefix(line, "HEAD "):
+				head := strings.TrimPrefix(line, "HEAD ")
+				entry.HEAD = head
+				if len(head) >= 7 {
+					entry.Short = head[:7]
+				}
+			case strings.HasPrefix(line, "branch "):
+				entry.Branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+			}
+		}
+
+		if entry.Path == "" {
+			continue
+		}
+		if filepath.Clean(entry.Path) == currentClean {
+			entry.IsCurrent = true
+		}
+
+		if msg, err := h.git("-C", entry.Path, "log", "-1", "--format=%s"); err == nil {
+			entry.Message = strings.TrimSpace(msg)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if entries == nil {
+		entries = []WorktreeEntry{}
+	}
+	writeJSON(w, entries)
+}
+
+// Graph handles GET /api/git/graph?limit=100
+func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	out, err := h.git("log", "--all", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s")
+	if err != nil {
+		writeJSON(w, []GraphCommit{})
+		return
+	}
+
+	var commits []GraphCommit
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		// SplitN 7 so subject (last field) may contain "|"
+		parts := strings.SplitN(line, "|", 7)
+		if len(parts) < 6 {
+			continue
+		}
+
+		var parents []string
+		if parts[2] != "" {
+			parents = strings.Fields(parts[2])
+		}
+
+		var refs []string
+		if parts[3] != "" {
+			for _, ref := range strings.Split(parts[3], ", ") {
+				ref = strings.TrimSpace(ref)
+				if ref == "" {
+					continue
+				}
+				if strings.HasPrefix(ref, "HEAD -> ") {
+					ref = strings.TrimPrefix(ref, "HEAD -> ")
+				}
+				refs = append(refs, ref)
+			}
+		}
+
+		ts, _ := strconv.ParseInt(parts[5], 10, 64)
+		subject := ""
+		if len(parts) == 7 {
+			subject = parts[6]
+		}
+
+		commits = append(commits, GraphCommit{
+			Hash:    parts[0],
+			Short:   parts[1],
+			Parents: parents,
+			Refs:    refs,
+			Author:  parts[4],
+			Time:    ts,
+			Message: subject,
+		})
+	}
+
+	if commits == nil {
+		commits = []GraphCommit{}
+	}
+	writeJSON(w, commits)
+}
+
+// CommitFiles handles GET /api/git/commit-files?hash=<hash>
+func (h *Handler) CommitFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	hash := r.URL.Query().Get("hash")
+	if hash == "" {
+		http.Error(w, "missing hash", http.StatusBadRequest)
+		return
+	}
+
+	out, err := h.git("diff-tree", "--no-commit-id", "-r", "--name-status", hash)
+	if err != nil {
+		writeJSON(w, []CommitFileEntry{})
+		return
+	}
+
+	var files []CommitFileEntry
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		status := string(parts[0][0]) // take first char (strips similarity score like R100 → R)
+		path := parts[len(parts)-1]   // last field (for renames: "R\told\tnew" → take new)
+		files = append(files, CommitFileEntry{Status: status, Path: path})
+	}
+
+	if files == nil {
+		files = []CommitFileEntry{}
+	}
+	writeJSON(w, files)
+}
+
+// CommitDiff handles GET /api/git/commit-diff?hash=<hash>&file=<path>
+func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	hash := r.URL.Query().Get("hash")
+	file := r.URL.Query().Get("file")
+	if hash == "" || file == "" {
+		http.Error(w, "missing hash or file", http.StatusBadRequest)
+		return
+	}
+
+	out, err := h.git("show", hash, "--", file)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(out))
 }
 
 // AICommit handles POST /api/git/ai-commit

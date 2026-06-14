@@ -31,6 +31,36 @@ interface BranchEntry {
     current: boolean;
 }
 
+interface WorktreeEntry {
+    path: string;
+    head: string;
+    short: string;
+    branch: string;
+    message: string;
+    isMain: boolean;
+    isCurrent: boolean;
+}
+
+interface GraphCommit {
+    hash: string;
+    short: string;
+    parents: string[];
+    refs: string[];
+    author: string;
+    time: number;
+    message: string;
+}
+
+interface LaneCommit extends GraphCommit {
+    row: number;
+    lane: number;
+}
+
+interface CommitFileEntry {
+    status: string;
+    path: string;
+}
+
 interface GitPanelProps {
     workdir: string;
     activeWorkspaceId: string;
@@ -70,6 +100,23 @@ interface GitPanelState {
     untrackedCollapsed: boolean;
     // ai commit message
     aiLoading: boolean;
+    // worktrees
+    worktrees: WorktreeEntry[];
+    worktreesLoading: boolean;
+    worktreesExpanded: boolean;
+    // graph history
+    graph: GraphCommit[];
+    graphLoading: boolean;
+    graphExpanded: boolean;
+    // commit detail (file list)
+    expandedCommitHash: string | null;
+    commitFiles: CommitFileEntry[];
+    commitFilesLoading: boolean;
+    // commit diff overlay
+    commitDiffFile: string | null;
+    commitDiffHash: string | null;
+    commitDiffContent: string;
+    commitDiffLoading: boolean;
 }
 
 // ── Status label map ───────────────────────────────────────────────────────
@@ -311,6 +358,23 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             untrackedCollapsed: false,
             // AI loading state
             aiLoading: false,
+            // worktrees
+            worktrees: [],
+            worktreesLoading: false,
+            worktreesExpanded: true,
+            // graph history
+            graph: [],
+            graphLoading: false,
+            graphExpanded: true,
+            // commit detail
+            expandedCommitHash: null,
+            commitFiles: [],
+            commitFilesLoading: false,
+            // commit diff overlay
+            commitDiffFile: null,
+            commitDiffHash: null,
+            commitDiffContent: '',
+            commitDiffLoading: false,
         };
     }
 
@@ -339,6 +403,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 branchDropdownOpen: false,
                 showNewBranchInput: false,
                 commitSearchQuery: '',
+                expandedCommitHash: null,
+                commitFiles: [],
+                commitDiffFile: null,
+                commitDiffContent: '',
             });
             this.refresh();
         }
@@ -373,6 +441,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             console.error('[git] status error:', err);
             this.setState({ loading: false });
         }
+        this.loadWorktrees();
+        this.loadGraph();
     };
 
     loadBranches = async () => {
@@ -398,6 +468,63 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         } catch (err) {
             console.error('[git] log error:', err);
             this.setState({ logLoading: false });
+        }
+    };
+
+    loadWorktrees = async () => {
+        this.setState({ worktreesLoading: true });
+        try {
+            const res = await fetch('/api/git/worktrees');
+            if (!res.ok) throw new Error(await res.text());
+            const worktrees: WorktreeEntry[] = await res.json();
+            this.setState({ worktrees, worktreesLoading: false });
+        } catch (err) {
+            console.error('[git] worktrees error:', err);
+            this.setState({ worktreesLoading: false });
+        }
+    };
+
+    loadGraph = async () => {
+        this.setState({ graphLoading: true });
+        try {
+            const res = await fetch('/api/git/graph?limit=100');
+            if (!res.ok) throw new Error(await res.text());
+            const graph: GraphCommit[] = await res.json();
+            this.setState({ graph, graphLoading: false });
+        } catch (err) {
+            console.error('[git] graph error:', err);
+            this.setState({ graphLoading: false });
+        }
+    };
+
+    toggleCommit = async (hash: string) => {
+        if (this.state.expandedCommitHash === hash) {
+            this.setState({ expandedCommitHash: null, commitFiles: [] });
+            return;
+        }
+        this.setState({ expandedCommitHash: hash, commitFiles: [], commitFilesLoading: true });
+        try {
+            const res = await fetch(`/api/git/commit-files?hash=${encodeURIComponent(hash)}`);
+            if (!res.ok) throw new Error(await res.text());
+            const commitFiles: CommitFileEntry[] = await res.json();
+            this.setState({ commitFiles, commitFilesLoading: false });
+        } catch (err) {
+            console.error('[git] commit-files error:', err);
+            this.setState({ commitFilesLoading: false });
+        }
+    };
+
+    openCommitDiff = async (hash: string, file: string) => {
+        this.setState({ commitDiffFile: file, commitDiffHash: hash, commitDiffLoading: true, commitDiffContent: '' });
+        try {
+            const res = await fetch(
+                `/api/git/commit-diff?hash=${encodeURIComponent(hash)}&file=${encodeURIComponent(file)}`
+            );
+            if (!res.ok) throw new Error(await res.text());
+            const text = await res.text();
+            this.setState({ commitDiffContent: text, commitDiffLoading: false });
+        } catch (err) {
+            this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
         }
     };
 
@@ -575,6 +702,45 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             this.setState({ untrackedCollapsed: !this.state.untrackedCollapsed });
         }
     };
+
+    // ── Graph layout ───────────────────────────────────────────────────────
+
+    buildGraphLayout(commits: GraphCommit[]): LaneCommit[] {
+        const laneOwners: (string | null)[] = [];
+        const result: LaneCommit[] = [];
+
+        commits.forEach((commit, row) => {
+            let lane = laneOwners.findIndex(h => h === commit.hash);
+            if (lane === -1) {
+                lane = laneOwners.findIndex(h => h === null);
+                if (lane === -1) {
+                    lane = laneOwners.length;
+                    laneOwners.push(null);
+                }
+            }
+            laneOwners[lane] = null;
+
+            const alreadyTracked = new Set(laneOwners.filter(Boolean));
+            commit.parents.forEach((parent, i) => {
+                if (alreadyTracked.has(parent)) return;
+                alreadyTracked.add(parent);
+                if (i === 0) {
+                    laneOwners[lane] = parent;
+                } else {
+                    let slot = laneOwners.findIndex(h => h === null);
+                    if (slot === -1) {
+                        slot = laneOwners.length;
+                        laneOwners.push(null);
+                    }
+                    laneOwners[slot] = parent;
+                }
+            });
+
+            result.push({ ...commit, row, lane });
+        });
+
+        return result;
+    }
 
     // ── Render helpers ─────────────────────────────────────────────────────
 
@@ -832,6 +998,251 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
+    renderWorktrees() {
+        const { worktrees, worktreesExpanded, worktreesLoading } = this.state;
+        const { language } = this.props;
+        if (!worktrees.length && !worktreesLoading) return null;
+
+        return (
+            <div class="git-section git-worktrees-section">
+                <div
+                    class="git-section-header git-section-header-clickable"
+                    onClick={() => this.setState({ worktreesExpanded: !worktreesExpanded })}
+                >
+                    <span class="git-section-title">
+                        {IconChevron(worktreesExpanded)}
+                        {t('git.worktrees.title', language)}
+                        <span class="git-section-count">{worktrees.length}</span>
+                    </span>
+                    {worktreesLoading && <div class="git-spinner git-spinner-sm" />}
+                </div>
+                {worktreesExpanded && (
+                    <div class="git-worktrees-list">
+                        {worktrees.map(wt => (
+                            <div key={wt.path} class={`git-worktree-item ${wt.isCurrent ? 'is-current' : ''}`}>
+                                <div class={`git-worktree-dot ${wt.isCurrent ? 'current' : 'other'}`} />
+                                <div class="git-worktree-info">
+                                    <div class="git-worktree-branch-row">
+                                        <span class="git-worktree-branch">
+                                            {wt.branch || t('git.worktrees.detached', language)}
+                                        </span>
+                                        {wt.isMain && (
+                                            <span class="git-worktree-tag">{t('git.worktrees.main', language)}</span>
+                                        )}
+                                        {wt.isCurrent && (
+                                            <span class="git-worktree-tag git-worktree-tag-current">
+                                                {t('git.worktrees.current', language)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {wt.message && (
+                                        <div class="git-worktree-msg">
+                                            <span class="git-worktree-short">{wt.short}</span>
+                                            <span class="git-worktree-commit-msg">{wt.message}</span>
+                                        </div>
+                                    )}
+                                    <div class="git-worktree-path" title={wt.path}>
+                                        {wt.path}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    renderGraphSection() {
+        const { graph, graphExpanded, graphLoading, expandedCommitHash, commitFiles, commitFilesLoading } = this.state;
+        const { language } = this.props;
+
+        const LANE_W = 14;
+        const ROW_H = 24;
+        const LANE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4'];
+
+        const laneCommits = graphExpanded && graph.length > 0 ? this.buildGraphLayout(graph) : [];
+        const hashToCommit = new Map(laneCommits.map(c => [c.hash, c]));
+        const maxLane = laneCommits.reduce((m, c) => Math.max(m, c.lane), 0);
+        const svgW = (maxLane + 1) * LANE_W + 4;
+        const svgH = laneCommits.length * ROW_H;
+
+        return (
+            <div class="git-section git-graph-section">
+                <div
+                    class="git-section-header git-section-header-clickable"
+                    onClick={() => this.setState({ graphExpanded: !graphExpanded })}
+                >
+                    <span class="git-section-title">
+                        {IconChevron(graphExpanded)}
+                        {t('git.graph.title', language)}
+                        {graph.length > 0 && <span class="git-section-count">{graph.length}</span>}
+                    </span>
+                    {graphLoading && <div class="git-spinner git-spinner-sm" />}
+                </div>
+
+                {graphExpanded && laneCommits.length > 0 && (
+                    <div class="git-graph-scroll">
+                        <div class="git-graph-content">
+                            <svg
+                                class="git-graph-svg"
+                                width={svgW}
+                                height={svgH}
+                                style={{ flexShrink: 0 }}
+                            >
+                                {laneCommits.flatMap(commit => {
+                                    const cx = commit.lane * LANE_W + LANE_W / 2;
+                                    const cy = commit.row * ROW_H + ROW_H / 2;
+                                    const color = LANE_COLORS[commit.lane % LANE_COLORS.length];
+                                    const elements: h.JSX.Element[] = [];
+
+                                    commit.parents.forEach(parentHash => {
+                                        const parent = hashToCommit.get(parentHash);
+                                        if (!parent) return;
+                                        const px = parent.lane * LANE_W + LANE_W / 2;
+                                        const py = parent.row * ROW_H + ROW_H / 2;
+                                        const d = commit.lane === parent.lane
+                                            ? `M${cx},${cy} L${px},${py}`
+                                            : `M${cx},${cy} C${cx},${(cy + py) / 2} ${px},${(cy + py) / 2} ${px},${py}`;
+                                        elements.push(
+                                            <path key={`line-${commit.hash}-${parentHash}`}
+                                                d={d} stroke={color} stroke-width="1.5" fill="none" />
+                                        );
+                                    });
+
+                                    elements.push(
+                                        <circle key={`dot-${commit.hash}`}
+                                            cx={cx} cy={cy} r="4"
+                                            fill={color}
+                                            stroke="var(--bg-card)" stroke-width="1.5" />
+                                    );
+                                    return elements;
+                                })}
+                            </svg>
+
+                            <div class="git-graph-rows">
+                                {laneCommits.map(commit => (
+                                    <div key={commit.hash}>
+                                        <div
+                                            class={`git-graph-row ${expandedCommitHash === commit.hash ? 'expanded' : ''}`}
+                                            onClick={() => this.toggleCommit(commit.hash)}
+                                            title={`${commit.author} · ${commit.hash}`}
+                                        >
+                                            <div class="git-graph-line1">
+                                                {commit.refs.map(ref => (
+                                                    <span key={ref}
+                                                        class={`git-ref-badge ${ref === 'HEAD' || ref.startsWith('HEAD') ? 'head' : ''}`}>
+                                                        {ref}
+                                                    </span>
+                                                ))}
+                                                <span class="git-graph-short">{commit.short}</span>
+                                                <span class="git-graph-msg">{commit.message}</span>
+                                                <span class="git-graph-time">
+                                                    {relativeTime(commit.time, language)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {expandedCommitHash === commit.hash && (
+                                            <div class="git-commit-detail">
+                                                {commitFilesLoading ? (
+                                                    <div class="git-loading-row">
+                                                        <div class="git-spinner" />
+                                                    </div>
+                                                ) : commitFiles.length === 0 ? (
+                                                    <div class="git-commit-detail-empty">
+                                                        {t('git.graph.noFiles', language)}
+                                                    </div>
+                                                ) : (
+                                                    commitFiles.map(f => (
+                                                        <div
+                                                            key={f.path}
+                                                            class="git-commit-file-row"
+                                                            onClick={e => {
+                                                                e.stopPropagation();
+                                                                this.openCommitDiff(commit.hash, f.path);
+                                                            }}
+                                                        >
+                                                            <span class={`git-file-status ${STATUS_COLOR[f.status] || 'git-status-u'}`}>
+                                                                {f.status}
+                                                            </span>
+                                                            <span class="git-commit-file-path">{f.path}</span>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {graphExpanded && !graphLoading && graph.length === 0 && (
+                    <div class="git-log-empty">{t('git.graph.empty', language)}</div>
+                )}
+            </div>
+        );
+    }
+
+    renderCommitDiffOverlay() {
+        const { commitDiffFile, commitDiffHash, commitDiffContent, commitDiffLoading } = this.state;
+        const { language } = this.props;
+        if (!commitDiffFile) return null;
+
+        const parsedLines = this.parseDiffLines(commitDiffContent);
+
+        return (
+            <div class="git-commit-diff-overlay" onClick={e => e.stopPropagation()}>
+                <div class="git-commit-diff-header">
+                    <span class="git-diff-title">{commitDiffFile}</span>
+                    {commitDiffHash && (
+                        <span class="git-graph-short">@ {commitDiffHash.slice(0, 7)}</span>
+                    )}
+                    <button
+                        class="git-diff-close-btn"
+                        style={{ marginLeft: 'auto' }}
+                        onClick={() => this.setState({ commitDiffFile: null, commitDiffContent: '' })}
+                        title={t('git.diff.close', language)}
+                    >
+                        ×
+                    </button>
+                </div>
+                <div class="git-commit-diff-body">
+                    {commitDiffLoading ? (
+                        <div class="git-diff-loading">
+                            <div class="git-spinner" />
+                            <span>{t('git.diff.loading', language)}</span>
+                        </div>
+                    ) : parsedLines.length > 0 ? (
+                        <div class="git-diff-table">
+                            {parsedLines.map((line, idx) => {
+                                const lineCls = `diff-line-${line.type}`;
+                                return (
+                                    <div key={idx} class={`git-diff-row ${lineCls}`}>
+                                        <div class="diff-num diff-num-old">{line.oldLineNum}</div>
+                                        <div class="diff-num diff-num-new">{line.newLineNum}</div>
+                                        <div class="diff-char">
+                                            {line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' '}
+                                        </div>
+                                        <div class="diff-text">
+                                            {line.type === 'add' || line.type === 'del'
+                                                ? line.text.substring(1)
+                                                : line.text}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div class="git-diff-empty">{t('git.diff.empty', language)}</div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     render() {
         const {
             status,
@@ -1011,6 +1422,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         </div>
                     )}
                 </div>
+
+                {/* Worktrees section */}
+                {this.renderWorktrees()}
 
                 {/* Commit box */}
                 <div class="git-commit-box">
@@ -1200,12 +1614,18 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     )}
                 </div>
 
+                {/* Graph history section */}
+                {this.renderGraphSection()}
+
                 {/* Modern slide-in Toast Notification */}
                 {toast && (
                     <div class="git-toast-wrapper">
                         <div class="git-toast">{toast}</div>
                     </div>
                 )}
+
+                {/* Commit diff overlay (absolute, covers full panel) */}
+                {this.renderCommitDiffOverlay()}
             </div>
         );
     }

@@ -407,6 +407,17 @@ export const zhCN: Record<string, string> = {
     'git.log.tooltip': '作者: {author}\n完整哈希: {hash}',
     'git.log.copyHash': '点击复制完整哈希值',
 
+    // Worktrees
+    'git.worktrees.title': 'Worktrees',
+    'git.worktrees.main': '主',
+    'git.worktrees.current': '当前',
+    'git.worktrees.detached': '(分离 HEAD)',
+
+    // Graph history
+    'git.graph.title': '提交图形',
+    'git.graph.empty': '暂无提交记录',
+    'git.graph.noFiles': '该提交没有文件变更',
+
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
     'terminal.label.input': '输入',
     'terminal.action.input': '打开输入面板',
@@ -1004,6 +1015,17 @@ export const enUS: Record<string, string> = {
     'git.log.empty': 'No commits matched',
     'git.log.tooltip': 'Author: {author}\nFull hash: {hash}',
     'git.log.copyHash': 'Click to copy the full hash',
+
+    // Worktrees
+    'git.worktrees.title': 'Worktrees',
+    'git.worktrees.main': 'main',
+    'git.worktrees.current': 'current',
+    'git.worktrees.detached': '(detached HEAD)',
+
+    // Graph history
+    'git.graph.title': 'Commit Graph',
+    'git.graph.empty': 'No commits found',
+    'git.graph.noFiles': 'No file changes in this commit',
 
     // ── Terminal ─────────────────────────────────────────────────────────
     'terminal.label.input': 'Input',

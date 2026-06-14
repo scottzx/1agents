@@ -217,6 +217,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/git/checkout", gitHandler.Checkout) // POST {branch:"…",create:bool}
 	mux.HandleFunc("/api/git/push", gitHandler.Push)         // POST
 	mux.HandleFunc("/api/git/pull", gitHandler.Pull)         // POST
+	mux.HandleFunc("/api/git/worktrees", gitHandler.Worktrees)       // GET
+	mux.HandleFunc("/api/git/graph", gitHandler.Graph)               // GET ?limit=100
+	mux.HandleFunc("/api/git/commit-files", gitHandler.CommitFiles)  // GET ?hash=<hash>
+	mux.HandleFunc("/api/git/commit-diff", gitHandler.CommitDiff)    // GET ?hash=<hash>&file=<path>
 
 	// ── Workspace context API (switches fs + git roots at runtime) ─────────
 	ctxHandler := ctxt.NewHandler(fsHandler, gitHandler)

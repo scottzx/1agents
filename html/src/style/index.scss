@@ -7899,6 +7899,299 @@ body {
     align-items: center;
     border-left: 3px solid var(--accent-color);
   }
+
+  // ── Worktrees section ─────────────────────────────────────────────────────
+  .git-worktrees-section {
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .git-worktrees-list {
+    padding: 4px 0;
+  }
+
+  .git-worktree-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 14px;
+    transition: background 0.15s;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+
+    &.is-current {
+      background: rgba(var(--accent-rgb, 59, 130, 246), 0.05);
+    }
+  }
+
+  .git-worktree-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+
+    &.current {
+      background: var(--accent-fg, var(--accent-color));
+    }
+
+    &.other {
+      border: 2px solid var(--text-muted);
+      background: transparent;
+    }
+  }
+
+  .git-worktree-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .git-worktree-branch-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+  }
+
+  .git-worktree-branch {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .git-worktree-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg-panel);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+
+    &.git-worktree-tag-current {
+      background: var(--accent-bg);
+      color: var(--accent-fg, var(--accent-color));
+      border-color: var(--accent-fg, var(--accent-color));
+    }
+  }
+
+  .git-worktree-msg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+
+  .git-worktree-short {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .git-worktree-commit-msg {
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .git-worktree-path {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .git-spinner-sm {
+    width: 12px;
+    height: 12px;
+    border-width: 1.5px;
+  }
+
+  // ── Graph history section ─────────────────────────────────────────────────
+  .git-graph-section {
+    border-top: 1px solid var(--border-color);
+  }
+
+  .git-graph-scroll {
+    max-height: 500px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .git-graph-content {
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .git-graph-svg {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .git-graph-rows {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .git-graph-row {
+    height: 24px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 0 8px 0 4px;
+    gap: 5px;
+    overflow: hidden;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+
+    &.expanded {
+      background: rgba(var(--accent-rgb, 59, 130, 246), 0.05);
+    }
+  }
+
+  .git-graph-line1 {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .git-ref-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--accent-bg);
+    color: var(--accent-fg, var(--accent-color));
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &.head {
+      background: var(--success-bg);
+      color: var(--success-fg);
+    }
+  }
+
+  .git-graph-short {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .git-graph-msg {
+    font-size: 12px;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .git-graph-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 4px;
+  }
+
+  // Commit file list (expanded below graph row)
+  .git-commit-detail {
+    background: var(--bg-panel);
+    border-left: 2px solid var(--border-color);
+    margin-left: 12px;
+    padding: 4px 0;
+  }
+
+  .git-commit-detail-empty {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .git-commit-file-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 12px;
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+  }
+
+  .git-commit-file-path {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Commit diff overlay (absolute, covers full panel)
+  .git-commit-diff-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    z-index: 20;
+    border-left: 1px solid var(--border-color);
+  }
+
+  .git-commit-diff-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+    background: var(--bg-panel);
+    flex-shrink: 0;
+
+    .git-diff-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+  }
+
+  .git-commit-diff-body {
+    flex: 1;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+
+    .git-diff-table {
+      min-width: 100%;
+    }
+  }
 }
 
 
