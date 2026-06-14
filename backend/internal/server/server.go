@@ -66,6 +66,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)           // DELETE ?id=xxx
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
 	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
+	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
 
 	// ── Agent (chat session) index API ─────────────────────────────────────
 	// 1agents-side metadata store. The actual conversation lives in
