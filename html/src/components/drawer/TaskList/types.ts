@@ -25,6 +25,8 @@ export interface Reply {
 
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
+export type TaskType = 'task' | 'requirement' | 'bug';
+
 export interface TaskRecurrence {
     freq: 'daily' | 'weekly' | 'monthly';
     weekday?: number;
@@ -49,6 +51,7 @@ export interface Task {
     createdBy?: string;
     parentId?: string;
     milestone?: string;
+    type?: TaskType;
     acceptanceCriteria?: string;
     recurrence?: TaskRecurrence | null;
     maxRetries?: number;

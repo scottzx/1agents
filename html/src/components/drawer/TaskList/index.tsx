@@ -7,6 +7,10 @@ import { CreateTaskForm } from './CreateTaskForm';
 import type { Task } from './types';
 import { TaskDetail } from './TaskDetail';
 import { TaskTable } from './TaskTable';
+import { KanbanBoard } from './KanbanBoard';
+import { Overview } from './Overview';
+import { MilestoneView } from './MilestoneView';
+import { RequirementPool } from './RequirementPool';
 
 export interface TaskListProps {
     workspaceId: string;
@@ -19,6 +23,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     const [error, setError] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const showForm = useSignal(false);
+    const view = useSignal<'table' | 'board' | 'overview' | 'milestone' | 'requirements'>('table');
 
     const fetchTasks = useCallback(async () => {
         if (!workspaceId) return;
@@ -51,6 +56,25 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     useEffect(() => {
         setSelectedTaskId(null);
     }, [workspaceId]);
+
+    // Drag-to-retire on the Kanban board. The backend only accepts terminal
+    // states here, so this can mark a card done or cancelled but never run it.
+    const handleStatusChange = useCallback(
+        async (taskId: string, status: 'completed' | 'cancelled') => {
+            try {
+                const res = await fetch(`/api/agent/tasks/${taskId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status }),
+                });
+                if (!res.ok) throw new Error(await res.text());
+                fetchTasks();
+            } catch (err) {
+                alert((err as Error).message);
+            }
+        },
+        [fetchTasks]
+    );
 
     const handleDeleteTask = async (taskId: string) => {
         if (!confirm('确定要删除该任务吗？')) return;
@@ -87,6 +111,21 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     return (
         <div class="task-dashboard-container">
             <div class="task-dashboard-header">
+                <div class="task-view-switcher">
+                    {(
+                        [
+                            ['table', '列表'],
+                            ['board', '看板'],
+                            ['overview', '总览'],
+                            ['milestone', '里程碑'],
+                            ['requirements', '需求池'],
+                        ] as Array<[typeof view.value, string]>
+                    ).map(([key, label]) => (
+                        <button key={key} class={view.value === key ? 'active' : ''} onClick={() => (view.value = key)}>
+                            {label}
+                        </button>
+                    ))}
+                </div>
                 <button class="create-task-btn-toggle" onClick={() => (showForm.value = !showForm.value)}>
                     {showForm.value ? '取消创建' : '+ 新建任务'}
                 </button>
@@ -98,14 +137,27 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
 
             {error && <div class="task-error">{error}</div>}
 
-            <div class="task-table-scroller">
-                <TaskTable
+            {view.value === 'table' && (
+                <div class="task-table-scroller">
+                    <TaskTable
+                        tasks={tasks}
+                        loading={loading}
+                        onSelectTask={setSelectedTaskId}
+                        onDeleteTask={handleDeleteTask}
+                    />
+                </div>
+            )}
+            {view.value === 'board' && (
+                <KanbanBoard
                     tasks={tasks}
                     loading={loading}
                     onSelectTask={setSelectedTaskId}
-                    onDeleteTask={handleDeleteTask}
+                    onStatusChange={handleStatusChange}
                 />
-            </div>
+            )}
+            {view.value === 'overview' && <Overview tasks={tasks} />}
+            {view.value === 'milestone' && <MilestoneView tasks={tasks} onSelectTask={setSelectedTaskId} />}
+            {view.value === 'requirements' && <RequirementPool tasks={tasks} onSelectTask={setSelectedTaskId} />}
         </div>
     );
 }

@@ -40,7 +40,13 @@ const runnerIdleTimeout = 10 * time.Minute
 // marked the task running; Execute releases the lock and persists the
 // terminal status on exit.
 func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
-	defer r.scheduler.Lock.Release(workspacePath)
+	// Release the workspace lock, then immediately re-tick so any task that
+	// was blocked on this one advances at once instead of waiting up to 5s
+	// for the next scheduler tick (即时接力).
+	defer func() {
+		r.scheduler.Lock.Release(workspacePath)
+		r.scheduler.Tick()
+	}()
 
 	instruction := task.Description
 	if instruction == "" {

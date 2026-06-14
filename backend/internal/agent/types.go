@@ -49,6 +49,7 @@ type (
 	ChatSessionRecord = meta.ChatSessionRecord
 	ScheduleType      = meta.ScheduleType
 	TaskStatus        = meta.TaskStatus
+	TaskType          = meta.TaskType
 	IssueState        = meta.IssueState
 	SessionKind       = meta.SessionKind
 	SessionStatus     = meta.SessionStatus

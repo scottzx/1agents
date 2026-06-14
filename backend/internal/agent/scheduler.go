@@ -212,6 +212,39 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 		}
 	}
 
+	// 3.5 Dependency gating (blocked state): a task whose explicit
+	//     dependencies aren't all completed is surfaced as `blocked` so the
+	//     board shows the upstream wait; once they complete it returns to
+	//     pending and the ready-scan below can pick it up. Parent/subtask
+	//     gating is handled separately (allChildrenCompleted), so it doesn't
+	//     mark parents blocked here.
+	depsAllCompleted := func(t *Task) bool {
+		for _, depID := range t.DependsOn {
+			dep, ok := taskMap[depID]
+			if !ok || dep.Status != TaskStatusCompleted {
+				return false
+			}
+		}
+		return true
+	}
+	for i := range cfg.Tasks {
+		t := &cfg.Tasks[i]
+		switch t.Status {
+		case TaskStatusPending, TaskStatusQueued:
+			if len(t.DependsOn) > 0 && !depsAllCompleted(t) {
+				t.Status = TaskStatusBlocked
+				t.UpdatedAt = now
+				modified = true
+			}
+		case TaskStatusBlocked:
+			if depsAllCompleted(t) {
+				t.Status = TaskStatusPending
+				t.UpdatedAt = now
+				modified = true
+			}
+		}
+	}
+
 	// 4. Collect ready tasks: trigger time arrived, dependencies met,
 	//    subtasks (implicit dependencies) all completed, issue open.
 	var ready []*Task

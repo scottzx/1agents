@@ -16,6 +16,12 @@ export const PRIORITY_RANK: Record<TaskPriority, number> = {
 
 export const AGENT_OPTIONS = ['claudecode', 'codex', 'gemini', 'cursor', 'opencode', 'kimi', 'iflow', 'qoder'];
 
+export const TYPE_LABELS: Record<string, string> = {
+    task: '任务',
+    requirement: '需求',
+    bug: '缺陷',
+};
+
 export const STATUS_LABELS: Record<string, string> = {
     pending: '等待中',
     queued: '排队中',

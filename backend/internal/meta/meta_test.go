@@ -501,8 +501,8 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 	}
 	raw.Close()
 
-	// Reopen through meta.Open → v3 migration must run, data must survive,
-	// and the legacy row's sprint should default to ''.
+	// Reopen through meta.Open → the v3+v4 migrations must run, data must
+	// survive, and the legacy row's sprint/type should take their defaults.
 	db, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open after v2: %v", err)
@@ -513,8 +513,8 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 	if err := db.sql.QueryRow("PRAGMA user_version").Scan(&got); err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if got != 3 {
-		t.Fatalf("user_version = %d, want 3", got)
+	if got != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, schemaVersion)
 	}
 
 	store := NewTaskStore(db)
@@ -527,6 +527,9 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 	}
 	if task.Sprint != "" {
 		t.Fatalf("legacy v2 row should have empty sprint, got %q", task.Sprint)
+	}
+	if task.Type != TaskTypeTask {
+		t.Fatalf("legacy row type = %q, want default 'task'", task.Type)
 	}
 
 	// A new task written after the upgrade can opt into a sprint.

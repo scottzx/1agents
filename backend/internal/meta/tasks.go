@@ -33,7 +33,7 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	summary, created_at, updated_at,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-	sprint`
+	sprint, type`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
@@ -44,7 +44,7 @@ func scanTask(r rowScanner) (Task, error) {
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
 		&t.Priority, &t.Assignee, &labels, &t.CreatedBy, &t.ParentID, &t.Milestone,
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
-		&t.TimeoutMinutes, &t.Sprint); err != nil {
+		&t.TimeoutMinutes, &t.Sprint, &t.Type); err != nil {
 		return Task{}, err
 	}
 	t.ScheduledAt = valToTimePtr(scheduledAt)
@@ -284,14 +284,17 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 	if t.CreatedBy == "" {
 		t.CreatedBy = "user"
 	}
+	if t.Type == "" {
+		t.Type = TaskTypeTask
+	}
 	_, err := tx.Exec(`
 		INSERT INTO tasks (id, project_id, title, description, issue_state, status,
 			schedule_type, scheduled_at, planned_start, planned_end, started_at,
 			completed_at, summary, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-			sprint)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sprint, type)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -317,14 +320,15 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			max_retries = excluded.max_retries,
 			retry_count = excluded.retry_count,
 			timeout_minutes = excluded.timeout_minutes,
-			sprint = excluded.sprint`,
+			sprint = excluded.sprint,
+			type = excluded.type`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
 		t.Summary, timeToStr(t.CreatedAt), timeToStr(t.UpdatedAt),
 		t.Priority, t.Assignee, stringsToJSON(t.Labels), t.CreatedBy, t.ParentID,
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
-		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint)
+		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type)
 	if err != nil {
 		return err
 	}

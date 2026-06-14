@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -120,6 +120,11 @@ func (db *DB) migrateSchema() error {
 	if version < 3 {
 		if _, err := db.sql.Exec(schemaV3); err != nil {
 			return fmt.Errorf("meta: apply schema v3: %w", err)
+		}
+	}
+	if version < 4 {
+		if _, err := db.sql.Exec(schemaV4); err != nil {
+			return fmt.Errorf("meta: apply schema v4: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -227,6 +232,13 @@ CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 // and report Sprint == "" until the user opts a task into a sprint.
 const schemaV3 = `
 ALTER TABLE tasks ADD COLUMN sprint TEXT NOT NULL DEFAULT '';
+`
+
+// schemaV4 adds the issue-type discriminator (GitHub-style: task/requirement/
+// bug share one table). DEFAULT 'task' keeps every pre-v4 row a normal task;
+// requirement cards (the "需求池") are just tasks with type != 'task'.
+const schemaV4 = `
+ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'task';
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────
