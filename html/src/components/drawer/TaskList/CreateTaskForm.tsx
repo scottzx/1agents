@@ -2,7 +2,7 @@ import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
 import { AGENT_OPTIONS } from './constants';
-import type { Task, TaskPriority } from './types';
+import type { Task, TaskPriority, TaskType } from './types';
 
 interface CreateTaskFormProps {
     workspaceId: string;
@@ -14,6 +14,7 @@ type RecurFreq = '' | 'daily' | 'weekly' | 'monthly';
 
 export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskFormProps) {
     const [title, setTitle] = useState('');
+    const [type, setType] = useState<TaskType>('task');
     const [description, setDescription] = useState('');
     const [acceptance, setAcceptance] = useState('');
     const [priority, setPriority] = useState<TaskPriority>('medium');
@@ -32,6 +33,7 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
 
     const resetForm = () => {
         setTitle('');
+        setType('task');
         setDescription('');
         setAcceptance('');
         setPriority('medium');
@@ -70,6 +72,7 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
                 body: JSON.stringify({
                     workspace_id: workspaceId,
                     title: title.trim(),
+                    type,
                     description: description.trim(),
                     acceptanceCriteria: acceptance.trim(),
                     priority,
@@ -100,15 +103,28 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
 
     return (
         <form class="create-task-form" onSubmit={handleSubmit}>
-            <div class="form-group">
-                <label>任务标题</label>
-                <input
-                    type="text"
-                    placeholder="如: 完成新模块开发"
-                    value={title}
-                    onInput={(e: Event) => setTitle((e.target as HTMLInputElement).value)}
-                    required
-                />
+            <div class="form-row">
+                <div class="form-group" style={{ flex: 1 }}>
+                    <label>标题</label>
+                    <input
+                        type="text"
+                        placeholder="如: 完成新模块开发"
+                        value={title}
+                        onInput={(e: Event) => setTitle((e.target as HTMLInputElement).value)}
+                        required
+                    />
+                </div>
+                <div class="form-group">
+                    <label>类型</label>
+                    <select
+                        value={type}
+                        onChange={(e: Event) => setType((e.target as HTMLSelectElement).value as TaskType)}
+                    >
+                        <option value="task">任务</option>
+                        <option value="requirement">需求</option>
+                        <option value="bug">缺陷</option>
+                    </select>
+                </div>
             </div>
 
             <div class="form-group">

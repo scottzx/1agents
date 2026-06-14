@@ -148,6 +148,30 @@ func TestSchedulerRetryRequeue(t *testing.T) {
 	}
 }
 
+func TestSchedulerDependencyBlocks(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "dep", Title: "D", Description: "x", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "waiter", Title: "W", Description: "y", DependsOn: []string{"dep"}, Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+	})
+
+	s.Tick()
+	// The dep is incomplete, so waiter is surfaced as blocked; dep itself runs.
+	if got := statusOf(t, store, ref.Path, "waiter"); got != TaskStatusBlocked {
+		t.Fatalf("waiter = %s, want blocked while dep incomplete", got)
+	}
+
+	// dep completes → next tick unblocks waiter (→pending) and, with the lock
+	// free, starts it.
+	s.Lock.Release(ref.Path)
+	setStatus(t, store, ref.Path, "dep", TaskStatusCompleted)
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "waiter"); got != TaskStatusRunning {
+		t.Fatalf("waiter = %s, want running after dep completed", got)
+	}
+}
+
 func TestSchedulerRecurrenceRespawn(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()

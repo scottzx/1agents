@@ -297,6 +297,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			ParentID           string       `json:"parentId"`
 			Milestone          string       `json:"milestone"`
 			Sprint             string       `json:"sprint"`
+			Type               string       `json:"type"`
 			Recurrence         *Recurrence  `json:"recurrence"`
 			MaxRetries         *int         `json:"maxRetries"`
 			ScheduleType       ScheduleType `json:"scheduleType"`
@@ -341,6 +342,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			ParentID:           body.ParentID,
 			Milestone:          body.Milestone,
 			Sprint:             body.Sprint,
+			Type:               TaskType(body.Type),
 			Recurrence:         body.Recurrence,
 			MaxRetries:         maxRetries,
 			ScheduleType:       body.ScheduleType,
@@ -464,6 +466,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	var body struct {
 		Description        *string      `json:"description,omitempty"`
 		IssueState         *string      `json:"issueState,omitempty"`
+		Status             *string      `json:"status,omitempty"`
 		AcceptanceCriteria *string      `json:"acceptanceCriteria,omitempty"`
 		Priority           *string      `json:"priority,omitempty"`
 		Assignee           *string      `json:"assignee,omitempty"`
@@ -471,6 +474,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		ParentID           *string      `json:"parentId,omitempty"`
 		Milestone          *string      `json:"milestone,omitempty"`
 		Sprint             *string      `json:"sprint,omitempty"`
+		Type               *string      `json:"type,omitempty"`
 		Recurrence         **Recurrence `json:"recurrence,omitempty"`
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
@@ -484,6 +488,18 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		state := IssueState(*body.IssueState)
 		if state != IssueOpen && state != IssueClosed {
 			http.Error(w, "issueState must be open or closed", http.StatusBadRequest)
+			return
+		}
+	}
+	if body.Status != nil {
+		// Manual status changes are limited to terminal states the scheduler
+		// skips (completed/cancelled). Runnable states (pending/queued/running)
+		// stay scheduler-owned, so the Kanban board can never arm execution by
+		// drag — only retire a card.
+		switch TaskStatus(*body.Status) {
+		case TaskStatusCompleted, TaskStatusCancelled:
+		default:
+			http.Error(w, "status may only be set to completed or cancelled", http.StatusBadRequest)
 			return
 		}
 	}
@@ -530,6 +546,13 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if body.IssueState != nil {
 		target.IssueState = IssueState(*body.IssueState)
 	}
+	if body.Status != nil {
+		target.Status = TaskStatus(*body.Status)
+		if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
+			now := time.Now().UTC()
+			target.CompletedAt = &now
+		}
+	}
 	if body.AcceptanceCriteria != nil {
 		target.AcceptanceCriteria = *body.AcceptanceCriteria
 	}
@@ -550,6 +573,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if body.Sprint != nil {
 		target.Sprint = *body.Sprint
+	}
+	if body.Type != nil {
+		target.Type = TaskType(*body.Type)
 	}
 	if body.Recurrence != nil {
 		target.Recurrence = *body.Recurrence

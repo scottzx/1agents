@@ -65,6 +65,16 @@ const (
 	ScheduleTypeScheduled ScheduleType = "scheduled"
 )
 
+// TaskType is the GitHub-style issue discriminator. Requirement/bug cards live
+// in the same tasks table as normal tasks; the "需求池" view filters by type.
+type TaskType string
+
+const (
+	TaskTypeTask        TaskType = "task"
+	TaskTypeRequirement TaskType = "requirement"
+	TaskTypeBug         TaskType = "bug"
+)
+
 type TaskStatus string
 
 const (
@@ -202,6 +212,10 @@ type Task struct {
 	// group tasks into iterations; empty for un-sprinted tasks and for any
 	// v2 row that pre-dates the column.
 	Sprint string `json:"sprint,omitempty"`
+	// ── PM fields (schema v4) ──
+	// Type is the issue discriminator (task | requirement | bug). Empty/"" is
+	// treated as "task" for any pre-v4 row.
+	Type TaskType `json:"type,omitempty"`
 
 	// ── automation fields (schema v2) ──
 	AcceptanceCriteria string      `json:"acceptanceCriteria,omitempty"` // injected; agent self-checks before completing
