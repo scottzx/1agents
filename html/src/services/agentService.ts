@@ -38,6 +38,12 @@ export interface AgentStatus {
     integrated: boolean;
     /** Terminal command to install the agent (shown when not installed). */
     installCommand?: string;
+    /**
+     * Whether the web chat path can launch this agent: its CLI is installed OR
+     * its ACP adapter is vendored in 1acp. The chat picker gates on this; the
+     * settings detection list still uses `installed` (the CLI probe).
+     */
+    chatReady?: boolean;
 }
 
 export const agentService = {
@@ -145,6 +151,7 @@ interface RawAgentStatus {
     cc_transport?: string;
     integrated?: boolean;
     install_command?: string;
+    chat_ready?: boolean;
 }
 
 /** Coerce the snake_case wire shape into the canonical AgentStatus. */
@@ -160,6 +167,7 @@ function normalizeAgentStatus(raw: RawAgentStatus): AgentStatus {
         ccTransport: (raw.cc_transport ?? '') as CcTransport | '',
         integrated: Boolean(raw.integrated),
         installCommand: raw.install_command || undefined,
+        chatReady: raw.chat_ready,
     };
 }
 
