@@ -54,6 +54,7 @@ dist/
 
 # Claude worktrees
 .claude/worktrees/
+.git-worktrees/
 
 # antigravity
 .antigravitycli
