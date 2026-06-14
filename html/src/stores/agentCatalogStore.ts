@@ -17,10 +17,15 @@ export const agentCatalogLoading = signal(false);
 export const installedAgents = computed(() => agentCatalog.value.filter(a => a.installed));
 
 /**
- * Agents the chat picker may offer: installed AND drivable by this backend.
- * Detection-only frameworks (integrated === false) are excluded.
+ * Agents the chat picker may offer: chat-ready AND drivable by this backend.
+ * Chat-readiness (CLI installed OR ACP adapter vendored in 1acp) reflects what
+ * the chat path actually launches; fall back to `installed` if an older backend
+ * doesn't send `chat_ready`. Detection-only frameworks (integrated === false)
+ * are excluded.
  */
-export const pickableAgents = computed(() => agentCatalog.value.filter(a => a.installed && a.integrated));
+export const pickableAgents = computed(() =>
+    agentCatalog.value.filter(a => (a.chatReady ?? a.installed) && a.integrated)
+);
 
 /**
  * Fetch the catalog into the global signal. Pass refresh=true to force the

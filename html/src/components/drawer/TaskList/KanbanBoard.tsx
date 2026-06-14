@@ -127,7 +127,10 @@ function KanbanCard({ task, dragging, onSelect, onDragStart, onDragEnd }: Kanban
                 <span class={`priority-badge priority-${prio}`}>{PRIORITY_LABELS[prio] || prio}</span>
                 {task.milestone && <span class="kanban-card-milestone">{task.milestone}</span>}
             </div>
-            <div class="kanban-card-title">{task.title}</div>
+            <div class="kanban-card-title">
+                {task.number ? <span class="task-number">#{task.number}</span> : null}
+                {task.title}
+            </div>
             <div class="kanban-card-foot">
                 <span class={`task-status-badge ${task.status}`}>
                     {task.status === 'running' && <span class="pulse-indicator" />}

@@ -531,6 +531,14 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 	if task.Type != TaskTypeTask {
 		t.Fatalf("legacy row type = %q, want default 'task'", task.Type)
 	}
+	// v5 backfill: the single pre-v5 row is numbered #1 and starts with no
+	// cross-reference links.
+	if task.Number != 1 {
+		t.Fatalf("legacy row number = %d, want 1 (v5 backfill)", task.Number)
+	}
+	if len(task.Links) != 0 {
+		t.Fatalf("legacy row links = %+v, want empty", task.Links)
+	}
 
 	// A new task written after the upgrade can opt into a sprint.
 	ws := t.TempDir()

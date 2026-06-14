@@ -2991,6 +2991,143 @@ body {
   }
 }
 
+/* ── Short id (#N) badge — shared across table/board/detail/pool ── */
+.task-number {
+  display: inline-block;
+  margin-right: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ── Cross-reference links (#N) section in task detail ── */
+.task-links-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .task-links-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .task-links-subhead {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .task-backlinks {
+    padding-top: 4px;
+    border-top: 1px dashed var(--border-color);
+  }
+
+  .task-link-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .task-link-rel {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11.5px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+
+    &.rel-closes {
+      background-color: var(--purple-bg);
+      border-color: transparent;
+      color: var(--purple-fg);
+    }
+  }
+
+  .task-link-target {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: var(--accent-color);
+
+    &:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+
+    &:disabled {
+      cursor: default;
+      color: var(--text-main);
+    }
+  }
+
+  .task-link-remove {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: 4px;
+
+    &:hover {
+      background-color: var(--btn-hover);
+      color: var(--danger-fg);
+    }
+  }
+
+  .task-link-add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+
+    select {
+      padding: 4px 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background-color: var(--bg-card);
+      color: var(--text-main);
+      font-size: 13px;
+    }
+
+    .task-link-target-select {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .task-link-add-btn {
+      flex-shrink: 0;
+      padding: 4px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background-color: var(--accent-color);
+      color: var(--on-accent);
+      font-size: 13px;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background-color: var(--accent-hover);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    }
+  }
+}
+
 /* ── Sidebar session task badge (📋 linked-task indicator) ── */
 .chat-task-badge {
   display: inline-flex;

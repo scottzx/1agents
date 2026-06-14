@@ -33,18 +33,18 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	summary, created_at, updated_at,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-	sprint, type`
+	sprint, type, number, links`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt sql.NullString
-	var createdAt, updatedAt, labels, recurrence string
+	var createdAt, updatedAt, labels, recurrence, links string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
 		&t.Priority, &t.Assignee, &labels, &t.CreatedBy, &t.ParentID, &t.Milestone,
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
-		&t.TimeoutMinutes, &t.Sprint, &t.Type); err != nil {
+		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links); err != nil {
 		return Task{}, err
 	}
 	t.ScheduledAt = valToTimePtr(scheduledAt)
@@ -56,6 +56,7 @@ func scanTask(r rowScanner) (Task, error) {
 	t.UpdatedAt = strToTime(updatedAt)
 	t.Labels = jsonToStrings(labels)
 	t.Recurrence = jsonToRecurrence(recurrence)
+	t.Links = jsonToLinks(links)
 	t.DependsOn = []string{}
 	t.Replies = []Reply{}
 	t.Sessions = []SessionMetadata{}
@@ -78,6 +79,28 @@ func jsonToStrings(s string) []string {
 		return nil
 	}
 	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func linksToJSON(v []TaskLink) string {
+	if len(v) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+func jsonToLinks(s string) []TaskLink {
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var out []TaskLink
 	if err := json.Unmarshal([]byte(s), &out); err != nil {
 		return nil
 	}
@@ -127,6 +150,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 		return nil, err
 	}
 	tasks := []Task{}
+	taskMap := make(map[string]*Task)
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -139,12 +163,107 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	if len(tasks) == 0 {
+		return &TasksConfig{Tasks: tasks}, nil
+	}
 
 	for i := range tasks {
-		if err := s.loadTaskChildren(&tasks[i]); err != nil {
+		taskMap[tasks[i].ID] = &tasks[i]
+	}
+
+	// 1. Bulk load dependencies
+	depRows, err := s.db.sql.Query(`
+		SELECT td.task_id, td.depends_on
+		FROM task_deps td
+		JOIN tasks t ON t.id = td.task_id
+		WHERE t.project_id = ?
+		ORDER BY td.seq`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for depRows.Next() {
+		var taskID, dep string
+		if err := depRows.Scan(&taskID, &dep); err != nil {
+			depRows.Close()
 			return nil, err
 		}
+		if t, ok := taskMap[taskID]; ok {
+			t.DependsOn = append(t.DependsOn, dep)
+		}
 	}
+	if err := depRows.Close(); err != nil {
+		return nil, err
+	}
+
+	// 2. Bulk load replies
+	replyIDsBySession := make(map[string]map[string][]string) // taskID -> sessionRef -> replyIDs
+	replyRows, err := s.db.sql.Query(`
+		SELECT r.task_id, r.id, r.author_kind, r.author_name, r.agent_type,
+		       r.text, r.session_ref, r.acp_session_id, r.in_reply_to, r.mode, r.created_at
+		FROM replies r
+		JOIN tasks t ON t.id = r.task_id
+		WHERE t.project_id = ?
+		ORDER BY r.seq, r.created_at`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for replyRows.Next() {
+		var taskID string
+		var rp Reply
+		var createdAt string
+		if err := replyRows.Scan(&taskID, &rp.ID, &rp.Author.Kind, &rp.Author.Name, &rp.AgentType,
+			&rp.Text, &rp.SessionRef, &rp.AcpSessionID, &rp.InReplyTo, &rp.Mode,
+			&createdAt); err != nil {
+			replyRows.Close()
+			return nil, err
+		}
+		rp.CreatedAt = strToTime(createdAt)
+		if t, ok := taskMap[taskID]; ok {
+			t.Replies = append(t.Replies, rp)
+			if rp.SessionRef != "" {
+				if _, ok := replyIDsBySession[taskID]; !ok {
+					replyIDsBySession[taskID] = make(map[string][]string)
+				}
+				replyIDsBySession[taskID][rp.SessionRef] = append(replyIDsBySession[taskID][rp.SessionRef], rp.ID)
+			}
+		}
+	}
+	if err := replyRows.Close(); err != nil {
+		return nil, err
+	}
+
+	// 3. Bulk load sessions
+	sessRows, err := s.db.sql.Query(`
+		SELECT s.task_id, s.id, s.name, s.agent_type, s.exec_status, s.exec_summary, s.created_at
+		FROM sessions s
+		JOIN tasks t ON t.id = s.task_id
+		WHERE t.project_id = ?
+		ORDER BY s.created_at, s.id`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for sessRows.Next() {
+		var taskID string
+		var sm SessionMetadata
+		var createdAt string
+		if err := sessRows.Scan(&taskID, &sm.ID, &sm.Name, &sm.AgentType, &sm.Status,
+			&sm.Summary, &createdAt); err != nil {
+			sessRows.Close()
+			return nil, err
+		}
+		sm.Kind = SessionKindChat
+		sm.CreatedAt = strToTime(createdAt)
+		if t, ok := taskMap[taskID]; ok {
+			if sessMap, ok := replyIDsBySession[taskID]; ok {
+				sm.ReplyIDs = sessMap[sm.ID]
+			}
+			t.Sessions = append(t.Sessions, sm)
+		}
+	}
+	if err := sessRows.Close(); err != nil {
+		return nil, err
+	}
+
 	return &TasksConfig{Tasks: tasks}, nil
 }
 
@@ -287,14 +406,24 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 	if t.Type == "" {
 		t.Type = TaskTypeTask
 	}
+	// Assign the per-project short id on first save. Runs inside the tx and
+	// after any earlier task in the same Save has been inserted, so MAX is
+	// always current and concurrent Saves can't collide.
+	if t.Number == 0 {
+		if err := tx.QueryRow(
+			`SELECT COALESCE(MAX(number), 0) + 1 FROM tasks WHERE project_id = ?`,
+			projectID).Scan(&t.Number); err != nil {
+			return err
+		}
+	}
 	_, err := tx.Exec(`
 		INSERT INTO tasks (id, project_id, title, description, issue_state, status,
 			schedule_type, scheduled_at, planned_start, planned_end, started_at,
 			completed_at, summary, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-			sprint, type)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sprint, type, number, links)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -321,14 +450,17 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			retry_count = excluded.retry_count,
 			timeout_minutes = excluded.timeout_minutes,
 			sprint = excluded.sprint,
-			type = excluded.type`,
+			type = excluded.type,
+			number = excluded.number,
+			links = excluded.links`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
 		t.Summary, timeToStr(t.CreatedAt), timeToStr(t.UpdatedAt),
 		t.Priority, t.Assignee, stringsToJSON(t.Labels), t.CreatedBy, t.ParentID,
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
-		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type)
+		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type,
+		t.Number, linksToJSON(t.Links))
 	if err != nil {
 		return err
 	}

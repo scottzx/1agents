@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useSignal, signal } from '@preact/signals';
 
 import type { Session } from '../../types';
 import { CreateTaskForm } from './CreateTaskForm';
@@ -12,18 +12,31 @@ import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
 
+const cachedTasks = signal<Record<string, Task[]>>({});
+
 export interface TaskListProps {
     workspaceId: string;
     onSelectSession?: (session: Session) => void;
 }
 
 export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
-    const [tasks, setTasks] = useState<Task[]>([]);
+    const [tasks, setTasksState] = useState<Task[]>(cachedTasks.value[workspaceId] || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const showForm = useSignal(false);
     const view = useSignal<'table' | 'board' | 'overview' | 'milestone' | 'requirements'>('table');
+
+    const setTasks = useCallback(
+        (newTasks: Task[]) => {
+            setTasksState(newTasks);
+            cachedTasks.value = {
+                ...cachedTasks.value,
+                [workspaceId]: newTasks,
+            };
+        },
+        [workspaceId]
+    );
 
     const fetchTasks = useCallback(async () => {
         if (!workspaceId) return;
@@ -41,7 +54,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
         } finally {
             setLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, setTasks]);
 
     // Polling tasks status changes every 5 seconds
     useEffect(() => {
@@ -52,9 +65,10 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
         return () => clearInterval(timer);
     }, [fetchTasks]);
 
-    // Reset detail selection when switching workspaces
+    // Reset detail selection and load cached tasks when switching workspaces
     useEffect(() => {
         setSelectedTaskId(null);
+        setTasksState(cachedTasks.value[workspaceId] || []);
     }, [workspaceId]);
 
     // Drag-to-retire on the Kanban board. The backend only accepts terminal
@@ -103,6 +117,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                     fetchTasks();
                 }}
                 onDelete={handleDeleteTask}
+                onNavigate={setSelectedTaskId}
                 onSelectSession={onSelectSession}
             />
         );

@@ -56,6 +56,7 @@ export function MilestoneView({ tasks, onSelectTask }: MilestoneViewProps) {
                                         </span>
                                         <span class="milestone-task-title">
                                             {task.parentId && <span class="subtask-indent">└─</span>}
+                                            {task.number ? <span class="task-number">#{task.number}</span> : null}
                                             {task.title}
                                         </span>
                                         <span class={`priority-badge priority-${prio}`}>

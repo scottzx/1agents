@@ -64,6 +64,7 @@ export function TaskTable({ tasks, loading, onSelectTask, onDeleteTask }: TaskTa
                             <td class="col-issue">{closed ? '\u{1F512}' : '\u{1F513}'}</td>
                             <td class="col-title">
                                 {isChild && <span class="subtask-indent">└─</span>}
+                                {task.number ? <span class="task-number">#{task.number}</span> : null}
                                 <span class="task-row-title">{task.title}</span>
                                 {(task.labels || []).map(l => (
                                     <span key={l} class="task-label-tag">

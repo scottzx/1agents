@@ -36,7 +36,10 @@ export function RequirementPool({ tasks, onSelectTask }: RequirementPoolProps) {
                             <span class={`requirement-type-badge type-${type}`}>{TYPE_LABELS[type] || type}</span>
                             <span class={`priority-badge priority-${prio}`}>{PRIORITY_LABELS[prio] || prio}</span>
                         </div>
-                        <div class="requirement-card-title">{task.title}</div>
+                        <div class="requirement-card-title">
+                            {task.number ? <span class="task-number">#{task.number}</span> : null}
+                            {task.title}
+                        </div>
                         {task.description && <div class="requirement-card-desc">{task.description}</div>}
                         <div class="requirement-card-foot">
                             <span class={`task-status-badge ${task.status}`}>

@@ -75,6 +75,24 @@ const (
 	TaskTypeBug         TaskType = "bug"
 )
 
+// LinkRel is the relation kind of a TaskLink. "closes" auto-closes the target
+// when the source task completes (GitHub-style "fixes #N"); "relates" is a
+// plain cross-reference kept for indexing/navigation only (never automatic).
+type LinkRel string
+
+const (
+	LinkCloses  LinkRel = "closes"
+	LinkRelates LinkRel = "relates"
+)
+
+// TaskLink is a peer cross-reference from one task to another. This is NOT
+// hierarchy — subtasks use ParentID; links connect requirements/tasks/bugs as
+// equals. Target holds the referenced task's hex id.
+type TaskLink struct {
+	Target string  `json:"target"`
+	Rel    LinkRel `json:"rel"`
+}
+
 type TaskStatus string
 
 const (
@@ -216,6 +234,13 @@ type Task struct {
 	// Type is the issue discriminator (task | requirement | bug). Empty/"" is
 	// treated as "task" for any pre-v4 row.
 	Type TaskType `json:"type,omitempty"`
+	// ── relations (schema v5) ──
+	// Number is the per-project short id (#N), assigned on first save and
+	// stable thereafter; 0 means un-numbered (pre-v5 rows are backfilled).
+	Number int `json:"number,omitempty"`
+	// Links are GitHub-style peer cross-references to other tasks. They drive
+	// indexing/navigation; "closes" links also auto-close their target.
+	Links []TaskLink `json:"links,omitempty"`
 
 	// ── automation fields (schema v2) ──
 	AcceptanceCriteria string      `json:"acceptanceCriteria,omitempty"` // injected; agent self-checks before completing

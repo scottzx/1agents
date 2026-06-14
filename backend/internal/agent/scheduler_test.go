@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -171,6 +172,57 @@ func TestSchedulerDependencyBlocks(t *testing.T) {
 		t.Fatalf("waiter = %s, want running after dep completed", got)
 	}
 }
+
+func TestSchedulerClosesLinkAutoCloses(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	// fix is a completed task that "closes" the open bug; rel:"relates" would
+	// not trigger anything.
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "bug", Title: "缺陷", Type: TaskTypeBug, Description: "x", IssueState: IssueOpen,
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "fix", Title: "修复", Description: "y", Status: TaskStatusCompleted,
+			Links: []TaskLink{{Target: "bug", Rel: LinkCloses}},
+			CreatedAt: now.Add(time.Second), UpdatedAt: now},
+	})
+
+	s.Tick()
+
+	cfg, _ := store.Load(ref.Path)
+	var bug, fix *Task
+	for i := range cfg.Tasks {
+		switch cfg.Tasks[i].ID {
+		case "bug":
+			bug = &cfg.Tasks[i]
+		case "fix":
+			fix = &cfg.Tasks[i]
+		}
+	}
+	if bug.Status != TaskStatusCompleted || bug.IssueState != IssueClosed {
+		t.Fatalf("bug = %s/%s, want completed/closed", bug.Status, bug.IssueState)
+	}
+	if bug.CompletedAt == nil {
+		t.Fatalf("bug should have CompletedAt set")
+	}
+	if len(bug.Replies) != 1 || bug.Replies[0].Mode != ModePureComment {
+		t.Fatalf("bug should have one pure_comment timeline entry, got %+v", bug.Replies)
+	}
+	wantText := "由 #" + itoa(fix.Number) + " 修复并关闭"
+	if bug.Replies[0].Text != wantText {
+		t.Fatalf("reply text = %q, want %q", bug.Replies[0].Text, wantText)
+	}
+
+	// Idempotent: a second tick must not append another close comment.
+	s.Tick()
+	cfg, _ = store.Load(ref.Path)
+	for i := range cfg.Tasks {
+		if cfg.Tasks[i].ID == "bug" && len(cfg.Tasks[i].Replies) != 1 {
+			t.Fatalf("second tick re-closed: %d replies", len(cfg.Tasks[i].Replies))
+		}
+	}
+}
+
+func itoa(n int) string { return fmt.Sprintf("%d", n) }
 
 func TestSchedulerRecurrenceRespawn(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
