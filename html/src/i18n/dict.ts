@@ -234,7 +234,7 @@ export const zhCN: Record<string, string> = {
     'modal.dirPicker.createSuccess': '创建文件夹成功',
     'modal.dirPicker.createFailed': '创建文件夹失败: {err}',
     'modal.dirPicker.recent': '最近',
-    'modal.dirPicker.presetHome': '家目录',
+    'modal.dirPicker.presetHome': '根目录',
     'modal.dirPicker.presetDesktop': '桌面',
     'modal.dirPicker.presetDocuments': '文档',
 
