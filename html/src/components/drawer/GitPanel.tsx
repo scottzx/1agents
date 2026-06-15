@@ -681,12 +681,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
 
         const lanes: (string | null)[] = []; // lanes[i] = hash expected next in lane i
+        // Returns the first free lane index >= `from`, extending the array as
+        // needed. Must never return < from (else a side branch could seize the
+        // reserved main trunk lane 0).
         const firstFree = (from: number): number => {
-            for (let i = from; i < lanes.length; i++) {
-                if (lanes[i] === null || lanes[i] === undefined) return i;
-            }
-            lanes.push(null);
-            return lanes.length - 1;
+            let i = from;
+            while (i < lanes.length && lanes[i] != null) i++;
+            while (lanes.length <= i) lanes.push(null);
+            return i;
         };
 
         const rows: GraphRow[] = [];
@@ -732,12 +734,15 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
             const belowSnap = lanes.slice();
 
-            const involved = new Set<number>([nodeLane, ...incomingLanes, ...parentLanes]);
+            // A lane carries a continuous straight line through this row when the
+            // SAME hash is expected in it both above and below — this includes the
+            // trunk passing straight through a fork/merge row, so the diagonal
+            // connectors draw ON TOP of it (forming a proper Y/triangle) instead
+            // of replacing it.
             const through: number[] = [];
             const span = Math.max(aboveSnap.length, belowSnap.length);
             for (let L = 0; L < span; L++) {
-                if (involved.has(L)) continue;
-                if (aboveSnap[L] != null && belowSnap[L] != null) through.push(L);
+                if (aboveSnap[L] != null && aboveSnap[L] === belowSnap[L]) through.push(L);
             }
 
             rows.push({
