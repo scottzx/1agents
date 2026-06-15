@@ -1318,6 +1318,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             commitDiffFile,
             commitDiffContent,
             commitDiffLoading,
+            worktrees,
         } = this.state;
         const { language } = this.props;
 
@@ -1331,6 +1332,25 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const layout = graphExpanded && graph.length > 0 ? this.buildGraphLayout(graph) : { rows: [], maxLanes: 1 };
         const rows = layout.rows;
         const railW = layout.maxLanes * LANE_W;
+
+        // Map every worktree's HEAD branch → its entry so each worktree tip gets
+        // a compact initials badge on the graph (full branch name on hover).
+        const worktreeByBranch = new Map<string, WorktreeEntry>();
+        for (const wt of worktrees) {
+            if (wt.branch) worktreeByBranch.set(wt.branch, wt);
+        }
+        // Initials of each segment, e.g. claude/hardcore-austin-1bbbeb → HA1,
+        // worktree-p6-ai-project-manager → WPAP. Capped at 4 chars.
+        const branchInitials = (name: string): string => {
+            const tail = name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
+            const initials = tail
+                .split(/[-_\s.]+/)
+                .filter(Boolean)
+                .map(s => s[0])
+                .join('')
+                .toUpperCase();
+            return (initials || tail).slice(0, 4);
+        };
 
         return (
             <div class="git-section git-graph-section">
@@ -1400,16 +1420,35 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 }
                             }
 
-                            const hasMain = rw.refs.some(r => r === 'main' || r === 'master');
-                            const refBadge =
-                                rw.refs.length > 0 ? (
-                                    <span class="git-graph-ref-count" title={rw.refs.join(', ')}>
-                                        {hasMain && <span class="git-ref-badge head">main</span>}
-                                        <span class="git-graph-ref-count-badge">
+                            // Badge main/master (green, full name) and every worktree
+                            // HEAD (initials, current worktree highlighted). Other refs
+                            // are left unbadged so the markers track worktrees only.
+                            const refBadgeList = rw.refs
+                                .map(r => {
+                                    if (r === 'main' || r === 'master') {
+                                        return (
+                                            <span key={r} class="git-ref-badge head" title={r}>
+                                                {r}
+                                            </span>
+                                        );
+                                    }
+                                    const wt = worktreeByBranch.get(r);
+                                    if (!wt) return null;
+                                    return (
+                                        <span
+                                            key={r}
+                                            class={`git-ref-badge worktree ${wt.isCurrent ? 'current' : ''}`}
+                                            title={wt.isCurrent ? `${r} · ${t('git.worktrees.current', language)}` : r}
+                                        >
                                             <span class="git-branch-icon-sm">{IconBranch}</span>
-                                            {rw.refs.length}
+                                            {branchInitials(r)}
                                         </span>
-                                    </span>
+                                    );
+                                })
+                                .filter(Boolean);
+                            const refBadge =
+                                refBadgeList.length > 0 ? (
+                                    <span class="git-graph-ref-count">{refBadgeList}</span>
                                 ) : null;
 
                             return (
@@ -1417,7 +1456,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                     <div
                                         class={`git-graph-row ${expandedCommitHash === rw.hash ? 'expanded' : ''}`}
                                         onClick={() => this.toggleCommit(rw.hash)}
-                                        title={`${rw.author} · ${rw.hash}`}
+                                        title={rw.message}
                                     >
                                         <svg class="git-graph-rail" width={railW} height={ROW_H}>
                                             {segs}
