@@ -643,7 +643,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # No tagName/releaseName: build only, do NOT publish to the public GitHub
         # Release. Desktop installers are sold separately and distributed privately
-        # via Aliyun Drive (see the upload-desktop job below).
+        # via Google Drive (see the upload-desktop job below).
 
       - name: Upload desktop installers (private artifact)
         uses: actions/upload-artifact@v7
@@ -656,17 +656,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # ── Distribute desktop installers privately via Aliyun Drive ──────────────
-  # Pulls the desktop-* artifacts and uploads them to a private Aliyun Drive
-  # folder. Requires the ALIYUNPAN_REFRESH_TOKEN secret (Aliyun Drive web
-  # refresh_token). Kept independent of the public `release` job so a Drive
-  # hiccup never blocks the server/npm release.
+  # ── Distribute desktop installers privately via Google Drive ──────────────
+  # Pulls the desktop-* artifacts and rclone-copies them to a private Google
+  # Drive folder. GitHub runners reach Google reliably (unlike the China-hosted
+  # Aliyun Drive API, which times out cross-border). Google Drive is the owner's
+  # own staging area — the operator pulls from it and redistributes to buyers.
+  # Requires the RCLONE_GDRIVE_CONF secret (an rclone "gdrive" remote config).
+  # Kept independent of the public `release` job so a Drive hiccup never blocks
+  # the server/npm release.
   upload-desktop:
     runs-on: ubuntu-latest
     needs: [prepare, build-desktop]
     steps:
-      - uses: actions/checkout@v6
-
       - name: Download desktop artifacts
         uses: actions/download-artifact@v8
         with:
@@ -674,11 +675,19 @@ jobs:
           path: desktop
           merge-multiple: true
 
-      - name: Upload installers to Aliyun Drive
+      - name: Install rclone
+        run: sudo apt-get update && sudo apt-get install -y rclone
+
+      - name: Upload installers to Google Drive
         env:
-          ALIYUNPAN_REFRESH_TOKEN: ${{ secrets.ALIYUNPAN_REFRESH_TOKEN }}
+          RCLONE_GDRIVE_CONF: ${{ secrets.RCLONE_GDRIVE_CONF }}
         run: |
-          python3 scripts/upload-aliyundrive.py desktop "/1Agents发布/${{ needs.prepare.outputs.tag }}"
+          mkdir -p ~/.config/rclone
+          printf '%s\n' "$RCLONE_GDRIVE_CONF" > ~/.config/rclone/rclone.conf
+          rclone copy desktop "gdrive:1Agents发布/${{ needs.prepare.outputs.tag }}" \
+            --transfers 2 --stats-one-line
+          echo "=== uploaded files ==="
+          rclone ls "gdrive:1Agents发布/${{ needs.prepare.outputs.tag }}"
 
   release:
     runs-on: ubuntu-latest
