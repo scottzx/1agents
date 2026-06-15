@@ -660,16 +660,15 @@ jobs:
         with:
           merge-multiple: true
 
-      - name: Build OTA manifests
+      - name: Build OTA manifest (server only)
         run: |
+          # Desktop OTA is shelved: we no longer publish the desktop updater
+          # manifest (build-tauri-manifest.py / desktop-*.json). Server/web OTA
+          # manifest.json is still generated as before.
           python3 scripts/build-manifest.py \
             --version "${{ needs.prepare.outputs.tag }}" \
             --artifacts . \
             --output manifest.json
-          python3 scripts/build-tauri-manifest.py \
-            --version "${{ needs.prepare.outputs.tag }}" \
-            --artifacts . \
-            --notes "Release ${{ needs.prepare.outputs.tag }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -681,7 +680,6 @@ jobs:
           files: |
             1agents-*.tar.gz
             manifest.json
-            desktop-*.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
