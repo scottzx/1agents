@@ -1032,8 +1032,15 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     // §1 Worktree switcher (replaces branch selector at the top)
     renderWorktreeSwitcher() {
-        const { worktrees, worktreeSwitcherOpen, selectedWorktreePath, worktreesLoading, status, pushPullLoading, fetching } =
-            this.state;
+        const {
+            worktrees,
+            worktreeSwitcherOpen,
+            selectedWorktreePath,
+            worktreesLoading,
+            status,
+            pushPullLoading,
+            fetching,
+        } = this.state;
         const { language } = this.props;
 
         // Determine which worktree is active for display.
