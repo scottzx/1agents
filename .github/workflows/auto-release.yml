@@ -660,16 +660,15 @@ jobs:
         with:
           merge-multiple: true
 
-      - name: Build OTA manifests
+      - name: Build OTA manifest (server only)
         run: |
+          # Desktop OTA is shelved: we no longer publish the desktop updater
+          # manifest (build-tauri-manifest.py / desktop-*.json). Server/web OTA
+          # manifest.json is still generated as before.
           python3 scripts/build-manifest.py \
             --version "${{ needs.prepare.outputs.tag }}" \
             --artifacts . \
             --output manifest.json
-          python3 scripts/build-tauri-manifest.py \
-            --version "${{ needs.prepare.outputs.tag }}" \
-            --artifacts . \
-            --notes "Release ${{ needs.prepare.outputs.tag }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -681,7 +680,6 @@ jobs:
           files: |
             1agents-*.tar.gz
             manifest.json
-            desktop-*.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -741,3 +739,38 @@ jobs:
           npm publish --access public
 
           echo "Successfully published version ${{ needs.prepare.outputs.npm_version }} to NPM registry!"
+
+  # ── Mirror desktop installers to Google Drive (additive) ──────────────────
+  # The desktop installers are already published to the public GitHub Release
+  # (open distribution, per the project's MIT spirit). This job ADDITIONALLY
+  # mirrors just the installers (.dmg/.msi/-setup.exe) to a private Google
+  # Drive folder as an archive / secondary channel. Requires the
+  # RCLONE_GDRIVE_CONF secret. Runs after `release` (which publishes the
+  # installers) and never blocks the public release.
+  mirror-desktop-to-gdrive:
+    runs-on: ubuntu-latest
+    needs: [prepare, release]
+    steps:
+      - name: Install rclone
+        run: sudo apt-get update && sudo apt-get install -y rclone
+
+      - name: Download desktop installers from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p desktop
+          gh release download "${{ needs.prepare.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.dmg' --pattern '*.msi' --pattern '*-setup.exe' \
+            --dir desktop
+          echo "=== downloaded ===" && ls -lh desktop
+
+      - name: Mirror installers to Google Drive
+        env:
+          RCLONE_GDRIVE_CONF: ${{ secrets.RCLONE_GDRIVE_CONF }}
+        run: |
+          mkdir -p ~/.config/rclone
+          printf '%s\n' "$RCLONE_GDRIVE_CONF" > ~/.config/rclone/rclone.conf
+          rclone copy desktop "gdrive:1Agents发布/${{ needs.prepare.outputs.tag }}" \
+            --transfers 2 --stats-one-line
+          echo "=== mirrored to Google Drive ===" && rclone ls "gdrive:1Agents发布/${{ needs.prepare.outputs.tag }}"

@@ -91,6 +91,34 @@ type BranchEntry struct {
 	Current bool   `json:"current"`
 }
 
+// WorktreeEntry represents a single git worktree.
+type WorktreeEntry struct {
+	Path      string `json:"path"`
+	HEAD      string `json:"head"`
+	Short     string `json:"short"`
+	Branch    string `json:"branch"`
+	Message   string `json:"message"`
+	IsMain    bool   `json:"isMain"`
+	IsCurrent bool   `json:"isCurrent"`
+}
+
+// GraphCommit is a single commit entry for graph visualization.
+type GraphCommit struct {
+	Hash    string   `json:"hash"`
+	Short   string   `json:"short"`
+	Parents []string `json:"parents"`
+	Refs    []string `json:"refs"`
+	Author  string   `json:"author"`
+	Time    int64    `json:"time"`
+	Message string   `json:"message"`
+}
+
+// CommitFileEntry is a file changed in a specific commit.
+type CommitFileEntry struct {
+	Status string `json:"status"`
+	Path   string `json:"path"`
+}
+
 // --- HTTP handlers ---
 
 // Status handles GET /api/git/status
@@ -357,6 +385,23 @@ func (h *Handler) Pull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out})
 }
 
+// Fetch handles POST /api/git/fetch
+// Refreshes remote tracking refs (and prunes deleted ones) so that the
+// ahead/behind counts reported by /api/git/status reflect the real remote.
+func (h *Handler) Fetch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	out, err := h.git("fetch", "--prune")
+	if err != nil {
+		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ahead, behind := h.aheadBehind()
+	writeJSON(w, map[string]interface{}{"ok": true, "output": out, "ahead": ahead, "behind": behind})
+}
+
 // Discard handles POST /api/git/discard?file=<path>
 func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -384,6 +429,331 @@ func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
+// Worktrees handles GET /api/git/worktrees
+func (h *Handler) Worktrees(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !h.isRepo() {
+		writeJSON(w, []WorktreeEntry{})
+		return
+	}
+
+	out, err := h.git("worktree", "list", "--porcelain")
+	if err != nil {
+		writeJSON(w, []WorktreeEntry{})
+		return
+	}
+
+	currentClean := filepath.Clean(h.root)
+	var entries []WorktreeEntry
+
+	for i, block := range strings.Split(strings.TrimSpace(out), "\n\n") {
+		var entry WorktreeEntry
+		entry.IsMain = (i == 0)
+
+		for _, line := range strings.Split(block, "\n") {
+			line = strings.TrimSpace(line)
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				entry.Path = strings.TrimPrefix(line, "worktree ")
+			case strings.HasPrefix(line, "HEAD "):
+				head := strings.TrimPrefix(line, "HEAD ")
+				entry.HEAD = head
+				if len(head) >= 7 {
+					entry.Short = head[:7]
+				}
+			case strings.HasPrefix(line, "branch "):
+				entry.Branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+			}
+		}
+
+		if entry.Path == "" {
+			continue
+		}
+		if filepath.Clean(entry.Path) == currentClean {
+			entry.IsCurrent = true
+		}
+
+		if msg, err := h.git("-C", entry.Path, "log", "-1", "--format=%s"); err == nil {
+			entry.Message = strings.TrimSpace(msg)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if entries == nil {
+		entries = []WorktreeEntry{}
+	}
+	writeJSON(w, entries)
+}
+
+// Graph handles GET /api/git/graph?limit=100
+// graphRefs returns the refs the commit graph should span: the main trunk plus
+// every branch that currently has a worktree (detached worktrees contribute
+// their HEAD commit). Falls back to HEAD when nothing else matches.
+func (h *Handler) graphRefs() []string {
+	seen := map[string]bool{}
+	var refs []string
+	add := func(r string) {
+		if r == "" || seen[r] {
+			return
+		}
+		seen[r] = true
+		refs = append(refs, r)
+	}
+
+	// Main trunk: first existing of main/master (local preferred, then remote).
+	for _, cand := range []string{"main", "master", "origin/main", "origin/master"} {
+		if _, err := h.git("rev-parse", "--verify", "--quiet", cand+"^{commit}"); err == nil {
+			add(cand)
+			break
+		}
+	}
+
+	// Branches (or detached HEADs) of every worktree.
+	if out, err := h.git("worktree", "list", "--porcelain"); err == nil {
+		for _, block := range strings.Split(strings.TrimSpace(out), "\n\n") {
+			branch, head := "", ""
+			for _, line := range strings.Split(block, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "branch ") {
+					branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+				} else if strings.HasPrefix(line, "HEAD ") {
+					head = strings.TrimPrefix(line, "HEAD ")
+				}
+			}
+			if branch != "" {
+				add(branch)
+			} else if head != "" {
+				add(head)
+			}
+		}
+	}
+
+	if len(refs) == 0 {
+		add("HEAD")
+	}
+	return refs
+}
+
+func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	// Scope the graph to main + the branches that currently have a worktree,
+	// instead of every ref. This drops stale/abandoned remote branches (e.g.
+	// squash-merged PR branches, which git can't tell were merged) so they no
+	// longer read as dangling "unmerged" lines.
+	refs := h.graphRefs()
+
+	// --topo-order keeps each branch's commits contiguous (not interleaved by
+	// date), so the first-parent trunk and its forks/merges read clearly.
+	args := append([]string{"log", "--topo-order", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s"}, refs...)
+	out, err := h.git(args...)
+	if err != nil {
+		writeJSON(w, []GraphCommit{})
+		return
+	}
+
+	var commits []GraphCommit
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		// SplitN 7 so subject (last field) may contain "|"
+		parts := strings.SplitN(line, "|", 7)
+		if len(parts) < 6 {
+			continue
+		}
+
+		parents := []string{}
+		if parts[2] != "" {
+			parents = strings.Fields(parts[2])
+		}
+
+		refs := []string{}
+		if parts[3] != "" {
+			for _, ref := range strings.Split(parts[3], ", ") {
+				ref = strings.TrimSpace(ref)
+				if ref == "" {
+					continue
+				}
+				if strings.HasPrefix(ref, "HEAD -> ") {
+					ref = strings.TrimPrefix(ref, "HEAD -> ")
+				}
+				refs = append(refs, ref)
+			}
+		}
+
+		ts, _ := strconv.ParseInt(parts[5], 10, 64)
+		subject := ""
+		if len(parts) == 7 {
+			subject = parts[6]
+		}
+
+		commits = append(commits, GraphCommit{
+			Hash:    parts[0],
+			Short:   parts[1],
+			Parents: parents,
+			Refs:    refs,
+			Author:  parts[4],
+			Time:    ts,
+			Message: subject,
+		})
+	}
+
+	if commits == nil {
+		commits = []GraphCommit{}
+	}
+	writeJSON(w, commits)
+}
+
+// CommitFiles handles GET /api/git/commit-files?hash=<hash>
+func (h *Handler) CommitFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	hash := r.URL.Query().Get("hash")
+	if hash == "" {
+		http.Error(w, "missing hash", http.StatusBadRequest)
+		return
+	}
+
+	out, err := h.git("diff-tree", "--no-commit-id", "-r", "--name-status", hash)
+	if err != nil {
+		writeJSON(w, []CommitFileEntry{})
+		return
+	}
+
+	var files []CommitFileEntry
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		status := string(parts[0][0]) // take first char (strips similarity score like R100 → R)
+		path := parts[len(parts)-1]   // last field (for renames: "R\told\tnew" → take new)
+		files = append(files, CommitFileEntry{Status: status, Path: path})
+	}
+
+	if files == nil {
+		files = []CommitFileEntry{}
+	}
+	writeJSON(w, files)
+}
+
+// CommitDiff handles GET /api/git/commit-diff?hash=<hash>&file=<path>
+func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	hash := r.URL.Query().Get("hash")
+	file := r.URL.Query().Get("file")
+	if hash == "" || file == "" {
+		http.Error(w, "missing hash or file", http.StatusBadRequest)
+		return
+	}
+
+	out, err := h.git("show", hash, "--", file)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(out))
+}
+
+// isWorktreePath reports whether path is one of this repo's registered worktrees.
+// Guards the worktree-status/diff endpoints against arbitrary -C targets.
+func (h *Handler) isWorktreePath(path string) bool {
+	clean := filepath.Clean(path)
+	out, err := h.git("worktree", "list", "--porcelain")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			if filepath.Clean(strings.TrimPrefix(line, "worktree ")) == clean {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// WorktreeStatus handles GET /api/git/worktree-status?path=<path>
+// Returns the uncommitted changes (staged/unstaged/untracked) for one worktree.
+func (h *Handler) WorktreeStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	if path == "" || !h.isWorktreePath(path) {
+		http.Error(w, "invalid worktree path", http.StatusBadRequest)
+		return
+	}
+
+	staged, unstaged, untracked := h.changedFilesAt(path)
+	ahead, behind := h.aheadBehindAt(path)
+	writeJSON(w, GitStatus{
+		IsRepo:    true,
+		Branch:    h.currentBranchAt(path),
+		Ahead:     ahead,
+		Behind:    behind,
+		Staged:    staged,
+		Unstaged:  unstaged,
+		Untracked: untracked,
+	})
+}
+
+// WorktreeDiff handles GET /api/git/worktree-diff?path=<path>&file=<file>
+// Shows all uncommitted changes for one file in a worktree (vs HEAD), with an
+// untracked-file fallback so brand-new files still render as additions.
+func (h *Handler) WorktreeDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	file := r.URL.Query().Get("file")
+	if path == "" || file == "" || !h.isWorktreePath(path) {
+		http.Error(w, "invalid worktree path or file", http.StatusBadRequest)
+		return
+	}
+
+	out, _ := h.git("-C", path, "diff", "HEAD", "--", file)
+	if strings.TrimSpace(out) == "" {
+		// Untracked / new file: synthesize a diff against an empty blob.
+		out, _ = h.git("-C", path, "diff", "--no-index", "--", os.DevNull, filepath.Join(path, file))
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(out))
+}
+
 // AICommit handles POST /api/git/ai-commit
 func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -408,7 +778,7 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Execute Claude Code non-interactively with empty stdin
 	prompt := "Write a concise, conventional git commit message in Chinese (中文) based on the staged changes in this git repository. The commit type prefix (e.g., feat, fix, docs, style, refactor) must be in English, but the actual message description MUST be written in clear, concise Chinese. Output ONLY the raw commit message itself, without quotes, code blocks, or explanations."
-	
+
 	var args []string
 	if len(cliExtraArgs) > 0 {
 		args = append(args, cliExtraArgs...)
@@ -426,7 +796,7 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 			baseEnv = append(baseEnv, e)
 		}
 	}
-	
+
 	// Merge CC Connect environment variables
 	if len(ccEnv) > 0 {
 		cmd.Env = mergeEnvironments(baseEnv, ccEnv)
@@ -471,16 +841,20 @@ func (h *Handler) isRepo() bool {
 	return err == nil
 }
 
-func (h *Handler) currentBranch() string {
-	out, err := h.git("rev-parse", "--abbrev-ref", "HEAD")
+func (h *Handler) currentBranch() string { return h.currentBranchAt(h.root) }
+
+func (h *Handler) currentBranchAt(dir string) string {
+	out, err := h.git("-C", dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "HEAD"
 	}
 	return out
 }
 
-func (h *Handler) aheadBehind() (ahead, behind int) {
-	out, err := h.git("rev-list", "--count", "--left-right", "@{upstream}...HEAD")
+func (h *Handler) aheadBehind() (ahead, behind int) { return h.aheadBehindAt(h.root) }
+
+func (h *Handler) aheadBehindAt(dir string) (ahead, behind int) {
+	out, err := h.git("-C", dir, "rev-list", "--count", "--left-right", "@{upstream}...HEAD")
 	if err != nil {
 		return 0, 0
 	}
@@ -494,11 +868,16 @@ func (h *Handler) aheadBehind() (ahead, behind int) {
 
 // changedFiles parses `git status --porcelain=v1` into three buckets.
 func (h *Handler) changedFiles() (staged, unstaged, untracked []FileStatus) {
+	return h.changedFilesAt(h.root)
+}
+
+// changedFilesAt parses status for an arbitrary worktree directory.
+func (h *Handler) changedFilesAt(dir string) (staged, unstaged, untracked []FileStatus) {
 	staged = []FileStatus{}
 	unstaged = []FileStatus{}
 	untracked = []FileStatus{}
 
-	out, err := h.git("status", "--porcelain=v1")
+	out, err := h.git("-C", dir, "status", "--porcelain=v1")
 	if err != nil || out == "" {
 		return
 	}

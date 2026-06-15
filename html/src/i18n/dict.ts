@@ -355,6 +355,9 @@ export const zhCN: Record<string, string> = {
     'git.toast.pullSuccess': '拉取更新成功 ✓',
     'git.toast.pushFailedPrefix': '推送失败: {err}',
     'git.toast.pullFailedPrefix': '拉取失败: {err}',
+    'git.toast.fetching': '正在同步远程状态…',
+    'git.toast.fetchSuccess': '已同步远程状态 ✓',
+    'git.toast.fetchFailedPrefix': '同步失败: {err}',
     'git.toast.hashCopied': '提交哈希已成功复制 📋',
 
     'git.diff.close': '关闭差异',
@@ -366,6 +369,7 @@ export const zhCN: Record<string, string> = {
     'git.action.stage': '暂存文件',
     'git.action.push': '推送 (Push)',
     'git.action.pull': '拉取 (Pull)',
+    'git.action.fetch': '同步远程状态 (Fetch)',
 
     'git.clean.title': '工作区非常干净',
     'git.clean.desc': '没有任何未提交的更改。您可以安心开发新功能或切换到其他工作分支。',
@@ -406,6 +410,22 @@ export const zhCN: Record<string, string> = {
     'git.log.empty': '未匹配到任何提交记录',
     'git.log.tooltip': '作者: {author}\n完整哈希: {hash}',
     'git.log.copyHash': '点击复制完整哈希值',
+
+    // Worktrees
+    'git.worktrees.title': 'Worktrees',
+    'git.worktrees.main': '主',
+    'git.worktrees.current': '当前',
+    'git.worktrees.detached': '(分离 HEAD)',
+    'git.worktrees.clean': '没有未提交的更改',
+
+    // Graph history
+    'git.graph.title': '提交图形',
+    'git.graph.empty': '暂无提交记录',
+    'git.graph.noFiles': '该提交没有文件变更',
+
+    // Worktree switcher & commit box
+    'git.commit.sectionTitle': '提交说明',
+    'git.worktrees.switchTitle': '切换 worktree',
 
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
     'terminal.label.input': '输入',
@@ -953,6 +973,9 @@ export const enUS: Record<string, string> = {
     'git.toast.pullSuccess': 'Pulled updates ✓',
     'git.toast.pushFailedPrefix': 'Push failed: {err}',
     'git.toast.pullFailedPrefix': 'Pull failed: {err}',
+    'git.toast.fetching': 'Syncing with remote…',
+    'git.toast.fetchSuccess': 'Synced with remote ✓',
+    'git.toast.fetchFailedPrefix': 'Fetch failed: {err}',
     'git.toast.hashCopied': 'Commit hash copied 📋',
 
     'git.diff.close': 'Close diff',
@@ -964,6 +987,7 @@ export const enUS: Record<string, string> = {
     'git.action.stage': 'Stage file',
     'git.action.push': 'Push',
     'git.action.pull': 'Pull',
+    'git.action.fetch': 'Fetch (sync with remote)',
 
     'git.clean.title': 'Working tree clean',
     'git.clean.desc': 'Nothing to commit. Feel free to start a new feature or switch to another branch.',
@@ -1004,6 +1028,22 @@ export const enUS: Record<string, string> = {
     'git.log.empty': 'No commits matched',
     'git.log.tooltip': 'Author: {author}\nFull hash: {hash}',
     'git.log.copyHash': 'Click to copy the full hash',
+
+    // Worktrees
+    'git.worktrees.title': 'Worktrees',
+    'git.worktrees.main': 'main',
+    'git.worktrees.current': 'current',
+    'git.worktrees.detached': '(detached HEAD)',
+    'git.worktrees.clean': 'No uncommitted changes',
+
+    // Graph history
+    'git.graph.title': 'Commit Graph',
+    'git.graph.empty': 'No commits found',
+    'git.graph.noFiles': 'No file changes in this commit',
+
+    // Worktree switcher & commit box
+    'git.commit.sectionTitle': 'Commit message',
+    'git.worktrees.switchTitle': 'Switch worktree',
 
     // ── Terminal ─────────────────────────────────────────────────────────
     'terminal.label.input': 'Input',
