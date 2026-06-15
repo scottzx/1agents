@@ -4,7 +4,8 @@
 // a React-friendly stream of "messages" (assistant text, tool calls,
 // permission requests, errors). The ChatPanel renders that stream.
 
-import { useEffect, useState, useCallback } from 'preact/hooks';
+import { useEffect, useCallback } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 
 export interface ToolCallInfo {
@@ -987,21 +988,33 @@ export class ChatBridgeManager {
 export const globalBridgeManager = new ChatBridgeManager();
 
 export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
-    const [, forceUpdate] = useState({});
+    // Re-render via a signal, NOT useState. Under @preact/signals a plain
+    // useState forceUpdate silently fails to repaint a component that lives in
+    // a static subtree (e.g. the 副屏 AI 项目经理 panel) — leaving the composer
+    // stuck disabled even after the bridge connects. Reading `rev.value` in
+    // render subscribes this component so each listener bump repaints reliably.
+    const rev = useSignal(0);
+    const bump = () => {
+        rev.value++;
+    };
 
     useEffect(() => {
         if (!session) return;
 
         const state = globalBridgeManager.getOrCreate(session);
-        const listener = () => forceUpdate({});
-        state.listeners.add(listener);
+        state.listeners.add(bump);
 
-        forceUpdate({});
+        bump();
 
         return () => {
-            state.listeners.delete(listener);
+            state.listeners.delete(bump);
         };
     }, [session?.id, session?.workspaceId, session?.taskId]);
+
+    // Subscribe to bridge-state changes (see note above): reading `.value`
+    // registers this render with the signal so listener bumps repaint it.
+    // eslint-disable-next-line no-unused-expressions
+    rev.value;
 
     const state = session ? globalBridgeManager.getOrCreate(session) : null;
 
