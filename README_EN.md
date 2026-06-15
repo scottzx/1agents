@@ -1,7 +1,7 @@
 # 1Agents 🚀
 
-### One is All, All is One — Open-source Distributed Agent System & Multi-device Collaboration Network
-**1Agents (One Agents) is a next-generation open-source decentralized agent platform. It provides a unified workspace (Unified Portal) to manage, orchestrate, and collaborate with heterogeneous AI agents running across multiple physical or digital devices (macOS, Linux VPS, Windows, and IoT/embedded systems).**
+### One Person, Infinite Agents — Build Your Own Personal AI Organization
+**1Agents (One Agents) is an open-source, self-hosted distributed personal AI organization and smart workspace. It breaks away from the traditional, isolated "Q&A chatbox" model of standard AI assistants by introducing a highly-structured A2A (Agent-to-Agent) collaboration workflow. 1Agents allows you to operate like a "one-person company," serving as the sole owner commanding a virtual AI team composed of a PMO, PM, Executor, and Verifier to systematically turn complex information, ideas, and tasks into reality.**
 
 [简体中文](README.md) | **English**
 
@@ -13,8 +13,19 @@
 
 ## 🌌 Branding & Vision
 
-> **"One is All, All is One" (万物归一，一生万物)**
-> —— This Zen philosophy is the core essence of **1Agents**. In the next era of AI, we no longer need endless isolated chat windows. Instead, we need a single unified intelligence hub that connects both the digital and physical worlds.
+> **"One Person, Infinite Agents"**
+> —— This is the core philosophy of **1Agents**. In the next era of AI, we no longer need endless isolated chat windows. Instead, we need a single unified intelligence hub with structured role delegation, automated flows, and connection across both digital workloads and physical devices.
+
+### 👥 Who We Are
+We are a team of developers and AI visionaries who firmly believe in the era of the **"Super Individual"**. We believe that future productivity is defined not by how many human employees you have, but by how effectively you orchestrate your personal AI legion. 1Agents is built specifically for Indie Hackers, Solopreneurs, and knowledge workers who want to run virtual organizations without getting bogged down by operational overhead. We are dedicated to practicing the design philosophies of **"Loop Engineering"** and **"Proactive Agents"**, shifting from traditional one-shot prompt engineering towards autonomous, self-correcting, event-triggered AI systems.
+
+### 🔄 Core Architecture: The A2A Collaboration Model
+As the **sole owner** of 1Agents, you set the goals, while your virtual AI team coordinates and executes:
+
+*   **PMO (Project Management Office)**: Your central command entry point. It collects incoming information (Inbox), filters noise, and facilitates project launches.
+*   **PM (Project Manager)**: Outlines goals, milestones, and roadmaps for projects, planning and breaking down requirement pools into actionable tasks.
+*   **Executor**: Focuses entirely on completing assigned tasks, modifying source code, and running local tools/compilers.
+*   **Verifier**: Serves as the quality gate, validating outputs (passing or rejecting with feedback) to ensure zero-defect delivery.
 
 We are standing at a tipping point where **"AI will make everything compatible."** As system CLI tools, legacy applications, and desktop softwares become API-driven through lightweight middleware, AI agents are evolving into the universal adapters connecting all systems and hardware.
 
