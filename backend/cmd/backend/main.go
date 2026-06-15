@@ -127,7 +127,7 @@ func main() {
 		if activeAddr, activePid, isRunning := checkDaemonRunning(); isRunning {
 			log.Printf("[main] 1Agents daemon is already running at http://%s (PID %d).", activeAddr, activePid)
 			log.Printf("[main] Starting Gateway Reverse Proxy on %s -> http://%s...", cfg.ListenAddr, activeAddr)
-			startReverseProxy(cfg.ListenAddr, activeAddr)
+			startReverseProxy(cfg.ListenAddr, activeAddr, cfg.StaticDir)
 			return
 		}
 	}
@@ -476,7 +476,7 @@ func checkDaemonRunning() (string, int, bool) {
 }
 
 // startReverseProxy sets up a lightweight HTTP and WebSocket forwarding server
-func startReverseProxy(listenAddr, targetAddr string) {
+func startReverseProxy(listenAddr, targetAddr string, staticDir string) {
 	if strings.HasPrefix(targetAddr, ":") {
 		targetAddr = "127.0.0.1" + targetAddr
 	} else if strings.HasPrefix(targetAddr, "0.0.0.0:") {
@@ -498,12 +498,49 @@ func startReverseProxy(listenAddr, targetAddr string) {
 		req.Host = targetURL.Host
 	}
 
+	var handler http.Handler = proxy
+
+	if staticDir != "" {
+		staticFS := http.FileServer(http.Dir(staticDir))
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				proxy.ServeHTTP(w, r)
+				return
+			}
+			// Clean the path to prevent directory traversal
+			cleanedPath := filepath.Clean(r.URL.Path)
+			filePath := filepath.Join(staticDir, cleanedPath)
+
+			isStatic := false
+			if info, err := os.Stat(filePath); err == nil {
+				if !info.IsDir() {
+					isStatic = true
+				} else {
+					// Check for index.html in the directory
+					indexFile := filepath.Join(filePath, "index.html")
+					if indexInfo, indexErr := os.Stat(indexFile); indexErr == nil && !indexInfo.IsDir() {
+						isStatic = true
+					}
+				}
+			}
+
+			if isStatic {
+				staticFS.ServeHTTP(w, r)
+			} else {
+				proxy.ServeHTTP(w, r)
+			}
+		})
+	}
+
 	server := &http.Server{
 		Addr:    listenAddr,
-		Handler: proxy,
+		Handler: handler,
 	}
 
 	log.Printf("[proxy] Reverse proxy listening on %s", listenAddr)
+	if staticDir != "" {
+		log.Printf("[proxy] Serving static assets from %s", staticDir)
+	}
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("[proxy] FATAL: reverse proxy failed: %v", err)
 	}
