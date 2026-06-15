@@ -302,29 +302,28 @@ export function TaskDetail({
             </div>
 
             <div class="gh-header-meta">
-                <span class={`gh-status-badge ${closed ? 'closed' : 'open'}`}>
-                    {closed ? 'Closed' : 'Open'}
-                </span>
+                <span class={`gh-status-badge ${closed ? 'closed' : 'open'}`}>{closed ? 'Closed' : 'Open'}</span>
                 <span class="gh-meta-text">
-                    <strong>{task.createdBy || 'scottzx'}</strong> {closed ? '关闭了此任务' : '创建了此任务'} · {replies.length} 个回复
+                    <strong>{task.createdBy || 'scottzx'}</strong> {closed ? '关闭了此任务' : '创建了此任务'} ·{' '}
+                    {replies.length} 个回复
                 </span>
             </div>
 
             {/* GitHub style tab navigation */}
             <div class="gh-detail-tabs">
-                <button 
+                <button
                     class={`gh-tab-btn ${activeTab === 'conversation' ? 'active' : ''}`}
                     onClick={() => setActiveTab('conversation')}
                 >
                     💬 Conversation <span class="gh-tab-badge">{replies.length + (task.description ? 1 : 0)}</span>
                 </button>
-                <button 
+                <button
                     class={`gh-tab-btn ${activeTab === 'subtasks' ? 'active' : ''}`}
                     onClick={() => setActiveTab('subtasks')}
                 >
                     📋 Checklist / Subtasks <span class="gh-tab-badge">{subtasks.length}</span>
                 </button>
-                <button 
+                <button
                     class={`gh-tab-btn ${activeTab === 'relations' ? 'active' : ''}`}
                     onClick={() => setActiveTab('relations')}
                 >
@@ -365,7 +364,9 @@ export function TaskDetail({
                                             <textarea
                                                 rows={5}
                                                 value={descDraft}
-                                                onInput={(e: Event) => setDescDraft((e.target as HTMLTextAreaElement).value)}
+                                                onInput={(e: Event) =>
+                                                    setDescDraft((e.target as HTMLTextAreaElement).value)
+                                                }
                                             />
                                             <div class="task-desc-editor-actions">
                                                 <button onClick={saveDescription}>保存</button>
@@ -384,7 +385,9 @@ export function TaskDetail({
                             <div class="gh-comment-card is-user">
                                 <div class="gh-comment-header">
                                     <div class="gh-comment-header-left">
-                                        <span>✅ <strong>验收标准 (Acceptance Criteria)</strong></span>
+                                        <span>
+                                            ✅ <strong>验收标准 (Acceptance Criteria)</strong>
+                                        </span>
                                     </div>
                                     <div class="gh-comment-actions">
                                         {!editingAccept.value && (
@@ -406,7 +409,9 @@ export function TaskDetail({
                                             <textarea
                                                 rows={3}
                                                 value={acceptDraft}
-                                                onInput={(e: Event) => setAcceptDraft((e.target as HTMLTextAreaElement).value)}
+                                                onInput={(e: Event) =>
+                                                    setAcceptDraft((e.target as HTMLTextAreaElement).value)
+                                                }
                                             />
                                             <div class="task-desc-editor-actions">
                                                 <button onClick={saveAcceptance}>保存</button>
@@ -434,8 +439,12 @@ export function TaskDetail({
                                         <div key={rp.id} class={`gh-comment-card ${isAgent ? 'is-agent' : 'is-user'}`}>
                                             <div class="gh-comment-header">
                                                 <div class="gh-comment-header-left">
-                                                    <span class="gh-avatar">{getInitials(rp.author.name || rp.author.kind)}</span>
-                                                    <span class="gh-author-name">{rp.author.name || rp.author.kind}</span>
+                                                    <span class="gh-avatar">
+                                                        {getInitials(rp.author.name || rp.author.kind)}
+                                                    </span>
+                                                    <span class="gh-author-name">
+                                                        {rp.author.name || rp.author.kind}
+                                                    </span>
                                                     <span>回复于 {fmtDate(rp.createdAt)}</span>
                                                 </div>
                                                 <div class="gh-comment-actions">
@@ -480,21 +489,24 @@ export function TaskDetail({
                                         {task.status === 'completed' && '任务执行已全部完成'}
                                         {task.status === 'running' && '智能体正在积极执行中'}
                                         {task.status === 'failed' && '智能体执行失败'}
-                                        {(task.status === 'pending' || task.status === 'queued') && '任务处于队列中，已准备好执行'}
+                                        {(task.status === 'pending' || task.status === 'queued') &&
+                                            '任务处于队列中，已准备好执行'}
                                         {task.status === 'cancelled' && '智能体执行已取消'}
                                         {task.status === 'blocked' && '任务前置依赖受阻'}
                                     </h4>
-                                    <p class="gh-merge-desc">
-                                        系统自检结果与智能体状态：
-                                    </p>
-                                    
+                                    <p class="gh-merge-desc">系统自检结果与智能体状态：</p>
+
                                     <div class="gh-check-item">
-                                        <span class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}>
+                                        <span
+                                            class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}
+                                        >
                                             {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
                                         </span>
-                                        <span>子任务检查：{completedSubtasks}/{totalSubtasks} 个子任务已完成</span>
+                                        <span>
+                                            子任务检查：{completedSubtasks}/{totalSubtasks} 个子任务已完成
+                                        </span>
                                     </div>
-                                    
+
                                     <div class="gh-check-item">
                                         <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
                                             {hasAcceptance ? '✓' : 'warn'}
@@ -506,7 +518,10 @@ export function TaskDetail({
                                         <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>
                                             {allDepsDone ? '✓' : 'fail'}
                                         </span>
-                                        <span>前置依赖：{allDepsDone ? '所有依赖已解决' : `${pendingDeps} 个前置依赖处于等待中`}</span>
+                                        <span>
+                                            前置依赖：
+                                            {allDepsDone ? '所有依赖已解决' : `${pendingDeps} 个前置依赖处于等待中`}
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="gh-merge-actions">
@@ -516,7 +531,10 @@ export function TaskDetail({
                                         </button>
                                     )}
                                     {task.status === 'running' && (
-                                        <button class="gh-merge-btn btn-running" onClick={() => patchTask({ status: 'cancelled' })}>
+                                        <button
+                                            class="gh-merge-btn btn-running"
+                                            onClick={() => patchTask({ status: 'cancelled' })}
+                                        >
                                             取消执行
                                         </button>
                                     )}
@@ -536,14 +554,14 @@ export function TaskDetail({
                             {/* GitHub style composer */}
                             <div class="gh-composer-card">
                                 <div class="gh-composer-tabs">
-                                    <button 
+                                    <button
                                         class={`gh-composer-tab ${composerTab === 'write' ? 'active' : ''}`}
                                         type="button"
                                         onClick={() => setComposerTab('write')}
                                     >
                                         Write
                                     </button>
-                                    <button 
+                                    <button
                                         class={`gh-composer-tab ${composerTab === 'preview' ? 'active' : ''}`}
                                         type="button"
                                         onClick={() => setComposerTab('preview')}
@@ -551,16 +569,20 @@ export function TaskDetail({
                                         Preview
                                     </button>
                                 </div>
-                                
+
                                 <div class="gh-composer-body">
                                     {composerTab === 'write' ? (
                                         <textarea
                                             rows={4}
                                             placeholder={
-                                                closed ? 'Issue 已关闭，仅可评论...' : '写回复：评论、布置新一轮工作，或追问已有会话...'
+                                                closed
+                                                    ? 'Issue 已关闭，仅可评论...'
+                                                    : '写回复：评论、布置新一轮工作，或追问已有会话...'
                                             }
                                             value={replyText}
-                                            onInput={(e: Event) => setReplyText((e.target as HTMLTextAreaElement).value)}
+                                            onInput={(e: Event) =>
+                                                setReplyText((e.target as HTMLTextAreaElement).value)
+                                            }
                                         />
                                     ) : (
                                         <div class="gh-preview-box">
@@ -600,7 +622,11 @@ export function TaskDetail({
                                                 closed || task.sessions.length === 0 ? 'disabled' : ''
                                             }`}
                                             title={
-                                                closed ? 'Issue 已关闭，先重新打开' : task.sessions.length === 0 ? '还没有会话可追问' : ''
+                                                closed
+                                                    ? 'Issue 已关闭，先重新打开'
+                                                    : task.sessions.length === 0
+                                                      ? '还没有会话可追问'
+                                                      : ''
                                             }
                                         >
                                             <input
@@ -622,7 +648,9 @@ export function TaskDetail({
                                             <select
                                                 class="follow-up-target"
                                                 value={followUpTarget}
-                                                onChange={(e: Event) => setFollowUpTarget((e.target as HTMLSelectElement).value)}
+                                                onChange={(e: Event) =>
+                                                    setFollowUpTarget((e.target as HTMLSelectElement).value)
+                                                }
                                             >
                                                 {task.sessions.map((s, i) => (
                                                     <option key={s.id} value={s.id}>
@@ -633,16 +661,12 @@ export function TaskDetail({
                                         )}
                                     </div>
                                     <div class="gh-composer-actions">
-                                        <button 
-                                            type="button" 
-                                            class="gh-close-btn"
-                                            onClick={toggleIssueState}
-                                        >
+                                        <button type="button" class="gh-close-btn" onClick={toggleIssueState}>
                                             {closed ? 'Reopen Issue' : 'Close Issue'}
                                         </button>
-                                        <button 
+                                        <button
                                             type="button"
-                                            class="gh-submit-btn" 
+                                            class="gh-submit-btn"
                                             disabled={submitting || !replyText.trim()}
                                             onClick={submitReply}
                                         >
@@ -664,16 +688,32 @@ export function TaskDetail({
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {subtasks.map(st => (
-                                        <div key={st.id} class="gh-comment-card" style={{ marginBottom: '8px', padding: '12px' }}>
+                                        <div
+                                            key={st.id}
+                                            class="gh-comment-card"
+                                            style={{ marginBottom: '8px', padding: '12px' }}
+                                        >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <input type="checkbox" checked={st.status === 'completed'} disabled />
-                                                <span class={`priority-badge priority-${st.priority || 'medium'}`} style={{ fontSize: '10px' }}>
+                                                <span
+                                                    class={`priority-badge priority-${st.priority || 'medium'}`}
+                                                    style={{ fontSize: '10px' }}
+                                                >
                                                     {PRIORITY_LABELS[st.priority || 'medium']}
                                                 </span>
-                                                <span style={{ fontSize: '13.5px', textDecoration: st.status === 'completed' ? 'line-through' : 'none' }}>
+                                                <span
+                                                    style={{
+                                                        fontSize: '13.5px',
+                                                        textDecoration:
+                                                            st.status === 'completed' ? 'line-through' : 'none',
+                                                    }}
+                                                >
                                                     {st.title}
                                                 </span>
-                                                <span class={`task-status-badge ${st.status}`} style={{ marginLeft: 'auto', fontSize: '10.5px' }}>
+                                                <span
+                                                    class={`task-status-badge ${st.status}`}
+                                                    style={{ marginLeft: 'auto', fontSize: '10.5px' }}
+                                                >
                                                     {STATUS_LABELS[st.status] || st.status}
                                                 </span>
                                             </div>
@@ -686,28 +726,62 @@ export function TaskDetail({
 
                     {activeTab === 'relations' && (
                         <div class="gh-relations-tab-content">
-                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>
-                                任务关联与引文关系
-                            </h4>
-                            
+                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>任务关联与引文关系</h4>
+
                             <div style={{ marginBottom: '24px' }}>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>主动关联任务 (Outgoing Relations)</h5>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                                    主动关联任务 (Outgoing Relations)
+                                </h5>
                                 {outgoing.length === 0 ? (
-                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>暂无主动关联项。</div>
+                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>
+                                        暂无主动关联项。
+                                    </div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '8px',
+                                            marginBottom: '16px',
+                                        }}
+                                    >
                                         {outgoing.map(link => {
                                             const tgt = taskById.get(link.target);
                                             return (
-                                                <div key={`${link.target}-${link.rel}`} class="task-link-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                                                    <span class={`task-link-rel rel-${link.rel}`} style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
+                                                <div
+                                                    key={`${link.target}-${link.rel}`}
+                                                    class="task-link-row"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        padding: '8px',
+                                                        border: '1px solid var(--border-color)',
+                                                        borderRadius: '6px',
+                                                    }}
+                                                >
+                                                    <span
+                                                        class={`task-link-rel rel-${link.rel}`}
+                                                        style={{
+                                                            fontSize: '11px',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                        }}
+                                                    >
                                                         {LINK_REL_LABELS[link.rel] || link.rel}
                                                     </span>
                                                     <button
                                                         class="task-link-target"
                                                         disabled={!tgt || !onNavigate}
                                                         onClick={() => tgt && onNavigate && onNavigate(tgt.id)}
-                                                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', textAlign: 'left', fontWeight: '500' }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: 'var(--accent-color)',
+                                                            cursor: 'pointer',
+                                                            textAlign: 'left',
+                                                            fontWeight: '500',
+                                                        }}
                                                     >
                                                         {linkLabel(tgt)}
                                                     </button>
@@ -715,7 +789,14 @@ export function TaskDetail({
                                                         class="task-link-remove"
                                                         title="移除关联"
                                                         onClick={() => removeLink(link)}
-                                                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', marginLeft: 'auto' }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: 'var(--text-muted)',
+                                                            cursor: 'pointer',
+                                                            fontSize: '16px',
+                                                            marginLeft: 'auto',
+                                                        }}
                                                     >
                                                         ×
                                                     </button>
@@ -727,23 +808,52 @@ export function TaskDetail({
                             </div>
 
                             <div style={{ marginBottom: '24px' }}>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>被动引用任务 (Backlinks / Referenced by)</h5>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                                    被动引用任务 (Backlinks / Referenced by)
+                                </h5>
                                 {backlinks.length === 0 ? (
-                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>暂无被动引用项。</div>
+                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>
+                                        暂无被动引用项。
+                                    </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {backlinks.map(src => {
                                             const link = (src.links || []).find(l => l.target === task.id);
                                             return (
-                                                <div key={src.id} class="task-link-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                                                    <span class={`task-link-rel rel-${link?.rel || 'relates'}`} style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
+                                                <div
+                                                    key={src.id}
+                                                    class="task-link-row"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        padding: '8px',
+                                                        border: '1px solid var(--border-color)',
+                                                        borderRadius: '6px',
+                                                    }}
+                                                >
+                                                    <span
+                                                        class={`task-link-rel rel-${link?.rel || 'relates'}`}
+                                                        style={{
+                                                            fontSize: '11px',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                        }}
+                                                    >
                                                         {LINK_REL_LABELS[link?.rel || 'relates']}
                                                     </span>
                                                     <button
                                                         class="task-link-target"
                                                         disabled={!onNavigate}
                                                         onClick={() => onNavigate && onNavigate(src.id)}
-                                                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', textAlign: 'left', fontWeight: '500' }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: 'var(--accent-color)',
+                                                            cursor: 'pointer',
+                                                            textAlign: 'left',
+                                                            fontWeight: '500',
+                                                        }}
                                                     >
                                                         {linkLabel(src)}
                                                     </button>
@@ -762,7 +872,15 @@ export function TaskDetail({
                                         class="task-link-target-select"
                                         value={linkTarget}
                                         onChange={(e: Event) => setLinkTarget((e.target as HTMLSelectElement).value)}
-                                        style={{ flex: 1, minWidth: '150px', padding: '6px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                                        style={{
+                                            flex: 1,
+                                            minWidth: '150px',
+                                            padding: '6px',
+                                            borderRadius: '6px',
+                                            border: '1px solid var(--border-color)',
+                                            backgroundColor: 'var(--bg-card)',
+                                            color: 'var(--text-main)',
+                                        }}
                                     >
                                         <option value="">选择目标…</option>
                                         {linkOptions.map(t => (
@@ -774,17 +892,33 @@ export function TaskDetail({
                                     <select
                                         class="task-link-rel-select"
                                         value={linkRel}
-                                        onChange={(e: Event) => setLinkRel((e.target as HTMLSelectElement).value as LinkRel)}
-                                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                                        onChange={(e: Event) =>
+                                            setLinkRel((e.target as HTMLSelectElement).value as LinkRel)
+                                        }
+                                        style={{
+                                            padding: '6px',
+                                            borderRadius: '6px',
+                                            border: '1px solid var(--border-color)',
+                                            backgroundColor: 'var(--bg-card)',
+                                            color: 'var(--text-main)',
+                                        }}
                                     >
                                         <option value="relates">关联</option>
                                         <option value="closes">修复 / 关闭</option>
                                     </select>
-                                    <button 
-                                        class="gh-submit-btn" 
-                                        disabled={!linkTarget} 
+                                    <button
+                                        class="gh-submit-btn"
+                                        disabled={!linkTarget}
                                         onClick={addLink}
-                                        style={{ padding: '6px 14px', borderRadius: '6px', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: '600', cursor: 'pointer' }}
+                                        style={{
+                                            padding: '6px 14px',
+                                            borderRadius: '6px',
+                                            backgroundColor: 'var(--accent-color)',
+                                            color: '#fff',
+                                            border: 'none',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                        }}
                                     >
                                         添加关联
                                     </button>
@@ -863,15 +997,28 @@ export function TaskDetail({
                         <div class="gh-sidebar-head">
                             <span>Dates & Schedule</span>
                         </div>
-                        <div class="gh-sidebar-body" style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        <div
+                            class="gh-sidebar-body"
+                            style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px',
+                                fontSize: '12px',
+                                color: 'var(--text-secondary)',
+                            }}
+                        >
                             {task.recurrence && <div>🔁 {recurrenceLabel(task.recurrence)}</div>}
                             {(task.retryCount ?? 0) > 0 && (
                                 <div>
                                     重试 {task.retryCount}/{task.maxRetries ?? 1}
                                 </div>
                             )}
-                            <div>计划: {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}</div>
-                            <div>实际: {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}</div>
+                            <div>
+                                计划: {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}
+                            </div>
+                            <div>
+                                实际: {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}
+                            </div>
                         </div>
                     </div>
 
@@ -901,11 +1048,16 @@ export function TaskDetail({
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'space-between',
-                                                width: '100%'
+                                                width: '100%',
                                             }}
                                         >
-                                            <span>#{idx + 1} {s.agentType}</span>
-                                            <span class={`task-status-badge ${s.status === 'running' ? 'running' : 'completed'}`} style={{ fontSize: '10px' }}>
+                                            <span>
+                                                #{idx + 1} {s.agentType}
+                                            </span>
+                                            <span
+                                                class={`task-status-badge ${s.status === 'running' ? 'running' : 'completed'}`}
+                                                style={{ fontSize: '10px' }}
+                                            >
                                                 {s.status === 'running' ? '运行中' : '空闲'}
                                             </span>
                                         </button>
