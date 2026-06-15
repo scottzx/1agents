@@ -1,7 +1,8 @@
-# 一芥智能体协同系统 (1Agents) 🚀
+# 1Agents 🚀
 
-### 一人执掌，无限智能 —— 构建你专属的个人 AI 组织 (One Person, Infinite Agents)
-**1Agents** 是一个开源、自托管的 **分布式个人 AI 组织与智能工作空间**。它打破了传统 AI 助手“一问一答”的简易聊天框局限，首创 **A2A (Agent-to-Agent)** 自动协同流程，让你可以像“经营一家一人公司”一样，以唯一的老板身份，指挥由 PMO、PM、执行者、校验者组成的 AI 团队，有条不紊地将庞杂的信息、想法与任务流推进落地。
+### 一人成军的 AI 原生办公软件 (One Person, Infinite Agents)
+
+**1Agents** 是一款开源、自托管的 **一人成军的 AI 原生办公软件**。你以唯一老板的身份，指挥一支由 PMO、PM、执行者、校验者组成的 AI 团队，通过 **A2A (Agent-to-Agent)** 自动协同，把庞杂的想法、信息与任务流有条不紊地推进落地——一个人，活成一支军队。
 
 **简体中文** | [English](README_EN.md)
 
@@ -11,270 +12,163 @@
 
 ---
 
-## 🌌 品牌起源与愿景 (Branding & Vision)
+## 🌌 愿景 (Vision)
 
-> **“一人执掌，无限智能” (One Person, Infinite Agents)**
-> —— 这就是 **1Agents** 的核心哲学。在 AI 时代，我们不再需要被无数个零散、孤立的对话框割裂精力，而是需要一个有组织、有角色分工、能自动流转的虚拟团队，来承载和连接我们的工作流与异构设备。
+> **“一人成军” (One Person, Infinite Agents)** —— 在 AI 时代，生产力不再受限于人手多少，而取决于你如何编排你的 AI 军团。
 
-### 👥 我们是谁？
-我们是一群深信 **“超级个体”** 时代的开发者与 AI 探索者。我们认为未来的生产力不再受限于人手的多少，而取决于你如何管理和编排你的 AI 军团。1Agents 正为独立开发者 (Indie Hackers)、单干创始人 (Solopreneurs) 以及所有不想被琐碎杂事淹没的知识工作者而生。我们致力于实践 **“环路工程” (Loop Engineering)** 与 **“主动式智能体” (Proactive Agents)** 的设计哲学，从传统的单次提示词交互转向设计自主纠偏、闭环反馈和主动运转的 AI 系统。
+1Agents 为独立开发者 (Indie Hackers)、单干创始人 (Solopreneurs) 与所有不想被琐事淹没的知识工作者而生。我们实践 **环路工程 (Loop Engineering)** 与 **主动式智能体 (Proactive Agents)**：从单次提示词交互，转向自主纠偏、闭环反馈、主动运转的 AI 系统。
 
-### 🔄 核心设计：A2A 协同组织模型
-在 1Agents 中，你的角色是 **唯一的老板 (Owner)**，底下的 AI 团队按以下协作架构自主推进任务：
+### 🔄 A2A 协同组织模型
+你是 **唯一的老板 (Owner)**，AI 团队按角色分工自主推进：
 
-*   **PMO (总裁办总管)**：你的全局对话入口。收拢散落信息 (Inbox)，进行过滤并建议立项。
-*   **PM (项目经理)**：负责将创意和需求拆解为包含目标、里程碑和路线图的具体 Project，并进行任务排期。
-*   **Executor (执行者)**：专注于具体的开发或任务执行，直接修改文件与执行命令。
-*   **Verifier (校验者)**：只负责质量验收（通过或打回），确保最终交付物符合标准。
+* **PMO（总裁办总管）**：全局对话入口，收拢散落信息 (Inbox)、过滤并建议立项。
+* **PM（项目经理）**：把需求拆解为含目标、里程碑、路线图的 Project，并排期。
+* **Executor（执行者）**：执行具体开发任务，直接改文件、跑命令。
+* **Verifier（校验者）**：只做质量验收（通过或打回），把关交付标准。
 
-我们正处在一个**“AI 将兼容一切”**的拐点。随着系统工具 CLI 化、传统软件 API化、中间件的快速普及，AI 智能体正在成为连接一切系统与设备的通用适配器。
+它不止是远程终端，更是一个 **开源分布式智能体协同网络**，通过浏览器统一管理跨平台节点：
 
-**1Agents** 绝不仅是一个简单的远程终端，而是一个**开源分布式智能体协同网络**。它致力于打破设备与地域的物理界限，通过一个浏览器（Web 界面），将不同硬件平台（Mac、Linux、Windows 甚至未来的单片机/具身智能设备）上的 Agent 统一管理、无缝调度、接力协同：
-- **💻 Mac 节点**：化身你的“日常办公专家”，深度调用 iCloud 闪电同步、分析系统日志、执行 AppleScript 或快捷指令。
-- **🐧 Linux VPS 节点**：化身你的“后台重负载专家”，24 小时在线提供容器编排、数据库管理及长周期后台任务调度。
-- **🪟 Windows 节点**：化身你的“专业工具人”，通过 RPA 自动化操控复杂的传统桌面专业软件与 Windows 原生环境。
-- **🔌 具身智能/单片机**：在未来，它还将延伸至物理边缘，通过传感器和物理执行器，将智能体带入真实的工作物理现场。
+* **💻 Mac**：日常办公专家——iCloud 同步、系统日志、AppleScript / 快捷指令。
+* **🐧 Linux VPS**：后台重负载专家——24h 在线，容器编排、数据库、长周期任务。
+* **🪟 Windows**：专业工具人——RPA 自动化操控传统桌面软件与原生环境。
+* **🔌 具身智能 / 单片机**：未来延伸至物理边缘，把智能体带入真实工作现场。
 
 ---
 
-## 🧭 项目现状与核心里程碑 (Current Status & Roadmap)
+## 🧭 项目现状与下一步 (Status & Roadmap)
 
-**1Agents** 并非一蹴而就的抽象网络，而是一个脚踏实地的、面向未来的分布式智能体协同系统。
+**现在**：1Agents 是一个免配置、多端协同的轻量级 Web 工作台——零延迟 Web 终端（`ttyd + tmux`）、全功能文件浏览器（HTML/PDF 高清预览）、原生语音输入、全自动 SSL，能统一承载你本地已有的 AI 智能体（Claude Code、Codex CLI、OpenClaw 等）。
 
-### 1. 我们现在是什么（What We Are Today）
-今天，1Agents 是一个**专为开发者与 AI 协同设计的轻量级、免配置、多端协同 Web 工作台**。它提供了极致响应的零延迟 Web 终端（融合 `ttyd + tmux`）、全功能 Web 文件浏览器（支持 HTML/PDF 高清预览）、原生语音输入以及全自动 SSL 安全通道，能够完美承载并统一管理你本地已有的 AI 智能体（如 Claude Code、Codex CLI、OpenClaw 等）。
-
-### 2. 我们未来去向哪里（Next Major Milestone: 1Agents Distributed Orchestrator）
-我们下一步将重点攻克并实现 **1Agents 分布式任务与资源编排中枢 (Distributed Orchestrator)**。这不仅是一个底层的智能体通讯协议，而是一个真正实现**“用户提要求 -> 中枢做编排 -> 分布式执行 -> 统一验收反馈”**的智能调度工作空间：
-
-- **👤 用户意图输入 (Intent Capture)**：用户只需在 Unified Portal（统一门户网页/App）中提交高阶任务目标或想法。
-- **📋 任务编排 (Task Orchestration)**：编排中枢利用大语言模型（LLM）将复杂目标智能拆解为多步子任务与执行流。
-- **🧩 资源/智能体编排 (Resource/Agent Orchestration)**：编排中枢感知当前网络中所有在线设备（macOS, Linux, Windows, MCU 等）上运行的本地 Agent，并根据其**异构系统原生工具能力**（如 Mac 节点读取本地 iCloud 数据，Linux 节点跑 Docker 容器，Windows 节点控制专业桌面软件 API）进行最优的资源派发。
-- **🛡️ 验收执行与反馈 (Execution, Validation & Synthesis)**：各个异构设备节点在本地执行任务，结果回传至中枢统一验收合成，最终无缝反馈给用户。
-
-而底层的**智能体通讯网络协议 (Agent Protocol Network)**，正是支撑起这一套分布式多端编排与调度的最核心基石。我们将通过这个闭环，真正让“万物归一，一生万物”的 AI 协同在工作现场落地。
+**下一步**：实现 **分布式任务与资源编排中枢 (Distributed Orchestrator)**——「用户提需求 → 中枢做编排 → 分布式执行 → 统一验收反馈」的闭环：LLM 把高阶目标拆解为子任务，按各节点（macOS/Linux/Windows/MCU）的原生工具能力做最优派发，结果回传中枢统一合成。底层的 **智能体通讯网络协议 (Agent Protocol Network)** 是支撑这套多端编排的核心基石。
 
 ---
 
-## 🌟 核心能力与架构优势
+## 🌟 核心能力
 
-- ⚡ **零延迟 Web 终端 (ttyd + tmux 深度融合)**：
-  - 基于 `xterm.js` 与高性能 WebSocket，继承 `ttyd` 的极致响应速度。
-  - **终端会话自动持久化**：内置 `tmux` 状态管理，即便意外断网、浏览器刷新，所有终端进程与会话状态均毫秒级还原，绝不断线。
-- 📂 **全功能 Web 文件浏览器 & 编辑器**：
-  - **极速浏览**：左侧树形目录 + 核心区平铺视图，支持文件极速检索与类型筛选。
-  - **全能预览**：内置文本、图片浏览器，**支持 HTML & PDF 文件的原生高清渲染与 16:9 新窗口/标签页全屏预览**。
-  - **在线编辑**：零配置的高亮语法编辑器，支持文件直接重命名、保存与下载。
-- 📁 **动态多工作区管理**：
-  - 支持创建、切换与删除多个工作区。
-  - **系统级 Folder Picker 融合**：深度集成浏览器原生文件/文件夹选择 API，直接导入本地任意开发文件夹。
-  - 工作区切换时，**终端会话与文件浏览器上下文瞬间并行秒级同步**。
-- 🎙️ **原生 Speech-to-Text 语音输入**：
-  - 内置 Web Speech 原生语音识别，支持中英文快捷听写，打造“声控智能体”的流畅交互。
-- 🔒 **全自动 SSL/TLS 证书网络安全**：
-  - **自签名证书闪电生成**：通过 `--ssl` 启动，系统在没有证书时会自动生成高强度 ECDSA P-256 自签名证书，有效期达 10 年，适配所有局域网 IP。
-  - **Tailscale 自动绿锁**：自动识别并匹配 Tailscale 的 Let's Encrypt 官方证书，为跨设备连接提供真正的浏览器绿色安全标志 🔒。
-- 🤖 **CC-Connect 多渠道 AI 消息桥接**：
-  - 深度集成 [cc-connect](https://github.com/scottzx/cc-connect) 模块，支持将工作区动态注册为项目。
-  - 通过反向代理，实现与飞书、Telegram、Discord、Slack 等主流平台的无缝双向消息通信。
-  - 智能体与远程控制台主题、语言等配置多维无缝同步。
-- 🌐 **极简公网安全通道 (On-Demand Web Tunnel)**：
-  - **一键极速发布**：支持通过 `--tunnel` 选项在启动时自动拉起安全公网隧道，或直接通过 `cc-connect` 智能体对话拉起临时公网地址，免去任何路由器端口映射、防火墙或公网 IP 配置。
-  - **云端免安装/极速体验**：Go 后端智能感知，若本地无 `cloudflared`，将以极佳的实时进度日志自动安全拉取下载（约 30MB，国外 2~5 秒，国内 15~30 秒，二次启动 0.1 秒秒开）；若系统已有安装（如 Homebrew），则闪电复用、直接秒开。
-  - **动态安全认证**：自动生成高强度动态会话 Token 并支持终端渲染高对比度二维码，移动端扫码即连。
+- ⚡ **零延迟 Web 终端 (ttyd + tmux)**：基于 `xterm.js` + WebSocket，内置 `tmux` 状态管理，断网/刷新后终端会话毫秒级还原，绝不断线。
+- 📂 **全功能文件浏览器 & 编辑器**：树形目录 + 平铺视图，极速检索；内置文本/图片预览，**支持 HTML & PDF 原生高清渲染与 16:9 全屏预览**；零配置高亮编辑器，支持重命名、保存、下载。
+- 📁 **动态多工作区**：创建/切换/删除多工作区，深度集成浏览器原生 **Folder Picker** 直接导入本地文件夹；切换时终端与文件上下文秒级同步。
+- 🎙️ **原生语音输入 (Speech-to-Text)**：内置 Web Speech 识别，中英文快捷听写。
+- 🔒 **全自动 SSL/TLS**：`--ssl` 启动时无证书则自动生成 10 年期 ECDSA P-256 自签名证书；自动识别 Tailscale 的 Let's Encrypt 官方证书，实现跨设备浏览器绿锁 🔒。
+- 🤖 **CC-Connect 多渠道消息桥接**：集成 [cc-connect](https://github.com/scottzx/cc-connect)，把工作区注册为项目，与飞书、Telegram、Discord、Slack 等平台双向通信，主题/语言多维同步。
+- 🌐 **按需公网安全通道**：`--tunnel` 或 cc-connect 对话即可拉起 Cloudflare 安全隧道，免端口映射/公网 IP；本地无 `cloudflared` 时自动下载（约 30MB），并生成动态会话 Token 与终端二维码，扫码即连。
 
 ---
 
-## 📆 近一周 Git 更新亮点 (Weekly Features)
+## ⚙️ 前置依赖 (Prerequisites)
 
-本周项目经历了重大重构和体验升级，以下是最新加入的核心功能：
-
-1. **📄 HTML/PDF 高清预览**：文件管理系统新增 HTML 和 PDF 文件预览支持，且支持新开独立窗口/标签页以 16:9 黄金比例全屏浏览。
-2. **🎙️ 原生语音输入与兼容优化**：全新集成 Speech-to-Text 功能并提供多语言切换。同时编写了兼容性指南，明确了 macOS Safari 本地离线引擎的秒级响应优势及 Chrome/Edge 依赖 Google 云端识别易在内网报 `network` 错误的原理。
-3. **🔒 零配置安全证书与 Tailscale 融合**：新增 `--ssl` 证书自动生成器，支持零配置生成 ECDSA P-256 10 年期证书；新增 Tailscale 官方证书的自动扫描与发现逻辑，实现真正的跨设备“绿色安全绿锁”访问。
-4. **📱 移动端终端快捷键与交互大优化**：
-   - 彻底移除了臃肿的终端顶部栏，将 tmux 鼠标滚动/选择模式切换按钮移入顶部全局工作区标题栏。
-   - 优化了手机端 Quick Keys 虚拟键盘布局，折叠了子命令菜单，并整合了方向键和退格键，新增 direct `claude` 极速命令。
-   - 手机端切换侧边栏会话时，侧边栏支持自动优雅收起，最大化终端可视面积。
-5. **⚙️ 快速工作区 Folder Picker**：抛弃了陈旧的文本路径输入框，在新建工作区时直接唤起操作系统原生的 Folder Picker 文件夹选择器。
-6. **🚀 并行加载与启动优化**：优化了组件的并发初始化逻辑，工作区与终端会话实现并行异步加载，大幅缩短首屏白屏时间，并支持智能记忆/默认工作区选择。
-7. **🤖 CC-Connect 跨域/反向代理升级**：支持工作区动态项目注册和 API POST 请求语言/主题同步，极大提升了 iframe 嵌入的整体感。
-8. **📦 自动化 NPM 发布与 Node 24 适配**：推出了 multi-platform release CI/CD 自动化构建与统一的 NPM 包装包 `@scottzx/1agents`。适配了最新的 Node 24 运行环境，并优化了 Github Actions 上的 Yarn 3 缓存。
-9. **🌐 按需公网 Web 隧道与智能下载优化**：新增 `--tunnel` 启动参数与 cc-connect 聊天智能唤醒，支持在无公网 IP/无证书环境下瞬间发布临时互联网安全访问链接；内置 Go 自动下载云端引擎（带有细致的进度百分比展示与系统级 `PATH` 智能复用），首次拉起极速自动适配，二次闪电秒开。
-
----
-
-## ⚙️ 前置系统依赖 (Prerequisites)
-
-为了能够完美享受到终端会话自动持久化（断线重连）的优秀体验，本系统在运行时依赖于 **`tmux`** 命令行工具。由于 `tmux` 属于高度动态链接的 C 程序，为了保证运行的兼容性，它不支持直接预包在 NPM 体积中，需优先在你的宿主机上通过系统包管理器安装：
-
-* **macOS (通过 Homebrew 安装)**:
-  ```bash
-  brew install tmux
-  ```
-* **Linux (Ubuntu/Debian)**:
-  ```bash
-  sudo apt update && sudo apt install -y tmux
-  ```
-* **Linux (CentOS/RHEL/Fedora)**:
-  ```bash
-  sudo dnf install -y tmux
-  ```
-
----
-
-## 🚀 安装指南 (Installation)
-
-### 方法一：通过 NPM 安装 (最简便 ⚡ 推荐)
-
-我们提供了预编译的 NPM 包包装器，会自动检测您的系统架构并从 GitHub 镜像高速下载最匹配的平台二进制程序。
-
-**🚀 离线开箱即用（全内置二进制）**：
-为了解决国内或部分服务器因网络限制无法访问 GitHub 的问题，**我们已经将 `ttyd` 以及 `cloudflared`（Cloudflare Tunnel）官方最新二进制文件直接完整预包（Pre-bundled）在 `@scottzx/1agents` NPM 包体中！**
-无需任何后置下载，无论是国内 NPM 镜像源还是官方源，直接安装即享 100% 离线开箱即用，免配置公网安全隧道秒开！
+终端会话自动持久化（断线重连）依赖 **`tmux`**。由于 `tmux` 是动态链接的 C 程序，不便预包进 NPM，请先用系统包管理器安装：
 
 ```bash
-# 全局安装 1agents 主程序 (自动包含 1agents 守护进程、ttyd 静态后端、Web 前端以及平台专属的 cloudflared 二进制程序)
-npm install -g @scottzx/1agents
-
-# 也可以直接免安装直接通过 npx 运行：
-npx @scottzx/1agents [参数]
+brew install tmux                              # macOS (Homebrew)
+sudo apt update && sudo apt install -y tmux    # Linux (Ubuntu/Debian)
+sudo dnf install -y tmux                       # Linux (CentOS/RHEL/Fedora)
 ```
 
-> **系统要求**：Node.js >= 22 (完美兼容 Node 24)
-> **支持架构**：macOS (Darwin x64/arm64), Linux (x64/arm64), Windows (x64/arm64)
+---
+
+## 🚀 安装 (Installation)
+
+### 方法一：NPM（推荐 ⚡）
+
+预编译 NPM 包会自动检测系统架构并下载匹配的平台二进制。为解决国内/部分服务器无法访问 GitHub 的问题，**`ttyd` 与 `cloudflared` 官方二进制已直接预包进 `@scottzx/1agents`**，无需后置下载，安装即 100% 离线开箱即用。
+
+```bash
+npm install -g @scottzx/1agents   # 全局安装（含守护进程、ttyd、Web 前端、cloudflared）
+npx @scottzx/1agents [参数]        # 或免安装直接运行
+```
+
+> **要求**：Node.js >= 22（兼容 Node 24）｜**架构**：macOS (x64/arm64)、Linux (x64/arm64)、Windows (x64/arm64)
 
 ### 方法二：手动下载预编译二进制
+访问 [GitHub Releases](https://github.com/scottzx/1Agents/releases) 下载对应架构的静态包，解压即用。
 
-您也可以直接访问 [GitHub Releases 页面](https://github.com/scottzx/1Agents/releases) 下载适合您系统架构的静态二进制包，解压后即可开箱即用。
-
-### 方法三：使用 Docker 部署
+### 方法三：Docker
 
 ```bash
-docker run -d \
-  -p 8080:8080 \
+docker run -d -p 8080:8080 \
   -v /path/to/your/workspaces:/workspace \
-  --name 1agents \
-  scottzx/1Agents:latest
+  --name 1agents scottzx/1Agents:latest
 ```
 
-### 方法四：从源码编译构建
+### 方法四：从源码构建
 
-如果您需要进行本地开发调试，请确保本地已启用 Yarn 3：
+```bash
+# 1. 编译 C 终端后端 (ttyd)
+git clone --recursive https://github.com/scottzx/1Agents.git
+cd 1agents && mkdir build && cd build && cmake .. && make
 
-1. **编译 C 终端后端 (ttyd)**：
-   ```bash
-   git clone --recursive https://github.com/scottzx/1Agents.git
-   cd 1agents
-   mkdir build && cd build
-   cmake ..
-   make  # 产出 ttyd 二进制文件
-   ```
-2. **构建前端静态资源**：
-   ```bash
-   cd ../html
-   corepack enable  # 确保启用 Yarn 3.6.3 
-   yarn install     # 安装依赖
-   yarn build       # 编译打包，并调用 gulp 生成嵌入式 html.h 文件
-   ```
-3. **编译 Go 守护进程**：
-   ```bash
-   cd ../agent
-   go build -o 1agents ./cmd/agent/main.go
-   ```
+# 2. 构建前端静态资源（生成嵌入式 html.h）
+cd ../html && corepack enable && yarn install && yarn build
+
+# 3. 编译 Go 守护进程
+cd ../agent && go build -o 1agents ./cmd/agent/main.go
+```
 
 ---
 
 ## 🛠️ 使用与命令行参数
 
-启动服务非常简单，直接在终端中运行 `1agents` 即可：
-
 ```bash
-# 启动服务，默认监听 8080 端口，工作目录为用户根目录 (~)
-1agents
-
-# 指定监听地址与暴露的工作目录
-1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
+1agents                                                  # 默认监听 :8080，工作目录 ~
+1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects   # 指定监听与工作目录
 ```
 
-服务启动后，在本地或局域网浏览器中打开 `http://localhost:8080` (或对应的监听端口) 即可进入您的智能体工作台！
+启动后在浏览器打开 `http://localhost:8080`（或对应端口）即可进入工作台。
 
-### 完整命令行 flags 参数说明
-
-| 命令行参数 | 参数类型 | 默认值 | 详细功能说明 |
+| 命令行参数 | 类型 | 默认值 | 说明 |
 | :--- | :---: | :---: | :--- |
-| `-listen` | `string` | `":8080"` | 服务对外监听的地址与端口 (例: `0.0.0.0:8080` / `:9000`) |
-| `-workdir` | `string` | `"~"` | 工作台默认暴露的文件系统根目录。非在此目录下的文件不可被访问 |
-| `-tmux-session` | `string` | `"1agents"` | 默认绑定的 tmux 会话名称，用于实现 Web 终端断线重连与持久化运行 |
-| `-ssl` | `bool` | `false` | 是否开启 HTTPS 协议。若为 true 且无证书，系统会自动生成 10 年期自签名证书 |
-| `-ssl-cert` | `string` | `""` | 外部指定的高级 SSL/TLS 证书路径 (PEM 格式) |
-| `-ssl-key` | `string` | `""` | 外部指定的高级 SSL/TLS 证书私钥路径 (PEM 格式) |
-| `-no-ttyd` | `bool` | `false` | 跳过由 Go 守护进程自动拉起 ttyd 进程的步骤 (用于开发调试) |
-| `-ttyd-bin` | `string` | `"./ttyd"` | 外部指定的 `ttyd` 二进制执行程序文件路径 |
-| `-ttyd-addr` | `string` | `"127.0.0.1:7681"`| 内置 ttyd 与 Go 守护进程的本地通信回环地址 |
-| `-restart-delay`| `duration` | `"3s"` | 当 ttyd 意外退出后，守护进程尝试自动重新拉起的等待间隔 |
-| `-max-restarts` | `int` | `5` | 最大连续异常重启 ttyd 进程的上限次数，防止循环崩溃锁死 |
-| `-tunnel` | `bool` | `false` | 是否开启基于 Cloudflare 的按需安全公网隧道 (Web Tunnel)，启动时自动输出公网链接与二维码 |
+| `-listen` | `string` | `":8080"` | 对外监听地址与端口 (如 `0.0.0.0:8080` / `:9000`) |
+| `-workdir` | `string` | `"~"` | 暴露的文件系统根目录，目录外文件不可访问 |
+| `-tmux-session` | `string` | `"1agents"` | 绑定的 tmux 会话名，用于断线重连与持久化 |
+| `-ssl` | `bool` | `false` | 开启 HTTPS；无证书时自动生成 10 年期自签名证书 |
+| `-ssl-cert` | `string` | `""` | 外部 SSL/TLS 证书路径 (PEM) |
+| `-ssl-key` | `string` | `""` | 外部 SSL/TLS 私钥路径 (PEM) |
+| `-no-ttyd` | `bool` | `false` | 跳过自动拉起 ttyd（开发调试用） |
+| `-ttyd-bin` | `string` | `"./ttyd"` | 外部 `ttyd` 二进制路径 |
+| `-ttyd-addr` | `string` | `"127.0.0.1:7681"` | ttyd 与守护进程的本地回环地址 |
+| `-restart-delay` | `duration` | `"3s"` | ttyd 异常退出后重启的等待间隔 |
+| `-max-restarts` | `int` | `5` | 连续异常重启上限，防止崩溃锁死 |
+| `-tunnel` | `bool` | `false` | 开启 Cloudflare 按需公网隧道，启动输出公网链接与二维码 |
 
 ---
 
-## 💡 高级配置与技术指南
+## 💡 高级配置
 
-### 1. 开启局域网/互联网 HTTPS 权威绿锁 (Tailscale Let's Encrypt 方案)
+### 1. HTTPS 权威绿锁 (Tailscale + Let's Encrypt)
+浏览器对麦克风、剪贴板等高级 API 强制要求安全上下文（`localhost` 或 HTTPS），局域网手机/平板访问时需配置 SSL。推荐结合 Tailscale 获取官方证书：
 
-由于浏览器对高级 API (如麦克风权限、Service Worker 缓存、剪贴板等) 强制要求 **安全上下文** (即必须是 `localhost` 或 `HTTPS`)，因此在局域网内使用手机或平板访问时，必须配置 SSL。
+```bash
+tailscale cert <你的节点域名.ts.net>   # 生成 .crt / .key
+```
 
-最完美的免费方案是结合 **Tailscale** 自动获取官方 Let's Encrypt 证书：
+把证书放入 `~/.1agents/certs/`，再 `1agents --ssl` 即可——守护进程会自动扫描匹配，全球访问呈现绿锁 🔒。详见 [SSL 证书配置指南](docs/tips/ssl-certificate-guide.md)。
 
-1. **启用 HTTPS**：在 Tailscale Admin Console Settings 中激活 **HTTPS Certificates**。
-2. **下载证书**：在宿主机终端中执行：
-   ```bash
-   tailscale cert <您的Tailscale节点域名.ts.net>
-   ```
-3. **一键适配**：将生成的 `.crt` 和 `.key` 文件移入 `~/.1agents/certs/` 目录下。
-4. **启动服务**：直接运行：
-   ```bash
-   1agents --ssl
-   ```
-   *Go 守护进程会自动扫描并匹配 Tailscale 官方证书，全球任何设备访问您的节点域名时都将呈现安全的绿锁标识 🔒！*
-   *(更多细节请查阅：[Tailscale 证书配置指南](docs/tips/ssl-certificate-guide.md))*
+### 2. 语音识别浏览器兼容性
+- **桌面端推荐 Safari (macOS)**：对接系统本地离线听写，无网络限制、秒级解析、中文精准。
+- **Chrome / Edge**：依赖 Google 云端解析，国内无全局代理会报 `Speech recognition error: network`。
+- **移动端**：强制 HTTPS，否则无法申请麦克风权限。
 
-### 2. 语音识别 (Speech-to-Text) 浏览器兼容性避坑
+详见 [语音识别与麦克风权限兼容性指南](docs/tips/voice-recognition.md)。
 
-语音输入对多媒体输入权限及底层的语音解析引擎有较高要求：
+### 3. 免配置公网安全隧道
+在无公网 IP / 无证书的内网环境（居家宽带、公司内网、咖啡厅 Wi-Fi）下，加 `-tunnel` 参数即可一键发布：
 
-- **桌面端推荐使用 Safari**：Safari (macOS) 的语音识别完美对接系统本地离线听写模块，**无任何网络限制，秒级瞬时解析**，且中文普通话极其精准。
-- **Chrome / Edge 的 Network 报错**：由于 Chrome/Edge 的 Web Speech 强依赖于 Google 云端服务器解析，若国内网络未配置全局系统代理，会报 `Speech recognition error: network`。
-- **移动端 (手机/平板)**：强制要求使用 HTTPS 协议，否则网页端无法申请麦克风录音权限。
-- *(更多细节请查阅：[语音识别与麦克风权限兼容性指南](docs/tips/voice-recognition.md))*
-
-### 3. 免配置公网安全隧道 (Cloudflare Tunnel & cc-connect 智能拉起)
-
-当您在**无公网 IP、无证书配置且处于复杂内网环境**（例如居家宽带、公司内网、咖啡厅 Wi-Fi）中时，`1Agents` 提供了最极致的“零配置公网访问”方案。
-
-#### 💡 工作原理与首次下载体验
-当您在启动命令中加上 `-tunnel` 参数，例如：
 ```bash
 1agents -tunnel
 ```
-系统会触发按需公网通道的智能拉起流程：
-1. **环境变量优先复用（智能跳过）**：
-   Go 后端在拉起前会智能检测系统环境。如果您的系统中已经安装过 `cloudflared`（例如 macOS 用户通过 `brew install` 安装，或 Linux 用户使用 `apt` 安装），Go 后端会**瞬间识别并直接复用**系统已有程序，**实现 0.1 秒闪电启动，首次运行也完全无需下载**！
-2. **一次性自动下载（进度日志完全可见）**：
-   如果您的系统没有任何 `cloudflared` 缓存，Go 后端会从 GitHub Releases 官方源执行一次性安全下载（文件大小约为 30MB）。为防止出现“程序卡死”的疑虑，控制台会**实时打印下载进度日志**：
-   ```text
-   [tunnel] cloudflared not found in PATH or local bin. Starting automatic download...
-   [tunnel] Downloading cloudflared binary from: https://github.com/...
-   [tunnel] Successfully downloaded and installed cloudflared to: ~/.1agents/bin/cloudflared
-   ```
-   - **海外网络/高速宽带**：下载 30MB 仅需 **2 ~ 5 秒**，直接输出二维码。
-   - **国内普通网络**：受 GitHub 国际带宽限制，下载时间约 **15 ~ 30 秒**。
-   - **二次运行**：本地已缓存，**启动速度为 0.1 秒，瞬间秒开**！
-3. **高强度动态安全认证**：
-   公网隧道启动后，会自动生成高强度的单次会话 Token，并在终端控制台直接渲染**高对比度连接二维码**，手机/平板只需扫码即可直接通过互联网安全通道秒连！
 
-#### 🤖 CC-Connect 智能体对话拉起 (极致低门槛)
-更进一步，如果您启用了 [cc-connect](https://github.com/scottzx/cc-connect)，您甚至连命令行都不需要接触。**只需在飞书、Telegram、Slack 或微信等聊天软件中向您的 CC-Connect 智能体发送一句对话（如“帮我拉起远程工作台”或“开启公网访问”），智能体就会在后台自动完成上述下载与拉起流程，并在聊天窗口中为您返回一个临时的、互联网端可直接访问的安全加密 URL 链接。**
+- **智能复用**：已装 `cloudflared`（如 `brew install`）则 0.1 秒直接复用，无需下载。
+- **一次性自动下载**：无缓存时从 GitHub 官方源安全下载（约 30MB，海外 2~5s、国内 15~30s），控制台实时打印进度；二次启动秒开。
+- **动态安全认证**：生成单次会话 Token，终端渲染高对比度二维码，手机扫码即连。
+
+进一步地，启用 [cc-connect](https://github.com/scottzx/cc-connect) 后，只需在飞书/Telegram/Slack/微信等向智能体发一句「开启公网访问」，它就会在后台完成拉起并回传一个临时的互联网安全 URL。
+
+---
+
+## 🔗 关联项目
+
+**1Hive**（曾用名 iClaw虾窝）—— 保障 AI Agent 7×24 长时间在线运行的配套硬件方案，让你的「一人成军」永不掉线：[https://00claw.com/](https://00claw.com/)。
 
 ---
 
