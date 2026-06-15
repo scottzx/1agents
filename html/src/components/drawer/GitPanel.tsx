@@ -687,7 +687,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         // reserved main trunk lane 0).
         const firstFree = (from: number): number => {
             let i = from;
-            while (i < lanes.length && lanes[i] != null) i++;
+            while (i < lanes.length && lanes[i] !== null) i++;
             while (lanes.length <= i) lanes.push(null);
             return i;
         };
@@ -740,11 +740,11 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             // the trunk runs straight through fork/merge rows (diagonals layer on top).
             const aboveLanes: number[] = [];
             aboveSnap.forEach((hh, i) => {
-                if (hh != null) aboveLanes.push(i);
+                if (hh !== null) aboveLanes.push(i);
             });
             const belowLanes: number[] = [];
             belowSnap.forEach((hh, i) => {
-                if (hh != null) belowLanes.push(i);
+                if (hh !== null) belowLanes.push(i);
             });
 
             rows.push({
@@ -1392,7 +1392,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                             sw(L)
                                         );
                                         // if the lane was already flowing (trunk), keep its straight line too
-                                        if (above.has(L)) push(`bs${L}`, `M${xl},${yc} L${xl},${ROW_H}`, laneColor(L), sw(L));
+                                        if (above.has(L))
+                                            push(`bs${L}`, `M${xl},${yc} L${xl},${ROW_H}`, laneColor(L), sw(L));
                                     } else if (botActive) {
                                         push(`bs${L}`, `M${xl},${yc} L${xl},${ROW_H}`, laneColor(L), sw(L));
                                     }
