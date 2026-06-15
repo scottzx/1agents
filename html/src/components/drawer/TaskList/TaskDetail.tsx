@@ -48,6 +48,18 @@ export function TaskDetail({
     const [followUpTarget, setFollowUpTarget] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
+    // GitHub detail view tabs & preview state
+    const [activeTab, setActiveTab] = useState<'conversation' | 'subtasks' | 'relations'>('conversation');
+    const [composerTab, setComposerTab] = useState<'write' | 'preview'>('write');
+
+    const getInitials = (name: string) => {
+        if (!name) return '?';
+        const clean = name.trim();
+        if (clean.length === 0) return '?';
+        if (clean.length <= 2) return clean.toUpperCase();
+        return clean.slice(0, 2).toUpperCase();
+    };
+
     const fetchTask = useCallback(async () => {
         try {
             const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`);
@@ -72,6 +84,7 @@ export function TaskDetail({
         issueState?: 'open' | 'closed';
         acceptanceCriteria?: string;
         links?: TaskLink[];
+        status?: Task['status'];
     }) => {
         const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`, {
             method: 'PATCH',
@@ -256,378 +269,665 @@ export function TaskDetail({
     const linkOptions = allTasks.filter(t => t.id !== task.id);
     const linkLabel = (t?: Task) => (t ? `${t.number ? `#${t.number} ` : ''}${t.title}` : '（未知任务）');
 
+    // Subtask checks calculation
+    const totalSubtasks = subtasks.length;
+    const completedSubtasks = subtasks.filter(s => s.status === 'completed').length;
+    const allSubtasksDone = totalSubtasks > 0 && completedSubtasks === totalSubtasks;
+
+    // Acceptance criteria check
+    const hasAcceptance = !!task.acceptanceCriteria;
+
+    // Dependencies check
+    const pendingDeps = deps.filter(d => d.status !== 'completed').length;
+    const allDepsDone = pendingDeps === 0;
+
     return (
         <div class="task-dashboard-container task-detail-view">
-            <div class="task-detail-header">
+            <div class="task-detail-header" style={{ marginBottom: '12px', borderBottom: 'none' }}>
                 <button class="task-back-btn" onClick={onBack}>
                     ← 返回列表
                 </button>
-                <div class="task-detail-title-group">
-                    <h3 class="task-detail-title">
-                        {'\u{1F4CB}'} {task.number ? <span class="task-number">#{task.number}</span> : null}{' '}
-                        {task.title}
-                    </h3>
-                    <span class="task-issue-icon" title={closed ? 'closed' : 'open'}>
-                        {closed ? '\u{1F512}' : '\u{1F513}'}
-                    </span>
-                    <span class={`task-status-badge ${task.status}`}>
-                        {task.status === 'running' && <span class="pulse-indicator" />}
-                        {STATUS_LABELS[task.status] || task.status}
-                    </span>
-                </div>
-                <div class="task-detail-actions">
+            </div>
+
+            {/* GitHub style title header */}
+            <div class="gh-header-top">
+                <h3 class="gh-title">
+                    {task.title} <span class="gh-number">#{task.number || ''}</span>
+                </h3>
+                <div class="gh-actions">
                     <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
-                        {closed ? '\u{1F513} 重新打开' : '\u{1F512} 关闭 Issue'}
+                        {closed ? '重新打开' : '关闭 Task'}
                     </button>
                 </div>
+            </div>
+
+            <div class="gh-header-meta">
+                <span class={`gh-status-badge ${closed ? 'closed' : 'open'}`}>
+                    {closed ? 'Closed' : 'Open'}
+                </span>
+                <span class="gh-meta-text">
+                    <strong>{task.createdBy || 'scottzx'}</strong> {closed ? '关闭了此任务' : '创建了此任务'} · {replies.length} 个回复
+                </span>
+            </div>
+
+            {/* GitHub style tab navigation */}
+            <div class="gh-detail-tabs">
+                <button 
+                    class={`gh-tab-btn ${activeTab === 'conversation' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('conversation')}
+                >
+                    💬 Conversation <span class="gh-tab-badge">{replies.length + (task.description ? 1 : 0)}</span>
+                </button>
+                <button 
+                    class={`gh-tab-btn ${activeTab === 'subtasks' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('subtasks')}
+                >
+                    📋 Checklist / Subtasks <span class="gh-tab-badge">{subtasks.length}</span>
+                </button>
+                <button 
+                    class={`gh-tab-btn ${activeTab === 'relations' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('relations')}
+                >
+                    🔗 Relations <span class="gh-tab-badge">{outgoing.length + backlinks.length}</span>
+                </button>
             </div>
 
             <div class="task-detail-scroller">
-                {/* Description */}
-                <div class="task-desc-section">
-                    <div class="task-section-header">
-                        <h5>{'\u{1F4DD}'} 描述</h5>
-                        {!editingDesc.value && (
-                            <button
-                                class="task-desc-edit-btn"
-                                onClick={() => {
-                                    setDescDraft(task.description || '');
-                                    editingDesc.value = true;
-                                }}
-                            >
-                                编辑
-                            </button>
-                        )}
-                    </div>
-                    {editingDesc.value ? (
-                        <div class="task-desc-editor">
-                            <textarea
-                                rows={5}
-                                value={descDraft}
-                                onInput={(e: Event) => setDescDraft((e.target as HTMLTextAreaElement).value)}
-                            />
-                            <div class="task-desc-editor-actions">
-                                <button onClick={saveDescription}>保存</button>
-                                <button onClick={() => (editingDesc.value = false)}>取消</button>
-                            </div>
-                        </div>
-                    ) : (
-                        <div class="task-desc-body">
-                            {task.description ? (
-                                <pre class="task-desc-text">{task.description}</pre>
-                            ) : (
-                                <span class="task-desc-empty">（暂无描述，点击编辑补充任务背景）</span>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Acceptance criteria */}
-                <div class="task-desc-section task-accept-section">
-                    <div class="task-section-header">
-                        <h5>✅ 验收标准</h5>
-                        {!editingAccept.value && (
-                            <button
-                                class="task-desc-edit-btn"
-                                onClick={() => {
-                                    setAcceptDraft(task.acceptanceCriteria || '');
-                                    editingAccept.value = true;
-                                }}
-                            >
-                                编辑
-                            </button>
-                        )}
-                    </div>
-                    {editingAccept.value ? (
-                        <div class="task-desc-editor">
-                            <textarea
-                                rows={3}
-                                value={acceptDraft}
-                                onInput={(e: Event) => setAcceptDraft((e.target as HTMLTextAreaElement).value)}
-                            />
-                            <div class="task-desc-editor-actions">
-                                <button onClick={saveAcceptance}>保存</button>
-                                <button onClick={() => (editingAccept.value = false)}>取消</button>
-                            </div>
-                        </div>
-                    ) : (
-                        <div class="task-desc-body">
-                            {task.acceptanceCriteria ? (
-                                <pre class="task-desc-text">{task.acceptanceCriteria}</pre>
-                            ) : (
-                                <span class="task-desc-empty">
-                                    （未设置 —— agent 执行完会按此自查，建议补充可验证的标准）
-                                </span>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Meta info */}
-                <div class="task-meta-section">
-                    <span class={`priority-badge priority-${task.priority || 'medium'}`}>
-                        {PRIORITY_LABELS[task.priority || 'medium']}
-                    </span>
-                    <span>执行: {task.assignee || 'claudecode'}</span>
-                    {(task.labels || []).map(l => (
-                        <span key={l} class="task-label-tag">
-                            {l}
-                        </span>
-                    ))}
-                    {task.milestone && <span>🏁 {task.milestone}</span>}
-                    {task.recurrence && <span>🔁 {recurrenceLabel(task.recurrence)}</span>}
-                    {(task.retryCount ?? 0) > 0 && (
-                        <span>
-                            重试 {task.retryCount}/{task.maxRetries ?? 1}
-                        </span>
-                    )}
-                    <span>
-                        计划: {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}
-                    </span>
-                    <span>
-                        实际: {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}
-                    </span>
-                    {deps.length > 0 && (
-                        <span class="task-meta-deps">
-                            前置:{' '}
-                            {deps.map(d => (
-                                <span key={d.id} class="dep-tag">
-                                    {d.status === 'completed' ? '✓ ' : ''}
-                                    {d.title}
-                                </span>
-                            ))}
-                        </span>
-                    )}
-                    <button class="task-delete-link" onClick={() => onDelete(task.id)}>
-                        删除任务
-                    </button>
-                </div>
-
-                {/* Subtasks */}
-                {subtasks.length > 0 && (
-                    <div class="task-subtasks-section">
-                        <div class="task-section-header">
-                            <h5>
-                                子任务 ({subtasks.filter(s => s.status === 'completed').length}/{subtasks.length})
-                            </h5>
-                        </div>
-                        {subtasks.map(st => (
-                            <div key={st.id} class="task-subtask-row">
-                                <span class={`task-status-badge ${st.status}`}>
-                                    {STATUS_LABELS[st.status] || st.status}
-                                </span>
-                                <span class="task-subtask-title">{st.title}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {/* Cross-reference links (#N) */}
-                <div class="task-links-section">
-                    <div class="task-section-header">
-                        <h5>{'\u{1F517}'} 关联</h5>
-                    </div>
-
-                    {outgoing.length > 0 && (
-                        <div class="task-links-group">
-                            {outgoing.map(link => {
-                                const tgt = taskById.get(link.target);
-                                return (
-                                    <div key={`${link.target}-${link.rel}`} class="task-link-row">
-                                        <span class={`task-link-rel rel-${link.rel}`}>
-                                            {LINK_REL_LABELS[link.rel] || link.rel}
-                                        </span>
-                                        <button
-                                            class="task-link-target"
-                                            disabled={!tgt || !onNavigate}
-                                            onClick={() => tgt && onNavigate && onNavigate(tgt.id)}
-                                        >
-                                            {linkLabel(tgt)}
-                                        </button>
-                                        <button
-                                            class="task-link-remove"
-                                            title="移除关联"
-                                            onClick={() => removeLink(link)}
-                                        >
-                                            ×
-                                        </button>
+                <div class="task-detail-main">
+                    {activeTab === 'conversation' && (
+                        <div>
+                            {/* Description Card */}
+                            <div class="gh-comment-card is-user">
+                                <div class="gh-comment-header">
+                                    <div class="gh-comment-header-left">
+                                        <span class="gh-avatar">{getInitials(task.createdBy || 'scottzx')}</span>
+                                        <span class="gh-author-name">{task.createdBy || 'scottzx'}</span>
+                                        <span>创建了任务</span>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {backlinks.length > 0 && (
-                        <div class="task-links-group task-backlinks">
-                            <div class="task-links-subhead">被引用</div>
-                            {backlinks.map(src => {
-                                const link = (src.links || []).find(l => l.target === task.id);
-                                return (
-                                    <div key={src.id} class="task-link-row">
-                                        <span class={`task-link-rel rel-${link?.rel || 'relates'}`}>
-                                            {LINK_REL_LABELS[link?.rel || 'relates']}
-                                        </span>
-                                        <button
-                                            class="task-link-target"
-                                            disabled={!onNavigate}
-                                            onClick={() => onNavigate && onNavigate(src.id)}
-                                        >
-                                            {linkLabel(src)}
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {outgoing.length === 0 && backlinks.length === 0 && (
-                        <div class="task-desc-empty">暂无关联 —— 在下方选择目标与关系建立引用。</div>
-                    )}
-
-                    <div class="task-link-add">
-                        <select
-                            class="task-link-target-select"
-                            value={linkTarget}
-                            onChange={(e: Event) => setLinkTarget((e.target as HTMLSelectElement).value)}
-                        >
-                            <option value="">选择目标…</option>
-                            {linkOptions.map(t => (
-                                <option key={t.id} value={t.id}>
-                                    {linkLabel(t)}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            class="task-link-rel-select"
-                            value={linkRel}
-                            onChange={(e: Event) => setLinkRel((e.target as HTMLSelectElement).value as LinkRel)}
-                        >
-                            <option value="relates">关联</option>
-                            <option value="closes">修复 / 关闭</option>
-                        </select>
-                        <button class="task-link-add-btn" disabled={!linkTarget} onClick={addLink}>
-                            添加关联
-                        </button>
-                    </div>
-                </div>
-
-                {/* Timeline */}
-                <div class="task-timeline-section">
-                    <div class="task-section-header">
-                        <h5>时间线 ({replies.length})</h5>
-                    </div>
-                    {replies.length === 0 ? (
-                        <div class="no-sessions-hint">还没有回复 —— 在下方写第一条，开始这个话题。</div>
-                    ) : (
-                        <div class="task-timeline">
-                            {replies.map(rp => {
-                                const isAgent = rp.author.kind === 'agent';
-                                const sess = rp.sessionRef
-                                    ? task.sessions.find(s => s.id === rp.sessionRef)
-                                    : undefined;
-                                return (
-                                    <div key={rp.id} class={`timeline-reply ${isAgent ? 'agent' : 'user'}`}>
-                                        <div class="timeline-reply-meta">
-                                            <span class="timeline-author">
-                                                {isAgent ? '\u{1F916}' : '\u{1F4AC}'} {rp.author.name || rp.author.kind}
-                                            </span>
-                                            <span class="timeline-time">{fmtDate(rp.createdAt)}</span>
-                                        </div>
-                                        <div class="timeline-reply-text">{rp.text}</div>
-                                        {rp.sessionRef && (
+                                    <div class="gh-comment-actions">
+                                        <span class="gh-role-badge">Author</span>
+                                        {!editingDesc.value && (
                                             <button
-                                                class="timeline-session-link"
-                                                onClick={() =>
-                                                    openSession(
-                                                        rp.sessionRef!,
-                                                        sess?.agentType || rp.agentType || 'claudecode'
-                                                    )
-                                                }
+                                                class="task-desc-edit-btn"
+                                                onClick={() => {
+                                                    setDescDraft(task.description || '');
+                                                    editingDesc.value = true;
+                                                }}
                                             >
-                                                {'\u{1F916}'} {isAgent ? '查看完整转录' : '查看会话'} →
+                                                编辑
                                             </button>
                                         )}
                                     </div>
-                                );
-                            })}
+                                </div>
+                                <div class="gh-comment-body">
+                                    {editingDesc.value ? (
+                                        <div class="task-desc-editor">
+                                            <textarea
+                                                rows={5}
+                                                value={descDraft}
+                                                onInput={(e: Event) => setDescDraft((e.target as HTMLTextAreaElement).value)}
+                                            />
+                                            <div class="task-desc-editor-actions">
+                                                <button onClick={saveDescription}>保存</button>
+                                                <button onClick={() => (editingDesc.value = false)}>取消</button>
+                                            </div>
+                                        </div>
+                                    ) : task.description ? (
+                                        <pre class="task-desc-text">{task.description}</pre>
+                                    ) : (
+                                        <span class="task-desc-empty">（暂无描述，点击编辑补充任务背景）</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Pinned Acceptance Criteria Card */}
+                            <div class="gh-comment-card is-user">
+                                <div class="gh-comment-header">
+                                    <div class="gh-comment-header-left">
+                                        <span>✅ <strong>验收标准 (Acceptance Criteria)</strong></span>
+                                    </div>
+                                    <div class="gh-comment-actions">
+                                        {!editingAccept.value && (
+                                            <button
+                                                class="task-desc-edit-btn"
+                                                onClick={() => {
+                                                    setAcceptDraft(task.acceptanceCriteria || '');
+                                                    editingAccept.value = true;
+                                                }}
+                                            >
+                                                编辑
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div class="gh-comment-body">
+                                    {editingAccept.value ? (
+                                        <div class="task-desc-editor">
+                                            <textarea
+                                                rows={3}
+                                                value={acceptDraft}
+                                                onInput={(e: Event) => setAcceptDraft((e.target as HTMLTextAreaElement).value)}
+                                            />
+                                            <div class="task-desc-editor-actions">
+                                                <button onClick={saveAcceptance}>保存</button>
+                                                <button onClick={() => (editingAccept.value = false)}>取消</button>
+                                            </div>
+                                        </div>
+                                    ) : task.acceptanceCriteria ? (
+                                        <pre class="task-desc-text">{task.acceptanceCriteria}</pre>
+                                    ) : (
+                                        <span class="task-desc-empty">
+                                            （未设置 —— agent 执行完会按此自查，建议补充可验证的标准）
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Timeline comments */}
+                            <div class="task-timeline">
+                                {replies.map(rp => {
+                                    const isAgent = rp.author.kind === 'agent';
+                                    const sess = rp.sessionRef
+                                        ? task.sessions.find(s => s.id === rp.sessionRef)
+                                        : undefined;
+                                    return (
+                                        <div key={rp.id} class={`gh-comment-card ${isAgent ? 'is-agent' : 'is-user'}`}>
+                                            <div class="gh-comment-header">
+                                                <div class="gh-comment-header-left">
+                                                    <span class="gh-avatar">{getInitials(rp.author.name || rp.author.kind)}</span>
+                                                    <span class="gh-author-name">{rp.author.name || rp.author.kind}</span>
+                                                    <span>回复于 {fmtDate(rp.createdAt)}</span>
+                                                </div>
+                                                <div class="gh-comment-actions">
+                                                    <span class="gh-role-badge">{isAgent ? 'Agent' : 'User'}</span>
+                                                </div>
+                                            </div>
+                                            <div class="gh-comment-body">
+                                                <div class="timeline-reply-text">{rp.text}</div>
+                                                {rp.sessionRef && (
+                                                    <div style={{ marginTop: '12px' }}>
+                                                        <button
+                                                            class="timeline-session-link"
+                                                            onClick={() =>
+                                                                openSession(
+                                                                    rp.sessionRef!,
+                                                                    sess?.agentType || rp.agentType || 'claudecode'
+                                                                )
+                                                            }
+                                                        >
+                                                            🤖 {isAgent ? '查看完整转录' : '查看会话'} →
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Merge / Checks Status Box */}
+                            <div class="gh-merge-box">
+                                <div class={`gh-merge-icon-col status-${task.status}`}>
+                                    {task.status === 'completed' && '✓'}
+                                    {task.status === 'running' && '●'}
+                                    {task.status === 'failed' && '✗'}
+                                    {(task.status === 'pending' || task.status === 'queued') && '◷'}
+                                    {task.status === 'cancelled' && '⊘'}
+                                    {task.status === 'blocked' && '⚠'}
+                                </div>
+                                <div class="gh-merge-content">
+                                    <h4 class="gh-merge-title">
+                                        {task.status === 'completed' && '任务执行已全部完成'}
+                                        {task.status === 'running' && '智能体正在积极执行中'}
+                                        {task.status === 'failed' && '智能体执行失败'}
+                                        {(task.status === 'pending' || task.status === 'queued') && '任务处于队列中，已准备好执行'}
+                                        {task.status === 'cancelled' && '智能体执行已取消'}
+                                        {task.status === 'blocked' && '任务前置依赖受阻'}
+                                    </h4>
+                                    <p class="gh-merge-desc">
+                                        系统自检结果与智能体状态：
+                                    </p>
+                                    
+                                    <div class="gh-check-item">
+                                        <span class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}>
+                                            {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
+                                        </span>
+                                        <span>子任务检查：{completedSubtasks}/{totalSubtasks} 个子任务已完成</span>
+                                    </div>
+                                    
+                                    <div class="gh-check-item">
+                                        <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
+                                            {hasAcceptance ? '✓' : 'warn'}
+                                        </span>
+                                        <span>验收标准：{hasAcceptance ? '已定义验收标准' : '未设置验收标准'}</span>
+                                    </div>
+
+                                    <div class="gh-check-item">
+                                        <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>
+                                            {allDepsDone ? '✓' : 'fail'}
+                                        </span>
+                                        <span>前置依赖：{allDepsDone ? '所有依赖已解决' : `${pendingDeps} 个前置依赖处于等待中`}</span>
+                                    </div>
+                                </div>
+                                <div class="gh-merge-actions">
+                                    {task.status === 'completed' && (
+                                        <button class="gh-merge-btn btn-todo" onClick={toggleIssueState}>
+                                            重新打开任务
+                                        </button>
+                                    )}
+                                    {task.status === 'running' && (
+                                        <button class="gh-merge-btn btn-running" onClick={() => patchTask({ status: 'cancelled' })}>
+                                            取消执行
+                                        </button>
+                                    )}
+                                    {task.status === 'failed' && (
+                                        <button class="gh-merge-btn btn-todo" onClick={() => openNewSession('retry')}>
+                                            重试执行
+                                        </button>
+                                    )}
+                                    {(task.status === 'pending' || task.status === 'queued') && (
+                                        <button class="gh-merge-btn" onClick={() => openNewSession('start')}>
+                                            开启 Agent 执行
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* GitHub style composer */}
+                            <div class="gh-composer-card">
+                                <div class="gh-composer-tabs">
+                                    <button 
+                                        class={`gh-composer-tab ${composerTab === 'write' ? 'active' : ''}`}
+                                        type="button"
+                                        onClick={() => setComposerTab('write')}
+                                    >
+                                        Write
+                                    </button>
+                                    <button 
+                                        class={`gh-composer-tab ${composerTab === 'preview' ? 'active' : ''}`}
+                                        type="button"
+                                        onClick={() => setComposerTab('preview')}
+                                    >
+                                        Preview
+                                    </button>
+                                </div>
+                                
+                                <div class="gh-composer-body">
+                                    {composerTab === 'write' ? (
+                                        <textarea
+                                            rows={4}
+                                            placeholder={
+                                                closed ? 'Issue 已关闭，仅可评论...' : '写回复：评论、布置新一轮工作，或追问已有会话...'
+                                            }
+                                            value={replyText}
+                                            onInput={(e: Event) => setReplyText((e.target as HTMLTextAreaElement).value)}
+                                        />
+                                    ) : (
+                                        <div class="gh-preview-box">
+                                            {replyText.trim() ? replyText : 'Nothing to preview'}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div class="gh-composer-footer">
+                                    <div class="gh-composer-options">
+                                        <label class={`gh-opt-label ${replyMode === 'pure_comment' ? 'active' : ''}`}>
+                                            <input
+                                                type="radio"
+                                                name="replyMode"
+                                                style={{ display: 'none' }}
+                                                checked={replyMode === 'pure_comment'}
+                                                onChange={() => setReplyMode('pure_comment')}
+                                            />
+                                            💬 纯评论
+                                        </label>
+                                        <label
+                                            class={`gh-opt-label ${replyMode === 'new' ? 'active' : ''} ${closed ? 'disabled' : ''}`}
+                                            title={closed ? 'Issue 已关闭，先重新打开' : ''}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="replyMode"
+                                                style={{ display: 'none' }}
+                                                checked={replyMode === 'new'}
+                                                disabled={closed}
+                                                onChange={() => setReplyMode('new')}
+                                            />
+                                            🚀 启动新会话
+                                        </label>
+                                        <label
+                                            class={`gh-opt-label ${replyMode === 'follow_up' ? 'active' : ''} ${
+                                                closed || task.sessions.length === 0 ? 'disabled' : ''
+                                            }`}
+                                            title={
+                                                closed ? 'Issue 已关闭，先重新打开' : task.sessions.length === 0 ? '还没有会话可追问' : ''
+                                            }
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="replyMode"
+                                                style={{ display: 'none' }}
+                                                checked={replyMode === 'follow_up'}
+                                                disabled={closed || task.sessions.length === 0}
+                                                onChange={() => {
+                                                    setReplyMode('follow_up');
+                                                    if (!followUpTarget && task.sessions.length > 0) {
+                                                        setFollowUpTarget(task.sessions[task.sessions.length - 1].id);
+                                                    }
+                                                }}
+                                            />
+                                            ↩️ 追问会话
+                                        </label>
+                                        {replyMode === 'follow_up' && (
+                                            <select
+                                                class="follow-up-target"
+                                                value={followUpTarget}
+                                                onChange={(e: Event) => setFollowUpTarget((e.target as HTMLSelectElement).value)}
+                                            >
+                                                {task.sessions.map((s, i) => (
+                                                    <option key={s.id} value={s.id}>
+                                                        #{i + 1} {s.agentType} · {fmtDate(s.createdAt)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </div>
+                                    <div class="gh-composer-actions">
+                                        <button 
+                                            type="button" 
+                                            class="gh-close-btn"
+                                            onClick={toggleIssueState}
+                                        >
+                                            {closed ? 'Reopen Issue' : 'Close Issue'}
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            class="gh-submit-btn" 
+                                            disabled={submitting || !replyText.trim()}
+                                            onClick={submitReply}
+                                        >
+                                            {submitting ? 'Submitting...' : 'Comment'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'subtasks' && (
+                        <div class="gh-subtasks-tab-content">
+                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>
+                                Checklist ({completedSubtasks}/{totalSubtasks})
+                            </h4>
+                            {subtasks.length === 0 ? (
+                                <div class="task-desc-empty">暂无子任务。</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {subtasks.map(st => (
+                                        <div key={st.id} class="gh-comment-card" style={{ marginBottom: '8px', padding: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <input type="checkbox" checked={st.status === 'completed'} disabled />
+                                                <span class={`priority-badge priority-${st.priority || 'medium'}`} style={{ fontSize: '10px' }}>
+                                                    {PRIORITY_LABELS[st.priority || 'medium']}
+                                                </span>
+                                                <span style={{ fontSize: '13.5px', textDecoration: st.status === 'completed' ? 'line-through' : 'none' }}>
+                                                    {st.title}
+                                                </span>
+                                                <span class={`task-status-badge ${st.status}`} style={{ marginLeft: 'auto', fontSize: '10.5px' }}>
+                                                    {STATUS_LABELS[st.status] || st.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'relations' && (
+                        <div class="gh-relations-tab-content">
+                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>
+                                任务关联与引文关系
+                            </h4>
+                            
+                            <div style={{ marginBottom: '24px' }}>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>主动关联任务 (Outgoing Relations)</h5>
+                                {outgoing.length === 0 ? (
+                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>暂无主动关联项。</div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                                        {outgoing.map(link => {
+                                            const tgt = taskById.get(link.target);
+                                            return (
+                                                <div key={`${link.target}-${link.rel}`} class="task-link-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                                                    <span class={`task-link-rel rel-${link.rel}`} style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
+                                                        {LINK_REL_LABELS[link.rel] || link.rel}
+                                                    </span>
+                                                    <button
+                                                        class="task-link-target"
+                                                        disabled={!tgt || !onNavigate}
+                                                        onClick={() => tgt && onNavigate && onNavigate(tgt.id)}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', textAlign: 'left', fontWeight: '500' }}
+                                                    >
+                                                        {linkLabel(tgt)}
+                                                    </button>
+                                                    <button
+                                                        class="task-link-remove"
+                                                        title="移除关联"
+                                                        onClick={() => removeLink(link)}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', marginLeft: 'auto' }}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ marginBottom: '24px' }}>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>被动引用任务 (Backlinks / Referenced by)</h5>
+                                {backlinks.length === 0 ? (
+                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>暂无被动引用项。</div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {backlinks.map(src => {
+                                            const link = (src.links || []).find(l => l.target === task.id);
+                                            return (
+                                                <div key={src.id} class="task-link-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                                                    <span class={`task-link-rel rel-${link?.rel || 'relates'}`} style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
+                                                        {LINK_REL_LABELS[link?.rel || 'relates']}
+                                                    </span>
+                                                    <button
+                                                        class="task-link-target"
+                                                        disabled={!onNavigate}
+                                                        onClick={() => onNavigate && onNavigate(src.id)}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', textAlign: 'left', fontWeight: '500' }}
+                                                    >
+                                                        {linkLabel(src)}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Add link form */}
+                            <div class="gh-comment-card" style={{ padding: '16px' }}>
+                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12.5px' }}>新建关系关联</h5>
+                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                    <select
+                                        class="task-link-target-select"
+                                        value={linkTarget}
+                                        onChange={(e: Event) => setLinkTarget((e.target as HTMLSelectElement).value)}
+                                        style={{ flex: 1, minWidth: '150px', padding: '6px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                                    >
+                                        <option value="">选择目标…</option>
+                                        {linkOptions.map(t => (
+                                            <option key={t.id} value={t.id}>
+                                                {linkLabel(t)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        class="task-link-rel-select"
+                                        value={linkRel}
+                                        onChange={(e: Event) => setLinkRel((e.target as HTMLSelectElement).value as LinkRel)}
+                                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                                    >
+                                        <option value="relates">关联</option>
+                                        <option value="closes">修复 / 关闭</option>
+                                    </select>
+                                    <button 
+                                        class="gh-submit-btn" 
+                                        disabled={!linkTarget} 
+                                        onClick={addLink}
+                                        style={{ padding: '6px 14px', borderRadius: '6px', backgroundColor: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: '600', cursor: 'pointer' }}
+                                    >
+                                        添加关联
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
-            </div>
 
-            {/* Reply composer */}
-            <form class="task-reply-composer" onSubmit={submitReply}>
-                <textarea
-                    rows={3}
-                    placeholder={
-                        closed ? 'Issue 已关闭，仅可评论...' : '写回复：评论、布置新一轮工作，或追问已有会话...'
-                    }
-                    value={replyText}
-                    onInput={(e: Event) => setReplyText((e.target as HTMLTextAreaElement).value)}
-                />
-                <div class="task-reply-controls">
-                    <label class={`reply-mode-option${replyMode === 'pure_comment' ? ' active' : ''}`}>
-                        <input
-                            type="radio"
-                            name="replyMode"
-                            checked={replyMode === 'pure_comment'}
-                            onChange={() => setReplyMode('pure_comment')}
-                        />
-                        {'\u{1F4AC}'} 纯评论
-                    </label>
-                    <label
-                        class={`reply-mode-option${replyMode === 'new' ? ' active' : ''}${closed ? ' disabled' : ''}`}
-                        title={closed ? 'Issue 已关闭，先重新打开' : ''}
-                    >
-                        <input
-                            type="radio"
-                            name="replyMode"
-                            checked={replyMode === 'new'}
-                            disabled={closed}
-                            onChange={() => setReplyMode('new')}
-                        />
-                        {'\u{1F680}'} 启动新会话
-                    </label>
-                    <label
-                        class={`reply-mode-option${replyMode === 'follow_up' ? ' active' : ''}${
-                            closed || task.sessions.length === 0 ? ' disabled' : ''
-                        }`}
-                        title={
-                            closed ? 'Issue 已关闭，先重新打开' : task.sessions.length === 0 ? '还没有会话可追问' : ''
-                        }
-                    >
-                        <input
-                            type="radio"
-                            name="replyMode"
-                            checked={replyMode === 'follow_up'}
-                            disabled={closed || task.sessions.length === 0}
-                            onChange={() => {
-                                setReplyMode('follow_up');
-                                if (!followUpTarget && task.sessions.length > 0) {
-                                    setFollowUpTarget(task.sessions[task.sessions.length - 1].id);
-                                }
-                            }}
-                        />
-                        ↩️ 追问会话
-                    </label>
-                    {replyMode === 'follow_up' && (
-                        <select
-                            class="follow-up-target"
-                            value={followUpTarget}
-                            onChange={(e: Event) => setFollowUpTarget((e.target as HTMLSelectElement).value)}
-                        >
-                            {task.sessions.map((s, i) => (
-                                <option key={s.id} value={s.id}>
-                                    #{i + 1} {s.agentType} · {fmtDate(s.createdAt)}
-                                </option>
-                            ))}
-                        </select>
-                    )}
-                    <button type="submit" class="task-reply-submit" disabled={submitting || !replyText.trim()}>
-                        {submitting ? '提交中...' : '提交'}
-                    </button>
+                <div class="task-detail-sidebar">
+                    {/* Assignees */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>Assignees</span>
+                            <span class="gh-sidebar-edit-icon">⚙</span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span class="gh-avatar">{getInitials(task.assignee || 'claudecode')}</span>
+                                <span>{task.assignee || 'claudecode'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Labels */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>Labels</span>
+                            <span class="gh-sidebar-edit-icon">⚙</span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            {(task.labels || []).length === 0 ? (
+                                <span class="gh-no-item">None yet</span>
+                            ) : (
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {(task.labels || []).map(l => (
+                                        <span key={l} class="task-label-tag">
+                                            {l}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Milestone */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>Milestone</span>
+                            <span class="gh-sidebar-edit-icon">⚙</span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            {task.milestone ? (
+                                <div>🏁 {task.milestone}</div>
+                            ) : (
+                                <span class="gh-no-item">No milestone</span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Priority */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>Priority</span>
+                            <span class="gh-sidebar-edit-icon">⚙</span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            <span class={`priority-badge priority-${task.priority || 'medium'}`}>
+                                {PRIORITY_LABELS[task.priority || 'medium']}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Dates & Schedule */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>Dates & Schedule</span>
+                        </div>
+                        <div class="gh-sidebar-body" style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {task.recurrence && <div>🔁 {recurrenceLabel(task.recurrence)}</div>}
+                            {(task.retryCount ?? 0) > 0 && (
+                                <div>
+                                    重试 {task.retryCount}/{task.maxRetries ?? 1}
+                                </div>
+                            )}
+                            <div>计划: {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}</div>
+                            <div>实际: {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}</div>
+                        </div>
+                    </div>
+
+                    {/* Development sessions */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>Development</span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            {task.sessions.length === 0 ? (
+                                <span class="gh-no-item">No sessions active</span>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {task.sessions.map((s, idx) => (
+                                        <button
+                                            key={s.id}
+                                            onClick={() => openSession(s.id, s.agentType)}
+                                            style={{
+                                                background: 'none',
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: '6px',
+                                                padding: '6px',
+                                                textAlign: 'left',
+                                                cursor: 'pointer',
+                                                fontSize: '12.5px',
+                                                color: 'var(--text-main)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                width: '100%'
+                                            }}
+                                        >
+                                            <span>#{idx + 1} {s.agentType}</span>
+                                            <span class={`task-status-badge ${s.status === 'running' ? 'running' : 'completed'}`} style={{ fontSize: '10px' }}>
+                                                {s.status === 'running' ? '运行中' : '空闲'}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div class="gh-sidebar-panel" style={{ borderBottom: 'none' }}>
+                        <div class="gh-sidebar-head">
+                            <span>Danger Zone</span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            <button class="task-delete-link" onClick={() => onDelete(task.id)}>
+                                删除此任务 (Delete Task)
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     );
 }

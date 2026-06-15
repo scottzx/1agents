@@ -55,6 +55,12 @@ export function Overview({ tasks }: OverviewProps) {
             <div class="overview-top bento-grid">
                 <div class="bento-card overview-donut-card bento-span-2">
                     <svg class="overview-donut" viewBox="0 0 140 140" width="140" height="140">
+                        <defs>
+                            <linearGradient id="donutGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="var(--accent-color)" />
+                                <stop offset="100%" stop-color="var(--purple-fg)" />
+                            </linearGradient>
+                        </defs>
                         <circle cx="70" cy="70" r={R} class="overview-donut-track" />
                         <circle
                             cx="70"
