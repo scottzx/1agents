@@ -1,7 +1,8 @@
 # 1Agents 🚀
 
-### One Person, Infinite Agents — Build Your Own Personal AI Organization
-**1Agents (One Agents) is an open-source, self-hosted distributed personal AI organization and smart workspace. It breaks away from the traditional, isolated "Q&A chatbox" model of standard AI assistants by introducing a highly-structured A2A (Agent-to-Agent) collaboration workflow. 1Agents allows you to operate like a "one-person company," serving as the sole owner commanding a virtual AI team composed of a PMO, PM, Executor, and Verifier to systematically turn complex information, ideas, and tasks into reality.**
+### An Army of One — AI-Native Office Software (One Person, Infinite Agents)
+
+**1Agents** is an open-source, self-hosted **AI-native office software for an army of one**. As the sole owner, you command a virtual AI team — PMO, PM, Executor, and Verifier — that collaborates through an **A2A (Agent-to-Agent)** workflow to systematically turn complex information, ideas, and tasks into reality. One person, an entire army.
 
 [简体中文](README.md) | **English**
 
@@ -11,293 +12,163 @@
 
 ---
 
-## 🌌 Branding & Vision
+## 🌌 Vision
 
-> **"One Person, Infinite Agents"**
-> —— This is the core philosophy of **1Agents**. In the next era of AI, we no longer need endless isolated chat windows. Instead, we need a single unified intelligence hub with structured role delegation, automated flows, and connection across both digital workloads and physical devices.
+> **"One Person, Infinite Agents"** — In the AI era, productivity is no longer limited by headcount, but by how effectively you orchestrate your AI legion.
 
-### 👥 Who We Are
-We are a team of developers and AI visionaries who firmly believe in the era of the **"Super Individual"**. We believe that future productivity is defined not by how many human employees you have, but by how effectively you orchestrate your personal AI legion. 1Agents is built specifically for Indie Hackers, Solopreneurs, and knowledge workers who want to run virtual organizations without getting bogged down by operational overhead. We are dedicated to practicing the design philosophies of **"Loop Engineering"** and **"Proactive Agents"**, shifting from traditional one-shot prompt engineering towards autonomous, self-correcting, event-triggered AI systems.
+1Agents is built for Indie Hackers, Solopreneurs, and knowledge workers who refuse to drown in operational overhead. We practice **Loop Engineering** and **Proactive Agents** — shifting from one-shot prompt engineering toward autonomous, self-correcting, event-triggered AI systems.
 
-### 🔄 Core Architecture: The A2A Collaboration Model
-As the **sole owner** of 1Agents, you set the goals, while your virtual AI team coordinates and executes:
+### 🔄 The A2A Collaboration Model
+As the **sole owner**, you set the goals; your AI team coordinates and executes:
 
-*   **PMO (Project Management Office)**: Your central command entry point. It collects incoming information (Inbox), filters noise, and facilitates project launches.
-*   **PM (Project Manager)**: Outlines goals, milestones, and roadmaps for projects, planning and breaking down requirement pools into actionable tasks.
-*   **Executor**: Focuses entirely on completing assigned tasks, modifying source code, and running local tools/compilers.
-*   **Verifier**: Serves as the quality gate, validating outputs (passing or rejecting with feedback) to ensure zero-defect delivery.
+* **PMO**: Central command entry point — collects the Inbox, filters noise, facilitates project launches.
+* **PM**: Breaks requirements into Projects with goals, milestones, and roadmaps, then schedules tasks.
+* **Executor**: Completes assigned tasks, modifies source code, runs local tools/compilers.
+* **Verifier**: The quality gate — validates outputs (pass or reject with feedback) for zero-defect delivery.
 
-We are standing at a tipping point where **"AI will make everything compatible."** As system CLI tools, legacy applications, and desktop softwares become API-driven through lightweight middleware, AI agents are evolving into the universal adapters connecting all systems and hardware.
+More than a remote terminal, 1Agents is an **open-source distributed agent collaboration network**, managing heterogeneous nodes from a single browser:
 
-**1Agents** is far more than just a remote web terminal; it is an **Open-source Distributed Agent & Multi-device Collaboration Workspace**. It aims to dismantle hardware and location boundaries, allowing you to manage, coordinate, and hand off tasks seamlessly to agents running on heterogeneous host environments via a single browser view:
-- **💻 macOS Node**: Serves as your "daily productivity workspace." It natively calls iCloud file synchronization, parses system logs, and runs AppleScript or Apple Shortcuts.
-- **🐧 Linux VPS Node**: Acts as your "heavy cloud computing workhorse." Operating 24/7, it manages Docker containers, orchestrates backend tasks, and coordinates long-running server workers.
-- **🪟 Windows Node**: Serves as your "specialist operator." It automates legacy, professional desktop software through UI automation and Win32 RPA.
-- **🔌 Embedded & IoT Node**: Looking forward, it extends to the edge, reading sensors (GPIO) and sending signals to bring intelligence into physical workflows.
+- **💻 macOS**: Daily productivity workspace — iCloud sync, system logs, AppleScript / Shortcuts.
+- **🐧 Linux VPS**: Heavy cloud workhorse — 24/7 Docker orchestration, databases, long-running tasks.
+- **🪟 Windows**: Specialist operator — UI automation & Win32 RPA for legacy desktop software.
+- **🔌 Embedded & IoT**: Extends to the edge — reading sensors and driving signals into physical workflows.
 
 ---
 
-## 🧭 Project Status & Milestone Roadmap
+## 🧭 Status & Roadmap
 
-**1Agents** is not a purely theoretical abstract network, but a highly practical, step-by-step developer workbench designed to scale into a decentralized intelligence hub.
+**Today**: 1Agents is a lightweight, zero-config, multi-workspace Web dashboard — an ultra-responsive web terminal (`ttyd + tmux`), a full-featured file explorer with HTML/PDF HD preview, native Speech-to-Text, and auto-generated SSL. It hosts and manages your local AI tooling (`Claude Code`, `Codex CLI`, `OpenClaw`, etc.).
 
-### 1. What We Are Today
-Today, 1Agents is a **lightweight, zero-configuration, multi-workspace remote Web dashboard** designed for modern developers and AI agents. It features an ultra-responsive web terminal (deeply integrated `ttyd + tmux`), a fully-featured file explorer with HTML/PDF high-definition preview, native Speech-to-Text, auto-generated SSL certificates, Tailscale Green Lock, and the CC-Connect chat bridge. It perfectly hosts, manages, and shields your local AI tooling workflow (such as `Claude Code`, `Codex CLI`, `OpenClaw`, etc.).
+**Next**: the **1Agents Distributed Orchestrator** — a complete **"User Request → Intent Analysis → Multi-device Orchestration → Distributed Execution → Unified Synthesis & Feedback"** loop. An LLM breaks high-level goals into sub-tasks, dispatches them to the best node (macOS/Linux/Windows/MCU) by native capability, and the hub verifies and compiles the result. The underlying **Agent Protocol Network** is the secure backbone for this multi-node orchestration.
 
-### 2. Next Major Milestone: 1Agents Distributed Orchestrator
-Our next immediate focus is the **1Agents Distributed Task & Resource Orchestration Hub (Orchestration Hub)**. Rather than just a communication protocol, this is a complete workspace that implements the **"User Request ➡️ Intent Analysis ➡️ Multi-device Orchestration ➡️ Distributed Execution ➡️ Unified Synthesis & Feedback"** loop:
+---
 
-- **👤 User Intent Capture**: The user submits high-level goals or creative ideas through the Unified Portal (Web Browser / PWA / App).
-- **📋 Task Orchestration**: The Orchestrator leverages LLMs to break down complex goals into structured, multi-step sub-tasks and dependency execution flows.
-- **🧩 Resource & Agent Orchestration**: The Orchestrator queries available online nodes (macOS, Linux VPS, Windows) and matches sub-tasks to the best node based on their **heterogeneous host native capabilities** (e.g., dispatching file extraction to a macOS node, web deployment to a Linux node, or legacy app automation to a Windows node).
-- **🛡️ Validation & Handoff**: Distributed nodes execute sub-tasks locally and stream output back. The Orchestrator verifies the deliverables, compiles the final result, and returns it to the user.
+## 🌟 Core Capabilities
 
-```mermaid
-graph TD
-    classDef portal fill:#1a73e8,stroke:#1b66c9,color:#ffffff,stroke-width:2px;
-    classDef center fill:#f2994a,stroke:#d47d2b,color:#ffffff,stroke-width:2px;
-    classDef nodeClass fill:#27ae60,stroke:#1e8449,color:#ffffff,stroke-width:2px;
-    
-    User[("👤 User Input <br> (User Intent Capture)")]:::portal
-    
-    subgraph Core ["1Agents Orchestration Hub (Orchestration Hub)"]
-        TaskParser["1. Task Orchestration<br>Break down goals into sub-tasks"]:::center
-        ResourceSelector["2. Resource Orchestration<br>Match sub-tasks to native device tools"]:::center
-        Validator["4. Validation & Synthesis<br>Aggregate results & verify deliverables"]:::center
-        
-        TaskParser --> ResourceSelector
-    end
-    
-    subgraph Nodes ["Execution Nodes (Distributed Layer)"]
-        MacNode["💻 macOS Agent<br>(Access iCloud/AppleScript & local files)"]:::nodeClass
-        LinuxNode["🐧 Linux VPS Agent<br>(Run heavy cloud tasks & Docker containers)"]:::nodeClass
-        WinNode["🪟 Windows Agent<br>(Control legacy desktop apps & Win32 RPA)"]:::nodeClass
-    end
+- ⚡ **Zero-Latency Web Terminal (ttyd + tmux)**: `xterm.js` + WebSockets with integrated `tmux` state — sessions restore in milliseconds after a drop or refresh.
+- 📂 **Full-Featured File Browser & Editor**: tree + tile navigation with quick search; native text/image preview, **HD HTML & PDF rendering with 16:9 fullscreen popout**; zero-config syntax editor with rename/save/download.
+- 📁 **Dynamic Multi-Workspace**: create/switch/delete workspaces; native **Folder Picker** to load any local directory; terminal & file context sync instantly on switch.
+- 🎙️ **Native Speech-to-Text**: built-in Web Speech API for instant English/Chinese transcription.
+- 🔒 **Zero-Config SSL/TLS**: `--ssl` auto-generates a 10-year ECDSA P-256 self-signed cert; auto-matches Tailscale's Let's Encrypt cert for the browser green lock 🔒.
+- 🤖 **CC-Connect Multi-Channel Bridge**: [cc-connect](https://github.com/scottzx/cc-connect) registers workspaces as projects and bridges Feishu, Telegram, Discord, and Slack, syncing theme & language.
+- 🌐 **On-Demand Web Tunnel**: `--tunnel` or a cc-connect chat spins up a secure Cloudflare tunnel — no port forwarding or public IP. Missing `cloudflared` is auto-downloaded (~30MB); a dynamic token and terminal QR code let you connect by scanning.
 
-    User -->|"Submit Goal"| TaskParser
-    
-    ResourceSelector -->|"Assign Sub-task & Tools"| MacNode
-    ResourceSelector -->|"Assign Sub-task & Tools"| LinuxNode
-    ResourceSelector -->|"Assign Sub-task & Tools"| WinNode
-    
-    MacNode -->|"Return Sub-Result"| Validator
-    LinuxNode -->|"Return Sub-Result"| Validator
-    WinNode -->|"Return Sub-Result"| Validator
-    
-    Validator -->|"Deliver Final Handoff"| User
+---
+
+## ⚙️ Prerequisites
+
+Persistent terminal sessions (auto-reconnect) rely on **`tmux`**. Since `tmux` is a dynamically linked C binary, it isn't bundled into the NPM package — install it first via your package manager:
+
+```bash
+brew install tmux                              # macOS (Homebrew)
+sudo apt update && sudo apt install -y tmux    # Linux (Ubuntu/Debian)
+sudo dnf install -y tmux                       # Linux (CentOS/RHEL/Fedora)
 ```
-
-The underlying **Agent Protocol Network** acts as the secure, decentralized messaging pipe to support this multi-node orchestration. Through this loop, 1Agents delivers the true potential of distributed AI collaboration.
-
----
-
-## 🌟 Core Capabilities & Technical Advantages
-
-- ⚡ **Zero-Latency Web Terminal (ttyd + tmux integration)**:
-  - Powered by `xterm.js` and high-performance WebSockets for instant keyboard responses.
-  - **Persistent Terminal Sessions**: Integrated `tmux` state management. If your connection drops or you refresh your browser, your terminal state, running scripts, and histories are restored in milliseconds.
-- 📂 **Full-Featured Web File Browser & Editor**:
-  - **Fast Navigation**: Tree directories and tile views with quick search and type filters.
-  - **Full Preview**: Native rendering of text and images. **Supports native HD preview of HTML & PDF files with a 16:9 fullscreen popout**.
-  - **Online Coding**: Zero-config editor with syntax highlighting, support for renaming, saving, and downloading files directly.
-- 📁 **Dynamic Multi-Workspace Management**:
-  - Create, switch, and delete multiple workspaces on the fly.
-  - **Native Folder Picker Integration**: Leverages the browser's native File System Access API to select and load any directory on your computer directly.
-  - Context synchronization: Switching workspaces instantly and asynchronously updates both your terminal path and file view.
-- 🎙️ **Native Speech-to-Text (STT) Input**:
-  - Built-in Web Speech API supporting instant English and Chinese transcription for voice-controlled agent scripting.
-- 🔒 **Zero-Config SSL/TLS Security**:
-  - **Self-Signed Certificates**: Running `--ssl` automatically spins up a high-strength ECDSA P-256 self-signed certificate (valid for 10 years), adapting to all local LAN IPs.
-  - **Tailscale Green Lock Integration**: Automatically scans and matches official Tailscale Let's Encrypt certificates to give you the secure green padlock `🔒` in your browser.
-- 🤖 **CC-Connect Multi-Channel Bridge**:
-  - Integrates with the [cc-connect](https://github.com/scottzx/cc-connect) engine to register workspaces as live projects.
-  - Reverse proxies command control to Feishu, Telegram, Discord, and Slack, syncing agent theme styles and languages.
-- 🌐 **On-Demand Web Tunnel**:
-  - **One-Click Publishing**: Run with `--tunnel` or trigger via cc-connect to spin up a secure Cloudflare tunnel. No router port forwarding, firewall adjustments, or public IP configurations required.
-  - **Zero-Install Cloudflare CLI**: Go backend auto-detects system environments. If `cloudflared` is missing, it downloads it safely with live progress logging (~30MB; 2-5s internationally, 15-30s in China). If already installed, it instantly launches in 0.1 seconds.
-  - **Dynamic Authentication**: Auto-generates a secure access token and renders high-contrast QR codes in the terminal for instant mobile scanning.
-
----
-
-## 📆 Weekly Git Highlights
-
-The project has recently undergone major optimizations and refactoring, bringing these high-impact features:
-
-1. **📄 HTML/PDF HD Preview**: The file manager now supports rendering HTML and PDF documents natively, with support for fullscreen 16:9 preview popouts.
-2. **🎙️ Speech-to-Text & Compatibility Guidelines**: Integrated high-speed Speech-to-Text and published local offline engine compatibility guidelines (e.g., Safari's offline processing vs. Chrome's Google cloud dependence).
-3. **🔒 Self-Signed ECDSA Certificates & Tailscale Autoloader**: Zero-config HTTPS with 10-year ECDSA P-256 cert generator, plus automated scanning for Tailscale network certificates.
-4. **📱 Mobile Layout & tmux Gesture Upgrades**:
-   - Removed bulky header bars to maximize screen estate on tablets and phones.
-   - Upgraded mobile terminal Virtual Quick Keys, grouped controls, and integrated a direct `claude` CLI button.
-   - Sliding menus now slide back smoothly on mobile workspace switching.
-5. **⚙️ Native Folder Picker**: Replaced path text inputs with native operating system directory pickers.
-6. **🚀 Parallel Workspace Loading**: Concurrently initializes terminals and workspace databases to drop first-screen white time.
-7. **🤖 CC-Connect Proxied Handoff**: Dynamic workspace register, POST request theme syncing, and bridge proxy updates.
-8. **📦 Multi-Platform NPM Wrapper (@scottzx/1agents)**: Released native binary packager wrapper supporting Node 24 and CI/CD automated Yarn 3 release pipelines.
-9. **🌐 Smart Tunnel Downloader**: Reusable Cloudflare path lookups, terminal QR code printout, and 0.1-second subsequent startups.
-
----
-
-## ⚙️ System Prerequisites
-
-To ensure seamless terminal session persistence (auto-reconnects), this platform natively relies on the **`tmux`** command-line utility. Since `tmux` is a highly dynamically linked C binary, it cannot be pre-bundled portably inside the NPM package structure. Please install it on your host using your system's package manager first:
-
-* **macOS (via Homebrew)**:
-  ```bash
-  brew install tmux
-  ```
-* **Linux (Ubuntu/Debian)**:
-  ```bash
-  sudo apt update && sudo apt install -y tmux
-  ```
-* **Linux (CentOS/RHEL/Fedora)**:
-  ```bash
-  sudo dnf install -y tmux
-  ```
 
 ---
 
 ## 🚀 Installation
 
-### Method 1: Global NPM Install (Recommended ⚡)
+### Method 1: NPM (Recommended ⚡)
 
-We provide an automated wrapper packager. It auto-detects your platform architecture and downloads the optimized pre-compiled executable.
-
-**🚀 Offline Out-of-the-Box (Pre-bundled Binaries)**:
-To bypass any GitHub network accessibility issues in certain restricted/isolated environments, **we have pre-bundled both `ttyd` and the official latest `cloudflared` (Cloudflare Tunnel) binaries directly inside the `@scottzx/1agents` package!**
-No post-install downloads or external GitHub network calls are required on your host machine. Simply install and run!
+The wrapper auto-detects your architecture and downloads the matching binary. To bypass GitHub accessibility issues, **`ttyd` and the official `cloudflared` are pre-bundled inside `@scottzx/1agents`** — no post-install downloads, 100% offline out-of-the-box.
 
 ```bash
-# Install globally (includes daemon, ttyd terminal backend, Web dashboard assets, and platform-specific cloudflared binary)
-npm install -g @scottzx/1agents
-
-# Or execute on-demand without installing:
-npx @scottzx/1agents [options]
+npm install -g @scottzx/1agents   # global install (daemon, ttyd, Web assets, cloudflared)
+npx @scottzx/1agents [options]    # or run on-demand without installing
 ```
 
-> **Requirements**: Node.js >= 22 (supports Node 24)
-> **Supported Platforms**: macOS (Darwin x64/arm64), Linux (x64/arm64), Windows (x64/arm64)
+> **Requirements**: Node.js >= 22 (supports Node 24) | **Platforms**: macOS (x64/arm64), Linux (x64/arm64), Windows (x64/arm64)
 
 ### Method 2: Manual Binary Release
-Directly grab pre-compiled executables from our [GitHub Releases Page](https://github.com/scottzx/1Agents/releases), unzip, and run immediately.
+Grab pre-compiled executables from the [GitHub Releases page](https://github.com/scottzx/1Agents/releases), unzip, and run.
 
-### Method 3: Docker Deployment
+### Method 3: Docker
 
 ```bash
-docker run -d \
-  -p 8080:8080 \
+docker run -d -p 8080:8080 \
   -v /path/to/your/workspaces:/workspace \
-  --name 1agents \
-  scottzx/1Agents:latest
+  --name 1agents scottzx/1Agents:latest
 ```
 
 ### Method 4: Compile from Source
 
-To compile locally for development, ensure Yarn 3 is active:
+```bash
+# 1. Compile the native C terminal backend (ttyd)
+git clone --recursive https://github.com/scottzx/1Agents.git
+cd 1agents && mkdir build && cd build && cmake .. && make
 
-1. **Compile the native C Terminal backend (ttyd)**:
-   ```bash
-   git clone --recursive https://github.com/scottzx/1Agents.git
-   cd 1agents
-   mkdir build && cd build
-   cmake ..
-   make  # Produces the ttyd binary
-   ```
-2. **Build Web dashboard frontend assets**:
-   ```bash
-   cd ../html
-   corepack enable  # Ensure Yarn 3.6.3 runs
-   yarn install
-   yarn build       # Gulp packages assets and generates src/html.h
-   ```
-3. **Compile the Go Server Daemon**:
-   ```bash
-   cd ../agent
-   go build -o 1agents ./cmd/agent/main.go
-   ```
+# 2. Build frontend assets (generates embedded html.h)
+cd ../html && corepack enable && yarn install && yarn build
+
+# 3. Compile the Go daemon
+cd ../agent && go build -o 1agents ./cmd/agent/main.go
+```
 
 ---
 
 ## 🛠️ CLI Flags & Usage
 
-Starting the dashboard is extremely simple. Just execute `1agents` in your command line:
-
 ```bash
-# Starts workspace server, default listening on :8080, mounting home directory (~)
-1agents
-
-# Listen on custom interfaces and mount custom work directories
-1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects
+1agents                                                  # default :8080, mounts home (~)
+1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects   # custom listen & workdir
 ```
 
-Open `http://localhost:8080` (or your listening port) in your browser to access your unified agent workspace!
+Open `http://localhost:8080` (or your port) in a browser to access your workspace.
 
-### Comprehensive CLI Arguments
-
-| Flag | Data Type | Default | Description |
+| Flag | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
 | `-listen` | `string` | `":8080"` | Address and port to serve on (e.g. `0.0.0.0:8080` or `:9000`) |
-| `-workdir` | `string` | `"~"` | Default root workspace folder mounted. Files outside this directory are secure |
-| `-tmux-session` | `string` | `"1agents"` | Default tmux session name bound for state restoration and auto-reconnects |
-| `-ssl` | `bool` | `false` | Enable HTTPS. Will auto-generate a 10-year cert if none is configured |
-| `-ssl-cert` | `string` | `""` | Path to custom SSL/TLS Certificate file (PEM format) |
-| `-ssl-key` | `string` | `""` | Path to custom SSL/TLS Private Key file (PEM format) |
-| `-no-ttyd` | `bool` | `false` | Disable starting the backend ttyd server automatically (for dev testing) |
-| `-ttyd-bin` | `string` | `"./ttyd"` | Path to custom `ttyd` binary executable |
-| `-ttyd-addr` | `string` | `"127.0.0.1:7681"`| Loopback address for ttyd and Go daemon communications |
-| `-restart-delay`| `duration` | `"3s"` | Cooldown period before trying to respawn a crashed ttyd daemon |
-| `-max-restarts` | `int` | `5` | Threshold limit of consecutive ttyd crashes before locking to avoid loops |
-| `-tunnel` | `bool` | `false` | Launch safe public Cloudflare tunnel, prints access link and mobile QR code |
+| `-workdir` | `string` | `"~"` | Root workspace folder mounted; files outside are inaccessible |
+| `-tmux-session` | `string` | `"1agents"` | tmux session name for state restoration and auto-reconnects |
+| `-ssl` | `bool` | `false` | Enable HTTPS; auto-generates a 10-year cert if none is configured |
+| `-ssl-cert` | `string` | `""` | Path to custom SSL/TLS certificate (PEM) |
+| `-ssl-key` | `string` | `""` | Path to custom SSL/TLS private key (PEM) |
+| `-no-ttyd` | `bool` | `false` | Don't auto-start the ttyd backend (for dev testing) |
+| `-ttyd-bin` | `string` | `"./ttyd"` | Path to custom `ttyd` binary |
+| `-ttyd-addr` | `string` | `"127.0.0.1:7681"` | Loopback address for ttyd ↔ daemon communication |
+| `-restart-delay` | `duration` | `"3s"` | Cooldown before respawning a crashed ttyd |
+| `-max-restarts` | `int` | `5` | Consecutive-crash threshold before locking to avoid loops |
+| `-tunnel` | `bool` | `false` | Launch a Cloudflare public tunnel; prints access link and QR code |
 
 ---
 
-## 💡 Advanced Setup & Guides
+## 💡 Advanced Setup
 
-### 1. Configure LAN/WAN Let's Encrypt (Tailscale Setup)
+### 1. HTTPS Green Lock (Tailscale + Let's Encrypt)
+Browsers enforce a **Secure Context** (`localhost` or HTTPS) for Microphone, Clipboard, and Service Worker APIs, so LAN access from phones/tablets needs SSL. The easiest path is Tailscale's official cert:
 
-Modern browsers enforce a **Secure Context** (requiring `localhost` or `HTTPS`) to access media device APIs (like Microphone for Speech-to-Text), Clipboard, or Service Workers. 
+```bash
+tailscale cert <your-node-domain.ts.net>   # generates .crt / .key
+```
 
-The easiest and safest way to obtain a valid HTTPS certificate on your private network is using **Tailscale**:
+Place them in `~/.1agents/certs/` and run `1agents --ssl` — the daemon auto-indexes the cert, giving you a green padlock 🔒 anywhere. See the [SSL Certificate Setup Guide](docs/tips/ssl-certificate-guide.md).
 
-1. **Activate HTTPS Certs**: Enable **HTTPS Certificates** in your Tailscale Admin Console.
-2. **Download Tailscale Certs**: In your host node terminal, execute:
-   ```bash
-   tailscale cert <your-tailscale-node-domain.ts.net>
-   ```
-3. **Move to Certs folder**: Place the output `.crt` and `.key` files inside `~/.1agents/certs/`.
-4. **Boot with SSL**: Simply execute:
-   ```bash
-   1agents --ssl
-   ```
-   *The Go daemon automatically indexes and links the Tailscale certificate. You will get the green secure padlock 🔒 from any authorized phone or laptop on your Tailscale tailnet!*
-   *(For details, read: [Tailscale Certificate Setup Guide](docs/tips/ssl-certificate-guide.md))*
+### 2. Speech-to-Text Compatibility
+- **Safari (macOS) recommended**: uses native offline transcription — fast, offline, accurate.
+- **Chrome / Edge**: rely on Google Cloud; restricted networks see `Speech recognition error: network`.
+- **Mobile**: requires HTTPS to grant microphone access.
 
-### 2. Speech-to-Text Microphone Permissions & Troubleshooting
+See [Speech Recognition Compatibility Notes](docs/tips/voice-recognition.md).
 
-- **Safari (macOS) is Highly Recommended**: Safari uses macOS native offline speech transcription. It is **incredibly fast, works entirely offline without network delay, and is highly accurate**.
-- **Chrome / Edge Network Errors**: Chrome/Edge relies on Google Cloud API for Web Speech transcriptions. If you run in isolated private networks or have firewall configurations, you will see `Speech recognition error: network`.
-- **Mobile Access**: Speech-to-Text requires active HTTPS/SSL on mobile devices to gain microphone access.
-- *(For details, read: [Speech Recognition Compatibility Notes](docs/tips/voice-recognition.md))*
+### 3. Zero-Config Public Tunnel
+In environments with no public IP or firewall access (home routers, corporate networks, cafe Wi-Fi), add `-tunnel` to publish in one step:
 
-### 3. Zero-Config Tunnels (Cloudflare & CC-Connect)
-
-When running in restricted environments with no public IP or firewall access (like home routers, corporate internal networks, or public cafe Wi-Fi), `1Agents` offers a dead-simple public tunnel:
-
-#### 💡 Behind the scenes & First Download Experience
-Booting with the `-tunnel` flag:
 ```bash
 1agents -tunnel
 ```
-System automatically triggers the tunnel workflow:
-1. **Intelligent Path Discovery**: Checks if `cloudflared` is already installed in the path (e.g., via Homebrew on macOS or `apt` on Linux). If found, it **instantly boots in 0.1 seconds, skipping downloads**.
-2. **On-Demand Secure Download**: If missing, Go downloads it (~30MB) from the official GitHub Release page. **Real-time percentages and progress bars** are logged to the console.
-   - *High-speed Broadband*: Takes **2 ~ 5 seconds** and prints the QR code.
-   - *Restricted Network*: Taking roughly **15 ~ 30 seconds**.
-   - *Subsequent Launches*: Launches in **0.1 seconds** using the local cached binary.
-3. **Secure Mobile Connect**: Prints a high-contrast QR code directly in the terminal, allowing any scanned mobile device to safely tunnel into your console.
 
-#### 🤖 CC-Connect Chat Activation
-If you have [cc-connect](https://github.com/scottzx/cc-connect) active, you don't even need terminal access. **Just ping your custom Feishu, Slack, or Telegram chatbot with "Launch my workspace" or "Start tunnel", and the backend automatically pulls up the tunnel and replies with a secure, temporary HTTPS link.**
+- **Smart reuse**: if `cloudflared` is already installed (e.g. via Homebrew), it boots in 0.1s with no download.
+- **On-demand download**: otherwise it's fetched securely from the official GitHub release (~30MB; 2–5s internationally, 15–30s in China) with live progress; subsequent launches are instant.
+- **Secure connect**: a single-use token plus a high-contrast terminal QR code let any phone scan in.
+
+With [cc-connect](https://github.com/scottzx/cc-connect) active, just message your Feishu/Telegram/Slack bot "start tunnel" and it pulls up the tunnel and replies with a temporary secure HTTPS link.
+
+---
+
+## 🔗 Related Project
+
+**1Hive** (formerly iClaw / 虾窝) — the companion hardware that keeps your AI agents running 24/7 so your "army of one" never goes offline: [https://00claw.com/](https://00claw.com/).
 
 ---
 
