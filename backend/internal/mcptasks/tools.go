@@ -52,6 +52,7 @@ var toolDefs = []map[string]any{
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
+				"assignee":           map[string]any{"type": "string", "description": "Executing agent type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). Set this to run different tasks on different agents. Empty defaults to claudecode."},
 				"dependsOn":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
 			},
 		},
@@ -70,6 +71,7 @@ var toolDefs = []map[string]any{
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
+				"assignee":           map[string]any{"type": "string", "description": "Executing agent type, e.g. 'claudecode' or 'codex'. Empty defaults to claudecode."},
 			},
 		},
 	},
@@ -220,6 +222,7 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		Type               string   `json:"type"`
 		Priority           string   `json:"priority"`
 		Milestone          string   `json:"milestone"`
+		Assignee           string   `json:"assignee"`
 		DependsOn          []string `json:"dependsOn"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
@@ -236,6 +239,7 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"type":               a.Type,
 		"priority":           a.Priority,
 		"milestone":          a.Milestone,
+		"assignee":           a.Assignee,
 		"dependsOn":          a.DependsOn,
 	}
 	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
@@ -279,7 +283,7 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	}
 
 	patch := map[string]json.RawMessage{}
-	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type"} {
+	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee"} {
 		if v, ok := raw[f]; ok {
 			patch[f] = v
 		}

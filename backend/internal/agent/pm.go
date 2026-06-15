@@ -14,6 +14,11 @@ import (
 // meta.ChatSessionRecord.Role.
 const SessionRolePM = "pm"
 
+// SessionRoleAuto marks a session created by the headless task runner for an
+// AI-executed task. These run silently in the backend, so handler.list hides
+// them from the sidebar; they remain resolvable by id for "查看详情" resume.
+const SessionRoleAuto = "auto"
+
 // workspaceName resolves a workspace id to its display name, falling back to
 // the id when it can't be looked up.
 func (h *Handler) workspaceName(workspaceID string) string {

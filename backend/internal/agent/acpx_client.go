@@ -437,85 +437,67 @@ func (c *AcpxClient) cleanupBridge(sessionId string) {
 }
 
 func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, summary string, tasksStore *TasksStore) {
-	cfg, err := tasksStore.Load(workspacePath)
-	if err != nil {
-		return
-	}
-
 	now := time.Now().UTC()
-	updated := false
+	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			task := &cfg.Tasks[i]
+			if task.ID == taskId {
+				// Update task status and summary
+				task.Status = TaskStatusCompleted
+				task.CompletedAt = &now
+				task.Summary = summary
+				task.UpdatedAt = now
 
-	for i := range cfg.Tasks {
-		task := &cfg.Tasks[i]
-		if task.ID == taskId {
-			// Update task status and summary
-			task.Status = TaskStatusCompleted
-			task.CompletedAt = &now
-			task.Summary = summary
-			task.UpdatedAt = now
-
-			// Add or update session metadata
-			sessionExists := false
-			for j := range task.Sessions {
-				sess := &task.Sessions[j]
-				if sess.ID == sessionId {
-					sess.Status = SessionStatusIdle
-					sess.Summary = summary
-					sessionExists = true
-					break
+				// Add or update session metadata
+				sessionExists := false
+				for j := range task.Sessions {
+					sess := &task.Sessions[j]
+					if sess.ID == sessionId {
+						sess.Status = SessionStatusIdle
+						sess.Summary = summary
+						sessionExists = true
+						break
+					}
 				}
-			}
 
-			if !sessionExists {
-				task.Sessions = append(task.Sessions, SessionMetadata{
-					ID:        sessionId,
-					Kind:      SessionKindChat,
-					Name:      "智能体排查与修复",
-					AgentType: "claudecode",
-					Status:    SessionStatusIdle,
-					Summary:   summary,
-					CreatedAt: now,
-				})
+				if !sessionExists {
+					task.Sessions = append(task.Sessions, SessionMetadata{
+						ID:        sessionId,
+						Kind:      SessionKindChat,
+						Name:      "智能体排查与修复",
+						AgentType: "claudecode",
+						Status:    SessionStatusIdle,
+						Summary:   summary,
+						CreatedAt: now,
+					})
+				}
+				return true
 			}
-			updated = true
-			break
 		}
-	}
-
-	if updated {
-		_ = tasksStore.Save(workspacePath, cfg)
-	}
+		return false
+	})
 }
 
 func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, errMsg string, tasksStore *TasksStore) {
-	cfg, err := tasksStore.Load(workspacePath)
-	if err != nil {
-		return
-	}
-
 	now := time.Now().UTC()
-	updated := false
+	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			task := &cfg.Tasks[i]
+			if task.ID == taskId {
+				task.Status = TaskStatusFailed
+				task.UpdatedAt = now
 
-	for i := range cfg.Tasks {
-		task := &cfg.Tasks[i]
-		if task.ID == taskId {
-			task.Status = TaskStatusFailed
-			task.UpdatedAt = now
-
-			for j := range task.Sessions {
-				sess := &task.Sessions[j]
-				if sess.ID == sessionId {
-					sess.Status = SessionStatusIdle
-					sess.Summary = "Error: " + errMsg
-					break
+				for j := range task.Sessions {
+					sess := &task.Sessions[j]
+					if sess.ID == sessionId {
+						sess.Status = SessionStatusIdle
+						sess.Summary = "Error: " + errMsg
+						break
+					}
 				}
+				return true
 			}
-			updated = true
-			break
 		}
-	}
-
-	if updated {
-		_ = tasksStore.Save(workspacePath, cfg)
-	}
+		return false
+	})
 }

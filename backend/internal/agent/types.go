@@ -42,6 +42,16 @@ var SupportedAgentTypes = []AgentType{
 // DefaultAgentType is the agent used when a workspace has none configured.
 const DefaultAgentType = AgentTypeClaudecode
 
+// IsSupportedAgentType reports whether t is one of SupportedAgentTypes.
+func IsSupportedAgentType(t AgentType) bool {
+	for _, a := range SupportedAgentTypes {
+		if a == t {
+			return true
+		}
+	}
+	return false
+}
+
 // Model types live in internal/meta (the SQLite metadata layer) so the
 // server handlers and the CLI share one definition; the aliases below keep
 // this package's existing code and the wire JSON shapes unchanged.

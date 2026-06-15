@@ -540,7 +540,8 @@ export function TaskDetail({
                                                 onClick={() =>
                                                     openSession(
                                                         rp.sessionRef!,
-                                                        sess?.agentType || rp.agentType || 'claudecode'
+                                                        sess?.agentType || rp.agentType || 'claudecode',
+                                                        rp.id
                                                     )
                                                 }
                                             >

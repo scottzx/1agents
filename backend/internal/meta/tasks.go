@@ -19,11 +19,49 @@ type TaskStore struct {
 	// importMu serializes the one-time lazy import of a workspace's legacy
 	// tasks.json so concurrent Loads don't double-insert.
 	importMu sync.Mutex
+	// mutateMu guards wsLocks; wsLocks holds one mutex per workspace path so
+	// Mutate can serialize the Load→modify→Save cycle (see Mutate).
+	mutateMu sync.Mutex
+	wsLocks  map[string]*sync.Mutex
 }
 
 // NewTaskStore returns a TaskStore over db.
 func NewTaskStore(db *DB) *TaskStore {
 	return &TaskStore{db: db}
+}
+
+// wsMutex returns the per-workspace lock used by Mutate, creating it on first use.
+func (s *TaskStore) wsMutex(workspacePath string) *sync.Mutex {
+	s.mutateMu.Lock()
+	defer s.mutateMu.Unlock()
+	if s.wsLocks == nil {
+		s.wsLocks = make(map[string]*sync.Mutex)
+	}
+	m, ok := s.wsLocks[workspacePath]
+	if !ok {
+		m = &sync.Mutex{}
+		s.wsLocks[workspacePath] = m
+	}
+	return m
+}
+
+// Mutate runs fn against the workspace's task config under a per-workspace lock
+// and persists the result when fn reports a change. Serializing the whole
+// Load→modify→Save cycle is what prevents concurrent writers (the scheduler
+// tick, the headless runner's finish, and the chat-ws handlers) from clobbering
+// each other's status updates with a stale whole-config snapshot.
+func (s *TaskStore) Mutate(workspacePath string, fn func(cfg *TasksConfig) (changed bool)) error {
+	m := s.wsMutex(workspacePath)
+	m.Lock()
+	defer m.Unlock()
+	cfg, err := s.Load(workspacePath)
+	if err != nil {
+		return err
+	}
+	if fn(cfg) {
+		return s.Save(workspacePath, cfg)
+	}
+	return nil
 }
 
 // taskCols is the canonical task column list shared by Load and GetTask

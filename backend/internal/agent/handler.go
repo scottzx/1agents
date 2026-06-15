@@ -207,6 +207,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		recs = []ChatSessionRecord{}
 	}
 
+	// Headless auto-run sessions execute silently in the backend; keep them
+	// out of the sidebar so an AI-executed task doesn't spawn a chat box.
+	// They stay resolvable by id (Get), so "查看详情" can still resume them.
+	filtered := recs[:0]
+	for _, rec := range recs {
+		if rec.Role == SessionRoleAuto {
+			continue
+		}
+		filtered = append(filtered, rec)
+	}
+	recs = filtered
+
 	var wsPath string
 	if len(recs) > 0 {
 		if path, err := h.resolveWorkspacePath(wsID); err == nil {
@@ -330,14 +342,16 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "workspace_id and title are required", http.StatusBadRequest)
 			return
 		}
+		// assignee selects the executing agent; empty falls back to
+		// DefaultAgentType at run time (runner.go). Reject unknown values so a
+		// typo from the PM tool surfaces instead of silently defaulting.
+		if body.Assignee != "" && !IsSupportedAgentType(body.Assignee) {
+			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
+			return
+		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		cfg, err := h.tasksStore.Load(wsPath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -376,14 +390,17 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			newTask.ScheduleType = ScheduleTypeImmediate
 		}
 
-		cfg.Tasks = append(cfg.Tasks, newTask)
-		if err := h.tasksStore.Save(wsPath, cfg); err != nil {
+		if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
+			cfg.Tasks = append(cfg.Tasks, newTask)
+			return true
+		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// Save assigns the short number (#N) on the stored slice element, so
-		// return that one rather than the pre-save copy.
-		writeJSON(w, cfg.Tasks[len(cfg.Tasks)-1])
+		// Save assigns the short number (#N) on the stored row, so re-fetch
+		// rather than returning the pre-save copy.
+		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
+		writeJSON(w, saved)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -531,9 +548,14 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			return
 		}
 	}
+	if body.Assignee != nil && *body.Assignee != "" && !IsSupportedAgentType(*body.Assignee) {
+		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
+		return
+	}
 
 	// Whole-config load/mutate/save (same path the CLI uses), so a single
-	// PATCH can touch any mix of fields atomically.
+	// PATCH can touch any mix of fields atomically. Mutate serializes the
+	// cycle so a concurrent scheduler/runner Save can't clobber the edit.
 	existing, ok, err := h.tasksStore.GetTask(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -543,79 +565,80 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
-	cfg, err := h.tasksStore.Load(existing.WorkspacePath)
-	if err != nil {
+	found := false
+	if err := h.tasksStore.Mutate(existing.WorkspacePath, func(cfg *TasksConfig) bool {
+		var target *Task
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID == id {
+				target = &cfg.Tasks[i]
+				break
+			}
+		}
+		if target == nil {
+			return false
+		}
+		found = true
+
+		if body.Description != nil {
+			target.Description = *body.Description
+		}
+		if body.IssueState != nil {
+			target.IssueState = IssueState(*body.IssueState)
+		}
+		if body.Status != nil {
+			target.Status = TaskStatus(*body.Status)
+			if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
+				now := time.Now().UTC()
+				target.CompletedAt = &now
+			}
+		}
+		if body.AcceptanceCriteria != nil {
+			target.AcceptanceCriteria = *body.AcceptanceCriteria
+		}
+		if body.Priority != nil {
+			target.Priority = Priority(*body.Priority)
+		}
+		if body.Assignee != nil {
+			target.Assignee = *body.Assignee
+		}
+		if body.Labels != nil {
+			target.Labels = *body.Labels
+		}
+		if body.ParentID != nil {
+			target.ParentID = *body.ParentID
+		}
+		if body.Milestone != nil {
+			target.Milestone = *body.Milestone
+		}
+		if body.Sprint != nil {
+			target.Sprint = *body.Sprint
+		}
+		if body.Type != nil {
+			target.Type = TaskType(*body.Type)
+		}
+		if body.Links != nil {
+			target.Links = *body.Links
+		}
+		if body.Recurrence != nil {
+			target.Recurrence = *body.Recurrence
+		}
+		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
+			target.MaxRetries = *body.MaxRetries
+		}
+		if body.PlannedStart != nil {
+			target.PlannedStart = body.PlannedStart
+		}
+		if body.PlannedEnd != nil {
+			target.PlannedEnd = body.PlannedEnd
+		}
+		target.UpdatedAt = time.Now().UTC()
+		return true
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var target *Task
-	for i := range cfg.Tasks {
-		if cfg.Tasks[i].ID == id {
-			target = &cfg.Tasks[i]
-			break
-		}
-	}
-	if target == nil {
+	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
-		return
-	}
-
-	if body.Description != nil {
-		target.Description = *body.Description
-	}
-	if body.IssueState != nil {
-		target.IssueState = IssueState(*body.IssueState)
-	}
-	if body.Status != nil {
-		target.Status = TaskStatus(*body.Status)
-		if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
-			now := time.Now().UTC()
-			target.CompletedAt = &now
-		}
-	}
-	if body.AcceptanceCriteria != nil {
-		target.AcceptanceCriteria = *body.AcceptanceCriteria
-	}
-	if body.Priority != nil {
-		target.Priority = Priority(*body.Priority)
-	}
-	if body.Assignee != nil {
-		target.Assignee = *body.Assignee
-	}
-	if body.Labels != nil {
-		target.Labels = *body.Labels
-	}
-	if body.ParentID != nil {
-		target.ParentID = *body.ParentID
-	}
-	if body.Milestone != nil {
-		target.Milestone = *body.Milestone
-	}
-	if body.Sprint != nil {
-		target.Sprint = *body.Sprint
-	}
-	if body.Type != nil {
-		target.Type = TaskType(*body.Type)
-	}
-	if body.Links != nil {
-		target.Links = *body.Links
-	}
-	if body.Recurrence != nil {
-		target.Recurrence = *body.Recurrence
-	}
-	if body.MaxRetries != nil && *body.MaxRetries >= 0 {
-		target.MaxRetries = *body.MaxRetries
-	}
-	if body.PlannedStart != nil {
-		target.PlannedStart = body.PlannedStart
-	}
-	if body.PlannedEnd != nil {
-		target.PlannedEnd = body.PlannedEnd
-	}
-	target.UpdatedAt = time.Now().UTC()
-
-	if err := h.tasksStore.Save(existing.WorkspacePath, cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -745,6 +768,20 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Resume-id fallback: if the chat index record is gone (e.g. the user
+		// deleted the sidebar session) but the triggering reply recorded the
+		// agent's resume id, resume from that. The agent keeps the transcript
+		// locally (Claude ~/.claude/projects/…, Codex its own dir), so "查看详情"
+		// re-renders history by id instead of starting a fresh run.
+		if acpSessionID == "" && replyID != "" {
+			for i := range targetTask.Replies {
+				if targetTask.Replies[i].ID == replyID && targetTask.Replies[i].AcpSessionID != "" {
+					acpSessionID = targetTask.Replies[i].AcpSessionID
+					break
+				}
+			}
+		}
+
 		// Issue background injection (issue-model §9): description + the
 		// full reply timeline, injected only when this is a NEW session.
 		// Resumed sessions already carry their own conversation history.
@@ -764,41 +801,53 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[agent] UpdateTask(%s, %s): %v", sessionId, taskId, err)
 		}
 
-		// Check state concurrency lock
-		if targetTask.Status != TaskStatusRunning {
+		// Execution-start vs. read-only resume: a non-empty acpSessionID means
+		// this open is resuming an existing agent session (e.g. "查看详情" on a
+		// finished run) — it must NOT acquire the workspace lock, flip the task
+		// to running, or re-execute. Only a genuinely new session (acpSessionID
+		// empty) starts execution.
+		if acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
 				http.Error(w, "Another session is already running in this workspace", http.StatusConflict)
 				return
 			}
-			// Update task state to running
-			targetTask.Status = TaskStatusRunning
 			now := time.Now().UTC()
-			targetTask.StartedAt = &now
-			targetTask.UpdatedAt = now
-
-			// Update or create session metadata
-			sessionExists := false
-			for i := range targetTask.Sessions {
-				if targetTask.Sessions[i].ID == sessionId {
-					targetTask.Sessions[i].Status = SessionStatusRunning
-					sessionExists = true
-					break
+			if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
+				for i := range cfg.Tasks {
+					t := &cfg.Tasks[i]
+					if t.ID != taskId {
+						continue
+					}
+					t.Status = TaskStatusRunning
+					t.StartedAt = &now
+					t.UpdatedAt = now
+					// Update or create session metadata
+					sessionExists := false
+					for j := range t.Sessions {
+						if t.Sessions[j].ID == sessionId {
+							t.Sessions[j].Status = SessionStatusRunning
+							sessionExists = true
+							break
+						}
+					}
+					if !sessionExists {
+						t.Sessions = append(t.Sessions, SessionMetadata{
+							ID:        sessionId,
+							Kind:      SessionKindChat,
+							Name:      "智能体排查与修复",
+							AgentType: agentType,
+							Status:    SessionStatusRunning,
+							CreatedAt: now,
+						})
+					}
+					return true
 				}
+				return false
+			}); err != nil {
+				log.Printf("[agent] mark task %s running: %v", taskId, err)
 			}
-			if !sessionExists {
-				targetTask.Sessions = append(targetTask.Sessions, SessionMetadata{
-					ID:        sessionId,
-					Kind:      SessionKindChat,
-					Name:      "智能体排查与修复",
-					AgentType: agentType,
-					Status:    SessionStatusRunning,
-					CreatedAt: now,
-				})
-			}
-
-			_ = h.tasksStore.Save(wsPath, cfg)
 		}
 		log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
 	} else if sessionRole == SessionRolePM {
