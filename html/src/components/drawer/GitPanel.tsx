@@ -44,7 +44,8 @@ interface GraphRow extends GraphCommit {
     isMerge: boolean;
     incomingLanes: number[]; // lanes (from above) that terminate at this commit
     parentLanes: number[]; // lanes (below) this commit's parents continue in
-    through: number[]; // unrelated lanes passing straight through this row
+    aboveLanes: number[]; // every lane carrying a line into this row from above
+    belowLanes: number[]; // every lane carrying a line out of this row below
 }
 
 interface CommitFileEntry {
@@ -727,23 +728,24 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 }
                 let lane: number;
                 if (idx === 0 && !isOnMain) lane = nodeLane;
-                else lane = firstFree(isOnMain ? 1 : 0);
+                else lane = firstFree(1); // extra/merge parents never take the trunk lane 0
                 lanes[lane] = p;
                 if (!parentLanes.includes(lane)) parentLanes.push(lane);
             });
 
             const belowSnap = lanes.slice();
 
-            // A lane carries a continuous straight line through this row when the
-            // SAME hash is expected in it both above and below — this includes the
-            // trunk passing straight through a fork/merge row, so the diagonal
-            // connectors draw ON TOP of it (forming a proper Y/triangle) instead
-            // of replacing it.
-            const through: number[] = [];
-            const span = Math.max(aboveSnap.length, belowSnap.length);
-            for (let L = 0; L < span; L++) {
-                if (aboveSnap[L] != null && aboveSnap[L] === belowSnap[L]) through.push(L);
-            }
+            // Every lane carrying a line into/out of this row. The renderer draws a
+            // segment for each active half independently, so lines never break and
+            // the trunk runs straight through fork/merge rows (diagonals layer on top).
+            const aboveLanes: number[] = [];
+            aboveSnap.forEach((hh, i) => {
+                if (hh != null) aboveLanes.push(i);
+            });
+            const belowLanes: number[] = [];
+            belowSnap.forEach((hh, i) => {
+                if (hh != null) belowLanes.push(i);
+            });
 
             rows.push({
                 ...commit,
@@ -752,13 +754,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 isMerge: commit.parents.length > 1,
                 incomingLanes,
                 parentLanes,
-                through,
+                aboveLanes,
+                belowLanes,
             });
         });
 
         let hi = 0;
         rows.forEach(r => {
-            [r.nodeLane, ...r.through, ...r.incomingLanes, ...r.parentLanes].forEach(L => {
+            [r.nodeLane, ...r.aboveLanes, ...r.belowLanes].forEach(L => {
                 if (L > hi) hi = L;
             });
         });
@@ -1350,53 +1353,51 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             const yc = ROW_H / 2;
                             const nodeColor = laneColor(rw.nodeLane);
                             const segs: h.JSX.Element[] = [];
+                            const incoming = new Set(rw.incomingLanes);
+                            const parents = new Set(rw.parentLanes);
+                            const above = new Set(rw.aboveLanes);
+                            // Connectors that touch the trunk keep the side branch's color.
+                            const diagColor = (L: number) => laneColor(L === 0 ? rw.nodeLane : L);
+                            const sw = (L: number) => (L === 0 ? 2.5 : 1.6);
+                            const push = (key: string, d: string, color: string, width: number) =>
+                                segs.push(<path key={key} d={d} stroke={color} stroke-width={width} fill="none" />);
+                            const maxL = railW / LANE_W;
 
-                            // Straight pass-through lanes (parallel branches).
-                            rw.through.forEach(L => {
-                                segs.push(
-                                    <path
-                                        key={`t${L}`}
-                                        d={`M${cx(L)},0 L${cx(L)},${ROW_H}`}
-                                        stroke={laneColor(L)}
-                                        stroke-width={L === 0 ? 2.5 : 1.6}
-                                        fill="none"
-                                    />
-                                );
-                            });
-                            // Top half: lines from above that terminate at this node.
-                            rw.incomingLanes.forEach(L => {
+                            for (let L = 0; L < maxL; L++) {
                                 const xl = cx(L);
-                                const d =
-                                    L === rw.nodeLane
-                                        ? `M${xl},0 L${xn},${yc}`
-                                        : `M${xl},0 C${xl},${ROW_H / 4} ${xn},${ROW_H / 4} ${xn},${yc}`;
-                                segs.push(
-                                    <path
-                                        key={`i${L}`}
-                                        d={d}
-                                        stroke={laneColor(L)}
-                                        stroke-width={L === 0 ? 2.5 : 1.6}
-                                        fill="none"
-                                    />
-                                );
-                            });
-                            // Bottom half: lines from this node down to its parents.
-                            rw.parentLanes.forEach(L => {
-                                const xl = cx(L);
-                                const d =
-                                    L === rw.nodeLane
-                                        ? `M${xn},${yc} L${xl},${ROW_H}`
-                                        : `M${xn},${yc} C${xn},${(ROW_H * 3) / 4} ${xl},${(ROW_H * 3) / 4} ${xl},${ROW_H}`;
-                                segs.push(
-                                    <path
-                                        key={`p${L}`}
-                                        d={d}
-                                        stroke={laneColor(L)}
-                                        stroke-width={L === 0 ? 2.5 : 1.6}
-                                        fill="none"
-                                    />
-                                );
-                            });
+                                // ── TOP half (line entering this row from above) ──
+                                if (above.has(L) || (L === rw.nodeLane && incoming.has(L))) {
+                                    if (L !== rw.nodeLane && incoming.has(L)) {
+                                        // a child branch in lane L converging into this node
+                                        push(
+                                            `i${L}`,
+                                            `M${xl},0 C${xl},${ROW_H / 4} ${xn},${ROW_H / 4} ${xn},${yc}`,
+                                            diagColor(L),
+                                            sw(L)
+                                        );
+                                    } else if (above.has(L)) {
+                                        // node's own lane or a pass-through trunk: straight
+                                        push(`ts${L}`, `M${xl},0 L${xl},${yc}`, laneColor(L), sw(L));
+                                    }
+                                }
+                                // ── BOTTOM half (line leaving this row below) ──
+                                const botActive = rw.belowLanes.includes(L);
+                                if (botActive || (L === rw.nodeLane && parents.has(L))) {
+                                    if (L !== rw.nodeLane && parents.has(L)) {
+                                        // this node's parent continues in lane L (fork / merge target)
+                                        push(
+                                            `p${L}`,
+                                            `M${xn},${yc} C${xn},${(ROW_H * 3) / 4} ${xl},${(ROW_H * 3) / 4} ${xl},${ROW_H}`,
+                                            diagColor(L),
+                                            sw(L)
+                                        );
+                                        // if the lane was already flowing (trunk), keep its straight line too
+                                        if (above.has(L)) push(`bs${L}`, `M${xl},${yc} L${xl},${ROW_H}`, laneColor(L), sw(L));
+                                    } else if (botActive) {
+                                        push(`bs${L}`, `M${xl},${yc} L${xl},${ROW_H}`, laneColor(L), sw(L));
+                                    }
+                                }
+                            }
 
                             const hasMain = rw.refs.some(r => r === 'main' || r === 'master');
                             const refBadge =
