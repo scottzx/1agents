@@ -38,11 +38,13 @@ interface GraphCommit {
     message: string;
 }
 
-interface LaneCommit extends GraphCommit {
-    row: number;
-    lane: number;
+interface GraphRow extends GraphCommit {
+    nodeLane: number;
     onMain: boolean;
     isMerge: boolean;
+    incomingLanes: number[]; // lanes (from above) that terminate at this commit
+    parentLanes: number[]; // lanes (below) this commit's parents continue in
+    through: number[]; // unrelated lanes passing straight through this row
 }
 
 interface CommitFileEntry {
@@ -659,16 +661,18 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     // pinned to lane 0 (the leftmost vertical trunk). Side branches occupy
     // lanes ≥1, so a branch tip whose first parent is on main reads as a fork
     // off the trunk, and a merge commit on main pulls a side lane back into 0.
-    buildGraphLayout(commits: GraphCommit[]): LaneCommit[] {
+    // Per-row lane layout. Each row carries its own rail-drawing instructions
+    // (incoming/parent connectors + straight pass-through lanes) so the SVG rail
+    // can be rendered one row at a time — staying perfectly aligned with the text
+    // rows even when a commit is expanded. Lane 0 is the main trunk.
+    buildGraphLayout(commits: GraphCommit[]): { rows: GraphRow[]; maxLanes: number } {
         const byHash = new Map(commits.map(c => [c.hash, c]));
 
-        // Identify the trunk tip: prefer main/master, else its remote, else first row.
         const mainTip =
             commits.find(c => c.refs.some(r => r === 'main' || r === 'master')) ||
             commits.find(c => c.refs.some(r => r.endsWith('/main') || r.endsWith('/master'))) ||
             commits[0];
 
-        // Walk first-parent chain from the trunk tip → these hashes own lane 0.
         const onMain = new Set<string>();
         let cur: GraphCommit | undefined = mainTip;
         while (cur && !onMain.has(cur.hash)) {
@@ -676,51 +680,85 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             cur = cur.parents[0] ? byHash.get(cur.parents[0]) : undefined;
         }
 
-        const laneOwners: (string | null)[] = [null]; // index 0 reserved for main
-        const result: LaneCommit[] = [];
-
-        const freeLane = (): number => {
-            for (let i = 1; i < laneOwners.length; i++) {
-                if (laneOwners[i] === null) return i;
+        const lanes: (string | null)[] = []; // lanes[i] = hash expected next in lane i
+        const firstFree = (from: number): number => {
+            for (let i = from; i < lanes.length; i++) {
+                if (lanes[i] === null || lanes[i] === undefined) return i;
             }
-            laneOwners.push(null);
-            return laneOwners.length - 1;
+            lanes.push(null);
+            return lanes.length - 1;
         };
 
-        commits.forEach((commit, row) => {
-            const isOnMain = onMain.has(commit.hash);
-            let lane: number;
-            if (isOnMain) {
-                lane = 0;
-            } else {
-                lane = laneOwners.findIndex((hh, i) => i >= 1 && hh === commit.hash);
-                if (lane < 1) lane = freeLane();
-            }
-            laneOwners[lane] = null; // release before re-seating parents
+        const rows: GraphRow[] = [];
 
-            commit.parents.forEach((p, i) => {
-                if (onMain.has(p)) {
-                    laneOwners[0] = p; // parent belongs to the trunk
-                    return;
-                }
-                if (laneOwners.includes(p)) return; // already seated in some lane
-                if (i === 0 && !isOnMain) {
-                    laneOwners[lane] = p; // first parent continues this branch's lane
-                } else {
-                    laneOwners[freeLane()] = p; // merged-in / additional parent opens a lane
-                }
+        commits.forEach(commit => {
+            const isOnMain = onMain.has(commit.hash);
+
+            const incomingLanes: number[] = [];
+            lanes.forEach((hh, i) => {
+                if (hh === commit.hash) incomingLanes.push(i);
             });
 
-            result.push({
+            let nodeLane: number;
+            if (isOnMain) nodeLane = 0;
+            else if (incomingLanes.length) nodeLane = Math.min(...incomingLanes);
+            else nodeLane = firstFree(1);
+            while (lanes.length <= nodeLane) lanes.push(null);
+
+            const aboveSnap = lanes.slice();
+
+            incomingLanes.forEach(i => {
+                lanes[i] = null;
+            });
+
+            const parentLanes: number[] = [];
+            commit.parents.forEach((p, idx) => {
+                if (onMain.has(p)) {
+                    lanes[0] = p;
+                    if (!parentLanes.includes(0)) parentLanes.push(0);
+                    return;
+                }
+                const existing = lanes.findIndex(h => h === p);
+                if (existing >= 0) {
+                    if (!parentLanes.includes(existing)) parentLanes.push(existing);
+                    return;
+                }
+                let lane: number;
+                if (idx === 0 && !isOnMain) lane = nodeLane;
+                else lane = firstFree(isOnMain ? 1 : 0);
+                lanes[lane] = p;
+                if (!parentLanes.includes(lane)) parentLanes.push(lane);
+            });
+
+            const belowSnap = lanes.slice();
+
+            const involved = new Set<number>([nodeLane, ...incomingLanes, ...parentLanes]);
+            const through: number[] = [];
+            const span = Math.max(aboveSnap.length, belowSnap.length);
+            for (let L = 0; L < span; L++) {
+                if (involved.has(L)) continue;
+                if (aboveSnap[L] != null && belowSnap[L] != null) through.push(L);
+            }
+
+            rows.push({
                 ...commit,
-                row,
-                lane,
+                nodeLane,
                 onMain: isOnMain,
                 isMerge: commit.parents.length > 1,
+                incomingLanes,
+                parentLanes,
+                through,
             });
         });
 
-        return result;
+        let hi = 0;
+        rows.forEach(r => {
+            [r.nodeLane, ...r.through, ...r.incomingLanes, ...r.parentLanes].forEach(L => {
+                if (L > hi) hi = L;
+            });
+        });
+
+        return { rows, maxLanes: hi + 1 };
     }
 
     // ── Render helpers ─────────────────────────────────────────────────────
@@ -1276,16 +1314,15 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const { language } = this.props;
 
         const LANE_W = 16;
-        const ROW_H = 26;
-        const TRUNK_COLOR = 'var(--accent-fg)';
-        const LANE_COLORS = ['#2196F3', '#FF9800', '#9C27B0', '#00BCD4', '#F44336', '#8BC34A'];
-        const laneColor = (lane: number) => (lane === 0 ? TRUNK_COLOR : LANE_COLORS[(lane - 1) % LANE_COLORS.length]);
+        const ROW_H = 28;
+        // Lane 0 = main trunk (blue); side branches cycle a warm/cool palette.
+        const LANE_COLORS = ['#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#06b6d4', '#ef4444'];
+        const laneColor = (lane: number) => (lane === 0 ? '#3b82f6' : LANE_COLORS[(lane - 1) % LANE_COLORS.length]);
+        const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
 
-        const laneCommits = graphExpanded && graph.length > 0 ? this.buildGraphLayout(graph) : [];
-        const hashToCommit = new Map(laneCommits.map(c => [c.hash, c]));
-        const maxLane = laneCommits.reduce((m, c) => Math.max(m, c.lane), 0);
-        const svgW = (maxLane + 1) * LANE_W + 4;
-        const svgH = laneCommits.length * ROW_H;
+        const layout = graphExpanded && graph.length > 0 ? this.buildGraphLayout(graph) : { rows: [], maxLanes: 1 };
+        const rows = layout.rows;
+        const railW = layout.maxLanes * LANE_W;
 
         return (
             <div class="git-section git-graph-section">
@@ -1301,144 +1338,152 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     {graphLoading && <div class="git-spinner git-spinner-sm" />}
                 </div>
 
-                {graphExpanded && laneCommits.length > 0 && (
+                {graphExpanded && rows.length > 0 && (
                     <div class="git-graph-scroll">
-                        <div class="git-graph-content">
-                            <svg class="git-graph-svg" width={svgW} height={svgH} style={{ flexShrink: 0 }}>
-                                {/* Edges first, so nodes draw on top */}
-                                {laneCommits.flatMap(commit => {
-                                    const cx = commit.lane * LANE_W + LANE_W / 2;
-                                    const cy = commit.row * ROW_H + ROW_H / 2;
-                                    return commit.parents.map(parentHash => {
-                                        const parent = hashToCommit.get(parentHash);
-                                        if (!parent) return null;
-                                        const px = parent.lane * LANE_W + LANE_W / 2;
-                                        const py = parent.row * ROW_H + ROW_H / 2;
-                                        const edgeLane = Math.max(commit.lane, parent.lane);
-                                        const trunkEdge = commit.lane === 0 && parent.lane === 0;
-                                        const d =
-                                            commit.lane === parent.lane
-                                                ? `M${cx},${cy} L${px},${py}`
-                                                : `M${cx},${cy} C${cx},${(cy + py) / 2} ${px},${(cy + py) / 2} ${px},${py}`;
-                                        return (
-                                            <path
-                                                key={`line-${commit.hash}-${parentHash}`}
-                                                d={d}
-                                                stroke={laneColor(edgeLane)}
-                                                stroke-width={trunkEdge ? 2.5 : 1.6}
-                                                fill="none"
-                                            />
-                                        );
-                                    });
-                                })}
-                                {/* Nodes: trunk emphasized, merges drawn as a ring */}
-                                {laneCommits.map(commit => {
-                                    const cx = commit.lane * LANE_W + LANE_W / 2;
-                                    const cy = commit.row * ROW_H + ROW_H / 2;
-                                    const color = laneColor(commit.lane);
-                                    if (commit.isMerge) {
-                                        return (
-                                            <circle
-                                                key={`dot-${commit.hash}`}
-                                                cx={cx}
-                                                cy={cy}
-                                                r="4.5"
-                                                fill="var(--bg-card)"
-                                                stroke={color}
-                                                stroke-width="2.5"
-                                            />
-                                        );
-                                    }
-                                    return (
-                                        <circle
-                                            key={`dot-${commit.hash}`}
-                                            cx={cx}
-                                            cy={cy}
-                                            r={commit.onMain ? 4.5 : 3.5}
-                                            fill={color}
-                                            stroke="var(--bg-card)"
-                                            stroke-width="1.5"
-                                        />
-                                    );
-                                })}
-                            </svg>
+                        {rows.map(rw => {
+                            const xn = cx(rw.nodeLane);
+                            const yc = ROW_H / 2;
+                            const nodeColor = laneColor(rw.nodeLane);
+                            const segs: h.JSX.Element[] = [];
 
-                            <div class="git-graph-rows">
-                                {laneCommits.map(commit => {
-                                    // §5: compact branch badge — show count + optional "main" pill.
-                                    const hasMain = commit.refs.some(r => r === 'main' || r === 'master');
-                                    const refBadge =
-                                        commit.refs.length > 0 ? (
-                                            <span class="git-graph-ref-count" title={commit.refs.join(', ')}>
-                                                {hasMain && <span class="git-ref-badge head">main</span>}
-                                                <span class="git-graph-ref-count-badge">
-                                                    <span class="git-branch-icon-sm">{IconBranch}</span>
-                                                    {commit.refs.length}
-                                                </span>
-                                            </span>
-                                        ) : null;
+                            // Straight pass-through lanes (parallel branches).
+                            rw.through.forEach(L => {
+                                segs.push(
+                                    <path
+                                        key={`t${L}`}
+                                        d={`M${cx(L)},0 L${cx(L)},${ROW_H}`}
+                                        stroke={laneColor(L)}
+                                        stroke-width={L === 0 ? 2.5 : 1.6}
+                                        fill="none"
+                                    />
+                                );
+                            });
+                            // Top half: lines from above that terminate at this node.
+                            rw.incomingLanes.forEach(L => {
+                                const xl = cx(L);
+                                const d =
+                                    L === rw.nodeLane
+                                        ? `M${xl},0 L${xn},${yc}`
+                                        : `M${xl},0 C${xl},${ROW_H / 4} ${xn},${ROW_H / 4} ${xn},${yc}`;
+                                segs.push(
+                                    <path
+                                        key={`i${L}`}
+                                        d={d}
+                                        stroke={laneColor(L)}
+                                        stroke-width={L === 0 ? 2.5 : 1.6}
+                                        fill="none"
+                                    />
+                                );
+                            });
+                            // Bottom half: lines from this node down to its parents.
+                            rw.parentLanes.forEach(L => {
+                                const xl = cx(L);
+                                const d =
+                                    L === rw.nodeLane
+                                        ? `M${xn},${yc} L${xl},${ROW_H}`
+                                        : `M${xn},${yc} C${xn},${(ROW_H * 3) / 4} ${xl},${(ROW_H * 3) / 4} ${xl},${ROW_H}`;
+                                segs.push(
+                                    <path
+                                        key={`p${L}`}
+                                        d={d}
+                                        stroke={laneColor(L)}
+                                        stroke-width={L === 0 ? 2.5 : 1.6}
+                                        fill="none"
+                                    />
+                                );
+                            });
 
-                                    return (
-                                        <div key={commit.hash}>
-                                            <div
-                                                class={`git-graph-row ${expandedCommitHash === commit.hash ? 'expanded' : ''}`}
-                                                onClick={() => this.toggleCommit(commit.hash)}
-                                                title={`${commit.author} · ${commit.hash}`}
-                                            >
-                                                <div class="git-graph-line1">
-                                                    <span class="git-graph-short">{commit.short}</span>
-                                                    <span class="git-graph-msg">{commit.message}</span>
-                                                    {refBadge}
-                                                    <span class="git-graph-time">
-                                                        {relativeTime(commit.time, language)}
-                                                    </span>
+                            const hasMain = rw.refs.some(r => r === 'main' || r === 'master');
+                            const refBadge =
+                                rw.refs.length > 0 ? (
+                                    <span class="git-graph-ref-count" title={rw.refs.join(', ')}>
+                                        {hasMain && <span class="git-ref-badge head">main</span>}
+                                        <span class="git-graph-ref-count-badge">
+                                            <span class="git-branch-icon-sm">{IconBranch}</span>
+                                            {rw.refs.length}
+                                        </span>
+                                    </span>
+                                ) : null;
+
+                            return (
+                                <Fragment key={rw.hash}>
+                                    <div
+                                        class={`git-graph-row ${expandedCommitHash === rw.hash ? 'expanded' : ''}`}
+                                        onClick={() => this.toggleCommit(rw.hash)}
+                                        title={`${rw.author} · ${rw.hash}`}
+                                    >
+                                        <svg class="git-graph-rail" width={railW} height={ROW_H}>
+                                            {segs}
+                                            {rw.isMerge ? (
+                                                <circle
+                                                    cx={xn}
+                                                    cy={yc}
+                                                    r="4.5"
+                                                    fill="var(--bg-card)"
+                                                    stroke={nodeColor}
+                                                    stroke-width="2.5"
+                                                />
+                                            ) : (
+                                                <circle
+                                                    cx={xn}
+                                                    cy={yc}
+                                                    r={rw.onMain ? 4.5 : 3.5}
+                                                    fill={nodeColor}
+                                                    stroke="var(--bg-card)"
+                                                    stroke-width="1.5"
+                                                />
+                                            )}
+                                        </svg>
+                                        <div class="git-graph-line1">
+                                            <span class="git-graph-short">{rw.short}</span>
+                                            <span class="git-graph-msg">{rw.message}</span>
+                                            {refBadge}
+                                            <span class="git-graph-time">{relativeTime(rw.time, language)}</span>
+                                        </div>
+                                    </div>
+
+                                    {expandedCommitHash === rw.hash && (
+                                        <div class="git-commit-detail" style={{ marginLeft: railW }}>
+                                            {commitFilesLoading ? (
+                                                <div class="git-loading-row">
+                                                    <div class="git-spinner" />
                                                 </div>
-                                            </div>
-
-                                            {expandedCommitHash === commit.hash && (
-                                                <div class="git-commit-detail">
-                                                    {commitFilesLoading ? (
-                                                        <div class="git-loading-row">
-                                                            <div class="git-spinner" />
-                                                        </div>
-                                                    ) : commitFiles.length === 0 ? (
-                                                        <div class="git-commit-detail-empty">
-                                                            {t('git.graph.noFiles', language)}
-                                                        </div>
-                                                    ) : (
-                                                        commitFiles.map(f => (
-                                                            <Fragment key={f.path}>
-                                                                <div
-                                                                    class={`git-commit-file-row ${commitDiffFile === f.path ? 'open' : ''}`}
-                                                                    onClick={e => {
-                                                                        e.stopPropagation();
-                                                                        this.openCommitDiff(commit.hash, f.path);
-                                                                    }}
-                                                                >
-                                                                    {this.renderStatusBadge(f.status)}
-                                                                    <span class="git-commit-file-path">{f.path}</span>
-                                                                </div>
-                                                                {commitDiffFile === f.path &&
-                                                                    this.renderDiffPanel(
-                                                                        f.path,
-                                                                        commitDiffContent,
-                                                                        commitDiffLoading,
-                                                                        () =>
-                                                                            this.setState({
-                                                                                commitDiffFile: null,
-                                                                                commitDiffContent: '',
-                                                                            })
-                                                                    )}
-                                                            </Fragment>
-                                                        ))
-                                                    )}
+                                            ) : commitFiles.length === 0 ? (
+                                                <div class="git-commit-detail-empty">
+                                                    {t('git.graph.noFiles', language)}
                                                 </div>
+                                            ) : (
+                                                commitFiles.map(f => (
+                                                    <Fragment key={f.path}>
+                                                        <div
+                                                            class={`git-commit-file-row ${commitDiffFile === f.path ? 'open' : ''}`}
+                                                            onClick={e => {
+                                                                e.stopPropagation();
+                                                                this.openCommitDiff(rw.hash, f.path);
+                                                            }}
+                                                        >
+                                                            {this.renderStatusBadge(f.status)}
+                                                            <span class="git-commit-file-path">{f.path}</span>
+                                                        </div>
+                                                        {commitDiffFile === f.path &&
+                                                            this.renderDiffPanel(
+                                                                f.path,
+                                                                commitDiffContent,
+                                                                commitDiffLoading,
+                                                                () =>
+                                                                    this.setState({
+                                                                        commitDiffFile: null,
+                                                                        commitDiffContent: '',
+                                                                    })
+                                                            )}
+                                                    </Fragment>
+                                                ))
                                             )}
                                         </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                                    )}
+                                </Fragment>
+                            );
+                        })}
                     </div>
                 )}
 

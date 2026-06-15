@@ -8109,38 +8109,35 @@ body {
   }
 
   // ── Graph history section ─────────────────────────────────────────────────
+  // Graph section fills the remaining panel height and scrolls internally.
   .git-graph-section {
     border-top: 1px solid var(--border-color);
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .git-graph-scroll {
-    max-height: 500px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
   }
 
-  .git-graph-content {
-    display: flex;
-    align-items: flex-start;
-  }
-
-  .git-graph-svg {
+  // Per-row rail SVG (height matches the row exactly → stays aligned through expansions).
+  .git-graph-rail {
     display: block;
     flex-shrink: 0;
-  }
-
-  .git-graph-rows {
-    flex: 1;
-    min-width: 0;
+    align-self: flex-start;
   }
 
   .git-graph-row {
-    height: 24px;
+    height: 28px;
     display: flex;
     align-items: center;
     cursor: pointer;
-    padding: 0 8px 0 4px;
-    gap: 5px;
+    padding: 0 8px 0 0;
     overflow: hidden;
 
     &:hover {
@@ -8155,10 +8152,11 @@ body {
   .git-graph-line1 {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     min-width: 0;
     flex: 1;
     overflow: hidden;
+    padding-left: 6px;
   }
 
   .git-ref-badge {
