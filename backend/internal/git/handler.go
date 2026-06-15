@@ -474,6 +474,54 @@ func (h *Handler) Worktrees(w http.ResponseWriter, r *http.Request) {
 }
 
 // Graph handles GET /api/git/graph?limit=100
+// graphRefs returns the refs the commit graph should span: the main trunk plus
+// every branch that currently has a worktree (detached worktrees contribute
+// their HEAD commit). Falls back to HEAD when nothing else matches.
+func (h *Handler) graphRefs() []string {
+	seen := map[string]bool{}
+	var refs []string
+	add := func(r string) {
+		if r == "" || seen[r] {
+			return
+		}
+		seen[r] = true
+		refs = append(refs, r)
+	}
+
+	// Main trunk: first existing of main/master (local preferred, then remote).
+	for _, cand := range []string{"main", "master", "origin/main", "origin/master"} {
+		if _, err := h.git("rev-parse", "--verify", "--quiet", cand+"^{commit}"); err == nil {
+			add(cand)
+			break
+		}
+	}
+
+	// Branches (or detached HEADs) of every worktree.
+	if out, err := h.git("worktree", "list", "--porcelain"); err == nil {
+		for _, block := range strings.Split(strings.TrimSpace(out), "\n\n") {
+			branch, head := "", ""
+			for _, line := range strings.Split(block, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "branch ") {
+					branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+				} else if strings.HasPrefix(line, "HEAD ") {
+					head = strings.TrimPrefix(line, "HEAD ")
+				}
+			}
+			if branch != "" {
+				add(branch)
+			} else if head != "" {
+				add(head)
+			}
+		}
+	}
+
+	if len(refs) == 0 {
+		add("HEAD")
+	}
+	return refs
+}
+
 func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -487,9 +535,16 @@ func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Scope the graph to main + the branches that currently have a worktree,
+	// instead of every ref. This drops stale/abandoned remote branches (e.g.
+	// squash-merged PR branches, which git can't tell were merged) so they no
+	// longer read as dangling "unmerged" lines.
+	refs := h.graphRefs()
+
 	// --topo-order keeps each branch's commits contiguous (not interleaved by
 	// date), so the first-parent trunk and its forks/merges read clearly.
-	out, err := h.git("log", "--all", "--topo-order", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s")
+	args := append([]string{"log", "--topo-order", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s"}, refs...)
+	out, err := h.git(args...)
 	if err != nil {
 		writeJSON(w, []GraphCommit{})
 		return
