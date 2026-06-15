@@ -5,6 +5,7 @@ import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
+import { PMChatPanel } from './PMChatPanel';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
@@ -77,6 +78,8 @@ export function RightPanel({
                 return t('drawer.title.skills', language);
             case 'discovery':
                 return t('drawer.title.discovery', language);
+            case 'pm':
+                return '🧑‍💼 AI 项目经理';
             default:
                 return '';
         }
@@ -148,10 +151,25 @@ export function RightPanel({
                 )}
             </div>
 
+            {/* AI Project Manager chat (副屏): same role as the file browser —
+                the task board stays on the main screen. */}
+            <div
+                class="panel-body-chat"
+                style={`flex: 1; overflow: hidden; display: ${
+                    activeDrawerTab === 'pm' ? 'flex' : 'none'
+                }; flex-direction: column; height: 100%; min-height: 0;`}
+            >
+                {activeDrawerTab === 'pm' && <PMChatPanel />}
+            </div>
+
             {/* Other drawer tab contents (files, git, settings) */}
             <div
                 class="panel-body-scroll"
-                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
+                style={`display: ${
+                    activeDrawerTab !== 'channels' && activeDrawerTab !== 'pm' && activeDrawerTab !== 'none'
+                        ? 'flex'
+                        : 'none'
+                };`}
             >
                 {activeDrawerTab === 'files' &&
                     (viewMode === 'list' ? (

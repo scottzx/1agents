@@ -2390,6 +2390,64 @@ body {
   }
 }
 
+/* AI Project Manager secondary-pane panel: reuses ChatPanel with a small
+   toolbar to start / switch PM conversations. */
+.pm-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.pm-panel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.pm-session-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.pm-session-select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text-main);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.pm-new-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--purple-fg);
+  background-color: var(--purple-bg);
+  border: 1px solid rgba(var(--purple-rgb), 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: rgba(var(--purple-rgb), 0.18);
+  }
+}
+
+.pm-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Create-task form (same look as the legacy drawer version, re-scoped for
    the kanban landing layer). */
 .create-task-form {

@@ -140,6 +140,7 @@ interface RawChatSession {
     status?: string;
     last_event_at?: string;
     active?: boolean;
+    role?: string;
 }
 
 interface RawAgentStatus {
@@ -189,5 +190,6 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         status: (raw.status ?? 'idle') as ChatSession['status'],
         lastEventAt: raw.last_event_at || undefined,
         active: Boolean(raw.active),
+        role: raw.role || undefined,
     };
 }

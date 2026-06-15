@@ -11,7 +11,7 @@ import { KanbanBoard } from './KanbanBoard';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
-import { createPMSession } from '../../../stores/sessionStore';
+import { openPMChat } from '../../../stores/sessionStore';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
 
@@ -145,8 +145,8 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                 <div class="task-header-actions">
                     <button
                         class="pm-chat-btn"
-                        onClick={() => createPMSession(workspaceId)}
-                        title="与 AI 项目经理对话：聊需求，自动拆解成带依赖的任务"
+                        onClick={() => openPMChat(workspaceId)}
+                        title="在副屏打开 AI 项目经理：聊需求，自动拆解成带依赖的任务"
                     >
                         🧑‍💼 AI 项目经理
                     </button>

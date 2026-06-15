@@ -134,6 +134,12 @@ export interface ChatSession {
     active: boolean;
     /** Per-session permission policy. Persisted via PATCH /api/agent/sessions/{id}. */
     permissionMode?: PermissionMode;
+    /**
+     * Special-purpose session role. 'pm' = the AI Project Manager (lives only
+     * in the secondary pane, tracked separately from normal chats). Empty for
+     * an ordinary chat. Persisted server-side (ChatSessionRecord.Role).
+     */
+    role?: string;
 }
 
 export type Session = TerminalSession | ChatSession;
@@ -212,6 +218,7 @@ export type RightDrawerTab =
     | 'discovery'
     | 'skills'
     | 'tasks'
+    | 'pm'
     | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
