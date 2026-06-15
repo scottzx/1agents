@@ -419,6 +419,10 @@ export const zhCN: Record<string, string> = {
     'git.graph.empty': '暂无提交记录',
     'git.graph.noFiles': '该提交没有文件变更',
 
+    // Worktree switcher & commit box
+    'git.commit.sectionTitle': '提交说明',
+    'git.worktrees.switchTitle': '切换 worktree',
+
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
     'terminal.label.input': '输入',
     'terminal.action.input': '打开输入面板',
@@ -1028,6 +1032,10 @@ export const enUS: Record<string, string> = {
     'git.graph.title': 'Commit Graph',
     'git.graph.empty': 'No commits found',
     'git.graph.noFiles': 'No file changes in this commit',
+
+    // Worktree switcher & commit box
+    'git.commit.sectionTitle': 'Commit message',
+    'git.worktrees.switchTitle': 'Switch worktree',
 
     // ── Terminal ─────────────────────────────────────────────────────────
     'terminal.label.input': 'Input',

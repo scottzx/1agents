@@ -644,8 +644,12 @@ func (h *Handler) WorktreeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	staged, unstaged, untracked := h.changedFilesAt(path)
+	ahead, behind := h.aheadBehindAt(path)
 	writeJSON(w, GitStatus{
 		IsRepo:    true,
+		Branch:    h.currentBranchAt(path),
+		Ahead:     ahead,
+		Behind:    behind,
 		Staged:    staged,
 		Unstaged:  unstaged,
 		Untracked: untracked,
@@ -765,16 +769,20 @@ func (h *Handler) isRepo() bool {
 	return err == nil
 }
 
-func (h *Handler) currentBranch() string {
-	out, err := h.git("rev-parse", "--abbrev-ref", "HEAD")
+func (h *Handler) currentBranch() string { return h.currentBranchAt(h.root) }
+
+func (h *Handler) currentBranchAt(dir string) string {
+	out, err := h.git("-C", dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "HEAD"
 	}
 	return out
 }
 
-func (h *Handler) aheadBehind() (ahead, behind int) {
-	out, err := h.git("rev-list", "--count", "--left-right", "@{upstream}...HEAD")
+func (h *Handler) aheadBehind() (ahead, behind int) { return h.aheadBehindAt(h.root) }
+
+func (h *Handler) aheadBehindAt(dir string) (ahead, behind int) {
+	out, err := h.git("-C", dir, "rev-list", "--count", "--left-right", "@{upstream}...HEAD")
 	if err != nil {
 		return 0, 0
 	}

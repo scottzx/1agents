@@ -7014,12 +7014,18 @@ body {
 
   // Commit Box
   .git-commit-box {
-    padding: 16px;
+    padding: 0 16px 16px 16px;
     background-color: var(--bg-main);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+
+    // Section header inside commit box uses the standard header style;
+    // reset padding to align with the box edges.
+    > .git-section-header {
+      padding-left: 0;
+      padding-right: 0;
+    }
 
     .git-commit-input {
       width: 100%;
@@ -7900,7 +7906,84 @@ body {
     border-left: 3px solid var(--accent-color);
   }
 
-  // ── Worktrees section ─────────────────────────────────────────────────────
+  // ── Worktree switcher dropdown ────────────────────────────────────────────
+  .git-worktree-switcher-container {
+    position: relative;
+    z-index: 100;
+  }
+
+  .git-worktree-switcher-dropdown {
+    width: 300px;
+  }
+
+  .git-worktree-switcher-list {
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 6px;
+  }
+
+  .git-worktree-switcher-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+
+    &.selected {
+      background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+    }
+  }
+
+  .git-worktree-switcher-branch-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+  }
+
+  // Commit box collapsible body
+  .git-commit-box-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 8px;
+  }
+
+  // Graph row ref count badge (compact: branch icon + count)
+  .git-graph-ref-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .git-graph-ref-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--accent-bg);
+    color: var(--accent-fg, var(--accent-color));
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .git-branch-icon-sm {
+    display: inline-flex;
+    align-items: center;
+    svg {
+      width: 9px;
+      height: 9px;
+    }
+  }
+
+  // ── Worktrees section (legacy classes kept for SCSS compile) ──────────────
   .git-worktrees-section {
     border-bottom: 1px solid var(--border-color);
   }
