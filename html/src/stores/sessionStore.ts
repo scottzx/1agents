@@ -10,7 +10,7 @@ import {
     type AgentType,
 } from '../components/types';
 import { terminalService } from '../services/terminalService';
-import { agentService } from '../services/agentService';
+import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
 import { t } from '../i18n';
 import * as ui from './uiStore';
@@ -39,6 +39,19 @@ export const tmuxMouseOn = signal(true);
 export const chatSessions = signal<ChatSession[]>([]);
 export const activeSession = signal<Session | null>(null);
 export const pendingInitialMessage = signal<string | null>(null);
+/**
+ * AI Project Manager sessions (role = 'pm'). These are kept entirely OUT of
+ * `chatSessions` / `activeSession` (the normal chat path that drives the
+ * sidebar + primary pane) so the PM never leaks into the main screen. The PM
+ * chat lives only in the secondary pane (副屏), like the file browser.
+ *
+ * `pmSessions` records every PM-exclusive session id for the active workspace
+ * (newest first); `pmSession` is the one currently shown in the drawer. There
+ * is no fixed id — `/new` style flows just create another role='pm' session
+ * and the drawer switches to it.
+ */
+export const pmSessions = signal<ChatSession[]>([]);
+export const pmSession = signal<ChatSession | null>(null);
 
 /** Sync tmux windows + chat sessions into workspace folders as sessions */
 export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSession[]) => {
@@ -106,8 +119,11 @@ export const loadChatSessions = async (workspaceId?: string) => {
     if (!wsId) return;
     try {
         const chats = await agentService.list(wsId);
-        chatSessions.value = chats;
-        mergeSessionsIntoFolders(terminalWindows.value, chats);
+        // PM sessions are tracked separately and never shown in the normal
+        // chat list (sidebar / primary pane); they live only in the 副屏.
+        chatSessions.value = chats.filter(c => c.role !== 'pm');
+        pmSessions.value = chats.filter(c => c.role === 'pm');
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {
         console.error('[agent] list error:', err);
     }
@@ -160,6 +176,74 @@ export const createChatSession = async (
     } catch (err) {
         ui.showToast(`创建聊天失败: ${(err as Error).message}`);
     }
+};
+
+/** Create a fresh role='pm' session (never enters the normal chat list). */
+const createPMSession = async (workspaceId: string): Promise<ChatSession | null> => {
+    const pm = await agentService.index({
+        workspace_id: workspaceId,
+        name: 'AI 项目经理',
+        agent_type: DEFAULT_AGENT_TYPE,
+        role: 'pm',
+    });
+    pmSessions.value = [pm, ...pmSessions.value.filter(s => s.id !== pm.id)];
+    return pm;
+};
+
+/**
+ * Open the in-app AI Project Manager in the secondary pane (副屏), like the
+ * file browser: the task board stays on the main screen. The PM chat is a
+ * session whose agent gets a PM system prompt plus task tools locked to this
+ * workspace (role = 'pm', wired server-side in HandleChatWs).
+ *
+ * Toggles like the other drawer tabs: clicking again collapses it. The latest
+ * PM session for the workspace is reused across opens.
+ */
+export const openPMChat = async (workspaceId: string) => {
+    // Already open → collapse (toggle off), matching the files/git tabs.
+    if (tabsStore.activeDrawerTab.value === 'pm') {
+        tabsStore.toggleDrawerTab('pm');
+        return;
+    }
+    const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
+    if (!ws) {
+        ui.showToast('工作空间不存在');
+        return;
+    }
+    try {
+        if (wsStore.activeWorkspaceId.value !== workspaceId) {
+            await wsStore.selectWorkspace(ws);
+        }
+        await loadChatSessions(workspaceId); // refresh pmSessions for this workspace
+        // Reuse the latest PM session for this workspace; create one otherwise.
+        let pm = pmSessions.value.find(s => s.workspaceId === workspaceId) ?? null;
+        if (!pm) {
+            ui.showToast('正在召唤 AI 项目经理…');
+            pm = await createPMSession(workspaceId);
+            if (!pm) return;
+        }
+        pmSession.value = pm;
+        // Open the secondary pane without touching the primary (task board).
+        tabsStore.toggleDrawerTab('pm');
+    } catch (err) {
+        ui.showToast(`召唤失败: ${(err as Error).message}`);
+    }
+};
+
+/** Start a brand-new PM conversation and switch the drawer to it. */
+export const newPMSession = async (workspaceId: string) => {
+    try {
+        const pm = await createPMSession(workspaceId);
+        if (pm) pmSession.value = pm;
+    } catch (err) {
+        ui.showToast(`新建失败: ${(err as Error).message}`);
+    }
+};
+
+/** Switch the drawer to an existing PM session by id. */
+export const switchPMSession = (sessionId: string) => {
+    const pm = pmSessions.value.find(s => s.id === sessionId);
+    if (pm) pmSession.value = pm;
 };
 
 export const onStartNewChat = () => {

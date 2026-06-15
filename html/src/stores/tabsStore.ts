@@ -166,11 +166,14 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
         activeDrawerTab.value = 'none';
         activeModulePath.value = '';
     } else {
-        // Expand drawer with smart width: wider for channels, git, and files panels
+        // Expand drawer with smart width: widest for the PM chat, wide for
+        // channels/git/files, narrow otherwise.
         const smartWidth =
-            tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
-                ? Math.max(ui.rightPanelWidth.value, 450)
-                : 320;
+            tab === 'pm'
+                ? Math.max(ui.rightPanelWidth.value, 500)
+                : tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
+                  ? Math.max(ui.rightPanelWidth.value, 450)
+                  : 320;
 
         // Module-backed tabs get their entry path; non-module tabs clear it.
         const mod = getModuleByTab(tab);

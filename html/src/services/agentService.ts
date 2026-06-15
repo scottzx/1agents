@@ -5,7 +5,7 @@
 // service only manages the 1agents-side metadata that the sidebar uses to
 // list "my chat sessions"; the live conversation is owned by 1acp.
 
-import { AGENT_TYPES, type AgentType, type ChatSession } from '../components/types';
+import { AGENT_TYPES, type AgentType, type ChatSession, type PermissionMode } from '../components/types';
 
 export interface IndexChatSessionRequest {
     workspace_id: string;
@@ -13,6 +13,8 @@ export interface IndexChatSessionRequest {
     agent_type: AgentType;
     /** Optional issue-model soft link — set for sessions spawned from a task timeline. */
     task_id?: string;
+    /** Special-purpose session role. 'pm' = in-app AI Project Manager (project-locked task tools + PM system prompt). */
+    role?: string;
 }
 
 /** Default agent type used when a workspace has none configured. */
@@ -138,6 +140,8 @@ interface RawChatSession {
     status?: string;
     last_event_at?: string;
     active?: boolean;
+    role?: string;
+    permission_mode?: string;
 }
 
 interface RawAgentStatus {
@@ -187,5 +191,7 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         status: (raw.status ?? 'idle') as ChatSession['status'],
         lastEventAt: raw.last_event_at || undefined,
         active: Boolean(raw.active),
+        role: raw.role || undefined,
+        permissionMode: (raw.permission_mode as PermissionMode) || undefined,
     };
 }

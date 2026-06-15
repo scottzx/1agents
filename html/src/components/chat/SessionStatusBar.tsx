@@ -34,6 +34,6 @@ function connectionLabel(state: ConnectionState): string {
         case 'closed':
             return '已关闭';
         case 'error':
-            return '错误';
+            return '会话不可用';
     }
 }

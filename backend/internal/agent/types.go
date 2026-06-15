@@ -42,6 +42,16 @@ var SupportedAgentTypes = []AgentType{
 // DefaultAgentType is the agent used when a workspace has none configured.
 const DefaultAgentType = AgentTypeClaudecode
 
+// IsSupportedAgentType reports whether t is one of SupportedAgentTypes.
+func IsSupportedAgentType(t AgentType) bool {
+	for _, a := range SupportedAgentTypes {
+		if a == t {
+			return true
+		}
+	}
+	return false
+}
+
 // Model types live in internal/meta (the SQLite metadata layer) so the
 // server handlers and the CLI share one definition; the aliases below keep
 // this package's existing code and the wire JSON shapes unchanged.
@@ -122,4 +132,7 @@ type IndexRequest struct {
 	CcProject   string `json:"cc_project"`
 	CcSessionID string `json:"cc_session_id"`
 	SessionKey  string `json:"session_key"`
+	// Role marks a special-purpose session ("pm" = AI Project Manager).
+	// Empty for an ordinary chat. See meta.ChatSessionRecord.Role.
+	Role string `json:"role"`
 }

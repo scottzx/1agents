@@ -4,7 +4,8 @@
 // a React-friendly stream of "messages" (assistant text, tool calls,
 // permission requests, errors). The ChatPanel renders that stream.
 
-import { useEffect, useState, useCallback } from 'preact/hooks';
+import { useEffect, useCallback } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 
 export interface ToolCallInfo {
@@ -148,6 +149,14 @@ export interface SessionBridgeState {
      * with SESSION_NOT_FOUND, so the UI must gate input on this flag.
      */
     ready: boolean;
+    /**
+     * True once this session has reached `session_ready` at least once (never
+     * reset). Distinguishes a live session that merely dropped — which should
+     * reconnect indefinitely — from one that never connected (e.g. resuming a
+     * transcript whose session is unrecoverable), which should give up after a
+     * few attempts instead of looping forever and spamming the console.
+     */
+    everReady: boolean;
     /** Per-session permission policy mirrored from the backend record. */
     permissionMode: PermissionMode;
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
@@ -188,6 +197,7 @@ export class ChatBridgeManager {
                 // don't bounce prompts with SESSION_NOT_FOUND during the
                 // brief window the agent process is spawning.
                 ready: false,
+                everReady: false,
                 // The list endpoint (GET /api/agent/sessions?workspace_id=…)
                 // already serializes ChatSessionRecord.PermissionMode onto
                 // the ChatSession object, so we can trust the field
@@ -312,6 +322,7 @@ export class ChatBridgeManager {
                     // not with `session_ready`.
                     state.reconnectAttempt = 0;
                     state.ready = true;
+                    state.everReady = true;
                     this.notify(state);
                     break;
                 case 'session_taken_over':
@@ -777,6 +788,17 @@ export class ChatBridgeManager {
                 this.notify(state);
                 return;
             }
+            // A session that never connected (e.g. "查看详情" on a transcript the
+            // backend can't resume) keeps failing the open handshake. Give up
+            // after a few tries with a clear unavailable state instead of an
+            // endless reconnect loop. A session that *was* live (everReady) only
+            // dropped — keep reconnecting indefinitely.
+            if (!state.everReady && state.reconnectAttempt >= 4) {
+                state.connection = 'error';
+                state.typing = false;
+                this.notify(state);
+                return;
+            }
             state.connection = 'reconnecting';
             state.typing = false;
             this.notify(state);
@@ -987,21 +1009,33 @@ export class ChatBridgeManager {
 export const globalBridgeManager = new ChatBridgeManager();
 
 export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
-    const [, forceUpdate] = useState({});
+    // Re-render via a signal, NOT useState. Under @preact/signals a plain
+    // useState forceUpdate silently fails to repaint a component that lives in
+    // a static subtree (e.g. the 副屏 AI 项目经理 panel) — leaving the composer
+    // stuck disabled even after the bridge connects. Reading `rev.value` in
+    // render subscribes this component so each listener bump repaints reliably.
+    const rev = useSignal(0);
+    const bump = () => {
+        rev.value++;
+    };
 
     useEffect(() => {
         if (!session) return;
 
         const state = globalBridgeManager.getOrCreate(session);
-        const listener = () => forceUpdate({});
-        state.listeners.add(listener);
+        state.listeners.add(bump);
 
-        forceUpdate({});
+        bump();
 
         return () => {
-            state.listeners.delete(listener);
+            state.listeners.delete(bump);
         };
     }, [session?.id, session?.workspaceId, session?.taskId]);
+
+    // Subscribe to bridge-state changes (see note above): reading `.value`
+    // registers this render with the signal so listener bumps repaint it.
+    // eslint-disable-next-line no-unused-expressions
+    rev.value;
 
     const state = session ? globalBridgeManager.getOrCreate(session) : null;
 

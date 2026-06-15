@@ -106,6 +106,12 @@ type WsMessage struct {
 	Type            string          `json:"type,omitempty"`
 	ResumeSessionID string          `json:"resumeSessionId,omitempty"`
 	AgentSessionID  string          `json:"agentSessionId,omitempty"`
+	// McpServers carries the per-session MCP server config (a JSON array of
+	// ACP McpServer entries) forwarded to the bridge-server, which sets it on
+	// sessionOptions.mcpServers. Used by the AI Project Manager session to
+	// inject the project-locked task-tool server. The Go side only declares
+	// the field so it survives the ReadJSON → WriteJSON round trip.
+	McpServers json.RawMessage `json:"mcpServers,omitempty"`
 	// PermissionMode is the per-session policy ("approve-reads" /
 	// "approve-all" / "deny-all"). Two paths use it:
 	//   1. set on the initial ensure_session message so the bridge-server
@@ -118,7 +124,7 @@ type WsMessage struct {
 	PermissionMode string `json:"permissionMode,omitempty"`
 }
 
-func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePath, taskId, sessionId, agentType, systemContext string, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID, replyID string) {
+func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePath, taskId, sessionId, agentType, systemContext string, mcpServers json.RawMessage, scheduler *Scheduler, tasksStore *TasksStore, chatStore *Store, acpSessionID, replyID string) {
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[acpx_client] upgrade failed: %v", err)
@@ -171,6 +177,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			AcpSessionID:    acpSessionID,
 			ResumeSessionID: acpSessionID,
 			SystemContext:   systemContext,
+			McpServers:      mcpServers,
 			PermissionMode:  reconnectMode,
 		}
 		bridge.mu.Lock()
@@ -235,6 +242,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		AcpSessionID:    acpSessionID,
 		ResumeSessionID: acpSessionID,
 		SystemContext:   systemContext,
+		McpServers:      mcpServers,
 		PermissionMode:  initialMode,
 	}
 	if err := serverConn.WriteJSON(ensureMsg); err != nil {
@@ -429,85 +437,67 @@ func (c *AcpxClient) cleanupBridge(sessionId string) {
 }
 
 func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, summary string, tasksStore *TasksStore) {
-	cfg, err := tasksStore.Load(workspacePath)
-	if err != nil {
-		return
-	}
-
 	now := time.Now().UTC()
-	updated := false
+	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			task := &cfg.Tasks[i]
+			if task.ID == taskId {
+				// Update task status and summary
+				task.Status = TaskStatusCompleted
+				task.CompletedAt = &now
+				task.Summary = summary
+				task.UpdatedAt = now
 
-	for i := range cfg.Tasks {
-		task := &cfg.Tasks[i]
-		if task.ID == taskId {
-			// Update task status and summary
-			task.Status = TaskStatusCompleted
-			task.CompletedAt = &now
-			task.Summary = summary
-			task.UpdatedAt = now
-
-			// Add or update session metadata
-			sessionExists := false
-			for j := range task.Sessions {
-				sess := &task.Sessions[j]
-				if sess.ID == sessionId {
-					sess.Status = SessionStatusIdle
-					sess.Summary = summary
-					sessionExists = true
-					break
+				// Add or update session metadata
+				sessionExists := false
+				for j := range task.Sessions {
+					sess := &task.Sessions[j]
+					if sess.ID == sessionId {
+						sess.Status = SessionStatusIdle
+						sess.Summary = summary
+						sessionExists = true
+						break
+					}
 				}
-			}
 
-			if !sessionExists {
-				task.Sessions = append(task.Sessions, SessionMetadata{
-					ID:        sessionId,
-					Kind:      SessionKindChat,
-					Name:      "智能体排查与修复",
-					AgentType: "claudecode",
-					Status:    SessionStatusIdle,
-					Summary:   summary,
-					CreatedAt: now,
-				})
+				if !sessionExists {
+					task.Sessions = append(task.Sessions, SessionMetadata{
+						ID:        sessionId,
+						Kind:      SessionKindChat,
+						Name:      "智能体排查与修复",
+						AgentType: "claudecode",
+						Status:    SessionStatusIdle,
+						Summary:   summary,
+						CreatedAt: now,
+					})
+				}
+				return true
 			}
-			updated = true
-			break
 		}
-	}
-
-	if updated {
-		_ = tasksStore.Save(workspacePath, cfg)
-	}
+		return false
+	})
 }
 
 func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, errMsg string, tasksStore *TasksStore) {
-	cfg, err := tasksStore.Load(workspacePath)
-	if err != nil {
-		return
-	}
-
 	now := time.Now().UTC()
-	updated := false
+	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			task := &cfg.Tasks[i]
+			if task.ID == taskId {
+				task.Status = TaskStatusFailed
+				task.UpdatedAt = now
 
-	for i := range cfg.Tasks {
-		task := &cfg.Tasks[i]
-		if task.ID == taskId {
-			task.Status = TaskStatusFailed
-			task.UpdatedAt = now
-
-			for j := range task.Sessions {
-				sess := &task.Sessions[j]
-				if sess.ID == sessionId {
-					sess.Status = SessionStatusIdle
-					sess.Summary = "Error: " + errMsg
-					break
+				for j := range task.Sessions {
+					sess := &task.Sessions[j]
+					if sess.ID == sessionId {
+						sess.Status = SessionStatusIdle
+						sess.Summary = "Error: " + errMsg
+						break
+					}
 				}
+				return true
 			}
-			updated = true
-			break
 		}
-	}
-
-	if updated {
-		_ = tasksStore.Save(workspacePath, cfg)
-	}
+		return false
+	})
 }

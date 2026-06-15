@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -131,6 +132,69 @@ func TestSessionListNewestFirst(t *testing.T) {
 	none, _ := s.ListByWorkspace("nope")
 	if len(none) != 0 {
 		t.Fatalf("expected empty list for unknown workspace")
+	}
+}
+
+// TestTaskStoreMutateNoLostUpdate reproduces the status-clobber race: one
+// writer marks t1 completed while a second writer (standing in for the 5s
+// scheduler tick) repeatedly re-saves the whole config. With Mutate serializing
+// the Load→modify→Save cycle, the completed status must survive.
+func TestTaskStoreMutateNoLostUpdate(t *testing.T) {
+	db := newTestDB(t)
+	s := NewTaskStore(db)
+	ws := t.TempDir()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	cfg := &TasksConfig{Tasks: []Task{
+		{ID: "t1", Title: "first", Status: TaskStatusRunning, CreatedAt: now, UpdatedAt: now},
+		{ID: "t2", Title: "second", Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+	}}
+	if err := s.Save(ws, cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	// Writer A: complete t1 once.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = s.Mutate(ws, func(c *TasksConfig) bool {
+			for i := range c.Tasks {
+				if c.Tasks[i].ID == "t1" {
+					c.Tasks[i].Status = TaskStatusCompleted
+					return true
+				}
+			}
+			return false
+		})
+	}()
+	// Writer B: churn t2's UpdatedAt many times (whole-config re-saves that
+	// would, without serialization, overwrite t1 back to running).
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for n := 0; n < 50; n++ {
+			_ = s.Mutate(ws, func(c *TasksConfig) bool {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "t2" {
+						c.Tasks[i].UpdatedAt = c.Tasks[i].UpdatedAt.Add(time.Millisecond)
+						return true
+					}
+				}
+				return false
+			})
+		}
+	}()
+	wg.Wait()
+
+	loaded, err := s.Load(ws)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for _, tk := range loaded.Tasks {
+		if tk.ID == "t1" && tk.Status != TaskStatusCompleted {
+			t.Fatalf("t1 status = %q, want completed (lost update)", tk.Status)
+		}
 	}
 }
 
