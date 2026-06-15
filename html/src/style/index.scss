@@ -7912,8 +7912,9 @@ body {
   .git-worktree-item {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 7px 14px;
+    gap: 8px;
+    padding: 7px 14px 7px 8px;
+    cursor: pointer;
     transition: background 0.15s;
 
     &:hover {
@@ -7922,6 +7923,23 @@ body {
 
     &.is-current {
       background: rgba(var(--accent-rgb, 59, 130, 246), 0.05);
+    }
+
+    &.open {
+      background: var(--btn-hover);
+    }
+  }
+
+  .git-worktree-chevron {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+    color: var(--text-muted);
+
+    svg {
+      width: 14px;
+      height: 14px;
     }
   }
 
@@ -8141,6 +8159,38 @@ body {
     }
   }
 
+  // Filled status badge for commit / worktree file lists — solid color block so
+  // added (A) / modified (M) / deleted (D) read at a glance.
+  .git-file-status-badge {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 4px;
+    color: #fff;
+
+    &.git-status-m {
+      background: var(--warning-emphasis, #d97706);
+    }
+    &.git-status-a {
+      background: var(--success-emphasis, #16a34a);
+    }
+    &.git-status-d {
+      background: var(--danger-emphasis, #dc2626);
+    }
+    &.git-status-r {
+      background: var(--purple-emphasis, #7c3aed);
+    }
+    &.git-status-u {
+      background: #0891b2;
+    }
+  }
+
   .git-commit-file-path {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -8190,6 +8240,39 @@ body {
 
     .git-diff-table {
       min-width: 100%;
+    }
+
+    // Stronger add/del contrast than the inline working-tree diff: saturated
+    // tint + a colored left rail so changed lines pop while scanning.
+    .git-diff-row {
+      &.diff-line-add {
+        background-color: rgba(var(--success-rgb), 0.16);
+        box-shadow: inset 3px 0 0 var(--success-emphasis, #16a34a);
+        .diff-text {
+          color: var(--text-main);
+        }
+        .diff-char {
+          color: var(--success-fg);
+          opacity: 1;
+        }
+      }
+      &.diff-line-del {
+        background-color: rgba(var(--danger-rgb), 0.16);
+        box-shadow: inset 3px 0 0 var(--danger-emphasis, #dc2626);
+        .diff-text {
+          color: var(--text-main);
+        }
+        .diff-char {
+          color: var(--danger-fg);
+          opacity: 1;
+        }
+      }
+      &.diff-line-hunk {
+        background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+        .diff-text {
+          color: var(--accent-fg);
+        }
+      }
     }
   }
 }

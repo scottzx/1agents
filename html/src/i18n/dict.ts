@@ -412,6 +412,7 @@ export const zhCN: Record<string, string> = {
     'git.worktrees.main': '主',
     'git.worktrees.current': '当前',
     'git.worktrees.detached': '(分离 HEAD)',
+    'git.worktrees.clean': '没有未提交的更改',
 
     // Graph history
     'git.graph.title': '提交图形',
@@ -1021,6 +1022,7 @@ export const enUS: Record<string, string> = {
     'git.worktrees.main': 'main',
     'git.worktrees.current': 'current',
     'git.worktrees.detached': '(detached HEAD)',
+    'git.worktrees.clean': 'No uncommitted changes',
 
     // Graph history
     'git.graph.title': 'Commit Graph',

@@ -487,7 +487,9 @@ func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	out, err := h.git("log", "--all", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s")
+	// --topo-order keeps each branch's commits contiguous (not interleaved by
+	// date), so the first-parent trunk and its forks/merges read clearly.
+	out, err := h.git("log", "--all", "--topo-order", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s")
 	if err != nil {
 		writeJSON(w, []GraphCommit{})
 		return
@@ -609,6 +611,73 @@ func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(out))
 }
 
+// isWorktreePath reports whether path is one of this repo's registered worktrees.
+// Guards the worktree-status/diff endpoints against arbitrary -C targets.
+func (h *Handler) isWorktreePath(path string) bool {
+	clean := filepath.Clean(path)
+	out, err := h.git("worktree", "list", "--porcelain")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			if filepath.Clean(strings.TrimPrefix(line, "worktree ")) == clean {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// WorktreeStatus handles GET /api/git/worktree-status?path=<path>
+// Returns the uncommitted changes (staged/unstaged/untracked) for one worktree.
+func (h *Handler) WorktreeStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	if path == "" || !h.isWorktreePath(path) {
+		http.Error(w, "invalid worktree path", http.StatusBadRequest)
+		return
+	}
+
+	staged, unstaged, untracked := h.changedFilesAt(path)
+	writeJSON(w, GitStatus{
+		IsRepo:    true,
+		Staged:    staged,
+		Unstaged:  unstaged,
+		Untracked: untracked,
+	})
+}
+
+// WorktreeDiff handles GET /api/git/worktree-diff?path=<path>&file=<file>
+// Shows all uncommitted changes for one file in a worktree (vs HEAD), with an
+// untracked-file fallback so brand-new files still render as additions.
+func (h *Handler) WorktreeDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	file := r.URL.Query().Get("file")
+	if path == "" || file == "" || !h.isWorktreePath(path) {
+		http.Error(w, "invalid worktree path or file", http.StatusBadRequest)
+		return
+	}
+
+	out, _ := h.git("-C", path, "diff", "HEAD", "--", file)
+	if strings.TrimSpace(out) == "" {
+		// Untracked / new file: synthesize a diff against an empty blob.
+		out, _ = h.git("-C", path, "diff", "--no-index", "--", os.DevNull, filepath.Join(path, file))
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(out))
+}
+
 // AICommit handles POST /api/git/ai-commit
 func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -633,7 +702,7 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Execute Claude Code non-interactively with empty stdin
 	prompt := "Write a concise, conventional git commit message in Chinese (中文) based on the staged changes in this git repository. The commit type prefix (e.g., feat, fix, docs, style, refactor) must be in English, but the actual message description MUST be written in clear, concise Chinese. Output ONLY the raw commit message itself, without quotes, code blocks, or explanations."
-	
+
 	var args []string
 	if len(cliExtraArgs) > 0 {
 		args = append(args, cliExtraArgs...)
@@ -651,7 +720,7 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 			baseEnv = append(baseEnv, e)
 		}
 	}
-	
+
 	// Merge CC Connect environment variables
 	if len(ccEnv) > 0 {
 		cmd.Env = mergeEnvironments(baseEnv, ccEnv)
@@ -719,11 +788,16 @@ func (h *Handler) aheadBehind() (ahead, behind int) {
 
 // changedFiles parses `git status --porcelain=v1` into three buckets.
 func (h *Handler) changedFiles() (staged, unstaged, untracked []FileStatus) {
+	return h.changedFilesAt(h.root)
+}
+
+// changedFilesAt parses status for an arbitrary worktree directory.
+func (h *Handler) changedFilesAt(dir string) (staged, unstaged, untracked []FileStatus) {
 	staged = []FileStatus{}
 	unstaged = []FileStatus{}
 	untracked = []FileStatus{}
 
-	out, err := h.git("status", "--porcelain=v1")
+	out, err := h.git("-C", dir, "status", "--porcelain=v1")
 	if err != nil || out == "" {
 		return
 	}

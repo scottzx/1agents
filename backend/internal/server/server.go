@@ -45,26 +45,26 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── File system API ──────────────────────────────────────────────────────
 	fsHandler := fs.NewHandler(cfg.WorkDir)
-	mux.HandleFunc("/api/fs/list", fsHandler.List)     // GET  ?path=.
-	mux.HandleFunc("/api/fs/search", fsHandler.Search) // GET  ?query=xxx&tag=all/doc/img/code
-	mux.HandleFunc("/api/fs/read", fsHandler.Read)     // GET  ?path=./main.go
-	mux.HandleFunc("/api/fs/view", fsHandler.View)     // GET  ?path=./page.html (serves with correct content-type)
-	mux.HandleFunc("/api/fs/view/", fsHandler.View)    // GET  /api/fs/view/relative/path (prefix route for relative assets support)
-	mux.HandleFunc("/api/fs/image", fsHandler.Image)     // GET  ?path=./image.png (returns base64 data URL, deprecated)
+	mux.HandleFunc("/api/fs/list", fsHandler.List)          // GET  ?path=.
+	mux.HandleFunc("/api/fs/search", fsHandler.Search)      // GET  ?query=xxx&tag=all/doc/img/code
+	mux.HandleFunc("/api/fs/read", fsHandler.Read)          // GET  ?path=./main.go
+	mux.HandleFunc("/api/fs/view", fsHandler.View)          // GET  ?path=./page.html (serves with correct content-type)
+	mux.HandleFunc("/api/fs/view/", fsHandler.View)         // GET  /api/fs/view/relative/path (prefix route for relative assets support)
+	mux.HandleFunc("/api/fs/image", fsHandler.Image)        // GET  ?path=./image.png (returns base64 data URL, deprecated)
 	mux.HandleFunc("/api/fs/image/", fsHandler.ImageStream) // GET  /api/fs/image/relative/path (streams raw bytes; preferred)
-	mux.HandleFunc("/api/fs/write", fsHandler.Write)   // POST ?path=./main.go
-	mux.HandleFunc("/api/fs/upload", fsHandler.Upload) // POST multipart/form-data (field "file") → saves to /tmp, returns {path,name}
-	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)   // POST ?path=./newdir
-	mux.HandleFunc("/api/fs/delete", fsHandler.Delete) // DELETE ?path=./main.go
+	mux.HandleFunc("/api/fs/write", fsHandler.Write)        // POST ?path=./main.go
+	mux.HandleFunc("/api/fs/upload", fsHandler.Upload)      // POST multipart/form-data (field "file") → saves to /tmp, returns {path,name}
+	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)        // POST ?path=./newdir
+	mux.HandleFunc("/api/fs/delete", fsHandler.Delete)      // DELETE ?path=./main.go
 
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
-	mux.HandleFunc("/api/workspace/list", wsHandler.List)     // GET
-	mux.HandleFunc("/api/workspace/create", wsHandler.Create) // POST
-	mux.HandleFunc("/api/workspace/update", wsHandler.Update) // POST
-	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder) // POST
-	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)           // DELETE ?id=xxx
-	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory) // POST — opens native folder picker
+	mux.HandleFunc("/api/workspace/list", wsHandler.List)                        // GET
+	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                    // POST
+	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
+	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder)                  // POST
+	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)                    // DELETE ?id=xxx
+	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)     // POST — opens native folder picker
 	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
 	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
 
@@ -119,13 +119,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			catalogStore := agent.NewCatalogStore()
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)    // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)         // GET, POST
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)        // DELETE /{id}
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)          // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes) // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)   // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)  // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem) // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)        // GET, POST
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)       // DELETE /{id}
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)         // WebSocket upgrade & bridge
 		}
 	}
 
@@ -205,22 +205,24 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)
-	mux.HandleFunc("/api/git/status", gitHandler.Status)     // GET
-	mux.HandleFunc("/api/git/diff", gitHandler.Diff)         // GET  ?file=<path>&staged=<bool>
-	mux.HandleFunc("/api/git/stage", gitHandler.Stage)       // POST ?file=<path> or ?all=true
-	mux.HandleFunc("/api/git/unstage", gitHandler.Unstage)   // POST ?file=<path> or ?all=true
-	mux.HandleFunc("/api/git/discard", gitHandler.Discard)   // POST ?file=<path>
-	mux.HandleFunc("/api/git/ai-commit", gitHandler.AICommit) // POST
-	mux.HandleFunc("/api/git/commit", gitHandler.Commit)     // POST {message:"…"}
-	mux.HandleFunc("/api/git/log", gitHandler.Log)           // GET  ?limit=20
-	mux.HandleFunc("/api/git/branches", gitHandler.Branches) // GET
-	mux.HandleFunc("/api/git/checkout", gitHandler.Checkout) // POST {branch:"…",create:bool}
-	mux.HandleFunc("/api/git/push", gitHandler.Push)         // POST
-	mux.HandleFunc("/api/git/pull", gitHandler.Pull)         // POST
-	mux.HandleFunc("/api/git/worktrees", gitHandler.Worktrees)       // GET
-	mux.HandleFunc("/api/git/graph", gitHandler.Graph)               // GET ?limit=100
-	mux.HandleFunc("/api/git/commit-files", gitHandler.CommitFiles)  // GET ?hash=<hash>
-	mux.HandleFunc("/api/git/commit-diff", gitHandler.CommitDiff)    // GET ?hash=<hash>&file=<path>
+	mux.HandleFunc("/api/git/status", gitHandler.Status)                  // GET
+	mux.HandleFunc("/api/git/diff", gitHandler.Diff)                      // GET  ?file=<path>&staged=<bool>
+	mux.HandleFunc("/api/git/stage", gitHandler.Stage)                    // POST ?file=<path> or ?all=true
+	mux.HandleFunc("/api/git/unstage", gitHandler.Unstage)                // POST ?file=<path> or ?all=true
+	mux.HandleFunc("/api/git/discard", gitHandler.Discard)                // POST ?file=<path>
+	mux.HandleFunc("/api/git/ai-commit", gitHandler.AICommit)             // POST
+	mux.HandleFunc("/api/git/commit", gitHandler.Commit)                  // POST {message:"…"}
+	mux.HandleFunc("/api/git/log", gitHandler.Log)                        // GET  ?limit=20
+	mux.HandleFunc("/api/git/branches", gitHandler.Branches)              // GET
+	mux.HandleFunc("/api/git/checkout", gitHandler.Checkout)              // POST {branch:"…",create:bool}
+	mux.HandleFunc("/api/git/push", gitHandler.Push)                      // POST
+	mux.HandleFunc("/api/git/pull", gitHandler.Pull)                      // POST
+	mux.HandleFunc("/api/git/worktrees", gitHandler.Worktrees)            // GET
+	mux.HandleFunc("/api/git/graph", gitHandler.Graph)                    // GET ?limit=100
+	mux.HandleFunc("/api/git/commit-files", gitHandler.CommitFiles)       // GET ?hash=<hash>
+	mux.HandleFunc("/api/git/commit-diff", gitHandler.CommitDiff)         // GET ?hash=<hash>&file=<path>
+	mux.HandleFunc("/api/git/worktree-status", gitHandler.WorktreeStatus) // GET ?path=<path>
+	mux.HandleFunc("/api/git/worktree-diff", gitHandler.WorktreeDiff)     // GET ?path=<path>&file=<file>
 
 	// ── Workspace context API (switches fs + git roots at runtime) ─────────
 	ctxHandler := ctxt.NewHandler(fsHandler, gitHandler)
@@ -247,8 +249,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// All WebSocket and HTTP traffic destined for ttyd is forwarded here.
 	// The frontend should connect to ws://<host>/ws (not directly to ttyd).
 	ttydProxy := gateway.NewTtydProxy(cfg.TtydAddr)
-	mux.Handle("/ws", ttydProxy)      // terminal WebSocket stream
-	mux.Handle("/token", ttydProxy)   // ttyd auth token endpoint
+	mux.Handle("/ws", ttydProxy)    // terminal WebSocket stream
+	mux.Handle("/token", ttydProxy) // ttyd auth token endpoint
 
 	// ── CC-Connect reverse proxy ─────────────────────────────────────────────
 	// Transparently reverse-proxies requests to the local CC-Connect management server
@@ -423,10 +425,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── System management API (version check + OTA update) ──────────────────
 	sysHandler := system.NewHandler()
-	mux.HandleFunc("/api/system/version", sysHandler.Version)             // GET  — current & latest version, has_update flag
-	mux.HandleFunc("/api/system/update", sysHandler.Update)               // POST — trigger OTA update (non-blocking, returns 202)
-	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)  // GET  — real-time update progress log
-	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)              // GET  — frontend OTA manifest (proxied from GitHub Releases)
+	mux.HandleFunc("/api/system/version", sysHandler.Version)            // GET  — current & latest version, has_update flag
+	mux.HandleFunc("/api/system/update", sysHandler.Update)              // POST — trigger OTA update (non-blocking, returns 202)
+	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus) // GET  — real-time update progress log
+	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)             // GET  — frontend OTA manifest (proxied from GitHub Releases)
 
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
@@ -796,12 +798,12 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	// If it's HTML, inject our base href and click interceptor scripts!
 	if strings.Contains(strings.ToLower(contentType), "text/html") {
 		htmlStr := string(bodyBytes)
-		
+
 		// 1. Inject <base href="..."> right after the opening <head> tag
 		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
 		if headIdx != -1 {
 			insertPos := headIdx + len("<head>")
-			
+
 			// Inject `<base>` tag and click interceptor script
 			actualURL := resp.Request.URL.String()
 			baseTag := `<base href="` + actualURL + `">`
