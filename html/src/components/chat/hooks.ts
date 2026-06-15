@@ -4,7 +4,8 @@
 // a React-friendly stream of "messages" (assistant text, tool calls,
 // permission requests, errors). The ChatPanel renders that stream.
 
-import { useEffect, useState, useCallback } from 'preact/hooks';
+import { useEffect, useCallback } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 
 export interface ToolCallInfo {
@@ -987,16 +988,28 @@ export class ChatBridgeManager {
 export const globalBridgeManager = new ChatBridgeManager();
 
 export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
-    const [, forceUpdate] = useState({});
+    // Re-render trigger. A bare `useState({})` forceUpdate silently fails to
+    // re-render inside a static subtree under @preact/signals v2 (the same
+    // class of bug as the broken useState toggles) — the main chat only
+    // survived because its parent re-rendered for other reasons, masking it,
+    // while a static side panel (e.g. the PM board) stayed frozen on the
+    // "connecting" frame. A signal bumped on every bridge `notify` subscribes
+    // this component directly, so it re-renders regardless of the parent.
+    const rev = useSignal(0);
+    // Subscribe: reading `.value` during render registers this component with
+    // the signal so a later increment forces a re-render.
+    rev.value;
 
     useEffect(() => {
         if (!session) return;
 
         const state = globalBridgeManager.getOrCreate(session);
-        const listener = () => forceUpdate({});
+        const listener = () => {
+            rev.value++;
+        };
         state.listeners.add(listener);
 
-        forceUpdate({});
+        rev.value++;
 
         return () => {
             state.listeners.delete(listener);
