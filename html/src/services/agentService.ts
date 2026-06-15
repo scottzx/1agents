@@ -5,7 +5,7 @@
 // service only manages the 1agents-side metadata that the sidebar uses to
 // list "my chat sessions"; the live conversation is owned by 1acp.
 
-import { AGENT_TYPES, type AgentType, type ChatSession } from '../components/types';
+import { AGENT_TYPES, type AgentType, type ChatSession, type PermissionMode } from '../components/types';
 
 export interface IndexChatSessionRequest {
     workspace_id: string;
@@ -141,6 +141,7 @@ interface RawChatSession {
     last_event_at?: string;
     active?: boolean;
     role?: string;
+    permission_mode?: string;
 }
 
 interface RawAgentStatus {
@@ -191,5 +192,6 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         lastEventAt: raw.last_event_at || undefined,
         active: Boolean(raw.active),
         role: raw.role || undefined,
+        permissionMode: (raw.permission_mode as PermissionMode) || undefined,
     };
 }

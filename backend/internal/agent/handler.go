@@ -257,6 +257,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		SessionKey:  body.SessionKey,
 		Role:        body.Role,
 	}
+	// AI Project Manager sessions default to approve-all: the task tools are
+	// already hard-locked to this project via env injection, so auto-approving
+	// keeps the conversation flowing instead of stalling on a permission prompt
+	// for every create_task/update_task. The user can still switch the mode
+	// manually afterwards (persisted via set_permission_mode).
+	if rec.Role == SessionRolePM {
+		rec.PermissionMode = "approve-all"
+	}
 	if err := h.store.Add(rec); err != nil {
 		if errors.Is(err, ErrDuplicate) {
 			http.Error(w, "session with this id already exists", http.StatusConflict)
