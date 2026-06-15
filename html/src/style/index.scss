@@ -7014,19 +7014,9 @@ body {
 
   // Commit Box
   .git-commit-box {
-    padding: 0 16px 16px 16px;
-    background-color: var(--bg-main);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-
-    // Section header inside commit box uses the standard header style;
-    // reset padding to align with the box edges.
-    > .git-section-header {
-      padding-left: 0;
-      padding-right: 0;
-    }
-
+    // Reuses the standard .git-section / .git-section-header chrome (header +
+    // chevron identical to the worktrees & graph sections). Body padding below
+    // aligns the inputs with the header label.
     .git-commit-input {
       width: 100%;
       background-color: var(--bg-terminal-inner);
@@ -7950,7 +7940,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding-top: 8px;
+    padding: 4px 16px 8px;
   }
 
   // Graph row ref count badge (compact: branch icon + count)

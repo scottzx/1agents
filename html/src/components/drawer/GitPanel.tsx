@@ -1183,7 +1183,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const hasStaged = stagedCount > 0;
 
         return (
-            <div class="git-commit-box">
+            <div class="git-section git-commit-box">
                 <div
                     class="git-section-header git-section-header-clickable"
                     onClick={() => this.setState({ commitBoxCollapsed: !commitBoxCollapsed })}
