@@ -2,6 +2,11 @@ name: auto-release
 
 on:
   workflow_dispatch:
+    inputs:
+      skip_npm:
+        description: "Skip publishing to npm (use for test/dry runs)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -717,6 +722,7 @@ jobs:
           node-version: '24'
 
       - name: Publish to NPM
+        if: ${{ !inputs.skip_npm }}
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
