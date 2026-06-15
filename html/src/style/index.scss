@@ -9074,6 +9074,24 @@ body {
       background: var(--success-bg);
       color: var(--success-fg);
     }
+
+    // Worktree HEAD marker: branch-icon + initials, purple tint by default.
+    &.worktree {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      background: var(--purple-bg);
+      color: var(--purple-fg);
+      font-family: var(--font-mono);
+      letter-spacing: 0.3px;
+
+      // The active worktree's tip stands out in solid accent.
+      &.current {
+        background: var(--accent-color);
+        color: var(--on-accent);
+        font-weight: 600;
+      }
+    }
   }
 
   .git-graph-short {
