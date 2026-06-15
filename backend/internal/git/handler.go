@@ -385,6 +385,23 @@ func (h *Handler) Pull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out})
 }
 
+// Fetch handles POST /api/git/fetch
+// Refreshes remote tracking refs (and prunes deleted ones) so that the
+// ahead/behind counts reported by /api/git/status reflect the real remote.
+func (h *Handler) Fetch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	out, err := h.git("fetch", "--prune")
+	if err != nil {
+		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ahead, behind := h.aheadBehind()
+	writeJSON(w, map[string]interface{}{"ok": true, "output": out, "ahead": ahead, "behind": behind})
+}
+
 // Discard handles POST /api/git/discard?file=<path>
 func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

@@ -7700,6 +7700,56 @@ body {
       }
     }
 
+    // Interactive sync cluster (current worktree): ahead/behind act as
+    // one-click push/pull, followed by a Fetch button.
+    .git-sync-cluster {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+
+      .git-icon-btn {
+        margin-left: 0;
+      }
+    }
+
+    .git-sync-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 36px;
+      height: 28px;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      background-color: var(--bg-terminal-inner);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+      &.git-ahead {
+        color: var(--success-fg);
+        &:hover:not(:disabled) {
+          border-color: var(--success-fg);
+          background-color: rgba(var(--success-rgb), 0.1);
+        }
+      }
+      &.git-behind {
+        color: var(--danger-fg);
+        &:hover:not(:disabled) {
+          border-color: var(--danger-fg);
+          background-color: rgba(var(--danger-rgb), 0.1);
+        }
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    }
+
     .git-icon-btn {
       margin-left: auto;
       background: none;

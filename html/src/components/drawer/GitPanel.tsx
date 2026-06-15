@@ -67,6 +67,7 @@ interface GitPanelState {
     commitMsg: string;
     committing: boolean;
     pushPullLoading: 'push' | 'pull' | null;
+    fetching: boolean;
     // diff (working-tree inline)
     diffFile: string | null;
     diffStaged: boolean;
@@ -294,6 +295,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             commitMsg: '',
             committing: false,
             pushPullLoading: null,
+            fetching: false,
             diffFile: null,
             diffStaged: false,
             diffContent: '',
@@ -638,6 +640,21 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             );
         } finally {
             this.setState({ pushPullLoading: null });
+        }
+    };
+
+    fetchRemote = async () => {
+        this.setState({ fetching: true });
+        this.showToast(t('git.toast.fetching', this.props.language));
+        try {
+            const res = await fetch('/api/git/fetch', { method: 'POST' });
+            if (!res.ok) throw new Error(await res.text());
+            this.showToast(t('git.toast.fetchSuccess', this.props.language));
+            this.refresh();
+        } catch (err) {
+            this.showToast(t('git.toast.fetchFailedPrefix', this.props.language, { err: String(err) }));
+        } finally {
+            this.setState({ fetching: false });
         }
     };
 
@@ -1015,7 +1032,15 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     // §1 Worktree switcher (replaces branch selector at the top)
     renderWorktreeSwitcher() {
-        const { worktrees, worktreeSwitcherOpen, selectedWorktreePath, worktreesLoading, status } = this.state;
+        const {
+            worktrees,
+            worktreeSwitcherOpen,
+            selectedWorktreePath,
+            worktreesLoading,
+            status,
+            pushPullLoading,
+            fetching,
+        } = this.state;
         const { language } = this.props;
 
         // Determine which worktree is active for display.
@@ -1025,7 +1050,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const displayBranch = activeWt?.branch || status?.branch || '…';
 
         // Active status for ahead/behind display (§2).
-        const activeStatus = this.isViewingCurrent() ? status : this.state.worktreeStatus;
+        const viewingCurrent = this.isViewingCurrent();
+        const activeStatus = viewingCurrent ? status : this.state.worktreeStatus;
+        const ahead = activeStatus?.ahead ?? 0;
+        const behind = activeStatus?.behind ?? 0;
 
         return (
             <div class="git-branch-bar-container git-worktree-switcher-container">
@@ -1043,28 +1071,67 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         <span class="git-branch-arrow">▼</span>
                     </div>
 
-                    {activeStatus && (activeStatus.ahead > 0 || activeStatus.behind > 0) && (
-                        <span class="git-ahead-behind">
-                            {activeStatus.ahead > 0 && (
-                                <span
-                                    class="git-ahead"
-                                    title={t('git.branch.ahead', language, { n: activeStatus.ahead })}
+                    {viewingCurrent ? (
+                        // Current worktree: ahead/behind double as one-click push/pull,
+                        // plus a Fetch button to sync the remote tracking state.
+                        <div class="git-sync-cluster">
+                            {behind > 0 && (
+                                <button
+                                    class="git-sync-badge git-behind"
+                                    onClick={() => this.pushOrPull('pull')}
+                                    disabled={pushPullLoading !== null || fetching}
+                                    title={t('git.branch.behind', language, { n: behind })}
                                 >
-                                    ↑{activeStatus.ahead}
-                                </span>
+                                    {pushPullLoading === 'pull' ? (
+                                        <div class="git-spinner git-spinner-sm" />
+                                    ) : (
+                                        `↓${behind}`
+                                    )}
+                                </button>
                             )}
-                            {activeStatus.behind > 0 && (
-                                <span
-                                    class="git-behind"
-                                    title={t('git.branch.behind', language, { n: activeStatus.behind })}
+                            {ahead > 0 && (
+                                <button
+                                    class="git-sync-badge git-ahead"
+                                    onClick={() => this.pushOrPull('push')}
+                                    disabled={pushPullLoading !== null || fetching}
+                                    title={t('git.branch.ahead', language, { n: ahead })}
                                 >
-                                    ↓{activeStatus.behind}
-                                </span>
+                                    {pushPullLoading === 'push' ? (
+                                        <div class="git-spinner git-spinner-sm" />
+                                    ) : (
+                                        `↑${ahead}`
+                                    )}
+                                </button>
                             )}
-                        </span>
+                            <button
+                                class={`git-icon-btn ${fetching ? 'spinning' : ''}`}
+                                onClick={this.fetchRemote}
+                                disabled={fetching || pushPullLoading !== null}
+                                title={t('git.action.fetch', language)}
+                            >
+                                {IconRefresh}
+                            </button>
+                        </div>
+                    ) : (
+                        (ahead > 0 || behind > 0) && (
+                            <span class="git-ahead-behind">
+                                {ahead > 0 && (
+                                    <span class="git-ahead" title={t('git.branch.ahead', language, { n: ahead })}>
+                                        ↑{ahead}
+                                    </span>
+                                )}
+                                {behind > 0 && (
+                                    <span class="git-behind" title={t('git.branch.behind', language, { n: behind })}>
+                                        ↓{behind}
+                                    </span>
+                                )}
+                            </span>
+                        )
                     )}
 
-                    {worktreesLoading && <div class="git-spinner git-spinner-sm" style="margin-left:auto" />}
+                    {worktreesLoading && !viewingCurrent && (
+                        <div class="git-spinner git-spinner-sm" style="margin-left:auto" />
+                    )}
                 </div>
 
                 {/* Worktree dropdown */}
