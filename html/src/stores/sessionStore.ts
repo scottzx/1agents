@@ -55,6 +55,14 @@ export const pmSession = signal<ChatSession | null>(null);
 
 /** Sync tmux windows + chat sessions into workspace folders as sessions */
 export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSession[]) => {
+    // Always keep the currently-active chat session in the list, even when the
+    // backend index doesn't return it. A session opened from a task timeline
+    // (TaskDetail.openSession) may have no index record; without this it would
+    // connect the bridge + load history but never appear in the sidebar, and a
+    // subsequent loadChatSessions would even wipe it out of activeSession below.
+    const prevActive = activeSession.value;
+    const chatList: ChatSession[] =
+        prevActive && isChat(prevActive) && !chats.some(c => c.id === prevActive.id) ? [prevActive, ...chats] : chats;
     wsStore.folders.value = wsStore.folders.value.map(f => {
         const termSessions: Session[] = windows
             .filter(w => w.workspaceId === f.id)
@@ -70,14 +78,13 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
                 waitingFor: w.waitingFor,
                 agent: w.agent,
             }));
-        const chatSessionList: Session[] = chats.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
+        const chatSessionList: Session[] = chatList.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
         // Chat sessions first (newer), then terminals.
         return { ...f, sessions: [...chatSessionList, ...termSessions] };
     });
     // Preserve the currently-active chat session if it still exists; otherwise
     // fall back to the most recently active terminal window.
-    const prevActive = activeSession.value;
-    const activeChat = prevActive && isChat(prevActive) ? chats.find(c => c.id === prevActive.id) : null;
+    const activeChat = prevActive && isChat(prevActive) ? chatList.find(c => c.id === prevActive.id) : null;
     const activeWin = windows.find(w => w.active);
     activeSession.value = activeChat
         ? { ...activeChat, active: true }
