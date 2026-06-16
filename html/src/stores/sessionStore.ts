@@ -62,9 +62,7 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
     // subsequent loadChatSessions would even wipe it out of activeSession below.
     const prevActive = activeSession.value;
     const chatList: ChatSession[] =
-        prevActive && isChat(prevActive) && !chats.some(c => c.id === prevActive.id)
-            ? [prevActive, ...chats]
-            : chats;
+        prevActive && isChat(prevActive) && !chats.some(c => c.id === prevActive.id) ? [prevActive, ...chats] : chats;
     wsStore.folders.value = wsStore.folders.value.map(f => {
         const termSessions: Session[] = windows
             .filter(w => w.workspaceId === f.id)
