@@ -6,8 +6,7 @@ import type { Session } from '../../types';
 import { CreateTaskForm } from './CreateTaskForm';
 import type { Task } from './types';
 import { TaskDetail } from './TaskDetail';
-import { TaskTable } from './TaskTable';
-import { KanbanBoard } from './KanbanBoard';
+import { TasksView } from './TasksView';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
@@ -26,7 +25,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
     const [error, setError] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const showForm = useSignal(false);
-    const view = useSignal<'table' | 'board' | 'overview' | 'milestone' | 'requirements'>('table');
+    const view = useSignal<'overview' | 'tasks' | 'requirements' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -91,6 +90,24 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
         [fetchTasks]
     );
 
+    // Inline grid edit: PATCH a single task and splice the response back into
+    // the cached list (no full refetch, so the edit lands instantly even
+    // between the 5s polls). The backend rejects scheduler-owned fields.
+    const handlePatchTask = useCallback(
+        async (taskId: string, patch: Record<string, unknown>) => {
+            const res = await fetch(`/api/agent/tasks/${taskId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(patch),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const updated = (await res.json()) as Task;
+            const cur = cachedTasks.value[workspaceId] || [];
+            setTasks(cur.map(t => (t.id === taskId ? updated : t)));
+        },
+        [workspaceId, setTasks]
+    );
+
     const handleDeleteTask = async (taskId: string) => {
         if (!confirm('确定要删除该任务吗？')) return;
         try {
@@ -130,11 +147,10 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                 <div class="task-view-switcher">
                     {(
                         [
-                            ['table', '列表'],
-                            ['board', '看板'],
                             ['overview', '总览'],
+                            ['tasks', '任务'],
+                            ['requirements', '需求'],
                             ['milestone', '里程碑'],
-                            ['requirements', '需求池'],
                         ] as Array<[typeof view.value, string]>
                     ).map(([key, label]) => (
                         <button key={key} class={view.value === key ? 'active' : ''} onClick={() => (view.value = key)}>
@@ -162,21 +178,13 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
 
             {error && <div class="task-error">{error}</div>}
 
-            {view.value === 'table' && (
-                <div class="task-table-scroller">
-                    <TaskTable
-                        tasks={tasks}
-                        loading={loading}
-                        onSelectTask={setSelectedTaskId}
-                        onDeleteTask={handleDeleteTask}
-                    />
-                </div>
-            )}
-            {view.value === 'board' && (
-                <KanbanBoard
+            {view.value === 'tasks' && (
+                <TasksView
                     tasks={tasks}
                     loading={loading}
                     onSelectTask={setSelectedTaskId}
+                    onDeleteTask={handleDeleteTask}
+                    onPatchTask={handlePatchTask}
                     onStatusChange={handleStatusChange}
                 />
             )}

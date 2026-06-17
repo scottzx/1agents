@@ -1,118 +1,222 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
+import { useSignal } from '@preact/signals';
 
-import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
+import { PRIORITY_RANK } from './constants';
+import { GridCell } from './TaskGridCell';
+import { TaskGridToolbar } from './TaskGridToolbar';
+import type { ColState } from './TaskGridToolbar';
+import { ALL_COLUMNS, compareTasks, groupValue, isSortable } from './gridConfig';
+import type { ColumnDef, GroupKey } from './gridConfig';
 import type { Task } from './types';
-import { fmtDateOnly, orderForTable, recurrenceLabel } from './utils';
 
 interface TaskTableProps {
+    /** Tasks to render (already filtered by the shared TaskFilterBar). */
     tasks: Task[];
+    /** Full task set for dependency resolution and empty-state messaging. */
+    allTasks: Task[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
     onDeleteTask: (taskId: string) => void;
+    onPatchTask: (taskId: string, patch: Record<string, unknown>) => Promise<void>;
 }
 
-export function TaskTable({ tasks, loading, onSelectTask, onDeleteTask }: TaskTableProps) {
-    if (loading && tasks.length === 0) {
+const cellKey = (taskId: string, colKey: string) => `${taskId}:${colKey}`;
+
+export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask, onPatchTask }: TaskTableProps) {
+    const editingCell = useSignal<string | null>(null);
+    const groupBy = useSignal<GroupKey>('none');
+    const collapsed = useSignal<string[]>([]);
+    const sort = useSignal<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+    const showHierarchy = useSignal(true);
+    const columns = useSignal<ColState[]>(ALL_COLUMNS.map(c => ({ key: c.key, visible: true })));
+
+    if (loading && allTasks.length === 0) {
         return <div class="task-loading">正在载入任务列表...</div>;
     }
 
+    const colDefs = new Map(ALL_COLUMNS.map(c => [c.key, c]));
+    const visibleCols = columns.value
+        .filter(c => c.visible)
+        .map(c => colDefs.get(c.key))
+        .filter((c): c is ColumnDef => !!c);
+    const colSpan = visibleCols.length + 1;
+
+    const commit = async (taskId: string, patch: Record<string, unknown>) => {
+        editingCell.value = null;
+        try {
+            await onPatchTask(taskId, patch);
+        } catch (err) {
+            alert((err as Error).message);
+        }
+    };
+
+    const renderCells = (task: Task, isChild: boolean) =>
+        visibleCols.map(col => (
+            <GridCell
+                key={col.key}
+                task={task}
+                col={col}
+                allTasks={allTasks}
+                isChild={isChild}
+                editing={editingCell.value === cellKey(task.id, col.key)}
+                onStartEdit={() => (editingCell.value = cellKey(task.id, col.key))}
+                onCommit={patch => commit(task.id, patch)}
+                onCancel={() => (editingCell.value = null)}
+                onOpenDetail={() => onSelectTask(task.id)}
+            />
+        ));
+
+    const actionCell = (task: Task) => (
+        <td class="col-actions">
+            <button class="task-open-btn" onClick={() => onSelectTask(task.id)} title="打开详情">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6" />
+                </svg>
+            </button>
+            <button class="task-delete-btn" onClick={() => onDeleteTask(task.id)} title="删除任务">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+            </button>
+        </td>
+    );
+
+    const row = (task: Task, isChild: boolean) => {
+        const closed = task.issueState === 'closed';
+        return (
+            <tr
+                key={task.id}
+                class={`task-row status-${task.status}${closed ? ' issue-closed' : ''}${
+                    isChild ? ' task-row-child' : ''
+                }`}
+            >
+                {renderCells(task, isChild)}
+                {actionCell(task)}
+            </tr>
+        );
+    };
+
+    // Header-click sort: cycle off → asc → desc → off on the active column.
+    const cycleSort = (key: string) => {
+        const s = sort.value;
+        if (!s || s.key !== key) sort.value = { key, dir: 'asc' };
+        else if (s.dir === 'asc') sort.value = { key, dir: 'desc' };
+        else sort.value = null;
+    };
+
+    // The active comparator: the chosen sort column when set, otherwise the
+    // default (priority then creation time).
+    const rank = (t: Task) => PRIORITY_RANK[t.priority || 'medium'] ?? 2;
+    const cmp = (a: Task, b: Task): number => {
+        const s = sort.value;
+        if (!s) return rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt);
+        return s.dir === 'asc' ? compareTasks(a, b, s.key) : -compareTasks(a, b, s.key);
+    };
+
+    // Hierarchy-aware order: top-level tasks sorted by `cmp`, each parent
+    // immediately followed by its children sorted by `cmp` within the parent.
+    const orderHierarchical = (list: Task[]): Array<{ task: Task; isChild: boolean }> => {
+        const byParent = new Map<string, Task[]>();
+        const tops: Task[] = [];
+        for (const t of list) {
+            if (t.parentId && list.some(p => p.id === t.parentId)) {
+                (byParent.get(t.parentId) || byParent.set(t.parentId, []).get(t.parentId)!).push(t);
+            } else {
+                tops.push(t);
+            }
+        }
+        tops.sort(cmp);
+        const out: Array<{ task: Task; isChild: boolean }> = [];
+        for (const t of tops) {
+            out.push({ task: t, isChild: false });
+            for (const c of (byParent.get(t.id) || []).slice().sort(cmp)) out.push({ task: c, isChild: true });
+        }
+        return out;
+    };
+
+    // Grouped buckets: members sorted by the active comparator. Hierarchy is
+    // inherently flattened here (children may fall in different groups).
+    const buildGroups = (): Array<[string, Task[]]> => {
+        const ordered = [...tasks].sort(cmp);
+        const map = new Map<string, Task[]>();
+        for (const t of ordered) {
+            const g = groupValue(t, groupBy.value);
+            (map.get(g) || map.set(g, []).get(g)!).push(t);
+        }
+        return Array.from(map.entries());
+    };
+
+    const toggleGroup = (g: string) => {
+        collapsed.value = collapsed.value.includes(g) ? collapsed.value.filter(x => x !== g) : [...collapsed.value, g];
+    };
+
     return (
-        <table class="task-table">
-            <thead>
-                <tr>
-                    <th class="col-priority">优先级</th>
-                    <th class="col-status">状态</th>
-                    <th class="col-issue" title="Issue 状态">
-                        {'\u{1F513}'}
-                    </th>
-                    <th class="col-title">任务</th>
-                    <th class="col-assignee">执行</th>
-                    <th class="col-date">计划开始</th>
-                    <th class="col-date">计划完成</th>
-                    <th class="col-date">实际完成</th>
-                    <th class="col-deps">前置依赖</th>
-                    <th class="col-actions" />
-                </tr>
-            </thead>
-            <tbody>
-                {tasks.length === 0 && (
-                    <tr class="task-empty-row">
-                        <td colSpan={10}>暂无任务 —— 点击上方「+ 新建任务」创建第一个。</td>
-                    </tr>
-                )}
-                {orderForTable(tasks).map(({ task, isChild }) => {
-                    const deps = tasks.filter(t => task.dependsOn?.includes(t.id));
-                    const closed = task.issueState === 'closed';
-                    const prio = task.priority || 'medium';
-                    return (
-                        <tr
-                            key={task.id}
-                            class={`task-row status-${task.status}${closed ? ' issue-closed' : ''}${
-                                isChild ? ' task-row-child' : ''
-                            }`}
-                            onClick={() => onSelectTask(task.id)}
-                        >
-                            <td class="col-priority">
-                                <span class={`priority-badge priority-${prio}`}>{PRIORITY_LABELS[prio] || prio}</span>
-                            </td>
-                            <td class="col-status">
-                                <span class={`task-status-badge ${task.status}`}>
-                                    {task.status === 'running' && <span class="pulse-indicator" />}
-                                    {STATUS_LABELS[task.status] || task.status}
-                                </span>
-                            </td>
-                            <td class="col-issue">{closed ? '\u{1F512}' : '\u{1F513}'}</td>
-                            <td class="col-title">
-                                {isChild && <span class="subtask-indent">└─</span>}
-                                {task.number ? <span class="task-number">#{task.number}</span> : null}
-                                <span class="task-row-title">{task.title}</span>
-                                {(task.labels || []).map(l => (
-                                    <span key={l} class="task-label-tag">
-                                        {l}
-                                    </span>
-                                ))}
-                                {task.recurrence && (
-                                    <span class="task-recur-tag" title={recurrenceLabel(task.recurrence)}>
-                                        🔁
-                                    </span>
-                                )}
-                                {(task.replies?.length ?? 0) > 0 && (
-                                    <span class="task-reply-count">💬 {task.replies!.length}</span>
-                                )}
-                            </td>
-                            <td class="col-assignee">{task.assignee || 'claudecode'}</td>
-                            <td class="col-date">{fmtDateOnly(task.plannedStart)}</td>
-                            <td class="col-date">{fmtDateOnly(task.plannedEnd)}</td>
-                            <td class="col-date">{fmtDateOnly(task.completedAt)}</td>
-                            <td class="col-deps">
-                                {deps.length > 0
-                                    ? deps.map(d => (
-                                          <span key={d.id} class="dep-tag">
-                                              {d.status === 'completed' ? '✓ ' : ''}
-                                              {d.title}
-                                          </span>
-                                      ))
-                                    : '—'}
-                            </td>
-                            <td class="col-actions">
-                                <button
-                                    class="task-delete-btn"
-                                    onClick={(e: Event) => {
-                                        e.stopPropagation();
-                                        onDeleteTask(task.id);
-                                    }}
-                                    title="删除任务"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="3 6 5 6 21 6" />
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    </svg>
-                                </button>
-                            </td>
+        <div class="task-grid">
+            <TaskGridToolbar groupBy={groupBy} showHierarchy={showHierarchy} columns={columns} />
+
+            <div class="task-table-scroller">
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            {visibleCols.map(col => {
+                                const sortable = isSortable(col.key);
+                                const active = sort.value?.key === col.key;
+                                return (
+                                    <th
+                                        key={col.key}
+                                        class={`col-${col.key}${sortable ? ' grid-sortable' : ''}${
+                                            active ? ' sorted' : ''
+                                        }`}
+                                        style={{ minWidth: `${col.width}px` }}
+                                        onClick={sortable ? () => cycleSort(col.key) : undefined}
+                                        title={sortable ? '点击按此列排序' : undefined}
+                                    >
+                                        {col.label}
+                                        {active && (
+                                            <span class="sort-ind">{sort.value!.dir === 'asc' ? '▲' : '▼'}</span>
+                                        )}
+                                    </th>
+                                );
+                            })}
+                            <th class="col-actions" />
                         </tr>
-                    );
-                })}
-            </tbody>
-        </table>
+                    </thead>
+                    <tbody>
+                        {tasks.length === 0 && (
+                            <tr class="task-empty-row">
+                                <td colSpan={colSpan}>
+                                    {allTasks.length === 0
+                                        ? '暂无任务 —— 点击上方「+ 新建任务」创建第一个。'
+                                        : '没有匹配筛选条件的任务。'}
+                                </td>
+                            </tr>
+                        )}
+
+                        {groupBy.value === 'none' &&
+                            (showHierarchy.value
+                                ? orderHierarchical(tasks).map(({ task, isChild }) => row(task, isChild))
+                                : [...tasks].sort(cmp).map(task => row(task, false)))}
+
+                        {groupBy.value !== 'none' &&
+                            buildGroups().map(([g, members]) => {
+                                const isCollapsed = collapsed.value.includes(g);
+                                return (
+                                    <Fragment key={g}>
+                                        <tr class="task-group-header" onClick={() => toggleGroup(g)}>
+                                            <td colSpan={colSpan}>
+                                                <span class="group-caret">{isCollapsed ? '▶' : '▼'}</span>
+                                                <span class="group-name">{g}</span>
+                                                <span class="group-count">{members.length}</span>
+                                            </td>
+                                        </tr>
+                                        {!isCollapsed && members.map(task => row(task, false))}
+                                    </Fragment>
+                                );
+                            })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     );
 }

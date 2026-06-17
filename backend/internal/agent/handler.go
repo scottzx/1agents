@@ -500,6 +500,7 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 // present in the body are touched.
 func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
+		Title              *string      `json:"title,omitempty"`
 		Description        *string      `json:"description,omitempty"`
 		IssueState         *string      `json:"issueState,omitempty"`
 		Status             *string      `json:"status,omitempty"`
@@ -519,6 +520,10 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Title != nil && strings.TrimSpace(*body.Title) == "" {
+		http.Error(w, "title must not be empty", http.StatusBadRequest)
 		return
 	}
 	if body.IssueState != nil {
@@ -579,6 +584,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		found = true
 
+		if body.Title != nil {
+			target.Title = strings.TrimSpace(*body.Title)
+		}
 		if body.Description != nil {
 			target.Description = *body.Description
 		}
