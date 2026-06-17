@@ -61,6 +61,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
+	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
+		log.Printf("[server] ensure default workspace: %v", err)
+	}
 	mux.HandleFunc("/api/workspace/list", wsHandler.List)                        // GET
 	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                    // POST
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST

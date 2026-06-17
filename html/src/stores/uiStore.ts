@@ -20,6 +20,9 @@ export const leftSidebarWidth = signal(260);
 export const rightPanelWidth = signal(320);
 export const bottomNavHidden = signal(false);
 export const toastMsg = signal('');
+export const sidebarMode = signal<'assistant' | 'project'>(
+    (localStorage.getItem('1agents-sidebar-mode') as 'assistant' | 'project') || 'assistant'
+);
 export const isMobile = signal(window.innerWidth <= 768);
 export const keyboardVisible = signal(false);
 export const viewportHeight = signal(window.visualViewport ? window.visualViewport.height : window.innerHeight);

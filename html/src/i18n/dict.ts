@@ -49,6 +49,7 @@ export const zhCN: Record<string, string> = {
     'app.toast.workspaceUpdated': '工作空间已更新 ✓',
     'app.toast.workspaceUpdateFailed': '更新失败: {err}',
     'app.toast.workspaceDeleteLast': '无法删除，系统需保留至少一个工作空间',
+    'app.toast.workspaceDeleteBuiltin': '内置工作空间不可删除',
     'app.toast.workspaceDeleted': '工作空间已删除 ✓',
     'app.toast.workspaceDeleteFailed': '删除失败: {err}',
     'app.toast.workspaceReorderFailed': '重排序失败: {err}',
@@ -117,6 +118,7 @@ export const zhCN: Record<string, string> = {
     'newchat.role.general': '通用',
     'newchat.role.pm': 'PM',
     'newchat.role.pmHint': '选择会话角色（PM = AI 项目经理：聊需求，自动拆解成带依赖的任务）',
+    'newchat.noProject': '无项目（跨项目）',
     'header.menu': '菜单',
     'header.openMenu': '打开功能菜单',
     'header.mobile.switchView': '切换视图',
@@ -135,6 +137,8 @@ export const zhCN: Record<string, string> = {
 
     // ── Sidebar (LeftSidebar.tsx) ─────────────────────────────────────────
     'sidebar.collapse': '折叠侧边栏',
+    'sidebar.conversations': '对话',
+    'sidebar.noChats': '暂无聊天',
     'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
     'sidebar.empty': '暂无工作空间',
@@ -676,6 +680,7 @@ export const enUS: Record<string, string> = {
     'app.toast.workspaceUpdated': 'Workspace updated ✓',
     'app.toast.workspaceUpdateFailed': 'Update failed: {err}',
     'app.toast.workspaceDeleteLast': 'Cannot delete — at least one workspace must remain',
+    'app.toast.workspaceDeleteBuiltin': 'Built-in workspace cannot be deleted',
     'app.toast.workspaceDeleted': 'Workspace deleted ✓',
     'app.toast.workspaceDeleteFailed': 'Delete failed: {err}',
     'app.toast.workspaceReorderFailed': 'Reorder failed: {err}',
@@ -744,6 +749,7 @@ export const enUS: Record<string, string> = {
     'newchat.role.pm': 'PM',
     'newchat.role.pmHint':
         'Pick a conversation role (PM = AI Project Manager: discuss requirements, auto-split into dependency-aware tasks)',
+    'newchat.noProject': 'No project (cross-project)',
     'header.menu': 'Menu',
     'header.openMenu': 'Open feature menu',
     'header.mobile.switchView': 'Switch view',
@@ -762,6 +768,8 @@ export const enUS: Record<string, string> = {
 
     // ── Sidebar ──────────────────────────────────────────────────────────
     'sidebar.collapse': 'Collapse sidebar',
+    'sidebar.conversations': 'Conversations',
+    'sidebar.noChats': 'No chats yet',
     'sidebar.workspaces': 'Workspaces',
     'sidebar.newWorkspace': 'New workspace',
     'sidebar.empty': 'No workspaces yet',
