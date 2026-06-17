@@ -270,3 +270,29 @@ type Task struct {
 type TasksConfig struct {
 	Tasks []Task `json:"tasks"`
 }
+
+// Milestone is a first-class roadmap stage (schema v7). Its identity is the
+// pair (ProjectID, Name): tasks still link to a milestone through the existing
+// Task.Milestone *string* column, so the milestones table only stores the
+// extra metadata (target date, ordering, description) that a bare label can't
+// carry. Renaming a milestone cascades to its tasks' Milestone field, so the
+// name stays a valid join key. The "current/past/future" distinction is NOT
+// stored — it is derived from Position + task completion at read time.
+type Milestone struct {
+	ID          string     `json:"id"`
+	ProjectID   string     `json:"-"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	TargetDate  *time.Time `json:"targetDate,omitempty"`
+	Position    int        `json:"position"`
+	// PredecessorID is the optional parent milestone (前置里程碑). Milestones
+	// sharing a predecessor fork into parallel branches on the roadmap; an
+	// empty value makes the milestone a root. Empty when the parent is unset.
+	PredecessorID string    `json:"predecessorId,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	// Total / Completed are computed by joining tasks on Name at list time
+	// (not persisted), so the roadmap can render a progress bar per stage.
+	Total     int `json:"total"`
+	Completed int `json:"completed"`
+}

@@ -139,6 +139,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem) // GET, DELETE /{id}
 			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)        // GET, POST
 			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)       // DELETE /{id}
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)         // WebSocket upgrade & bridge
 		}
 	}
