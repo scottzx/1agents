@@ -130,7 +130,12 @@ export interface ChatSession {
     acpSessionId?: string;
     sessionKey: string; // cc-connect bridge session_key
     status: ChatStatus;
+    createdAt?: string; // ISO timestamp — when the session was indexed
     lastEventAt?: string; // ISO timestamp
+    /** Soft-delete: ISO timestamp when archived (closed from the sidebar). Empty/undefined = active. */
+    archivedAt?: string;
+    /** Derived from archivedAt — true when the session has been archived. */
+    archived?: boolean;
     active: boolean;
     /** Per-session permission policy. Persisted via PATCH /api/agent/sessions/{id}. */
     permissionMode?: PermissionMode;

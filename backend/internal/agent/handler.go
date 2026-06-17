@@ -143,6 +143,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		// bridge-server later trusts this string).
 		var body struct {
 			PermissionMode *string `json:"permission_mode,omitempty"`
+			Archived       *bool   `json:"archived,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -160,6 +161,17 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				log.Printf("[agent] update permission_mode %s: %v", id, err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.Archived != nil {
+			if err := h.store.SetArchived(id, *body.Archived); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("[agent] set archived %s: %v", id, err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -197,7 +209,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-	recs, err := h.store.ListByWorkspace(wsID)
+	// The sidebar lists active sessions only; the 会话 archive view passes
+	// include_archived=1 to also surface soft-deleted (archived) sessions.
+	includeArchived := r.URL.Query().Get("include_archived") == "1"
+	recs, err := h.store.ListByWorkspace(wsID, includeArchived)
 	if err != nil {
 		log.Printf("[agent] list for %s: %v", wsID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

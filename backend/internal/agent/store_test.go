@@ -43,7 +43,7 @@ func TestStoreAddGetListDelete(t *testing.T) {
 	}
 
 	// List by workspace
-	all, err := s.ListByWorkspace("ws1")
+	all, err := s.ListByWorkspace("ws1", false)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestStoreAddGetListDelete(t *testing.T) {
 	}
 
 	// List with no match
-	none, err := s.ListByWorkspace("ws2")
+	none, err := s.ListByWorkspace("ws2", false)
 	if err != nil {
 		t.Fatalf("List ws2: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestStoreListSortedByCreatedAt(t *testing.T) {
 			SessionKey:  "k:" + id,
 		})
 	}
-	all, _ := s.ListByWorkspace("ws")
+	all, _ := s.ListByWorkspace("ws", false)
 	if len(all) != 3 {
 		t.Fatalf("got %d, want 3", len(all))
 	}
@@ -122,7 +122,7 @@ func TestStoreConcurrentAdds(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	all, _ := s.ListByWorkspace("ws")
+	all, _ := s.ListByWorkspace("ws", false)
 	if len(all) != n {
 		t.Fatalf("got %d records after concurrent add, want %d", len(all), n)
 	}

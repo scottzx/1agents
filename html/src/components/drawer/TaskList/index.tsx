@@ -10,6 +10,7 @@ import { TasksView } from './TasksView';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
+import { SessionsView } from './SessionsView';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
 
@@ -36,7 +37,7 @@ export function TaskList({
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
     const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showForm = useSignal(false);
-    const view = useSignal<'overview' | 'tasks' | 'requirements' | 'milestone'>('tasks');
+    const view = useSignal<'overview' | 'tasks' | 'requirements' | 'sessions' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -165,6 +166,7 @@ export function TaskList({
                             ['overview', '总览'],
                             ['tasks', '任务'],
                             ['requirements', '需求'],
+                            ['sessions', '会话'],
                             ['milestone', '里程碑'],
                         ] as Array<[typeof view.value, string]>
                     ).map(([key, label]) => (
@@ -197,6 +199,13 @@ export function TaskList({
                 />
             )}
             {view.value === 'overview' && <Overview tasks={tasks} />}
+            {view.value === 'sessions' && (
+                <SessionsView
+                    workspaceId={workspaceId}
+                    onSelectSession={onSelectSession}
+                    onSelectTask={setSelectedTaskId}
+                />
+            )}
             {view.value === 'milestone' && <MilestoneView tasks={tasks} onSelectTask={setSelectedTaskId} />}
             {view.value === 'requirements' && <RequirementPool tasks={tasks} onSelectTask={setSelectedTaskId} />}
         </div>

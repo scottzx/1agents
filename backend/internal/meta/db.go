@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -135,6 +135,11 @@ func (db *DB) migrateSchema() error {
 	if version < 6 {
 		if _, err := db.sql.Exec(schemaV6); err != nil {
 			return fmt.Errorf("meta: apply schema v6: %w", err)
+		}
+	}
+	if version < 7 {
+		if _, err := db.sql.Exec(schemaV7); err != nil {
+			return fmt.Errorf("meta: apply schema v7: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -270,6 +275,15 @@ UPDATE tasks SET number = sub.rn FROM (
 // Manager session (PM system prompt + project-locked task-tool MCP server).
 const schemaV6 = `
 ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT '';
+`
+
+// schemaV7 adds soft-delete for sessions: archived_at holds the archive
+// timestamp (empty = active). Closing a session from the sidebar archives it
+// rather than dropping the row, so the conversation metadata survives and
+// stays searchable in the 会话 archive view. DEFAULT ” keeps every existing
+// session active.
+const schemaV7 = `
+ALTER TABLE sessions ADD COLUMN archived_at TEXT NOT NULL DEFAULT '';
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────
