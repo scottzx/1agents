@@ -564,15 +564,36 @@ jobs:
           cd ../modules/cc-connect/cmd/cc-connect
           go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../../../../build/cc-connect .
 
-      - name: Build Windows binaries
+      - name: Cache vcpkg packages (Windows)
+        if: matrix.os_name == 'windows'
+        uses: actions/cache@v4
+        with:
+          path: C:/vcpkg/installed
+          key: vcpkg-windows-ttyd-${{ hashFiles('modules/ttyd/CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-windows-ttyd-
+
+      - name: Install ttyd build dependencies (Windows)
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: vcpkg install libuv json-c "libwebsockets[libuv,ssl]" --triplet x64-windows-static
+
+      - name: Build ttyd from source (Windows)
         if: matrix.os_name == 'windows'
         shell: bash
         run: |
+          cmake -B build-ttyd -S modules/ttyd \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-ttyd --config Release
           mkdir -p build
-          # Download precompiled ttyd.exe for Windows
-          curl -L -o build/ttyd.exe "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe"
-          
-          # Build Go binaries
+          cp build-ttyd/Release/ttyd.exe build/ttyd.exe
+
+      - name: Build Windows Go binaries
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: |
           cd backend
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.tag }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o ../build/1agents.exe ./cmd/backend
           cd ../modules/cc-connect/cmd/cc-connect
