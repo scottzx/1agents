@@ -52,6 +52,9 @@ export function TaskDetail({
     const [activeTab, setActiveTab] = useState<'conversation' | 'subtasks' | 'relations'>('conversation');
     const [composerTab, setComposerTab] = useState<'write' | 'preview'>('write');
 
+    // Sidebar collapse toggle
+    const sidebarCollapsed = useSignal(false);
+
     const getInitials = (name: string) => {
         if (!name) return '?';
         const clean = name.trim();
@@ -329,9 +332,16 @@ export function TaskDetail({
                 >
                     🔗 Relations <span class="gh-tab-badge">{outgoing.length + backlinks.length}</span>
                 </button>
+                <button
+                    class={`gh-sidebar-toggle-btn${sidebarCollapsed.value ? ' is-collapsed' : ''}`}
+                    title={sidebarCollapsed.value ? '展开侧边栏' : '收起侧边栏'}
+                    onClick={() => (sidebarCollapsed.value = !sidebarCollapsed.value)}
+                >
+                    <span /><span /><span />
+                </button>
             </div>
 
-            <div class="task-detail-scroller">
+            <div class={`task-detail-scroller${sidebarCollapsed.value ? ' sidebar-collapsed' : ''}`}>
                 <div class="task-detail-main">
                     {activeTab === 'conversation' && (
                         <div>
@@ -929,7 +939,7 @@ export function TaskDetail({
                     )}
                 </div>
 
-                <div class="task-detail-sidebar">
+                <div class={`task-detail-sidebar${sidebarCollapsed.value ? ' is-collapsed' : ''}`}>
                     {/* Assignees */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
