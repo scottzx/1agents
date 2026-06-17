@@ -118,8 +118,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
-			// RWMutex and re-probable via /api/agent/catalog?refresh=1.
-			catalogStore := agent.NewCatalogStore()
+			// RWMutex and re-probable via /api/agent/catalog?refresh=1. Shared
+			// process-wide with the cc-connect runner (which curates the
+			// management API's creatable-agent list from the same probe).
+			catalogStore := agent.DefaultCatalog()
 
 			// Loopback base for the PM task-tool MCP subprocess to call back
 			// into this daemon's HTTP API (always http on 127.0.0.1; the
@@ -128,13 +130,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			selfBaseURL := "http://127.0.0.1:" + selfPort
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)  // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)    // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)   // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)  // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)         // GET, POST
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)        // DELETE /{id}
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)          // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes) // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)   // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)  // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem) // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)        // GET, POST
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)       // DELETE /{id}
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)         // WebSocket upgrade & bridge
 		}
 	}
 

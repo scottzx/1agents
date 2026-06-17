@@ -24,6 +24,8 @@ import (
 	"github.com/chenhg5/cc-connect/config"
 	"github.com/chenhg5/cc-connect/core"
 
+	"github.com/scottzx/1Agents/backend/internal/agent"
+
 	// Blank-import all agents and platforms plugins from cc-connect
 	_ "github.com/chenhg5/cc-connect/agent/acp"
 	_ "github.com/chenhg5/cc-connect/agent/claudecode"
@@ -57,10 +59,14 @@ import (
 
 type dummyBridgePlatform struct{}
 
-func (p *dummyBridgePlatform) Name() string { return "bridge" }
+func (p *dummyBridgePlatform) Name() string                            { return "bridge" }
 func (p *dummyBridgePlatform) Start(handler core.MessageHandler) error { return nil }
-func (p *dummyBridgePlatform) Reply(ctx context.Context, replyCtx any, content string) error { return nil }
-func (p *dummyBridgePlatform) Send(ctx context.Context, replyCtx any, content string) error { return nil }
+func (p *dummyBridgePlatform) Reply(ctx context.Context, replyCtx any, content string) error {
+	return nil
+}
+func (p *dummyBridgePlatform) Send(ctx context.Context, replyCtx any, content string) error {
+	return nil
+}
 func (p *dummyBridgePlatform) Stop() error { return nil }
 
 func init() {
@@ -486,6 +492,11 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 
 	engines := make([]*core.Engine, 0, len(cfg.Projects))
 	effectiveWorkDirs := make([]string, 0, len(cfg.Projects))
+	// bootedProjects[i] is the project that produced engines[i]. Kept in lockstep
+	// with the slices above so a project skipped on agent-creation failure never
+	// shifts the index mapping (see the continue below). Downstream registration
+	// must index this slice, never cfg.Projects, which still holds skipped entries.
+	bootedProjects := make([]config.ProjectConfig, 0, len(cfg.Projects))
 
 	for _, proj := range cfg.Projects {
 		if proj.RunAsUser != "" {
@@ -582,6 +593,7 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 
 		engines = append(engines, engine)
 		effectiveWorkDirs = append(effectiveWorkDirs, effectiveWorkDir)
+		bootedProjects = append(bootedProjects, proj)
 	}
 
 	cronStore, err := core.NewCronStore(cfg.DataDir)
@@ -598,13 +610,14 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			cronSched.SetDefaultSessionMode(cfg.Cron.SessionMode)
 		}
 		for i, e := range engines {
-			cronSched.RegisterEngine(cfg.Projects[i].Name, e)
+			cronSched.RegisterEngine(bootedProjects[i].Name, e)
 			e.SetCronScheduler(cronSched)
 		}
 	}
 
 	heartbeatSched := core.NewHeartbeatScheduler(cfg.DataDir)
-	for i, proj := range cfg.Projects {
+	for i := range engines {
+		proj := bootedProjects[i]
 		hbCfg := buildHeartbeatConfig(proj.Heartbeat)
 		if hbCfg.Enabled {
 			heartbeatSched.Register(proj.Name, hbCfg, engines[i], effectiveWorkDirs[i])
@@ -638,7 +651,7 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 	} else {
 		apiSrv = apiSrvInstance
 		for i, e := range engines {
-			apiSrv.RegisterEngine(cfg.Projects[i].Name, e)
+			apiSrv.RegisterEngine(bootedProjects[i].Name, e)
 		}
 		if cronSched != nil {
 			apiSrv.SetCronScheduler(cronSched)
@@ -665,8 +678,8 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		}
 		if bridgeSrv != nil {
 			for i, e := range engines {
-				bp := bridgeSrv.NewPlatform(cfg.Projects[i].Name)
-				bridgeSrv.RegisterEngine(cfg.Projects[i].Name, e, bp)
+				bp := bridgeSrv.NewPlatform(bootedProjects[i].Name)
+				bridgeSrv.RegisterEngine(bootedProjects[i].Name, e, bp)
 				e.AddPlatform(bp)
 			}
 			bridgeSrv.Start()
@@ -682,12 +695,28 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		}
 		mgmtSrv = core.NewManagementServer(port, cfg.Management.Token, cfg.Management.CORSOrigins)
 		for i, e := range engines {
-			mgmtSrv.RegisterEngine(cfg.Projects[i].Name, e)
+			mgmtSrv.RegisterEngine(bootedProjects[i].Name, e)
 		}
 		if cronSched != nil {
 			mgmtSrv.SetCronScheduler(cronSched)
 		}
 		mgmtSrv.SetHeartbeatScheduler(heartbeatSched)
+		// Serve the host-verified creatable agent list (installed + drivable),
+		// intersected with cc-connect's plugin registry, so the dashboard never
+		// offers an agent that would brick the engine (issue #24).
+		mgmtSrv.SetListAgents(func() []core.CreatableAgentInfo {
+			creatable := agent.DefaultCatalog().CreatableAgents(core.ListRegisteredAgents())
+			out := make([]core.CreatableAgentInfo, 0, len(creatable))
+			for _, a := range creatable {
+				out = append(out, core.CreatableAgentInfo{
+					Type:        a.Type,
+					Label:       a.Label,
+					CcTransport: a.CcTransport,
+					Command:     a.Command,
+				})
+			}
+			return out
+		})
 		if bridgeSrv != nil {
 			mgmtSrv.SetBridgeServer(bridgeSrv)
 		}
@@ -737,6 +766,15 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		mgmtSrv.SetAddPlatformToProject(func(projectName, platType string, opts map[string]any, workDir, agentType string) error {
 			if opts == nil {
 				opts = map[string]any{}
+			}
+			// Auto-fill the required "command" for ACP-driven agents from the
+			// detected binary path, so the project never bricks the engine on a
+			// missing path (issue #24). Only fills when absent; Devin etc. that
+			// derive their own default are unaffected.
+			if cmd, _ := opts["command"].(string); strings.TrimSpace(cmd) == "" {
+				if detected := agent.DefaultCatalog().CommandForACPAgent(agentType); detected != "" {
+					opts["command"] = detected
+				}
 			}
 			return config.AddPlatformToProject(projectName, config.PlatformConfig{Type: platType, Options: opts}, workDir, agentType)
 		})
@@ -1513,9 +1551,9 @@ func syncProviderToCCSwitch(p config.ProviderConfig) {
 		switch app {
 		case "claude":
 			env := map[string]string{
-				"ANTHROPIC_BASE_URL":            p.BaseURL,
-				"ANTHROPIC_AUTH_TOKEN":          p.APIKey,
-				"ANTHROPIC_MODEL":               p.Model,
+				"ANTHROPIC_BASE_URL":             p.BaseURL,
+				"ANTHROPIC_AUTH_TOKEN":           p.APIKey,
+				"ANTHROPIC_MODEL":                p.Model,
 				"ANTHROPIC_DEFAULT_HAIKU_MODEL":  p.Model,
 				"ANTHROPIC_DEFAULT_SONNET_MODEL": p.Model,
 				"ANTHROPIC_DEFAULT_OPUS_MODEL":   p.Model,
@@ -1537,15 +1575,15 @@ func syncProviderToCCSwitch(p config.ProviderConfig) {
 			settingsMap = map[string]any{
 				"env": map[string]string{
 					"GOOGLE_GEMINI_BASE_URL": p.BaseURL,
-					"GEMINI_API_KEY": p.APIKey,
-					"GEMINI_MODEL": p.Model,
+					"GEMINI_API_KEY":         p.APIKey,
+					"GEMINI_MODEL":           p.Model,
 				},
 			}
 		default:
 			settingsMap = map[string]any{
-				"api_key": p.APIKey,
+				"api_key":  p.APIKey,
 				"base_url": p.BaseURL,
-				"model": p.Model,
+				"model":    p.Model,
 			}
 		}
 
@@ -1713,5 +1751,3 @@ func getCCProjectName(workspaceName string, agentType string) string {
 	}
 	return fmt.Sprintf("%s__%s", slug, agentType)
 }
-
-
