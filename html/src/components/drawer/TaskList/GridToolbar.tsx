@@ -2,27 +2,47 @@ import { h } from 'preact';
 import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 
-import { ALL_COLUMNS, GROUP_OPTIONS } from './gridConfig';
-import type { GroupKey } from './gridConfig';
-
 export interface ColState {
     key: string;
     visible: boolean;
 }
 
-interface ToolbarProps {
-    groupBy: Signal<GroupKey>;
-    showHierarchy: Signal<boolean>;
-    columns: Signal<ColState[]>;
+/** Minimal column metadata the toolbar needs for labels + lock state. */
+export interface ToolbarColumn {
+    key: string;
+    label: string;
+    locked?: boolean;
 }
 
-const colLabel = (key: string) => ALL_COLUMNS.find(c => c.key === key)?.label || key;
-const isLocked = (key: string) => !!ALL_COLUMNS.find(c => c.key === key)?.locked;
+interface GridToolbarProps {
+    /** Column metadata (label + locked) keyed by the same keys as `columns`. */
+    columnDefs: ToolbarColumn[];
+    /** Group-by options: [key, label]. First entry is the "no grouping" option. */
+    groupOptions: Array<[string, string]>;
+    groupBy: Signal<string>;
+    columns: Signal<ColState[]>;
+    /** Optional parent/child hierarchy toggle — omit to hide the checkbox. */
+    showHierarchy?: Signal<boolean>;
+    hierarchyLabel?: string;
+    hierarchyHint?: string;
+}
 
-// List-only controls: group-by, parent/child hierarchy display, and column
-// show/hide + reorder. Search & filters live in the shared TaskFilterBar.
-export function TaskGridToolbar({ groupBy, showHierarchy, columns }: ToolbarProps) {
+// Generic list-view controls shared by every 多维表格 (DataGrid): group-by,
+// optional parent/child hierarchy display, and column show/hide + reorder.
+// Search & filters live in each view's own filter bar.
+export function GridToolbar({
+    columnDefs,
+    groupOptions,
+    groupBy,
+    columns,
+    showHierarchy,
+    hierarchyLabel = '显示层级',
+    hierarchyHint,
+}: GridToolbarProps) {
     const showColumns = useSignal(false);
+
+    const colLabel = (key: string) => columnDefs.find(c => c.key === key)?.label || key;
+    const isLocked = (key: string) => !!columnDefs.find(c => c.key === key)?.locked;
 
     const moveColumn = (idx: number, dir: -1 | 1) => {
         const next = [...columns.value];
@@ -40,9 +60,9 @@ export function TaskGridToolbar({ groupBy, showHierarchy, columns }: ToolbarProp
                 分组
                 <select
                     value={groupBy.value}
-                    onChange={(e: Event) => (groupBy.value = (e.target as HTMLSelectElement).value as GroupKey)}
+                    onChange={(e: Event) => (groupBy.value = (e.target as HTMLSelectElement).value)}
                 >
-                    {GROUP_OPTIONS.map(([key, label]) => (
+                    {groupOptions.map(([key, label]) => (
                         <option key={key} value={key}>
                             {label}
                         </option>
@@ -50,14 +70,16 @@ export function TaskGridToolbar({ groupBy, showHierarchy, columns }: ToolbarProp
                 </select>
             </label>
 
-            <label class="grid-toolbar-check" title="排序时子任务只在父任务内排序">
-                <input
-                    type="checkbox"
-                    checked={showHierarchy.value}
-                    onChange={() => (showHierarchy.value = !showHierarchy.value)}
-                />
-                显示父子任务层级
-            </label>
+            {showHierarchy && (
+                <label class="grid-toolbar-check" title={hierarchyHint}>
+                    <input
+                        type="checkbox"
+                        checked={showHierarchy.value}
+                        onChange={() => (showHierarchy.value = !showHierarchy.value)}
+                    />
+                    {hierarchyLabel}
+                </label>
+            )}
 
             <div class="grid-toolbar-popover-host">
                 <button class="grid-toolbar-btn" onClick={() => (showColumns.value = !showColumns.value)}>

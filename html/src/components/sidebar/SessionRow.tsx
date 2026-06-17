@@ -172,7 +172,7 @@ export function SessionRow({
                 )}
                 <button
                     class="session-kill-btn"
-                    title={t('sidebar.closeSession', language)}
+                    title={t(chat ? 'sidebar.archiveSession' : 'sidebar.closeSession', language)}
                     onClick={(e: MouseEvent) => onKill(e, session)}
                 >
                     <CloseIcon />

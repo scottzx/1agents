@@ -2461,6 +2461,172 @@ body {
   }
 }
 
+/* ── Sessions view (会话归档检索) ── */
+.sessions-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  .sessions-view-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+
+    .sessions-search {
+      flex: 1;
+      height: 32px;
+      padding: 0 12px;
+      font-size: 12.5px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-terminal-inner);
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+
+      &:focus {
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px var(--accent-light);
+        background-color: var(--bg-card);
+      }
+    }
+
+    .sessions-count {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+  }
+
+  // The shared DataGrid (复用任务多维表格) fills the remaining height.
+  .task-grid {
+    flex: 1;
+    min-height: 0;
+  }
+
+  // Archived rows read as muted until hovered.
+  .session-grid-row.archived {
+    opacity: 0.6;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  .session-name-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+
+    &:hover {
+      color: var(--accent-fg);
+      text-decoration: underline;
+    }
+  }
+
+  .session-agent-badge,
+  .session-role-badge,
+  .session-task-badge,
+  .session-state-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .session-agent-badge {
+    color: var(--text-secondary);
+    background-color: var(--btn-hover);
+  }
+
+  .session-state-badge {
+    &.active {
+      color: var(--success-fg);
+      background-color: var(--success-bg);
+    }
+    &.archived {
+      color: var(--text-muted);
+      background-color: var(--btn-hover);
+      border: 1px solid var(--border-color);
+    }
+  }
+
+  .session-task-badge {
+    color: var(--accent-fg);
+    background-color: var(--accent-bg);
+
+    &.clickable {
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: var(--accent-emphasis);
+        color: var(--on-accent);
+      }
+    }
+  }
+
+  .session-role-badge {
+    &.role-pmo {
+      color: var(--purple-fg);
+      background-color: var(--purple-bg);
+    }
+    &.role-pm {
+      color: var(--accent-fg);
+      background-color: var(--accent-bg);
+    }
+    &.role-executor {
+      color: var(--orange-fg);
+      background-color: var(--orange-bg);
+    }
+    &.role-verifier {
+      color: var(--success-fg);
+      background-color: var(--success-bg);
+    }
+  }
+
+  // Open / restore action button (matches .task-open-btn sizing).
+  .session-restore-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 6px;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    &:hover {
+      color: var(--accent-fg);
+      background-color: var(--btn-hover);
+    }
+  }
+}
+
 .requirement-type-badge {
   display: inline-block;
   padding: 1px 8px;

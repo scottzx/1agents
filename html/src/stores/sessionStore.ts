@@ -192,23 +192,28 @@ export const clearPendingInitialMessage = () => {
     pendingInitialMessage.value = null;
 };
 
-/** Kill a chat session: tear down the 1acp bridge, then unindex from 1agents. */
+/**
+ * Archive a chat session: tear down the live 1acp bridge, then soft-delete the
+ * 1agents index record. The conversation metadata is preserved (it drops out
+ * of the sidebar but stays in the 会话 archive view, and can be reopened — the
+ * bridge re-establishes from acpSessionId).
+ */
 export const killChatSession = async (sessionId: string) => {
     const session = chatSessions.value.find(c => c.id === sessionId);
     if (!session) return;
     try {
         // Clean up global WebSocket bridge session
         globalBridgeManager.destroy(sessionId);
-        await agentService.delete(sessionId);
+        await agentService.setArchived(sessionId, true);
         await loadChatSessions(session.workspaceId);
         const active = activeSession.value;
         if (active && isChat(active) && active.id === sessionId) {
             activeSession.value = null;
             tabsStore.activeTab.value = 'terminal';
         }
-        ui.showToast('聊天会话已关闭 ✓');
+        ui.showToast('会话已归档 ✓');
     } catch (err) {
-        ui.showToast(`关闭失败: ${(err as Error).message}`);
+        ui.showToast(`归档失败: ${(err as Error).message}`);
     }
 };
 

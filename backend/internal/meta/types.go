@@ -60,6 +60,10 @@ type ChatSessionRecord struct {
 	// is the in-app AI Project Manager: HandleChatWs injects a PM system
 	// prompt plus a project-locked task-tool MCP server for these sessions.
 	Role string `json:"role,omitempty"`
+	// ArchivedAt is the soft-delete timestamp. Zero = active; non-zero means
+	// the session was archived (closed from the sidebar). Archived sessions
+	// drop out of the sidebar list but stay in the 会话 archive view.
+	ArchivedAt time.Time `json:"archived_at,omitempty"`
 }
 
 type ScheduleType string
