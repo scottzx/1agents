@@ -957,9 +957,15 @@ func isValidPermissionMode(mode string) bool {
 }
 
 func getProjectSlug(path string) string {
+	// Mirror Claude Code's cwd → project-dir slug exactly: every
+	// non-alphanumeric rune (including '.', '_', '/') becomes '-'. Keeping
+	// '.'/'_' here (as a previous version did) makes paths like
+	// "/Users/x/.coze" or ".../smart_cups" slug to "-x-.coze"/"smart_cups"
+	// instead of Claude's "-x--coze"/"smart-cups", so the session .jsonl is
+	// never found and the AI title never resolves.
 	var sb strings.Builder
 	for _, r := range path {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			sb.WriteRune(r)
 		} else {
 			sb.WriteRune('-')
