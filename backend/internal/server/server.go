@@ -61,6 +61,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
+	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
+		log.Printf("[server] ensure default workspace: %v", err)
+	}
 	mux.HandleFunc("/api/workspace/list", wsHandler.List)                        // GET
 	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                    // POST
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
@@ -130,14 +133,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 			selfBaseURL := "http://127.0.0.1:" + selfPort
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)    // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)      // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)     // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)    // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)           // GET, POST
-			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve) // GET ?project=&number= (more specific than the subtree below)
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)          // DELETE /{id}
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)            // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)     // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)       // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)      // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)     // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)            // GET, POST
+			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)  // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)           // DELETE /{id}
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)             // WebSocket upgrade & bridge
 		}
 	}
 

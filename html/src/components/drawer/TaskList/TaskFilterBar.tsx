@@ -4,7 +4,7 @@ import type { Signal } from '@preact/signals';
 
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
 
-export type TaskView = 'list' | 'board';
+export type TaskView = 'list' | 'board' | 'calendar';
 
 interface FilterBarProps {
     search: Signal<string>;
@@ -103,6 +103,12 @@ export function TaskFilterBar({
                 </button>
                 <button class={taskView.value === 'board' ? 'active' : ''} onClick={() => (taskView.value = 'board')}>
                     看板
+                </button>
+                <button
+                    class={taskView.value === 'calendar' ? 'active' : ''}
+                    onClick={() => (taskView.value = 'calendar')}
+                >
+                    日历
                 </button>
             </div>
         </div>

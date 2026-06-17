@@ -144,6 +144,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		// bridge-server later trusts this string).
 		var body struct {
 			PermissionMode *string `json:"permission_mode,omitempty"`
+			Archived       *bool   `json:"archived,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -161,6 +162,17 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				log.Printf("[agent] update permission_mode %s: %v", id, err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.Archived != nil {
+			if err := h.store.SetArchived(id, *body.Archived); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("[agent] set archived %s: %v", id, err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -198,7 +210,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-	recs, err := h.store.ListByWorkspace(wsID)
+	// The sidebar lists active sessions only; the 会话 archive view passes
+	// include_archived=1 to also surface soft-deleted (archived) sessions.
+	includeArchived := r.URL.Query().Get("include_archived") == "1"
+	recs, err := h.store.ListByWorkspace(wsID, includeArchived)
 	if err != nil {
 		log.Printf("[agent] list for %s: %v", wsID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -397,6 +412,11 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		// Keep the roadmap's milestone list complete: a task may name a
+		// brand-new milestone that has no metadata row yet.
+		if newTask.Milestone != "" {
+			_ = h.tasksStore.EnsureMilestone(wsPath, newTask.Milestone)
 		}
 		// Save assigns the short number (#N) on the stored row, so re-fetch
 		// rather than returning the pre-save copy.
@@ -682,6 +702,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
+	if body.Milestone != nil && *body.Milestone != "" {
+		_ = h.tasksStore.EnsureMilestone(existing.WorkspacePath, *body.Milestone)
+	}
 
 	task, ok, err := h.tasksStore.GetTask(id)
 	if err != nil {
@@ -700,11 +723,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 // allowed, opening or following up sessions is rejected with 422.
 func (h *Handler) handleTaskReplyCreate(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Text      string `json:"text"`
-		Mode      string `json:"mode"`
-		InReplyTo string `json:"inReplyTo"`
-		Author    string `json:"author"`
-		AgentType string `json:"agentType"`
+		Text       string `json:"text"`
+		Mode       string `json:"mode"`
+		InReplyTo  string `json:"inReplyTo"`
+		SessionRef string `json:"sessionRef"`
+		Author     string `json:"author"`
+		AgentType  string `json:"agentType"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -742,17 +766,209 @@ func (h *Handler) handleTaskReplyCreate(w http.ResponseWriter, r *http.Request, 
 		authorName = "user"
 	}
 	reply, err := h.tasksStore.AppendReply(id, Reply{
-		Author:    Author{Kind: "user", Name: authorName},
-		AgentType: body.AgentType,
-		Text:      body.Text,
-		InReplyTo: body.InReplyTo,
-		Mode:      mode,
+		Author:     Author{Kind: "user", Name: authorName},
+		AgentType:  body.AgentType,
+		Text:       body.Text,
+		InReplyTo:  body.InReplyTo,
+		SessionRef: body.SessionRef,
+		Mode:       mode,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, reply)
+}
+
+// ── Milestones REST API ────────────────────────────────────────────────────
+
+// HandleMilestonesRoot handles GET and POST /api/agent/milestones.
+//
+//	GET  /api/agent/milestones?workspace_id=…  → roadmap-ordered list w/ counts
+//	POST /api/agent/milestones                 → create a milestone
+func (h *Handler) HandleMilestonesRoot(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		wsID := r.URL.Query().Get("workspace_id")
+		if wsID == "" {
+			http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		list, err := h.tasksStore.ListMilestones(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, list)
+
+	case http.MethodPost:
+		var body struct {
+			WorkspaceID   string     `json:"workspace_id"`
+			Name          string     `json:"name"`
+			Description   string     `json:"description"`
+			TargetDate    *time.Time `json:"targetDate"`
+			PredecessorID string     `json:"predecessorId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" || strings.TrimSpace(body.Name) == "" {
+			http.Error(w, "workspace_id and name are required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		ms, err := h.tasksStore.CreateMilestone(wsPath, strings.TrimSpace(body.Name), body.Description, body.TargetDate, body.PredecessorID)
+		if err != nil {
+			if errors.Is(err, ErrMilestoneExists) {
+				http.Error(w, "milestone name already exists", http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, ms)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleMilestonesItem handles the milestone sub-resources:
+//
+//	PATCH  /api/agent/milestones/{id}     → edit name / description / target date
+//	DELETE /api/agent/milestones/{id}     → remove (tasks fall back to 未分组)
+//	POST   /api/agent/milestones/reorder  → set positions from an ordered id list
+//
+// All require workspace_id (query for PATCH/DELETE, body for reorder) so the
+// store resolves the owning project.
+func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
+	const prefix = "/api/agent/milestones/"
+	rest := r.URL.Path[len(prefix):]
+	if rest == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	if rest == "reorder" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			WorkspaceID string   `json:"workspace_id"`
+			Order       []string `json:"order"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" {
+			http.Error(w, "workspace_id is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := h.tasksStore.ReorderMilestones(wsPath, body.Order); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		list, err := h.tasksStore.ListMilestones(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, list)
+		return
+	}
+
+	if i := indexByte(rest, '/'); i >= 0 {
+		http.Error(w, "unsupported sub-path", http.StatusNotFound)
+		return
+	}
+	id := rest
+
+	switch r.Method {
+	case http.MethodPatch:
+		var body struct {
+			WorkspaceID   string      `json:"workspace_id"`
+			Name          *string     `json:"name,omitempty"`
+			Description   *string     `json:"description,omitempty"`
+			TargetDate    **time.Time `json:"targetDate,omitempty"`
+			PredecessorID *string     `json:"predecessorId,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" {
+			http.Error(w, "workspace_id is required", http.StatusBadRequest)
+			return
+		}
+		if body.Name != nil && strings.TrimSpace(*body.Name) == "" {
+			http.Error(w, "name must not be empty", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		patch := MilestonePatch{Description: body.Description, TargetDate: body.TargetDate, PredecessorID: body.PredecessorID}
+		if body.Name != nil {
+			trimmed := strings.TrimSpace(*body.Name)
+			patch.Name = &trimmed
+		}
+		ms, err := h.tasksStore.UpdateMilestone(wsPath, id, patch)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrMilestoneExists):
+				http.Error(w, "milestone name already exists", http.StatusConflict)
+			case errors.Is(err, ErrNotFound):
+				http.Error(w, "milestone not found", http.StatusNotFound)
+			default:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		writeJSON(w, ms)
+
+	case http.MethodDelete:
+		wsID := r.URL.Query().Get("workspace_id")
+		if wsID == "" {
+			http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := h.tasksStore.DeleteMilestone(wsPath, id); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				http.Error(w, "milestone not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // HandleChatWs handles WebSocket connections at /api/agent/chat/ws

@@ -54,9 +54,7 @@ export const openTaskById = (workspaceId: string, taskId: string): void => {
  */
 export const openTaskByRef = async (project: string, number: number): Promise<void> => {
     try {
-        const res = await fetch(
-            `/api/agent/tasks/resolve?project=${encodeURIComponent(project)}&number=${number}`
-        );
+        const res = await fetch(`/api/agent/tasks/resolve?project=${encodeURIComponent(project)}&number=${number}`);
         if (!res.ok) {
             ui.showToast(`未找到任务：${project}#${number}`);
             return;

@@ -157,9 +157,21 @@ export const enterProject = (): void => {
 
 /**
  * Entry default — opening a conversation (history / new): chat column leads,
- * artifact column closed. Desktop only.
+ * artifact column closed. Desktop only. Used when the user explicitly starts a
+ * NEW conversation (the artifact column resets away).
  */
 export const enterConversation = (): void => {
     tabsStore.closeContentTab();
+    setChatRailed(false);
+};
+
+/**
+ * Open / resume / switch a session while staying inside a project. The artifact
+ * (right) column is preserved — only switching to a different project closes it
+ * (that's a project change, handled like `enterConversation`). Either way the
+ * chat column un-rails so the conversation leads. Desktop only.
+ */
+export const openConversation = (projectChanged: boolean): void => {
+    if (projectChanged) tabsStore.closeContentTab();
     setChatRailed(false);
 };

@@ -1,6 +1,7 @@
 import { h } from 'preact';
-import { useSignal } from '@preact/signals';
+import { signal, useSignal } from '@preact/signals';
 
+import { CalendarBoard } from './CalendarBoard';
 import { KanbanBoard } from './KanbanBoard';
 import { TaskFilterBar } from './TaskFilterBar';
 import type { TaskView } from './TaskFilterBar';
@@ -16,10 +17,13 @@ interface TasksViewProps {
     onStatusChange: (taskId: string, status: 'completed' | 'cancelled') => void;
 }
 
+// Module-level so the chosen view (列表/看板/日历) survives the unmount when a
+// task detail opens — returning from detail keeps you on the same view.
+const taskView = signal<TaskView>('list');
+
 // The 任务 tab: a list↔board view switch over one shared filter (search +
 // status/priority/assignee). Filtering happens here so both views agree.
 export function TasksView({ tasks, loading, onSelectTask, onDeleteTask, onPatchTask, onStatusChange }: TasksViewProps) {
-    const taskView = useSignal<TaskView>('list');
     const search = useSignal('');
     const statusFilter = useSignal<string[]>([]);
     const priorityFilter = useSignal<string[]>([]);
@@ -47,7 +51,7 @@ export function TasksView({ tasks, loading, onSelectTask, onDeleteTask, onPatchT
                 taskView={taskView}
             />
 
-            {taskView.value === 'list' ? (
+            {taskView.value === 'list' && (
                 <TaskTable
                     tasks={filtered}
                     allTasks={tasks}
@@ -56,13 +60,17 @@ export function TasksView({ tasks, loading, onSelectTask, onDeleteTask, onPatchT
                     onDeleteTask={onDeleteTask}
                     onPatchTask={onPatchTask}
                 />
-            ) : (
+            )}
+            {taskView.value === 'board' && (
                 <KanbanBoard
                     tasks={filtered}
                     loading={loading}
                     onSelectTask={onSelectTask}
                     onStatusChange={onStatusChange}
                 />
+            )}
+            {taskView.value === 'calendar' && (
+                <CalendarBoard tasks={filtered} loading={loading} onSelectTask={onSelectTask} />
             )}
         </div>
     );

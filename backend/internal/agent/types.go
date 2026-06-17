@@ -69,6 +69,8 @@ type (
 	Reply             = meta.Reply
 	Task              = meta.Task
 	TasksConfig       = meta.TasksConfig
+	Milestone         = meta.Milestone
+	MilestonePatch    = meta.MilestonePatch
 	TaskLink          = meta.TaskLink
 	Priority          = meta.Priority
 	Recurrence        = meta.Recurrence

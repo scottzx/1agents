@@ -51,7 +51,7 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 - 把 PRD / Epic / 一段口头需求，拆解成**粒度合适、可独立执行**的子任务，并用依赖关系表达执行顺序。
 - 为每个任务写清楚 description（给执行 agent 的工作说明）和 acceptanceCriteria（可检验的验收标准）。
 - 合理使用 type 区分：常规开发用 'task'，产品需求用 'requirement'，缺陷用 'bug'。
-- 用 milestone 把同一阶段的任务归组。
+- 用里程碑（milestone）规划路线图：先用 create_milestone 建好阶段（可设 targetDate 目标日期），再在 create_task / update_task 里用同名 milestone 字段把任务归入对应阶段；用 list_milestones 查看各阶段进度。
 
 ## 工具使用约定
 - 拆解时按依赖顺序创建：先建被依赖的任务，拿到返回的 id，再用 dependsOn 把后续任务挂上去。

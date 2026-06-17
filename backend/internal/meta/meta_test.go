@@ -180,16 +180,63 @@ func TestSessionListNewestFirst(t *testing.T) {
 			CreatedAt:   base.Add(time.Duration(i) * time.Minute),
 		})
 	}
-	all, err := s.ListByWorkspace("ws")
+	all, err := s.ListByWorkspace("ws", false)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	if len(all) != 3 || all[0].ID != "c" || all[2].ID != "a" {
 		t.Fatalf("wrong order: %+v", all)
 	}
-	none, _ := s.ListByWorkspace("nope")
+	none, _ := s.ListByWorkspace("nope", false)
 	if len(none) != 0 {
 		t.Fatalf("expected empty list for unknown workspace")
+	}
+}
+
+// TestSessionArchive covers the soft-delete lifecycle: archiving drops a
+// session from the default (active-only) list but keeps it in the
+// include-archived list, and restoring brings it back.
+func TestSessionArchive(t *testing.T) {
+	db := newTestDB(t)
+	s := NewSessionStore(db)
+	for _, id := range []string{"keep", "gone"} {
+		if err := s.Add(ChatSessionRecord{ID: id, WorkspaceID: "ws"}); err != nil {
+			t.Fatalf("Add %s: %v", id, err)
+		}
+	}
+
+	if err := s.SetArchived("gone", true); err != nil {
+		t.Fatalf("SetArchived: %v", err)
+	}
+
+	active, _ := s.ListByWorkspace("ws", false)
+	if len(active) != 1 || active[0].ID != "keep" {
+		t.Fatalf("active list = %+v, want only [keep]", active)
+	}
+
+	all, _ := s.ListByWorkspace("ws", true)
+	if len(all) != 2 {
+		t.Fatalf("include-archived list len = %d, want 2", len(all))
+	}
+	rec, _, _ := s.Get("gone")
+	if rec.ArchivedAt.IsZero() {
+		t.Fatalf("archived session ArchivedAt should be set")
+	}
+
+	// Restore.
+	if err := s.SetArchived("gone", false); err != nil {
+		t.Fatalf("SetArchived restore: %v", err)
+	}
+	active, _ = s.ListByWorkspace("ws", false)
+	if len(active) != 2 {
+		t.Fatalf("after restore active len = %d, want 2", len(active))
+	}
+	if rec, _, _ := s.Get("gone"); !rec.ArchivedAt.IsZero() {
+		t.Fatalf("restored session ArchivedAt should be zero")
+	}
+
+	if err := s.SetArchived("missing", true); err != ErrNotFound {
+		t.Fatalf("archive missing: got %v, want ErrNotFound", err)
 	}
 }
 

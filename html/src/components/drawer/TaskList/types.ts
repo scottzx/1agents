@@ -23,6 +23,25 @@ export interface Reply {
     createdAt: string;
 }
 
+// Milestone is a first-class roadmap stage. Tasks link to it by the matching
+// Task.milestone *name* (the backend keeps that label in sync on rename), so
+// the roadmap groups tasks by name and uses this record only for ordering,
+// target date, and description. total/completed are server-computed counts.
+export interface Milestone {
+    id: string;
+    name: string;
+    description?: string;
+    targetDate?: string;
+    position: number;
+    // Optional parent milestone (前置里程碑). Milestones sharing a predecessor
+    // fork into parallel branches on the roadmap; empty = root.
+    predecessorId?: string;
+    createdAt: string;
+    updatedAt: string;
+    total: number;
+    completed: number;
+}
+
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
 export type TaskType = 'task' | 'requirement' | 'bug';
