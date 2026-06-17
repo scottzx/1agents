@@ -5,6 +5,7 @@ import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS } from '../types';
 import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import { pickableAgents } from '../../stores/agentCatalogStore';
+import { sidebarMode } from '../../stores/uiStore';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
@@ -159,8 +160,8 @@ export function NewChatHome({
 
     return (
         <div class="new-chat-home">
-            {/* Top Workspace Picker Dropdown */}
-            {activeWorkspace && (
+            {/* Top Workspace Picker Dropdown — only in project mode */}
+            {activeWorkspace && sidebarMode.value === 'project' && (
                 <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
                     <button
                         class="new-chat-ws-picker-trigger"
@@ -198,34 +199,6 @@ export function NewChatHome({
                     {wsDropdownOpen.value && (
                         <div class="new-chat-ws-dropdown">
                             <div class="dropdown-header">切换项目工作空间</div>
-                            {/* Default / builtin workspace — shown first as "无项目（跨项目）" */}
-                            {workspaces
-                                .filter(ws => ws.id === 'default' || ws.builtin)
-                                .map(ws => (
-                                    <button
-                                        key={ws.id}
-                                        class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
-                                        onClick={() => {
-                                            setSelectedWorkspaceId(ws.id);
-                                            wsDropdownOpen.value = false;
-                                        }}
-                                    >
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            style="width: 14px; height: 14px; opacity: 0.7;"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                                        </svg>
-                                        <span class="item-name">{t('newchat.noProject', language)}</span>
-                                        {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
-                                    </button>
-                                ))}
-                            {/* Regular (non-builtin) workspaces */}
                             {workspaces
                                 .filter(ws => ws.id !== 'default' && !ws.builtin)
                                 .map(ws => (

@@ -8,6 +8,7 @@ import { ModuleNav } from './ModuleNav';
 import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
+import { sidebarMode } from '../../stores/uiStore';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -130,9 +131,6 @@ export function LeftSidebar({
     const deletingId = useSignal<string | null>(null);
     const killingSessionId = useSignal<string | null>(null);
     const openDropdownWsId = useSignal<string | null>(null);
-    const sidebarMode = useSignal<'assistant' | 'project'>(
-        (localStorage.getItem('1agents-sidebar-mode') as 'assistant' | 'project') || 'assistant'
-    );
     const dropdownRef = useRef<HTMLDivElement | null>(null);
 
     const [draggedId, setDraggedId] = useState<string | null>(null);
