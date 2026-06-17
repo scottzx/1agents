@@ -75,8 +75,8 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 5 {
-		t.Fatalf("expected 5 tools, got %d", len(tools))
+	if len(tools) != 7 {
+		t.Fatalf("expected 7 tools, got %d", len(tools))
 	}
 }
 
@@ -137,7 +137,14 @@ func TestGetTaskRejectsForeignId(t *testing.T) {
 }
 
 func TestListMilestones(t *testing.T) {
+	// list_milestones now proxies GET /api/agent/milestones (first-class
+	// milestone entities) rather than aggregating tasks client-side.
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agent/milestones" {
+			w.Write([]byte(`[{"id":"m1","name":"M1","position":0,"total":2,"completed":1,
+				"targetDate":"2026-07-01T00:00:00Z","createdAt":"2026-06-01T00:00:00Z","updatedAt":"2026-06-01T00:00:00Z"}]`))
+			return
+		}
 		w.Write([]byte(twoTasks()))
 	})
 	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_milestones","arguments":{}}}`)
@@ -148,7 +155,7 @@ func TestListMilestones(t *testing.T) {
 	var payload struct {
 		Count      int `json:"count"`
 		Milestones []struct {
-			Milestone string `json:"milestone"`
+			Name      string `json:"name"`
 			Total     int    `json:"total"`
 			Completed int    `json:"completed"`
 		} `json:"milestones"`
@@ -156,7 +163,7 @@ func TestListMilestones(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &payload); err != nil {
 		t.Fatalf("decode: %v (%s)", err, text)
 	}
-	if payload.Count != 1 || payload.Milestones[0].Milestone != "M1" || payload.Milestones[0].Completed != 1 {
-		t.Fatalf("milestone aggregation wrong: %s", text)
+	if payload.Count != 1 || payload.Milestones[0].Name != "M1" || payload.Milestones[0].Completed != 1 {
+		t.Fatalf("milestone passthrough wrong: %s", text)
 	}
 }

@@ -1,48 +1,225 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
+import { useSignal } from '@preact/signals';
 
+import { Modal } from '../../modal';
+import { MilestoneForm } from './MilestoneForm';
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
-import type { Task } from './types';
+import type { Task, Milestone } from './types';
 
 interface MilestoneViewProps {
     tasks: Task[];
+    milestones: Milestone[];
     onSelectTask: (taskId: string) => void;
+    onPatchMilestone: (id: string, patch: Record<string, unknown>) => Promise<void>;
+    onDeleteMilestone: (id: string) => Promise<void>;
 }
 
-// Group tasks under their milestone (a lightweight 阶段性目标 grouping). Order
-// follows first appearance; tasks without a milestone fall into 未分组.
-export function MilestoneView({ tasks, onSelectTask }: MilestoneViewProps) {
-    const order: string[] = [];
-    const groups = new Map<string, Task[]>();
+// UNGROUPED is a synthetic node holding tasks with no milestone. Rendered as a
+// detached root at the tail of the tree; carries no entity (no CRUD).
+const UNGROUPED = '__ungrouped__';
+const COLLAPSED = '__collapsed__';
+
+interface Node {
+    id: string;
+    name: string;
+    milestone: Milestone | null;
+    tasks: Task[];
+    done: number;
+    total: number;
+    pct: number;
+    complete: boolean;
+    children: Node[];
+}
+
+function fmtDate(s?: string): string {
+    return s ? s.slice(0, 10) : '';
+}
+
+export function MilestoneView({
+    tasks,
+    milestones,
+    onSelectTask,
+    onPatchMilestone,
+    onDeleteMilestone,
+}: MilestoneViewProps) {
+    const expandedId = useSignal<string | null>(null); // null=default(current), COLLAPSED, or id
+    const editing = useSignal<Milestone | null>(null); // milestone being edited (modal)
+
+    // Group tasks by milestone name (kept in sync on rename, so name is a stable key).
+    const byName = new Map<string, Task[]>();
     for (const t of tasks) {
-        const m = t.milestone || '未分组';
-        if (!groups.has(m)) {
-            groups.set(m, []);
-            order.push(m);
-        }
-        groups.get(m)!.push(t);
+        const key = t.milestone || UNGROUPED;
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key)!.push(t);
     }
 
-    if (tasks.length === 0) {
-        return <div class="task-loading">暂无任务。</div>;
+    const mkNode = (m: Milestone): Node => {
+        const items = byName.get(m.name) || [];
+        const total = m.total || items.length;
+        const done = m.completed || items.filter(t => t.status === 'completed').length;
+        return {
+            id: m.id,
+            name: m.name,
+            milestone: m,
+            tasks: items,
+            done,
+            total,
+            pct: total ? Math.round((done / total) * 100) : 0,
+            complete: total > 0 && done >= total,
+            children: [],
+        };
+    };
+
+    // Build the forest from predecessorId. Siblings (and roots) are ordered by
+    // milestone position.
+    const ordered = [...milestones].sort((a, b) => a.position - b.position);
+    const nodeMap = new Map<string, Node>();
+    ordered.forEach(m => nodeMap.set(m.id, mkNode(m)));
+    const roots: Node[] = [];
+    for (const m of ordered) {
+        const node = nodeMap.get(m.id)!;
+        const parent = m.predecessorId ? nodeMap.get(m.predecessorId) : undefined;
+        if (parent && parent !== node) parent.children.push(node);
+        else roots.push(node);
     }
+    const ungrouped = byName.get(UNGROUPED) || [];
+    if (ungrouped.length) {
+        const done = ungrouped.filter(t => t.status === 'completed').length;
+        roots.push({
+            id: UNGROUPED,
+            name: '未分组',
+            milestone: null,
+            tasks: ungrouped,
+            done,
+            total: ungrouped.length,
+            pct: Math.round((done / ungrouped.length) * 100),
+            complete: done >= ungrouped.length,
+            children: [],
+        });
+    }
+
+    // "当前" = first non-complete milestone in position order (未分组 excluded).
+    const currentId = ordered.find(m => !nodeMap.get(m.id)!.complete)?.id ?? null;
+
+    const allNodes = [...nodeMap.values()];
+    const findNode = (id: string | null) =>
+        allNodes.find(n => n.id === id) || (id === UNGROUPED ? roots.find(r => r.id === UNGROUPED) : undefined);
+
+    const effectiveId =
+        expandedId.value === null ? currentId : expandedId.value === COLLAPSED ? null : expandedId.value;
+    const expanded = effectiveId ? findNode(effectiveId) : undefined;
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (milestones.length === 0 && ungrouped.length === 0) {
+        return <div class="task-loading">还没有里程碑。用右上角「+ 新建里程碑」开始规划路线图。</div>;
+    }
+
+    function renderCard(n: Node) {
+        const isCurrent = n.id === currentId;
+        const state = n.id === UNGROUPED ? 'ungrouped' : isCurrent ? 'current' : n.complete ? 'past' : 'future';
+        const isExpanded = expanded?.id === n.id;
+        const overdue = !!n.milestone?.targetDate && !n.complete && fmtDate(n.milestone.targetDate) < today;
+        return (
+            <div
+                class={`ms-card state-${state}${isExpanded ? ' expanded' : ''}${n.children.length ? ' has-children' : ''}`}
+                onClick={() => (expandedId.value = isExpanded ? COLLAPSED : n.id)}
+            >
+                {isCurrent && <span class="ms-card-flag">当前</span>}
+                <div class="ms-card-head">
+                    <span class="ms-card-dot">{isCurrent && <span class="pulse-indicator" />}</span>
+                    <span class="ms-card-name">{n.name}</span>
+                </div>
+                <div class="ms-card-bar">
+                    <div class="ms-card-fill" style={{ width: `${n.pct}%` }} />
+                </div>
+                <div class="ms-card-meta">
+                    <span class="ms-card-count">{`${n.done}/${n.total}`}</span>
+                    {n.milestone?.targetDate && (
+                        <span class={`ms-card-date${overdue ? ' overdue' : ''}`}>
+                            🎯 {fmtDate(n.milestone.targetDate)}
+                        </span>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // Recursive branch render (left→right). visited guards against cycles.
+    function renderBranch(n: Node, visited: Set<string>) {
+        const safeChildren = n.children.filter(c => !visited.has(c.id));
+        const next = new Set(visited).add(n.id);
+        return (
+            <div class="ms-branch" key={n.id}>
+                {renderCard(n)}
+                {safeChildren.length > 0 && (
+                    <div class="ms-children">
+                        {safeChildren.map(c => (
+                            <div class="ms-subtree" key={c.id}>
+                                {renderBranch(c, next)}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    const predecessorName = (m: Milestone | null) =>
+        m?.predecessorId ? milestones.find(x => x.id === m.predecessorId)?.name : undefined;
 
     return (
         <div class="milestone-view">
-            {order.map(m => {
-                const items = groups.get(m)!;
-                const done = items.filter(t => t.status === 'completed').length;
-                const pct = Math.round((done / items.length) * 100);
-                return (
-                    <div key={m} class="milestone-group">
-                        <div class="milestone-group-header">
-                            <span class="milestone-group-name">{m}</span>
-                            <div class="milestone-group-bar">
-                                <div class="milestone-group-fill" style={{ width: `${pct}%` }} />
-                            </div>
-                            <span class="milestone-group-count">{`${done}/${items.length}`}</span>
+            <div class="ms-tree">{roots.map(r => renderBranch(r, new Set()))}</div>
+
+            {expanded && (
+                <div class="milestone-detail">
+                    <div class="milestone-detail-head">
+                        <div class="milestone-detail-context">
+                            {(() => {
+                                const prev = predecessorName(expanded.milestone);
+                                return (
+                                    <Fragment>
+                                        {prev && <span class="milestone-ctx prev">◀ {prev}</span>}
+                                        <span class="milestone-ctx cur">{expanded.name}</span>
+                                        {expanded.children.map(c => (
+                                            <span key={c.id} class="milestone-ctx next">
+                                                {c.name} ▶
+                                            </span>
+                                        ))}
+                                    </Fragment>
+                                );
+                            })()}
                         </div>
-                        <div class="milestone-group-body">
-                            {items.map(task => {
+                        {expanded.milestone && (
+                            <div class="milestone-detail-actions">
+                                <button onClick={() => (editing.value = expanded.milestone)}>编辑</button>
+                                <button
+                                    class="danger"
+                                    onClick={async () => {
+                                        if (!confirm(`删除里程碑「${expanded.name}」？任务会回到未分组。`)) return;
+                                        try {
+                                            await onDeleteMilestone(expanded.milestone!.id);
+                                            if (expandedId.value === expanded.id) expandedId.value = COLLAPSED;
+                                        } catch (err) {
+                                            alert((err as Error).message);
+                                        }
+                                    }}
+                                >
+                                    删除
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {expanded.milestone?.description && (
+                        <div class="milestone-detail-desc">{expanded.milestone.description}</div>
+                    )}
+
+                    <div class="milestone-detail-body">
+                        {expanded.tasks.length === 0 ? (
+                            <div class="milestone-detail-empty">该里程碑下还没有任务。</div>
+                        ) : (
+                            expanded.tasks.map(task => {
                                 const prio = task.priority || 'medium';
                                 return (
                                     <div
@@ -64,11 +241,24 @@ export function MilestoneView({ tasks, onSelectTask }: MilestoneViewProps) {
                                         </span>
                                     </div>
                                 );
-                            })}
-                        </div>
+                            })
+                        )}
                     </div>
-                );
-            })}
+                </div>
+            )}
+
+            <Modal show={!!editing.value}>
+                {editing.value && (
+                    <MilestoneForm
+                        milestones={milestones}
+                        initial={editing.value}
+                        onClose={() => (editing.value = null)}
+                        onSubmit={async fields => {
+                            await onPatchMilestone(editing.value!.id, fields as unknown as Record<string, unknown>);
+                        }}
+                    />
+                )}
+            </Modal>
         </div>
     );
 }

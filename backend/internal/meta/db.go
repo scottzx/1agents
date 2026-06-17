@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -135,6 +135,11 @@ func (db *DB) migrateSchema() error {
 	if version < 6 {
 		if _, err := db.sql.Exec(schemaV6); err != nil {
 			return fmt.Errorf("meta: apply schema v6: %w", err)
+		}
+	}
+	if version < 7 {
+		if _, err := db.sql.Exec(schemaV7); err != nil {
+			return fmt.Errorf("meta: apply schema v7: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -270,6 +275,39 @@ UPDATE tasks SET number = sub.rn FROM (
 // Manager session (PM system prompt + project-locked task-tool MCP server).
 const schemaV6 = `
 ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT '';
+`
+
+// schemaV7 promotes the milestone label to a first-class entity. The new table
+// stores per-milestone metadata (target date, ordering, description) keyed by
+// (project_id, name); tasks keep linking via their existing milestone column,
+// so no task row is touched. The backfill seeds one milestone row per distinct
+// non-empty Task.Milestone (per project) so existing groupings survive intact,
+// and assigns position in first-appearance order (mirrors the v5 number
+// backfill). lower(hex(randomblob(16))) matches newID()'s 32-char hex format.
+const schemaV7 = `
+CREATE TABLE IF NOT EXISTS milestones (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL,
+    name           TEXT NOT NULL DEFAULT '',
+    description    TEXT NOT NULL DEFAULT '',
+    target_date    TEXT,
+    position       INTEGER NOT NULL DEFAULT 0,
+    predecessor_id TEXT NOT NULL DEFAULT '',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_milestones_proj_name ON milestones(project_id, name);
+CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id, position);
+
+INSERT OR IGNORE INTO milestones (id, project_id, name, description, target_date, position, created_at, updated_at)
+SELECT lower(hex(randomblob(16))), project_id, milestone, '', NULL, 0, MIN(created_at), MIN(created_at)
+FROM tasks WHERE milestone != '' GROUP BY project_id, milestone;
+
+UPDATE milestones SET position = sub.rn FROM (
+    SELECT id, ROW_NUMBER() OVER (
+        PARTITION BY project_id ORDER BY created_at, name
+    ) - 1 AS rn FROM milestones
+) AS sub WHERE milestones.id = sub.id;
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

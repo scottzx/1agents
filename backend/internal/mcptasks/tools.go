@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"sort"
 	"strings"
 )
 
@@ -36,8 +35,37 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "list_milestones",
-		"description": "List the milestones used in the current project with task counts (total and completed) for each. Useful for grouping decomposed work.",
+		"description": "List the project's milestones in roadmap order, each with its target date, position, and task counts (total and completed). Use this to plan and group decomposed work into stages.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+	},
+	{
+		"name":        "create_milestone",
+		"description": "Create a new milestone (roadmap stage) in the current project. It is appended to the end of the roadmap. Assign tasks to it by passing its name as the `milestone` field of create_task / update_task. Pass predecessorId to place it after another milestone — milestones sharing a predecessor branch in parallel on the roadmap.",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"name"},
+			"properties": map[string]any{
+				"name":          map[string]any{"type": "string", "description": "Milestone name; must be unique within the project."},
+				"description":   map[string]any{"type": "string"},
+				"targetDate":    map[string]any{"type": "string", "description": "Optional target/due date, RFC3339 (e.g. 2026-07-01T00:00:00Z)."},
+				"predecessorId": map[string]any{"type": "string", "description": "Optional id of the predecessor (parent) milestone; empty makes it a root."},
+			},
+		},
+	},
+	{
+		"name":        "update_milestone",
+		"description": "Update a milestone by id. Renaming cascades to every task assigned to it. Only the fields you pass are changed. Set predecessorId to re-parent it on the roadmap (empty string makes it a root).",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"id"},
+			"properties": map[string]any{
+				"id":            map[string]any{"type": "string"},
+				"name":          map[string]any{"type": "string"},
+				"description":   map[string]any{"type": "string"},
+				"targetDate":    map[string]any{"type": "string", "description": "Target/due date, RFC3339."},
+				"predecessorId": map[string]any{"type": "string", "description": "Predecessor (parent) milestone id; empty makes it a root."},
+			},
+		},
 	},
 	{
 		"name":        "create_task",
@@ -107,6 +135,10 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolGetTask(p.Arguments)
 	case "list_milestones":
 		return s.toolListMilestones()
+	case "create_milestone":
+		return s.toolCreateMilestone(p.Arguments)
+	case "update_milestone":
+		return s.toolUpdateMilestone(p.Arguments)
 	case "create_task":
 		return s.toolCreateTask(p.Arguments)
 	case "update_task":
@@ -180,38 +212,83 @@ func (s *server) toolGetTask(args json.RawMessage) map[string]any {
 }
 
 func (s *server) toolListMilestones() map[string]any {
-	tasks, err := s.listTasks()
+	q := url.Values{"workspace_id": {s.workspaceID}}
+	status, body, err := s.api.do("GET", "/api/agent/milestones", q, nil)
 	if err != nil {
 		return toolErr(err.Error())
 	}
-	type bucket struct {
-		Milestone string `json:"milestone"`
-		Total     int    `json:"total"`
-		Completed int    `json:"completed"`
+	if status != 200 {
+		return toolErr(fmt.Sprintf("list milestones failed (%d): %s", status, strings.TrimSpace(string(body))))
 	}
-	idx := map[string]*bucket{}
-	order := []string{}
-	for _, t := range tasks {
-		if t.Milestone == "" {
-			continue
-		}
-		b, ok := idx[t.Milestone]
-		if !ok {
-			b = &bucket{Milestone: t.Milestone}
-			idx[t.Milestone] = b
-			order = append(order, t.Milestone)
-		}
-		b.Total++
-		if t.Status == "completed" {
-			b.Completed++
+	var milestones []json.RawMessage
+	if err := json.Unmarshal(body, &milestones); err != nil {
+		return toolText(string(body))
+	}
+	return toolJSON(map[string]any{"count": len(milestones), "milestones": json.RawMessage(body)})
+}
+
+func (s *server) toolCreateMilestone(args json.RawMessage) map[string]any {
+	var a struct {
+		Name          string `json:"name"`
+		Description   string `json:"description"`
+		TargetDate    string `json:"targetDate"`
+		PredecessorID string `json:"predecessorId"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	if strings.TrimSpace(a.Name) == "" {
+		return toolErr("name is required")
+	}
+	body := map[string]any{
+		"workspace_id":  s.workspaceID,
+		"name":          a.Name,
+		"description":   a.Description,
+		"predecessorId": a.PredecessorID,
+	}
+	if a.TargetDate != "" {
+		body["targetDate"] = a.TargetDate
+	}
+	status, resp, err := s.api.do("POST", "/api/agent/milestones", nil, body)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("create milestone failed (%d): %s", status, strings.TrimSpace(string(resp))))
+	}
+	return toolText(string(resp))
+}
+
+func (s *server) toolUpdateMilestone(args json.RawMessage) map[string]any {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(args, &raw); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	idRaw, ok := raw["id"]
+	if !ok {
+		return toolErr("id is required")
+	}
+	var id string
+	if err := json.Unmarshal(idRaw, &id); err != nil || id == "" {
+		return toolErr("id is required")
+	}
+	patch := map[string]any{"workspace_id": s.workspaceID}
+	for _, f := range []string{"name", "description", "targetDate", "predecessorId"} {
+		if v, ok := raw[f]; ok {
+			patch[f] = v
 		}
 	}
-	sort.Strings(order)
-	out := make([]bucket, 0, len(order))
-	for _, m := range order {
-		out = append(out, *idx[m])
+	if len(patch) == 1 {
+		return toolErr("no updatable fields provided")
 	}
-	return toolJSON(map[string]any{"count": len(out), "milestones": out})
+	status, resp, err := s.api.do("PATCH", "/api/agent/milestones/"+url.PathEscape(id), nil, patch)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("update milestone failed (%d): %s", status, strings.TrimSpace(string(resp))))
+	}
+	return toolText(string(resp))
 }
 
 func (s *server) toolCreateTask(args json.RawMessage) map[string]any {

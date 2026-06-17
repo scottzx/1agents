@@ -2171,13 +2171,20 @@ body {
     color: var(--text-muted);
   }
 
+  /* KPI row: fixed 4 across (任务/需求/待办/阻塞) — stays one row even when narrow */
+  .overview-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--bento-gap, 12px);
+  }
+
   .overview-stat {
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     gap: 8px;
-    padding: 20px 16px;
+    padding: 20px 12px;
     text-align: center;
     border-radius: var(--bento-radius, 10px);
     transition: var(--bento-transition);
@@ -2257,71 +2264,376 @@ body {
   }
 }
 
-/* ── Milestone grouped view ── */
+/* ── Create-milestone / create-task forms (rendered inside <Modal>, so these
+   live at top level — the modal DOM is not nested under .milestone-view) ── */
+.box {
+  .milestone-form {
+    width: 100%;
+    text-align: left;
+    box-sizing: border-box;
+  }
+}
+
+.milestone-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .milestone-form-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .milestone-form-input,
+  .milestone-form-textarea {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: var(--text-main);
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius-sm, 8px);
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-color);
+    }
+  }
+  .milestone-form-textarea {
+    min-height: 56px;
+    resize: vertical;
+    font-family: inherit;
+  }
+  .milestone-form-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+
+    input,
+    select {
+      flex: 1;
+      padding: 6px 8px;
+      font-size: 12px;
+      color: var(--text-main);
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--bento-radius-sm, 8px);
+    }
+  }
+  .milestone-form-error {
+    font-size: 12px;
+    color: var(--danger-fg);
+  }
+  .milestone-form-actions {
+    display: flex;
+    gap: 8px;
+
+    button {
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--bento-radius-sm, 8px);
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-panel);
+      color: var(--text-secondary);
+    }
+    .milestone-form-save {
+      color: var(--on-accent);
+      background: var(--accent-color);
+      border-color: transparent;
+
+      &:hover {
+        background: var(--accent-hover);
+      }
+      &:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    }
+  }
+}
+
+/* ── Milestone roadmap (tree) view ── */
 .milestone-view {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 
-  .milestone-group {
-    border: 1px solid var(--border-glass, var(--border-color));
-    border-radius: var(--bento-radius, 10px);
-    background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.85));
-    backdrop-filter: var(--backdrop-blur);
-    -webkit-backdrop-filter: var(--backdrop-blur);
-    box-shadow: var(--shadow-sm);
-    overflow: hidden;
-    transition: var(--bento-transition);
+  /* ── branching roadmap tree (left → right) ── */
+  .ms-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow: auto;
+    padding: 14px 4px;
+    align-items: flex-start;
+  }
 
-    &:hover {
-      box-shadow: var(--shadow-md);
-      border-color: var(--accent-color);
+  /* a node plus (optionally) its children column, laid out side by side */
+  .ms-branch {
+    display: flex;
+    align-items: center;
+  }
+
+  .ms-children {
+    display: flex;
+    flex-direction: column;
+    margin-left: 14px; /* room for the parent → trunk stub */
+  }
+
+  /* each child row carries the connector geometry (org-chart elbows) */
+  .ms-subtree {
+    display: flex;
+    align-items: center;
+    position: relative;
+    padding-left: 28px;
+
+    /* horizontal lead-in from the trunk to the child card */
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      width: 28px;
+      height: 2px;
+      background-color: var(--border-color);
+    }
+    /* vertical trunk segment on the left, clipped at the ends so the line
+       spans only between the first and last sibling centers */
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background-color: var(--border-color);
+    }
+    &:first-child::after {
+      top: 50%;
+    }
+    &:last-child::after {
+      bottom: 50%;
+    }
+    &:only-child::after {
+      display: none;
     }
   }
 
-  .milestone-group-header {
+  .ms-card {
+    position: relative;
+    flex: 0 0 auto;
+    width: 168px;
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
-    background-color: rgba(var(--bg-panel), 0.4);
-    border-bottom: 1px solid var(--border-glass, var(--border-color));
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius, 10px);
+    background-color: var(--bg-card);
+    cursor: pointer;
+    transition: var(--bento-transition);
 
-    .milestone-group-name {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text-main);
-      flex-shrink: 0;
-      min-width: 120px;
+    /* stub from a parent card to its children trunk */
+    &.has-children::after {
+      content: '';
+      position: absolute;
+      right: -14px;
+      top: 50%;
+      width: 14px;
+      height: 2px;
+      background-color: var(--border-color);
     }
-    .milestone-group-bar {
-      flex: 1;
-      height: 10px;
-      background-color: rgba(var(--bg-panel), 0.6);
-      border-radius: 6px;
-      overflow: hidden;
-      border: 1px solid var(--border-glass, transparent);
 
-      .milestone-group-fill {
+    .ms-card-flag {
+      position: absolute;
+      top: -9px;
+      right: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 8px;
+      color: var(--on-accent);
+      background: var(--accent-color);
+    }
+    .ms-card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ms-card-dot {
+      flex: 0 0 auto;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      border: 2px solid var(--border-color);
+      background-color: var(--bg-panel);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ms-card-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ms-card-bar {
+      width: 100%;
+      height: 6px;
+      background-color: var(--bg-panel);
+      border-radius: 4px;
+      overflow: hidden;
+
+      .ms-card-fill {
         height: 100%;
         background: var(--accent-color);
-        box-shadow: 0 0 8px rgba(var(--accent-color-rgb), 0.5);
-        border-radius: 6px;
+        border-radius: 4px;
         transition: width 0.4s ease;
       }
     }
-    .milestone-group-count {
-      font-size: 12px;
+    .ms-card-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .ms-card-count {
+      font-size: 11px;
       color: var(--text-muted);
       font-family: var(--font-mono);
-      flex-shrink: 0;
+    }
+    .ms-card-date {
+      font-size: 11px;
+      color: var(--text-secondary);
+
+      &.overdue {
+        color: var(--danger-fg);
+        font-weight: 600;
+      }
+    }
+
+    &:hover {
+      border-color: var(--accent-color);
+      box-shadow: var(--shadow-sm);
+    }
+    &.expanded {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 1px var(--accent-color);
+    }
+
+    /* state styling: past = filled dot, current = accent ring, future = hollow */
+    &.state-past .ms-card-dot {
+      background-color: var(--success-fg);
+      border-color: var(--success-fg);
+    }
+    &.state-current {
+      border-color: var(--accent-color);
+
+      .ms-card-dot {
+        border-color: var(--accent-color);
+        background-color: rgba(var(--accent-color-rgb), 0.18);
+      }
+    }
+    &.state-future {
+      opacity: 0.82;
+    }
+    &.state-ungrouped {
+      opacity: 0.72;
+      border-style: dashed;
+
+      .ms-card-fill {
+        background: var(--text-muted);
+      }
     }
   }
 
-  .milestone-group-body {
+  /* ── expanded detail panel ── */
+  .milestone-detail {
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius, 10px);
+    background-color: var(--bg-card);
+    overflow: hidden;
+
+    .milestone-detail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      background-color: var(--bg-panel);
+    }
+    .milestone-detail-context {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      flex-wrap: wrap;
+
+      .milestone-ctx {
+        color: var(--text-muted);
+
+        &.cur {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--text-main);
+        }
+      }
+    }
+    .milestone-detail-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+
+      button {
+        padding: 4px 10px;
+        font-size: 12px;
+        border-radius: var(--bento-radius-sm, 8px);
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-card);
+        color: var(--text-secondary);
+        cursor: pointer;
+
+        &:hover {
+          border-color: var(--accent-color);
+          color: var(--text-main);
+        }
+        &.danger:hover {
+          border-color: var(--danger-fg);
+          color: var(--danger-fg);
+        }
+      }
+    }
+    .milestone-detail-desc {
+      padding: 12px 16px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-color);
+      white-space: pre-wrap;
+    }
+    .milestone-detail-empty {
+      padding: 20px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .milestone-form {
+      margin: 12px 16px;
+    }
+  }
+
+  .milestone-detail-body {
     display: flex;
     flex-direction: column;
   }
