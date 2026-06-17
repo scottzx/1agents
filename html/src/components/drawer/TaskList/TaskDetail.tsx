@@ -337,7 +337,9 @@ export function TaskDetail({
                     title={sidebarCollapsed.value ? '展开侧边栏' : '收起侧边栏'}
                     onClick={() => (sidebarCollapsed.value = !sidebarCollapsed.value)}
                 >
-                    <span /><span /><span />
+                    <span />
+                    <span />
+                    <span />
                 </button>
             </div>
 
