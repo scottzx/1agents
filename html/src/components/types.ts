@@ -117,6 +117,12 @@ export interface ChatSession {
      * Reply.sessionRef and attribute the agent's write-back. Not persisted.
      */
     replyId?: string;
+    /**
+     * Transient: a prompt to auto-send to the agent as soon as the session is
+     * ready (issue-model 追问/启动新会话). Routed into `pendingInitialMessage`
+     * by `selectSession`, then fired once by `ChatPanel`. Not persisted.
+     */
+    initialMessage?: string;
     name: string;
     agentType: AgentType;
     ccProject: string; // cc-connect project name

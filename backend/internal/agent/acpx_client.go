@@ -33,6 +33,10 @@ type ActiveBridge struct {
 	TaskID    string
 	AgentType string
 	ReplyID   string
+	// tasksStore lets the client-read loop record each user prompt back to
+	// the task timeline (symmetric to writeAgentReply), so the conversation
+	// is captured server-side regardless of which UI sent the prompt.
+	tasksStore *TasksStore
 	// turnText accumulates the assistant's streamed output text for the
 	// current turn; reset on each tool call so that at `done` it holds the
 	// final assistant message (text after the last tool call).
@@ -218,6 +222,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		TaskID:        taskId,
 		AgentType:     agentType,
 		ReplyID:       replyID,
+		tasksStore:    tasksStore,
 	}
 	c.bridges[sessionId] = bridge
 	c.mu.Unlock()
@@ -366,9 +371,11 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 		}
 
 		// A new prompt starts a new turn: clear any leftover text so the
-		// write-back only captures this turn's assistant output.
+		// write-back only captures this turn's assistant output, and record
+		// the user's prompt to the task timeline (issue-model §8, user side).
 		if msg.Action == "prompt" {
 			bridge.resetTurnText()
+			writeUserReply(bridge, bridge.tasksStore, msg.Text)
 		}
 
 		bridge.mu.Lock()
@@ -386,6 +393,31 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 				break
 			}
 		}
+	}
+}
+
+// writeUserReply records a user prompt to the task timeline (issue-model §8,
+// user side; mirror of writeAgentReply). SessionRef groups it under the
+// session's branch. No-op for sessions outside a task or empty prompts.
+func writeUserReply(bridge *ActiveBridge, tasksStore *TasksStore, text string) {
+	bridge.mu.Lock()
+	taskID := bridge.TaskID
+	sessionID := bridge.SessionID
+	bridge.mu.Unlock()
+
+	if taskID == "" || strings.TrimSpace(text) == "" || tasksStore == nil {
+		return
+	}
+
+	if _, err := tasksStore.AppendReply(taskID, Reply{
+		Author:     Author{Kind: "user", Name: "user"},
+		Text:       text,
+		SessionRef: sessionID,
+		Mode:       ModeFollowUp,
+	}); err != nil {
+		log.Printf("[acpx_client] AppendReply(user) for task %s failed: %v", taskID, err)
+	} else {
+		log.Printf("[acpx_client] User prompt written to task %s timeline (%d chars)", taskID, len(text))
 	}
 }
 

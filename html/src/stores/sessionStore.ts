@@ -303,6 +303,10 @@ export const selectSession = async (session: Session) => {
     }));
     localStorage.setItem('1agents-active-workspace', session.workspaceId);
     activeSession.value = { ...session, active: true };
+    // A session opened with a transient initialMessage (issue-model follow-up /
+    // new-session reply) auto-sends that prompt once ChatPanel is ready. Plain
+    // switches carry none, which also clears any stale pending message.
+    pendingInitialMessage.value = (isChat(session) && session.initialMessage) || null;
     wsStore.folders.value =
         session.workspaceId !== oldWorkspaceId
             ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
