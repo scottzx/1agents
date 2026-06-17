@@ -12,6 +12,7 @@ import { TasksView } from './TasksView';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
+import { SessionsView } from './SessionsView';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
 const cachedMilestones = signal<Record<string, Milestone[]>>({});
@@ -19,16 +20,28 @@ const cachedMilestones = signal<Record<string, Milestone[]>>({});
 export interface TaskListProps {
     workspaceId: string;
     onSelectSession?: (session: Session) => void;
+    /** Optional controlled state: when provided, TaskList uses these instead of internal state. */
+    selectedTaskId?: string | null;
+    onTaskSelect?: (taskId: string | null) => void;
 }
 
-export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
+export function TaskList({
+    workspaceId,
+    onSelectSession,
+    selectedTaskId: externalSelectedTaskId,
+    onTaskSelect,
+}: TaskListProps) {
     const [tasks, setTasksState] = useState<Task[]>(cachedTasks.value[workspaceId] || []);
     const [milestones, setMilestonesState] = useState<Milestone[]>(cachedMilestones.value[workspaceId] || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [internalSelectedTaskId, setInternalSelectedTaskId] = useState<string | null>(null);
+
+    const isControlled = onTaskSelect !== undefined;
+    const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
+    const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
-    const view = useSignal<'overview' | 'tasks' | 'requirements' | 'milestone'>('tasks');
+    const view = useSignal<'overview' | 'tasks' | 'requirements' | 'sessions' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -192,10 +205,14 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                 workspaceId={workspaceId}
                 taskId={selectedTaskId}
                 allTasks={tasks}
-                onBack={() => {
-                    setSelectedTaskId(null);
-                    fetchTasks();
-                }}
+                onBack={
+                    isControlled
+                        ? undefined
+                        : () => {
+                              setSelectedTaskId(null);
+                              fetchTasks();
+                          }
+                }
                 onDelete={handleDeleteTask}
                 onNavigate={setSelectedTaskId}
                 onSelectSession={onSelectSession}
@@ -212,6 +229,7 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                             ['overview', '总览'],
                             ['tasks', '任务'],
                             ['requirements', '需求'],
+                            ['sessions', '会话'],
                             ['milestone', '里程碑'],
                         ] as Array<[typeof view.value, string]>
                     ).map(([key, label]) => (
@@ -244,6 +262,13 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                 />
             )}
             {view.value === 'overview' && <Overview tasks={tasks} />}
+            {view.value === 'sessions' && (
+                <SessionsView
+                    workspaceId={workspaceId}
+                    onSelectSession={onSelectSession}
+                    onSelectTask={setSelectedTaskId}
+                />
+            )}
             {view.value === 'milestone' && (
                 <MilestoneView
                     tasks={tasks}

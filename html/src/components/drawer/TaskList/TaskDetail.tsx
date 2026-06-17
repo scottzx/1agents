@@ -5,14 +5,14 @@ import { useSignal } from '@preact/signals';
 import { agentService } from '../../../services/agentService';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { LINK_REL_LABELS, PRIORITY_LABELS, STATUS_LABELS } from './constants';
-import type { LinkRel, Reply, ReplyMode, Task, TaskLink } from './types';
+import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 
 interface TaskDetailProps {
     workspaceId: string;
     taskId: string;
     allTasks: Task[];
-    onBack: () => void;
+    onBack?: () => void;
     onDelete: (taskId: string) => void;
     onNavigate?: (taskId: string) => void;
     onSelectSession?: (session: Session) => void;
@@ -42,11 +42,16 @@ export function TaskDetail({
     const editingAccept = useSignal(false);
     const [acceptDraft, setAcceptDraft] = useState('');
 
-    // Reply composer
+    // Reply composer (top-level: pure comment or new session only)
     const [replyText, setReplyText] = useState('');
     const [replyMode, setReplyMode] = useState<ReplyMode>('new');
-    const [followUpTarget, setFollowUpTarget] = useState('');
     const [submitting, setSubmitting] = useState(false);
+
+    // Per-branch inline follow-up: which session's composer is open, its draft,
+    // and a busy flag. Only one branch composer is open at a time.
+    const followUpOpen = useSignal('');
+    const followUpText = useSignal('');
+    const followUpBusy = useSignal(false);
 
     // GitHub detail view tabs & preview state
     const [activeTab, setActiveTab] = useState<'conversation' | 'subtasks' | 'relations'>('conversation');
@@ -61,6 +66,28 @@ export function TaskDetail({
         if (clean.length === 0) return '?';
         if (clean.length <= 2) return clean.toUpperCase();
         return clean.slice(0, 2).toUpperCase();
+    };
+
+    // A single reply bubble, reused for standalone comments and branch children.
+    const renderReplyCard = (rp: Reply) => {
+        const isAgent = rp.author.kind === 'agent';
+        return (
+            <div key={rp.id} class={`gh-comment-card ${isAgent ? 'is-agent' : 'is-user'}`}>
+                <div class="gh-comment-header">
+                    <div class="gh-comment-header-left">
+                        <span class="gh-avatar">{getInitials(rp.author.name || rp.author.kind)}</span>
+                        <span class="gh-author-name">{rp.author.name || rp.author.kind}</span>
+                        <span>回复于 {fmtDate(rp.createdAt)}</span>
+                    </div>
+                    <div class="gh-comment-actions">
+                        <span class="gh-role-badge">{isAgent ? 'Agent' : 'User'}</span>
+                    </div>
+                </div>
+                <div class="gh-comment-body">
+                    <div class="timeline-reply-text">{rp.text}</div>
+                </div>
+            </div>
+        );
     };
 
     const fetchTask = useCallback(async () => {
@@ -154,7 +181,7 @@ export function TaskDetail({
     // Open an EXISTING session (timeline link / follow-up). Resolves the
     // indexed record first so the chat resumes with its real identity
     // (name, acpSessionId) and shows up in the sidebar session list.
-    const openSession = async (sessionId: string, agentType: string, replyId?: string) => {
+    const openSession = async (sessionId: string, agentType: string, replyId?: string, initialMessage?: string) => {
         if (!onSelectSession || !task) return;
         let rec: ChatSession | null = null;
         try {
@@ -167,6 +194,7 @@ export function TaskDetail({
                 ...rec,
                 taskId: rec.taskId || task.id,
                 replyId,
+                initialMessage,
                 active: true,
             });
             return;
@@ -179,6 +207,7 @@ export function TaskDetail({
             workspaceId,
             taskId: task.id,
             replyId,
+            initialMessage,
             name: `${task.title} - 智能体`,
             agentType: (agentType || 'claudecode') as AgentType,
             ccProject: '',
@@ -190,8 +219,10 @@ export function TaskDetail({
     };
 
     // Spawn a NEW session for a mode=new reply: index it first so it exists
-    // in the sidebar immediately (with the task badge), then open it.
-    const openNewSession = async (replyId: string) => {
+    // in the sidebar immediately (with the task badge), then open it and
+    // auto-send the reply text as the first prompt. The user turn itself is
+    // recorded to the timeline server-side when the prompt runs.
+    const openNewSession = async (initialMessage?: string) => {
         if (!onSelectSession || !task) return;
         const rec = await agentService.index({
             workspace_id: workspaceId,
@@ -199,44 +230,32 @@ export function TaskDetail({
             agent_type: 'claudecode',
             task_id: task.id,
         });
-        onSelectSession({ ...rec, taskId: task.id, replyId, active: true });
+        onSelectSession({ ...rec, taskId: task.id, initialMessage, active: true });
     };
 
+    // Top-level composer: a pure comment (standalone timeline entry, no chat)
+    // or the root of a new session branch. Follow-ups live inside each branch
+    // (submitBranchFollowUp). For chat-driven modes the user turn is recorded
+    // server-side (writeUserReply), so no reply is POSTed here.
     const submitReply = async (e: Event) => {
         e.preventDefault();
         if (!task || !replyText.trim() || submitting) return;
+        const text = replyText.trim();
         setSubmitting(true);
         try {
-            // Follow-up: link the new reply to the last agent reply of the
-            // target session, so the timeline threads correctly.
-            let inReplyTo = '';
-            if (replyMode === 'follow_up' && followUpTarget) {
-                const prior = [...(task.replies || [])]
-                    .reverse()
-                    .find(r => r.author.kind === 'agent' && r.sessionRef === followUpTarget);
-                inReplyTo = prior?.id || '';
-            }
-
-            const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}/replies`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: replyText.trim(),
-                    mode: replyMode,
-                    inReplyTo,
-                }),
-            });
-            if (!res.ok) {
-                throw new Error(await res.text());
-            }
-            const reply = (await res.json()) as Reply;
-            setReplyText('');
-
             if (replyMode === 'new') {
-                await openNewSession(reply.id);
-            } else if (replyMode === 'follow_up' && followUpTarget) {
-                const sess = task.sessions.find(s => s.id === followUpTarget);
-                await openSession(followUpTarget, sess?.agentType || 'claudecode', reply.id);
+                setReplyText('');
+                await openNewSession(text);
+            } else {
+                const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}/replies`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, mode: 'pure_comment' }),
+                });
+                if (!res.ok) {
+                    throw new Error(await res.text());
+                }
+                setReplyText('');
             }
             fetchTask();
         } catch (err) {
@@ -246,14 +265,29 @@ export function TaskDetail({
         }
     };
 
+    // Follow up inside an existing session branch (issue-model: 追加会话一定
+    //发生在已有会话下). Opens the live chat and auto-sends the text; the user
+    // turn and the agent reply are both recorded server-side with SessionRef,
+    // so they thread under this branch on the next poll.
+    const submitBranchFollowUp = async (session: SessionMetadata) => {
+        if (!task || !followUpText.value.trim() || followUpBusy.value) return;
+        const text = followUpText.value.trim();
+        followUpBusy.value = true;
+        try {
+            followUpText.value = '';
+            followUpOpen.value = '';
+            await openSession(session.id, session.agentType || 'claudecode', undefined, text);
+            fetchTask();
+        } catch (err) {
+            alert((err as Error).message);
+        } finally {
+            followUpBusy.value = false;
+        }
+    };
+
     if (!task) {
         return (
             <div class="task-dashboard-container">
-                <div class="task-detail-header">
-                    <button class="task-back-btn" onClick={onBack}>
-                        ← 返回列表
-                    </button>
-                </div>
                 {error ? <div class="task-error">{error}</div> : <div class="task-loading">载入任务...</div>}
             </div>
         );
@@ -263,6 +297,45 @@ export function TaskDetail({
     const deps = allTasks.filter(t => task.dependsOn?.includes(t.id));
     const subtasks = allTasks.filter(t => t.parentId === task.id);
     const replies = task.replies || [];
+
+    // Group the flat reply list into a two-level tree: each session becomes a
+    // top-level branch holding its replies in order; pure comments and replies
+    // not yet linked to a session are standalone top-level nodes. Drill-down is
+    // exactly one level — branch children are never themselves nested.
+    type TimelineNode =
+        | { kind: 'branch'; session: SessionMetadata; num: number; children: Reply[]; anchor: string }
+        | { kind: 'comment'; reply: Reply; anchor: string };
+
+    const sessionsById = new Map(task.sessions.map(s => [s.id, s]));
+    const childrenBySession = new Map<string, Reply[]>();
+    const looseReplies: Reply[] = [];
+    for (const rp of replies) {
+        if (rp.sessionRef && sessionsById.has(rp.sessionRef)) {
+            const arr = childrenBySession.get(rp.sessionRef) || [];
+            arr.push(rp);
+            childrenBySession.set(rp.sessionRef, arr);
+        } else {
+            looseReplies.push(rp);
+        }
+    }
+    const timelineNodes: TimelineNode[] = [];
+    task.sessions.forEach((s, i) => {
+        const children = (childrenBySession.get(s.id) || [])
+            .slice()
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        if (children.length === 0) return; // session not linked to any reply yet
+        timelineNodes.push({
+            kind: 'branch',
+            session: s,
+            num: i + 1,
+            children,
+            anchor: children[0].createdAt,
+        });
+    });
+    for (const rp of looseReplies) {
+        timelineNodes.push({ kind: 'comment', reply: rp, anchor: rp.createdAt });
+    }
+    timelineNodes.sort((a, b) => a.anchor.localeCompare(b.anchor));
 
     // Peer cross-references (#N links). Outgoing come from this task; backlinks
     // are other tasks that reference this one. Both resolve titles via allTasks.
@@ -286,14 +359,13 @@ export function TaskDetail({
 
     return (
         <div class="task-dashboard-container task-detail-view">
-            <div class="task-detail-header" style={{ marginBottom: '12px', borderBottom: 'none' }}>
-                <button class="task-back-btn" onClick={onBack}>
-                    ← 返回列表
-                </button>
-            </div>
-
             {/* GitHub style title header */}
             <div class="gh-header-top">
+                {onBack && (
+                    <button class="task-back-btn" onClick={onBack}>
+                        ← 返回列表
+                    </button>
+                )}
                 <h3 class="gh-title">
                     {task.title} <span class="gh-number">#{task.number || ''}</span>
                 </h3>
@@ -440,48 +512,86 @@ export function TaskDetail({
                                 </div>
                             </div>
 
-                            {/* Timeline comments */}
+                            {/* Timeline: standalone comments + session branches */}
                             <div class="task-timeline">
-                                {replies.map(rp => {
-                                    const isAgent = rp.author.kind === 'agent';
-                                    const sess = rp.sessionRef
-                                        ? task.sessions.find(s => s.id === rp.sessionRef)
-                                        : undefined;
+                                {timelineNodes.map(node => {
+                                    if (node.kind === 'comment') {
+                                        return renderReplyCard(node.reply);
+                                    }
+                                    const { session, num, children } = node;
+                                    const lastChildId = children[children.length - 1]?.id;
+                                    const running = session.status === 'running';
                                     return (
-                                        <div key={rp.id} class={`gh-comment-card ${isAgent ? 'is-agent' : 'is-user'}`}>
-                                            <div class="gh-comment-header">
-                                                <div class="gh-comment-header-left">
-                                                    <span class="gh-avatar">
-                                                        {getInitials(rp.author.name || rp.author.kind)}
-                                                    </span>
-                                                    <span class="gh-author-name">
-                                                        {rp.author.name || rp.author.kind}
-                                                    </span>
-                                                    <span>回复于 {fmtDate(rp.createdAt)}</span>
-                                                </div>
-                                                <div class="gh-comment-actions">
-                                                    <span class="gh-role-badge">{isAgent ? 'Agent' : 'User'}</span>
-                                                </div>
+                                        <div key={session.id} class="task-branch">
+                                            <div class="task-branch-header">
+                                                <span class="task-branch-badge">🤖 会话 #{num}</span>
+                                                <span class="task-branch-agent">{session.agentType}</span>
+                                                <span class={`task-branch-status${running ? ' running' : ''}`}>
+                                                    {running ? '执行中' : '空闲'}
+                                                </span>
                                             </div>
-                                            <div class="gh-comment-body">
-                                                <div class="timeline-reply-text">{rp.text}</div>
-                                                {rp.sessionRef && (
-                                                    <div style={{ marginTop: '12px' }}>
+                                            <div class="task-branch-children">
+                                                {children.map(rp => renderReplyCard(rp))}
+                                            </div>
+                                            <div class="task-branch-actions">
+                                                {!closed && (
+                                                    <button
+                                                        type="button"
+                                                        class="task-branch-followup-btn"
+                                                        onClick={() => {
+                                                            followUpOpen.value =
+                                                                followUpOpen.value === session.id ? '' : session.id;
+                                                            followUpText.value = '';
+                                                        }}
+                                                    >
+                                                        ↩️ 在此会话下追问
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    class="timeline-session-link"
+                                                    onClick={() =>
+                                                        openSession(
+                                                            session.id,
+                                                            session.agentType || 'claudecode',
+                                                            lastChildId
+                                                        )
+                                                    }
+                                                >
+                                                    🤖 打开完整会话 →
+                                                </button>
+                                            </div>
+                                            {followUpOpen.value === session.id && (
+                                                <div class="task-branch-followup">
+                                                    <textarea
+                                                        rows={3}
+                                                        placeholder={`在「会话 #${num}」下继续追问，智能体会带着本任务的全部上下文回答...`}
+                                                        value={followUpText.value}
+                                                        onInput={(e: Event) =>
+                                                            (followUpText.value = (
+                                                                e.target as HTMLTextAreaElement
+                                                            ).value)
+                                                        }
+                                                    />
+                                                    <div class="task-branch-followup-actions">
                                                         <button
-                                                            class="timeline-session-link"
-                                                            onClick={() =>
-                                                                openSession(
-                                                                    rp.sessionRef!,
-                                                                    sess?.agentType || rp.agentType || 'claudecode',
-                                                                    rp.id
-                                                                )
-                                                            }
+                                                            type="button"
+                                                            class="gh-close-btn"
+                                                            onClick={() => (followUpOpen.value = '')}
                                                         >
-                                                            🤖 {isAgent ? '查看完整转录' : '查看会话'} →
+                                                            取消
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="gh-submit-btn"
+                                                            disabled={followUpBusy.value || !followUpText.value.trim()}
+                                                            onClick={() => submitBranchFollowUp(session)}
+                                                        >
+                                                            {followUpBusy.value ? '提交中...' : '追问并运行'}
                                                         </button>
                                                     </div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -630,48 +740,7 @@ export function TaskDetail({
                                             />
                                             🚀 启动新会话
                                         </label>
-                                        <label
-                                            class={`gh-opt-label ${replyMode === 'follow_up' ? 'active' : ''} ${
-                                                closed || task.sessions.length === 0 ? 'disabled' : ''
-                                            }`}
-                                            title={
-                                                closed
-                                                    ? 'Issue 已关闭，先重新打开'
-                                                    : task.sessions.length === 0
-                                                      ? '还没有会话可追问'
-                                                      : ''
-                                            }
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="replyMode"
-                                                style={{ display: 'none' }}
-                                                checked={replyMode === 'follow_up'}
-                                                disabled={closed || task.sessions.length === 0}
-                                                onChange={() => {
-                                                    setReplyMode('follow_up');
-                                                    if (!followUpTarget && task.sessions.length > 0) {
-                                                        setFollowUpTarget(task.sessions[task.sessions.length - 1].id);
-                                                    }
-                                                }}
-                                            />
-                                            ↩️ 追问会话
-                                        </label>
-                                        {replyMode === 'follow_up' && (
-                                            <select
-                                                class="follow-up-target"
-                                                value={followUpTarget}
-                                                onChange={(e: Event) =>
-                                                    setFollowUpTarget((e.target as HTMLSelectElement).value)
-                                                }
-                                            >
-                                                {task.sessions.map((s, i) => (
-                                                    <option key={s.id} value={s.id}>
-                                                        #{i + 1} {s.agentType} · {fmtDate(s.createdAt)}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        )}
+                                        <span class="gh-opt-hint">追问请在上方对应会话分支内进行</span>
                                     </div>
                                     <div class="gh-composer-actions">
                                         <button type="button" class="gh-close-btn" onClick={toggleIssueState}>

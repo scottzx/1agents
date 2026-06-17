@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -140,6 +140,11 @@ func (db *DB) migrateSchema() error {
 	if version < 7 {
 		if _, err := db.sql.Exec(schemaV7); err != nil {
 			return fmt.Errorf("meta: apply schema v7: %w", err)
+		}
+	}
+	if version < 8 {
+		if _, err := db.sql.Exec(schemaV8); err != nil {
+			return fmt.Errorf("meta: apply schema v8: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -277,14 +282,23 @@ const schemaV6 = `
 ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT '';
 `
 
-// schemaV7 promotes the milestone label to a first-class entity. The new table
+// schemaV7 adds soft-delete for sessions: archived_at holds the archive
+// timestamp (empty = active). Closing a session from the sidebar archives it
+// rather than dropping the row, so the conversation metadata survives and
+// stays searchable in the 会话 archive view. DEFAULT ” keeps every existing
+// session active.
+const schemaV7 = `
+ALTER TABLE sessions ADD COLUMN archived_at TEXT NOT NULL DEFAULT '';
+`
+
+// schemaV8 promotes the milestone label to a first-class entity. The new table
 // stores per-milestone metadata (target date, ordering, description) keyed by
 // (project_id, name); tasks keep linking via their existing milestone column,
 // so no task row is touched. The backfill seeds one milestone row per distinct
 // non-empty Task.Milestone (per project) so existing groupings survive intact,
 // and assigns position in first-appearance order (mirrors the v5 number
 // backfill). lower(hex(randomblob(16))) matches newID()'s 32-char hex format.
-const schemaV7 = `
+const schemaV8 = `
 CREATE TABLE IF NOT EXISTS milestones (
     id             TEXT PRIMARY KEY,
     project_id     TEXT NOT NULL,

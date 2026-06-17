@@ -117,6 +117,12 @@ export interface ChatSession {
      * Reply.sessionRef and attribute the agent's write-back. Not persisted.
      */
     replyId?: string;
+    /**
+     * Transient: a prompt to auto-send to the agent as soon as the session is
+     * ready (issue-model 追问/启动新会话). Routed into `pendingInitialMessage`
+     * by `selectSession`, then fired once by `ChatPanel`. Not persisted.
+     */
+    initialMessage?: string;
     name: string;
     agentType: AgentType;
     ccProject: string; // cc-connect project name
@@ -130,7 +136,12 @@ export interface ChatSession {
     acpSessionId?: string;
     sessionKey: string; // cc-connect bridge session_key
     status: ChatStatus;
+    createdAt?: string; // ISO timestamp — when the session was indexed
     lastEventAt?: string; // ISO timestamp
+    /** Soft-delete: ISO timestamp when archived (closed from the sidebar). Empty/undefined = active. */
+    archivedAt?: string;
+    /** Derived from archivedAt — true when the session has been archived. */
+    archived?: boolean;
     active: boolean;
     /** Per-session permission policy. Persisted via PATCH /api/agent/sessions/{id}. */
     permissionMode?: PermissionMode;
@@ -185,6 +196,7 @@ export interface Workspace {
     terminalDir?: string;
     chatChannel?: string;
     defaultAgent?: AgentType;
+    builtin?: boolean;
 }
 
 export type WorkspaceStatus = 'active' | 'inactive' | 'planning' | 'archived';

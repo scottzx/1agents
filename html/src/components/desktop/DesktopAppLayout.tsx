@@ -163,9 +163,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     stage.enterProject();
                                 }}
                                 onSelectSession={s => {
-                                    // 入口默认态: 对话(历史)进 → chat 领, 右栏关闭。
+                                    // 同项目内打开/恢复/切换会话 → chat 领, 右栏保留;
+                                    // 仅当切到别的项目时才关闭右栏。
+                                    const projectChanged = s.workspaceId !== wsStore.activeWorkspaceId.value;
                                     sess.selectSession(s);
-                                    stage.enterConversation();
+                                    stage.openConversation(projectChanged);
                                 }}
                                 onTerminalCreate={(wsId, cwd) => sess.createTerminal(wsId, cwd)}
                                 onTerminalKill={idx => sess.killTerminal(idx)}
@@ -219,7 +221,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 sessionName={activeSession?.name || ''}
                                 tmuxMouseOn={tmuxMouseOn}
                                 onTmuxMouseToggle={sess.toggleTmuxMouse}
-                                isTerminalView={primaryView.kind === 'terminal'}
+                                isTerminalView={activeTabId === 'terminal' && primaryView.kind === 'terminal'}
                                 language={language}
                                 moduleNav={tabsStore.buildModuleNav()}
                                 hasChatSession={folders.some(
@@ -306,8 +308,12 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             rightPanelWidth={ui.rightPanelWidth.value}
                                             paneStyle={contentPaneStyle}
                                             onSelectSession={s => {
+                                                // 从右栏(任务详情等)打开会话 → 同项目内保留右栏,
+                                                // 仅跨项目时关闭。
+                                                const projectChanged =
+                                                    s.workspaceId !== wsStore.activeWorkspaceId.value;
                                                 sess.selectSession(s);
-                                                stage.enterConversation();
+                                                stage.openConversation(projectChanged);
                                             }}
                                             onExtraRefresh={async () => {
                                                 try {

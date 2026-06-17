@@ -601,15 +601,46 @@ body {
         color: var(--text-sidebar-muted);
         cursor: pointer;
         transition: all 0.2s;
-        
+
         &:hover {
           background-color: var(--bg-sidebar-hover);
           color: var(--text-sidebar);
         }
-        
+
         svg {
           width: 14px;
           height: 14px;
+        }
+      }
+    }
+
+    .sidebar-mode-toggle {
+      display: flex;
+      background: var(--bg-sidebar-hover);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+
+      .mode-tab {
+        flex: 1;
+        padding: 5px 0;
+        border-radius: 6px;
+        border: none;
+        background: transparent;
+        color: var(--text-sidebar-muted);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+
+        &.active {
+          background: var(--bg-card);
+          color: var(--text-main);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+
+        &:hover:not(.active) {
+          color: var(--text-sidebar);
         }
       }
     }
@@ -2141,6 +2172,199 @@ body {
   }
 }
 
+/* ── Calendar view (perpetual month grid) ── */
+.task-calendar {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .calendar-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    .calendar-title {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+
+      .calendar-year {
+        font-size: 14px;
+        color: var(--text-secondary);
+        font-weight: 600;
+      }
+      .calendar-month {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--text-main);
+      }
+    }
+
+    .calendar-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+
+      button {
+        min-width: 30px;
+        height: 30px;
+        padding: 0 10px;
+        font-size: 14px;
+        line-height: 1;
+        border: 1px solid var(--border-color);
+        border-radius: var(--bento-radius-sm, 8px);
+        background-color: var(--bg-card);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: var(--bento-transition, all 0.15s);
+
+        &:hover {
+          background-color: var(--btn-hover);
+          color: var(--text-main);
+        }
+      }
+      .calendar-today-btn {
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .calendar-weekdays {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+
+    .calendar-weekday {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 2px 0;
+    }
+  }
+
+  .calendar-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 6px;
+    overflow-y: auto;
+  }
+
+  .calendar-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 88px;
+    padding: 6px;
+    background-color: rgba(var(--bg-panel), 0.5);
+    border: 1px solid var(--border-glass, var(--border-color));
+    border-radius: var(--bento-radius-sm, 8px);
+    overflow: hidden;
+    transition: border-color 0.2s, background-color 0.2s;
+
+    &.is-other-month {
+      opacity: 0.45;
+    }
+    &.is-today {
+      border-color: var(--accent-color);
+      background-color: var(--accent-light);
+
+      .calendar-cell-day {
+        color: var(--accent-color);
+        font-weight: 800;
+      }
+    }
+
+    .calendar-cell-date {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+
+      .calendar-cell-day {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+      .calendar-cell-count {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-muted);
+        background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.8));
+        border: 1px solid var(--border-glass, var(--border-color));
+        border-radius: 10px;
+        padding: 0 6px;
+      }
+    }
+
+    .calendar-cell-events {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .calendar-event {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      padding: 3px 6px;
+      text-align: left;
+      font-size: 11.5px;
+      border: none;
+      border-left: 3px solid var(--text-muted);
+      border-radius: 4px;
+      background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.85));
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background-color 0.15s, transform 0.15s;
+
+      &:hover {
+        transform: translateX(2px);
+        background-color: var(--btn-hover);
+      }
+
+      .calendar-event-num {
+        flex-shrink: 0;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--text-muted);
+      }
+      .calendar-event-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      &.status-running {
+        border-left-color: var(--success-fg);
+      }
+      &.status-completed {
+        border-left-color: var(--accent-color);
+      }
+      &.status-failed,
+      &.status-cancelled {
+        border-left-color: var(--danger-fg);
+      }
+      &.status-blocked {
+        border-left-color: var(--warning-fg);
+      }
+    }
+  }
+}
+
 /* ── Overview / dashboard ── */
 .overview {
   flex: 1;
@@ -2769,6 +2993,172 @@ body {
       margin-left: auto;
       font-size: 10.5px;
       color: var(--text-muted);
+    }
+  }
+}
+
+/* ── Sessions view (会话归档检索) ── */
+.sessions-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  .sessions-view-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+
+    .sessions-search {
+      flex: 1;
+      height: 32px;
+      padding: 0 12px;
+      font-size: 12.5px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-terminal-inner);
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+
+      &:focus {
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px var(--accent-light);
+        background-color: var(--bg-card);
+      }
+    }
+
+    .sessions-count {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+  }
+
+  // The shared DataGrid (复用任务多维表格) fills the remaining height.
+  .task-grid {
+    flex: 1;
+    min-height: 0;
+  }
+
+  // Archived rows read as muted until hovered.
+  .session-grid-row.archived {
+    opacity: 0.6;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  .session-name-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+
+    &:hover {
+      color: var(--accent-fg);
+      text-decoration: underline;
+    }
+  }
+
+  .session-agent-badge,
+  .session-role-badge,
+  .session-task-badge,
+  .session-state-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .session-agent-badge {
+    color: var(--text-secondary);
+    background-color: var(--btn-hover);
+  }
+
+  .session-state-badge {
+    &.active {
+      color: var(--success-fg);
+      background-color: var(--success-bg);
+    }
+    &.archived {
+      color: var(--text-muted);
+      background-color: var(--btn-hover);
+      border: 1px solid var(--border-color);
+    }
+  }
+
+  .session-task-badge {
+    color: var(--accent-fg);
+    background-color: var(--accent-bg);
+
+    &.clickable {
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: var(--accent-emphasis);
+        color: var(--on-accent);
+      }
+    }
+  }
+
+  .session-role-badge {
+    &.role-pmo {
+      color: var(--purple-fg);
+      background-color: var(--purple-bg);
+    }
+    &.role-pm {
+      color: var(--accent-fg);
+      background-color: var(--accent-bg);
+    }
+    &.role-executor {
+      color: var(--orange-fg);
+      background-color: var(--orange-bg);
+    }
+    &.role-verifier {
+      color: var(--success-fg);
+      background-color: var(--success-bg);
+    }
+  }
+
+  // Open / restore action button (matches .task-open-btn sizing).
+  .session-restore-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 6px;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    &:hover {
+      color: var(--accent-fg);
+      background-color: var(--btn-hover);
     }
   }
 }
@@ -3753,6 +4143,112 @@ body {
     padding-left: 16px;
   }
 
+  /* A session branch groups its replies as one top-level thread; follow-ups
+     drill down exactly one level inside it. */
+  .task-branch {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(var(--accent-color-rgb), 0.25);
+    border-radius: var(--bento-radius, 12px);
+    background-color: rgba(var(--accent-color-rgb), 0.03);
+
+    .task-branch-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+
+      .task-branch-badge {
+        font-weight: 600;
+        color: var(--accent-color);
+      }
+      .task-branch-agent {
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+      }
+      .task-branch-status {
+        margin-left: auto;
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+        background-color: var(--btn-hover);
+
+        &.running {
+          color: var(--success-fg);
+          background-color: var(--success-bg);
+        }
+      }
+    }
+
+    /* one-level drill-down: children indented behind a connector line */
+    .task-branch-children {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-left: 12px;
+      border-left: 2px solid rgba(var(--accent-color-rgb), 0.2);
+    }
+
+    .task-branch-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .task-branch-followup-btn,
+    .timeline-session-link {
+      align-self: flex-start;
+      background: transparent;
+      border: 1px solid var(--border-glass, var(--border-color));
+      border-radius: 12px;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-size: 11.5px;
+      color: var(--accent-color);
+      font-weight: 500;
+
+      &:hover {
+        background-color: var(--bg-sidebar-hover);
+        border-color: var(--accent-color);
+      }
+    }
+
+    .task-branch-followup {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        padding: 8px 10px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text-main);
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-family: inherit;
+
+        &:focus {
+          outline: none;
+          border-color: var(--accent-color);
+        }
+      }
+
+      .task-branch-followup-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+    }
+  }
+
   .timeline-reply {
     background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.85));
     border: 1px solid var(--border-glass, var(--border-color));
@@ -4442,6 +4938,11 @@ body {
             font-weight: 600;
           }
         }
+
+        .gh-opt-hint {
+          font-size: 11.5px;
+          color: var(--text-muted);
+        }
       }
 
       .gh-composer-actions {
@@ -4978,7 +5479,8 @@ body {
     }
 
     .panel-refresh-btn,
-    .panel-close-btn {
+    .panel-close-btn,
+    .panel-back-btn {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -4988,12 +5490,12 @@ body {
       color: var(--text-muted);
       cursor: pointer;
       transition: all 0.2s;
-      
+
       &:hover {
         background-color: var(--btn-hover);
         color: var(--text-main);
       }
-      
+
       svg {
         width: 14px;
         height: 14px;
@@ -5002,6 +5504,16 @@ body {
       &.spinning svg {
         animation: fb-spin 1s linear infinite;
       }
+    }
+  }
+
+  .panel-body-tasks {
+    padding: 12px 16px;
+    overflow-y: auto;
+
+    .task-dashboard-container {
+      padding: 0;
+      background-color: transparent;
     }
   }
 
