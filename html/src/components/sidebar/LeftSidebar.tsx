@@ -344,9 +344,7 @@ export function LeftSidebar({
                         {/* ── 对话 section: default / builtin workspace ─────────── */}
                         {(() => {
                             const defaultFolder = folders.find(f => f.id === 'default');
-                            const defaultWs = defaultFolder
-                                ? workspaces.find(w => w.id === 'default')
-                                : undefined;
+                            const defaultWs = defaultFolder ? workspaces.find(w => w.id === 'default') : undefined;
                             if (!defaultFolder || !defaultWs) return null;
                             const isActive = activeWorkspaceId === 'default';
                             const chatSessions = defaultFolder.sessions.filter(isChat);
@@ -386,13 +384,8 @@ export function LeftSidebar({
                                             >
                                                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                                             </svg>
-                                            <span class="ws-name">
-                                                {t('sidebar.conversations', language)}
-                                            </span>
-                                            <div
-                                                class="ws-actions"
-                                                onClick={(e: MouseEvent) => e.stopPropagation()}
-                                            >
+                                            <span class="ws-name">{t('sidebar.conversations', language)}</span>
+                                            <div class="ws-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
                                                 <button
                                                     class="ws-action-btn ws-action-add"
                                                     title={t('sidebar.newChat', language)}
@@ -433,8 +426,7 @@ export function LeftSidebar({
                                                             {'\u{1F4CB}'}
                                                         </span>
                                                         <span class="chat-title">
-                                                            {t('sidebar.subpage.tasks', language) ||
-                                                                '任务'}
+                                                            {t('sidebar.subpage.tasks', language) || '任务'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -473,270 +465,279 @@ export function LeftSidebar({
                             )}
 
                             {/* Empty state (only non-builtin workspaces count) */}
-                            {!workspacesLoading &&
-                                folders.filter(f => f.id !== 'default').length === 0 && (
-                                    <div class="ws-empty">
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="1.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                        </svg>
-                                        <span>{t('sidebar.empty', language)}</span>
-                                        <button class="ws-empty-add" onClick={onCreateWorkspace}>
-                                            {t('common.new', language)}
-                                        </button>
-                                    </div>
-                                )}
-
-                        {!workspacesLoading &&
-                            folders.filter(f => f.id !== 'default').map(folder => {
-                                const ws = workspaces.find(w => w.id === folder.id);
-                                const isHovered = hoveredId === folder.id;
-                                const isConfirmingDelete = confirmDeleteId.value === folder.id;
-                                const isActive = folder.id === activeWorkspaceId;
-                                const isDeleting = deletingId.value === folder.id;
-                                const isDropdownOpen = openDropdownWsId.value === folder.id;
-
-                                return (
-                                    <div
-                                        key={folder.id}
-                                        class={`project-node${isActive ? ' ws-active' : ''}${
-                                            isDeleting ? ' ws-deleting' : ''
-                                        }`}
-                                        style={isDropdownOpen ? 'z-index: 200' : ''}
-                                        onMouseEnter={() => setHoveredId(folder.id)}
-                                        onMouseLeave={() => {
-                                            setHoveredId(null);
-                                            if (confirmDeleteId.value === folder.id) confirmDeleteId.value = null;
-                                        }}
+                            {!workspacesLoading && folders.filter(f => f.id !== 'default').length === 0 && (
+                                <div class="ws-empty">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
                                     >
-                                        {isConfirmingDelete ? (
-                                            /* Delete confirm inline */
-                                            <div class="ws-delete-confirm">
-                                                <span>
-                                                    {t('sidebar.deleteConfirm', language, { name: folder.name })}
-                                                </span>
-                                                <button
-                                                    class="ws-del-yes"
-                                                    onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
-                                                >
-                                                    {t('common.delete', language)}
-                                                </button>
-                                                <button class="ws-del-no" onClick={cancelDelete}>
-                                                    {t('common.cancel', language)}
-                                                </button>
-                                            </div>
-                                        ) : (
+                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                    </svg>
+                                    <span>{t('sidebar.empty', language)}</span>
+                                    <button class="ws-empty-add" onClick={onCreateWorkspace}>
+                                        {t('common.new', language)}
+                                    </button>
+                                </div>
+                            )}
+
+                            {!workspacesLoading &&
+                                folders
+                                    .filter(f => f.id !== 'default')
+                                    .map(folder => {
+                                        const ws = workspaces.find(w => w.id === folder.id);
+                                        const isHovered = hoveredId === folder.id;
+                                        const isConfirmingDelete = confirmDeleteId.value === folder.id;
+                                        const isActive = folder.id === activeWorkspaceId;
+                                        const isDeleting = deletingId.value === folder.id;
+                                        const isDropdownOpen = openDropdownWsId.value === folder.id;
+
+                                        return (
                                             <div
-                                                class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
-                                                    draggedId === folder.id ? 'dragging' : ''
-                                                } ${
-                                                    dragOverId === folder.id && dragOverPosition === 'before'
-                                                        ? 'drag-over-before'
-                                                        : ''
-                                                } ${
-                                                    dragOverId === folder.id && dragOverPosition === 'after'
-                                                        ? 'drag-over-after'
-                                                        : ''
+                                                key={folder.id}
+                                                class={`project-node${isActive ? ' ws-active' : ''}${
+                                                    isDeleting ? ' ws-deleting' : ''
                                                 }`}
-                                                draggable={true}
-                                                onDragStart={e => handleDragStart(e, folder.id)}
-                                                onDragOver={e => handleDragOver(e, folder.id)}
-                                                onDragLeave={e => handleDragLeave(e, folder.id)}
-                                                onDrop={e => handleDrop(e, folder.id)}
-                                                onDragEnd={handleDragEnd}
-                                                onClick={() => {
-                                                    toggleFolder(folder.id);
-                                                    if (ws) onSelectWorkspace(ws);
+                                                style={isDropdownOpen ? 'z-index: 200' : ''}
+                                                onMouseEnter={() => setHoveredId(folder.id)}
+                                                onMouseLeave={() => {
+                                                    setHoveredId(null);
+                                                    if (confirmDeleteId.value === folder.id)
+                                                        confirmDeleteId.value = null;
                                                 }}
                                             >
-                                                <svg
-                                                    class="chevron"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2.5"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                >
-                                                    <polyline points="9 18 15 12 9 6" />
-                                                </svg>
-                                                <svg
-                                                    class="folder-icon"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                >
-                                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                </svg>
-                                                <span class="ws-name" title={ws?.path || folder.name}>
-                                                    {folder.name}
-                                                </span>
-
-                                                {/* Action buttons */}
-                                                <div
-                                                    class="ws-actions"
-                                                    draggable={false}
-                                                    onDragStart={e => e.preventDefault()}
-                                                    onClick={(e: MouseEvent) => e.stopPropagation()}
-                                                >
-                                                    {ws && (
-                                                        <div
-                                                            class="ws-add-dropdown"
-                                                            ref={isDropdownOpen ? dropdownRef : null}
+                                                {isConfirmingDelete ? (
+                                                    /* Delete confirm inline */
+                                                    <div class="ws-delete-confirm">
+                                                        <span>
+                                                            {t('sidebar.deleteConfirm', language, {
+                                                                name: folder.name,
+                                                            })}
+                                                        </span>
+                                                        <button
+                                                            class="ws-del-yes"
+                                                            onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
                                                         >
-                                                            <button
-                                                                class="ws-action-btn ws-action-add"
-                                                                title={t('sidebar.newSession', language) || '新建会话'}
-                                                                onClick={(e: MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    openDropdownWsId.value = isDropdownOpen
-                                                                        ? null
-                                                                        : folder.id;
-                                                                }}
-                                                            >
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2.5"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
+                                                            {t('common.delete', language)}
+                                                        </button>
+                                                        <button class="ws-del-no" onClick={cancelDelete}>
+                                                            {t('common.cancel', language)}
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div
+                                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
+                                                            draggedId === folder.id ? 'dragging' : ''
+                                                        } ${
+                                                            dragOverId === folder.id && dragOverPosition === 'before'
+                                                                ? 'drag-over-before'
+                                                                : ''
+                                                        } ${
+                                                            dragOverId === folder.id && dragOverPosition === 'after'
+                                                                ? 'drag-over-after'
+                                                                : ''
+                                                        }`}
+                                                        draggable={true}
+                                                        onDragStart={e => handleDragStart(e, folder.id)}
+                                                        onDragOver={e => handleDragOver(e, folder.id)}
+                                                        onDragLeave={e => handleDragLeave(e, folder.id)}
+                                                        onDrop={e => handleDrop(e, folder.id)}
+                                                        onDragEnd={handleDragEnd}
+                                                        onClick={() => {
+                                                            toggleFolder(folder.id);
+                                                            if (ws) onSelectWorkspace(ws);
+                                                        }}
+                                                    >
+                                                        <svg
+                                                            class="chevron"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2.5"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <polyline points="9 18 15 12 9 6" />
+                                                        </svg>
+                                                        <svg
+                                                            class="folder-icon"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                        </svg>
+                                                        <span class="ws-name" title={ws?.path || folder.name}>
+                                                            {folder.name}
+                                                        </span>
+
+                                                        {/* Action buttons */}
+                                                        <div
+                                                            class="ws-actions"
+                                                            draggable={false}
+                                                            onDragStart={e => e.preventDefault()}
+                                                            onClick={(e: MouseEvent) => e.stopPropagation()}
+                                                        >
+                                                            {ws && (
+                                                                <div
+                                                                    class="ws-add-dropdown"
+                                                                    ref={isDropdownOpen ? dropdownRef : null}
                                                                 >
-                                                                    <path d="M5 12h14M12 5v14" />
-                                                                </svg>
-                                                            </button>
-                                                            {isDropdownOpen && (
-                                                                <div class="ws-add-dropdown-menu">
                                                                     <button
-                                                                        class="ws-add-dropdown-item"
+                                                                        class="ws-action-btn ws-action-add"
+                                                                        title={
+                                                                            t('sidebar.newSession', language) ||
+                                                                            '新建会话'
+                                                                        }
                                                                         onClick={(e: MouseEvent) => {
                                                                             e.stopPropagation();
-                                                                            openDropdownWsId.value = null;
-                                                                            onTerminalCreate(
-                                                                                ws.id,
-                                                                                ws.terminalDir || ws.path
-                                                                            );
+                                                                            openDropdownWsId.value = isDropdownOpen
+                                                                                ? null
+                                                                                : folder.id;
                                                                         }}
                                                                     >
-                                                                        {t('sidebar.newTerminal', language)}
+                                                                        <svg
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            stroke-width="2.5"
+                                                                            stroke-linecap="round"
+                                                                            stroke-linejoin="round"
+                                                                        >
+                                                                            <path d="M5 12h14M12 5v14" />
+                                                                        </svg>
                                                                     </button>
-                                                                    <button
-                                                                        class="ws-add-dropdown-item"
-                                                                        onClick={(e: MouseEvent) => {
-                                                                            e.stopPropagation();
-                                                                            openDropdownWsId.value = null;
-                                                                            onChatCreate(ws.id);
-                                                                        }}
-                                                                    >
-                                                                        {t('sidebar.newChat', language) || '新建聊天'}
-                                                                    </button>
+                                                                    {isDropdownOpen && (
+                                                                        <div class="ws-add-dropdown-menu">
+                                                                            <button
+                                                                                class="ws-add-dropdown-item"
+                                                                                onClick={(e: MouseEvent) => {
+                                                                                    e.stopPropagation();
+                                                                                    openDropdownWsId.value = null;
+                                                                                    onTerminalCreate(
+                                                                                        ws.id,
+                                                                                        ws.terminalDir || ws.path
+                                                                                    );
+                                                                                }}
+                                                                            >
+                                                                                {t('sidebar.newTerminal', language)}
+                                                                            </button>
+                                                                            <button
+                                                                                class="ws-add-dropdown-item"
+                                                                                onClick={(e: MouseEvent) => {
+                                                                                    e.stopPropagation();
+                                                                                    openDropdownWsId.value = null;
+                                                                                    onChatCreate(ws.id);
+                                                                                }}
+                                                                            >
+                                                                                {t('sidebar.newChat', language) ||
+                                                                                    '新建聊天'}
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             )}
+                                                            {isHovered &&
+                                                                ws &&
+                                                                !ws.builtin && [
+                                                                    <button
+                                                                        class="ws-action-btn"
+                                                                        title={t('common.edit', language)}
+                                                                        onClick={(e: MouseEvent) => {
+                                                                            e.stopPropagation();
+                                                                            onRenameWorkspace(ws);
+                                                                        }}
+                                                                    >
+                                                                        <svg
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            stroke-width="2"
+                                                                            stroke-linecap="round"
+                                                                            stroke-linejoin="round"
+                                                                        >
+                                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                                        </svg>
+                                                                    </button>,
+                                                                    <button
+                                                                        class="ws-action-btn ws-action-delete"
+                                                                        title={t('common.delete', language)}
+                                                                        onClick={(e: MouseEvent) =>
+                                                                            handleDeleteClick(e, folder.id)
+                                                                        }
+                                                                    >
+                                                                        <svg
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            stroke-width="2"
+                                                                            stroke-linecap="round"
+                                                                            stroke-linejoin="round"
+                                                                        >
+                                                                            <polyline points="3 6 5 6 21 6" />
+                                                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                                                            <path d="M10 11v6M14 11v6" />
+                                                                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                                                        </svg>
+                                                                    </button>,
+                                                                ]}
                                                         </div>
-                                                    )}
-                                                    {isHovered &&
-                                                        ws &&
-                                                        !ws.builtin && [
-                                                            <button
-                                                                class="ws-action-btn"
-                                                                title={t('common.edit', language)}
-                                                                onClick={(e: MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    onRenameWorkspace(ws);
-                                                                }}
-                                                            >
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                >
-                                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                                                </svg>
-                                                            </button>,
-                                                            <button
-                                                                class="ws-action-btn ws-action-delete"
-                                                                title={t('common.delete', language)}
-                                                                onClick={(e: MouseEvent) =>
-                                                                    handleDeleteClick(e, folder.id)
-                                                                }
-                                                            >
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    stroke-width="2"
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                >
-                                                                    <polyline points="3 6 5 6 21 6" />
-                                                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                                    <path d="M10 11v6M14 11v6" />
-                                                                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                                </svg>
-                                                            </button>,
-                                                        ]}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {folder.expanded &&
-                                            (() => {
-                                                const chatSessions = folder.sessions.filter(isChat);
-                                                const termSessions = folder.sessions.filter(s => !isChat(s));
-                                                const wsObj = workspaces.find(w => w.id === folder.id);
-
-                                                // One unified list under each workspace: the 任务
-                                                // landing plus every 会话 / 终端 session, all using
-                                                // the same `.chat-item` row style (no group headers).
-                                                return (
-                                                    <div class="project-children">
-                                                        {/* 📋 任务 — default landing (task table) */}
-                                                        <div
-                                                            class={`chat-item chat-row-kind-task${
-                                                                isTaskView && activeWorkspaceId === folder.id
-                                                                    ? ' active'
-                                                                    : ''
-                                                            }`}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                if (wsObj) onSelectWorkspace(wsObj);
-                                                            }}
-                                                        >
-                                                            <div class="chat-item-left">
-                                                                <span
-                                                                    class="chat-sidebar-avatar chat-task-icon"
-                                                                    aria-hidden="true"
-                                                                >
-                                                                    {'\u{1F4CB}'}
-                                                                </span>
-                                                                <span class="chat-title">
-                                                                    {t('sidebar.subpage.tasks', language) || '任务'}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* 会话 (chat) + 终端 (terminal) sessions */}
-                                                        {chatSessions.map(renderSession)}
-                                                        {termSessions.map(renderSession)}
                                                     </div>
-                                                );
-                                            })()}
-                                    </div>
-                                );
-                            })}
+                                                )}
+
+                                                {folder.expanded &&
+                                                    (() => {
+                                                        const chatSessions = folder.sessions.filter(isChat);
+                                                        const termSessions = folder.sessions.filter(s => !isChat(s));
+                                                        const wsObj = workspaces.find(w => w.id === folder.id);
+
+                                                        // One unified list under each workspace: the 任务
+                                                        // landing plus every 会话 / 终端 session, all using
+                                                        // the same `.chat-item` row style (no group headers).
+                                                        return (
+                                                            <div class="project-children">
+                                                                {/* 📋 任务 — default landing (task table) */}
+                                                                <div
+                                                                    class={`chat-item chat-row-kind-task${
+                                                                        isTaskView && activeWorkspaceId === folder.id
+                                                                            ? ' active'
+                                                                            : ''
+                                                                    }`}
+                                                                    onClick={(e: MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        if (wsObj) onSelectWorkspace(wsObj);
+                                                                    }}
+                                                                >
+                                                                    <div class="chat-item-left">
+                                                                        <span
+                                                                            class="chat-sidebar-avatar chat-task-icon"
+                                                                            aria-hidden="true"
+                                                                        >
+                                                                            {'\u{1F4CB}'}
+                                                                        </span>
+                                                                        <span class="chat-title">
+                                                                            {t('sidebar.subpage.tasks', language) ||
+                                                                                '任务'}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 会话 (chat) + 终端 (terminal) sessions */}
+                                                                {chatSessions.map(renderSession)}
+                                                                {termSessions.map(renderSession)}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                            </div>
+                                        );
+                                    })}
                         </div>
                     </Fragment>
                 ) : (
