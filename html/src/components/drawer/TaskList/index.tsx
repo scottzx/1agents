@@ -16,13 +16,25 @@ const cachedTasks = signal<Record<string, Task[]>>({});
 export interface TaskListProps {
     workspaceId: string;
     onSelectSession?: (session: Session) => void;
+    /** Optional controlled state: when provided, TaskList uses these instead of internal state. */
+    selectedTaskId?: string | null;
+    onTaskSelect?: (taskId: string | null) => void;
 }
 
-export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
+export function TaskList({
+    workspaceId,
+    onSelectSession,
+    selectedTaskId: externalSelectedTaskId,
+    onTaskSelect,
+}: TaskListProps) {
     const [tasks, setTasksState] = useState<Task[]>(cachedTasks.value[workspaceId] || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [internalSelectedTaskId, setInternalSelectedTaskId] = useState<string | null>(null);
+
+    const isControlled = onTaskSelect !== undefined;
+    const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
+    const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showForm = useSignal(false);
     const view = useSignal<'overview' | 'tasks' | 'requirements' | 'milestone'>('tasks');
 
@@ -129,10 +141,14 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                 workspaceId={workspaceId}
                 taskId={selectedTaskId}
                 allTasks={tasks}
-                onBack={() => {
-                    setSelectedTaskId(null);
-                    fetchTasks();
-                }}
+                onBack={
+                    isControlled
+                        ? undefined
+                        : () => {
+                              setSelectedTaskId(null);
+                              fetchTasks();
+                          }
+                }
                 onDelete={handleDeleteTask}
                 onNavigate={setSelectedTaskId}
                 onSelectSession={onSelectSession}

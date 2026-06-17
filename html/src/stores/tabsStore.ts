@@ -219,12 +219,14 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
         activeModulePath.value = '';
         persistDrawerTab('none');
     } else {
-        // Expand drawer with smart width: wide for channels/git/files,
-        // narrow otherwise.
+        // Expand drawer with smart width: widest for tasks, wide for
+        // channels/git/files, narrow otherwise.
         const smartWidth =
-            tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
-                ? Math.max(ui.rightPanelWidth.value, 450)
-                : 320;
+            tab === 'tasks'
+                ? Math.max(ui.rightPanelWidth.value, 500)
+                : tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
+                  ? Math.max(ui.rightPanelWidth.value, 450)
+                  : 320;
 
         // Module-backed tabs get their entry path; non-module tabs clear it.
         const mod = getModuleByTab(tab);
