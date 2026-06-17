@@ -24,7 +24,10 @@ function getBackendPort() {
     }
 }
 
-const backendPort = getBackendPort();
+// BACKEND_PORT env overrides the daemon.json lookup so a dev server can be
+// pointed at an isolated backend instance (e.g. a feature build) without
+// touching the shared ~/.1agents/daemon.json.
+const backendPort = process.env.BACKEND_PORT || getBackendPort();
 
 // Find the first free port at or above `startPort` so `yarn start` never
 // crashes with EADDRINUSE — it just rolls forward to the next open port.

@@ -3441,6 +3441,112 @@ body {
     padding-left: 16px;
   }
 
+  /* A session branch groups its replies as one top-level thread; follow-ups
+     drill down exactly one level inside it. */
+  .task-branch {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(var(--accent-color-rgb), 0.25);
+    border-radius: var(--bento-radius, 12px);
+    background-color: rgba(var(--accent-color-rgb), 0.03);
+
+    .task-branch-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+
+      .task-branch-badge {
+        font-weight: 600;
+        color: var(--accent-color);
+      }
+      .task-branch-agent {
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+      }
+      .task-branch-status {
+        margin-left: auto;
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+        background-color: var(--btn-hover);
+
+        &.running {
+          color: var(--success-fg);
+          background-color: var(--success-bg);
+        }
+      }
+    }
+
+    /* one-level drill-down: children indented behind a connector line */
+    .task-branch-children {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-left: 12px;
+      border-left: 2px solid rgba(var(--accent-color-rgb), 0.2);
+    }
+
+    .task-branch-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .task-branch-followup-btn,
+    .timeline-session-link {
+      align-self: flex-start;
+      background: transparent;
+      border: 1px solid var(--border-glass, var(--border-color));
+      border-radius: 12px;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-size: 11.5px;
+      color: var(--accent-color);
+      font-weight: 500;
+
+      &:hover {
+        background-color: var(--bg-sidebar-hover);
+        border-color: var(--accent-color);
+      }
+    }
+
+    .task-branch-followup {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        padding: 8px 10px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text-main);
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-family: inherit;
+
+        &:focus {
+          outline: none;
+          border-color: var(--accent-color);
+        }
+      }
+
+      .task-branch-followup-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+    }
+  }
+
   .timeline-reply {
     background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.85));
     border: 1px solid var(--border-glass, var(--border-color));
@@ -4129,6 +4235,11 @@ body {
             color: var(--accent-color);
             font-weight: 600;
           }
+        }
+
+        .gh-opt-hint {
+          font-size: 11.5px;
+          color: var(--text-muted);
         }
       }
 

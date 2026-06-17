@@ -667,11 +667,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 // allowed, opening or following up sessions is rejected with 422.
 func (h *Handler) handleTaskReplyCreate(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Text      string `json:"text"`
-		Mode      string `json:"mode"`
-		InReplyTo string `json:"inReplyTo"`
-		Author    string `json:"author"`
-		AgentType string `json:"agentType"`
+		Text       string `json:"text"`
+		Mode       string `json:"mode"`
+		InReplyTo  string `json:"inReplyTo"`
+		SessionRef string `json:"sessionRef"`
+		Author     string `json:"author"`
+		AgentType  string `json:"agentType"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -709,11 +710,12 @@ func (h *Handler) handleTaskReplyCreate(w http.ResponseWriter, r *http.Request, 
 		authorName = "user"
 	}
 	reply, err := h.tasksStore.AppendReply(id, Reply{
-		Author:    Author{Kind: "user", Name: authorName},
-		AgentType: body.AgentType,
-		Text:      body.Text,
-		InReplyTo: body.InReplyTo,
-		Mode:      mode,
+		Author:     Author{Kind: "user", Name: authorName},
+		AgentType:  body.AgentType,
+		Text:       body.Text,
+		InReplyTo:  body.InReplyTo,
+		SessionRef: body.SessionRef,
+		Mode:       mode,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
