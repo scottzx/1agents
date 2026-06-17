@@ -219,7 +219,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 sessionName={activeSession?.name || ''}
                                 tmuxMouseOn={tmuxMouseOn}
                                 onTmuxMouseToggle={sess.toggleTmuxMouse}
-                                isTerminalView={primaryView.kind === 'terminal'}
+                                isTerminalView={activeTabId === 'terminal' && primaryView.kind === 'terminal'}
                                 language={language}
                                 moduleNav={tabsStore.buildModuleNav()}
                                 hasChatSession={folders.some(
