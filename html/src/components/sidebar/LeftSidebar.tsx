@@ -371,6 +371,7 @@ export function LeftSidebar({
                             if (!defaultFolder || !defaultWs) return null;
                             const isActive = activeWorkspaceId === 'default';
                             const chatSessions = defaultFolder.sessions.filter(isChat);
+                            const termSessions = defaultFolder.sessions.filter(s => !isChat(s));
                             return (
                                 <div class="workspace-section">
                                     <div
@@ -454,7 +455,8 @@ export function LeftSidebar({
                                                     </div>
                                                 </div>
                                                 {chatSessions.map(renderSession)}
-                                                {chatSessions.length === 0 && (
+                                                {termSessions.map(renderSession)}
+                                                {chatSessions.length === 0 && termSessions.length === 0 && (
                                                     <div
                                                         class="chat-item"
                                                         style="opacity:0.5;cursor:default;pointer-events:none;"
