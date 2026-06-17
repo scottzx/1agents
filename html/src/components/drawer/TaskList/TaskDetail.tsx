@@ -7,6 +7,10 @@ import type { AgentType, ChatSession, Session } from '../../types';
 import { LINK_REL_LABELS, PRIORITY_LABELS, STATUS_LABELS } from './constants';
 import type { LinkRel, Reply, ReplyMode, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
+import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
+import { taskPermalink } from '../../../stores/taskNavStore';
+import * as wsStore from '../../../stores/workspaceStore';
+import * as ui from '../../../stores/uiStore';
 
 interface TaskDetailProps {
     workspaceId: string;
@@ -255,6 +259,19 @@ export function TaskDetail({
     }
 
     const closed = task.issueState === 'closed';
+    // Markdown context for this project: bare #N links resolve to this project
+    // and link only when the number exists (GitHub-style existence check).
+    const projectName = wsStore.workspaces.value.find(w => w.id === workspaceId)?.name || '';
+    const mdCtx: MarkdownContext = {
+        projectName,
+        knownNumbers: new Set(allTasks.map(t => t.number).filter((n): n is number => !!n)),
+    };
+    const copyPermalink = () => {
+        if (!projectName || !task.number) return;
+        const url = taskPermalink(projectName, task.number);
+        void navigator.clipboard?.writeText(url);
+        ui.showToast(`已复制链接：${url}`);
+    };
     const deps = allTasks.filter(t => task.dependsOn?.includes(t.id));
     const subtasks = allTasks.filter(t => t.parentId === task.id);
     const replies = task.replies || [];
@@ -292,6 +309,11 @@ export function TaskDetail({
                     {task.title} <span class="gh-number">#{task.number || ''}</span>
                 </h3>
                 <div class="gh-actions">
+                    {task.number ? (
+                        <button class="task-permalink-btn" title="复制任务永久链接" onClick={copyPermalink}>
+                            🔗 链接
+                        </button>
+                    ) : null}
                     <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
                         {closed ? '重新打开' : '关闭 Task'}
                     </button>
@@ -380,7 +402,12 @@ export function TaskDetail({
                                             </div>
                                         </div>
                                     ) : task.description ? (
-                                        <pre class="task-desc-text">{task.description}</pre>
+                                        <div
+                                            class="markdown-body task-desc-md"
+                                            dangerouslySetInnerHTML={{
+                                                __html: renderMarkdown(task.description, mdCtx),
+                                            }}
+                                        />
                                     ) : (
                                         <span class="task-desc-empty">（暂无描述，点击编辑补充任务背景）</span>
                                     )}
@@ -425,7 +452,12 @@ export function TaskDetail({
                                             </div>
                                         </div>
                                     ) : task.acceptanceCriteria ? (
-                                        <pre class="task-desc-text">{task.acceptanceCriteria}</pre>
+                                        <div
+                                            class="markdown-body task-desc-md"
+                                            dangerouslySetInnerHTML={{
+                                                __html: renderMarkdown(task.acceptanceCriteria, mdCtx),
+                                            }}
+                                        />
                                     ) : (
                                         <span class="task-desc-empty">
                                             （未设置 —— agent 执行完会按此自查，建议补充可验证的标准）
@@ -458,7 +490,12 @@ export function TaskDetail({
                                                 </div>
                                             </div>
                                             <div class="gh-comment-body">
-                                                <div class="timeline-reply-text">{rp.text}</div>
+                                                <div
+                                                    class="markdown-body timeline-reply-text"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: renderMarkdown(rp.text, mdCtx),
+                                                    }}
+                                                />
                                                 {rp.sessionRef && (
                                                     <div style={{ marginTop: '12px' }}>
                                                         <button
@@ -591,10 +628,13 @@ export function TaskDetail({
                                                 setReplyText((e.target as HTMLTextAreaElement).value)
                                             }
                                         />
+                                    ) : replyText.trim() ? (
+                                        <div
+                                            class="gh-preview-box markdown-body"
+                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(replyText, mdCtx) }}
+                                        />
                                     ) : (
-                                        <div class="gh-preview-box">
-                                            {replyText.trim() ? replyText : 'Nothing to preview'}
-                                        </div>
+                                        <div class="gh-preview-box">Nothing to preview</div>
                                     )}
                                 </div>
 

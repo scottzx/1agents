@@ -68,6 +68,25 @@ func (db *DB) GetProject(id string) (Project, bool, error) {
 	return p, true, nil
 }
 
+// GetProjectByName returns a project by its display name. Names are not
+// guaranteed unique (they default to the workspace directory basename), so on
+// collision the most recently updated row wins; callers needing an exact match
+// should resolve by id via GetProject. Returns ok=false when no project carries
+// that name.
+func (db *DB) GetProjectByName(name string) (Project, bool, error) {
+	row := db.sql.QueryRow(
+		`SELECT id, name, workspace_path, status, created_at, updated_at
+		 FROM projects WHERE name = ? ORDER BY updated_at DESC LIMIT 1`, name)
+	p, err := scanProject(row)
+	if err == sql.ErrNoRows {
+		return Project{}, false, nil
+	}
+	if err != nil {
+		return Project{}, false, err
+	}
+	return p, true, nil
+}
+
 // ListProjects returns all projects, most recently updated first.
 func (db *DB) ListProjects() ([]Project, error) {
 	rows, err := db.sql.Query(

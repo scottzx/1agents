@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useSignal, signal } from '@preact/signals';
 
 import type { Session } from '../../types';
+import * as taskNav from '../../../stores/taskNavStore';
 import { CreateTaskForm } from './CreateTaskForm';
 import type { Task } from './types';
 import { TaskDetail } from './TaskDetail';
@@ -81,6 +82,17 @@ export function TaskList({
         setSelectedTaskId(null);
         setTasksState(cachedTasks.value[workspaceId] || []);
     }, [workspaceId]);
+
+    // Permalink / autolink navigation: open the requested task once a request
+    // targeting this workspace lands. Reading `.value` here subscribes the
+    // component, so the effect re-fires when a navigation is queued.
+    const pendingNav = taskNav.pendingTaskNav.value;
+    useEffect(() => {
+        if (pendingNav && pendingNav.workspaceId === workspaceId) {
+            setSelectedTaskId(pendingNav.taskId);
+            taskNav.consumePendingTaskNav();
+        }
+    }, [pendingNav, workspaceId]);
 
     // Drag-to-retire on the Kanban board. The backend only accepts terminal
     // states here, so this can mark a card done or cancelled but never run it.

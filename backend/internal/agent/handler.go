@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -405,6 +406,38 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// HandleTaskResolve resolves a permalink reference to a task:
+//
+//	GET /api/agent/tasks/resolve?project={name|id}&number={n}
+//	  → {workspaceId, task}   (404 when the project or number is unknown)
+//
+// The frontend uses it to turn `#N` / `项目名#N` references and
+// /{project}/tasks/{number} deep links into an in-app task view. project may be
+// a display name or a project id; number is the per-project short id (#N).
+func (h *Handler) HandleTaskResolve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	project := r.URL.Query().Get("project")
+	numStr := r.URL.Query().Get("number")
+	number, err := strconv.Atoi(numStr)
+	if project == "" || err != nil || number <= 0 {
+		http.Error(w, "project and a positive number are required", http.StatusBadRequest)
+		return
+	}
+	task, workspaceID, ok, err := h.tasksStore.ResolveByNumber(project, number)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{"workspaceId": workspaceID, "task": task})
 }
 
 // HandleTasksItem handles /api/agent/tasks/{id} and its sub-resources:

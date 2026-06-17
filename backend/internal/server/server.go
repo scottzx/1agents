@@ -130,13 +130,14 @@ func NewRouter(cfg *config.Config) http.Handler {
 			selfBaseURL := "http://127.0.0.1:" + selfPort
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes) // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)   // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)  // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem) // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)        // GET, POST
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)       // DELETE /{id}
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)         // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)    // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)      // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)     // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)    // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)           // GET, POST
+			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve) // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)          // DELETE /{id}
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)            // WebSocket upgrade & bridge
 		}
 	}
 
@@ -450,6 +451,18 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Proxy API ────────────────────────────────────────────────────────────
 	mux.HandleFunc("/api/proxy", handleProxy)
+
+	// ── Task permalink deep links ────────────────────────────────────────────
+	// GitHub-style task URLs: /{project}/tasks/{number}. There is no such file
+	// on disk, so serve the SPA index and let the frontend resolve the
+	// reference (switch project + open the task). The {number} wildcard matches
+	// any segment; the SPA shows a friendly not-found for non-numeric/missing
+	// ids. This pattern is strictly more specific than the "/" catch-all and
+	// has 3 fixed-shape segments, so it never shadows /api/* or real assets.
+	serveSPAIndex := func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
+	}
+	mux.HandleFunc("GET /{project}/tasks/{number}", serveSPAIndex)
 
 	// ── Static frontend assets ───────────────────────────────────────────────
 	// This catch-all must be registered last so it does not shadow the routes
