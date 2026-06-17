@@ -69,9 +69,15 @@ export function NewChatHome({
     // useSignal (not useState) for the mode toggle — plain useState toggles
     // can fail to re-render under @preact/signals.
     const mode = useSignal<'chat' | 'terminal'>('chat');
-    // Frontend-only pre-selection. Switching the actual workspace context is
-    // deferred until the user sends a message (see handleSubmit → onSubmitChat).
-    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(activeWorkspaceId);
+    // Per-mode workspace selection: assistant mode always targets 'default';
+    // project mode tracks the user's picker choice separately.
+    const [projectWsId, setProjectWsId] = useState(
+        activeWorkspaceId !== 'default'
+            ? activeWorkspaceId
+            : workspaces.find(w => w.id !== 'default' && !w.builtin)?.id || activeWorkspaceId
+    );
+    const selectedWorkspaceId = sidebarMode.value === 'assistant' ? 'default' : projectWsId;
+    const setSelectedWorkspaceId = (id: string) => setProjectWsId(id);
     const wsDropdownOpen = useSignal(false);
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
