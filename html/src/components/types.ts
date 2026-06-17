@@ -185,6 +185,7 @@ export interface Workspace {
     terminalDir?: string;
     chatChannel?: string;
     defaultAgent?: AgentType;
+    builtin?: boolean;
 }
 
 export type WorkspaceStatus = 'active' | 'inactive' | 'planning' | 'archived';

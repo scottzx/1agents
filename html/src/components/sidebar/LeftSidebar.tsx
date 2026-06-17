@@ -1,4 +1,4 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat, isTerminal } from '../types';
@@ -238,6 +238,22 @@ export function LeftSidebar({
         }, 300);
     };
 
+    const renderSession = (session: Session) => (
+        <SessionRow
+            key={session.id}
+            session={session}
+            selected={isSelectedSession(session)}
+            killing={killingSessionId.value === session.id}
+            isHovered={hoveredSessionId === session.id}
+            taskTitles={taskTitles}
+            language={language}
+            onSelect={onSelectSession}
+            onKill={handleSessionKill}
+            onRename={onRenameSession}
+            onHoverChange={setHoveredSessionId}
+        />
+    );
+
     return (
         <aside
             class={`left-sidebar ${leftSidebarOpen ? '' : 'collapsed'}`}
@@ -324,42 +340,161 @@ export function LeftSidebar({
 
             <div class="sidebar-scroll">
                 {!moduleNav ? (
-                    <div class="workspace-section">
-                        <div class="section-header">
-                            <span>Projects</span>
-                        </div>
+                    <Fragment>
+                        {/* ── 对话 section: default / builtin workspace ─────────── */}
+                        {(() => {
+                            const defaultFolder = folders.find(f => f.id === 'default');
+                            const defaultWs = defaultFolder
+                                ? workspaces.find(w => w.id === 'default')
+                                : undefined;
+                            if (!defaultFolder || !defaultWs) return null;
+                            const isActive = activeWorkspaceId === 'default';
+                            const chatSessions = defaultFolder.sessions.filter(isChat);
+                            return (
+                                <div class="conversations-section">
+                                    <div
+                                        class={`project-node${isActive ? ' ws-active' : ''}`}
+                                        onMouseEnter={() => setHoveredId('default')}
+                                        onMouseLeave={() => setHoveredId(null)}
+                                    >
+                                        <div
+                                            class={`project-folder ${defaultFolder.expanded ? 'expanded' : ''}`}
+                                            onClick={() => {
+                                                toggleFolder('default');
+                                                onSelectWorkspace(defaultWs);
+                                            }}
+                                        >
+                                            <svg
+                                                class="chevron"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="9 18 15 12 9 6" />
+                                            </svg>
+                                            <svg
+                                                class="folder-icon"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                                            </svg>
+                                            <span class="ws-name">
+                                                {t('sidebar.conversations', language)}
+                                            </span>
+                                            <div
+                                                class="ws-actions"
+                                                onClick={(e: MouseEvent) => e.stopPropagation()}
+                                            >
+                                                <button
+                                                    class="ws-action-btn ws-action-add"
+                                                    title={t('sidebar.newChat', language)}
+                                                    onClick={(e: MouseEvent) => {
+                                                        e.stopPropagation();
+                                                        onChatCreate('default');
+                                                    }}
+                                                >
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2.5"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M5 12h14M12 5v14" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {defaultFolder.expanded && (
+                                            <div class="project-children">
+                                                <div
+                                                    class={`chat-item chat-row-kind-task${
+                                                        isTaskView && isActive ? ' active' : ''
+                                                    }`}
+                                                    onClick={(e: MouseEvent) => {
+                                                        e.stopPropagation();
+                                                        onSelectWorkspace(defaultWs);
+                                                    }}
+                                                >
+                                                    <div class="chat-item-left">
+                                                        <span
+                                                            class="chat-sidebar-avatar chat-task-icon"
+                                                            aria-hidden="true"
+                                                        >
+                                                            {'\u{1F4CB}'}
+                                                        </span>
+                                                        <span class="chat-title">
+                                                            {t('sidebar.subpage.tasks', language) ||
+                                                                '任务'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {chatSessions.map(renderSession)}
+                                                {chatSessions.length === 0 && (
+                                                    <div
+                                                        class="chat-item"
+                                                        style="opacity:0.5;cursor:default;pointer-events:none;"
+                                                    >
+                                                        <div class="chat-item-left">
+                                                            <span class="chat-title">
+                                                                {t('sidebar.noChats', language)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
-                        {/* Loading skeleton */}
-                        {workspacesLoading && (
-                            <div class="ws-skeleton">
-                                <div class="ws-skeleton-item" />
-                                <div class="ws-skeleton-item" style="width:75%" />
-                                <div class="ws-skeleton-item" style="width:60%" />
+                        <div class="workspace-section">
+                            <div class="section-header">
+                                <span>Projects</span>
                             </div>
-                        )}
 
-                        {/* Empty state */}
-                        {!workspacesLoading && folders.length === 0 && (
-                            <div class="ws-empty">
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="1.5"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                </svg>
-                                <span>{t('sidebar.empty', language)}</span>
-                                <button class="ws-empty-add" onClick={onCreateWorkspace}>
-                                    {t('common.new', language)}
-                                </button>
-                            </div>
-                        )}
+                            {/* Loading skeleton */}
+                            {workspacesLoading && (
+                                <div class="ws-skeleton">
+                                    <div class="ws-skeleton-item" />
+                                    <div class="ws-skeleton-item" style="width:75%" />
+                                    <div class="ws-skeleton-item" style="width:60%" />
+                                </div>
+                            )}
+
+                            {/* Empty state (only non-builtin workspaces count) */}
+                            {!workspacesLoading &&
+                                folders.filter(f => f.id !== 'default').length === 0 && (
+                                    <div class="ws-empty">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                        </svg>
+                                        <span>{t('sidebar.empty', language)}</span>
+                                        <button class="ws-empty-add" onClick={onCreateWorkspace}>
+                                            {t('common.new', language)}
+                                        </button>
+                                    </div>
+                                )}
 
                         {!workspacesLoading &&
-                            folders.map(folder => {
+                            folders.filter(f => f.id !== 'default').map(folder => {
                                 const ws = workspaces.find(w => w.id === folder.id);
                                 const isHovered = hoveredId === folder.id;
                                 const isConfirmingDelete = confirmDeleteId.value === folder.id;
@@ -509,7 +644,8 @@ export function LeftSidebar({
                                                         </div>
                                                     )}
                                                     {isHovered &&
-                                                        ws && [
+                                                        ws &&
+                                                        !ws.builtin && [
                                                             <button
                                                                 class="ws-action-btn"
                                                                 title={t('common.edit', language)}
@@ -558,25 +694,6 @@ export function LeftSidebar({
 
                                         {folder.expanded &&
                                             (() => {
-                                                // Three fixed sub-pages per workspace: 📋 任务
-                                                // (default landing) + 💬 聊天 / 🖥️ 终端 groups,
-                                                // each holding its own session list.
-                                                const renderSession = (session: Session) => (
-                                                    <SessionRow
-                                                        key={session.id}
-                                                        session={session}
-                                                        selected={isSelectedSession(session)}
-                                                        killing={killingSessionId.value === session.id}
-                                                        isHovered={hoveredSessionId === session.id}
-                                                        taskTitles={taskTitles}
-                                                        language={language}
-                                                        onSelect={onSelectSession}
-                                                        onKill={handleSessionKill}
-                                                        onRename={onRenameSession}
-                                                        onHoverChange={setHoveredSessionId}
-                                                    />
-                                                );
-
                                                 const chatSessions = folder.sessions.filter(isChat);
                                                 const termSessions = folder.sessions.filter(s => !isChat(s));
                                                 const wsObj = workspaces.find(w => w.id === folder.id);
@@ -620,7 +737,8 @@ export function LeftSidebar({
                                     </div>
                                 );
                             })}
-                    </div>
+                        </div>
+                    </Fragment>
                 ) : (
                     <ModuleNav
                         manifest={moduleNav.manifest}

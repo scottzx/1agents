@@ -12,8 +12,9 @@ import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
 
 /** Roles offered at creation. Dropdown-driven so more roles slot in later
- *  (PMO / Executor / Verifier). */
-type ChatRole = 'general' | 'pm';
+ *  (PMO / Executor / Verifier). 'pmo' is derived (not user-selectable): it
+ *  is emitted when 'pm' is chosen with the default (cross-project) workspace. */
+type ChatRole = 'general' | 'pm' | 'pmo';
 
 const ROLE_OPTIONS: { value: ChatRole; labelKey: string }[] = [
     { value: 'general', labelKey: 'newchat.role.general' },
@@ -140,7 +141,11 @@ export function NewChatHome({
         }
 
         if (!trimmed) return;
-        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed, selectedRole);
+        const effectiveRole: ChatRole =
+            (activeWorkspace.id === 'default' || activeWorkspace.builtin) && selectedRole === 'pm'
+                ? 'pmo'
+                : selectedRole;
+        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed, effectiveRole);
         setPrompt('');
         attach.clear();
     };
@@ -173,7 +178,11 @@ export function NewChatHome({
                         >
                             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                         </svg>
-                        <span class="ws-name">{activeWorkspace.name}</span>
+                        <span class="ws-name">
+                            {activeWorkspace.id === 'default' || activeWorkspace.builtin
+                                ? t('newchat.noProject', language)
+                                : activeWorkspace.name}
+                        </span>
                         <svg
                             class={`chevron ${wsDropdownOpen.value ? 'open' : ''}`}
                             viewBox="0 0 24 24"
@@ -189,28 +198,62 @@ export function NewChatHome({
                     {wsDropdownOpen.value && (
                         <div class="new-chat-ws-dropdown">
                             <div class="dropdown-header">切换项目工作空间</div>
-                            {workspaces.map(ws => (
-                                <button
-                                    key={ws.id}
-                                    class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
-                                    onClick={() => {
-                                        setSelectedWorkspaceId(ws.id);
-                                        wsDropdownOpen.value = false;
-                                    }}
-                                >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        style="width: 14px; height: 14px; opacity: 0.7;"
+                            {/* Default / builtin workspace — shown first as "无项目（跨项目）" */}
+                            {workspaces
+                                .filter(ws => ws.id === 'default' || ws.builtin)
+                                .map(ws => (
+                                    <button
+                                        key={ws.id}
+                                        class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setSelectedWorkspaceId(ws.id);
+                                            wsDropdownOpen.value = false;
+                                        }}
                                     >
-                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                    </svg>
-                                    <span class="item-name">{ws.name}</span>
-                                    {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
-                                </button>
-                            ))}
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            style="width: 14px; height: 14px; opacity: 0.7;"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                                        </svg>
+                                        <span class="item-name">{t('newchat.noProject', language)}</span>
+                                        {ws.id === selectedWorkspaceId && (
+                                            <span class="checkmark">✓</span>
+                                        )}
+                                    </button>
+                                ))}
+                            {/* Regular (non-builtin) workspaces */}
+                            {workspaces
+                                .filter(ws => ws.id !== 'default' && !ws.builtin)
+                                .map(ws => (
+                                    <button
+                                        key={ws.id}
+                                        class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setSelectedWorkspaceId(ws.id);
+                                            wsDropdownOpen.value = false;
+                                        }}
+                                    >
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            style="width: 14px; height: 14px; opacity: 0.7;"
+                                        >
+                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                        </svg>
+                                        <span class="item-name">{ws.name}</span>
+                                        {ws.id === selectedWorkspaceId && (
+                                            <span class="checkmark">✓</span>
+                                        )}
+                                    </button>
+                                ))}
                             <button
                                 class="dropdown-item open-folder"
                                 onClick={() => {
