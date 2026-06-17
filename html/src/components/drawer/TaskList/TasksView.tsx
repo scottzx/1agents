@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useSignal } from '@preact/signals';
 
+import { CalendarBoard } from './CalendarBoard';
 import { KanbanBoard } from './KanbanBoard';
 import { TaskFilterBar } from './TaskFilterBar';
 import type { TaskView } from './TaskFilterBar';
@@ -47,7 +48,7 @@ export function TasksView({ tasks, loading, onSelectTask, onDeleteTask, onPatchT
                 taskView={taskView}
             />
 
-            {taskView.value === 'list' ? (
+            {taskView.value === 'list' && (
                 <TaskTable
                     tasks={filtered}
                     allTasks={tasks}
@@ -56,13 +57,17 @@ export function TasksView({ tasks, loading, onSelectTask, onDeleteTask, onPatchT
                     onDeleteTask={onDeleteTask}
                     onPatchTask={onPatchTask}
                 />
-            ) : (
+            )}
+            {taskView.value === 'board' && (
                 <KanbanBoard
                     tasks={filtered}
                     loading={loading}
                     onSelectTask={onSelectTask}
                     onStatusChange={onStatusChange}
                 />
+            )}
+            {taskView.value === 'calendar' && (
+                <CalendarBoard tasks={filtered} loading={loading} onSelectTask={onSelectTask} />
             )}
         </div>
     );

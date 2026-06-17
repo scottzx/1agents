@@ -2141,6 +2141,199 @@ body {
   }
 }
 
+/* ── Calendar view (perpetual month grid) ── */
+.task-calendar {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .calendar-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    .calendar-title {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+
+      .calendar-year {
+        font-size: 14px;
+        color: var(--text-secondary);
+        font-weight: 600;
+      }
+      .calendar-month {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--text-main);
+      }
+    }
+
+    .calendar-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+
+      button {
+        min-width: 30px;
+        height: 30px;
+        padding: 0 10px;
+        font-size: 14px;
+        line-height: 1;
+        border: 1px solid var(--border-color);
+        border-radius: var(--bento-radius-sm, 8px);
+        background-color: var(--bg-card);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: var(--bento-transition, all 0.15s);
+
+        &:hover {
+          background-color: var(--btn-hover);
+          color: var(--text-main);
+        }
+      }
+      .calendar-today-btn {
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .calendar-weekdays {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+
+    .calendar-weekday {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 2px 0;
+    }
+  }
+
+  .calendar-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 6px;
+    overflow-y: auto;
+  }
+
+  .calendar-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 88px;
+    padding: 6px;
+    background-color: rgba(var(--bg-panel), 0.5);
+    border: 1px solid var(--border-glass, var(--border-color));
+    border-radius: var(--bento-radius-sm, 8px);
+    overflow: hidden;
+    transition: border-color 0.2s, background-color 0.2s;
+
+    &.is-other-month {
+      opacity: 0.45;
+    }
+    &.is-today {
+      border-color: var(--accent-color);
+      background-color: var(--accent-light);
+
+      .calendar-cell-day {
+        color: var(--accent-color);
+        font-weight: 800;
+      }
+    }
+
+    .calendar-cell-date {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+
+      .calendar-cell-day {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+      .calendar-cell-count {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-muted);
+        background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.8));
+        border: 1px solid var(--border-glass, var(--border-color));
+        border-radius: 10px;
+        padding: 0 6px;
+      }
+    }
+
+    .calendar-cell-events {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .calendar-event {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      padding: 3px 6px;
+      text-align: left;
+      font-size: 11.5px;
+      border: none;
+      border-left: 3px solid var(--text-muted);
+      border-radius: 4px;
+      background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.85));
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background-color 0.15s, transform 0.15s;
+
+      &:hover {
+        transform: translateX(2px);
+        background-color: var(--btn-hover);
+      }
+
+      .calendar-event-num {
+        flex-shrink: 0;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--text-muted);
+      }
+      .calendar-event-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      &.status-running {
+        border-left-color: var(--success-fg);
+      }
+      &.status-completed {
+        border-left-color: var(--accent-color);
+      }
+      &.status-failed,
+      &.status-cancelled {
+        border-left-color: var(--danger-fg);
+      }
+      &.status-blocked {
+        border-left-color: var(--warning-fg);
+      }
+    }
+  }
+}
+
 /* ── Overview / dashboard ── */
 .overview {
   flex: 1;
