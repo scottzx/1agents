@@ -20,6 +20,8 @@ interface RightPanelHostProps {
     onSelectSession?: (session: Session) => void;
     /** Extra platform-specific refresh work run after the shared file reload. */
     onExtraRefresh?: () => Promise<void>;
+    /** Desktop two-column flex/split sizing for the aside (mobile leaves unset). */
+    paneStyle?: string;
 }
 
 /**
@@ -38,6 +40,7 @@ export function RightPanelHost({
     onOpenPreview,
     onSelectSession,
     onExtraRefresh,
+    paneStyle,
 }: RightPanelHostProps) {
     return (
         <RightPanel
@@ -45,7 +48,8 @@ export function RightPanelHost({
             activeWorkspaceId={activeWorkspaceId}
             activeWorkspacePath={activeWorkspacePath}
             rightPanelWidth={rightPanelWidth}
-            closeDrawer={() => (tabsStore.activeDrawerTab.value = 'none')}
+            paneStyle={paneStyle}
+            closeDrawer={() => tabsStore.closeContentTab()}
             ccConnectUrl={wsStore.ccConnectUrl.value}
             onRefreshFlatFiles={async () => {
                 fs.loadDir('', null);

@@ -11,10 +11,19 @@ import { MicButton } from './input/MicButton';
 import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
 
+/** Roles offered at creation. Dropdown-driven so more roles slot in later
+ *  (PMO / Executor / Verifier). */
+type ChatRole = 'general' | 'pm';
+
+const ROLE_OPTIONS: { value: ChatRole; labelKey: string }[] = [
+    { value: 'general', labelKey: 'newchat.role.general' },
+    { value: 'pm', labelKey: 'newchat.role.pm' },
+];
+
 interface NewChatHomeProps {
     workspaces: Workspace[];
     activeWorkspaceId: string;
-    onSubmitChat: (workspaceId: string, agentType: AgentType, prompt: string) => void;
+    onSubmitChat: (workspaceId: string, agentType: AgentType, prompt: string, role: ChatRole) => void;
     /**
      * Terminal mode: open a terminal in the workspace dir and optionally run
      * an initial command (e.g. `claude "..."`). cwd resolves to the
@@ -51,6 +60,9 @@ export function NewChatHome({
 }: NewChatHomeProps) {
     const [prompt, setPrompt] = useState('');
     const [selectedAgent, setSelectedAgent] = useState<AgentType>('claudecode');
+    // Conversation role declared at creation (chat mode). 'general' = ordinary
+    // chat; 'pm' = AI 项目经理 (project-locked task tools + PM prompt).
+    const [selectedRole, setSelectedRole] = useState<ChatRole>('general');
     const [selectedPreset, setSelectedPreset] = useState<TerminalPreset>('claude');
     // useSignal (not useState) for the mode toggle — plain useState toggles
     // can fail to re-render under @preact/signals.
@@ -128,7 +140,7 @@ export function NewChatHome({
         }
 
         if (!trimmed) return;
-        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed);
+        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed, selectedRole);
         setPrompt('');
         attach.clear();
     };
@@ -336,6 +348,39 @@ export function NewChatHome({
                                 <polyline points="6 9 12 15 18 9" />
                             </svg>
                         </div>
+
+                        {/* Role selector (chat mode): a dropdown (like the agent
+                            picker) so it extends cleanly to more roles later. The
+                            chosen role classifies the conversation (avatar ring)
+                            and, for PM, wires project-locked task tools. */}
+                        {mode.value === 'chat' && (
+                            <div class="select-dropdown-wrapper">
+                                <select
+                                    class="new-chat-select role-select"
+                                    value={selectedRole}
+                                    aria-label={t('newchat.role.aria', language)}
+                                    title={t('newchat.role.pmHint', language)}
+                                    onChange={(e: Event) =>
+                                        setSelectedRole((e.target as HTMLSelectElement).value as ChatRole)
+                                    }
+                                >
+                                    {ROLE_OPTIONS.map(r => (
+                                        <option key={r.value} value={r.value}>
+                                            {t(r.labelKey, language)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <svg
+                                    class="select-chevron"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </div>
+                        )}
 
                         {/* Environment Picker Dropdown (Placeholder) */}
                         <div class="select-dropdown-wrapper">

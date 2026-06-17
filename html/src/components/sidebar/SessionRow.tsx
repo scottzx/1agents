@@ -92,7 +92,14 @@ export function SessionRow({
     // a generic terminal glyph when the terminal has no detected agent.
     let leadingIcon;
     if (chat) {
-        leadingIcon = <AgentAvatar agentType={session.agentType} class="chat-sidebar-avatar" title={chatFallback} />;
+        leadingIcon = (
+            <AgentAvatar
+                agentType={session.agentType}
+                role={session.role}
+                class="chat-sidebar-avatar"
+                title={chatFallback}
+            />
+        );
     } else if (session.agent) {
         leadingIcon = (
             <AgentAvatar

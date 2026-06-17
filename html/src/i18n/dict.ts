@@ -105,6 +105,18 @@ export const zhCN: Record<string, string> = {
     'header.channels': 'AI 渠道连接',
     'header.files': '文件浏览器',
     'header.git': '版本控制 (Git)',
+    // ── Two-column workbench toolbar (WorkspaceHeader, desktop) ──
+    'header.col.tasks': '项目管理',
+    'header.col.channels': '渠道',
+    'header.col.files': '文件',
+    'header.col.git': 'Git',
+    'header.col.expandChat': '展开聊天栏',
+    'header.col.collapseChat': '收起聊天栏',
+    // ── New Conversation role selector ──
+    'newchat.role.aria': '会话角色',
+    'newchat.role.general': '通用',
+    'newchat.role.pm': 'PM',
+    'newchat.role.pmHint': '选择会话角色（PM = AI 项目经理：聊需求，自动拆解成带依赖的任务）',
     'header.menu': '菜单',
     'header.openMenu': '打开功能菜单',
     'header.mobile.switchView': '切换视图',
@@ -719,6 +731,19 @@ export const enUS: Record<string, string> = {
     'header.channels': 'AI Channels',
     'header.files': 'File Browser',
     'header.git': 'Version Control (Git)',
+    // ── Two-column workbench toolbar (WorkspaceHeader, desktop) ──
+    'header.col.tasks': 'Project',
+    'header.col.channels': 'Channels',
+    'header.col.files': 'Files',
+    'header.col.git': 'Git',
+    'header.col.expandChat': 'Expand chat column',
+    'header.col.collapseChat': 'Collapse chat column',
+    // ── New Conversation role selector ──
+    'newchat.role.aria': 'Conversation role',
+    'newchat.role.general': 'General',
+    'newchat.role.pm': 'PM',
+    'newchat.role.pmHint':
+        'Pick a conversation role (PM = AI Project Manager: discuss requirements, auto-split into dependency-aware tasks)',
     'header.menu': 'Menu',
     'header.openMenu': 'Open feature menu',
     'header.mobile.switchView': 'Switch view',
