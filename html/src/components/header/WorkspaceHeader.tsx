@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals';
 import { RightDrawerTab, isFullPageTab } from '../types';
 import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
+import * as stage from '../../stores/stageStore';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -137,6 +138,20 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
     );
+    // Chat-column collapse toggle icon (panel on the left)
+    const IconChatColumn = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+        </svg>
+    );
     // Tasks dashboard icon
     const IconTasks = (
         <svg
@@ -182,6 +197,12 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
     );
+
+    // Two-column toggle state (desktop): chat shown unless railed; the chat
+    // toggle is disabled when chat is the only column (the ≥1 invariant).
+    const collapsed = stage.collapsed.value;
+    const hasContent = stage.hasContent.value;
+    const chatShown = collapsed !== 'chat';
 
     // session tab is "active" when terminal is shown and right panel is closed
     const sessionActive = activeTab === 'terminal' && activeDrawerTab === 'none';
@@ -291,11 +312,40 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                         {onTmuxMouseToggle && isTerminalView && <div class="divider" />}
 
+                        {/* ── Two-column toggle cluster (icon-only, top-right) ──
+                            Left: single chat-column toggle. Divider. Right: four
+                            single-select artifact tabs (项目管理 · 渠道 · 文件 · Git). */}
+                        <button
+                            id="hdr-btn-chat"
+                            class={`shortcut-btn ${chatShown ? 'active' : ''}`}
+                            onClick={stage.toggleChat}
+                            disabled={!hasContent}
+                            title={t(chatShown ? 'header.col.collapseChat' : 'header.col.expandChat', language)}
+                            aria-label={t(chatShown ? 'header.col.collapseChat' : 'header.col.expandChat', language)}
+                            aria-pressed={chatShown}
+                        >
+                            {IconChatColumn}
+                        </button>
+
+                        <div class="divider" />
+
+                        <button
+                            id="hdr-btn-tasks"
+                            class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
+                            onClick={() => toggleDrawerTab('tasks')}
+                            title={t('header.col.tasks', language)}
+                            aria-label={t('header.col.tasks', language)}
+                            aria-pressed={activeDrawerTab === 'tasks'}
+                        >
+                            {IconTasks}
+                        </button>
                         <button
                             id="hdr-btn-channels"
                             class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('channels')}
-                            title={t('header.channels', language)}
+                            title={t('header.col.channels', language)}
+                            aria-label={t('header.col.channels', language)}
+                            aria-pressed={activeDrawerTab === 'channels'}
                         >
                             {IconChannels}
                         </button>
@@ -303,7 +353,9 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             id="hdr-btn-files"
                             class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('files')}
-                            title={t('header.files', language)}
+                            title={t('header.col.files', language)}
+                            aria-label={t('header.col.files', language)}
+                            aria-pressed={activeDrawerTab === 'files'}
                         >
                             {IconFiles}
                         </button>
@@ -311,7 +363,9 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             id="hdr-btn-git"
                             class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('git')}
-                            title={t('header.git', language)}
+                            title={t('header.col.git', language)}
+                            aria-label={t('header.col.git', language)}
+                            aria-pressed={activeDrawerTab === 'git'}
                         >
                             {IconGit}
                         </button>

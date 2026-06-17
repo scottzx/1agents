@@ -20,6 +20,7 @@ import * as sess from '../stores/sessionStore';
 import * as modal from '../stores/modalStore';
 import * as tabsStore from '../stores/tabsStore';
 import * as agentCatalog from '../stores/agentCatalogStore';
+import * as stage from '../stores/stageStore';
 
 export {
     wsUrl,
@@ -42,9 +43,12 @@ export interface AppState {
 }
 
 // Drag resizer state (module-level for perf)
-let _resizerActive: 'left' | 'right' | null = null;
+let _resizerActive: 'left' | 'right' | 'split' | null = null;
 let _resizerStartX = 0;
 let _resizerStartWidth = 0;
+// Content-area width captured at drag start for the between-columns ('split')
+// resizer, so we can translate pixel deltas into a split ratio.
+let _resizerContainerW = 0;
 
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
@@ -197,11 +201,17 @@ export class App extends Component<{}, AppState> {
     };
 
     // ── Resizer drag handlers ──
-    handleResizerDown = (side: 'left' | 'right', e: MouseEvent) => {
+    handleResizerDown = (side: 'left' | 'right' | 'split', e: MouseEvent) => {
         e.preventDefault();
         _resizerActive = side;
         _resizerStartX = e.clientX;
-        _resizerStartWidth = side === 'left' ? ui.leftSidebarWidth.value : ui.rightPanelWidth.value;
+        if (side === 'split') {
+            const el = document.querySelector('.workspace-body-container') as HTMLElement | null;
+            _resizerContainerW = el?.clientWidth || window.innerWidth;
+            _resizerStartWidth = stage.splitRatio.value * _resizerContainerW;
+        } else {
+            _resizerStartWidth = side === 'left' ? ui.leftSidebarWidth.value : ui.rightPanelWidth.value;
+        }
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
     };
@@ -212,6 +222,10 @@ export class App extends Component<{}, AppState> {
         if (_resizerActive === 'left') {
             const w = Math.max(160, Math.min(480, _resizerStartWidth + dx));
             ui.leftSidebarWidth.value = w;
+        } else if (_resizerActive === 'split') {
+            // Dragging right widens the chat (left) column.
+            const ratio = _resizerContainerW > 0 ? (_resizerStartWidth + dx) / _resizerContainerW : 0.6;
+            stage.setSplitRatio(ratio);
         } else {
             const w = Math.max(200, Math.min(600, _resizerStartWidth - dx));
             ui.rightPanelWidth.value = w;

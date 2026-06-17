@@ -5,7 +5,7 @@ import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
-import { PMChatPanel } from './PMChatPanel';
+import { TaskList } from './TaskList';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
@@ -20,6 +20,12 @@ interface RightPanelProps {
     closeDrawer: () => void;
     ccConnectUrl?: string;
     onSelectSession?: (session: Session) => void;
+    /**
+     * Overrides the aside's inline sizing. Desktop two-column passes a
+     * flex/split style; mobile/legacy leaves it unset to keep the fixed
+     * `rightPanelWidth` px behavior.
+     */
+    paneStyle?: string;
 
     // Context-dependent file actions (need app/workspace knowledge)
     onRefreshFlatFiles: () => void;
@@ -40,6 +46,7 @@ export function RightPanel({
     rightPanelWidth,
     closeDrawer,
     ccConnectUrl,
+    onSelectSession,
     onRefreshFlatFiles,
     onToggleFullscreen,
     onShareFile,
@@ -47,6 +54,7 @@ export function RightPanel({
     accessTokenExists,
     onGenerateAccessToken,
     onRevokeAccessToken,
+    paneStyle,
 }: RightPanelProps) {
     const [gitLoading, setGitLoading] = useState(false);
     const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
@@ -78,18 +86,20 @@ export function RightPanel({
                 return t('drawer.title.skills', language);
             case 'discovery':
                 return t('drawer.title.discovery', language);
-            case 'pm':
-                return '🧑‍💼 AI 项目经理';
+            case 'tasks':
+                return t('header.col.tasks', language);
             default:
                 return '';
         }
     };
 
+    // Desktop two-column passes an explicit flex/split style; otherwise fall
+    // back to the legacy fixed px width (mobile full-width overlay).
+    const asideStyle =
+        activeDrawerTab === 'none' ? '' : paneStyle !== undefined ? paneStyle : `width: ${rightPanelWidth}px`;
+
     return (
-        <aside
-            class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}
-            style={activeDrawerTab !== 'none' ? `width: ${rightPanelWidth}px` : ''}
-        >
+        <aside class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`} style={asideStyle}>
             <div class="panel-tabs-header">
                 <span class="panel-tab-title">{getDrawerTitle(activeDrawerTab)}</span>
                 <div class="panel-header-actions">
@@ -151,25 +161,10 @@ export function RightPanel({
                 )}
             </div>
 
-            {/* AI Project Manager chat (副屏): same role as the file browser —
-                the task board stays on the main screen. */}
-            <div
-                class="panel-body-chat"
-                style={`flex: 1; overflow: hidden; display: ${
-                    activeDrawerTab === 'pm' ? 'flex' : 'none'
-                }; flex-direction: column; height: 100%; min-height: 0;`}
-            >
-                {activeDrawerTab === 'pm' && <PMChatPanel />}
-            </div>
-
-            {/* Other drawer tab contents (files, git, settings) */}
+            {/* Other drawer tab contents (files, git, tasks, settings) */}
             <div
                 class="panel-body-scroll"
-                style={`display: ${
-                    activeDrawerTab !== 'channels' && activeDrawerTab !== 'pm' && activeDrawerTab !== 'none'
-                        ? 'flex'
-                        : 'none'
-                };`}
+                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
             >
                 {activeDrawerTab === 'files' &&
                     (viewMode === 'list' ? (
@@ -228,6 +223,10 @@ export function RightPanel({
                         onRegisterRefresh={fn => setGitRefreshFn(() => fn)}
                         language={language}
                     />
+                )}
+
+                {activeDrawerTab === 'tasks' && (
+                    <TaskList workspaceId={activeWorkspaceId} onSelectSession={onSelectSession} />
                 )}
 
                 {activeDrawerTab === 'settings' && (

@@ -1,12 +1,11 @@
 import { h, Component, Fragment } from 'preact';
-import { isFullPageTab, isChat, type RightDrawerTab } from '../types';
+import { isFullPageTab, isChat } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
 import { RightPanelHost } from '../shared/RightPanelHost';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
 import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { ContentViewHost } from '../stage/ContentViewHost';
-import type { ContentView } from '../../stores/stageStore';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -15,25 +14,7 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
-
-/**
- * Maps the active tab state to the primary pane's `ContentView`. Tasks is
- * now a peer primary view (the project landing), not a z-index background
- * layer. Full-page modules (providers/skills/discovery/settings) take the
- * primary pane full-width (secondary closed); otherwise it's the
- * tasks/terminal/chat/new-chat content. Bridge from the legacy signals
- * onto the unified pane renderer.
- */
-function primaryViewFor(activeTabId: string, activeTab: string, drawerTab: RightDrawerTab): ContentView {
-    if (isFullPageTab(drawerTab)) {
-        // isFullPageTab guarantees one of providers/skills/discovery/settings.
-        return { kind: drawerTab } as ContentView;
-    }
-    if (activeTabId === 'tasks') return { kind: 'tasks' };
-    if (activeTab === 'new_chat') return { kind: 'newChat' };
-    if (activeTab === 'agents') return { kind: 'chat' };
-    return { kind: 'terminal' };
-}
+import * as stage from '../../stores/stageStore';
 
 interface DesktopAppLayoutProps {
     app: App;
@@ -61,17 +42,34 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
         const activeTabObj = tabs.find(t => t.id === activeTabId);
-        // The primary pane's content kind. The tmux mouse toggle only makes
-        // sense when the xterm terminal is the one showing.
-        const primaryView = primaryViewFor(activeTabId, tabsStore.activeTab.value, activeDrawerTab);
 
-        // Shell layout (LeftSidebar + WorkspaceHeader) is shared by the
-        // project landing ('tasks') and the workbench ('terminal'). Dynamic
-        // tabs (preview/browser) cover the whole content area without the shell.
-        // The shell (LeftSidebar + WorkspaceHeader + workbench body) hosts
-        // both the project landing ('tasks') and the workbench ('terminal').
-        // Tasks now renders as a primary-pane ContentView, not a background
-        // layer, so the body is shown for both.
+        // Unified two-column shell, read from the stage store: pane[0] is the
+        // left CHAT column, pane[1] (optional) the right ARTIFACT column.
+        const panes = stage.panes.value;
+        const collapsed = stage.collapsed.value;
+        const splitRatio = stage.splitRatio.value;
+        // The primary (left) pane's content kind. The tmux mouse toggle only
+        // makes sense when the xterm terminal is the one showing.
+        const primaryView = panes[0].view;
+        const hasContent = panes.length > 1;
+        // Left column flex: hidden when railed, split-share otherwise.
+        const chatPaneStyle =
+            collapsed === 'chat'
+                ? 'flex: 0 1 0; min-width: 0; overflow: hidden;'
+                : hasContent
+                  ? `flex: ${splitRatio} 1 0; min-width: 0;`
+                  : 'flex: 1 1 0; min-width: 0;';
+        // Right column flex: fills when chat railed, split-share otherwise.
+        const contentPaneStyle =
+            collapsed === 'chat'
+                ? 'flex: 1 1 0; width: auto; min-width: 0;'
+                : `flex: ${1 - splitRatio} 1 0; width: auto; min-width: 0;`;
+
+        // The shell (LeftSidebar + WorkspaceHeader + two-column body) is shown
+        // for the non-dynamic tabs ('tasks'/'terminal' both land here); dynamic
+        // tabs (preview/browser) cover the whole content area without it.
+        // Clicking either fixed tab returns from a preview/browser overlay to
+        // the shell; the column contents themselves are driven by the stage.
         const isShell = activeTabId === 'tasks' || activeTabId === 'terminal';
         const isDynamicTab = activeTabObj?.type === 'preview' || activeTabObj?.type === 'browser';
         // The new-chat landing is a focused full-bleed page, so hide the
@@ -159,8 +157,16 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onCreateWorkspace={modal.openCreateWorkspacePicker}
                                 onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
                                 onDeleteWorkspace={wsStore.deleteWorkspace}
-                                onSelectWorkspace={ws => wsStore.selectWorkspace(ws)}
-                                onSelectSession={s => sess.selectSession(s)}
+                                onSelectWorkspace={ws => {
+                                    // 入口默认态: 项目/看板进 → 右栏=项目管理, chat 收成 rail。
+                                    wsStore.selectWorkspace(ws);
+                                    stage.enterProject();
+                                }}
+                                onSelectSession={s => {
+                                    // 入口默认态: 对话(历史)进 → chat 领, 右栏关闭。
+                                    sess.selectSession(s);
+                                    stage.enterConversation();
+                                }}
                                 onTerminalCreate={(wsId, cwd) => sess.createTerminal(wsId, cwd)}
                                 onTerminalKill={idx => sess.killTerminal(idx)}
                                 onRenameSession={s => modal.openRenameSessionModal(s)}
@@ -169,7 +175,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 moduleNav={tabsStore.buildModuleNav()}
                                 onChatCreate={modal.openChatCreate}
                                 onChatKill={sess.killChatSession}
-                                onStartNewChat={sess.onStartNewChat}
+                                onStartNewChat={() => {
+                                    // 入口默认态: 新建对话 → chat 领, 右栏关闭。
+                                    sess.onStartNewChat();
+                                    stage.enterConversation();
+                                }}
                                 activeTab={tabsStore.activeTab.value}
                                 activeSession={activeSession}
                                 activeTabId={activeTabId}
@@ -219,12 +229,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         )}
 
                         {/*
-                          [WORKBENCH BODY]: the content area = primary pane
-                          (+ optional secondary drawer pane). Renders for both
-                          'tasks' (primary = kanban) and 'terminal' (primary =
-                          terminal/chat/new-chat). Full-page drawer tabs
-                          (providers/skills/discovery/settings) fill the
-                          primary pane; otherwise primary + Resizer + drawer.
+                          [WORKBENCH BODY]: the unified two-column shell —
+                          left CHAT column (terminal/chat/new-chat) + right
+                          ARTIFACT column (项目管理/渠道/文件/Git/PM). Either
+                          column can collapse, but never both (stageStore
+                          `collapsed`). Full-page modules (providers/skills/
+                          discovery/settings) take over as a single full-width
+                          pane instead.
                         */}
                         {isShell && (
                             <div
@@ -247,25 +258,57 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                     </div>
                                 ) : (
                                     <Fragment>
-                                        {/* [PRIMARY PANE]: terminal / chat / new-chat workbench */}
-                                        <ContentViewHost view={primaryView} app={app} state={state} fontSize={13} />
+                                        {/* [LEFT / CHAT COLUMN]: terminal / chat / new-chat.
+                                            Railed to width 0 when collapsed==='chat'; the rail
+                                            below then offers to bring it back. */}
+                                        <div class="stage-pane stage-pane-chat" style={chatPaneStyle}>
+                                            <ContentViewHost view={primaryView} app={app} state={state} fontSize={13} />
+                                        </div>
 
-                                        {/* Resizer: between PRIMARY pane and SECONDARY drawer pane */}
-                                        {activeDrawerTab !== 'none' && (
+                                        {/* Collapsed chat rail + chevron (reuses the slide motion). */}
+                                        {collapsed === 'chat' && (
+                                            <button
+                                                class="stage-chat-rail"
+                                                onClick={stage.toggleChat}
+                                                title={t('header.col.expandChat', language)}
+                                                aria-label={t('header.col.expandChat', language)}
+                                            >
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2.5"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <polyline points="9 18 15 12 9 6" />
+                                                </svg>
+                                            </button>
+                                        )}
+
+                                        {/* Resizer: between the two columns (only when both shown). */}
+                                        {hasContent && collapsed === 'none' && (
                                             <div
-                                                class="resizer resizer-right"
-                                                onMouseDown={(e: MouseEvent) => app.handleResizerDown('right', e)}
+                                                class="resizer resizer-split"
+                                                onMouseDown={(e: MouseEvent) => app.handleResizerDown('split', e)}
                                                 title={t('app.resizer.rightTitle', language)}
                                             />
                                         )}
 
-                                        {/* [COLUMN 3]: RIGHT side dynamic sliding drawer panel */}
+                                        {/* [RIGHT / ARTIFACT COLUMN]: tasks / channels / files /
+                                            git / pm. Always mounted so closing slides out via the
+                                            `.right-panel.collapsed` animation. */}
                                         <RightPanelHost
                                             app={app}
                                             state={state}
                                             activeWorkspaceId={activeWorkspaceId}
                                             activeWorkspacePath={activeWorkspacePath}
                                             rightPanelWidth={ui.rightPanelWidth.value}
+                                            paneStyle={contentPaneStyle}
+                                            onSelectSession={s => {
+                                                sess.selectSession(s);
+                                                stage.enterConversation();
+                                            }}
                                             onExtraRefresh={async () => {
                                                 try {
                                                     await app.checkAccessStatus();

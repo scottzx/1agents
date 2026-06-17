@@ -10,7 +10,6 @@ import { TasksView } from './TasksView';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
-import { openPMChat } from '../../../stores/sessionStore';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
 
@@ -159,13 +158,6 @@ export function TaskList({ workspaceId, onSelectSession }: TaskListProps) {
                     ))}
                 </div>
                 <div class="task-header-actions">
-                    <button
-                        class="pm-chat-btn"
-                        onClick={() => openPMChat(workspaceId)}
-                        title="在副屏打开 AI 项目经理：聊需求，自动拆解成带依赖的任务"
-                    >
-                        🧑‍💼 AI 项目经理
-                    </button>
                     <button class="create-task-btn-toggle" onClick={() => (showForm.value = !showForm.value)}>
                         {showForm.value ? '取消创建' : '+ 新建任务'}
                     </button>

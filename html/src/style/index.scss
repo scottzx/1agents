@@ -1648,6 +1648,17 @@ body {
         border-color: rgba(var(--accent-color-rgb), 0.25);
       }
 
+      &:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+
+        &:hover {
+          background-color: transparent;
+          color: var(--text-secondary);
+          border-color: transparent;
+        }
+      }
+
       svg {
         width: 16px;
         height: 16px;
@@ -1826,6 +1837,46 @@ body {
   overflow: hidden;
   z-index: 1;
   background-color: var(--bg-page);
+}
+
+/* ==========================================================================
+   STAGE TWO-COLUMN SHELL (chat column + artifact column, #77)
+   ========================================================================== */
+/* Left CHAT column. Width is flex-driven by `splitRatio`; collapsing to a
+   rail animates the flex-grow so the column slides closed. */
+.stage-pane-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  transition: flex-grow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Thin rail shown when the chat column is collapsed; chevron re-expands it. */
+.stage-chat-rail {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-panel);
+  border: none;
+  border-right: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+
+  &:hover {
+    background-color: var(--btn-hover);
+    color: var(--text-main);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 /* ==========================================================================
@@ -10356,6 +10407,26 @@ body {
     line-height: 1;
     text-transform: uppercase;
   }
+}
+
+/* Role classification — a colored ring around the avatar keyed to the
+   conversation role (declared at creation; see SessionRole). Baseline
+   ('general') gets none. Implemented as box-shadow (not border) so it wins
+   over the size-variant resets (`.chat-sidebar-avatar`/`.chat-status-avatar`
+   set `border:none; box-shadow:none`) via the doubled-class specificity, and
+   so the ring sits outside the box without clipping the logo. Semantic tokens
+   only (adapt to light/dark). */
+.agent-avatar.agent-avatar--role-pm {
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+.agent-avatar.agent-avatar--role-pmo {
+  box-shadow: 0 0 0 2px var(--purple-fg);
+}
+.agent-avatar.agent-avatar--role-executor {
+  box-shadow: 0 0 0 2px var(--orange-fg);
+}
+.agent-avatar.agent-avatar--role-verifier {
+  box-shadow: 0 0 0 2px var(--success-emphasis);
 }
 
 .chat-status-avatar {

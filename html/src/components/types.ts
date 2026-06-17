@@ -135,12 +135,29 @@ export interface ChatSession {
     /** Per-session permission policy. Persisted via PATCH /api/agent/sessions/{id}. */
     permissionMode?: PermissionMode;
     /**
-     * Special-purpose session role. 'pm' = the AI Project Manager (lives only
-     * in the secondary pane, tracked separately from normal chats). Empty for
-     * an ordinary chat. Persisted server-side (ChatSessionRecord.Role).
+     * Conversation role, declared at creation (New Conversation). Drives the
+     * avatar's role ring and, for 'pm', the project-locked task tools + PM
+     * system prompt server-side. Empty/'general' = ordinary chat. Persisted
+     * server-side (ChatSessionRecord.Role). See {@link SessionRole}.
      */
     role?: string;
 }
+
+/**
+ * Conversation roles surfaced in the UI. Declared at creation; classified
+ * visually by the AgentAvatar role ring. Only 'pm' currently carries special
+ * backend behavior (task tools + PM prompt); the others are visual/scope
+ * declarations the backend stores verbatim.
+ *   - pmo      cross-project manager (no single project)  → purple ring
+ *   - pm       project manager (project-scoped)           → accent ring
+ *   - executor task executor                              → orange ring
+ *   - verifier task verifier                              → success ring
+ *   - general  ordinary chat (baseline)                   → no ring
+ */
+export type SessionRole = 'pmo' | 'pm' | 'executor' | 'verifier' | 'general';
+
+/** Roles that get a colored avatar ring (everything except the baseline). */
+export const RINGED_ROLES: SessionRole[] = ['pmo', 'pm', 'executor', 'verifier'];
 
 export type Session = TerminalSession | ChatSession;
 
@@ -218,7 +235,6 @@ export type RightDrawerTab =
     | 'discovery'
     | 'skills'
     | 'tasks'
-    | 'pm'
     | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
