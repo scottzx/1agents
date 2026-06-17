@@ -121,6 +121,20 @@ func NewCatalogStore() *CatalogStore {
 	return c
 }
 
+var (
+	defaultCatalog     *CatalogStore
+	defaultCatalogOnce sync.Once
+)
+
+// DefaultCatalog returns the process-wide catalog store, constructing it on
+// first use. Both the HTTP catalog endpoint and the cc-connect runner share
+// this single instance so a manual ?refresh=1 stays consistent across them and
+// neither depends on startup ordering.
+func DefaultCatalog() *CatalogStore {
+	defaultCatalogOnce.Do(func() { defaultCatalog = NewCatalogStore() })
+	return defaultCatalog
+}
+
 // Scan re-probes every descriptor's binary via exec.LookPath (instant; no
 // --version exec) and atomically replaces the cached snapshot.
 func (c *CatalogStore) Scan() []AgentStatus {
