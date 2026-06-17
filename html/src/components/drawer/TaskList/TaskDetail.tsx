@@ -12,7 +12,7 @@ interface TaskDetailProps {
     workspaceId: string;
     taskId: string;
     allTasks: Task[];
-    onBack: () => void;
+    onBack?: () => void;
     onDelete: (taskId: string) => void;
     onNavigate?: (taskId: string) => void;
     onSelectSession?: (session: Session) => void;
@@ -249,11 +249,6 @@ export function TaskDetail({
     if (!task) {
         return (
             <div class="task-dashboard-container">
-                <div class="task-detail-header">
-                    <button class="task-back-btn" onClick={onBack}>
-                        ← 返回列表
-                    </button>
-                </div>
                 {error ? <div class="task-error">{error}</div> : <div class="task-loading">载入任务...</div>}
             </div>
         );
@@ -286,14 +281,13 @@ export function TaskDetail({
 
     return (
         <div class="task-dashboard-container task-detail-view">
-            <div class="task-detail-header" style={{ marginBottom: '12px', borderBottom: 'none' }}>
-                <button class="task-back-btn" onClick={onBack}>
-                    ← 返回列表
-                </button>
-            </div>
-
             {/* GitHub style title header */}
             <div class="gh-header-top">
+                {onBack && (
+                    <button class="task-back-btn" onClick={onBack}>
+                        ← 返回列表
+                    </button>
+                )}
                 <h3 class="gh-title">
                     {task.title} <span class="gh-number">#{task.number || ''}</span>
                 </h3>

@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { RightDrawerTab, Session } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
@@ -58,6 +59,7 @@ export function RightPanel({
 }: RightPanelProps) {
     const [gitLoading, setGitLoading] = useState(false);
     const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
+    const taskSelectedId = useSignal<string | null>(null);
 
     const language = ui.language.value;
     const theme = ui.theme.value;
@@ -103,6 +105,27 @@ export function RightPanel({
             <div class="panel-tabs-header">
                 <span class="panel-tab-title">{getDrawerTitle(activeDrawerTab)}</span>
                 <div class="panel-header-actions">
+                    {activeDrawerTab === 'tasks' && taskSelectedId.value !== null && (
+                        <div
+                            class="panel-back-btn"
+                            onClick={() => {
+                                taskSelectedId.value = null;
+                            }}
+                            title="返回列表"
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <line x1="19" y1="12" x2="5" y2="12" />
+                                <polyline points="12 19 5 12 12 5" />
+                            </svg>
+                        </div>
+                    )}
                     {(activeDrawerTab === 'files' || activeDrawerTab === 'git') && (
                         <div
                             class={`panel-refresh-btn ${isSpinning ? 'spinning' : ''}`}
@@ -126,7 +149,14 @@ export function RightPanel({
                             </svg>
                         </div>
                     )}
-                    <div class="panel-close-btn" onClick={closeDrawer} title={t('drawer.collapse', language)}>
+                    <div
+                        class="panel-close-btn"
+                        onClick={() => {
+                            taskSelectedId.value = null;
+                            closeDrawer();
+                        }}
+                        title={t('drawer.collapse', language)}
+                    >
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -161,10 +191,29 @@ export function RightPanel({
                 )}
             </div>
 
-            {/* Other drawer tab contents (files, git, tasks, settings) */}
+            {/* Tasks panel (side-by-side with terminal/chat) */}
+            <div
+                class="panel-body-tasks"
+                style={`flex: 1; overflow: hidden; display: ${
+                    activeDrawerTab === 'tasks' ? 'flex' : 'none'
+                }; flex-direction: column; height: 100%; min-height: 0;`}
+            >
+                {activeDrawerTab === 'tasks' && (
+                    <TaskList
+                        workspaceId={activeWorkspaceId}
+                        selectedTaskId={taskSelectedId.value}
+                        onTaskSelect={id => {
+                            taskSelectedId.value = id;
+                        }}
+                        onSelectSession={onSelectSession}
+                    />
+                )}
+            </div>
+
+            {/* Other drawer tab contents (files, git, settings) */}
             <div
                 class="panel-body-scroll"
-                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
+                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'tasks' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
             >
                 {activeDrawerTab === 'files' &&
                     (viewMode === 'list' ? (

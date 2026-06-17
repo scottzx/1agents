@@ -4666,7 +4666,8 @@ body {
     }
 
     .panel-refresh-btn,
-    .panel-close-btn {
+    .panel-close-btn,
+    .panel-back-btn {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -4676,12 +4677,12 @@ body {
       color: var(--text-muted);
       cursor: pointer;
       transition: all 0.2s;
-      
+
       &:hover {
         background-color: var(--btn-hover);
         color: var(--text-main);
       }
-      
+
       svg {
         width: 14px;
         height: 14px;
@@ -4690,6 +4691,16 @@ body {
       &.spinning svg {
         animation: fb-spin 1s linear infinite;
       }
+    }
+  }
+
+  .panel-body-tasks {
+    padding: 12px 16px;
+    overflow-y: auto;
+
+    .task-dashboard-container {
+      padding: 0;
+      background-color: transparent;
     }
   }
 
