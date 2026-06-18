@@ -127,6 +127,8 @@ const baseConfig = {
             patterns: [
                 { from: './favicon.png', to: '.' },
                 { from: './logo.png', to: '.' },
+                { from: './mode-beginner.png', to: '.' },
+                { from: './mode-advanced.jpeg', to: '.' },
                 { from: './manifest.json', to: '.' },
                 { from: './sw.js', to: '.' },
                 { from: './pwa-192.png', to: '.' },

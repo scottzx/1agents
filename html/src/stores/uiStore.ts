@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 
 import { t, type Lang } from '../i18n';
 
@@ -23,6 +23,16 @@ export const toastMsg = signal('');
 export const sidebarMode = signal<'assistant' | 'project'>(
     (localStorage.getItem('1agents-sidebar-mode') as 'assistant' | 'project') || 'assistant'
 );
+
+/**
+ * Global UI mode. `null` means the user has not chosen yet — this is the single
+ * source of truth that both gates the first-launch mode-select onboarding and
+ * drives runtime feature visibility (beginner hides PM/task entry points).
+ */
+export const uiMode = signal<'beginner' | 'advanced' | null>(
+    (localStorage.getItem('1agents-ui-mode') as 'beginner' | 'advanced' | null) || null
+);
+export const isBeginnerMode = computed(() => uiMode.value === 'beginner');
 export const isMobile = signal(window.innerWidth <= 768);
 export const keyboardVisible = signal(false);
 export const viewportHeight = signal(window.visualViewport ? window.visualViewport.height : window.innerHeight);
@@ -76,6 +86,16 @@ export const toggleLanguage = (lang: Lang) => {
     localStorage.setItem('1agents-language', lang);
     const langName = t(lang === 'zh-CN' ? 'app.langName.zh' : 'app.langName.en', lang);
     showToast(t('app.toast.langChanged', lang, { lang: langName }));
+};
+
+export const setUiMode = (mode: 'beginner' | 'advanced') => {
+    uiMode.value = mode;
+    localStorage.setItem('1agents-ui-mode', mode);
+    postToModuleIframes({ type: 'UI_MODE_CHANGE', mode });
+    if (mode === 'beginner') {
+        sidebarMode.value = 'assistant';
+        localStorage.setItem('1agents-sidebar-mode', 'assistant');
+    }
 };
 
 export const toggleLeftSidebar = () => {

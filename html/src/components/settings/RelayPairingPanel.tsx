@@ -6,7 +6,7 @@
  *
  * 能力:配置中转地址 / 创建账户 / 扫码或粘贴链接审批节点配对 / 列出节点 / 经中转测试调用。
  */
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
 import { useRef, useEffect } from 'preact/hooks';
 import type { Socket } from 'socket.io-client';
@@ -36,7 +36,10 @@ function extractKey(raw: string): string | null {
     return null;
 }
 
-export function RelayPairingPanel({ onNodeSelected }: { onNodeSelected?: () => void } = {}) {
+export function RelayPairingPanel({
+    onNodeSelected,
+    embedded = false,
+}: { onNodeSelected?: () => void; embedded?: boolean } = {}) {
     // 默认用当前页面同源(部署中前端与中转在同一 HTTPS 源 → /v1 经代理路由到中转);
     // 可手动改成独立的中转地址。
     const relayUrl = useSignal(localStorage.getItem(LS_URL) || window.location.origin);
@@ -184,13 +187,8 @@ export function RelayPairingPanel({ onNodeSelected }: { onNodeSelected?: () => v
         }
     };
 
-    return (
-        <div class="sys-settings-section">
-            <div class="sys-settings-section-title">中转旁路 (Relay)</div>
-            <div class="sys-settings-section-desc">
-                本地直连保持不变;中转是旁路通道,让本端经中转远程寻址/转发到某台节点(其 daemon 转发到本地 Go 后端)。
-            </div>
-
+    const body = (
+        <Fragment>
             {/* 配置 */}
             <div class="sys-settings-card">
                 <div class="sys-settings-card-header">
@@ -308,6 +306,18 @@ export function RelayPairingPanel({ onNodeSelected }: { onNodeSelected?: () => v
                     {msg.value}
                 </div>
             )}
+        </Fragment>
+    );
+
+    // Embedded inside the 远程控制 settings section (parent provides the section
+    // chrome) — just return the cards. Standalone (backend gate) wraps them in
+    // its own titled section.
+    if (embedded) return body;
+    return (
+        <div class="sys-settings-section">
+            <div class="sys-settings-section-title">远程控制</div>
+            <div class="sys-settings-section-desc">本地直连始终保持;远程控制让你经中转安全地访问并操作远端节点。</div>
+            {body}
         </div>
     );
 }

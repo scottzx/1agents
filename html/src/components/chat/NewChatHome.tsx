@@ -5,7 +5,7 @@ import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS, type PermissionMo
 import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import { pickableAgents } from '../../stores/agentCatalogStore';
-import { sidebarMode } from '../../stores/uiStore';
+import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
@@ -416,8 +416,8 @@ export function NewChatHome({
                             </svg>
                         </div>
 
-                        {/* Role selector — chat mode only */}
-                        {mode.value === 'chat' && (
+                        {/* Role selector — chat mode only; hidden in beginner mode (forced general) */}
+                        {mode.value === 'chat' && !isBeginnerMode.value && (
                             <div class="select-dropdown-wrapper">
                                 <select
                                     class="new-chat-select role-select"

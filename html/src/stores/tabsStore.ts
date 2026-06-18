@@ -75,6 +75,10 @@ const initialDrawerTab = (): RightDrawerTab => {
     // Mobile boots to the workbench (drawer closed) exactly as before.
     if (ui.isMobile.value) return 'none';
     const stored = localStorage.getItem(DRAWER_KEY) as RightDrawerTab | null;
+    // Beginner mode hides the task kanban — never auto-open it as the landing.
+    if (localStorage.getItem('1agents-ui-mode') === 'beginner') {
+        return stored !== null && CONTENT_DRAWER_TABS.includes(stored) && stored !== 'tasks' ? stored : 'none';
+    }
     // First-ever desktop load → project-landing default (项目管理 / kanban first).
     if (stored === null) return 'tasks';
     return CONTENT_DRAWER_TABS.includes(stored) ? stored : 'none';

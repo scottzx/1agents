@@ -8,7 +8,7 @@ import { ModuleNav } from './ModuleNav';
 import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
-import { sidebarMode } from '../../stores/uiStore';
+import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -270,26 +270,28 @@ export function LeftSidebar({
                     </div>
                 </div>
 
-                <div class="sidebar-mode-toggle">
-                    <button
-                        class={`mode-tab${sidebarMode.value === 'assistant' ? ' active' : ''}`}
-                        onClick={() => {
-                            sidebarMode.value = 'assistant';
-                            localStorage.setItem('1agents-sidebar-mode', 'assistant');
-                        }}
-                    >
-                        {t('sidebar.mode.assistant', language)}
-                    </button>
-                    <button
-                        class={`mode-tab${sidebarMode.value === 'project' ? ' active' : ''}`}
-                        onClick={() => {
-                            sidebarMode.value = 'project';
-                            localStorage.setItem('1agents-sidebar-mode', 'project');
-                        }}
-                    >
-                        {t('sidebar.mode.project', language)}
-                    </button>
-                </div>
+                {!isBeginnerMode.value && (
+                    <div class="sidebar-mode-toggle">
+                        <button
+                            class={`mode-tab${sidebarMode.value === 'assistant' ? ' active' : ''}`}
+                            onClick={() => {
+                                sidebarMode.value = 'assistant';
+                                localStorage.setItem('1agents-sidebar-mode', 'assistant');
+                            }}
+                        >
+                            {t('sidebar.mode.assistant', language)}
+                        </button>
+                        <button
+                            class={`mode-tab${sidebarMode.value === 'project' ? ' active' : ''}`}
+                            onClick={() => {
+                                sidebarMode.value = 'project';
+                                localStorage.setItem('1agents-sidebar-mode', 'project');
+                            }}
+                        >
+                            {t('sidebar.mode.project', language)}
+                        </button>
+                    </div>
+                )}
 
                 <div class="sidebar-nav-controls">
                     <button
@@ -397,27 +399,29 @@ export function LeftSidebar({
                                         </div>
                                         {defaultFolder.expanded && (
                                             <div class="project-children">
-                                                <div
-                                                    class={`chat-item chat-row-kind-task${
-                                                        isTaskView && isActive ? ' active' : ''
-                                                    }`}
-                                                    onClick={(e: MouseEvent) => {
-                                                        e.stopPropagation();
-                                                        onSelectWorkspace(defaultWs);
-                                                    }}
-                                                >
-                                                    <div class="chat-item-left">
-                                                        <span
-                                                            class="chat-sidebar-avatar chat-task-icon"
-                                                            aria-hidden="true"
-                                                        >
-                                                            {'\u{1F4CB}'}
-                                                        </span>
-                                                        <span class="chat-title">
-                                                            {t('sidebar.subpage.tasks', language) || '任务'}
-                                                        </span>
+                                                {!isBeginnerMode.value && (
+                                                    <div
+                                                        class={`chat-item chat-row-kind-task${
+                                                            isTaskView && isActive ? ' active' : ''
+                                                        }`}
+                                                        onClick={(e: MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            onSelectWorkspace(defaultWs);
+                                                        }}
+                                                    >
+                                                        <div class="chat-item-left">
+                                                            <span
+                                                                class="chat-sidebar-avatar chat-task-icon"
+                                                                aria-hidden="true"
+                                                            >
+                                                                {'\u{1F4CB}'}
+                                                            </span>
+                                                            <span class="chat-title">
+                                                                {t('sidebar.subpage.tasks', language) || '任务'}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
                                                 {chatSessions.map(renderSession)}
                                                 {termSessions.map(renderSession)}
                                                 {chatSessions.length === 0 && termSessions.length === 0 && (
@@ -439,7 +443,7 @@ export function LeftSidebar({
                             );
                         })()}
 
-                        {sidebarMode.value === 'project' && (
+                        {!isBeginnerMode.value && sidebarMode.value === 'project' && (
                             <div class="workspace-section">
                                 <div class="section-header">
                                     <span>Projects</span>

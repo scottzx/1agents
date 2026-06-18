@@ -4,6 +4,7 @@ import { FsEntry } from './types';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
+import { ModeSelectOnboarding } from './welcome/ModeSelectOnboarding';
 import { RelayPairingPanel } from './settings/RelayPairingPanel';
 import { initBackend } from '../services/apiClient';
 import { ModalHost } from './modal/ModalHost';
@@ -127,6 +128,10 @@ export class App extends Component<{}, AppState> {
             fs.loadDir('', null);
         }
 
+        // Beginner mode leads with the conversation instead of the task kanban:
+        // open the most recent chat, or land directly on the new-chat page.
+        await this.applyBeginnerLanding();
+
         sess.loadTmuxMouse();
         this.checkUrlPreview();
         // Task permalinks: intercept in-app clicks on `#N` autolinks and pasted
@@ -163,6 +168,33 @@ export class App extends Component<{}, AppState> {
         // Frontend OTA: non-blocking manifest check (throttled inside checker).
         this.checkForFrontendUpdate();
     }
+
+    /**
+     * Beginner-mode landing: show the conversation, never the task kanban.
+     * Opens the most recent chat of the active workspace, or drops straight
+     * onto the new-chat page when there are none. No-op in advanced mode.
+     */
+    applyBeginnerLanding = async () => {
+        if (!ui.isBeginnerMode.value) return;
+        // Conversation leads, kanban closed (resets stores that may have booted
+        // with advanced defaults when the mode was picked just now).
+        if (!ui.isMobile.value) stage.enterConversation();
+        if (wsStore.activeWorkspaceId.value) {
+            await sess.loadChatSessions(wsStore.activeWorkspaceId.value);
+        }
+        const chats = sess.chatSessions.value;
+        if (chats.length > 0) {
+            await sess.selectSession(chats[0]);
+        } else {
+            sess.onStartNewChat();
+        }
+    };
+
+    /** First-launch mode pick — persist the choice, then apply its landing. */
+    onSelectMode = async (mode: 'beginner' | 'advanced') => {
+        ui.setUiMode(mode);
+        if (mode === 'beginner') await this.applyBeginnerLanding();
+    };
 
     componentWillUnmount() {
         document.removeEventListener('keydown', this.handleKeyDown);
@@ -367,6 +399,7 @@ export class App extends Component<{}, AppState> {
         const workspaces = wsStore.workspaces.value;
         const workspacesLoading = wsStore.workspacesLoading.value;
         const hasLoadedWorkspaces = wsStore.hasLoadedWorkspaces.value;
+        const uiMode = ui.uiMode.value;
         const favoriteFiles = fs.favoriteFiles.value;
         const isEditingDetail = fs.isEditingDetail.value;
         const selectedFsEntry = fs.selectedFsEntry.value;
@@ -484,7 +517,9 @@ export class App extends Component<{}, AppState> {
         return (
             <div class="app-container" style="display: flex; flex-direction: column;">
                 {otaUpdate && <UpdateBanner info={otaUpdate} language={language} />}
-                {hasLoadedWorkspaces && workspaces.length === 0 ? (
+                {!uiMode ? (
+                    <ModeSelectOnboarding language={language} onSelect={this.onSelectMode} />
+                ) : hasLoadedWorkspaces && workspaces.length === 0 ? (
                     <WelcomeOnboarding
                         language={language}
                         onCreateWorkspace={modal.openCreateWorkspacePicker}

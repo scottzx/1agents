@@ -503,11 +503,20 @@ export const zhCN: Record<string, string> = {
     'welcome.cta1': '导入我自己的项目',
     'welcome.cta2': '直接进入 temp 空间',
 
+    // ── Mode select (ModeSelectOnboarding.tsx) ───────────────────────────
+    'modeselect.title': '选择你的使用模式',
+    'modeselect.subtitle': '可以随时在「设置」里切换。',
+    'modeselect.beginnerTitle': '新手模式',
+    'modeselect.beginnerDesc': '像聊天一样简单，打开就能用。专注对话，无需配置，零学习成本。',
+    'modeselect.advancedTitle': '进阶模式',
+    'modeselect.advancedDesc': '完整功能，含任务看板、项目管理与 PM 角色，适合深度协作。',
+    'modeselect.switchHint': '稍后可在 设置 → 通用与外观 中随时切换。',
+
     // ── Settings (SystemSettings.tsx) ────────────────────────────────────
-    'settings.nav.general': '通用与外观',
+    'settings.nav.general': '通用设置',
     'settings.nav.security': '安全设置',
     'settings.nav.agents': '智能体',
-    'settings.nav.relay': '中转旁路',
+    'settings.nav.relay': '远程控制',
     'settings.nav.about': '关于与支持',
 
     'settings.agents.title': '智能体检测',
@@ -539,6 +548,10 @@ export const zhCN: Record<string, string> = {
 
     'settings.appearance.title': '外观与终端',
     'settings.appearance.desc': '自定义主题、颜色和终端行为。',
+    'settings.appearance.uiMode': '使用模式',
+    'settings.appearance.uiModeDesc': '新手模式专注对话；进阶模式开放任务管理等完整功能',
+    'settings.appearance.beginnerMode': '新手模式',
+    'settings.appearance.advancedMode': '进阶模式',
     'settings.appearance.colorTheme': '色彩主题',
     'settings.appearance.colorThemeDesc': '切换浅色或深色外观模式',
     'settings.appearance.lightMode': '浅色模式',
@@ -549,9 +562,11 @@ export const zhCN: Record<string, string> = {
     'settings.appearance.scrollLabel': '滚轮滑动',
     'settings.appearance.selectLabel': '选择复制',
 
+    'settings.relay.desc': '本地直连始终保持；远程控制让你经中转安全地访问并操作远端节点。',
+
     'settings.security.title': '访问控制',
     'settings.security.desc': '管理访问令牌和本机智能体，确保协同安全与连接。',
-    'settings.security.token': '访问令牌',
+    'settings.security.token': '本机密钥',
     'settings.security.tokenSet': '已设置访问令牌。非本地网络访问需要提供此令牌验证。',
     'settings.security.tokenUnset': '未设置访问令牌。生成后，非本地访问将需要令牌验证。',
     'settings.security.active': '已启用令牌保护',
@@ -1356,11 +1371,22 @@ export const enUS: Record<string, string> = {
     'welcome.cta1': 'Import My Own Project',
     'welcome.cta2': 'Directly Enter Temp Space',
 
+    // ── Mode select (ModeSelectOnboarding.tsx) ───────────────────────────
+    'modeselect.title': 'Choose your mode',
+    'modeselect.subtitle': 'You can switch anytime in Settings.',
+    'modeselect.beginnerTitle': 'Beginner',
+    'modeselect.beginnerDesc':
+        'As simple as chatting — just open and go. Pure conversation, no setup, zero learning curve.',
+    'modeselect.advancedTitle': 'Advanced',
+    'modeselect.advancedDesc':
+        'Full feature set with the task board, project management and PM roles — built for deep collaboration.',
+    'modeselect.switchHint': 'You can switch anytime under Settings → General & Appearance.',
+
     // ── Settings ─────────────────────────────────────────────────────────
-    'settings.nav.general': 'General & Appearance',
+    'settings.nav.general': 'General Settings',
     'settings.nav.security': 'Security',
     'settings.nav.agents': 'Agents',
-    'settings.nav.relay': 'Relay Bypass',
+    'settings.nav.relay': 'Remote Control',
     'settings.nav.about': 'About & Support',
 
     'settings.agents.title': 'Agent Detection',
@@ -1392,6 +1418,11 @@ export const enUS: Record<string, string> = {
 
     'settings.appearance.title': 'Appearance & Terminal',
     'settings.appearance.desc': 'Customize theme, color, and terminal behavior.',
+    'settings.appearance.uiMode': 'Usage Mode',
+    'settings.appearance.uiModeDesc':
+        'Beginner focuses on chat; Advanced unlocks task management and the full feature set',
+    'settings.appearance.beginnerMode': 'Beginner',
+    'settings.appearance.advancedMode': 'Advanced',
     'settings.appearance.colorTheme': 'Color Theme',
     'settings.appearance.colorThemeDesc': 'Switch between light and dark appearance modes',
     'settings.appearance.lightMode': 'Light Mode',
@@ -1402,9 +1433,12 @@ export const enUS: Record<string, string> = {
     'settings.appearance.scrollLabel': 'Scroll Mode',
     'settings.appearance.selectLabel': 'Selection Mode',
 
+    'settings.relay.desc':
+        'Local direct connection always stays; Remote Control lets you securely reach and operate remote nodes via the relay.',
+
     'settings.security.title': 'Access Control',
     'settings.security.desc': 'Manage access tokens and host agents to ensure safe collaboration and connection.',
-    'settings.security.token': 'Access Token',
+    'settings.security.token': 'Local Key',
     'settings.security.tokenSet': 'Access token is set. Non-local access requires this token for verification.',
     'settings.security.tokenUnset':
         'No access token set. After generation, non-local access will require token verification.',

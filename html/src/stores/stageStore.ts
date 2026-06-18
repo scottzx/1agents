@@ -85,7 +85,10 @@ export const setSplitRatio = (ratio: number): void => {
  * persisted value wins.
  */
 const railPref = localStorage.getItem(RAIL_KEY);
-export const chatRailed = signal(railPref === null ? true : railPref === 'true');
+// Beginner mode leads with the conversation, so the chat column is never railed
+// on first load; afterwards the persisted value wins (same as advanced).
+const beginnerFirstLoad = railPref === null && localStorage.getItem('1agents-ui-mode') === 'beginner';
+export const chatRailed = signal(beginnerFirstLoad ? false : railPref === null ? true : railPref === 'true');
 
 const setChatRailed = (v: boolean): void => {
     chatRailed.value = v;
