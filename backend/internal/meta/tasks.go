@@ -698,6 +698,49 @@ func (s *TaskStore) GetTask(taskID string) (Task, bool, error) {
 	return t, true, nil
 }
 
+// GetTaskByNumber returns the task carrying the per-project short number (#N)
+// within projectID, fully hydrated (children + workspace path). ok=false when
+// no task holds that number — e.g. a dangling #N reference in someone's text.
+func (s *TaskStore) GetTaskByNumber(projectID string, number int) (Task, bool, error) {
+	var id string
+	err := s.db.sql.QueryRow(
+		`SELECT id FROM tasks WHERE project_id = ? AND number = ?`, projectID, number).Scan(&id)
+	if err == sql.ErrNoRows {
+		return Task{}, false, nil
+	}
+	if err != nil {
+		return Task{}, false, err
+	}
+	return s.GetTask(id)
+}
+
+// ResolveByNumber resolves a (project, number) permalink reference to a task.
+// project may be either a project id or a display name — the id is tried first,
+// then the name (so a project literally named like an id still resolves). It
+// returns the task, its owning project id (== workspace id), and ok=false when
+// either the project or the number is unknown (callers render a friendly
+// not-found rather than erroring).
+func (s *TaskStore) ResolveByNumber(project string, number int) (Task, string, bool, error) {
+	p, ok, err := s.db.GetProject(project)
+	if err != nil {
+		return Task{}, "", false, err
+	}
+	if !ok {
+		p, ok, err = s.db.GetProjectByName(project)
+		if err != nil {
+			return Task{}, "", false, err
+		}
+		if !ok {
+			return Task{}, "", false, nil
+		}
+	}
+	t, ok, err := s.GetTaskByNumber(p.ID, number)
+	if err != nil || !ok {
+		return Task{}, "", false, err
+	}
+	return t, p.ID, true, nil
+}
+
 func (s *TaskStore) execOne(query string, args ...any) error {
 	res, err := s.db.sql.Exec(query, args...)
 	if err != nil {

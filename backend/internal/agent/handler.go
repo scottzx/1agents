@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -425,6 +426,64 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// HandleTaskResolve resolves a permalink reference to a task:
+//
+//	GET /api/agent/tasks/resolve?project={name|id}&number={n}
+//	  → {workspaceId, task}   (404 when the project or number is unknown)
+//
+// The frontend uses it to turn `#N` / `项目名#N` references and
+// /{project}/tasks/{number} deep links into an in-app task view. project may be
+// a display name or a project id; number is the per-project short id (#N).
+func (h *Handler) HandleTaskResolve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	project := r.URL.Query().Get("project")
+	numStr := r.URL.Query().Get("number")
+	number, err := strconv.Atoi(numStr)
+	if project == "" || err != nil || number <= 0 {
+		http.Error(w, "project and a positive number are required", http.StatusBadRequest)
+		return
+	}
+	task, workspaceID, ok, err := h.tasksStore.ResolveByNumber(project, number)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	// Prefer the workspace-registry id (what the frontend keys workspaces by)
+	// over the raw meta project id. The two are normally identical (project id
+	// == workspace id), but a project created lazily before its workspace is
+	// synced gets a random id; mapping the task's path back to the registry
+	// keeps deep-link navigation working regardless.
+	if wsID := h.workspaceIDForPath(task.WorkspacePath); wsID != "" {
+		workspaceID = wsID
+	}
+	writeJSON(w, map[string]any{"workspaceId": workspaceID, "task": task})
+}
+
+// workspaceIDForPath reverse-maps an absolute workspace path to its registry
+// workspace id, or "" when no workspace owns that path.
+func (h *Handler) workspaceIDForPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	cfg, err := workspace.NewHandler().LoadWorkspacesConfig()
+	if err != nil {
+		return ""
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.Path == path {
+			return ws.ID
+		}
+	}
+	return ""
 }
 
 // HandleTasksItem handles /api/agent/tasks/{id} and its sub-resources:

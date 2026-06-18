@@ -60,6 +60,28 @@ export function RightPanel({
     const [gitLoading, setGitLoading] = useState(false);
     const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
     const taskSelectedId = useSignal<string | null>(null);
+    // Back stack for in-detail task→task navigation (e.g. clicking a #N
+    // reference). The header back arrow pops this so it returns to the task you
+    // came from (GitHub-style), falling back to the list when empty.
+    const taskNavStack = useSignal<string[]>([]);
+    const selectTask = (id: string | null) => {
+        const cur = taskSelectedId.value;
+        if (id === null) {
+            taskNavStack.value = [];
+        } else if (cur && cur !== id) {
+            taskNavStack.value = [...taskNavStack.value, cur];
+        }
+        taskSelectedId.value = id;
+    };
+    const taskBack = () => {
+        const stack = taskNavStack.value;
+        if (stack.length > 0) {
+            taskSelectedId.value = stack[stack.length - 1];
+            taskNavStack.value = stack.slice(0, -1);
+        } else {
+            taskSelectedId.value = null;
+        }
+    };
 
     const language = ui.language.value;
     const theme = ui.theme.value;
@@ -108,10 +130,8 @@ export function RightPanel({
                     {activeDrawerTab === 'tasks' && taskSelectedId.value !== null && (
                         <div
                             class="panel-back-btn"
-                            onClick={() => {
-                                taskSelectedId.value = null;
-                            }}
-                            title="返回列表"
+                            onClick={taskBack}
+                            title={taskNavStack.value.length > 0 ? '返回上一个任务' : '返回列表'}
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -153,6 +173,7 @@ export function RightPanel({
                         class="panel-close-btn"
                         onClick={() => {
                             taskSelectedId.value = null;
+                            taskNavStack.value = [];
                             closeDrawer();
                         }}
                         title={t('drawer.collapse', language)}
@@ -202,9 +223,7 @@ export function RightPanel({
                     <TaskList
                         workspaceId={activeWorkspaceId}
                         selectedTaskId={taskSelectedId.value}
-                        onTaskSelect={id => {
-                            taskSelectedId.value = id;
-                        }}
+                        onTaskSelect={selectTask}
                         onSelectSession={onSelectSession}
                     />
                 )}

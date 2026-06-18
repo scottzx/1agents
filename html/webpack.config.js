@@ -83,6 +83,12 @@ const baseConfig = {
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: devMode ? '[name].js' : '[name].[contenthash].js',
+        // Absolute public path so the SPA boots from any URL depth. Task
+        // permalinks like /{project}/tasks/{number} serve index.html, and with
+        // relative asset paths the browser would resolve app.js against
+        // /{project}/tasks/ and 404. Also fixes runtime chunk/worker loading at
+        // depth. The Go backend always serves the frontend from root.
+        publicPath: '/',
     },
     module: {
         rules: [

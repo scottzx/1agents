@@ -3927,7 +3927,8 @@ body {
       }
     }
 
-    .task-issue-toggle-btn {
+    .task-issue-toggle-btn,
+    .task-permalink-btn {
       background: transparent;
       border: 1px solid var(--border-color);
       border-radius: 6px;
@@ -4290,7 +4291,6 @@ body {
       font-size: 13px;
       line-height: 1.6;
       color: var(--text-main);
-      white-space: pre-wrap;
       word-break: break-word;
     }
 
@@ -12142,6 +12142,23 @@ body {
 // at the top of this file. Keep them visually identical.
 .markdown-body {
   @include md-render;
+}
+
+// GitHub-style task reference autolinks (#N / 项目名#N) inside any rendered
+// Markdown surface. Rendered as an inline accent chip so they read as links.
+.task-ref {
+  color: var(--accent-fg);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 4px;
+  padding: 0 2px;
+
+  &:hover {
+    text-decoration: underline;
+    background-color: var(--accent-bg);
+  }
 }
 
 // Composer

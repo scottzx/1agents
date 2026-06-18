@@ -59,6 +59,13 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 - 只把已确认要做的事写进看板；纯讨论不落库。
 - 不要在 description / acceptanceCriteria 里编造用户没提供的细节；不确定就先问。
 
+## 引用其它任务（GitHub 风格永久链接）
+- description / acceptanceCriteria / 回复都支持 Markdown，引用任务请直接写引用记号，前端会自动渲染成可跳转链接：
+  - 同一项目内：写 #编号，例如 #90。
+  - 跨项目：用反引号包裹 项目名#编号，例如 `+"`项目名#90`"+`。
+  - 也可以直接写完整 URL：/项目名/tasks/编号。
+- 引用记号只认 #数字；想写普通的 # 文本（如版本号）请用反引号转义，例如 `+"`#2`"+`。
+
 ## 风格
 简洁、务实、以终为始。先给结论和方案，再落库。中文回复（除非用户用其它语言）。
 
