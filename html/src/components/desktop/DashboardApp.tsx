@@ -7,6 +7,116 @@ import * as stage from '../../stores/stageStore';
 import * as ui from '../../stores/uiStore';
 import { DashboardWorkshop } from './DashboardWorkshop';
 
+class PixelSoundManager {
+    private ctx: AudioContext | null = null;
+    public muted = localStorage.getItem('1agents-db-muted') === 'true';
+
+    private init() {
+        if (!this.ctx) {
+            const win = window as unknown as {
+                AudioContext?: typeof AudioContext;
+                webkitAudioContext?: typeof AudioContext;
+            };
+            const AudioCtx = win.AudioContext || win.webkitAudioContext;
+            if (AudioCtx) {
+                this.ctx = new AudioCtx();
+            }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    setMuted(m: boolean) {
+        this.muted = m;
+        localStorage.setItem('1agents-db-muted', String(m));
+    }
+
+    playBlip() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1000, this.ctx.currentTime + 0.05);
+
+        gain.gain.setValueAtTime(0.015, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.05);
+    }
+
+    playCoin() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'square';
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(987.77, now); // B5
+        osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+
+        gain.gain.setValueAtTime(0.04, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+        osc.start();
+        osc.stop(now + 0.3);
+    }
+
+    playLaser() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'sawtooth';
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 1.5);
+
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+
+        osc.start();
+        osc.stop(now + 1.5);
+    }
+
+    playSelect() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+        osc.frequency.setValueAtTime(400, this.ctx.currentTime + 0.05);
+
+        gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.1);
+    }
+}
+
+export const sound = new PixelSoundManager();
+
 interface TooltipData {
     workspace: Workspace;
     tasks: Task[];
@@ -27,6 +137,7 @@ interface DashboardAppState {
     dayCount: number;
     funds: number;
     reputation: number;
+    muted: boolean;
 
     // Tooltip HUD state
     tooltipVisible: boolean;
@@ -299,6 +410,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             tooltipY: 0,
             tooltipData: null,
             launchingProjectId: null,
+            muted: sound.muted,
         };
     }
 
@@ -365,6 +477,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
     };
 
     toggleMock = () => {
+        sound.playSelect();
         this.setState(
             prevState => {
                 const nextMock = !prevState.useMock;
@@ -378,6 +491,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
     };
 
     handleCompanyDoubleClick = () => {
+        sound.playSelect();
         this.setState({ isEditingCompany: true });
     };
 
@@ -404,6 +518,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
     };
 
     handleWorkbenchClick = async (ws: Workspace) => {
+        sound.playSelect();
         if (ws.id.startsWith('mock-')) {
             ui.showToast('这是演示项目，真实项目请在大屏中双击直连。');
             return;
@@ -422,8 +537,17 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
     handleHover = (e: MouseEvent, visible: boolean, data: unknown) => {
         if (!visible) {
-            this.setState({ tooltipVisible: false });
+            this.setState({ tooltipVisible: false, tooltipData: null });
             return;
+        }
+
+        const prevData = this.state.tooltipData as TooltipData | null;
+        const currentData = data as TooltipData | null;
+        if (
+            !this.state.tooltipVisible ||
+            (currentData && prevData && currentData.workspace.id !== prevData.workspace.id)
+        ) {
+            sound.playBlip();
         }
 
         // Calculate offset position for retro tooltip
@@ -436,6 +560,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
     };
 
     handleExit = () => {
+        sound.playSelect();
         window.location.href = window.location.origin + window.location.pathname;
     };
 
@@ -453,6 +578,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
     handleLaunchProject = (wsId: string, e: MouseEvent) => {
         e.stopPropagation();
         this.setState({ launchingProjectId: wsId });
+        sound.playLaser();
 
         // Add credits/funds animation
         setTimeout(() => {
@@ -465,6 +591,8 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 localStorage.setItem('1agents-company-funds', String(nextFunds));
                 localStorage.setItem('1agents-company-rep', String(nextRep));
 
+                sound.playCoin();
+
                 return {
                     funds: nextFunds,
                     reputation: nextRep,
@@ -473,6 +601,13 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             });
             ui.showToast('🚀 发射成功！获得研发奖励资金 +$150,000，声望 +450！');
         }, 3000);
+    };
+
+    toggleMute = () => {
+        const nextMute = !this.state.muted;
+        sound.setMuted(nextMute);
+        this.setState({ muted: nextMute });
+        sound.playSelect();
     };
 
     render() {
@@ -491,6 +626,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             tooltipY,
             tooltipData,
             launchingProjectId,
+            muted,
         } = this.state;
 
         const data = tooltipData as TooltipData | null;
@@ -571,6 +707,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                     </div>
 
                     <div class="pixel-header-right">
+                        <button class="pixel-header-btn" onClick={this.toggleMute} title="静音开关">
+                            {muted ? '🔇' : '🔊'}
+                        </button>
                         <button class="pixel-header-btn" onClick={this.toggleMock}>
                             🎮 {useMock ? '使用真实数据' : '加载模拟演示'}
                         </button>
@@ -583,12 +722,12 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 {/* ── OFFICE FLOORS SCROLL CONTAINER ── */}
                 <main class="pixel-floors-container">
                     {loading ? (
-                        <div style="display:flex;flex:1;align-items:center;justify-content:center;font-size:32px;">
+                        <div style="display:flex;flex:1;align-items:center;justify-content:center;font-size:36px;">
                             🚀 装载星际工坊数据中...
                         </div>
                     ) : workspaces.length === 0 ? (
                         <div style="display:flex;flex-direction:column;flex:1;align-items:center;justify-content:center;gap:16px;">
-                            <span style="font-size:28px;">工坊里空荡荡的，还没有创建任何项目呢！</span>
+                            <span style="font-size:24px;">工坊里空荡荡的，还没有创建任何项目呢！</span>
                             <button class="pixel-header-btn" onClick={this.toggleMock}>
                                 🎮 加载模拟演示项目
                             </button>
@@ -621,6 +760,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                                 tasks={tasksMap[ws.id] || []}
                                                 onClick={() => this.handleWorkbenchClick(ws)}
                                                 onHover={this.handleHover}
+                                                onPlaySound={type =>
+                                                    type === 'coin' ? sound.playCoin() : sound.playBlip()
+                                                }
                                             />
                                         ))}
                                     </div>
@@ -717,7 +859,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                             <span class="pixel-tooltip-label">特聘智能体:</span>
                             <span class="pixel-tooltip-value">👤 {data.activeAgent}</span>
                         </div>
-                        <div style="font-size:16px;color:var(--pixel-border-light);margin-top:8px;border-top:1px dashed var(--pixel-border);padding-top:8px;">
+                        <div style="font-size:12px;color:var(--pixel-border-light);margin-top:8px;border-top:1px dashed var(--pixel-border);padding-top:8px;">
                             💡 双击转场直连“玄武看板”
                         </div>
                     </div>

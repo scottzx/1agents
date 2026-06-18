@@ -7,6 +7,7 @@ interface DashboardWorkshopProps {
     tasks: Task[];
     onClick: () => void;
     onHover: (e: MouseEvent, visible: boolean, data: unknown) => void;
+    onPlaySound?: (type: 'coin' | 'blip') => void;
 }
 
 interface DashboardWorkshopState {
@@ -97,6 +98,9 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
         this.setState(prevState => ({
             coins: [...prevState.coins, newCoin],
         }));
+        if (this.props.onPlaySound) {
+            this.props.onPlaySound(color === 'gold' ? 'coin' : 'blip');
+        }
         // Remove coin after animation ends
         setTimeout(() => {
             this.setState(prevState => ({
