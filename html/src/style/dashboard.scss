@@ -996,3 +996,141 @@
   border-color: #fff;
   color: #fff;
 }
+
+/* ── Gamified V3 Roster & Skills Styles ── */
+.pixel-tabs .pixel-tab-btn {
+  background: #000;
+  border: 3px solid var(--pixel-border);
+  color: var(--pixel-border-light);
+  padding: 6px 16px;
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px #000;
+  transition: all 0.1s ease;
+}
+.pixel-tabs .pixel-tab-btn:hover {
+  border-color: #fff;
+  color: #fff;
+}
+.pixel-tabs .pixel-tab-btn.active {
+  border-color: var(--pixel-cyan);
+  color: var(--pixel-cyan);
+  background: rgba(59, 235, 255, 0.1);
+  box-shadow: 0 0 6px var(--pixel-cyan-glow);
+}
+
+.roster-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.roster-card {
+  transition: all 0.15s ease;
+}
+.roster-card:hover {
+  border-color: #fff !important;
+  transform: translateY(-2px);
+  box-shadow: 5px 5px 0px #000;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.detail-row .label {
+  color: var(--pixel-border-light);
+  width: 70px;
+}
+.detail-row .val {
+  color: #fff;
+}
+.detail-row .val.cyan { color: var(--pixel-cyan); }
+.detail-row .val.gold { color: var(--pixel-gold); }
+.detail-row .val.green { color: var(--pixel-green); }
+
+.card-actions {
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.recharge-btn {
+  border-color: var(--pixel-green) !important;
+  color: var(--pixel-green) !important;
+}
+.recharge-btn:hover {
+  background: rgba(56, 183, 100, 0.15) !important;
+  border-color: #fff !important;
+  color: #fff !important;
+}
+
+.upgrade-btn {
+  border-color: var(--pixel-cyan) !important;
+  color: var(--pixel-cyan) !important;
+}
+.upgrade-btn:hover {
+  background: rgba(59, 235, 255, 0.15) !important;
+  border-color: #fff !important;
+  color: #fff !important;
+}
+
+.encapsulate-btn {
+  border-color: var(--pixel-gold) !important;
+  color: var(--pixel-gold) !important;
+}
+.encapsulate-btn:hover {
+  background: rgba(244, 180, 27, 0.15) !important;
+  border-color: #fff !important;
+  color: #fff !important;
+}
+
+.pixel-mini-btn {
+  transition: all 0.1s ease;
+}
+.pixel-mini-btn:hover {
+  border-color: #fff !important;
+  color: var(--pixel-cyan) !important;
+}
+
+/* Rating selector button classes */
+.pixel-dialog-btn.exceeds:hover {
+  background: rgba(244, 180, 27, 0.2);
+}
+.pixel-dialog-btn.normal:hover {
+  background: rgba(56, 183, 100, 0.2);
+}
+.pixel-dialog-btn.improvement:hover {
+  background: rgba(239, 125, 26, 0.2);
+}
+.pixel-dialog-btn.poor:hover {
+  background: rgba(255, 62, 62, 0.2);
+}
+
+.assign-emp-item {
+  transition: all 0.1s ease;
+}
+.assign-emp-item:hover {
+  border-color: #fff !important;
+  background: rgba(18, 24, 48, 0.8) !important;
+}
+
+/* custom scrollbar for roster dialog body */
+.roster-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+.roster-modal-body::-webkit-scrollbar-track {
+  background: #000;
+  border-left: 1px solid var(--pixel-border);
+}
+.roster-modal-body::-webkit-scrollbar-thumb {
+  background: var(--pixel-border);
+  border: 1px solid #000;
+}
+.roster-modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--pixel-border-light);
+}
+

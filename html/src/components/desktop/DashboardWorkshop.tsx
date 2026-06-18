@@ -2,6 +2,10 @@ import { h, Component } from 'preact';
 import { Workspace } from '../types';
 import { Task } from '../drawer/TaskList/types';
 
+export interface GamifiedTask extends Task {
+    progress?: number;
+}
+
 export interface MockEmployee {
     id: string;
     name: string;
@@ -23,6 +27,8 @@ interface DashboardWorkshopProps {
     onPlaySound?: (type: 'coin' | 'blip') => void;
     employee: MockEmployee;
     effortLevel: 'low' | 'middle' | 'high';
+    onChangeEffortLevel?: (wsId: string, level: 'low' | 'middle' | 'high') => void;
+    onAssignEmployeeClick?: (wsId: string) => void;
 }
 
 interface DashboardWorkshopState {
@@ -34,6 +40,26 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
     private logInterval: ReturnType<typeof setInterval> | null = null;
     private logIdCounter = 0;
     private coinIdCounter = 0;
+
+    handleLedClick = (e: MouseEvent) => {
+        e.stopPropagation();
+        const { workspace, effortLevel, onChangeEffortLevel, onPlaySound } = this.props;
+        if (onPlaySound) onPlaySound('blip');
+        const levels: ('low' | 'middle' | 'high')[] = ['low', 'middle', 'high'];
+        const nextIdx = (levels.indexOf(effortLevel) + 1) % levels.length;
+        const nextLevel = levels[nextIdx];
+        if (onChangeEffortLevel) {
+            onChangeEffortLevel(workspace.id, nextLevel);
+        }
+    };
+
+    handleEmployeeHudClick = (e: MouseEvent) => {
+        e.stopPropagation();
+        const { workspace, onAssignEmployeeClick } = this.props;
+        if (onAssignEmployeeClick) {
+            onAssignEmployeeClick(workspace.id);
+        }
+    };
 
     constructor(props: DashboardWorkshopProps) {
         super(props);
@@ -248,7 +274,17 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
 
         const completedTasks = tasks.filter(t => t.status === 'completed').length;
         const totalTasks = tasks.length;
-        const progressPercent = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
+
+        let progressPercent = 0;
+        if (totalTasks > 0) {
+            const basePercent = (completedTasks / totalTasks) * 100;
+            const activeTask = tasks.find(t => t.status === 'running');
+            const activeContribution =
+                activeTask && (activeTask as GamifiedTask).progress
+                    ? (activeTask as GamifiedTask).progress! / totalTasks
+                    : 0;
+            progressPercent = Math.min(100, Math.round(basePercent + activeContribution));
+        }
 
         // Segmented bar has 10 chunks
         const chunks = Array.from({ length: 10 });
@@ -290,7 +326,9 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
                         {/* Effort Level LED */}
                         <div
                             class={`pixel-effort-led effort-${effortLevel}`}
-                            title={`当前投入度: ${effortLevel === 'low' ? '低 (LOW)' : effortLevel === 'middle' ? '中 (MID)' : '高 (HIGH)'}`}
+                            onClick={this.handleLedClick}
+                            style="cursor:pointer;"
+                            title={`当前投入度: ${effortLevel === 'low' ? '低 (点击切换)' : effortLevel === 'middle' ? '中 (点击切换)' : '高 (点击切换)'}`}
                         >
                             <span class="pixel-led-dot" />
                         </div>
@@ -312,12 +350,20 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
                         {employee.stamina === 0 && <div class="pixel-zzz-bubble">Zzz...</div>}
                     </div>
                     <div class="pixel-wb-details">
-                        <div class="pixel-employee-hud">
-                            <span class="pixel-agent-label" title={`${employee.name} (${employee.modelType})`}>
+                        <div
+                            class="pixel-employee-hud"
+                            onClick={this.handleEmployeeHudClick}
+                            title="点击指派或更换智能体员工"
+                            style="cursor:pointer;"
+                        >
+                            <span
+                                class="pixel-agent-label"
+                                style="text-decoration: underline dashed rgba(255, 255, 255, 0.4)"
+                            >
                                 👤 {employee.name} {employee.kind === 'specialist' ? '★' : ''}
                             </span>
                             {/* Stamina battery */}
-                            <div class="pixel-stamina-battery" title={`精力值: ${employee.stamina}/100`}>
+                            <div class="pixel-stamina-battery" title={`精力值: ${employee.stamina}/100 (点击分配)`}>
                                 <div
                                     class={`pixel-stamina-fill ${employee.stamina < 30 ? 'low' : employee.stamina < 60 ? 'medium' : 'high'}`}
                                     style={`width: ${employee.stamina}%`}

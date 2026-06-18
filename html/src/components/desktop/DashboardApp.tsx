@@ -1,6 +1,10 @@
 import { h, Component } from 'preact';
 import { Workspace } from '../types';
 import { Task } from '../drawer/TaskList/types';
+
+export interface GamifiedTask extends Task {
+    progress?: number;
+}
 import { workspaceService } from '../../services/workspaceService';
 import * as wsStore from '../../stores/workspaceStore';
 import * as stage from '../../stores/stageStore';
@@ -160,6 +164,31 @@ interface DashboardAppState {
         feedbacks: string[];
         phase: 'alpha' | 'beta' | 'stable';
     } | null;
+
+    // Roster & Skill system states
+    showRosterModal: boolean;
+    rosterTab: 'employees' | 'specialists' | 'skills' | 'practice';
+    workspaceAssignments: Record<string, string>;
+    skillCards: Array<{
+        name: string;
+        version: string;
+        cost: number;
+        level: number;
+        good: number;
+        normal: number;
+        poor: number;
+    }>;
+    recentPractices: Array<{
+        id: string;
+        title: string;
+        desc: string;
+        model: string;
+        skills: string[];
+        status: 'pending' | 'encapsulated';
+    }>;
+    releasedProjectStage: 'rating' | 'settled';
+    ratingMultiplier: number;
+    assigningWorkspaceId: string | null;
 }
 
 // ── MOCK DATA FOR SIMULATION DEMO ──
@@ -537,6 +566,57 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 'mock-ws-07': 'low',
                 'mock-ws-08': 'middle',
             },
+            showRosterModal: false,
+            rosterTab: 'employees',
+            workspaceAssignments: {
+                'mock-ws-01': 'emp-01',
+                'mock-ws-02': 'emp-02',
+                'mock-ws-03': 'emp-03',
+                'mock-ws-04': 'emp-04',
+                'mock-ws-05': 'emp-05',
+                'mock-ws-06': 'emp-06',
+                'mock-ws-07': 'emp-07',
+                'mock-ws-08': 'emp-08',
+            },
+            skillCards: [
+                { name: '代码重构', version: 'v1.2', cost: 45000, level: 1, good: 48, normal: 12, poor: 1 },
+                { name: 'SVG 矢量图', version: 'v3.5', cost: 60000, level: 3, good: 110, normal: 8, poor: 0 },
+                { name: '超长上下文', version: 'v1.5', cost: 80000, level: 1, good: 35, normal: 15, poor: 2 },
+                { name: 'Docker 容器', version: 'v2.0', cost: 50000, level: 2, good: 95, normal: 12, poor: 1 },
+                { name: '中文理解', version: 'v2.0', cost: 30000, level: 2, good: 22, normal: 11, poor: 0 },
+                { name: '量子数学', version: 'v4.1', cost: 120000, level: 4, good: 110, normal: 5, poor: 0 },
+                { name: 'FFmpeg 裁剪', version: 'v3.0', cost: 40000, level: 3, good: 88, normal: 14, poor: 3 },
+                { name: 'C++ 驱动开发', version: 'v2.5', cost: 55000, level: 2, good: 140, normal: 2, poor: 0 },
+            ],
+            recentPractices: [
+                {
+                    id: 'prac-01',
+                    title: '玄武 AI 调度台主界面重构最佳实践',
+                    desc: '在对玄武 AI 调度台进行重构时，通过多轮细化，利用克劳德将代码精简了 60% 且运行完美。',
+                    model: 'claude-3-5-sonnet',
+                    skills: ['代码重构 v1.2', 'TypeScript v2.0'],
+                    status: 'pending',
+                },
+                {
+                    id: 'prac-02',
+                    title: 'FFmpeg 自动卡点剪辑会话最佳实践',
+                    desc: '在一键剪影任务中，通过多次修复，成功解决了音频解码器冲突并生成了超带感音乐视频。',
+                    model: 'gpt-4o',
+                    skills: ['FFmpeg 裁剪 v3.0', '音轨合成 v1.0'],
+                    status: 'pending',
+                },
+                {
+                    id: 'prac-03',
+                    title: '量子状态遥测与过滤器设计最佳实践',
+                    desc: '在对量子感应设备做滤波时，智能体自主使用 NumPy 和卡尔曼滤波完成了数学计算和波形优化。',
+                    model: 'gemini-1-5-pro',
+                    skills: ['量子数学 v4.1', 'NumPy 矩阵 v2.0'],
+                    status: 'pending',
+                },
+            ],
+            releasedProjectStage: 'rating',
+            ratingMultiplier: 1.0,
+            assigningWorkspaceId: null,
         };
     }
 
@@ -552,22 +632,103 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             });
         }, 10000);
 
-        // Stamina timer to simulate stamina depletion and recovery
+        // Stamina timer to simulate stamina depletion, recovery and task progress (3-second cycle)
         this.staminaTimer = setInterval(() => {
             this.setState(prevState => {
-                const nextEmployees = prevState.employees.map((emp, idx) => {
-                    const ws = prevState.workspaces[idx];
-                    if (ws && this.getProjectStatus(ws.id) === 'running') {
-                        const cost = emp.stamina > 0 ? 5 : 0;
-                        return { ...emp, stamina: Math.max(0, emp.stamina - cost) };
-                    } else if (emp.stamina < 100) {
-                        return { ...emp, stamina: Math.min(100, emp.stamina + 2) };
+                const { workspaces, workspaceAssignments, effortLevels, skillCards, employees, tasksMap } = prevState;
+
+                // 1. Update employees stamina
+                const nextEmployees = employees.map(emp => {
+                    const assignedWS = workspaces.filter(ws => workspaceAssignments[ws.id] === emp.id);
+                    const runningWS = assignedWS.filter(ws => this.getProjectStatus(ws.id, tasksMap) === 'running');
+                    const activeClones = runningWS.length;
+
+                    if (activeClones > 0 && emp.stamina > 0) {
+                        let totalCost = 0;
+                        runningWS.forEach(ws => {
+                            const effort = effortLevels[ws.id] || 'middle';
+                            const costMap = { low: 2, middle: 4, high: 8 };
+                            totalCost += costMap[effort];
+                        });
+                        return { ...emp, stamina: Math.max(0, emp.stamina - totalCost) };
+                    } else {
+                        // Recover stamina
+                        const recoverAmount = emp.stamina === 0 ? 5 : 8;
+                        return { ...emp, stamina: Math.min(100, emp.stamina + recoverAmount) };
                     }
-                    return emp;
                 });
-                return { employees: nextEmployees };
+
+                // 2. Update task progress
+                const nextTasksMap = { ...tasksMap };
+                let tasksUpdated = false;
+
+                workspaces.forEach(ws => {
+                    const empId = workspaceAssignments[ws.id] || 'emp-01';
+                    const emp = nextEmployees.find(e => e.id === empId) || nextEmployees[0];
+                    const status = this.getProjectStatus(ws.id, nextTasksMap);
+
+                    if (status === 'running' && emp.stamina > 0) {
+                        const tasks = nextTasksMap[ws.id] || [];
+                        const activeTaskIdx = tasks.findIndex(t => t.status === 'running');
+                        if (activeTaskIdx !== -1) {
+                            const activeTask = { ...tasks[activeTaskIdx] } as GamifiedTask;
+                            const effort = effortLevels[ws.id] || 'middle';
+
+                            // Speed of progress: low = 7%, middle = 13%, high = 24%
+                            let speedBoost = 1.0;
+                            emp.skills.forEach(skillName => {
+                                const cleanSkillName = skillName.split(' ')[0];
+                                const card = skillCards.find(c => c.name.startsWith(cleanSkillName));
+                                if (card) {
+                                    speedBoost += (card.level - 1) * 0.15;
+                                }
+                            });
+                            const stepMap = { low: 7, middle: 13, high: 24 };
+                            const baseStep = stepMap[effort];
+                            const actualStep = Math.round(baseStep * speedBoost);
+
+                            activeTask.progress = Math.min(100, (activeTask.progress || 0) + actualStep);
+
+                            const nextTasks = [...tasks];
+
+                            if (activeTask.progress >= 100) {
+                                activeTask.status = 'completed';
+                                sound.playBlip();
+
+                                // Find next pending task
+                                const nextPendingIdx = nextTasks.findIndex(
+                                    (t, idx) => idx > activeTaskIdx && t.status === 'pending'
+                                );
+                                if (nextPendingIdx !== -1) {
+                                    nextTasks[nextPendingIdx] = {
+                                        ...nextTasks[nextPendingIdx],
+                                        status: 'running',
+                                        progress: 0,
+                                    } as GamifiedTask;
+                                } else {
+                                    // All tasks completed!
+                                    sound.playCoin();
+                                    const match = ws.name.match(/^\[(.*?)\]\s*(.*)$/);
+                                    const dName = match ? match[2] : ws.name;
+                                    setTimeout(() => {
+                                        ui.showToast(`✨ 项目 [${dName}] 所有研发工作已就绪，可以发射！`);
+                                    }, 100);
+                                }
+                            }
+
+                            nextTasks[activeTaskIdx] = activeTask;
+                            nextTasksMap[ws.id] = nextTasks;
+                            tasksUpdated = true;
+                        }
+                    }
+                });
+
+                return {
+                    employees: nextEmployees,
+                    tasksMap: tasksUpdated ? nextTasksMap : tasksMap,
+                };
             });
-        }, 8000);
+        }, 3000);
     }
 
     componentWillUnmount() {
@@ -708,8 +869,8 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         window.location.href = window.location.origin + window.location.pathname;
     };
 
-    getProjectStatus(wsId: string): string {
-        const tasks = this.state.tasksMap[wsId];
+    getProjectStatus(wsId: string, customTasksMap?: Record<string, Task[]>): string {
+        const tasks = customTasksMap ? customTasksMap[wsId] : this.state.tasksMap[wsId];
         if (!tasks || tasks.length === 0) return 'pending';
         const completedCount = tasks.filter(t => t.status === 'completed').length;
         if (completedCount === tasks.length && tasks.length > 0) return 'completed';
@@ -717,6 +878,175 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         if (tasks.some(t => t.status === 'blocked')) return 'blocked';
         if (tasks.some(t => t.status === 'running')) return 'running';
         return 'pending';
+    }
+
+    handleChangeEffortLevel = (wsId: string, level: 'low' | 'middle' | 'high') => {
+        this.setState(prevState => {
+            const nextEffortLevels = { ...prevState.effortLevels };
+            nextEffortLevels[wsId] = level;
+            return { effortLevels: nextEffortLevels };
+        });
+    };
+
+    toggleRosterModal = () => {
+        sound.playSelect();
+        this.setState(prevState => ({ showRosterModal: !prevState.showRosterModal }));
+    };
+
+    handleRenameEmployee = (empId: string) => {
+        sound.playSelect();
+        const emp = this.state.employees.find(e => e.id === empId);
+        if (!emp) return;
+        const newName = prompt(`请输入 [${emp.name}] 的新花名:`, emp.name);
+        if (newName && newName.trim()) {
+            this.setState(prevState => ({
+                employees: prevState.employees.map(e => (e.id === empId ? { ...e, name: newName.trim() } : e)),
+            }));
+        }
+    };
+
+    buyCaffeine = (empId: string) => {
+        if (this.state.funds < 10000) {
+            sound.playSelect();
+            ui.showToast('❌ 资金不足以购买精品咖啡电池！');
+            return;
+        }
+        sound.playCoin();
+        this.setState(prevState => {
+            const nextEmployees = prevState.employees.map(emp => {
+                if (emp.id === empId) {
+                    return { ...emp, stamina: Math.min(100, emp.stamina + 50) };
+                }
+                return emp;
+            });
+            const nextFunds = prevState.funds - 10000;
+            localStorage.setItem('1agents-company-funds', String(nextFunds));
+            return {
+                employees: nextEmployees,
+                funds: nextFunds,
+            };
+        });
+        ui.showToast('☕ 精品咖啡注入！精力电池恢复 +50！');
+    };
+
+    upgradeSkillCard = (idx: number) => {
+        const card = this.state.skillCards[idx];
+        if (this.state.funds < card.cost) {
+            sound.playSelect();
+            ui.showToast('❌ 研发资金不足，无法进行技能包升级！');
+            return;
+        }
+        sound.playLaser();
+        sound.playCoin();
+        this.setState(prevState => {
+            const nextSkills = [...prevState.skillCards];
+            const nextLevel = card.level + 1;
+            nextSkills[idx] = {
+                ...card,
+                level: nextLevel,
+                version: `v${nextLevel}.0`,
+                cost: Math.round(card.cost * 1.8),
+            };
+            const nextFunds = prevState.funds - card.cost;
+            localStorage.setItem('1agents-company-funds', String(nextFunds));
+
+            // Also update all employee configurations that have this skill to show the new version!
+            const cleanName = card.name;
+            const nextEmployees = prevState.employees.map(emp => {
+                const updatedSkills = emp.skills.map(s => {
+                    if (s.startsWith(cleanName)) {
+                        return `${cleanName} v${nextLevel}.0`;
+                    }
+                    return s;
+                });
+                return { ...emp, skills: updatedSkills };
+            });
+
+            return {
+                skillCards: nextSkills,
+                funds: nextFunds,
+                employees: nextEmployees,
+            };
+        });
+        ui.showToast(`✨ 技能卡 [${card.name}] 成功升级至 v${card.level + 1}.0！`);
+    };
+
+    encapsulateSpecialist = (pracId: string) => {
+        const prac = this.state.recentPractices.find(p => p.id === pracId);
+        if (!prac) return;
+
+        sound.playLaser();
+        const firstWord = prac.title.replace(/^玄武\s*AI\s*/, '').substring(0, 4);
+        const namePool = [`${firstWord}姬`, `专才-${firstWord}`, `${firstWord}极客`, `${firstWord}大拿`];
+        const specName = namePool[Math.floor(Math.random() * namePool.length)];
+
+        this.setState(prevState => {
+            const nextEmployees = [...prevState.employees];
+            const newEmp: MockEmployee = {
+                id: `emp-spec-${Date.now()}`,
+                name: specName,
+                kind: 'specialist',
+                modelType: prac.model,
+                skills: prac.skills,
+                stamina: 100,
+                ratingGood: 5,
+                ratingNormal: 0,
+                ratingPoor: 0,
+                persona: `我是从《${prac.title.substring(0, 10)}...》最佳实践会话中沉淀封装出来的专属专家，请指派！`,
+            };
+
+            const nextPractices = prevState.recentPractices.map(p =>
+                p.id === pracId ? { ...p, status: 'encapsulated' as const } : p
+            );
+
+            return {
+                employees: [...nextEmployees, newEmp],
+                recentPractices: nextPractices,
+            };
+        });
+
+        ui.showToast(`🎉 成功封装专才员工 [${specName}]！`);
+    };
+
+    generateRandomTasksForWorkspace(wsId: string): Task[] {
+        const softwareTasks = [
+            ['主模块编写', 'API 接口对接', '单元测试覆盖', 'Bug 修复与审查'],
+            ['前端组件开发', '响应式布局优化', '主题样式集成', '性能专项测试'],
+            ['数据库设计', '索引与查询优化', 'Redis 缓存集成', '读写分离测试'],
+        ];
+        const hardwareTasks = [
+            ['电路原理图设计', 'PCB 绘制与打样', '元器件焊接', '电气性能测试'],
+            ['固件代码编写', '寄存器配置调试', '串口协议对接', '抗干扰压力测试'],
+            ['3D 模型外壳设计', '支撑打印与打磨', '内部元器件装配', '防跌落与防尘测试'],
+        ];
+        const mediaTasks = [
+            ['爆款文案策划', '排版与图文配图', '发布与社群推广', '数据复盘汇报'],
+            ['视频分镜脚本编写', '绿幕素材拍摄', 'FFmpeg 精准裁剪', '音轨卡点与渲染'],
+            ['活动海报设计', '配色方案确定', 'SVG 矢量导出', '适配各种尺寸分辨率'],
+        ];
+        const researchTasks = [
+            ['查阅最新文献', '数学模型公式推导', 'MATLAB/Python 仿真', '实验报告总结'],
+            ['量子模型设计', '矩阵状态方程求解', '误差修正与补偿', '阶段性成果汇报'],
+        ];
+
+        let pool = softwareTasks;
+        if (wsId === 'mock-ws-02' || wsId === 'mock-ws-08') pool = hardwareTasks;
+        else if (wsId === 'mock-ws-03' || wsId === 'mock-ws-07') pool = mediaTasks;
+        else if (wsId === 'mock-ws-06') pool = researchTasks;
+
+        const selectedGroup = pool[Math.floor(Math.random() * pool.length)];
+        return selectedGroup.map((title, index) => ({
+            id: `t-${Date.now()}-${index}`,
+            title,
+            status: index === 0 ? 'running' : 'pending',
+            progress: 0,
+            type: 'task',
+            scheduleType: 'immediate',
+            createdAt: '',
+            updatedAt: '',
+            replies: [],
+            sessions: [],
+        }));
     }
 
     handleLaunchProject = (wsId: string, e: MouseEvent) => {
@@ -754,6 +1084,8 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
             this.setState({
                 showReleaseModal: true,
+                releasedProjectStage: 'rating',
+                ratingMultiplier: 1.0,
                 releasedProjectData: {
                     id: wsId,
                     name: displayName,
@@ -785,12 +1117,44 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         }
     };
 
+    rateProject = (rating: 'exceeds' | 'normal' | 'improvement' | 'poor') => {
+        sound.playCoin();
+
+        let multiplier = 1.0;
+        if (rating === 'exceeds') multiplier = 1.35;
+        if (rating === 'improvement') multiplier = 0.7;
+        if (rating === 'poor') multiplier = 0.35;
+
+        this.setState(prevState => {
+            if (!prevState.releasedProjectData) return {};
+            const data = prevState.releasedProjectData;
+
+            const views = Math.round(data.views * multiplier);
+            const stars = Math.round(data.stars * multiplier);
+
+            return {
+                releasedProjectStage: 'settled',
+                ratingMultiplier: multiplier,
+                releasedProjectData: {
+                    ...data,
+                    views,
+                    stars,
+                },
+            };
+        });
+    };
+
     confirmReleaseAndSettle = () => {
         sound.playCoin();
         const data = this.state.releasedProjectData;
+        const multiplier = this.state.ratingMultiplier;
         if (data) {
-            const rewardFunds = data.stars * 200 + (data.phase === 'stable' ? 100000 : 30000);
+            const rewardFunds = Math.round(data.stars * 200 + (data.phase === 'stable' ? 100000 : 30000));
             const rewardRep = Math.round(data.stars * 1.5 + (data.phase === 'stable' ? 300 : 100));
+
+            let ratingCategory: 'good' | 'normal' | 'poor' = 'normal';
+            if (multiplier > 1.0) ratingCategory = 'good';
+            if (multiplier < 1.0) ratingCategory = 'poor';
 
             this.setState(prevState => {
                 const nextFunds = prevState.funds + rewardFunds;
@@ -799,28 +1163,51 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 localStorage.setItem('1agents-company-funds', String(nextFunds));
                 localStorage.setItem('1agents-company-rep', String(nextRep));
 
+                // 1. Update employee stats
+                const assignedEmpId = prevState.workspaceAssignments[data.id] || 'emp-01';
+                const nextEmployees = prevState.employees.map(emp => {
+                    if (emp.id === assignedEmpId) {
+                        return {
+                            ...emp,
+                            ratingGood: ratingCategory === 'good' ? emp.ratingGood + 1 : emp.ratingGood,
+                            ratingNormal: ratingCategory === 'normal' ? emp.ratingNormal + 1 : emp.ratingNormal,
+                            ratingPoor: ratingCategory === 'poor' ? emp.ratingPoor + 1 : emp.ratingPoor,
+                        };
+                    }
+                    return emp;
+                });
+
+                // 2. Update skill card stats
+                const assignedEmp = prevState.employees.find(e => e.id === assignedEmpId) || prevState.employees[0];
+                const nextSkillCards = prevState.skillCards.map(card => {
+                    const cleanSkillName = card.name.split(' ')[0];
+                    const hasSkill = assignedEmp.skills.some(s => s.startsWith(cleanSkillName));
+                    if (hasSkill) {
+                        return {
+                            ...card,
+                            good: ratingCategory === 'good' ? card.good + 1 : card.good,
+                            normal: ratingCategory === 'normal' ? card.normal + 1 : card.normal,
+                            poor: ratingCategory === 'poor' ? card.poor + 1 : card.poor,
+                        };
+                    }
+                    return card;
+                });
+
+                // 3. Generate new task list for this workspace so it runs again!
+                const nextTasksMap = { ...prevState.tasksMap };
+                nextTasksMap[data.id] = this.generateRandomTasksForWorkspace(data.id);
+
                 return {
                     funds: nextFunds,
                     reputation: nextRep,
+                    employees: nextEmployees,
+                    skillCards: nextSkillCards,
+                    tasksMap: nextTasksMap,
                     showReleaseModal: false,
                     releasedProjectData: null,
                     launchingProjectId: null,
                 };
             });
-
-            const wsIdx = this.state.workspaces.findIndex(w => w.id === data.id);
-            if (wsIdx !== -1) {
-                this.setState(prevState => {
-                    const nextEmployees = [...prevState.employees];
-                    if (nextEmployees[wsIdx]) {
-                        nextEmployees[wsIdx] = {
-                            ...nextEmployees[wsIdx],
-                            ratingGood: nextEmployees[wsIdx].ratingGood + 5,
-                        };
-                    }
-                    return { employees: nextEmployees };
-                });
-            }
 
             ui.showToast(`✨ 交付结算：获得研发资金 +$${rewardFunds.toLocaleString()}，声望 +${rewardRep}！`);
         }
@@ -936,6 +1323,14 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                         <button class="pixel-header-btn" onClick={this.toggleMute} title="静音开关">
                             {muted ? '🔇' : '🔊'}
                         </button>
+                        <button
+                            class="pixel-header-btn"
+                            onClick={this.toggleRosterModal}
+                            style="border-color: var(--pixel-cyan); color: var(--pixel-cyan);"
+                            title="打开人才管理与技能升级中心"
+                        >
+                            👥 人才与技能
+                        </button>
                         <button class="pixel-header-btn" onClick={this.toggleMock}>
                             🎮 {useMock ? '使用真实数据' : '加载模拟演示'}
                         </button>
@@ -980,11 +1375,10 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                     </div>
                                     <div class="pixel-floor-body">
                                         {deptWorkspaces.map(ws => {
-                                            const wsIdx = workspaces.findIndex(w => w.id === ws.id);
+                                            const empId = this.state.workspaceAssignments[ws.id] || 'emp-01';
                                             const emp =
-                                                this.state.employees[
-                                                    wsIdx >= 0 ? wsIdx % this.state.employees.length : 0
-                                                ];
+                                                this.state.employees.find(e => e.id === empId) ||
+                                                this.state.employees[0];
                                             const effort = this.state.effortLevels[ws.id] || 'middle';
                                             return (
                                                 <DashboardWorkshop
@@ -998,6 +1392,10 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                                     }
                                                     employee={emp}
                                                     effortLevel={effort}
+                                                    onChangeEffortLevel={this.handleChangeEffortLevel}
+                                                    onAssignEmployeeClick={wsId =>
+                                                        this.setState({ assigningWorkspaceId: wsId })
+                                                    }
                                                 />
                                             );
                                         })}
@@ -1104,81 +1502,628 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 {/* ── BUILDING IN PUBLIC RELEASE MODAL ── */}
                 {this.state.showReleaseModal && this.state.releasedProjectData && (
                     <div class="pixel-dialog-overlay">
-                        <div class="pixel-dialog release-dialog">
+                        <div class="pixel-dialog release-dialog" style="width: 580px;">
                             <div class="pixel-dialog-header">🚀 BUILDING IN PUBLIC 发布大厅</div>
                             <div class="pixel-dialog-body">
                                 <p style="font-size:16px;color:var(--pixel-gold);text-align:center;margin-bottom:12px;">
                                     已成功交付项目：《{this.state.releasedProjectData.name}》
                                 </p>
 
-                                <div class="release-metrics-grid">
-                                    <div class="release-metric-card">
-                                        <span class="metric-icon">👁️</span>
-                                        <span class="metric-label">围观量:</span>
-                                        <span class="metric-val">
-                                            {this.state.releasedProjectData.views.toLocaleString()}
-                                        </span>
+                                {this.state.releasedProjectStage === 'rating' ? (
+                                    <div style="text-align:center; margin: 20px 0;">
+                                        <p style="font-size:14px; color:#fff; margin-bottom:16px;">
+                                            请对本次执行任务的智能体（员工 + 技能）进行评分：
+                                        </p>
+                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                                            <button
+                                                class="pixel-dialog-btn exceeds"
+                                                onClick={() => this.rateProject('exceeds')}
+                                                style="border-color:var(--pixel-gold); color:var(--pixel-gold); font-size:18px;"
+                                            >
+                                                🌟 超乎期望 (Exceeds)
+                                            </button>
+                                            <button
+                                                class="pixel-dialog-btn normal"
+                                                onClick={() => this.rateProject('normal')}
+                                                style="border-color:var(--pixel-green); color:var(--pixel-green); font-size:18px;"
+                                            >
+                                                👍 正常 (Normal)
+                                            </button>
+                                            <button
+                                                class="pixel-dialog-btn improvement"
+                                                onClick={() => this.rateProject('improvement')}
+                                                style="border-color:var(--pixel-orange); color:var(--pixel-orange); font-size:18px;"
+                                            >
+                                                ⚠️ 有待提升 (Improve)
+                                            </button>
+                                            <button
+                                                class="pixel-dialog-btn poor"
+                                                onClick={() => this.rateProject('poor')}
+                                                style="border-color:var(--pixel-red); color:var(--pixel-red); font-size:18px;"
+                                            >
+                                                ❌ 糟糕 (Poor)
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="release-metric-card">
-                                        <span class="metric-icon">⭐</span>
-                                        <span class="metric-label">点赞/Stars:</span>
-                                        <span class="metric-val">
-                                            {this.state.releasedProjectData.stars.toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <div class="release-metric-card">
-                                        <span class="metric-icon">📦</span>
-                                        <span class="metric-label">交付阶段:</span>
-                                        <span class="metric-val" style="color:var(--pixel-cyan)">
-                                            {this.state.releasedProjectData.phase === 'alpha' && 'Alpha (内测)'}
-                                            {this.state.releasedProjectData.phase === 'beta' && 'Beta (公测)'}
-                                            {this.state.releasedProjectData.phase === 'stable' && '1.0 Stable (正式)'}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="release-reviews-box">
-                                    <div class="reviews-header">💬 社区反馈墙</div>
-                                    <div class="reviews-list">
-                                        {this.state.releasedProjectData.feedbacks.map((f, i) => (
-                                            <div key={i} class="review-item">
-                                                <span style="color:var(--pixel-cyan)">User_{100 + i}:</span> {f}
+                                ) : (
+                                    <div>
+                                        <div class="release-metrics-grid">
+                                            <div class="release-metric-card">
+                                                <span class="metric-icon">👁️</span>
+                                                <span class="metric-label">围观量:</span>
+                                                <span class="metric-val">
+                                                    {this.state.releasedProjectData.views.toLocaleString()}
+                                                </span>
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                            <div class="release-metric-card">
+                                                <span class="metric-icon">⭐</span>
+                                                <span class="metric-label">点赞/Stars:</span>
+                                                <span class="metric-val">
+                                                    {this.state.releasedProjectData.stars.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div class="release-metric-card">
+                                                <span class="metric-icon">📦</span>
+                                                <span class="metric-label">交付阶段:</span>
+                                                <span class="metric-val" style="color:var(--pixel-cyan)">
+                                                    {this.state.releasedProjectData.phase === 'alpha' && 'Alpha (内测)'}
+                                                    {this.state.releasedProjectData.phase === 'beta' && 'Beta (公测)'}
+                                                    {this.state.releasedProjectData.phase === 'stable' &&
+                                                        '1.0 Stable (正式)'}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                <div class="release-phase-selector">
-                                    <span style="font-size:12px;color:var(--pixel-border-light)">迭代发布版本：</span>
-                                    <button
-                                        class={`phase-btn ${this.state.releasedProjectData.phase === 'alpha' ? 'active' : ''}`}
-                                        onClick={() => this.changeReleasePhase('alpha')}
-                                    >
-                                        Alpha
-                                    </button>
-                                    <button
-                                        class={`phase-btn ${this.state.releasedProjectData.phase === 'beta' ? 'active' : ''}`}
-                                        onClick={() => this.changeReleasePhase('beta')}
-                                    >
-                                        Beta
-                                    </button>
-                                    <button
-                                        class={`phase-btn ${this.state.releasedProjectData.phase === 'stable' ? 'active' : ''}`}
-                                        onClick={() => this.changeReleasePhase('stable')}
-                                    >
-                                        1.0 Stable
-                                    </button>
-                                </div>
+                                        <div class="release-reviews-box">
+                                            <div class="reviews-header">
+                                                💬 社区反馈墙 (加成: {Math.round(this.state.ratingMultiplier * 100)}%)
+                                            </div>
+                                            <div class="reviews-list">
+                                                {this.state.releasedProjectData.feedbacks.map((f, i) => (
+                                                    <div key={i} class="review-item">
+                                                        <span style="color:var(--pixel-cyan)">User_{100 + i}:</span> {f}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div class="release-phase-selector">
+                                            <span style="font-size:12px;color:var(--pixel-border-light)">
+                                                迭代发布版本：
+                                            </span>
+                                            <button
+                                                class={`phase-btn ${this.state.releasedProjectData.phase === 'alpha' ? 'active' : ''}`}
+                                                onClick={() => this.changeReleasePhase('alpha')}
+                                            >
+                                                Alpha
+                                            </button>
+                                            <button
+                                                class={`phase-btn ${this.state.releasedProjectData.phase === 'beta' ? 'active' : ''}`}
+                                                onClick={() => this.changeReleasePhase('beta')}
+                                            >
+                                                Beta
+                                            </button>
+                                            <button
+                                                class={`phase-btn ${this.state.releasedProjectData.phase === 'stable' ? 'active' : ''}`}
+                                                onClick={() => this.changeReleasePhase('stable')}
+                                            >
+                                                1.0 Stable
+                                            </button>
+                                        </div>
+
+                                        <div class="pixel-dialog-buttons">
+                                            <button class="pixel-dialog-btn" onClick={this.confirmReleaseAndSettle}>
+                                                ✨ 确定结算收工
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── ROSTER & SKILLS MODAL ── */}
+                {this.state.showRosterModal && (
+                    <div class="pixel-dialog-overlay" onClick={this.toggleRosterModal}>
+                        <div
+                            class="pixel-dialog roster-dialog"
+                            onClick={e => e.stopPropagation()}
+                            style="width: 900px; max-width: 95%;"
+                        >
+                            <div class="pixel-dialog-header">👥 一芥像素工坊 - 人才与技能管理中心</div>
+
+                            {/* Tabs */}
+                            <div
+                                class="pixel-tabs"
+                                style="display:flex; justify-content:center; gap:8px; margin-bottom:16px; border-bottom:2px solid var(--pixel-border); padding-bottom:8px;"
+                            >
+                                <button
+                                    class={`pixel-tab-btn ${this.state.rosterTab === 'employees' ? 'active' : ''}`}
+                                    onClick={() => this.setState({ rosterTab: 'employees' })}
+                                >
+                                    🧑‍💻 基础雇员库
+                                </button>
+                                <button
+                                    class={`pixel-tab-btn ${this.state.rosterTab === 'specialists' ? 'active' : ''}`}
+                                    onClick={() => this.setState({ rosterTab: 'specialists' })}
+                                >
+                                    ⭐ 专才专家库
+                                </button>
+                                <button
+                                    class={`pixel-tab-btn ${this.state.rosterTab === 'skills' ? 'active' : ''}`}
+                                    onClick={() => this.setState({ rosterTab: 'skills' })}
+                                >
+                                    ⚡ 技能卡管理
+                                </button>
+                                <button
+                                    class={`pixel-tab-btn ${this.state.rosterTab === 'practice' ? 'active' : ''}`}
+                                    onClick={() => this.setState({ rosterTab: 'practice' })}
+                                >
+                                    📦 最佳实践封装
+                                </button>
                             </div>
 
-                            <div class="pixel-dialog-buttons">
-                                <button class="pixel-dialog-btn" onClick={this.confirmReleaseAndSettle}>
-                                    ✨ 确 认 发 布
+                            <div
+                                class="pixel-dialog-body roster-modal-body"
+                                style="height: 400px; overflow-y: auto; padding-right:8px;"
+                            >
+                                {this.state.rosterTab === 'employees' && this.renderEmployeesTab()}
+                                {this.state.rosterTab === 'specialists' && this.renderSpecialistsTab()}
+                                {this.state.rosterTab === 'skills' && this.renderSkillsTab()}
+                                {this.state.rosterTab === 'practice' && this.renderPracticeTab()}
+                            </div>
+
+                            <div class="pixel-dialog-buttons" style="margin-top:16px;">
+                                <button class="pixel-dialog-btn" onClick={this.toggleRosterModal}>
+                                    确定关闭
                                 </button>
                             </div>
                         </div>
                     </div>
                 )}
+
+                {/* ── EMPLOYEE ASSIGNMENT MODAL ── */}
+                {this.state.assigningWorkspaceId && (
+                    <div class="pixel-dialog-overlay" onClick={() => this.setState({ assigningWorkspaceId: null })}>
+                        <div
+                            class="pixel-dialog assign-dialog"
+                            onClick={e => e.stopPropagation()}
+                            style="width: 450px;"
+                        >
+                            <div class="pixel-dialog-header">👤 指派智能体员工</div>
+                            <div class="pixel-dialog-body">
+                                <p style="margin-bottom:12px; text-align:center; color:var(--pixel-cyan); font-size:12px;">
+                                    请选择要指派到项目 《
+                                    {(() => {
+                                        const ws = this.state.workspaces.find(
+                                            w => w.id === this.state.assigningWorkspaceId
+                                        );
+                                        return ws ? ws.name.split(']')[1] || ws.name : '';
+                                    })()}
+                                    》 的员工：
+                                </p>
+                                <div
+                                    class="assign-employees-list"
+                                    style="display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto; padding:4px;"
+                                >
+                                    {this.state.employees.map(emp => {
+                                        const runningWS = this.state.workspaces.filter(
+                                            w =>
+                                                this.state.workspaceAssignments[w.id] === emp.id &&
+                                                this.getProjectStatus(w.id) === 'running'
+                                        );
+                                        const clones = runningWS.length;
+                                        return (
+                                            <div
+                                                key={emp.id}
+                                                class="assign-emp-item"
+                                                onClick={() => {
+                                                    sound.playSelect();
+                                                    this.setState(prevState => {
+                                                        const nextAssignments = { ...prevState.workspaceAssignments };
+                                                        nextAssignments[prevState.assigningWorkspaceId!] = emp.id;
+                                                        return {
+                                                            workspaceAssignments: nextAssignments,
+                                                            assigningWorkspaceId: null,
+                                                        };
+                                                    });
+                                                    ui.showToast(`👤 已将 [${emp.name}] 指派到该项目工位！`);
+                                                }}
+                                                style="background:rgba(0,0,0,0.4); border:2px solid var(--pixel-border); padding:8px 12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;"
+                                            >
+                                                <div>
+                                                    <span style="font-weight:bold; color:#fff;">{emp.name}</span>
+                                                    <span style="font-size:10px; color:var(--pixel-border-light); margin-left:8px;">
+                                                        ({emp.modelType})
+                                                    </span>
+                                                </div>
+                                                <div style="display:flex; align-items:center; gap:12px;">
+                                                    <span style="font-size:10px; color:var(--pixel-cyan);">
+                                                        {clones} 分身
+                                                    </span>
+                                                    <span
+                                                        style={`font-size:10px; color:${emp.stamina < 30 ? 'var(--pixel-red)' : emp.stamina < 60 ? 'var(--pixel-gold)' : 'var(--pixel-green)'};`}
+                                                    >
+                                                        ⚡ {emp.stamina}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div class="pixel-dialog-buttons">
+                                <button
+                                    class="pixel-dialog-btn"
+                                    onClick={() => this.setState({ assigningWorkspaceId: null })}
+                                >
+                                    取消指派
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    renderEmployeesTab() {
+        const basicEmployees = this.state.employees.filter(e => e.kind === 'basic');
+        return (
+            <div class="roster-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                {basicEmployees.map(emp => {
+                    const runningWS = this.state.workspaces.filter(
+                        w =>
+                            this.state.workspaceAssignments[w.id] === emp.id &&
+                            this.getProjectStatus(w.id) === 'running'
+                    );
+                    const clones = runningWS.length;
+                    return (
+                        <div
+                            key={emp.id}
+                            class="roster-card basic-card"
+                            style="background: rgba(0,0,0,0.4); border:2px solid var(--pixel-border); padding:12px; border-radius:4px; display:flex; flex-direction:column; justify-content:space-between;"
+                        >
+                            <div>
+                                <div
+                                    class="card-title-bar"
+                                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;"
+                                >
+                                    <span
+                                        class="emp-name"
+                                        style="font-weight:bold; color:var(--pixel-cyan); font-size:14px;"
+                                    >
+                                        {emp.name}
+                                    </span>
+                                    <button
+                                        class="pixel-mini-btn"
+                                        onClick={() => this.handleRenameEmployee(emp.id)}
+                                        style="font-size:10px; background:#000; color:#fff; border:1px solid var(--pixel-border); cursor:pointer; padding:2px 6px;"
+                                    >
+                                        改名
+                                    </button>
+                                </div>
+                                <div class="card-details" style="font-size:12px; line-height:1.6;">
+                                    <div class="detail-row">
+                                        <span class="label" style="color:var(--pixel-border-light)">
+                                            基座模型:
+                                        </span>{' '}
+                                        <span class="val cyan" style="color:var(--pixel-cyan); margin-left:4px;">
+                                            {emp.modelType}
+                                        </span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="label" style="color:var(--pixel-border-light)">
+                                            评测得分:
+                                        </span>{' '}
+                                        <span class="val gold" style="color:var(--pixel-gold); margin-left:4px;">
+                                            {emp.modelType.includes('claude')
+                                                ? '88.7% (MMLU)'
+                                                : emp.modelType.includes('gemini')
+                                                  ? '86.2% (MMLU)'
+                                                  : '85.4% (MMLU)'}
+                                        </span>
+                                    </div>
+                                    <div class="detail-row" style="display:flex; align-items:center;">
+                                        <span class="label" style="color:var(--pixel-border-light)">
+                                            精力电池:
+                                        </span>
+                                        <div
+                                            class="pixel-stamina-battery"
+                                            style="width: 80px; height: 12px; margin-left: 8px;"
+                                            title={`精力值: ${emp.stamina}/100`}
+                                        >
+                                            <div
+                                                class={`pixel-stamina-fill ${emp.stamina < 30 ? 'low' : emp.stamina < 60 ? 'medium' : 'high'}`}
+                                                style={`width: ${emp.stamina}%`}
+                                            />
+                                        </div>
+                                        <span class="stamina-text" style="font-size:10px; margin-left:6px;">
+                                            {emp.stamina}%
+                                        </span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="label" style="color:var(--pixel-border-light)">
+                                            当前分身:
+                                        </span>{' '}
+                                        <span class="val green" style="color:var(--pixel-green); margin-left:4px;">
+                                            {clones} Clone(s)
+                                        </span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span class="label" style="color:var(--pixel-border-light)">
+                                            评价历史:
+                                        </span>
+                                        <span class="val text-small" style="margin-left:4px;">
+                                            🌟{emp.ratingGood} 👍{emp.ratingNormal} ❌{emp.ratingPoor}
+                                        </span>
+                                    </div>
+                                    <div class="detail-row skills-row" style="margin-top:4px;">
+                                        <span class="label" style="color:var(--pixel-border-light)">
+                                            搭载技能:
+                                        </span>
+                                        <div
+                                            class="tags-container"
+                                            style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;"
+                                        >
+                                            {emp.skills.map((s, i) => (
+                                                <span key={i} class="pixel-skill-tag">
+                                                    {s}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="persona-bubble"
+                                        style="background:#000; border:1px dashed var(--pixel-border); padding:6px; font-style:italic; font-size:11px; margin-top:8px; border-radius:4px; color:#aaa;"
+                                    >
+                                        "{emp.persona}"
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-actions" style="margin-top:8px;">
+                                {emp.stamina < 100 && (
+                                    <button
+                                        class="pixel-dialog-btn recharge-btn"
+                                        onClick={() => this.buyCaffeine(emp.id)}
+                                        style="width:100%; font-size:16px; padding:4px;"
+                                    >
+                                        ☕ 咖啡充能 ($10,000)
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    }
+
+    renderSpecialistsTab() {
+        const specEmployees = this.state.employees.filter(e => e.kind === 'specialist');
+        return (
+            <div class="roster-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                {specEmployees.length === 0 ? (
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--pixel-border-light)">
+                        💡 暂无特聘专家。可以在“最佳实践封装”中将日常成功聊天轨迹固化为专家！
+                    </div>
+                ) : (
+                    specEmployees.map(emp => {
+                        const runningWS = this.state.workspaces.filter(
+                            w =>
+                                this.state.workspaceAssignments[w.id] === emp.id &&
+                                this.getProjectStatus(w.id) === 'running'
+                        );
+                        const clones = runningWS.length;
+                        return (
+                            <div
+                                key={emp.id}
+                                class="roster-card spec-card"
+                                style="background: rgba(0,0,0,0.4); border:2px solid var(--pixel-purple); padding:12px; border-radius:4px; display:flex; flex-direction:column; justify-content:space-between;"
+                            >
+                                <div>
+                                    <div
+                                        class="card-title-bar"
+                                        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid rgba(168,92,249,0.3); padding-bottom:4px; background:rgba(168,92,249,0.1); margin:-12px -12px 8px -12px; padding:8px 12px;"
+                                    >
+                                        <span
+                                            class="emp-name"
+                                            style="font-weight:bold; color:var(--pixel-purple); font-size:14px;"
+                                        >
+                                            ★ {emp.name}
+                                        </span>
+                                        <button
+                                            class="pixel-mini-btn"
+                                            onClick={() => this.handleRenameEmployee(emp.id)}
+                                            style="font-size:10px; background:#000; color:#fff; border:1px solid var(--pixel-purple); cursor:pointer; padding:2px 6px;"
+                                        >
+                                            改名
+                                        </button>
+                                    </div>
+                                    <div class="card-details" style="font-size:12px; line-height:1.6;">
+                                        <div class="detail-row">
+                                            <span class="label" style="color:var(--pixel-border-light)">
+                                                基座模型:
+                                            </span>{' '}
+                                            <span class="val cyan" style="color:var(--pixel-cyan); margin-left:4px;">
+                                                {emp.modelType}
+                                            </span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="label" style="color:var(--pixel-border-light)">
+                                                评测得分:
+                                            </span>{' '}
+                                            <span class="val gold" style="color:var(--pixel-gold); margin-left:4px;">
+                                                98.4% (专才能力)
+                                            </span>
+                                        </div>
+                                        <div class="detail-row" style="display:flex; align-items:center;">
+                                            <span class="label" style="color:var(--pixel-border-light)">
+                                                精力电池:
+                                            </span>
+                                            <div
+                                                class="pixel-stamina-battery"
+                                                style="width: 80px; height: 12px; margin-left: 8px;"
+                                                title={`精力值: ${emp.stamina}/100`}
+                                            >
+                                                <div
+                                                    class={`pixel-stamina-fill ${emp.stamina < 30 ? 'low' : emp.stamina < 60 ? 'medium' : 'high'}`}
+                                                    style={`width: ${emp.stamina}%`}
+                                                />
+                                            </div>
+                                            <span class="stamina-text" style="font-size:10px; margin-left:6px;">
+                                                {emp.stamina}%
+                                            </span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="label" style="color:var(--pixel-border-light)">
+                                                当前分身:
+                                            </span>{' '}
+                                            <span class="val green" style="color:var(--pixel-green); margin-left:4px;">
+                                                {clones} Clone(s)
+                                            </span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="label" style="color:var(--pixel-border-light)">
+                                                评价历史:
+                                            </span>
+                                            <span class="val text-small" style="margin-left:4px;">
+                                                🌟{emp.ratingGood} 👍{emp.ratingNormal} ❌{emp.ratingPoor}
+                                            </span>
+                                        </div>
+                                        <div class="detail-row skills-row" style="margin-top:4px;">
+                                            <span class="label" style="color:var(--pixel-border-light)">
+                                                搭载特长:
+                                            </span>
+                                            <div
+                                                class="tags-container"
+                                                style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;"
+                                            >
+                                                {emp.skills.map((s, i) => (
+                                                    <span
+                                                        key={i}
+                                                        class="pixel-skill-tag"
+                                                        style="border-color:var(--pixel-purple); color:var(--pixel-purple);"
+                                                    >
+                                                        {s}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div
+                                            class="persona-bubble"
+                                            style="background:#000; border:1px dashed var(--pixel-purple); padding:6px; font-style:italic; font-size:11px; margin-top:8px; border-radius:4px; color:#aaa;"
+                                        >
+                                            "{emp.persona}"
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-actions" style="margin-top:8px;">
+                                    {emp.stamina < 100 && (
+                                        <button
+                                            class="pixel-dialog-btn recharge-btn"
+                                            onClick={() => this.buyCaffeine(emp.id)}
+                                            style="width:100%; font-size:16px; padding:4px;"
+                                        >
+                                            ☕ 咖啡充能 ($10,000)
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        );
+    }
+
+    renderSkillsTab() {
+        return (
+            <div class="skills-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                {this.state.skillCards.map((card, idx) => (
+                    <div
+                        key={idx}
+                        class="skill-card-item"
+                        style="background: rgba(0,0,0,0.4); border: 2px solid var(--pixel-border); padding: 12px; border-radius: 4px; display: flex; flex-direction: column; justify-content: space-between;"
+                    >
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:14px; font-weight:bold; color:var(--pixel-cyan);">
+                                    {card.name}
+                                </span>
+                                <span
+                                    class="pixel-wb-status-badge"
+                                    style="background: var(--pixel-gold); font-size:8px;"
+                                >
+                                    Ver {card.version}
+                                </span>
+                            </div>
+                            <div style="font-size:11px; color:var(--pixel-border-light); margin-bottom:10px; line-height:1.5;">
+                                <div>
+                                    当前级别: Level {card.level} (研发效率 +{(card.level - 1) * 15}%)
+                                </div>
+                                <div>
+                                    历史成效: 🌟{card.good} | 👍{card.normal} | ❌{card.poor}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            class="pixel-dialog-btn upgrade-btn"
+                            onClick={() => this.upgradeSkillCard(idx)}
+                            style="width: 100%; font-size: 16px; padding: 4px; margin-top: 8px;"
+                        >
+                            ⚡ 升级至 v{card.level + 1}.0 (${card.cost.toLocaleString()})
+                        </button>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    renderPracticeTab() {
+        return (
+            <div class="practice-list" style="display:flex; flex-direction:column; gap:16px;">
+                {this.state.recentPractices.map(prac => (
+                    <div
+                        key={prac.id}
+                        class="practice-item"
+                        style="background: rgba(0,0,0,0.4); border: 2px solid var(--pixel-border); padding:16px; border-radius: 4px; display:flex; justify-content:space-between; align-items:center;"
+                    >
+                        <div style="max-width: 75%;">
+                            <div style="font-size:14px; font-weight:bold; color:var(--pixel-gold); margin-bottom:6px;">
+                                📜 {prac.title}
+                            </div>
+                            <div style="font-size:12px; color:var(--pixel-text); margin-bottom:8px; line-height:1.4;">
+                                {prac.desc}
+                            </div>
+                            <div style="font-size:11px; color:var(--pixel-border-light); display:flex; gap:12px;">
+                                <span>
+                                    模型底座: <strong style="color:var(--pixel-cyan)">{prac.model}</strong>
+                                </span>
+                                <span>
+                                    沉淀技能卡:{' '}
+                                    <strong style="color:var(--pixel-cyan)">{prac.skills.join(', ')}</strong>
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            {prac.status === 'pending' ? (
+                                <button
+                                    class="pixel-dialog-btn encapsulate-btn"
+                                    onClick={() => this.encapsulateSpecialist(prac.id)}
+                                    style="font-size:16px; padding: 8px 12px;"
+                                >
+                                    封装专才
+                                </button>
+                            ) : (
+                                <span style="color:var(--pixel-green); font-size:14px; font-family:'Press Start 2P', monospace;">
+                                    已固化
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                ))}
             </div>
         );
     }
