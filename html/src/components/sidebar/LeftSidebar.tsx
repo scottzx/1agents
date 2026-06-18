@@ -189,7 +189,6 @@ export function LeftSidebar({
 
     useEffect(() => {
         deletingId.value = null;
-        killingSessionId.value = null;
     }, [folders]);
 
     const handleDeleteClick = (e: MouseEvent, id: string) => {
