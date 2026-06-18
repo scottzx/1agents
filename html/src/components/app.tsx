@@ -14,6 +14,7 @@ import { check as checkOta, type UpdateInfo } from '../ota/checker';
 import { UpdateBanner } from '../ota/UpdateBanner';
 import { DesktopAppLayout } from './desktop/DesktopAppLayout';
 import { MobileAppLayout } from './mobile/MobileAppLayout';
+import { DashboardApp } from './desktop/DashboardApp';
 
 import * as ui from '../stores/uiStore';
 import * as fs from '../stores/fsStore';
@@ -361,6 +362,11 @@ export class App extends Component<{}, AppState> {
     };
 
     render() {
+        const dashboardModeParams = new URLSearchParams(window.location.search);
+        if (dashboardModeParams.get('mode') === 'dashboard') {
+            return <DashboardApp />;
+        }
+
         const { accessGateVisible, backendGateVisible, otaUpdate } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;
