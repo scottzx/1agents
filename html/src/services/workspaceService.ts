@@ -1,14 +1,15 @@
+import { apiFetch } from './apiClient';
 import { Workspace } from '../components/types';
 
 export const workspaceService = {
     async list(): Promise<Workspace[]> {
-        const res = await fetch('/api/workspace/list');
+        const res = await apiFetch('/workspace/list');
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     },
 
     async create(ws: Workspace): Promise<void> {
-        const res = await fetch('/api/workspace/create', {
+        const res = await apiFetch('/workspace/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ws),
@@ -17,7 +18,7 @@ export const workspaceService = {
     },
 
     async update(ws: Workspace): Promise<void> {
-        const res = await fetch('/api/workspace/update', {
+        const res = await apiFetch('/workspace/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ws),
@@ -26,14 +27,14 @@ export const workspaceService = {
     },
 
     async delete(id: string): Promise<void> {
-        const res = await fetch(`/api/workspace/delete?id=${encodeURIComponent(id)}`, {
+        const res = await apiFetch(`/workspace/delete?id=${encodeURIComponent(id)}`, {
             method: 'DELETE',
         });
         if (!res.ok) throw new Error(await res.text());
     },
 
     async reorder(ids: string[]): Promise<void> {
-        const res = await fetch('/api/workspace/reorder', {
+        const res = await apiFetch('/workspace/reorder', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids }),
@@ -46,13 +47,13 @@ export const workspaceService = {
         parentPath: string | null;
         directories: { name: string; path: string }[];
     }> {
-        const res = await fetch(`/api/workspace/list-directories?path=${encodeURIComponent(path)}`);
+        const res = await apiFetch(`/workspace/list-directories?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     },
 
     async createDirectory(parentPath: string, name: string): Promise<string> {
-        const res = await fetch('/api/workspace/create-directory', {
+        const res = await apiFetch('/workspace/create-directory', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ parentPath, name }),
@@ -63,7 +64,7 @@ export const workspaceService = {
     },
 
     async getCcConnectUrl(workspaceId: string, theme: string, lang: string, path?: string): Promise<string> {
-        const res = await fetch('/api/cc-connect/url', {
+        const res = await apiFetch('/cc-connect/url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ workspace: workspaceId, theme, lang, path }),

@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals';
 import { t, type Lang } from '../../i18n';
 import type { SettingsCategory } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
+import { RelayPairingPanel } from './RelayPairingPanel';
 
 export type { SettingsCategory };
 
@@ -1076,6 +1077,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderSecurity();
             case 'agents':
                 return renderAgents();
+            case 'relay':
+                return <RelayPairingPanel />;
             case 'about':
                 return renderAbout();
             default:

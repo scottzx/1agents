@@ -1,13 +1,13 @@
 {
   "private": true,
-  "name": "ttyd",
+  "name": "1agents-frontend",
   "version": "1.0.0",
-  "description": "Share your terminal over the web",
+  "description": "1Agents Web Frontend — AI-native workbench UI",
   "repository": {
-    "url": "git@github.com:tsl0922/ttyd.git",
+    "url": "git@github.com:scottzx/1Agents.git",
     "type": "git"
   },
-  "author": "Shuanglei Tao <tsl0922@gmail.com>",
+  "author": "scottzx",
   "license": "MIT",
   "scripts": {
     "prestart": "gulp clean",
@@ -66,9 +66,12 @@
     "decko": "^1.2.0",
     "echarts": "^5.6.0",
     "file-saver": "^2.0.5",
+    "jsqr": "^1.4.0",
     "marked": "^18.0.4",
     "preact": "^10.19.6",
+    "socket.io-client": "^4.8.3",
     "trzsz": "^1.1.5",
+    "tweetnacl": "^1.0.3",
     "whatwg-fetch": "^3.6.20",
     "zmodem.js": "^0.1.10"
   },
