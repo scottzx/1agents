@@ -4,6 +4,7 @@ import { RightDrawerTab, isFullPageTab } from '../types';
 import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
 import * as stage from '../../stores/stageStore';
+import { isBeginnerMode } from '../../stores/uiStore';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -329,16 +330,18 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                         <div class="divider" />
 
-                        <button
-                            id="hdr-btn-tasks"
-                            class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
-                            onClick={() => toggleDrawerTab('tasks')}
-                            title={t('header.col.tasks', language)}
-                            aria-label={t('header.col.tasks', language)}
-                            aria-pressed={activeDrawerTab === 'tasks'}
-                        >
-                            {IconTasks}
-                        </button>
+                        {!isBeginnerMode.value && (
+                            <button
+                                id="hdr-btn-tasks"
+                                class={`shortcut-btn ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
+                                onClick={() => toggleDrawerTab('tasks')}
+                                title={t('header.col.tasks', language)}
+                                aria-label={t('header.col.tasks', language)}
+                                aria-pressed={activeDrawerTab === 'tasks'}
+                            >
+                                {IconTasks}
+                            </button>
+                        )}
                         <button
                             id="hdr-btn-channels"
                             class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
@@ -426,17 +429,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
                     )}
                 </button>
-                <button
-                    id="mob-menu-tasks"
-                    class={`mobile-menu-item ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
-                    onClick={() => handleDrawerToggle('tasks')}
-                >
-                    <span class="mob-menu-icon">{IconTasks}</span>
-                    <span class="mob-menu-label">任务仪表盘</span>
-                    {activeDrawerTab === 'tasks' && (
-                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
-                    )}
-                </button>
+                {!isBeginnerMode.value && (
+                    <button
+                        id="mob-menu-tasks"
+                        class={`mobile-menu-item ${activeDrawerTab === 'tasks' ? 'active' : ''}`}
+                        onClick={() => handleDrawerToggle('tasks')}
+                    >
+                        <span class="mob-menu-icon">{IconTasks}</span>
+                        <span class="mob-menu-label">任务仪表盘</span>
+                        {activeDrawerTab === 'tasks' && (
+                            <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                        )}
+                    </button>
+                )}
 
                 <button
                     id="mob-menu-files"

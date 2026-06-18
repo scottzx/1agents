@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals';
 import { t, type Lang } from '../../i18n';
 import type { SettingsCategory } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
+import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
 
 export type { SettingsCategory };
@@ -12,8 +13,6 @@ interface SystemSettingsProps {
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
     language: Lang;
     toggleLanguage: (lang: Lang) => void;
-    tmuxMouseOn?: boolean;
-    onTmuxMouseToggle?: () => void;
     accessTokenExists: boolean;
     onGenerateAccessToken: () => void;
     onRevokeAccessToken: () => void;
@@ -40,8 +39,6 @@ export function SystemSettings(props: SystemSettingsProps) {
         toggleTheme,
         language,
         toggleLanguage,
-        tmuxMouseOn,
-        onTmuxMouseToggle,
         accessTokenExists,
         onGenerateAccessToken,
         onRevokeAccessToken,
@@ -142,46 +139,6 @@ export function SystemSettings(props: SystemSettingsProps) {
                 </div>
             </div>
 
-            <div class="sys-settings-card">
-                <div class="sys-settings-card-header">
-                    <div class="sys-settings-card-icon">
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                            <line x1="12" y1="19" x2="12" y2="23" />
-                            <line x1="8" y1="23" x2="16" y2="23" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="sys-settings-card-title">{t('settings.general.dictationLang', language)}</div>
-                        <div class="sys-settings-card-subtitle">
-                            {t('settings.general.dictationLangDesc', language)}
-                        </div>
-                    </div>
-                </div>
-                <div class="sys-settings-toggle-group">
-                    <button
-                        class={`sys-settings-option-btn ${language === 'zh-CN' ? 'active' : ''}`}
-                        onClick={() => toggleLanguage('zh-CN')}
-                    >
-                        {t('settings.general.dictationLangZh', language)}
-                    </button>
-                    <button
-                        class={`sys-settings-option-btn ${language === 'en-US' ? 'active' : ''}`}
-                        onClick={() => toggleLanguage('en-US')}
-                    >
-                        {t('settings.general.dictationLangEn', language)}
-                    </button>
-                </div>
-            </div>
-
             <div class="sys-settings-sub-title">
                 <svg
                     viewBox="0 0 24 24"
@@ -196,6 +153,43 @@ export function SystemSettings(props: SystemSettingsProps) {
                     <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
                 </svg>
                 {t('settings.appearance.title', language)}
+            </div>
+
+            <div class="sys-settings-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('settings.appearance.uiMode', language)}</div>
+                        <div class="sys-settings-card-subtitle">{t('settings.appearance.uiModeDesc', language)}</div>
+                    </div>
+                </div>
+                <div class="sys-settings-toggle-group">
+                    <button
+                        class={`sys-settings-option-btn ${uiMode.value === 'beginner' ? 'active' : ''}`}
+                        onClick={() => setUiMode('beginner')}
+                    >
+                        {t('settings.appearance.beginnerMode', language)}
+                    </button>
+                    <button
+                        class={`sys-settings-option-btn ${uiMode.value === 'advanced' ? 'active' : ''}`}
+                        onClick={() => setUiMode('advanced')}
+                    >
+                        {t('settings.appearance.advancedMode', language)}
+                    </button>
+                </div>
             </div>
 
             <div class="sys-settings-card">
@@ -280,85 +274,15 @@ export function SystemSettings(props: SystemSettingsProps) {
                     </button>
                 </div>
             </div>
-
-            {onTmuxMouseToggle && (
-                <div class="sys-settings-card">
-                    <div class="sys-settings-card-header">
-                        <div class="sys-settings-card-icon">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect x="5" y="2" width="14" height="20" rx="7" />
-                                <path d="M12 2v6" />
-                                <path d="M5 10h14" />
-                            </svg>
-                        </div>
-                        <div>
-                            <div class="sys-settings-card-title">{t('settings.appearance.mouse', language)}</div>
-                            <div class="sys-settings-card-subtitle">
-                                {tmuxMouseOn
-                                    ? t('settings.appearance.mouseScroll', language)
-                                    : t('settings.appearance.mouseSelect', language)}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="sys-settings-toggle-group">
-                        <button
-                            class={`sys-settings-option-btn ${tmuxMouseOn ? 'active' : ''}`}
-                            onClick={() => !tmuxMouseOn && onTmuxMouseToggle()}
-                        >
-                            <svg
-                                width="13"
-                                height="13"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect x="5" y="2" width="14" height="20" rx="7" />
-                                <path d="M12 2v6" />
-                                <path d="M5 10h14" />
-                            </svg>
-                            {t('settings.appearance.scrollLabel', language)}
-                        </button>
-                        <button
-                            class={`sys-settings-option-btn ${!tmuxMouseOn ? 'active' : ''}`}
-                            onClick={() => tmuxMouseOn && onTmuxMouseToggle()}
-                        >
-                            <svg
-                                width="13"
-                                height="13"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <polyline points="4 7 4 4 20 4 20 7" />
-                                <line x1="9" y1="20" x2="15" y2="20" />
-                                <line x1="12" y1="4" x2="12" y2="20" />
-                            </svg>
-                            {t('settings.appearance.selectLabel', language)}
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 
-    const renderSecurity = () => (
+    const renderRelay = () => (
         <div class="sys-settings-section">
-            <div class="sys-settings-section-title">{t('settings.nav.security', language)}</div>
-            <div class="sys-settings-section-desc">{t('settings.security.desc', language)}</div>
+            <div class="sys-settings-section-title">{t('settings.nav.relay', language)}</div>
+            <div class="sys-settings-section-desc">{t('settings.relay.desc', language)}</div>
 
+            {/* 本机密钥 — moved here from the former 安全设置 category */}
             <div class="sys-settings-card">
                 <div class="sys-settings-card-header">
                     <div class="sys-settings-card-icon">
@@ -463,6 +387,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                     )}
                 </div>
             </div>
+
+            <RelayPairingPanel embedded />
         </div>
     );
 
@@ -1073,12 +999,10 @@ export function SystemSettings(props: SystemSettingsProps) {
         switch (activeCategory) {
             case 'general':
                 return renderGeneral();
-            case 'security':
-                return renderSecurity();
             case 'agents':
                 return renderAgents();
             case 'relay':
-                return <RelayPairingPanel />;
+                return renderRelay();
             case 'about':
                 return renderAbout();
             default:
