@@ -1,5 +1,5 @@
 import { h, Fragment } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat, isTerminal } from '../types';
 import { t, type Lang } from '../i18n';
@@ -130,9 +130,6 @@ export function LeftSidebar({
     const confirmDeleteId = useSignal<string | null>(null);
     const deletingId = useSignal<string | null>(null);
     const killingSessionId = useSignal<string | null>(null);
-    const openDropdownWsId = useSignal<string | null>(null);
-    const dropdownRef = useRef<HTMLDivElement | null>(null);
-
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
     const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null);
@@ -193,18 +190,6 @@ export function LeftSidebar({
         deletingId.value = null;
         killingSessionId.value = null;
     }, [folders]);
-
-    // Close the add-session dropdown on outside click.
-    useEffect(() => {
-        if (!openDropdownWsId.value) return;
-        const onDown = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-                openDropdownWsId.value = null;
-            }
-        };
-        document.addEventListener('mousedown', onDown);
-        return () => document.removeEventListener('mousedown', onDown);
-    }, [openDropdownWsId.value]);
 
     const handleDeleteClick = (e: MouseEvent, id: string) => {
         e.stopPropagation();
@@ -409,27 +394,6 @@ export function LeftSidebar({
                                                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                                             </svg>
                                             <span class="ws-name">{t('sidebar.conversations', language)}</span>
-                                            <div class="ws-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
-                                                <button
-                                                    class="ws-action-btn ws-action-add"
-                                                    title={t('sidebar.newChat', language)}
-                                                    onClick={(e: MouseEvent) => {
-                                                        e.stopPropagation();
-                                                        onChatCreate('default');
-                                                    }}
-                                                >
-                                                    <svg
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2.5"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                    >
-                                                        <path d="M5 12h14M12 5v14" />
-                                                    </svg>
-                                                </button>
-                                            </div>
                                         </div>
                                         {defaultFolder.expanded && (
                                             <div class="project-children">
@@ -519,7 +483,6 @@ export function LeftSidebar({
                                             const isConfirmingDelete = confirmDeleteId.value === folder.id;
                                             const isActive = folder.id === activeWorkspaceId;
                                             const isDeleting = deletingId.value === folder.id;
-                                            const isDropdownOpen = openDropdownWsId.value === folder.id;
 
                                             return (
                                                 <div
@@ -527,7 +490,6 @@ export function LeftSidebar({
                                                     class={`project-node${isActive ? ' ws-active' : ''}${
                                                         isDeleting ? ' ws-deleting' : ''
                                                     }`}
-                                                    style={isDropdownOpen ? 'z-index: 200' : ''}
                                                     onMouseEnter={() => setHoveredId(folder.id)}
                                                     onMouseLeave={() => {
                                                         setHoveredId(null);
@@ -611,65 +573,6 @@ export function LeftSidebar({
                                                                 onDragStart={e => e.preventDefault()}
                                                                 onClick={(e: MouseEvent) => e.stopPropagation()}
                                                             >
-                                                                {ws && (
-                                                                    <div
-                                                                        class="ws-add-dropdown"
-                                                                        ref={isDropdownOpen ? dropdownRef : null}
-                                                                    >
-                                                                        <button
-                                                                            class="ws-action-btn ws-action-add"
-                                                                            title={
-                                                                                t('sidebar.newSession', language) ||
-                                                                                '新建会话'
-                                                                            }
-                                                                            onClick={(e: MouseEvent) => {
-                                                                                e.stopPropagation();
-                                                                                openDropdownWsId.value = isDropdownOpen
-                                                                                    ? null
-                                                                                    : folder.id;
-                                                                            }}
-                                                                        >
-                                                                            <svg
-                                                                                viewBox="0 0 24 24"
-                                                                                fill="none"
-                                                                                stroke="currentColor"
-                                                                                stroke-width="2.5"
-                                                                                stroke-linecap="round"
-                                                                                stroke-linejoin="round"
-                                                                            >
-                                                                                <path d="M5 12h14M12 5v14" />
-                                                                            </svg>
-                                                                        </button>
-                                                                        {isDropdownOpen && (
-                                                                            <div class="ws-add-dropdown-menu">
-                                                                                <button
-                                                                                    class="ws-add-dropdown-item"
-                                                                                    onClick={(e: MouseEvent) => {
-                                                                                        e.stopPropagation();
-                                                                                        openDropdownWsId.value = null;
-                                                                                        onTerminalCreate(
-                                                                                            ws.id,
-                                                                                            ws.terminalDir || ws.path
-                                                                                        );
-                                                                                    }}
-                                                                                >
-                                                                                    {t('sidebar.newTerminal', language)}
-                                                                                </button>
-                                                                                <button
-                                                                                    class="ws-add-dropdown-item"
-                                                                                    onClick={(e: MouseEvent) => {
-                                                                                        e.stopPropagation();
-                                                                                        openDropdownWsId.value = null;
-                                                                                        onChatCreate(ws.id);
-                                                                                    }}
-                                                                                >
-                                                                                    {t('sidebar.newChat', language) ||
-                                                                                        '新建聊天'}
-                                                                                </button>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
                                                                 {isHovered &&
                                                                     ws &&
                                                                     !ws.builtin && [
