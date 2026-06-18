@@ -78,4 +78,21 @@ export const fsService = {
         });
         if (!res.ok) throw new Error(await res.text());
     },
+
+    async rename(oldPath: string, newPath: string): Promise<void> {
+        const res = await fetch(
+            `/api/fs/rename?oldPath=${encodeURIComponent(oldPath)}&newPath=${encodeURIComponent(newPath)}`,
+            {
+                method: 'POST',
+            }
+        );
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async delete(path: string, recursive = false): Promise<void> {
+        const res = await fetch(`/api/fs/delete?path=${encodeURIComponent(path)}&recursive=${recursive}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
 };

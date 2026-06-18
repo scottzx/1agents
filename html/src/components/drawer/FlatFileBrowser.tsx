@@ -2,6 +2,8 @@ import { h } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { FsEntry, getFileTag, formatBytes } from '../types';
 import { t, type Lang } from '../i18n';
+import { uploadFileAction, openFolderAction } from '../../stores/fsStore';
+import { openFsRenameModal, openFsDeleteModal } from '../../stores/modalStore';
 
 interface FlatFileBrowserProps {
     flatFiles: FsEntry[];
@@ -128,6 +130,50 @@ export function FlatFileBrowser({
                             <div class="fb-file-info">
                                 <span class="fb-file-name">{node.name}</span>
                             </div>
+                            <div class="fb-row-actions">
+                                <button
+                                    class="fb-row-action-btn fb-action-rename"
+                                    title={t('fileBrowser.rename', language)}
+                                    onClick={(e: MouseEvent) => {
+                                        e.stopPropagation();
+                                        openFsRenameModal(node);
+                                    }}
+                                >
+                                    <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                    </svg>
+                                </button>
+                                <button
+                                    class="fb-row-action-btn fb-action-delete"
+                                    title={t('fileBrowser.delete', language)}
+                                    onClick={(e: MouseEvent) => {
+                                        e.stopPropagation();
+                                        openFsDeleteModal(node);
+                                    }}
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2.5"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         {expanded && node.children && (
                             <div class="fb-tree-children">
@@ -160,6 +206,50 @@ export function FlatFileBrowser({
                                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                             </svg>
                         )}
+                        <div class="fb-row-actions">
+                            <button
+                                class="fb-row-action-btn fb-action-rename"
+                                title={t('fileBrowser.rename', language)}
+                                onClick={(e: MouseEvent) => {
+                                    e.stopPropagation();
+                                    openFsRenameModal(node);
+                                }}
+                            >
+                                <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                            </button>
+                            <button
+                                class="fb-row-action-btn fb-action-delete"
+                                title={t('fileBrowser.delete', language)}
+                                onClick={(e: MouseEvent) => {
+                                    e.stopPropagation();
+                                    openFsDeleteModal(node);
+                                }}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 );
             }
@@ -190,6 +280,56 @@ export function FlatFileBrowser({
                         {t(TAG_KEYS[tag], language)}
                     </button>
                 ))}
+
+                {/* Upload Button */}
+                <button
+                    class="fb-tag fb-upload-btn"
+                    style="margin-left: auto; display: flex; align-items: center; gap: 4px; border-color: var(--accent-color); color: var(--accent-color);"
+                    onClick={uploadFileAction}
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        style="width: 14px; height: 14px;"
+                    >
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span>{t('fileBrowser.upload', language)}</span>
+                </button>
+
+                {/* Open in Finder / Explorer Button (Desktop mode only) */}
+                {IS_DESKTOP && (
+                    <button
+                        class="fb-tag fb-open-folder-btn"
+                        style="display: flex; align-items: center; gap: 4px; border-color: var(--text-secondary); color: var(--text-secondary);"
+                        onClick={openFolderAction}
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            style="width: 14px; height: 14px;"
+                        >
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        <span>
+                            {navigator.userAgent.toLowerCase().includes('mac')
+                                ? t('fileBrowser.openInFinder', language)
+                                : t('fileBrowser.openInExplorer', language)}
+                        </span>
+                    </button>
+                )}
             </div>
             {/* Main Content Area */}
             {isSearching ? (
@@ -225,6 +365,50 @@ export function FlatFileBrowser({
                                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                                         </svg>
                                     )}
+                                    <div class="fb-row-actions" style="margin-left: 4px; margin-right: 4px;">
+                                        <button
+                                            class="fb-row-action-btn fb-action-rename"
+                                            title={t('fileBrowser.rename', language)}
+                                            onClick={(e: MouseEvent) => {
+                                                e.stopPropagation();
+                                                openFsRenameModal(f);
+                                            }}
+                                        >
+                                            <svg
+                                                width="12"
+                                                height="12"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class="fb-row-action-btn fb-action-delete"
+                                            title={t('fileBrowser.delete', language)}
+                                            onClick={(e: MouseEvent) => {
+                                                e.stopPropagation();
+                                                openFsDeleteModal(f);
+                                            }}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="3 6 5 6 21 6" />
+                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                     <div class="fb-info-icon" tabIndex={0}>
                                         <svg
                                             viewBox="0 0 24 24"

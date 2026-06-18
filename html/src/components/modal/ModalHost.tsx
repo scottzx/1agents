@@ -4,12 +4,15 @@ import { WorkspaceModal } from './WorkspaceModal';
 import { DirPickerModal } from './DirPickerModal';
 import { AccessTokenModal } from './AccessTokenModal';
 import { SessionRenameModal } from './SessionRenameModal';
+import { FsRenameModal } from './FsRenameModal';
+import { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
 import { SessionCreateModal } from '../chat/SessionCreateModal';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
+import * as fsStore from '../../stores/fsStore';
 
 /**
  * Renders all app-level modals from modalStore signals. Pure open/close and
@@ -81,6 +84,9 @@ export function ModalHost() {
             {/* Remote Directory Picker Modal */}
             {dirPickerOpen && (
                 <DirPickerModal
+                    title={modal.dirPickerTitle.value}
+                    initialPath={modal.dirPickerInitialPath.value}
+                    restrictPath={modal.dirPickerRestrictPath.value}
                     onClose={modal.closeDirPicker}
                     onSelect={pickedPath => {
                         const onSelect = modal.dirPickerOnSelect.value;
@@ -111,6 +117,29 @@ export function ModalHost() {
                     onTitleChange={val => (modal.sessionRenameName.value = val)}
                     onClose={modal.closeSessionRenameModal}
                     onSubmit={sess.submitRenameSession}
+                    language={language}
+                />
+            )}
+
+            {/* File System Rename Modal */}
+            {modal.fsRenameModalOpen.value && modal.fsRenameTarget.value && (
+                <FsRenameModal
+                    title={modal.fsRenameName.value}
+                    onTitleChange={val => (modal.fsRenameName.value = val)}
+                    onClose={modal.closeFsRenameModal}
+                    onSubmit={fsStore.submitFsRename}
+                    language={language}
+                    isDir={modal.fsRenameTarget.value.isDir}
+                />
+            )}
+
+            {/* File System Delete Confirmation Modal */}
+            {modal.fsDeleteModalOpen.value && modal.fsDeleteTarget.value && (
+                <FsDeleteConfirmModal
+                    name={modal.fsDeleteTarget.value.name}
+                    isDir={modal.fsDeleteTarget.value.isDir}
+                    onClose={modal.closeFsDeleteModal}
+                    onSubmit={fsStore.submitFsDelete}
                     language={language}
                 />
             )}

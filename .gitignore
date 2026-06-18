@@ -78,3 +78,5 @@ npm/bin/*
 
 # Local sandboxed home directory
 tmp_home/
+.isolated_env/
+
