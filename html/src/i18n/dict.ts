@@ -1571,7 +1571,8 @@ export const enUS: Record<string, string> = {
     'task.table.deleteTask': 'Delete task',
 
     // ── Task grid cell — edit mode ─────────────────────────────────────────
-    'task.grid.statusHint': 'Running state is managed by the scheduler — you can only manually mark as completed or cancelled here',
+    'task.grid.statusHint':
+        'Running state is managed by the scheduler — you can only manually mark as completed or cancelled here',
     'task.grid.statusScheduler': '(scheduler-managed)',
     'task.grid.markComplete': 'Mark complete',
     'task.grid.markCancelled': 'Mark cancelled',
@@ -1591,12 +1592,14 @@ export const enUS: Record<string, string> = {
     'task.detail.sidebarExpand': 'Expand sidebar',
     'task.detail.sidebarCollapse': 'Collapse sidebar',
     'task.detail.descEmpty': '(No description — click Edit to add task background)',
-    'task.detail.acceptanceEmpty': '(Not set — the agent uses this to self-check after execution; add verifiable criteria)',
+    'task.detail.acceptanceEmpty':
+        '(Not set — the agent uses this to self-check after execution; add verifiable criteria)',
     'task.detail.sessionBadge': '🤖 Session #{num}',
     'task.detail.sessionRunning': 'Running',
     'task.detail.sessionIdle': 'Idle',
     'task.detail.followupBtn': '↩️ Follow up in this session',
-    'task.detail.followupPlaceholder': 'Follow up in "Session #{num}" — the agent will answer with the full task context...',
+    'task.detail.followupPlaceholder':
+        'Follow up in "Session #{num}" — the agent will answer with the full task context...',
     'task.detail.followupSubmitting': 'Submitting...',
     'task.detail.followupRun': 'Send & run',
     'task.detail.openSession': '🤖 Open full session →',
