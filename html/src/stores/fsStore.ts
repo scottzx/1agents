@@ -6,6 +6,8 @@ import { fsService } from '../services/fsService';
 import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
 import { t } from '../i18n';
 import * as ui from './uiStore';
+import * as modal from './modalStore';
+import * as wsStore from './workspaceStore';
 
 /**
  * File-system state (tree browser, flat search, file detail/editor).
@@ -324,4 +326,139 @@ export const switchFsContext = async (ws: Workspace) => {
     viewMode.value = 'list';
     fsLoading.value = cached.length === 0;
     loadDir('', null);
+};
+
+export const uploadFileAction = async () => {
+    const workspaces = wsStore.workspaces.value;
+    const activeWorkspaceId = wsStore.activeWorkspaceId.value;
+    const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+    if (!activeWorkspace) {
+        ui.showToast('No active workspace selected');
+        return;
+    }
+
+    modal.openDirPicker(
+        async pickedPath => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = async e => {
+                const files = (e.target as HTMLInputElement).files;
+                if (!files || files.length === 0) return;
+
+                ui.showToast(t('fileBrowser.uploading', ui.language.value));
+
+                try {
+                    const fd = new FormData();
+                    for (let i = 0; i < files.length; i++) {
+                        fd.append('file', files[i]);
+                    }
+
+                    const res = await fetch(`/api/fs/upload-to?path=${encodeURIComponent(pickedPath)}`, {
+                        method: 'POST',
+                        body: fd,
+                    });
+                    if (!res.ok) {
+                        throw new Error(await res.text());
+                    }
+
+                    ui.showToast(t('fileBrowser.uploadSuccess', ui.language.value));
+
+                    loadDir('', null);
+                } catch (err) {
+                    console.error('[upload] error:', err);
+                    ui.showToast(t('fileBrowser.uploadFailed', ui.language.value, { err: String(err) }));
+                }
+            };
+            input.click();
+        },
+        t('fileBrowser.selectUploadDest', ui.language.value),
+        activeWorkspace.path,
+        true // restrictPath = true
+    );
+};
+
+export const openFolderAction = async () => {
+    const workspaces = wsStore.workspaces.value;
+    const activeWorkspaceId = wsStore.activeWorkspaceId.value;
+    const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+    if (!activeWorkspace) {
+        ui.showToast('No active workspace selected');
+        return;
+    }
+
+    let targetPath = activeWorkspace.path;
+    const entry = selectedFsEntry.value;
+    if (entry) {
+        targetPath = entry.path;
+    }
+
+    try {
+        const res = await fetch(`/api/fs/open-folder?path=${encodeURIComponent(targetPath)}`, {
+            method: 'POST',
+        });
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+    } catch (err) {
+        console.error('[open-folder] error:', err);
+        ui.showToast(`Failed to open folder: ${err}`);
+    }
+};
+
+export const submitFsRename = async () => {
+    const target = modal.fsRenameTarget.value;
+    if (!target) return;
+    const newName = modal.fsRenameName.value.trim();
+    if (!newName || newName === target.name) {
+        modal.closeFsRenameModal();
+        return;
+    }
+    const lastSlash = target.path.lastIndexOf('/');
+    const dir = lastSlash >= 0 ? target.path.slice(0, lastSlash + 1) : '';
+    const newPath = `${dir}${newName}`;
+    try {
+        await fsService.rename(target.path, newPath);
+        modal.closeFsRenameModal();
+        ui.showToast(t('fileBrowser.renameSuccess', ui.language.value));
+
+        if (selectedFsEntry.value) {
+            if (selectedFsEntry.value.path === target.path) {
+                selectedFsEntry.value = { ...selectedFsEntry.value, name: newName, path: newPath };
+            } else if (selectedFsEntry.value.path.startsWith(target.path + '/')) {
+                const relSub = selectedFsEntry.value.path.slice(target.path.length);
+                selectedFsEntry.value = { ...selectedFsEntry.value, path: newPath + relSub };
+            }
+        }
+
+        loadDir('', null);
+    } catch (err) {
+        console.error('[fs] rename error:', err);
+        ui.showToast(t('fileBrowser.renameFailed', ui.language.value, { err: String(err) }));
+    }
+};
+
+export const submitFsDelete = async () => {
+    const target = modal.fsDeleteTarget.value;
+    if (!target) return;
+    try {
+        await fsService.delete(target.path, target.isDir);
+        modal.closeFsDeleteModal();
+        ui.showToast(t('fileBrowser.deleteSuccess', ui.language.value));
+
+        if (selectedFsEntry.value) {
+            if (
+                selectedFsEntry.value.path === target.path ||
+                selectedFsEntry.value.path.startsWith(target.path + '/')
+            ) {
+                selectedFsEntry.value = null;
+                viewMode.value = 'list';
+            }
+        }
+
+        loadDir('', null);
+    } catch (err) {
+        console.error('[fs] delete error:', err);
+        ui.showToast(t('fileBrowser.deleteFailed', ui.language.value, { err: String(err) }));
+    }
 };

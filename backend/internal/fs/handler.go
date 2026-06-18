@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -447,6 +449,125 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UploadTo handles POST /api/fs/upload-to?path=<relative-destination-dir>
+// Saves multipart files to the specified destination directory within the active workspace.
+func (h *Handler) UploadTo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rel := r.URL.Query().Get("path")
+	absDir, ok := h.safeAbs(rel)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Ensure the destination directory exists.
+	if err := os.MkdirAll(absDir, 0o755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	const maxBytes = 100 << 20 // 100 MB limit
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	if err := r.ParseMultipartForm(maxBytes); err != nil {
+		http.Error(w, "invalid multipart form (or too large, >100 MB)", http.StatusBadRequest)
+		return
+	}
+
+	form := r.MultipartForm
+	files := form.File["file"]
+	if len(files) == 0 {
+		http.Error(w, "missing file field", http.StatusBadRequest)
+		return
+	}
+
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		filename := filepath.Base(fileHeader.Filename)
+		destPath := filepath.Join(absDir, filename)
+
+		// Path traversal check
+		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(absDir)) {
+			http.Error(w, "invalid filename path traversal attempt", http.StatusBadRequest)
+			return
+		}
+
+		out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, file); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok": true,
+	})
+}
+
+// OpenFolder handles POST /api/fs/open-folder?path=<relative-path>
+// Opens the specified folder (or the parent folder of a file) in the OS's native file manager (Finder/Explorer).
+func (h *Handler) OpenFolder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rel := r.URL.Query().Get("path")
+	absPath, ok := h.safeAbs(rel)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	fi, err := os.Stat(absPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	dirToOpen := absPath
+	if !fi.IsDir() {
+		dirToOpen = filepath.Dir(absPath)
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", dirToOpen)
+	case "windows":
+		cmd = exec.Command("explorer", dirToOpen)
+	default: // Linux and others
+		cmd = exec.Command("xdg-open", dirToOpen)
+	}
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("[fs] open-folder error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok": true,
+	})
+}
+
 // Mkdir handles POST /api/fs/mkdir?path=<relative-path>
 // Creates the directory (and all parents) at the given path.
 func (h *Handler) Mkdir(w http.ResponseWriter, r *http.Request) {
@@ -510,6 +631,40 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
+// Rename handles POST /api/fs/rename?oldPath=<relative-path>&newPath=<relative-path>
+// Renames or moves a file or directory.
+func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	oldRel := r.URL.Query().Get("oldPath")
+	newRel := r.URL.Query().Get("newPath")
+
+	oldAbs, oldOk := h.safeAbs(oldRel)
+	newAbs, newOk := h.safeAbs(newRel)
+
+	if !oldOk || !newOk {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Safety: refuse to rename the root itself
+	if oldAbs == h.root || newAbs == h.root {
+		http.Error(w, "cannot rename the workspace root", http.StatusForbidden)
+		return
+	}
+
+	if err := os.Rename(oldAbs, newAbs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
 // --- Helpers ---
 
 // safeAbs resolves a relative path against the root and verifies the result
@@ -521,10 +676,7 @@ func (h *Handler) safeAbs(rel string) (string, bool) {
 
 	// Helper to check if an absolute path starts with a registered workspace
 	checkWorkspaces := func(p string) bool {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
+		home := get1AgentsHome()
 		configPath := filepath.Join(home, ".1agents", "workspaces_dir.json")
 		data, err := os.ReadFile(configPath)
 		if err != nil {
@@ -720,5 +872,16 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, results)
+}
+
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return home
 }
 

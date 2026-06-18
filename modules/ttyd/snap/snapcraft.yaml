@@ -22,7 +22,7 @@ apps:
 
 parts:
   ttyd:
-    source: https://github.com/tsl0922/ttyd
+    source: https://github.com/scottzx/1Agents
     source-type: git
     plugin: cmake
     cmake-parameters:

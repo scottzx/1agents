@@ -2,11 +2,41 @@ import { h, Component } from 'preact';
 import { workspaceService } from '../../services/workspaceService';
 import { t, type Lang } from '../i18n';
 
+const getDisplayPath = (absPath: string, initialPath: string, restrictPath?: boolean) => {
+    if (!restrictPath || !initialPath) return absPath;
+    const normPath = absPath.replace(/\\/g, '/');
+    const normInit = initialPath.replace(/\\/g, '/');
+    if (normPath === normInit) {
+        return '.';
+    }
+    if (normPath.startsWith(normInit + '/')) {
+        return normPath.slice(normInit.length + 1);
+    }
+    return absPath;
+};
+
+const resolveInputPath = (inputPath: string, initialPath: string, restrictPath?: boolean) => {
+    if (!restrictPath || !initialPath) return inputPath;
+    const trimmed = inputPath.trim();
+    if (trimmed === '.' || trimmed === './' || trimmed === '') {
+        return initialPath;
+    }
+    const isAbs = trimmed.startsWith('/') || trimmed.includes(':');
+    if (isAbs) {
+        return trimmed;
+    }
+    const sep = initialPath.includes('\\') ? '\\' : '/';
+    return `${initialPath.replace(/[\\/]$/, '')}${sep}${trimmed}`;
+};
+
 interface DirPickerModalProps {
     onClose: () => void;
     onSelect: (path: string) => void;
     onShowToast: (msg: string) => void;
     language: Lang;
+    title?: string;
+    initialPath?: string;
+    restrictPath?: boolean;
 }
 
 interface DirPickerModalState {
@@ -34,7 +64,7 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
     }
 
     componentDidMount() {
-        this.loadDirs('');
+        this.loadDirs(this.props.initialPath || '');
         this.loadRecentPaths();
     }
 
@@ -70,10 +100,35 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
         }
     };
 
+    isPathRestricted = (path: string) => {
+        const { restrictPath, initialPath } = this.props;
+        if (!restrictPath || !initialPath) return false;
+
+        const normPath = path.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '');
+        const normInit = initialPath.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '');
+
+        if (normPath === normInit) return false;
+        if (normPath.startsWith(normInit + '/')) return false;
+
+        return true;
+    };
+
     loadDirs = async (path: string) => {
         this.setState({ dirPickerLoading: true });
+
+        let targetPath = path;
+        if (!targetPath && this.props.restrictPath && this.props.initialPath) {
+            targetPath = this.props.initialPath;
+        }
+
+        if (targetPath && this.isPathRestricted(targetPath)) {
+            this.props.onShowToast('Cannot navigate outside workspace');
+            this.setState({ dirPickerLoading: false });
+            return;
+        }
+
         try {
-            const data = await workspaceService.listDirectories(path);
+            const data = await workspaceService.listDirectories(targetPath);
             this.setState({
                 dirPickerPath: data.currentPath,
                 dirPickerParentPath: data.parentPath || '',
@@ -87,7 +142,7 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
     };
 
     render() {
-        const { onClose, onSelect, language } = this.props;
+        const { onClose, onSelect, language, initialPath, restrictPath } = this.props;
         const {
             dirPickerPath,
             dirPickerParentPath,
@@ -108,47 +163,61 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
             <div class="dp-modal-overlay" onClick={onClose}>
                 <div class="dp-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     <div class="dp-modal-header">
-                        <span>{t('modal.dirPicker.title', language)}</span>
+                        <span>{this.props.title || t('modal.dirPicker.title', language)}</span>
                         <button class="dp-modal-close" onClick={onClose}>
                             ✕
                         </button>
                     </div>
                     <div class="dp-modal-body">
                         <div class="dp-path-row">
-                            {dirPickerParentPath && (
-                                <button
-                                    class="dp-up-btn"
-                                    onClick={() => this.loadDirs(dirPickerParentPath)}
-                                    title={t('modal.dirPicker.up', language)}
-                                >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2.5"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <polyline points="15 18 9 12 15 6" />
-                                    </svg>
-                                </button>
-                            )}
+                            {(() => {
+                                const isAtRoot =
+                                    this.props.restrictPath &&
+                                    this.props.initialPath &&
+                                    dirPickerPath.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '') ===
+                                        this.props.initialPath.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '');
+                                const showUpBtn = dirPickerParentPath && !isAtRoot;
+                                return (
+                                    showUpBtn && (
+                                        <button
+                                            class="dp-up-btn"
+                                            onClick={() => this.loadDirs(dirPickerParentPath)}
+                                            title={t('modal.dirPicker.up', language)}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="15 18 9 12 15 6" />
+                                            </svg>
+                                        </button>
+                                    )
+                                );
+                            })()}
                             <input
                                 class="dp-path-input"
-                                value={dirPickerPath}
-                                onInput={(e: Event) =>
+                                value={getDisplayPath(dirPickerPath, initialPath || '', restrictPath)}
+                                onInput={(e: Event) => {
+                                    const val = (e.target as HTMLInputElement).value;
                                     this.setState({
-                                        dirPickerPath: (e.target as HTMLInputElement).value,
-                                    })
-                                }
-                                onKeyDown={(e: KeyboardEvent) => {
-                                    if (e.key === 'Enter') this.loadDirs(dirPickerPath);
+                                        dirPickerPath: resolveInputPath(val, initialPath || '', restrictPath),
+                                    });
                                 }}
-                                placeholder={t('modal.dirPicker.placeholder', language)}
+                                onKeyDown={(e: KeyboardEvent) => {
+                                    if (e.key === 'Enter') {
+                                        const val = (e.target as HTMLInputElement).value;
+                                        this.loadDirs(resolveInputPath(val, initialPath || '', restrictPath));
+                                    }
+                                }}
+                                placeholder={
+                                    restrictPath ? '输入相对路径，如 src' : t('modal.dirPicker.placeholder', language)
+                                }
                             />
-                            <button class="dp-go-btn" onClick={() => this.loadDirs(dirPickerPath)}>
-                                {t('modal.dirPicker.go', language)}
-                            </button>
+
                             <button
                                 class="dp-new-folder-btn"
                                 onClick={() =>
@@ -196,39 +265,41 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                             </div>
                         )}
 
-                        <div class="dp-shortcuts-bar">
-                            <div class="dp-presets">
-                                {presets.map(p => (
-                                    <button
-                                        key={p.path}
-                                        class="dp-shortcut-btn"
-                                        onClick={() => this.loadDirs(p.path)}
-                                        title={p.path}
-                                    >
-                                        {t(p.labelKey, language)}
-                                    </button>
-                                ))}
-                            </div>
-                            {recentPaths.length > 0 && (
-                                <div class="dp-recents">
-                                    <span class="dp-recents-label">{t('modal.dirPicker.recent', language)}:</span>
-                                    {recentPaths.map(p => {
-                                        const parts = p.split(new RegExp('[\\\\/]'));
-                                        const name = parts[parts.length - 1] || p;
-                                        return (
-                                            <button
-                                                key={p}
-                                                class="dp-shortcut-btn dp-recent-btn"
-                                                onClick={() => this.loadDirs(p)}
-                                                title={p}
-                                            >
-                                                {name}
-                                            </button>
-                                        );
-                                    })}
+                        {!this.props.restrictPath && (
+                            <div class="dp-shortcuts-bar">
+                                <div class="dp-presets">
+                                    {presets.map(p => (
+                                        <button
+                                            key={p.path}
+                                            class="dp-shortcut-btn"
+                                            onClick={() => this.loadDirs(p.path)}
+                                            title={p.path}
+                                        >
+                                            {t(p.labelKey, language)}
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
-                        </div>
+                                {recentPaths.length > 0 && (
+                                    <div class="dp-recents">
+                                        <span class="dp-recents-label">{t('modal.dirPicker.recent', language)}:</span>
+                                        {recentPaths.map(p => {
+                                            const parts = p.split(new RegExp('[\\\\/]'));
+                                            const name = parts[parts.length - 1] || p;
+                                            return (
+                                                <button
+                                                    key={p}
+                                                    class="dp-shortcut-btn dp-recent-btn"
+                                                    onClick={() => this.loadDirs(p)}
+                                                    title={p}
+                                                >
+                                                    {name}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div class="dp-dir-list-wrap">
                             {dirPickerLoading ? (
@@ -253,7 +324,10 @@ export class DirPickerModal extends Component<DirPickerModalProps, DirPickerModa
                                             >
                                                 <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                                             </svg>
-                                            <span class="dp-dir-name" title={dir.path}>
+                                            <span
+                                                class="dp-dir-name"
+                                                title={getDisplayPath(dir.path, initialPath || '', restrictPath)}
+                                            >
                                                 {dir.name}
                                             </span>
                                         </div>

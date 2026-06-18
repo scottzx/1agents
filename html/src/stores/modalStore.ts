@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 
-import type { Workspace, Session, AgentType } from '../components/types';
+import type { Workspace, Session, AgentType, FsEntry } from '../components/types';
 import { DEFAULT_AGENT_TYPE } from '../services/agentService';
 
 /**
@@ -29,6 +29,9 @@ export const chatCreateWsId = signal('');
 type DirPickerOnSelect = (path: string) => void;
 export const dirPickerOpen = signal(false);
 export const dirPickerOnSelect = signal<DirPickerOnSelect | null>(null);
+export const dirPickerTitle = signal('');
+export const dirPickerInitialPath = signal('');
+export const dirPickerRestrictPath = signal(false);
 
 // ── Session rename modal ──
 export const sessionRenameModalOpen = signal(false);
@@ -38,13 +41,24 @@ export const sessionRenameName = signal('');
 // ── Access token display modal (one-time, shown after generation) ──
 export const accessTokenModalToken = signal('');
 
-export const openDirPicker = (onSelect: (path: string) => void) => {
+export const openDirPicker = (
+    onSelect: (path: string) => void,
+    title?: string,
+    initialPath?: string,
+    restrictPath?: boolean
+) => {
     dirPickerOpen.value = true;
     dirPickerOnSelect.value = onSelect;
+    dirPickerTitle.value = title || '';
+    dirPickerInitialPath.value = initialPath || '';
+    dirPickerRestrictPath.value = !!restrictPath;
 };
 
 export const closeDirPicker = () => {
     dirPickerOpen.value = false;
+    dirPickerTitle.value = '';
+    dirPickerInitialPath.value = '';
+    dirPickerRestrictPath.value = false;
 };
 
 const recordRecentPath = (path: string) => {
@@ -147,4 +161,34 @@ export const closeSessionRenameModal = () => {
 
 export const closeAccessTokenModal = () => {
     accessTokenModalToken.value = '';
+};
+
+// ── File browser rename/delete modals ──
+export const fsRenameModalOpen = signal(false);
+export const fsRenameTarget = signal<FsEntry | null>(null);
+export const fsRenameName = signal('');
+
+export const fsDeleteModalOpen = signal(false);
+export const fsDeleteTarget = signal<FsEntry | null>(null);
+
+export const openFsRenameModal = (entry: FsEntry) => {
+    fsRenameModalOpen.value = true;
+    fsRenameTarget.value = entry;
+    fsRenameName.value = entry.name;
+};
+
+export const closeFsRenameModal = () => {
+    fsRenameModalOpen.value = false;
+    fsRenameTarget.value = null;
+    fsRenameName.value = '';
+};
+
+export const openFsDeleteModal = (entry: FsEntry) => {
+    fsDeleteModalOpen.value = true;
+    fsDeleteTarget.value = entry;
+};
+
+export const closeFsDeleteModal = () => {
+    fsDeleteModalOpen.value = false;
+    fsDeleteTarget.value = null;
 };

@@ -15,7 +15,8 @@ const devMode = process.env.NODE_ENV !== 'production';
 
 function getBackendPort() {
     try {
-        const daemonPath = path.join(process.env.HOME, '.1agents', 'daemon.json');
+        const home = process.env.ONEAGENTS_HOME || process.env.HOME;
+        const daemonPath = path.join(home, '.1agents', 'daemon.json');
         const config = JSON.parse(fs.readFileSync(daemonPath, 'utf8'));
         const match = config.listen_addr.match(/:(\d+)$/);
         return match ? match[1] : '8080';
