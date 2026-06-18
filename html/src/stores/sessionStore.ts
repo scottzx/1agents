@@ -280,6 +280,7 @@ export const switchTerminal = async (windowIndex: number) => {
 
 /** Kill a terminal tab via POST /api/terminal/kill */
 export const killTerminal = async (windowIndex: number) => {
+    if (terminalWindows.value.length <= 1) return;
     try {
         await terminalService.kill(windowIndex);
         await loadTerminals();

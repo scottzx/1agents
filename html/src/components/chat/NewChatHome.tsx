@@ -67,13 +67,13 @@ export function NewChatHome({
     onOpenFolder,
     language,
 }: NewChatHomeProps) {
-    const [prompt, setPrompt] = useState('');
-    const [selectedAgent, setSelectedAgent] = useState<AgentType>('claudecode');
+    const prompt = useSignal('');
+    const selectedAgent = useSignal<AgentType>('claudecode');
     // Conversation role declared at creation (chat mode). 'general' = ordinary
     // chat; 'pm' = AI 项目经理 (project-locked task tools + PM prompt).
-    const [selectedRole, setSelectedRole] = useState<ChatRole>('general');
-    const [selectedPreset, setSelectedPreset] = useState<TerminalPreset>('claude');
-    const [selectedPermissionMode, setSelectedPermissionMode] = useState<PermissionMode>('approve-reads');
+    const selectedRole = useSignal<ChatRole>('general');
+    const selectedPreset = useSignal<TerminalPreset>('claude');
+    const selectedPermissionMode = useSignal<PermissionMode>('approve-reads');
     const [wsSearch, setWsSearch] = useState('');
     // useSignal (not useState) for the mode toggle — plain useState toggles
     // can fail to re-render under @preact/signals.
@@ -94,11 +94,22 @@ export function NewChatHome({
 
     // System speech-to-text for the prompt box. Reuses the terminal's
     // voice-input logic via a shared hook; appends to whatever is typed.
-    const speech = useSpeechRecognition(language, () => prompt, setPrompt);
+    const speech = useSpeechRecognition(
+        language,
+        () => prompt.value,
+        (v: string) => {
+            prompt.value = v;
+        }
+    );
 
     // File upload — appends each /tmp path into the prompt text and tracks a
     // chip; shares the same getter/setter shape as the speech hook.
-    const attach = useFileAttachments(() => prompt, setPrompt);
+    const attach = useFileAttachments(
+        () => prompt.value,
+        (v: string) => {
+            prompt.value = v;
+        }
+    );
 
     // Offer only installed agents (falls back to the full static list before
     // the catalog loads). Keep the current selection present even if it isn't
@@ -107,14 +118,17 @@ export function NewChatHome({
     const agentOptions: { type: AgentType; label: string }[] = pickable.length
         ? pickable.map(a => ({ type: a.type, label: AGENT_TYPE_LABELS[a.type as AgentType] ?? a.label }))
         : AGENT_TYPES.map(ty => ({ type: ty, label: AGENT_TYPE_LABELS[ty] ?? ty }));
-    if (selectedAgent && !agentOptions.some(o => o.type === selectedAgent)) {
-        agentOptions.unshift({ type: selectedAgent, label: AGENT_TYPE_LABELS[selectedAgent] ?? selectedAgent });
+    if (selectedAgent.value && !agentOptions.some(o => o.type === selectedAgent.value)) {
+        agentOptions.unshift({
+            type: selectedAgent.value,
+            label: AGENT_TYPE_LABELS[selectedAgent.value] ?? selectedAgent.value,
+        });
     }
 
     // Align local state agent selector with workspace's default agent if it changes
     useEffect(() => {
         if (activeWorkspace?.defaultAgent && AGENT_TYPES.includes(activeWorkspace.defaultAgent)) {
-            setSelectedAgent(activeWorkspace.defaultAgent);
+            selectedAgent.value = activeWorkspace.defaultAgent;
         }
     }, [selectedWorkspaceId, activeWorkspace]);
 
@@ -143,26 +157,26 @@ export function NewChatHome({
     const handleSubmit = (e?: Event) => {
         if (e) e.preventDefault();
         if (!activeWorkspace) return;
-        const trimmed = prompt.trim();
+        const trimmed = prompt.value.trim();
 
         if (mode.value === 'terminal') {
             const cwd = activeWorkspace.terminalDir || activeWorkspace.path;
-            const preset = TERMINAL_PRESETS.find(p => p.value === selectedPreset) ?? TERMINAL_PRESETS[0];
+            const preset = TERMINAL_PRESETS.find(p => p.value === selectedPreset.value) ?? TERMINAL_PRESETS[0];
             // No bin → bare shell; bin without prompt → launch the CLI alone.
             const initialCommand = preset.bin ? (trimmed ? `${preset.bin} ${quoteArg(trimmed)}` : preset.bin) : '';
             onSubmitTerminal?.(activeWorkspace.id, cwd, initialCommand);
-            setPrompt('');
+            prompt.value = '';
             attach.clear();
             return;
         }
 
         if (!trimmed) return;
         const effectiveRole: ChatRole =
-            (activeWorkspace.id === 'default' || activeWorkspace.builtin) && selectedRole === 'pm'
+            (activeWorkspace.id === 'default' || activeWorkspace.builtin) && selectedRole.value === 'pm'
                 ? 'pmo'
-                : selectedRole;
-        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed, effectiveRole, selectedPermissionMode);
-        setPrompt('');
+                : selectedRole.value;
+        onSubmitChat(activeWorkspace.id, selectedAgent.value, trimmed, effectiveRole, selectedPermissionMode.value);
+        prompt.value = '';
         attach.clear();
     };
 
@@ -310,8 +324,10 @@ export function NewChatHome({
                               ? t('newchat.terminalPlaceholder', language)
                               : t('newchat.chatPlaceholder', language)
                     }
-                    value={prompt}
-                    onInput={(e: Event) => setPrompt((e.target as HTMLTextAreaElement).value)}
+                    value={prompt.value}
+                    onInput={(e: Event) => {
+                        prompt.value = (e.target as HTMLTextAreaElement).value;
+                    }}
                     onKeyDown={handleKeyDown}
                     rows={1}
                 />
@@ -363,10 +379,10 @@ export function NewChatHome({
                             {mode.value === 'terminal' ? (
                                 <select
                                     class="new-chat-select model-select"
-                                    value={selectedPreset}
-                                    onChange={(e: Event) =>
-                                        setSelectedPreset((e.target as HTMLSelectElement).value as TerminalPreset)
-                                    }
+                                    value={selectedPreset.value}
+                                    onChange={(e: Event) => {
+                                        selectedPreset.value = (e.target as HTMLSelectElement).value as TerminalPreset;
+                                    }}
                                 >
                                     {TERMINAL_PRESETS.map(p => (
                                         <option key={p.value} value={p.value}>
@@ -377,10 +393,10 @@ export function NewChatHome({
                             ) : (
                                 <select
                                     class="new-chat-select model-select"
-                                    value={selectedAgent}
-                                    onChange={(e: Event) =>
-                                        setSelectedAgent((e.target as HTMLSelectElement).value as AgentType)
-                                    }
+                                    value={selectedAgent.value}
+                                    onChange={(e: Event) => {
+                                        selectedAgent.value = (e.target as HTMLSelectElement).value as AgentType;
+                                    }}
                                 >
                                     {agentOptions.map(o => (
                                         <option key={o.type} value={o.type}>
@@ -405,12 +421,12 @@ export function NewChatHome({
                             <div class="select-dropdown-wrapper">
                                 <select
                                     class="new-chat-select role-select"
-                                    value={selectedRole}
+                                    value={selectedRole.value}
                                     aria-label={t('newchat.role.aria', language)}
                                     title={t('newchat.role.pmHint', language)}
-                                    onChange={(e: Event) =>
-                                        setSelectedRole((e.target as HTMLSelectElement).value as ChatRole)
-                                    }
+                                    onChange={(e: Event) => {
+                                        selectedRole.value = (e.target as HTMLSelectElement).value as ChatRole;
+                                    }}
                                 >
                                     {ROLE_OPTIONS.map(r => (
                                         <option key={r.value} value={r.value}>
@@ -433,8 +449,10 @@ export function NewChatHome({
                         {/* Permission mode — chat mode only, cycle button */}
                         {mode.value === 'chat' && (
                             <PermissionModePicker
-                                value={selectedPermissionMode}
-                                onChange={setSelectedPermissionMode}
+                                value={selectedPermissionMode.value}
+                                onChange={v => {
+                                    selectedPermissionMode.value = v;
+                                }}
                                 variant="cycle"
                             />
                         )}
@@ -459,8 +477,8 @@ export function NewChatHome({
                         )}
                         <button
                             type="button"
-                            class={`action-btn-circle send-btn ${mode.value === 'chat' && !prompt.trim() ? 'disabled' : ''}`}
-                            disabled={mode.value === 'chat' && !prompt.trim()}
+                            class={`action-btn-circle send-btn ${mode.value === 'chat' && !prompt.value.trim() ? 'disabled' : ''}`}
+                            disabled={mode.value === 'chat' && !prompt.value.trim()}
                             onClick={handleSubmit}
                             title={t('chat.composer.send', language)}
                             aria-label={t('chat.composer.send', language)}
