@@ -41,7 +41,7 @@ export const AGENT_TYPES: AgentType[] = [
 
 /** Human-readable labels for the agent-type picker. */
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
-    claudecode: 'Claude Code',
+    claudecode: 'Claude',
     codex: 'Codex',
     acp: 'ACP (通用)',
     gemini: 'Gemini CLI',
