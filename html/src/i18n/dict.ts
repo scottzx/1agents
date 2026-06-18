@@ -481,6 +481,7 @@ export const zhCN: Record<string, string> = {
     'settings.nav.general': '通用与外观',
     'settings.nav.security': '安全设置',
     'settings.nav.agents': '智能体',
+    'settings.nav.relay': '中转旁路',
     'settings.nav.about': '关于与支持',
 
     'settings.agents.title': '智能体检测',
@@ -1114,6 +1115,7 @@ export const enUS: Record<string, string> = {
     'settings.nav.general': 'General & Appearance',
     'settings.nav.security': 'Security',
     'settings.nav.agents': 'Agents',
+    'settings.nav.relay': 'Relay Bypass',
     'settings.nav.about': 'About & Support',
 
     'settings.agents.title': 'Agent Detection',
