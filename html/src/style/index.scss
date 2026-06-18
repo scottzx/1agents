@@ -13142,6 +13142,24 @@ body {
     &.mic-btn.recording {
       @extend %mic-recording;
     }
+
+    &.send-btn {
+      background-color: var(--accent-color);
+      color: var(--on-accent);
+      border: none;
+
+      &:hover {
+        background-color: var(--accent-hover);
+      }
+
+      &:disabled,
+      &.disabled {
+        background-color: var(--bg-page);
+        color: var(--text-muted);
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+    }
   }
 
   .select-dropdown-wrapper {
