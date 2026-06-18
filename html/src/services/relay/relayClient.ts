@@ -199,11 +199,12 @@ export async function proxyApi(
     socket: Socket,
     machine: RelayMachine,
     path: string,
-    init?: { method?: string; body?: string }
+    init?: { method?: string; body?: string; headers?: Record<string, string> }
 ): Promise<{ success: boolean; status?: number; body?: string; error?: string }> {
     return (await callMachine(socket, machine, '1agents-proxy', {
         method: init?.method ?? 'GET',
         path,
         body: init?.body,
+        headers: init?.headers,
     })) as { success: boolean; status?: number; body?: string; error?: string };
 }

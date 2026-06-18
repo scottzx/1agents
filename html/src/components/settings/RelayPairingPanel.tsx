@@ -21,6 +21,7 @@ import {
     type RelayCredentials,
     type RelayMachine,
 } from '../../services/relay/relayClient';
+import { setRelayNode } from '../../services/apiClient';
 
 const LS_URL = 'oneagents.relay.url';
 
@@ -35,7 +36,7 @@ function extractKey(raw: string): string | null {
     return null;
 }
 
-export function RelayPairingPanel() {
+export function RelayPairingPanel({ onNodeSelected }: { onNodeSelected?: () => void } = {}) {
     // 默认用当前页面同源(部署中前端与中转在同一 HTTPS 源 → /v1 经代理路由到中转);
     // 可手动改成独立的中转地址。
     const relayUrl = useSignal(localStorage.getItem(LS_URL) || window.location.origin);
@@ -117,6 +118,15 @@ export function RelayPairingPanel() {
             const socket = await ensureSocket();
             const resp = await proxyApi(socket, m, '/api/agent/agent-types');
             msg.value = `✅ [经中转] ${m.id.slice(0, 8)} → Go后端 ${resp.status}: ${(resp.body ?? resp.error ?? '').slice(0, 160)}`;
+        });
+
+    // 把某节点设为当前后端并进入主界面(供门禁页使用)。
+    const doUseNode = (m: RelayMachine) =>
+        run('设为后端', async () => {
+            const socket = await ensureSocket();
+            setRelayNode(socket, m);
+            msg.value = `✅ 已选用节点 ${m.id.slice(0, 8)} 作为后端`;
+            onNodeSelected?.();
         });
 
     // 直连对比:直接打当前源的 /api(不经中转)。
@@ -273,9 +283,18 @@ export function RelayPairingPanel() {
                                 />
                                 {m.id.slice(0, 12)}… <span style="color:var(--text-muted)">{m.variant}</span>
                             </span>
-                            <button class="sys-settings-option-btn" disabled={busy.value} onClick={() => doTest(m)}>
-                                经中转测试
-                            </button>
+                            <span style="display:flex;gap:6px">
+                                <button class="sys-settings-option-btn" disabled={busy.value} onClick={() => doTest(m)}>
+                                    经中转测试
+                                </button>
+                                <button
+                                    class="sys-settings-option-btn"
+                                    disabled={busy.value}
+                                    onClick={() => doUseNode(m)}
+                                >
+                                    设为后端并进入
+                                </button>
+                            </span>
                         </div>
                     ))}
                     {machines.value.length === 0 && (

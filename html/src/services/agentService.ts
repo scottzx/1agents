@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 // Chat session index — thin fetch wrapper around the 1agents backend
 // /api/agent/* endpoints.
 //
@@ -54,7 +55,7 @@ export const agentService = {
      * Returns the canonical agent type list served by the backend.
      */
     async listAgentTypes(): Promise<AgentType[]> {
-        const res = await fetch('/api/agent/agent-types');
+        const res = await apiFetch('/agent/agent-types');
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as string[];
         // Defensive: backend may have a different list. Filter to the
@@ -70,7 +71,7 @@ export const agentService = {
      * backend (?refresh=1).
      */
     async getCatalog(refresh = false): Promise<AgentStatus[]> {
-        const res = await fetch(`/api/agent/catalog${refresh ? '?refresh=1' : ''}`);
+        const res = await apiFetch(`/agent/catalog${refresh ? '?refresh=1' : ''}`);
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawAgentStatus[];
         return data.map(normalizeAgentStatus);
@@ -80,7 +81,7 @@ export const agentService = {
      * GET /api/agent/sessions?workspace_id=…
      */
     async list(workspaceId: string): Promise<ChatSession[]> {
-        const res = await fetch(`/api/agent/sessions?workspace_id=${encodeURIComponent(workspaceId)}`);
+        const res = await apiFetch(`/agent/sessions?workspace_id=${encodeURIComponent(workspaceId)}`);
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawChatSession[];
         return data.map(normalizeChatSession);
@@ -91,7 +92,7 @@ export const agentService = {
      * Returns the indexed record, or null when the id is unknown.
      */
     async get(id: string): Promise<ChatSession | null> {
-        const res = await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`);
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`);
         if (res.status === 404) return null;
         if (!res.ok) throw new Error(await res.text());
         return normalizeChatSession((await res.json()) as RawChatSession);
@@ -104,7 +105,7 @@ export const agentService = {
      * ACP-only — the live conversation runs on 1acp via the chat WS bridge.
      */
     async index(req: IndexChatSessionRequest): Promise<ChatSession> {
-        const res = await fetch('/api/agent/sessions', {
+        const res = await apiFetch('/agent/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req),
@@ -120,7 +121,7 @@ export const agentService = {
      * separately via the chat WS bridge (globalBridgeManager.destroy).
      */
     async delete(id: string): Promise<void> {
-        const res = await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`, {
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`, {
             method: 'DELETE',
         });
         if (!res.ok) throw new Error(await res.text());

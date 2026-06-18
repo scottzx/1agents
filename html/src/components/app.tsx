@@ -4,6 +4,8 @@ import { FsEntry } from './types';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
+import { RelayPairingPanel } from './settings/RelayPairingPanel';
+import { initBackend } from '../services/apiClient';
 import { ModalHost } from './modal/ModalHost';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
@@ -38,6 +40,8 @@ export interface AppState {
     accessGateVisible: boolean;
     accessAuthRequired: boolean;
     accessAuthenticated: boolean;
+    // 中转模式但未选节点 → 显示配对门禁,而不是误进工作空间引导
+    backendGateVisible: boolean;
     // ── Frontend OTA update state ──
     otaUpdate: UpdateInfo | null;
 }
@@ -60,13 +64,24 @@ export class App extends Component<{}, AppState> {
             accessGateVisible: false,
             accessAuthRequired: false,
             accessAuthenticated: true,
+            backendGateVisible: false,
             otaUpdate: null,
         };
     }
 
     async componentDidMount() {
-        // Check access token gate before loading any data
-        await this.checkAccessStatus();
+        // 解析后端来源:本机直连 / 经中转远程节点 / 未连接。
+        const target = await initBackend();
+        if (target.mode === 'none') {
+            // 中转模式但还没选节点 → 显示配对门禁(在那里配对/选节点后会自动进入)。
+            this.setState({ backendGateVisible: true });
+            return;
+        }
+
+        // 直连模式才走本机的 access token 门禁;中转模式鉴权在中转侧,跳过。
+        if (target.mode === 'direct') {
+            await this.checkAccessStatus();
+        }
         if (this.state.accessGateVisible) {
             document.addEventListener('keydown', this.handleKeyDown);
             document.addEventListener('mousemove', this.handleResizerMove);
@@ -340,7 +355,7 @@ export class App extends Component<{}, AppState> {
     };
 
     render() {
-        const { accessGateVisible, otaUpdate } = this.state;
+        const { accessGateVisible, backendGateVisible, otaUpdate } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;
         const workspaces = wsStore.workspaces.value;
@@ -358,6 +373,25 @@ export class App extends Component<{}, AppState> {
         // If access gate is visible, render only the gate
         if (accessGateVisible) {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} language={language} />;
+        }
+
+        // 中转模式但未连接到节点 → 显示配对门禁(配对/选节点后会自动进入主界面)。
+        if (backendGateVisible) {
+            return (
+                <div class="app-container" style="min-height:100vh;background:var(--bg-page);overflow:auto">
+                    <div class="sys-settings-page sys-settings-page--bare">
+                        <div class="sys-settings-content">
+                            <div class="sys-settings-section" style="margin-bottom:8px">
+                                <div class="sys-settings-section-title">未检测到本地后端</div>
+                                <div class="sys-settings-section-desc">
+                                    当前页面由中转服务器提供,需要先配对/选择一台远程节点才能使用。配对一次后,以后进来会自动连接。
+                                </div>
+                            </div>
+                            <RelayPairingPanel onNodeSelected={() => window.location.reload()} />
+                        </div>
+                    </div>
+                </div>
+            );
         }
 
         // If workspaces are empty and loading on initial load, show a loading spinner
