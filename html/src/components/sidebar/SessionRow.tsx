@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
 import { AgentAvatar } from '../chat/AgentAvatar';
+import { liveSessionStatus } from '../../stores/sessionStore';
 
 interface SessionRowProps {
     /** Session to render. `kind` ('chat' | 'terminal') drives the type-specific bits. */
@@ -113,8 +114,26 @@ export function SessionRow({
     }
 
     // Trailing status dot — same element/position for both kinds, only the
-    // colour palette differs (chat statuses vs. terminal `term-*` palette).
-    const statusClass = chat ? `chat-status-dot ${session.status}` : `chat-status-dot term-${session.status || 'none'}`;
+    // colour palette differs (chat `chat-*` palette vs. terminal `term-*` palette).
+    // For chat sessions: a brand-new session (idle + no lastEventAt) shows as
+    // hollow ring (chat-none); once it has activity, idle → blue "completed" dot.
+    const CHAT_STATUS_CLASS: Record<string, string> = {
+        idle: 'chat-idle',
+        streaming: 'chat-busy',
+        awaiting_permission: 'chat-waiting',
+        error: 'chat-error',
+    };
+    // Live bridge status (streaming / awaiting_permission) overrides the stale
+    // persisted snapshot; reading the signal's .value here subscribes the row
+    // so it repaints the moment the bridge publishes a change.
+    const liveStatus = chat ? liveSessionStatus.value[session.id] : undefined;
+    const effectiveStatus = liveStatus ?? session.status;
+    const rawStatus = String(effectiveStatus ?? '');
+    const chatStatus =
+        chat && effectiveStatus === 'idle' && !session.acpSessionId
+            ? 'chat-none'
+            : CHAT_STATUS_CLASS[rawStatus] ?? `chat-${rawStatus}`;
+    const statusClass = chat ? `chat-status-dot ${chatStatus}` : `chat-status-dot term-${session.status || 'none'}`;
 
     return (
         <div
