@@ -32,7 +32,7 @@ export function Composer({
     const lang = getLang();
 
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             submit();
         }
