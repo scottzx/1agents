@@ -2,29 +2,16 @@ import { h } from 'preact';
 import { useMemo } from 'preact/hooks';
 import type { EChartsOption } from 'echarts';
 
-import { theme } from '../../../stores/uiStore';
+import { t } from '../../../i18n';
+import { language, theme } from '../../../stores/uiStore';
 import { EChart } from './EChart';
-import { PRIORITY_LABELS } from './constants';
+import { getPriorityLabels } from './constants';
 import type { Task } from './types';
 import { fmtDateOnly } from './utils';
 
 interface OverviewProps {
     tasks: Task[];
 }
-
-// Status buckets shown as KPI cards; color maps to the semantic tokens.
-const STATS = [
-    { key: 'todo', label: '待办', cls: 'todo', match: (s: Task['status']) => s === 'pending' || s === 'queued' },
-    { key: 'running', label: '进行中', cls: 'running', match: (s: Task['status']) => s === 'running' },
-    { key: 'completed', label: '已完成', cls: 'completed', match: (s: Task['status']) => s === 'completed' },
-    { key: 'blocked', label: '阻塞', cls: 'blocked', match: (s: Task['status']) => s === 'blocked' },
-    {
-        key: 'failed',
-        label: '失败/取消',
-        cls: 'failed',
-        match: (s: Task['status']) => s === 'failed' || s === 'cancelled',
-    },
-];
 
 // ── KPI card helpers ────────────────────────────────────────────────────────
 // 未完成 = 未开始(pending/queued) + 未完成(running/blocked); terminal states excluded.
@@ -41,8 +28,17 @@ function cssVar(name: string): string {
 const PRIORITY_ORDER: Array<Task['priority']> = ['urgent', 'high', 'medium', 'low'];
 
 export function Overview({ tasks }: OverviewProps) {
+    const lang = language.value;
     // Subscribe to theme so options recompute (with fresh token reads) on swap.
     const activeTheme = theme.value;
+
+    const STATS = [
+        { key: 'todo', label: t('task.overview.stat.todo', lang), cls: 'todo', match: (s: Task['status']) => s === 'pending' || s === 'queued' },
+        { key: 'running', label: t('task.overview.stat.running', lang), cls: 'running', match: (s: Task['status']) => s === 'running' },
+        { key: 'completed', label: t('task.overview.stat.completed', lang), cls: 'completed', match: (s: Task['status']) => s === 'completed' },
+        { key: 'blocked', label: t('task.overview.stat.blocked', lang), cls: 'blocked', match: (s: Task['status']) => s === 'blocked' },
+        { key: 'failed', label: t('task.overview.stat.failed', lang), cls: 'failed', match: (s: Task['status']) => s === 'failed' || s === 'cancelled' },
+    ];
 
     const total = tasks.length;
     const completed = tasks.filter(t => t.status === 'completed').length;
@@ -54,6 +50,7 @@ export function Overview({ tasks }: OverviewProps) {
         .slice(0, 6);
 
     const options = useMemo(() => {
+        const priorityLabels = getPriorityLabels(lang);
         const tokens = {
             text: cssVar('--text-main'),
             sub: cssVar('--text-secondary'),
@@ -133,7 +130,7 @@ export function Overview({ tasks }: OverviewProps) {
             grid: { left: 4, right: 16, top: 16, bottom: 4, containLabel: true },
             xAxis: {
                 type: 'category',
-                data: PRIORITY_ORDER.map(p => PRIORITY_LABELS[p!]),
+                data: PRIORITY_ORDER.map(p => priorityLabels[p!]),
                 axisLabel,
                 axisLine: { lineStyle: { color: tokens.border } },
                 axisTick: { show: false },
@@ -155,15 +152,15 @@ export function Overview({ tasks }: OverviewProps) {
         // ── Milestone progress (stacked horizontal bar) ─────────────────
         const msOrder: string[] = [];
         const msGroups = new Map<string, { total: number; done: number }>();
-        for (const t of tasks) {
-            const m = t.milestone || '未分组';
+        for (const task of tasks) {
+            const m = task.milestone || t('task.overview.noMilestone', lang);
             if (!msGroups.has(m)) {
                 msGroups.set(m, { total: 0, done: 0 });
                 msOrder.push(m);
             }
             const g = msGroups.get(m)!;
             g.total += 1;
-            if (t.status === 'completed') g.done += 1;
+            if (task.status === 'completed') g.done += 1;
         }
         const msTop = msOrder
             .map(m => ({ name: m, ...msGroups.get(m)! }))
@@ -184,14 +181,14 @@ export function Overview({ tasks }: OverviewProps) {
             },
             series: [
                 {
-                    name: '已完成',
+                    name: t('task.overview.series.completed', lang),
                     type: 'bar',
                     stack: 'ms',
                     itemStyle: { color: tokens.accent, borderRadius: [4, 0, 0, 4] },
                     data: msTop.map(m => m.done),
                 },
                 {
-                    name: '未完成',
+                    name: t('task.overview.series.remaining', lang),
                     type: 'bar',
                     stack: 'ms',
                     itemStyle: { color: tokens.border, borderRadius: [0, 4, 4, 0] },
@@ -203,16 +200,16 @@ export function Overview({ tasks }: OverviewProps) {
         // ── Assignee load (stacked horizontal bar by status group) ──────
         const aOrder: string[] = [];
         const aGroups = new Map<string, { running: number; done: number; other: number; total: number }>();
-        for (const t of tasks) {
-            const a = t.assignee || '未分配';
+        for (const task of tasks) {
+            const a = task.assignee || t('task.overview.noAssignee', lang);
             if (!aGroups.has(a)) {
                 aGroups.set(a, { running: 0, done: 0, other: 0, total: 0 });
                 aOrder.push(a);
             }
             const g = aGroups.get(a)!;
             g.total += 1;
-            if (t.status === 'running') g.running += 1;
-            else if (t.status === 'completed') g.done += 1;
+            if (task.status === 'running') g.running += 1;
+            else if (task.status === 'completed') g.done += 1;
             else g.other += 1;
         }
         const aTop = aOrder
@@ -234,21 +231,21 @@ export function Overview({ tasks }: OverviewProps) {
             },
             series: [
                 {
-                    name: '进行中',
+                    name: t('task.overview.series.running', lang),
                     type: 'bar',
                     stack: 'a',
                     itemStyle: { color: tokens.success },
                     data: aTop.map(a => a.running),
                 },
                 {
-                    name: '已完成',
+                    name: t('task.overview.series.completed', lang),
                     type: 'bar',
                     stack: 'a',
                     itemStyle: { color: tokens.accent },
                     data: aTop.map(a => a.done),
                 },
                 {
-                    name: '其他',
+                    name: t('task.overview.series.other', lang),
                     type: 'bar',
                     stack: 'a',
                     itemStyle: { color: tokens.muted },
@@ -259,7 +256,7 @@ export function Overview({ tasks }: OverviewProps) {
 
         // activeTheme is a dep so the token reads above re-run on theme switch.
         return { statusOption, priorityOption, milestoneOption, assigneeOption };
-    }, [tasks, activeTheme]);
+    }, [tasks, activeTheme, lang]);
 
     const hasData = total > 0;
 
@@ -267,13 +264,13 @@ export function Overview({ tasks }: OverviewProps) {
     const kpis = [
         {
             key: 'task',
-            label: '任务',
+            label: t('task.overview.kpi.task', lang),
             cls: 'completed',
-            value: tasks.filter(t => isTaskType(t) && isUncompleted(t)).length, // 所有未完成的任务
+            value: tasks.filter(tk => isTaskType(tk) && isUncompleted(tk)).length,
         },
-        { key: 'blocked', label: '阻塞', cls: 'blocked', value: tasks.filter(t => t.status === 'blocked').length },
-        { key: 'req', label: '需求', cls: 'running', value: tasks.filter(t => t.type === 'requirement').length },
-        { key: 'bug', label: '缺陷', cls: 'failed', value: tasks.filter(t => t.type === 'bug').length },
+        { key: 'blocked', label: t('task.overview.kpi.blocked', lang), cls: 'blocked', value: tasks.filter(tk => tk.status === 'blocked').length },
+        { key: 'req', label: t('task.overview.kpi.requirement', lang), cls: 'running', value: tasks.filter(tk => tk.type === 'requirement').length },
+        { key: 'bug', label: t('task.overview.kpi.bug', lang), cls: 'failed', value: tasks.filter(tk => tk.type === 'bug').length },
     ];
 
     return (
@@ -288,33 +285,33 @@ export function Overview({ tasks }: OverviewProps) {
             </div>
 
             {!hasData ? (
-                <div class="overview-empty-board">暂无任务数据</div>
+                <div class="overview-empty-board">{t('task.overview.emptyBoard', lang)}</div>
             ) : (
                 <div class="overview-widgets bento-grid">
                     <div class="bento-card overview-widget">
-                        <div class="overview-widget-title">状态分布</div>
+                        <div class="overview-widget-title">{t('task.overview.chart.status', lang)}</div>
                         <EChart option={options.statusOption} height={260} />
                     </div>
 
                     <div class="bento-card overview-widget">
-                        <div class="overview-widget-title">优先级分布</div>
+                        <div class="overview-widget-title">{t('task.overview.chart.priority', lang)}</div>
                         <EChart option={options.priorityOption} height={260} />
                     </div>
 
                     <div class="bento-card overview-widget bento-span-2">
-                        <div class="overview-widget-title">里程碑进度</div>
+                        <div class="overview-widget-title">{t('task.overview.chart.milestone', lang)}</div>
                         <EChart option={options.milestoneOption} height={260} />
                     </div>
 
                     <div class="bento-card overview-widget bento-span-2">
-                        <div class="overview-widget-title">负责人负载</div>
+                        <div class="overview-widget-title">{t('task.overview.chart.assignee', lang)}</div>
                         <EChart option={options.assigneeOption} height={260} />
                     </div>
 
                     <div class="bento-card overview-widget bento-span-2">
-                        <div class="overview-widget-title">临近截止</div>
+                        <div class="overview-widget-title">{t('task.overview.chart.deadline', lang)}</div>
                         {deadlines.length === 0 ? (
-                            <div class="overview-empty">暂无设定计划截止的进行项</div>
+                            <div class="overview-empty">{t('task.overview.deadlineEmpty', lang)}</div>
                         ) : (
                             <div class="overview-deadlines">
                                 {deadlines.map(t => (

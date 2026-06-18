@@ -1,3 +1,4 @@
+import { t, type Lang } from '../../../i18n';
 import type { TaskPriority } from './types';
 
 export const PRIORITY_LABELS: Record<string, string> = {
@@ -36,3 +37,31 @@ export const STATUS_LABELS: Record<string, string> = {
     cancelled: '已取消',
     blocked: '受阻',
 };
+
+export const getPriorityLabels = (lang: Lang): Record<string, string> => ({
+    urgent: t('task.priority.urgent', lang),
+    high: t('task.priority.high', lang),
+    medium: t('task.priority.medium', lang),
+    low: t('task.priority.low', lang),
+});
+
+export const getStatusLabels = (lang: Lang): Record<string, string> => ({
+    pending: t('task.status.pending', lang),
+    queued: t('task.status.queued', lang),
+    running: t('task.status.running', lang),
+    completed: t('task.status.completed', lang),
+    failed: t('task.status.failed', lang),
+    cancelled: t('task.status.cancelled', lang),
+    blocked: t('task.status.blocked', lang),
+});
+
+export const getTypeLabels = (lang: Lang): Record<string, string> => ({
+    task: t('task.type.task', lang),
+    requirement: t('task.type.requirement', lang),
+    bug: t('task.type.bug', lang),
+});
+
+export const getLinkRelLabels = (lang: Lang): Record<string, string> => ({
+    closes: t('task.link.closes', lang),
+    relates: t('task.link.relates', lang),
+});

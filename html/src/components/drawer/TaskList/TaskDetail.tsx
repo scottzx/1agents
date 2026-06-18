@@ -2,9 +2,10 @@ import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
+import { t } from '../../../i18n';
 import { agentService } from '../../../services/agentService';
 import type { AgentType, ChatSession, Session } from '../../types';
-import { LINK_REL_LABELS, PRIORITY_LABELS, STATUS_LABELS } from './constants';
+import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
 import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
@@ -81,7 +82,7 @@ export function TaskDetail({
                     <div class="gh-comment-header-left">
                         <span class="gh-avatar">{getInitials(rp.author.name || rp.author.kind)}</span>
                         <span class="gh-author-name">{rp.author.name || rp.author.kind}</span>
-                        <span>回复于 {fmtDate(rp.createdAt)}</span>
+                        <span>{fmtDate(rp.createdAt)}</span>
                     </div>
                     <div class="gh-comment-actions">
                         <span class="gh-role-badge">{isAgent ? 'Agent' : 'User'}</span>
@@ -292,10 +293,15 @@ export function TaskDetail({
         }
     };
 
+    const lang = ui.language.value;
+    const priorityLabels = getPriorityLabels(lang);
+    const statusLabels = getStatusLabels(lang);
+    const linkRelLabels = getLinkRelLabels(lang);
+
     if (!task) {
         return (
             <div class="task-dashboard-container">
-                {error ? <div class="task-error">{error}</div> : <div class="task-loading">载入任务...</div>}
+                {error ? <div class="task-error">{error}</div> : <div class="task-loading">{t('task.detail.loading', lang)}</div>}
             </div>
         );
     }
@@ -312,7 +318,7 @@ export function TaskDetail({
         if (!projectName || !task.number) return;
         const url = taskPermalink(projectName, task.number);
         void navigator.clipboard?.writeText(url);
-        ui.showToast(`已复制链接：${url}`);
+        ui.showToast(t('task.detail.permalinkCopied', lang).replace('{url}', url));
     };
     const deps = allTasks.filter(t => task.dependsOn?.includes(t.id));
     const subtasks = allTasks.filter(t => t.parentId === task.id);
@@ -363,7 +369,7 @@ export function TaskDetail({
     const outgoing = task.links || [];
     const backlinks = allTasks.filter(t => t.id !== task.id && (t.links || []).some(l => l.target === task.id));
     const linkOptions = allTasks.filter(t => t.id !== task.id);
-    const linkLabel = (t?: Task) => (t ? `${t.number ? `#${t.number} ` : ''}${t.title}` : '（未知任务）');
+    const linkLabel = (tgt?: Task) => (tgt ? `${tgt.number ? `#${tgt.number} ` : ''}${tgt.title}` : t('task.detail.unknownTask', lang));
 
     // Subtask checks calculation
     const totalSubtasks = subtasks.length;
@@ -383,7 +389,7 @@ export function TaskDetail({
             <div class="gh-header-top">
                 {onBack && (
                     <button class="task-back-btn" onClick={onBack}>
-                        ← 返回列表
+                        {t('task.detail.back', lang)}
                     </button>
                 )}
                 <h3 class="gh-title">
@@ -391,12 +397,12 @@ export function TaskDetail({
                 </h3>
                 <div class="gh-actions">
                     {task.number ? (
-                        <button class="task-permalink-btn" title="复制任务永久链接" onClick={copyPermalink}>
+                        <button class="task-permalink-btn" title={t('task.detail.permalink', lang)} onClick={copyPermalink}>
                             🔗 链接
                         </button>
                     ) : null}
                     <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
-                        {closed ? '重新打开' : '关闭 Task'}
+                        {closed ? t('task.detail.reopen', lang) : t('task.detail.close', lang)}
                     </button>
                 </div>
             </div>
@@ -404,8 +410,9 @@ export function TaskDetail({
             <div class="gh-header-meta">
                 <span class={`gh-status-badge ${closed ? 'closed' : 'open'}`}>{closed ? 'Closed' : 'Open'}</span>
                 <span class="gh-meta-text">
-                    <strong>{task.createdBy || 'scottzx'}</strong> {closed ? '关闭了此任务' : '创建了此任务'} ·{' '}
-                    {replies.length} 个回复
+                    <strong>{task.createdBy || 'scottzx'}</strong>{' '}
+                    {closed ? t('task.detail.closedBy', lang) : t('task.detail.createdBy', lang)} ·{' '}
+                    {replies.length}
                 </span>
             </div>
 
@@ -431,7 +438,7 @@ export function TaskDetail({
                 </button>
                 <button
                     class={`gh-sidebar-toggle-btn${sidebarCollapsed.value ? ' is-collapsed' : ''}`}
-                    title={sidebarCollapsed.value ? '展开侧边栏' : '收起侧边栏'}
+                    title={sidebarCollapsed.value ? t('task.detail.sidebarExpand', lang) : t('task.detail.sidebarCollapse', lang)}
                     onClick={() => (sidebarCollapsed.value = !sidebarCollapsed.value)}
                 >
                     <span />
@@ -450,7 +457,7 @@ export function TaskDetail({
                                     <div class="gh-comment-header-left">
                                         <span class="gh-avatar">{getInitials(task.createdBy || 'scottzx')}</span>
                                         <span class="gh-author-name">{task.createdBy || 'scottzx'}</span>
-                                        <span>创建了任务</span>
+                                        <span>{t('task.detail.createdTask', lang)}</span>
                                     </div>
                                     <div class="gh-comment-actions">
                                         <span class="gh-role-badge">Author</span>
@@ -462,7 +469,7 @@ export function TaskDetail({
                                                     editingDesc.value = true;
                                                 }}
                                             >
-                                                编辑
+                                                {t('common.edit', lang)}
                                             </button>
                                         )}
                                     </div>
@@ -478,8 +485,8 @@ export function TaskDetail({
                                                 }
                                             />
                                             <div class="task-desc-editor-actions">
-                                                <button onClick={saveDescription}>保存</button>
-                                                <button onClick={() => (editingDesc.value = false)}>取消</button>
+                                                <button onClick={saveDescription}>{t('common.save', lang)}</button>
+                                                <button onClick={() => (editingDesc.value = false)}>{t('common.cancel', lang)}</button>
                                             </div>
                                         </div>
                                     ) : task.description ? (
@@ -490,7 +497,7 @@ export function TaskDetail({
                                             }}
                                         />
                                     ) : (
-                                        <span class="task-desc-empty">（暂无描述，点击编辑补充任务背景）</span>
+                                        <span class="task-desc-empty">{t('task.detail.descEmpty', lang)}</span>
                                     )}
                                 </div>
                             </div>
@@ -512,7 +519,7 @@ export function TaskDetail({
                                                     editingAccept.value = true;
                                                 }}
                                             >
-                                                编辑
+                                                {t('common.edit', lang)}
                                             </button>
                                         )}
                                     </div>
@@ -528,8 +535,8 @@ export function TaskDetail({
                                                 }
                                             />
                                             <div class="task-desc-editor-actions">
-                                                <button onClick={saveAcceptance}>保存</button>
-                                                <button onClick={() => (editingAccept.value = false)}>取消</button>
+                                                <button onClick={saveAcceptance}>{t('common.save', lang)}</button>
+                                                <button onClick={() => (editingAccept.value = false)}>{t('common.cancel', lang)}</button>
                                             </div>
                                         </div>
                                     ) : task.acceptanceCriteria ? (
@@ -540,9 +547,7 @@ export function TaskDetail({
                                             }}
                                         />
                                     ) : (
-                                        <span class="task-desc-empty">
-                                            （未设置 —— agent 执行完会按此自查，建议补充可验证的标准）
-                                        </span>
+                                        <span class="task-desc-empty">{t('task.detail.acceptanceEmpty', lang)}</span>
                                     )}
                                 </div>
                             </div>
@@ -559,10 +564,10 @@ export function TaskDetail({
                                     return (
                                         <div key={session.id} class="task-branch">
                                             <div class="task-branch-header">
-                                                <span class="task-branch-badge">🤖 会话 #{num}</span>
+                                                <span class="task-branch-badge">{t('task.detail.sessionBadge', lang).replace('{num}', String(num))}</span>
                                                 <span class="task-branch-agent">{session.agentType}</span>
                                                 <span class={`task-branch-status${running ? ' running' : ''}`}>
-                                                    {running ? '执行中' : '空闲'}
+                                                    {running ? t('task.detail.sessionRunning', lang) : t('task.detail.sessionIdle', lang)}
                                                 </span>
                                             </div>
                                             <div class="task-branch-children">
@@ -579,7 +584,7 @@ export function TaskDetail({
                                                             followUpText.value = '';
                                                         }}
                                                     >
-                                                        ↩️ 在此会话下追问
+                                                        {t('task.detail.followupBtn', lang)}
                                                     </button>
                                                 )}
                                                 <button
@@ -593,14 +598,14 @@ export function TaskDetail({
                                                         )
                                                     }
                                                 >
-                                                    🤖 打开完整会话 →
+                                                    {t('task.detail.openSession', lang)}
                                                 </button>
                                             </div>
                                             {followUpOpen.value === session.id && (
                                                 <div class="task-branch-followup">
                                                     <textarea
                                                         rows={3}
-                                                        placeholder={`在「会话 #${num}」下继续追问，智能体会带着本任务的全部上下文回答...`}
+                                                        placeholder={t('task.detail.followupPlaceholder', lang).replace('{num}', String(num))}
                                                         value={followUpText.value}
                                                         onInput={(e: Event) =>
                                                             (followUpText.value = (
@@ -614,7 +619,7 @@ export function TaskDetail({
                                                             class="gh-close-btn"
                                                             onClick={() => (followUpOpen.value = '')}
                                                         >
-                                                            取消
+                                                            {t('common.cancel', lang)}
                                                         </button>
                                                         <button
                                                             type="button"
@@ -622,7 +627,7 @@ export function TaskDetail({
                                                             disabled={followUpBusy.value || !followUpText.value.trim()}
                                                             onClick={() => submitBranchFollowUp(session)}
                                                         >
-                                                            {followUpBusy.value ? '提交中...' : '追问并运行'}
+                                                            {followUpBusy.value ? t('task.detail.followupSubmitting', lang) : t('task.detail.followupRun', lang)}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -644,15 +649,14 @@ export function TaskDetail({
                                 </div>
                                 <div class="gh-merge-content">
                                     <h4 class="gh-merge-title">
-                                        {task.status === 'completed' && '任务执行已全部完成'}
-                                        {task.status === 'running' && '智能体正在积极执行中'}
-                                        {task.status === 'failed' && '智能体执行失败'}
-                                        {(task.status === 'pending' || task.status === 'queued') &&
-                                            '任务处于队列中，已准备好执行'}
-                                        {task.status === 'cancelled' && '智能体执行已取消'}
-                                        {task.status === 'blocked' && '任务前置依赖受阻'}
+                                        {task.status === 'completed' && t('task.detail.mergeTitle.completed', lang)}
+                                        {task.status === 'running' && t('task.detail.mergeTitle.running', lang)}
+                                        {task.status === 'failed' && t('task.detail.mergeTitle.failed', lang)}
+                                        {(task.status === 'pending' || task.status === 'queued') && t('task.detail.mergeTitle.queued', lang)}
+                                        {task.status === 'cancelled' && t('task.detail.mergeTitle.cancelled', lang)}
+                                        {task.status === 'blocked' && t('task.detail.mergeTitle.blocked', lang)}
                                     </h4>
-                                    <p class="gh-merge-desc">系统自检结果与智能体状态：</p>
+                                    <p class="gh-merge-desc">{t('task.detail.checksDesc', lang)}</p>
 
                                     <div class="gh-check-item">
                                         <span
@@ -661,7 +665,7 @@ export function TaskDetail({
                                             {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
                                         </span>
                                         <span>
-                                            子任务检查：{completedSubtasks}/{totalSubtasks} 个子任务已完成
+                                            {t('task.detail.subtaskCheck', lang).replace('{done}', String(completedSubtasks)).replace('{total}', String(totalSubtasks))}
                                         </span>
                                     </div>
 
@@ -669,7 +673,7 @@ export function TaskDetail({
                                         <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
                                             {hasAcceptance ? '✓' : 'warn'}
                                         </span>
-                                        <span>验收标准：{hasAcceptance ? '已定义验收标准' : '未设置验收标准'}</span>
+                                        <span>{t('task.detail.acceptanceLabel', lang)}{hasAcceptance ? t('task.detail.acceptanceDefined', lang) : t('task.detail.acceptanceNotSet', lang)}</span>
                                     </div>
 
                                     <div class="gh-check-item">
@@ -677,15 +681,15 @@ export function TaskDetail({
                                             {allDepsDone ? '✓' : 'fail'}
                                         </span>
                                         <span>
-                                            前置依赖：
-                                            {allDepsDone ? '所有依赖已解决' : `${pendingDeps} 个前置依赖处于等待中`}
+                                            {t('task.detail.depsLabel', lang)}
+                                            {allDepsDone ? t('task.detail.depsOk', lang) : t('task.detail.depsPending', lang).replace('{n}', String(pendingDeps))}
                                         </span>
                                     </div>
                                 </div>
                                 <div class="gh-merge-actions">
                                     {task.status === 'completed' && (
                                         <button class="gh-merge-btn btn-todo" onClick={toggleIssueState}>
-                                            重新打开任务
+                                            {t('task.detail.reopenTask', lang)}
                                         </button>
                                     )}
                                     {task.status === 'running' && (
@@ -693,17 +697,17 @@ export function TaskDetail({
                                             class="gh-merge-btn btn-running"
                                             onClick={() => patchTask({ status: 'cancelled' })}
                                         >
-                                            取消执行
+                                            {t('task.detail.cancelExec', lang)}
                                         </button>
                                     )}
                                     {task.status === 'failed' && (
                                         <button class="gh-merge-btn btn-todo" onClick={() => openNewSession('retry')}>
-                                            重试执行
+                                            {t('task.detail.retryExec', lang)}
                                         </button>
                                     )}
                                     {(task.status === 'pending' || task.status === 'queued') && (
                                         <button class="gh-merge-btn" onClick={() => openNewSession('start')}>
-                                            开启 Agent 执行
+                                            {t('task.detail.startAgent', lang)}
                                         </button>
                                     )}
                                 </div>
@@ -762,7 +766,7 @@ export function TaskDetail({
                                                 checked={replyMode === 'pure_comment'}
                                                 onChange={() => setReplyMode('pure_comment')}
                                             />
-                                            💬 纯评论
+                                            {t('task.detail.commentMode', lang)}
                                         </label>
                                         <label
                                             class={`gh-opt-label ${replyMode === 'new' ? 'active' : ''} ${closed ? 'disabled' : ''}`}
@@ -776,9 +780,9 @@ export function TaskDetail({
                                                 disabled={closed}
                                                 onChange={() => setReplyMode('new')}
                                             />
-                                            🚀 启动新会话
+                                            {t('task.detail.newSessionMode', lang)}
                                         </label>
-                                        <span class="gh-opt-hint">追问请在上方对应会话分支内进行</span>
+                                        <span class="gh-opt-hint">{t('task.detail.followupHint', lang)}</span>
                                     </div>
                                     <div class="gh-composer-actions">
                                         <button type="button" class="gh-close-btn" onClick={toggleIssueState}>
@@ -804,7 +808,7 @@ export function TaskDetail({
                                 Checklist ({completedSubtasks}/{totalSubtasks})
                             </h4>
                             {subtasks.length === 0 ? (
-                                <div class="task-desc-empty">暂无子任务。</div>
+                                <div class="task-desc-empty">{t('task.detail.subtasksEmpty', lang)}</div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {subtasks.map(st => (
@@ -819,7 +823,7 @@ export function TaskDetail({
                                                     class={`priority-badge priority-${st.priority || 'medium'}`}
                                                     style={{ fontSize: '10px' }}
                                                 >
-                                                    {PRIORITY_LABELS[st.priority || 'medium']}
+                                                    {priorityLabels[st.priority || 'medium']}
                                                 </span>
                                                 <span
                                                     style={{
@@ -834,7 +838,7 @@ export function TaskDetail({
                                                     class={`task-status-badge ${st.status}`}
                                                     style={{ marginLeft: 'auto', fontSize: '10.5px' }}
                                                 >
-                                                    {STATUS_LABELS[st.status] || st.status}
+                                                    {statusLabels[st.status] || st.status}
                                                 </span>
                                             </div>
                                         </div>
@@ -846,15 +850,15 @@ export function TaskDetail({
 
                     {activeTab === 'relations' && (
                         <div class="gh-relations-tab-content">
-                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>任务关联与引文关系</h4>
+                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>{t('task.detail.relationsTitle', lang)}</h4>
 
                             <div style={{ marginBottom: '24px' }}>
                                 <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                                    主动关联任务 (Outgoing Relations)
+                                    {t('task.detail.outgoingTitle', lang)}
                                 </h5>
                                 {outgoing.length === 0 ? (
                                     <div class="task-desc-empty" style={{ marginBottom: '12px' }}>
-                                        暂无主动关联项。
+                                        {t('task.detail.outgoingEmpty', lang)}
                                     </div>
                                 ) : (
                                     <div
@@ -888,7 +892,7 @@ export function TaskDetail({
                                                             borderRadius: '4px',
                                                         }}
                                                     >
-                                                        {LINK_REL_LABELS[link.rel] || link.rel}
+                                                        {linkRelLabels[link.rel] || link.rel}
                                                     </span>
                                                     <button
                                                         class="task-link-target"
@@ -929,11 +933,11 @@ export function TaskDetail({
 
                             <div style={{ marginBottom: '24px' }}>
                                 <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                                    被动引用任务 (Backlinks / Referenced by)
+                                    {t('task.detail.backlinkTitle', lang)}
                                 </h5>
                                 {backlinks.length === 0 ? (
                                     <div class="task-desc-empty" style={{ marginBottom: '12px' }}>
-                                        暂无被动引用项。
+                                        {t('task.detail.backlinkEmpty', lang)}
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -960,7 +964,7 @@ export function TaskDetail({
                                                             borderRadius: '4px',
                                                         }}
                                                     >
-                                                        {LINK_REL_LABELS[link?.rel || 'relates']}
+                                                        {linkRelLabels[link?.rel || 'relates']}
                                                     </span>
                                                     <button
                                                         class="task-link-target"
@@ -986,7 +990,7 @@ export function TaskDetail({
 
                             {/* Add link form */}
                             <div class="gh-comment-card" style={{ padding: '16px' }}>
-                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12.5px' }}>新建关系关联</h5>
+                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12.5px' }}>{t('task.detail.addLinkTitle', lang)}</h5>
                                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                     <select
                                         class="task-link-target-select"
@@ -1002,10 +1006,10 @@ export function TaskDetail({
                                             color: 'var(--text-main)',
                                         }}
                                     >
-                                        <option value="">选择目标…</option>
-                                        {linkOptions.map(t => (
-                                            <option key={t.id} value={t.id}>
-                                                {linkLabel(t)}
+                                        <option value="">{t('task.detail.linkTargetPlaceholder', lang)}</option>
+                                        {linkOptions.map(tgt => (
+                                            <option key={tgt.id} value={tgt.id}>
+                                                {linkLabel(tgt)}
                                             </option>
                                         ))}
                                     </select>
@@ -1023,8 +1027,8 @@ export function TaskDetail({
                                             color: 'var(--text-main)',
                                         }}
                                     >
-                                        <option value="relates">关联</option>
-                                        <option value="closes">修复 / 关闭</option>
+                                        <option value="relates">{t('task.link.relates', lang)}</option>
+                                        <option value="closes">{t('task.link.closes', lang)}</option>
                                     </select>
                                     <button
                                         class="gh-submit-btn"
@@ -1040,7 +1044,7 @@ export function TaskDetail({
                                             cursor: 'pointer',
                                         }}
                                     >
-                                        添加关联
+                                        {t('task.detail.addLink', lang)}
                                     </button>
                                 </div>
                             </div>
@@ -1107,7 +1111,7 @@ export function TaskDetail({
                         </div>
                         <div class="gh-sidebar-body">
                             <span class={`priority-badge priority-${task.priority || 'medium'}`}>
-                                {PRIORITY_LABELS[task.priority || 'medium']}
+                                {priorityLabels[task.priority || 'medium']}
                             </span>
                         </div>
                     </div>
@@ -1130,14 +1134,14 @@ export function TaskDetail({
                             {task.recurrence && <div>🔁 {recurrenceLabel(task.recurrence)}</div>}
                             {(task.retryCount ?? 0) > 0 && (
                                 <div>
-                                    重试 {task.retryCount}/{task.maxRetries ?? 1}
+                                    {t('task.detail.dateRetry', lang).replace('{count}', String(task.retryCount)).replace('{max}', String(task.maxRetries ?? 1))}
                                 </div>
                             )}
                             <div>
-                                计划: {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}
+                                {t('task.detail.datePlanned', lang)} {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}
                             </div>
                             <div>
-                                实际: {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}
+                                {t('task.detail.dateActual', lang)} {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}
                             </div>
                         </div>
                     </div>
@@ -1178,7 +1182,7 @@ export function TaskDetail({
                                                 class={`task-status-badge ${s.status === 'running' ? 'running' : 'completed'}`}
                                                 style={{ fontSize: '10px' }}
                                             >
-                                                {s.status === 'running' ? '运行中' : '空闲'}
+                                                {s.status === 'running' ? t('task.detail.sessionRunningBadge', lang) : t('task.detail.sessionIdleBadge', lang)}
                                             </span>
                                         </button>
                                     ))}
@@ -1194,7 +1198,7 @@ export function TaskDetail({
                         </div>
                         <div class="gh-sidebar-body">
                             <button class="task-delete-link" onClick={() => onDelete(task.id)}>
-                                删除此任务 (Delete Task)
+                                {t('task.detail.deleteBtn', lang)}
                             </button>
                         </div>
                     </div>
