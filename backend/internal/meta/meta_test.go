@@ -42,6 +42,64 @@ func TestProjectsEnsureAndList(t *testing.T) {
 	}
 }
 
+func TestResolveByNumber(t *testing.T) {
+	db := newTestDB(t)
+	s := NewTaskStore(db)
+	ws := t.TempDir()
+	now := time.Now().UTC()
+
+	// EnsureProject pins (id, name) onto the workspace path; Save then assigns
+	// the per-project short numbers (#1, #2) by created_at order.
+	if err := db.EnsureProject("proj-1", "My Project", ws); err != nil {
+		t.Fatalf("EnsureProject: %v", err)
+	}
+	if err := s.Save(ws, &TasksConfig{Tasks: []Task{
+		{ID: "a", Title: "first", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "b", Title: "second", Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+	}}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Resolve by display name.
+	tk, wsID, ok, err := s.ResolveByNumber("My Project", 2)
+	if err != nil || !ok {
+		t.Fatalf("resolve by name: ok=%v err=%v", ok, err)
+	}
+	if tk.ID != "b" || wsID != "proj-1" {
+		t.Fatalf("resolve by name wrong: task=%q ws=%q", tk.ID, wsID)
+	}
+
+	// Resolve by project id (tried before name).
+	tk, _, ok, _ = s.ResolveByNumber("proj-1", 1)
+	if !ok || tk.ID != "a" {
+		t.Fatalf("resolve by id wrong: ok=%v task=%q", ok, tk.ID)
+	}
+
+	// Unknown number → graceful not-found (no error).
+	if _, _, ok, err := s.ResolveByNumber("My Project", 99); ok || err != nil {
+		t.Fatalf("unknown number: ok=%v err=%v, want false/nil", ok, err)
+	}
+	// Unknown project → graceful not-found.
+	if _, _, ok, err := s.ResolveByNumber("No Such Project", 1); ok || err != nil {
+		t.Fatalf("unknown project: ok=%v err=%v, want false/nil", ok, err)
+	}
+
+	// Duplicate names: most recently updated project wins.
+	ws2 := t.TempDir()
+	if err := db.EnsureProject("proj-2", "My Project", ws2); err != nil {
+		t.Fatalf("EnsureProject dup: %v", err)
+	}
+	if err := s.Save(ws2, &TasksConfig{Tasks: []Task{
+		{ID: "c", Title: "other", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+	}}); err != nil {
+		t.Fatalf("Save ws2: %v", err)
+	}
+	tk, wsID, ok, _ = s.ResolveByNumber("My Project", 1)
+	if !ok || wsID != "proj-2" || tk.ID != "c" {
+		t.Fatalf("duplicate-name resolve should pick newest (proj-2/c): ws=%q task=%q", wsID, tk.ID)
+	}
+}
+
 func TestSessionStoreCRUD(t *testing.T) {
 	db := newTestDB(t)
 	s := NewSessionStore(db)
@@ -122,16 +180,63 @@ func TestSessionListNewestFirst(t *testing.T) {
 			CreatedAt:   base.Add(time.Duration(i) * time.Minute),
 		})
 	}
-	all, err := s.ListByWorkspace("ws")
+	all, err := s.ListByWorkspace("ws", false)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	if len(all) != 3 || all[0].ID != "c" || all[2].ID != "a" {
 		t.Fatalf("wrong order: %+v", all)
 	}
-	none, _ := s.ListByWorkspace("nope")
+	none, _ := s.ListByWorkspace("nope", false)
 	if len(none) != 0 {
 		t.Fatalf("expected empty list for unknown workspace")
+	}
+}
+
+// TestSessionArchive covers the soft-delete lifecycle: archiving drops a
+// session from the default (active-only) list but keeps it in the
+// include-archived list, and restoring brings it back.
+func TestSessionArchive(t *testing.T) {
+	db := newTestDB(t)
+	s := NewSessionStore(db)
+	for _, id := range []string{"keep", "gone"} {
+		if err := s.Add(ChatSessionRecord{ID: id, WorkspaceID: "ws"}); err != nil {
+			t.Fatalf("Add %s: %v", id, err)
+		}
+	}
+
+	if err := s.SetArchived("gone", true); err != nil {
+		t.Fatalf("SetArchived: %v", err)
+	}
+
+	active, _ := s.ListByWorkspace("ws", false)
+	if len(active) != 1 || active[0].ID != "keep" {
+		t.Fatalf("active list = %+v, want only [keep]", active)
+	}
+
+	all, _ := s.ListByWorkspace("ws", true)
+	if len(all) != 2 {
+		t.Fatalf("include-archived list len = %d, want 2", len(all))
+	}
+	rec, _, _ := s.Get("gone")
+	if rec.ArchivedAt.IsZero() {
+		t.Fatalf("archived session ArchivedAt should be set")
+	}
+
+	// Restore.
+	if err := s.SetArchived("gone", false); err != nil {
+		t.Fatalf("SetArchived restore: %v", err)
+	}
+	active, _ = s.ListByWorkspace("ws", false)
+	if len(active) != 2 {
+		t.Fatalf("after restore active len = %d, want 2", len(active))
+	}
+	if rec, _, _ := s.Get("gone"); !rec.ArchivedAt.IsZero() {
+		t.Fatalf("restored session ArchivedAt should be zero")
+	}
+
+	if err := s.SetArchived("missing", true); err != ErrNotFound {
+		t.Fatalf("archive missing: got %v, want ErrNotFound", err)
 	}
 }
 

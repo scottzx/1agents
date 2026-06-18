@@ -79,12 +79,34 @@ export const agentService = {
 
     /**
      * GET /api/agent/sessions?workspace_id=…
+     *
+     * By default returns active sessions only (what the sidebar lists). Pass
+     * includeArchived=true (the 会话 archive view) to also return archived
+     * sessions, each flagged via ChatSession.archived.
      */
-    async list(workspaceId: string): Promise<ChatSession[]> {
-        const res = await apiFetch(`/agent/sessions?workspace_id=${encodeURIComponent(workspaceId)}`);
+    async list(workspaceId: string, includeArchived = false): Promise<ChatSession[]> {
+        const qs = `workspace_id=${encodeURIComponent(workspaceId)}${includeArchived ? '&include_archived=1' : ''}`;
+        const res = await apiFetch(`/agent/sessions?${qs}`);
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawChatSession[];
         return data.map(normalizeChatSession);
+    },
+
+    /**
+     * PATCH /api/agent/sessions/{id} with {archived}
+     *
+     * Soft-deletes (archived=true) or restores (false) a session. Archiving
+     * keeps the index record — closing a session from the sidebar archives it
+     * so its metadata stays searchable in the 会话 archive view.
+     */
+    async setArchived(id: string, archived: boolean): Promise<ChatSession> {
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return normalizeChatSession((await res.json()) as RawChatSession);
     },
 
     /**
@@ -139,7 +161,9 @@ interface RawChatSession {
     acp_session_id?: string;
     session_key?: string;
     status?: string;
+    created_at?: string;
     last_event_at?: string;
+    archived_at?: string;
     active?: boolean;
     role?: string;
     permission_mode?: string;
@@ -176,8 +200,15 @@ function normalizeAgentStatus(raw: RawAgentStatus): AgentStatus {
     };
 }
 
+// Go marshals an unset time.Time as the zero time rather than omitting it
+// (encoding/json `omitempty` doesn't apply to structs), so guard against it.
+function cleanTime(iso?: string): string | undefined {
+    return iso && !iso.startsWith('0001-01-01') ? iso : undefined;
+}
+
 /** Coerce unknown / missing fields into the canonical ChatSession shape. */
 function normalizeChatSession(raw: RawChatSession): ChatSession {
+    const archivedAt = cleanTime(raw.archived_at);
     return {
         kind: 'chat',
         id: String(raw.id),
@@ -190,7 +221,10 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         acpSessionId: raw.acp_session_id ? String(raw.acp_session_id) : undefined,
         sessionKey: String(raw.session_key ?? ''),
         status: (raw.status ?? 'idle') as ChatSession['status'],
-        lastEventAt: raw.last_event_at || undefined,
+        createdAt: cleanTime(raw.created_at),
+        lastEventAt: cleanTime(raw.last_event_at),
+        archivedAt,
+        archived: Boolean(archivedAt),
         active: Boolean(raw.active),
         role: raw.role || undefined,
         permissionMode: (raw.permission_mode as PermissionMode) || undefined,

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -61,6 +62,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
+	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
+		log.Printf("[server] ensure default workspace: %v", err)
+	}
 	mux.HandleFunc("/api/workspace/list", wsHandler.List)                        // GET
 	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                    // POST
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
@@ -130,13 +134,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 			selfBaseURL := "http://127.0.0.1:" + selfPort
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes) // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)   // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)  // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem) // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)        // GET, POST
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)       // DELETE /{id}
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)         // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)     // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)       // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)      // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)     // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)            // GET, POST
+			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)  // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)           // DELETE /{id}
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)             // WebSocket upgrade & bridge
 		}
 	}
 
@@ -451,11 +458,26 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// ── Proxy API ────────────────────────────────────────────────────────────
 	mux.HandleFunc("/api/proxy", handleProxy)
 
-	// ── Static frontend assets ───────────────────────────────────────────────
+	// ── Static frontend assets + task permalink deep links ───────────────────
 	// This catch-all must be registered last so it does not shadow the routes
 	// above. html/dist must contain an index.html for SPA-style navigation.
+	//
+	// GitHub-style task URLs (/{project}/tasks/{number}) have no file on disk,
+	// so the catch-all serves the SPA index for them and lets the frontend
+	// resolve the reference (switch project + open the task). A wildcard
+	// ServeMux pattern can't express this — a top-level "/{project}/tasks/..."
+	// collides with every "/prefix/" subtree route (e.g. /cc-connect/) and
+	// panics at registration. So the check lives here in the catch-all, which
+	// only sees paths no more-specific route already claimed.
 	staticFS := http.FileServer(http.Dir(cfg.StaticDir))
-	mux.Handle("/", staticFS)
+	taskPermalinkRe := regexp.MustCompile(`^/[^/]+/tasks/\d+/?$`)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && taskPermalinkRe.MatchString(r.URL.Path) {
+			http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
+			return
+		}
+		staticFS.ServeHTTP(w, r)
+	})
 
 	return authMiddleware(mux, cfg)
 }

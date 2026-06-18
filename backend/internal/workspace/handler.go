@@ -45,6 +45,7 @@ type Workspace struct {
 	TerminalDir  string `json:"terminalDir,omitempty"`
 	ChatChannel  string `json:"chatChannel,omitempty"`
 	DefaultAgent string `json:"defaultAgent,omitempty"`
+	Builtin      bool   `json:"builtin,omitempty"`
 }
 
 // WorkspacesConfig is the top-level structure stored in workspaces_dir.json.
@@ -115,6 +116,40 @@ func (h *Handler) LoadWorkspacesConfig() (*WorkspacesConfig, error) {
 // SaveWorkspacesConfig saves the provided WorkspacesConfig.
 func (h *Handler) SaveWorkspacesConfig(cfg *WorkspacesConfig) error {
 	return h.saveConfig(cfg)
+}
+
+// EnsureDefaultWorkspace creates the built-in default workspace if it does not
+// already exist. Called once at server startup so new installs skip onboarding.
+func (h *Handler) EnsureDefaultWorkspace() error {
+	cfg, err := h.loadConfig()
+	if err != nil {
+		return err
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == "default" {
+			return nil
+		}
+	}
+	homeDir := get1AgentsHome()
+	defaultPath := filepath.Join(homeDir, ".1agents", "projects", "default")
+	if err := os.MkdirAll(defaultPath, 0o755); err != nil {
+		return fmt.Errorf("create default workspace dir: %w", err)
+	}
+	defaultWs := Workspace{
+		ID:           "default",
+		Name:         "对话",
+		Path:         defaultPath,
+		Status:       "active",
+		DefaultAgent: "claudecode",
+		Builtin:      true,
+	}
+	// Prepend so the default workspace is always first in the list.
+	cfg.Workspaces = append([]Workspace{defaultWs}, cfg.Workspaces...)
+	if err := h.saveConfig(cfg); err != nil {
+		return err
+	}
+	log.Printf("[workspace] created built-in default workspace at %s", defaultPath)
+	return nil
 }
 
 // List handles GET /api/workspace/list
@@ -226,6 +261,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	found := false
 	for i, existing := range cfg.Workspaces {
 		if existing.ID == ws.ID {
+			if existing.Builtin {
+				http.Error(w, "cannot modify built-in workspace", http.StatusForbidden)
+				return
+			}
 			cfg.Workspaces[i] = ws
 			found = true
 			break
@@ -254,6 +293,10 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing id query parameter", http.StatusBadRequest)
 		return
 	}
+	if id == "default" {
+		http.Error(w, "cannot delete built-in workspace", http.StatusForbidden)
+		return
+	}
 	cfg, err := h.loadConfig()
 	if err != nil {
 		log.Printf("[workspace] load error: %v", err)
@@ -263,6 +306,10 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	idx := -1
 	for i, ws := range cfg.Workspaces {
 		if ws.ID == id {
+			if ws.Builtin {
+				http.Error(w, "cannot delete built-in workspace", http.StatusForbidden)
+				return
+			}
 			idx = i
 			break
 		}

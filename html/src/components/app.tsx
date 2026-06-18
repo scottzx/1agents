@@ -23,6 +23,7 @@ import * as modal from '../stores/modalStore';
 import * as tabsStore from '../stores/tabsStore';
 import * as agentCatalog from '../stores/agentCatalogStore';
 import * as stage from '../stores/stageStore';
+import * as taskNav from '../stores/taskNavStore';
 
 export {
     wsUrl,
@@ -128,6 +129,11 @@ export class App extends Component<{}, AppState> {
 
         sess.loadTmuxMouse();
         this.checkUrlPreview();
+        // Task permalinks: intercept in-app clicks on `#N` autolinks and pasted
+        // /{project}/tasks/{number} URLs, and resolve a deep link in the address
+        // bar now that workspaces are loaded.
+        taskNav.installTaskRefClicks();
+        taskNav.consumeDeepLink();
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('mousemove', this.handleResizerMove);
         document.addEventListener('mouseup', this.handleResizerUp);

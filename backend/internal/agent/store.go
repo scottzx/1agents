@@ -14,8 +14,9 @@ type (
 // Sentinel errors for store operations (aliased so existing errors.Is
 // checks keep working).
 var (
-	ErrDuplicate = meta.ErrDuplicate
-	ErrNotFound  = meta.ErrNotFound
+	ErrDuplicate       = meta.ErrDuplicate
+	ErrNotFound        = meta.ErrNotFound
+	ErrMilestoneExists = meta.ErrMilestoneExists
 )
 
 // NewStore returns the chat-session store backed by ~/.1agents/meta.db.

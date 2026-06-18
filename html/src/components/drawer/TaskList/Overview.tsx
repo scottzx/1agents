@@ -26,6 +26,12 @@ const STATS = [
     },
 ];
 
+// ── KPI card helpers ────────────────────────────────────────────────────────
+// 未完成 = 未开始(pending/queued) + 未完成(running/blocked); terminal states excluded.
+const isTaskType = (t: Task) => (t.type ?? 'task') === 'task';
+const isUncompleted = (t: Task) =>
+    t.status === 'pending' || t.status === 'queued' || t.status === 'running' || t.status === 'blocked';
+
 // Read a CSS custom property off :root — lets ECharts borrow the active
 // theme's semantic tokens so charts re-color on light/dark switch.
 function cssVar(name: string): string {
@@ -257,18 +263,28 @@ export function Overview({ tasks }: OverviewProps) {
 
     const hasData = total > 0;
 
+    // KPI cards: plain counts of four categories.
+    const kpis = [
+        {
+            key: 'task',
+            label: '任务',
+            cls: 'completed',
+            value: tasks.filter(t => isTaskType(t) && isUncompleted(t)).length, // 所有未完成的任务
+        },
+        { key: 'blocked', label: '阻塞', cls: 'blocked', value: tasks.filter(t => t.status === 'blocked').length },
+        { key: 'req', label: '需求', cls: 'running', value: tasks.filter(t => t.type === 'requirement').length },
+        { key: 'bug', label: '缺陷', cls: 'failed', value: tasks.filter(t => t.type === 'bug').length },
+    ];
+
     return (
         <div class="overview">
-            <div class="overview-kpis bento-grid">
-                {STATS.map(s => {
-                    const n = tasks.filter(t => s.match(t.status)).length;
-                    return (
-                        <div key={s.key} class={`bento-card overview-stat stat-${s.cls}`}>
-                            <div class="overview-stat-num">{n}</div>
-                            <div class="overview-stat-label">{s.label}</div>
-                        </div>
-                    );
-                })}
+            <div class="overview-kpis">
+                {kpis.map(s => (
+                    <div key={s.key} class={`bento-card overview-stat stat-${s.cls}`}>
+                        <div class="overview-stat-num">{s.value}</div>
+                        <div class="overview-stat-label">{s.label}</div>
+                    </div>
+                ))}
             </div>
 
             {!hasData ? (
