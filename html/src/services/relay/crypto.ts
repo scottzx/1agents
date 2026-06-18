@@ -14,6 +14,10 @@ import nacl from 'tweetnacl';
 const td = new TextDecoder();
 const te = new TextEncoder();
 
+// 较新 TS(lib.dom)下 WebCrypto 形参为 BufferSource(要求 ArrayBuffer 背书),
+// 而 Uint8Array<ArrayBufferLike> 不直接匹配 → 在边界统一转换。
+const bs = (u: Uint8Array): BufferSource => u as unknown as BufferSource;
+
 // --- base64 ---
 export function encodeBase64(buf: Uint8Array): string {
     let s = '';
@@ -29,11 +33,11 @@ export function decodeBase64(b64: string): Uint8Array {
 
 // --- WebCrypto helpers ---
 async function sha512(data: Uint8Array): Promise<Uint8Array> {
-    return new Uint8Array(await crypto.subtle.digest('SHA-512', data));
+    return new Uint8Array(await crypto.subtle.digest('SHA-512', bs(data)));
 }
 async function hmacSha512(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
-    const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']);
-    return new Uint8Array(await crypto.subtle.sign('HMAC', k, data));
+    const k = await crypto.subtle.importKey('raw', bs(key), { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']);
+    return new Uint8Array(await crypto.subtle.sign('HMAC', k, bs(data)));
 }
 
 // --- key derivation tree (HMAC-SHA512), 同 deriveKey('Happy EnCoder', ['content']) ---
@@ -81,9 +85,9 @@ export type Variant = 'dataKey' | 'legacy';
 
 async function encryptDataKey(data: unknown, dataKey: Uint8Array): Promise<Uint8Array> {
     const nonce = nacl.randomBytes(12);
-    const key = await crypto.subtle.importKey('raw', dataKey, { name: 'AES-GCM' }, false, ['encrypt']);
+    const key = await crypto.subtle.importKey('raw', bs(dataKey), { name: 'AES-GCM' }, false, ['encrypt']);
     const ctTag = new Uint8Array(
-        await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, te.encode(JSON.stringify(data)))
+        await crypto.subtle.encrypt({ name: 'AES-GCM', iv: bs(nonce) }, key, bs(te.encode(JSON.stringify(data))))
     ); // WebCrypto: 输出即 ciphertext||authTag(16),与 Happy 布局一致
     const bundle = new Uint8Array(1 + 12 + ctTag.length);
     bundle[0] = 0;
@@ -96,8 +100,8 @@ async function decryptDataKey(bundle: Uint8Array, dataKey: Uint8Array): Promise<
     const nonce = bundle.slice(1, 13);
     const ctTag = bundle.slice(13);
     try {
-        const key = await crypto.subtle.importKey('raw', dataKey, { name: 'AES-GCM' }, false, ['decrypt']);
-        const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ctTag));
+        const key = await crypto.subtle.importKey('raw', bs(dataKey), { name: 'AES-GCM' }, false, ['decrypt']);
+        const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bs(nonce) }, key, bs(ctTag)));
         return JSON.parse(td.decode(pt));
     } catch {
         return null;
