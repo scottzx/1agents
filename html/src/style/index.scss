@@ -1113,18 +1113,12 @@ body {
       }
 
       .project-children {
-        padding-left: 18px;
+        padding-left: 0;
         margin-top: 2px;
         display: flex;
         flex-direction: column;
         gap: 2px;
-        border-left: 1px dashed var(--border-sidebar);
         margin-left: 12px;
-
-        .chat-item {
-          margin-left: -18px;
-          padding-left: 30px; // 18px indent + 12px original inner padding
-        }
       }
 
       .ws-no-sessions {
@@ -13219,4 +13213,6 @@ body {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@import './dashboard';
 
