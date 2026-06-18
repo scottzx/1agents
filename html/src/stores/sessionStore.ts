@@ -165,7 +165,8 @@ export const createChatSession = async (
     name: string,
     agentType: AgentType,
     initialMessage?: string,
-    role?: string
+    role?: string,
+    permissionMode?: import('../components/types').PermissionMode
 ) => {
     const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
     if (!ws) {
@@ -185,6 +186,7 @@ export const createChatSession = async (
             name: name || `${agentType} 会话`,
             agent_type: agentType,
             role,
+            permission_mode: permissionMode,
         });
         await loadChatSessions(workspaceId);
         // Auto-select the new session and switch to the agents tab.

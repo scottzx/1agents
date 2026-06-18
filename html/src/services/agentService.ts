@@ -16,6 +16,8 @@ export interface IndexChatSessionRequest {
     task_id?: string;
     /** Special-purpose session role. 'pm' = in-app AI Project Manager (project-locked task tools + PM system prompt). */
     role?: string;
+    /** Initial permission policy for the session. Defaults to 'approve-reads' when omitted. */
+    permission_mode?: string;
 }
 
 /** Default agent type used when a workspace has none configured. */

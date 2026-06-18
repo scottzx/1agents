@@ -1,5 +1,5 @@
 import { h, Fragment } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat, isTerminal } from '../types';
 import { t, type Lang } from '../i18n';
@@ -93,6 +93,9 @@ export function LeftSidebar({
     };
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+    const [projectSearch, setProjectSearch] = useState('');
+    const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+    const projectSearchRef = useRef<HTMLInputElement | null>(null);
     // Task id → title map for the optional session task badge (issue
     // model: sessions linked to a task show 📋 <task title>).
     const [taskTitles, setTaskTitles] = useState<Record<string, string>>({});
@@ -441,7 +444,52 @@ export function LeftSidebar({
                             <div class="workspace-section">
                                 <div class="section-header">
                                     <span>Projects</span>
+                                    <button
+                                        class={`section-search-btn${projectSearchOpen ? ' active' : ''}`}
+                                        title="搜索项目"
+                                        onClick={() => {
+                                            const next = !projectSearchOpen;
+                                            setProjectSearchOpen(next);
+                                            if (!next) setProjectSearch('');
+                                            else setTimeout(() => projectSearchRef.current?.focus(), 50);
+                                        }}
+                                    >
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <circle cx="11" cy="11" r="8" />
+                                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                        </svg>
+                                    </button>
                                 </div>
+                                {projectSearchOpen && (
+                                    <div class="section-search-wrap">
+                                        <input
+                                            ref={projectSearchRef}
+                                            class="section-search-input"
+                                            type="text"
+                                            placeholder="搜索项目…"
+                                            value={projectSearch}
+                                            onInput={(e: Event) =>
+                                                setProjectSearch((e.target as HTMLInputElement).value)
+                                            }
+                                        />
+                                        {projectSearch && (
+                                            <button
+                                                class="section-search-clear"
+                                                onClick={() => setProjectSearch('')}
+                                                type="button"
+                                            >
+                                                ×
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Loading skeleton */}
                                 {workspacesLoading && (
@@ -475,6 +523,13 @@ export function LeftSidebar({
                                 {!workspacesLoading &&
                                     folders
                                         .filter(f => f.id !== 'default')
+                                        .filter(f => {
+                                            if (!projectSearch) return true;
+                                            const ws = workspaces.find(w => w.id === f.id);
+                                            return (ws?.name ?? f.id)
+                                                .toLowerCase()
+                                                .includes(projectSearch.toLowerCase());
+                                        })
                                         .map(folder => {
                                             const ws = workspaces.find(w => w.id === folder.id);
                                             const isHovered = hoveredId === folder.id;
