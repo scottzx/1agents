@@ -457,7 +457,33 @@ func (h *Handler) HandleTaskResolve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
+	// Prefer the workspace-registry id (what the frontend keys workspaces by)
+	// over the raw meta project id. The two are normally identical (project id
+	// == workspace id), but a project created lazily before its workspace is
+	// synced gets a random id; mapping the task's path back to the registry
+	// keeps deep-link navigation working regardless.
+	if wsID := h.workspaceIDForPath(task.WorkspacePath); wsID != "" {
+		workspaceID = wsID
+	}
 	writeJSON(w, map[string]any{"workspaceId": workspaceID, "task": task})
+}
+
+// workspaceIDForPath reverse-maps an absolute workspace path to its registry
+// workspace id, or "" when no workspace owns that path.
+func (h *Handler) workspaceIDForPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	cfg, err := workspace.NewHandler().LoadWorkspacesConfig()
+	if err != nil {
+		return ""
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.Path == path {
+			return ws.ID
+		}
+	}
+	return ""
 }
 
 // HandleTasksItem handles /api/agent/tasks/{id} and its sub-resources:

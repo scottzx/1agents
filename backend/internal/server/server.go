@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -457,23 +458,26 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// ── Proxy API ────────────────────────────────────────────────────────────
 	mux.HandleFunc("/api/proxy", handleProxy)
 
-	// ── Task permalink deep links ────────────────────────────────────────────
-	// GitHub-style task URLs: /{project}/tasks/{number}. There is no such file
-	// on disk, so serve the SPA index and let the frontend resolve the
-	// reference (switch project + open the task). The {number} wildcard matches
-	// any segment; the SPA shows a friendly not-found for non-numeric/missing
-	// ids. This pattern is strictly more specific than the "/" catch-all and
-	// has 3 fixed-shape segments, so it never shadows /api/* or real assets.
-	serveSPAIndex := func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
-	}
-	mux.HandleFunc("GET /{project}/tasks/{number}", serveSPAIndex)
-
-	// ── Static frontend assets ───────────────────────────────────────────────
+	// ── Static frontend assets + task permalink deep links ───────────────────
 	// This catch-all must be registered last so it does not shadow the routes
 	// above. html/dist must contain an index.html for SPA-style navigation.
+	//
+	// GitHub-style task URLs (/{project}/tasks/{number}) have no file on disk,
+	// so the catch-all serves the SPA index for them and lets the frontend
+	// resolve the reference (switch project + open the task). A wildcard
+	// ServeMux pattern can't express this — a top-level "/{project}/tasks/..."
+	// collides with every "/prefix/" subtree route (e.g. /cc-connect/) and
+	// panics at registration. So the check lives here in the catch-all, which
+	// only sees paths no more-specific route already claimed.
 	staticFS := http.FileServer(http.Dir(cfg.StaticDir))
-	mux.Handle("/", staticFS)
+	taskPermalinkRe := regexp.MustCompile(`^/[^/]+/tasks/\d+/?$`)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && taskPermalinkRe.MatchString(r.URL.Path) {
+			http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
+			return
+		}
+		staticFS.ServeHTTP(w, r)
+	})
 
 	return authMiddleware(mux, cfg)
 }
