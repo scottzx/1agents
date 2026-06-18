@@ -12579,20 +12579,27 @@ body {
   margin-left: auto;
   flex-shrink: 0;
 }
-.chat-status-dot.idle { background: #c0c4cc; }
-.chat-status-dot.streaming { background: var(--accent-color); animation: chat-dot-pulse 1.2s infinite; }
-.chat-status-dot.awaiting_permission { background: var(--warning-fg); }
-.chat-status-dot.error { background: var(--danger-fg); }
-// Terminal status palette on the same trailing dot (mirrors the old left
-// `.status-dot` colours: green=idle, blue=busy, amber=waiting, purple=shell).
+// Chat session status palette (chat-* mirrors terminal term-* naming):
+//   chat-none    = no messages yet → hollow ring
+//   chat-idle    = run finished / at rest → green
+//   chat-busy    = running → blue ripple wave animation
+//   chat-waiting = blocked on user action → orange-brown
+//   chat-error   = red
+.chat-status-dot.chat-none { background: transparent; border: 1.5px solid var(--border-color); }
+.chat-status-dot.chat-idle { background: var(--success-fg); }
+.chat-status-dot.chat-busy { background: var(--accent-color); animation: chat-dot-wave 1.4s ease-in-out infinite; }
+.chat-status-dot.chat-waiting { background: var(--orange-fg); }
+.chat-status-dot.chat-error { background: var(--danger-fg); }
+// Terminal status palette — same semantic colors as chat so both rows
+// read identically: none=hollow, idle=green, busy=blue wave, waiting=orange, shell=purple.
+.chat-status-dot.term-none { background: transparent; border: 1.5px solid var(--border-color); }
 .chat-status-dot.term-idle { background: var(--success-fg); }
-.chat-status-dot.term-busy { background: var(--accent-color); animation: chat-dot-pulse 1.2s infinite; }
-.chat-status-dot.term-waiting { background: var(--warning-fg); animation: chat-dot-pulse 1.2s infinite; }
+.chat-status-dot.term-busy { background: var(--accent-color); animation: chat-dot-wave 1.4s ease-in-out infinite; }
+.chat-status-dot.term-waiting { background: var(--orange-fg); }
 .chat-status-dot.term-shell { background: var(--purple-fg); }
-.chat-status-dot.term-none { background: transparent; }
-@keyframes chat-dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+@keyframes chat-dot-wave {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(var(--accent-color-rgb), 0.5); }
+  55% { transform: scale(1.25); box-shadow: 0 0 0 5px rgba(var(--accent-color-rgb), 0); }
 }
 
 // Dropdown for "new session" (replaces the simple + button)

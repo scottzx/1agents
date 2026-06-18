@@ -6,7 +6,11 @@
 
 import { useEffect, useCallback } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
+import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../types';
+// Imported for its side-effecting setter only; referenced exclusively inside
+// method bodies (never at module-eval time) so the sessionStore ⇄ hooks import
+// cycle stays safe — see the cycle note in stores/sessionStore.ts.
+import { setLiveSessionStatus } from '../../stores/sessionStore';
 
 export interface ToolCallInfo {
     id?: string;
@@ -124,6 +128,8 @@ interface UseBridgeState {
 }
 
 export interface SessionBridgeState {
+    /** The owning session's id — used to publish live status into sessionStore. */
+    sessionId: string;
     items: ChatItem[];
     connection: ConnectionState;
     typing: boolean;
@@ -184,6 +190,7 @@ export class ChatBridgeManager {
         let state = this.sessions.get(session.id);
         if (!state) {
             state = {
+                sessionId: session.id,
                 items: [],
                 connection: 'idle',
                 typing: false,
@@ -229,6 +236,7 @@ export class ChatBridgeManager {
                 state.ws.close();
             }
             this.sessions.delete(sessionId);
+            setLiveSessionStatus(sessionId, null);
         }
     }
 
@@ -1000,10 +1008,29 @@ export class ChatBridgeManager {
     }
 
     private notify(state: SessionBridgeState) {
+        // Publish the derived live status into sessionStore so the sidebar dot
+        // tracks this session in real time, then repaint the chat subscribers.
+        setLiveSessionStatus(state.sessionId, deriveLiveStatus(state));
         for (const listener of state.listeners) {
             listener();
         }
     }
+}
+
+/**
+ * Map a session's transient bridge state to the sidebar status dot. Only the
+ * two live, attention-worthy states are surfaced — a pending permission
+ * (blocked on the user) outranks streaming (a turn in flight). When neither
+ * applies we return null so the sidebar falls back to the persisted status
+ * (idle / completed / error) instead of fighting it.
+ */
+function deriveLiveStatus(state: SessionBridgeState): ChatStatus | null {
+    const hasPendingPermission =
+        state.pendingPermissions.some(p => p.kind === 'permission_request' && !p.resolved) ||
+        state.items.some(it => it.kind === 'tool_use' && it.calls.some(c => c.permission && !c.permission.resolved));
+    if (hasPendingPermission) return 'awaiting_permission';
+    if (state.typing) return 'streaming';
+    return null;
 }
 
 export const globalBridgeManager = new ChatBridgeManager();

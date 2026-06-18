@@ -7,6 +7,7 @@ import {
     type TmuxWindow,
     type Session,
     type ChatSession,
+    type ChatStatus,
     type AgentType,
 } from '../components/types';
 import { terminalService } from '../services/terminalService';
@@ -39,6 +40,33 @@ export const tmuxMouseOn = signal(true);
 export const chatSessions = signal<ChatSession[]>([]);
 export const activeSession = signal<Session | null>(null);
 export const pendingInitialMessage = signal<string | null>(null);
+
+/**
+ * Live, runtime-only status overrides keyed by session id. The persisted
+ * `ChatSession.status` (from the list API) is a stale snapshot; the chat
+ * bridge (globalBridgeManager) pushes the *current* transient state here as
+ * events stream in — `streaming` while a turn runs, `awaiting_permission`
+ * while a permission bubble is pending — so the sidebar dot reflects what's
+ * actually happening. A session with no entry (or `undefined`) falls back to
+ * its persisted status. Only the currently-rendered session(s) have a live
+ * bridge, so only those get overrides; backgrounded sessions keep their
+ * snapshot until reselected.
+ */
+export const liveSessionStatus = signal<Record<string, ChatStatus>>({});
+
+/** Set or clear a session's live status override (no-op when unchanged). */
+export const setLiveSessionStatus = (sessionId: string, status: ChatStatus | null) => {
+    const cur = liveSessionStatus.value[sessionId];
+    if (status === null || status === undefined) {
+        if (cur === undefined) return;
+        const next = { ...liveSessionStatus.value };
+        delete next[sessionId];
+        liveSessionStatus.value = next;
+        return;
+    }
+    if (cur === status) return;
+    liveSessionStatus.value = { ...liveSessionStatus.value, [sessionId]: status };
+};
 
 /** Sync tmux windows + chat sessions into workspace folders as sessions */
 export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSession[]) => {
