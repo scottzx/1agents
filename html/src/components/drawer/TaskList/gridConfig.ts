@@ -1,5 +1,5 @@
 import { t, type Lang } from '../../../i18n';
-import { getPriorityLabels, getStatusLabels, PRIORITY_LABELS, PRIORITY_RANK, STATUS_LABELS, TYPE_LABELS } from './constants';
+import { getPriorityLabels, PRIORITY_LABELS, PRIORITY_RANK, STATUS_LABELS, TYPE_LABELS } from './constants';
 import type { Task } from './types';
 
 // Airtable-style column model. `type` drives which inline editor renders;
@@ -47,11 +47,39 @@ export const ALL_COLUMNS: ColumnDef[] = [
 export function getAllColumns(lang: Lang): ColumnDef[] {
     return [
         { key: 'id', label: 'ID', type: 'id', editable: false, width: 64, locked: true },
-        { key: 'priority', label: t('task.col.priority', lang), type: 'priority', editable: true, width: 92, groupable: true },
-        { key: 'status', label: t('task.col.status', lang), type: 'status', editable: true, width: 112, groupable: true },
+        {
+            key: 'priority',
+            label: t('task.col.priority', lang),
+            type: 'priority',
+            editable: true,
+            width: 92,
+            groupable: true,
+        },
+        {
+            key: 'status',
+            label: t('task.col.status', lang),
+            type: 'status',
+            editable: true,
+            width: 112,
+            groupable: true,
+        },
         { key: 'title', label: t('task.col.title', lang), type: 'text', editable: true, width: 260 },
-        { key: 'assignee', label: t('task.col.assignee', lang), type: 'assignee', editable: true, width: 112, groupable: true },
-        { key: 'milestone', label: t('task.col.milestone', lang), type: 'milestone', editable: true, width: 130, groupable: true },
+        {
+            key: 'assignee',
+            label: t('task.col.assignee', lang),
+            type: 'assignee',
+            editable: true,
+            width: 112,
+            groupable: true,
+        },
+        {
+            key: 'milestone',
+            label: t('task.col.milestone', lang),
+            type: 'milestone',
+            editable: true,
+            width: 130,
+            groupable: true,
+        },
         { key: 'labels', label: t('task.col.labels', lang), type: 'labels', editable: true, width: 170 },
         { key: 'type', label: t('task.col.type', lang), type: 'type', editable: true, width: 88, groupable: true },
         { key: 'plannedStart', label: t('task.col.plannedStart', lang), type: 'date', editable: true, width: 112 },
@@ -83,7 +111,17 @@ export function getGroupOptions(lang: Lang): Array<[GroupKey, string]> {
 
 /** Stable, human-readable group bucket for a task under the active group key. */
 export function groupValue(task: Task, key: GroupKey, lang?: Lang): string {
-    const statusLabels = lang ? { pending: t('task.status.pending', lang), queued: t('task.status.queued', lang), running: t('task.status.running', lang), completed: t('task.status.completed', lang), failed: t('task.status.failed', lang), cancelled: t('task.status.cancelled', lang), blocked: t('task.status.blocked', lang) } : STATUS_LABELS;
+    const statusLabels = lang
+        ? {
+              pending: t('task.status.pending', lang),
+              queued: t('task.status.queued', lang),
+              running: t('task.status.running', lang),
+              completed: t('task.status.completed', lang),
+              failed: t('task.status.failed', lang),
+              cancelled: t('task.status.cancelled', lang),
+              blocked: t('task.status.blocked', lang),
+          }
+        : STATUS_LABELS;
     const priorityLabels = lang ? getPriorityLabels(lang) : PRIORITY_LABELS;
     switch (key) {
         case 'milestone':

@@ -301,7 +301,11 @@ export function TaskDetail({
     if (!task) {
         return (
             <div class="task-dashboard-container">
-                {error ? <div class="task-error">{error}</div> : <div class="task-loading">{t('task.detail.loading', lang)}</div>}
+                {error ? (
+                    <div class="task-error">{error}</div>
+                ) : (
+                    <div class="task-loading">{t('task.detail.loading', lang)}</div>
+                )}
             </div>
         );
     }
@@ -369,7 +373,8 @@ export function TaskDetail({
     const outgoing = task.links || [];
     const backlinks = allTasks.filter(t => t.id !== task.id && (t.links || []).some(l => l.target === task.id));
     const linkOptions = allTasks.filter(t => t.id !== task.id);
-    const linkLabel = (tgt?: Task) => (tgt ? `${tgt.number ? `#${tgt.number} ` : ''}${tgt.title}` : t('task.detail.unknownTask', lang));
+    const linkLabel = (tgt?: Task) =>
+        tgt ? `${tgt.number ? `#${tgt.number} ` : ''}${tgt.title}` : t('task.detail.unknownTask', lang);
 
     // Subtask checks calculation
     const totalSubtasks = subtasks.length;
@@ -397,7 +402,11 @@ export function TaskDetail({
                 </h3>
                 <div class="gh-actions">
                     {task.number ? (
-                        <button class="task-permalink-btn" title={t('task.detail.permalink', lang)} onClick={copyPermalink}>
+                        <button
+                            class="task-permalink-btn"
+                            title={t('task.detail.permalink', lang)}
+                            onClick={copyPermalink}
+                        >
                             🔗 链接
                         </button>
                     ) : null}
@@ -411,8 +420,7 @@ export function TaskDetail({
                 <span class={`gh-status-badge ${closed ? 'closed' : 'open'}`}>{closed ? 'Closed' : 'Open'}</span>
                 <span class="gh-meta-text">
                     <strong>{task.createdBy || 'scottzx'}</strong>{' '}
-                    {closed ? t('task.detail.closedBy', lang) : t('task.detail.createdBy', lang)} ·{' '}
-                    {replies.length}
+                    {closed ? t('task.detail.closedBy', lang) : t('task.detail.createdBy', lang)} · {replies.length}
                 </span>
             </div>
 
@@ -438,7 +446,11 @@ export function TaskDetail({
                 </button>
                 <button
                     class={`gh-sidebar-toggle-btn${sidebarCollapsed.value ? ' is-collapsed' : ''}`}
-                    title={sidebarCollapsed.value ? t('task.detail.sidebarExpand', lang) : t('task.detail.sidebarCollapse', lang)}
+                    title={
+                        sidebarCollapsed.value
+                            ? t('task.detail.sidebarExpand', lang)
+                            : t('task.detail.sidebarCollapse', lang)
+                    }
                     onClick={() => (sidebarCollapsed.value = !sidebarCollapsed.value)}
                 >
                     <span />
@@ -486,7 +498,9 @@ export function TaskDetail({
                                             />
                                             <div class="task-desc-editor-actions">
                                                 <button onClick={saveDescription}>{t('common.save', lang)}</button>
-                                                <button onClick={() => (editingDesc.value = false)}>{t('common.cancel', lang)}</button>
+                                                <button onClick={() => (editingDesc.value = false)}>
+                                                    {t('common.cancel', lang)}
+                                                </button>
                                             </div>
                                         </div>
                                     ) : task.description ? (
@@ -536,7 +550,9 @@ export function TaskDetail({
                                             />
                                             <div class="task-desc-editor-actions">
                                                 <button onClick={saveAcceptance}>{t('common.save', lang)}</button>
-                                                <button onClick={() => (editingAccept.value = false)}>{t('common.cancel', lang)}</button>
+                                                <button onClick={() => (editingAccept.value = false)}>
+                                                    {t('common.cancel', lang)}
+                                                </button>
                                             </div>
                                         </div>
                                     ) : task.acceptanceCriteria ? (
@@ -564,10 +580,14 @@ export function TaskDetail({
                                     return (
                                         <div key={session.id} class="task-branch">
                                             <div class="task-branch-header">
-                                                <span class="task-branch-badge">{t('task.detail.sessionBadge', lang).replace('{num}', String(num))}</span>
+                                                <span class="task-branch-badge">
+                                                    {t('task.detail.sessionBadge', lang).replace('{num}', String(num))}
+                                                </span>
                                                 <span class="task-branch-agent">{session.agentType}</span>
                                                 <span class={`task-branch-status${running ? ' running' : ''}`}>
-                                                    {running ? t('task.detail.sessionRunning', lang) : t('task.detail.sessionIdle', lang)}
+                                                    {running
+                                                        ? t('task.detail.sessionRunning', lang)
+                                                        : t('task.detail.sessionIdle', lang)}
                                                 </span>
                                             </div>
                                             <div class="task-branch-children">
@@ -605,7 +625,10 @@ export function TaskDetail({
                                                 <div class="task-branch-followup">
                                                     <textarea
                                                         rows={3}
-                                                        placeholder={t('task.detail.followupPlaceholder', lang).replace('{num}', String(num))}
+                                                        placeholder={t('task.detail.followupPlaceholder', lang).replace(
+                                                            '{num}',
+                                                            String(num)
+                                                        )}
                                                         value={followUpText.value}
                                                         onInput={(e: Event) =>
                                                             (followUpText.value = (
@@ -627,7 +650,9 @@ export function TaskDetail({
                                                             disabled={followUpBusy.value || !followUpText.value.trim()}
                                                             onClick={() => submitBranchFollowUp(session)}
                                                         >
-                                                            {followUpBusy.value ? t('task.detail.followupSubmitting', lang) : t('task.detail.followupRun', lang)}
+                                                            {followUpBusy.value
+                                                                ? t('task.detail.followupSubmitting', lang)
+                                                                : t('task.detail.followupRun', lang)}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -652,7 +677,8 @@ export function TaskDetail({
                                         {task.status === 'completed' && t('task.detail.mergeTitle.completed', lang)}
                                         {task.status === 'running' && t('task.detail.mergeTitle.running', lang)}
                                         {task.status === 'failed' && t('task.detail.mergeTitle.failed', lang)}
-                                        {(task.status === 'pending' || task.status === 'queued') && t('task.detail.mergeTitle.queued', lang)}
+                                        {(task.status === 'pending' || task.status === 'queued') &&
+                                            t('task.detail.mergeTitle.queued', lang)}
                                         {task.status === 'cancelled' && t('task.detail.mergeTitle.cancelled', lang)}
                                         {task.status === 'blocked' && t('task.detail.mergeTitle.blocked', lang)}
                                     </h4>
@@ -665,7 +691,9 @@ export function TaskDetail({
                                             {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
                                         </span>
                                         <span>
-                                            {t('task.detail.subtaskCheck', lang).replace('{done}', String(completedSubtasks)).replace('{total}', String(totalSubtasks))}
+                                            {t('task.detail.subtaskCheck', lang)
+                                                .replace('{done}', String(completedSubtasks))
+                                                .replace('{total}', String(totalSubtasks))}
                                         </span>
                                     </div>
 
@@ -673,7 +701,12 @@ export function TaskDetail({
                                         <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
                                             {hasAcceptance ? '✓' : 'warn'}
                                         </span>
-                                        <span>{t('task.detail.acceptanceLabel', lang)}{hasAcceptance ? t('task.detail.acceptanceDefined', lang) : t('task.detail.acceptanceNotSet', lang)}</span>
+                                        <span>
+                                            {t('task.detail.acceptanceLabel', lang)}
+                                            {hasAcceptance
+                                                ? t('task.detail.acceptanceDefined', lang)
+                                                : t('task.detail.acceptanceNotSet', lang)}
+                                        </span>
                                     </div>
 
                                     <div class="gh-check-item">
@@ -682,7 +715,12 @@ export function TaskDetail({
                                         </span>
                                         <span>
                                             {t('task.detail.depsLabel', lang)}
-                                            {allDepsDone ? t('task.detail.depsOk', lang) : t('task.detail.depsPending', lang).replace('{n}', String(pendingDeps))}
+                                            {allDepsDone
+                                                ? t('task.detail.depsOk', lang)
+                                                : t('task.detail.depsPending', lang).replace(
+                                                      '{n}',
+                                                      String(pendingDeps)
+                                                  )}
                                         </span>
                                     </div>
                                 </div>
@@ -850,7 +888,9 @@ export function TaskDetail({
 
                     {activeTab === 'relations' && (
                         <div class="gh-relations-tab-content">
-                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>{t('task.detail.relationsTitle', lang)}</h4>
+                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>
+                                {t('task.detail.relationsTitle', lang)}
+                            </h4>
 
                             <div style={{ marginBottom: '24px' }}>
                                 <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
@@ -990,7 +1030,9 @@ export function TaskDetail({
 
                             {/* Add link form */}
                             <div class="gh-comment-card" style={{ padding: '16px' }}>
-                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12.5px' }}>{t('task.detail.addLinkTitle', lang)}</h5>
+                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12.5px' }}>
+                                    {t('task.detail.addLinkTitle', lang)}
+                                </h5>
                                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                     <select
                                         class="task-link-target-select"
@@ -1134,14 +1176,18 @@ export function TaskDetail({
                             {task.recurrence && <div>🔁 {recurrenceLabel(task.recurrence)}</div>}
                             {(task.retryCount ?? 0) > 0 && (
                                 <div>
-                                    {t('task.detail.dateRetry', lang).replace('{count}', String(task.retryCount)).replace('{max}', String(task.maxRetries ?? 1))}
+                                    {t('task.detail.dateRetry', lang)
+                                        .replace('{count}', String(task.retryCount))
+                                        .replace('{max}', String(task.maxRetries ?? 1))}
                                 </div>
                             )}
                             <div>
-                                {t('task.detail.datePlanned', lang)} {fmtDateOnly(task.plannedStart)} → {fmtDateOnly(task.plannedEnd)}
+                                {t('task.detail.datePlanned', lang)} {fmtDateOnly(task.plannedStart)} →{' '}
+                                {fmtDateOnly(task.plannedEnd)}
                             </div>
                             <div>
-                                {t('task.detail.dateActual', lang)} {fmtDateOnly(task.startedAt)} → {fmtDateOnly(task.completedAt)}
+                                {t('task.detail.dateActual', lang)} {fmtDateOnly(task.startedAt)} →{' '}
+                                {fmtDateOnly(task.completedAt)}
                             </div>
                         </div>
                     </div>
@@ -1182,7 +1228,9 @@ export function TaskDetail({
                                                 class={`task-status-badge ${s.status === 'running' ? 'running' : 'completed'}`}
                                                 style={{ fontSize: '10px' }}
                                             >
-                                                {s.status === 'running' ? t('task.detail.sessionRunningBadge', lang) : t('task.detail.sessionIdleBadge', lang)}
+                                                {s.status === 'running'
+                                                    ? t('task.detail.sessionRunningBadge', lang)
+                                                    : t('task.detail.sessionIdleBadge', lang)}
                                             </span>
                                         </button>
                                     ))}

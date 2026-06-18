@@ -33,11 +33,36 @@ export function Overview({ tasks }: OverviewProps) {
     const activeTheme = theme.value;
 
     const STATS = [
-        { key: 'todo', label: t('task.overview.stat.todo', lang), cls: 'todo', match: (s: Task['status']) => s === 'pending' || s === 'queued' },
-        { key: 'running', label: t('task.overview.stat.running', lang), cls: 'running', match: (s: Task['status']) => s === 'running' },
-        { key: 'completed', label: t('task.overview.stat.completed', lang), cls: 'completed', match: (s: Task['status']) => s === 'completed' },
-        { key: 'blocked', label: t('task.overview.stat.blocked', lang), cls: 'blocked', match: (s: Task['status']) => s === 'blocked' },
-        { key: 'failed', label: t('task.overview.stat.failed', lang), cls: 'failed', match: (s: Task['status']) => s === 'failed' || s === 'cancelled' },
+        {
+            key: 'todo',
+            label: t('task.overview.stat.todo', lang),
+            cls: 'todo',
+            match: (s: Task['status']) => s === 'pending' || s === 'queued',
+        },
+        {
+            key: 'running',
+            label: t('task.overview.stat.running', lang),
+            cls: 'running',
+            match: (s: Task['status']) => s === 'running',
+        },
+        {
+            key: 'completed',
+            label: t('task.overview.stat.completed', lang),
+            cls: 'completed',
+            match: (s: Task['status']) => s === 'completed',
+        },
+        {
+            key: 'blocked',
+            label: t('task.overview.stat.blocked', lang),
+            cls: 'blocked',
+            match: (s: Task['status']) => s === 'blocked',
+        },
+        {
+            key: 'failed',
+            label: t('task.overview.stat.failed', lang),
+            cls: 'failed',
+            match: (s: Task['status']) => s === 'failed' || s === 'cancelled',
+        },
     ];
 
     const total = tasks.length;
@@ -268,9 +293,24 @@ export function Overview({ tasks }: OverviewProps) {
             cls: 'completed',
             value: tasks.filter(tk => isTaskType(tk) && isUncompleted(tk)).length,
         },
-        { key: 'blocked', label: t('task.overview.kpi.blocked', lang), cls: 'blocked', value: tasks.filter(tk => tk.status === 'blocked').length },
-        { key: 'req', label: t('task.overview.kpi.requirement', lang), cls: 'running', value: tasks.filter(tk => tk.type === 'requirement').length },
-        { key: 'bug', label: t('task.overview.kpi.bug', lang), cls: 'failed', value: tasks.filter(tk => tk.type === 'bug').length },
+        {
+            key: 'blocked',
+            label: t('task.overview.kpi.blocked', lang),
+            cls: 'blocked',
+            value: tasks.filter(tk => tk.status === 'blocked').length,
+        },
+        {
+            key: 'req',
+            label: t('task.overview.kpi.requirement', lang),
+            cls: 'running',
+            value: tasks.filter(tk => tk.type === 'requirement').length,
+        },
+        {
+            key: 'bug',
+            label: t('task.overview.kpi.bug', lang),
+            cls: 'failed',
+            value: tasks.filter(tk => tk.type === 'bug').length,
+        },
     ];
 
     return (

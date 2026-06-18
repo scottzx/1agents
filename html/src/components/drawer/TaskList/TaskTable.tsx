@@ -76,12 +76,20 @@ export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask
             )}
             renderActions={task => (
                 <Fragment>
-                    <button class="task-open-btn" onClick={() => onSelectTask(task.id)} title={t('task.table.openDetail', lang)}>
+                    <button
+                        class="task-open-btn"
+                        onClick={() => onSelectTask(task.id)}
+                        title={t('task.table.openDetail', lang)}
+                    >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="9 18 15 12 9 6" />
                         </svg>
                     </button>
-                    <button class="task-delete-btn" onClick={() => onDeleteTask(task.id)} title={t('task.table.deleteTask', lang)}>
+                    <button
+                        class="task-delete-btn"
+                        onClick={() => onDeleteTask(task.id)}
+                        title={t('task.table.deleteTask', lang)}
+                    >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3 6 5 6 21 6" />
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
