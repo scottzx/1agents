@@ -1,14 +1,15 @@
+import { apiFetch } from './apiClient';
 import { FsEntry } from '../components/types';
 
 export const fsService = {
     async list(relPath: string): Promise<FsEntry[]> {
-        const res = await fetch(`/api/fs/list?path=${encodeURIComponent(relPath || '.')}`);
+        const res = await apiFetch(`/fs/list?path=${encodeURIComponent(relPath || '.')}`);
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     },
 
     async read(path: string): Promise<string> {
-        const res = await fetch(`/api/fs/read?path=${encodeURIComponent(path)}`);
+        const res = await apiFetch(`/fs/read?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error(await res.text());
         return res.text();
     },
@@ -36,13 +37,13 @@ export const fsService = {
     },
 
     async readImage(path: string): Promise<string> {
-        const res = await fetch(`/api/fs/image?path=${encodeURIComponent(path)}`);
+        const res = await apiFetch(`/fs/image?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error(await res.text());
         return res.text();
     },
 
     async write(path: string, content: string): Promise<void> {
-        const res = await fetch(`/api/fs/write?path=${encodeURIComponent(path)}`, {
+        const res = await apiFetch(`/fs/write?path=${encodeURIComponent(path)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },
             body: content,
@@ -64,13 +65,13 @@ export const fsService = {
     },
 
     async search(query: string, tag: string): Promise<FsEntry[]> {
-        const res = await fetch(`/api/fs/search?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}`);
+        const res = await apiFetch(`/fs/search?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}`);
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     },
 
     async setContext(path: string): Promise<void> {
-        const res = await fetch('/api/context/set', {
+        const res = await apiFetch('/context/set', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),

@@ -9,6 +9,8 @@ import { marked } from 'marked';
 import { AgentAvatar } from './AgentAvatar';
 import { t, getLang } from '../../i18n';
 import type { AgentType, PermissionDecision } from '../types';
+import { renderMarkdown } from '../../utils/markdown';
+import { activeProjectName } from '../../stores/taskNavStore';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -147,7 +149,10 @@ function AssistantBubble({
     streaming: boolean;
     agentType?: AgentType;
 }) {
-    const html = marked.parse(content, { async: false }) as string;
+    // Render through the shared renderer so GitHub-style task references
+    // (#N, `项目名#N`) autolink. Numbers are optimistic in chat (the task list
+    // isn't loaded here); a dead reference falls back to a not-found toast.
+    const html = renderMarkdown(content, { projectName: activeProjectName() });
     return (
         <div class="chat-message-row chat-message-row-assistant">
             {agentType && <AgentAvatar agentType={agentType} class="chat-message-avatar" />}

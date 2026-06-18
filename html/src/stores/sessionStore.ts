@@ -7,6 +7,7 @@ import {
     type TmuxWindow,
     type Session,
     type ChatSession,
+    type ChatStatus,
     type AgentType,
 } from '../components/types';
 import { terminalService } from '../services/terminalService';
@@ -40,8 +41,43 @@ export const chatSessions = signal<ChatSession[]>([]);
 export const activeSession = signal<Session | null>(null);
 export const pendingInitialMessage = signal<string | null>(null);
 
+/**
+ * Live, runtime-only status overrides keyed by session id. The persisted
+ * `ChatSession.status` (from the list API) is a stale snapshot; the chat
+ * bridge (globalBridgeManager) pushes the *current* transient state here as
+ * events stream in — `streaming` while a turn runs, `awaiting_permission`
+ * while a permission bubble is pending — so the sidebar dot reflects what's
+ * actually happening. A session with no entry (or `undefined`) falls back to
+ * its persisted status. Only the currently-rendered session(s) have a live
+ * bridge, so only those get overrides; backgrounded sessions keep their
+ * snapshot until reselected.
+ */
+export const liveSessionStatus = signal<Record<string, ChatStatus>>({});
+
+/** Set or clear a session's live status override (no-op when unchanged). */
+export const setLiveSessionStatus = (sessionId: string, status: ChatStatus | null) => {
+    const cur = liveSessionStatus.value[sessionId];
+    if (status === null || status === undefined) {
+        if (cur === undefined) return;
+        const next = { ...liveSessionStatus.value };
+        delete next[sessionId];
+        liveSessionStatus.value = next;
+        return;
+    }
+    if (cur === status) return;
+    liveSessionStatus.value = { ...liveSessionStatus.value, [sessionId]: status };
+};
+
 /** Sync tmux windows + chat sessions into workspace folders as sessions */
 export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSession[]) => {
+    // Always keep the currently-active chat session in the list, even when the
+    // backend index doesn't return it. A session opened from a task timeline
+    // (TaskDetail.openSession) may have no index record; without this it would
+    // connect the bridge + load history but never appear in the sidebar, and a
+    // subsequent loadChatSessions would even wipe it out of activeSession below.
+    const prevActive = activeSession.value;
+    const chatList: ChatSession[] =
+        prevActive && isChat(prevActive) && !chats.some(c => c.id === prevActive.id) ? [prevActive, ...chats] : chats;
     wsStore.folders.value = wsStore.folders.value.map(f => {
         const termSessions: Session[] = windows
             .filter(w => w.workspaceId === f.id)
@@ -57,14 +93,13 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
                 waitingFor: w.waitingFor,
                 agent: w.agent,
             }));
-        const chatSessionList: Session[] = chats.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
+        const chatSessionList: Session[] = chatList.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
         // Chat sessions first (newer), then terminals.
         return { ...f, sessions: [...chatSessionList, ...termSessions] };
     });
     // Preserve the currently-active chat session if it still exists; otherwise
     // fall back to the most recently active terminal window.
-    const prevActive = activeSession.value;
-    const activeChat = prevActive && isChat(prevActive) ? chats.find(c => c.id === prevActive.id) : null;
+    const activeChat = prevActive && isChat(prevActive) ? chatList.find(c => c.id === prevActive.id) : null;
     const activeWin = windows.find(w => w.active);
     activeSession.value = activeChat
         ? { ...activeChat, active: true }
@@ -106,8 +141,10 @@ export const loadChatSessions = async (workspaceId?: string) => {
     if (!wsId) return;
     try {
         const chats = await agentService.list(wsId);
+        // All chats (incl. role='pm' AI 项目经理) show in the normal sidebar /
+        // chat column now — PM is created via New Conversation, not a 副屏.
         chatSessions.value = chats;
-        mergeSessionsIntoFolders(terminalWindows.value, chats);
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {
         console.error('[agent] list error:', err);
     }
@@ -127,7 +164,9 @@ export const createChatSession = async (
     workspaceId: string,
     name: string,
     agentType: AgentType,
-    initialMessage?: string
+    initialMessage?: string,
+    role?: string,
+    permissionMode?: import('../components/types').PermissionMode
 ) => {
     const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
     if (!ws) {
@@ -146,6 +185,8 @@ export const createChatSession = async (
             workspace_id: workspaceId,
             name: name || `${agentType} 会话`,
             agent_type: agentType,
+            role,
+            permission_mode: permissionMode,
         });
         await loadChatSessions(workspaceId);
         // Auto-select the new session and switch to the agents tab.
@@ -181,23 +222,28 @@ export const clearPendingInitialMessage = () => {
     pendingInitialMessage.value = null;
 };
 
-/** Kill a chat session: tear down the 1acp bridge, then unindex from 1agents. */
+/**
+ * Archive a chat session: tear down the live 1acp bridge, then soft-delete the
+ * 1agents index record. The conversation metadata is preserved (it drops out
+ * of the sidebar but stays in the 会话 archive view, and can be reopened — the
+ * bridge re-establishes from acpSessionId).
+ */
 export const killChatSession = async (sessionId: string) => {
     const session = chatSessions.value.find(c => c.id === sessionId);
     if (!session) return;
     try {
         // Clean up global WebSocket bridge session
         globalBridgeManager.destroy(sessionId);
-        await agentService.delete(sessionId);
+        await agentService.setArchived(sessionId, true);
         await loadChatSessions(session.workspaceId);
         const active = activeSession.value;
         if (active && isChat(active) && active.id === sessionId) {
             activeSession.value = null;
             tabsStore.activeTab.value = 'terminal';
         }
-        ui.showToast('聊天会话已关闭 ✓');
+        ui.showToast('会话已归档 ✓');
     } catch (err) {
-        ui.showToast(`关闭失败: ${(err as Error).message}`);
+        ui.showToast(`归档失败: ${(err as Error).message}`);
     }
 };
 
@@ -287,6 +333,10 @@ export const selectSession = async (session: Session) => {
     }));
     localStorage.setItem('1agents-active-workspace', session.workspaceId);
     activeSession.value = { ...session, active: true };
+    // A session opened with a transient initialMessage (issue-model follow-up /
+    // new-session reply) auto-sends that prompt once ChatPanel is ready. Plain
+    // switches carry none, which also clears any stale pending message.
+    pendingInitialMessage.value = (isChat(session) && session.initialMessage) || null;
     wsStore.folders.value =
         session.workspaceId !== oldWorkspaceId
             ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))

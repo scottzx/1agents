@@ -5,6 +5,64 @@ __metadata:
   version: 6
   cacheKey: 8
 
+"1agents-frontend@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "1agents-frontend@workspace:."
+  dependencies:
+    "@preact/signals": ^2.9.1
+    "@typescript-eslint/eslint-plugin": ^7.1.1
+    "@xterm/addon-canvas": ^0.7.0
+    "@xterm/addon-clipboard": ^0.1.0
+    "@xterm/addon-fit": ^0.10.0
+    "@xterm/addon-image": ^0.8.0
+    "@xterm/addon-unicode11": ^0.8.0
+    "@xterm/addon-web-links": ^0.11.0
+    "@xterm/addon-webgl": ^0.18.0
+    "@xterm/xterm": ^5.5.0
+    copy-webpack-plugin: ^12.0.2
+    css-loader: ^6.10.0
+    css-minimizer-webpack-plugin: ^6.0.0
+    decko: ^1.2.0
+    echarts: ^5.6.0
+    eslint: ^8.57.0
+    eslint-plugin-n: ^15.7.0
+    eslint-plugin-node: ^11.1.0
+    eslint-plugin-prettier: ^5.1.3
+    eslint-webpack-plugin: ^4.0.1
+    file-saver: ^2.0.5
+    gts: ^5.2.0
+    gulp: ^4.0.2
+    gulp-clean: ^0.4.0
+    gulp-gzip: ^1.4.2
+    gulp-inline-source: ^4.0.0
+    gulp-rename: ^2.0.0
+    html-webpack-plugin: ^5.6.0
+    jsqr: ^1.4.0
+    marked: ^18.0.4
+    mini-css-extract-plugin: ^2.8.1
+    preact: ^10.19.6
+    safe-regex: ^2.1.1
+    sass: ^1.71.1
+    sass-loader: ^14.1.1
+    scssfmt: ^1.0.7
+    socket.io-client: ^4.8.3
+    style-loader: ^3.3.4
+    terser-webpack-plugin: ^5.3.10
+    through2: ^4.0.2
+    trzsz: ^1.1.5
+    ts-loader: ^9.5.1
+    tweetnacl: ^1.0.3
+    typescript: ^5.3.3
+    util: ^0.12.5
+    webpack: ^5.90.3
+    webpack-cli: ^5.1.4
+    webpack-dev-server: ^5.0.2
+    webpack-merge: ^5.10.0
+    whatwg-fetch: ^3.6.20
+    zmodem.js: ^0.1.10
+  languageName: unknown
+  linkType: soft
+
 "@babel/code-frame@npm:^7.0.0":
   version: 7.29.0
   resolution: "@babel/code-frame@npm:7.29.0"
@@ -830,6 +888,13 @@ __metadata:
   version: 2.3.0
   resolution: "@sindresorhus/merge-streams@npm:2.3.0"
   checksum: e989d53dee68d7e49b4ac02ae49178d561c461144cea83f66fa91ff012d981ad0ad2340cbd13f2fdb57989197f5c987ca22a74eb56478626f04e79df84291159
+  languageName: node
+  linkType: hard
+
+"@socket.io/component-emitter@npm:~3.1.0":
+  version: 3.1.2
+  resolution: "@socket.io/component-emitter@npm:3.1.2"
+  checksum: 89888f00699eb34e3070624eb7b8161fa29f064aeb1389a48f02195d55dd7c52a504e52160016859f6d6dffddd54324623cdd47fd34b3d46f9ed96c18c456edc
   languageName: node
   linkType: hard
 
@@ -3288,7 +3353,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"debug@npm:^4.1.0, debug@npm:^4.1.1, debug@npm:^4.3.1, debug@npm:^4.3.2, debug@npm:^4.3.4":
+"debug@npm:^4.1.0, debug@npm:^4.1.1, debug@npm:^4.3.1, debug@npm:^4.3.2, debug@npm:^4.3.4, debug@npm:~4.4.1":
   version: 4.4.3
   resolution: "debug@npm:4.4.3"
   dependencies:
@@ -3678,6 +3743,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"echarts@npm:^5.6.0":
+  version: 5.6.0
+  resolution: "echarts@npm:5.6.0"
+  dependencies:
+    tslib: 2.3.0
+    zrender: 5.6.1
+  checksum: 4b545444155f9457daa89a4ea45f9e08177a9a59d9df7e5ea5206f66e290964fb0a1a273b0dfdeb24a4aa264f6afc925918aa2b76190917abf390bef092ba95c
+  languageName: node
+  linkType: hard
+
 "ee-first@npm:1.1.1":
   version: 1.1.1
   resolution: "ee-first@npm:1.1.1"
@@ -3712,6 +3787,26 @@ __metadata:
   dependencies:
     once: ^1.4.0
   checksum: 1e0cfa6e7f49887544e03314f9dfc56a8cb6dde910cbb445983ecc2ff426fc05946df9d75d8a21a3a64f2cecfe1bf88f773952029f46756b2ed64a24e95b1fb8
+  languageName: node
+  linkType: hard
+
+"engine.io-client@npm:~6.6.1":
+  version: 6.6.6
+  resolution: "engine.io-client@npm:6.6.6"
+  dependencies:
+    "@socket.io/component-emitter": ~3.1.0
+    debug: ~4.4.1
+    engine.io-parser: ~5.2.1
+    ws: ~8.21.0
+    xmlhttprequest-ssl: ~2.1.1
+  checksum: 45c24e975866f3561fc3839e66648459314f7012cb5e1634af193d7680d1e5eda1ea954cef0b1b3bba19db50ec59e82f039e9647a03e04bafa97a9915dbefdcb
+  languageName: node
+  linkType: hard
+
+"engine.io-parser@npm:~5.2.1":
+  version: 5.2.3
+  resolution: "engine.io-parser@npm:5.2.3"
+  checksum: a76d998b794ce8bbcade833064d949715781fdb9e9cf9b33ecf617d16355ddfd7772f12bb63aaec0f497d63266c6db441129c5aa24c60582270f810c696a6cf8
   languageName: node
   linkType: hard
 
@@ -6545,6 +6640,13 @@ __metadata:
   bin:
     json5: lib/cli.js
   checksum: 2a7436a93393830bce797d4626275152e37e877b265e94ca69c99e3d20c2b9dab021279146a39cdb700e71b2dd32a4cebd1514cd57cee102b1af906ce5040349
+  languageName: node
+  linkType: hard
+
+"jsqr@npm:^1.4.0":
+  version: 1.4.0
+  resolution: "jsqr@npm:1.4.0"
+  checksum: 7c572971f90c42772e30d152bde63b84edf1164bde80c53942e6b2068ea31caf00ad704aa46cacc9e71645f52dbeddebc6e84ba15e883c678ee93cde690de339
   languageName: node
   linkType: hard
 
@@ -9503,6 +9605,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"socket.io-client@npm:^4.8.3":
+  version: 4.8.3
+  resolution: "socket.io-client@npm:4.8.3"
+  dependencies:
+    "@socket.io/component-emitter": ~3.1.0
+    debug: ~4.4.1
+    engine.io-client: ~6.6.1
+    socket.io-parser: ~4.2.4
+  checksum: d5b4b5bf78e2196927103c4bbbafe5f426c6dc162a2d8ec8e5c53272abf4557613aa37fb95b294fe6a475971f2f60e8bbd22b12a5ce3ca6824848da664c7e528
+  languageName: node
+  linkType: hard
+
+"socket.io-parser@npm:~4.2.4":
+  version: 4.2.6
+  resolution: "socket.io-parser@npm:4.2.6"
+  dependencies:
+    "@socket.io/component-emitter": ~3.1.0
+    debug: ~4.4.1
+  checksum: fd0b7c75281814f13c0da18394dc83b1daa79b8e424e7c021f044207ba2e15dced84f3d0609911be04ca69418d9d93d745ee552453afb01059ad9d4d86fae8d0
+  languageName: node
+  linkType: hard
+
 "sockjs@npm:^0.3.24":
   version: 0.3.24
   resolution: "sockjs@npm:0.3.24"
@@ -10294,6 +10418,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"tslib@npm:2.3.0":
+  version: 2.3.0
+  resolution: "tslib@npm:2.3.0"
+  checksum: 8869694c26e4a7b56d449662fd54a4f9ba872c889d991202c74462bd99f10e61d5bd63199566c4284c0f742277736292a969642cc7b590f98727a7cae9529122
+  languageName: node
+  linkType: hard
+
 "tslib@npm:^1.8.1, tslib@npm:^1.9.0, tslib@npm:^1.9.3":
   version: 1.14.1
   resolution: "tslib@npm:1.14.1"
@@ -10328,59 +10459,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ttyd@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "ttyd@workspace:."
-  dependencies:
-    "@preact/signals": ^2.9.1
-    "@typescript-eslint/eslint-plugin": ^7.1.1
-    "@xterm/addon-canvas": ^0.7.0
-    "@xterm/addon-clipboard": ^0.1.0
-    "@xterm/addon-fit": ^0.10.0
-    "@xterm/addon-image": ^0.8.0
-    "@xterm/addon-unicode11": ^0.8.0
-    "@xterm/addon-web-links": ^0.11.0
-    "@xterm/addon-webgl": ^0.18.0
-    "@xterm/xterm": ^5.5.0
-    copy-webpack-plugin: ^12.0.2
-    css-loader: ^6.10.0
-    css-minimizer-webpack-plugin: ^6.0.0
-    decko: ^1.2.0
-    eslint: ^8.57.0
-    eslint-plugin-n: ^15.7.0
-    eslint-plugin-node: ^11.1.0
-    eslint-plugin-prettier: ^5.1.3
-    eslint-webpack-plugin: ^4.0.1
-    file-saver: ^2.0.5
-    gts: ^5.2.0
-    gulp: ^4.0.2
-    gulp-clean: ^0.4.0
-    gulp-gzip: ^1.4.2
-    gulp-inline-source: ^4.0.0
-    gulp-rename: ^2.0.0
-    html-webpack-plugin: ^5.6.0
-    marked: ^18.0.4
-    mini-css-extract-plugin: ^2.8.1
-    preact: ^10.19.6
-    safe-regex: ^2.1.1
-    sass: ^1.71.1
-    sass-loader: ^14.1.1
-    scssfmt: ^1.0.7
-    style-loader: ^3.3.4
-    terser-webpack-plugin: ^5.3.10
-    through2: ^4.0.2
-    trzsz: ^1.1.5
-    ts-loader: ^9.5.1
-    typescript: ^5.3.3
-    util: ^0.12.5
-    webpack: ^5.90.3
-    webpack-cli: ^5.1.4
-    webpack-dev-server: ^5.0.2
-    webpack-merge: ^5.10.0
-    whatwg-fetch: ^3.6.20
-    zmodem.js: ^0.1.10
-  languageName: unknown
-  linkType: soft
+"tweetnacl@npm:^1.0.3":
+  version: 1.0.3
+  resolution: "tweetnacl@npm:1.0.3"
+  checksum: e4a57cac188f0c53f24c7a33279e223618a2bfb5fea426231991652a13247bea06b081fd745d71291fcae0f4428d29beba1b984b1f1ce6f66b06a6d1ab90645c
+  languageName: node
+  linkType: hard
 
 "type-check@npm:^0.4.0, type-check@npm:~0.4.0":
   version: 0.4.0
@@ -11171,12 +11255,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ws@npm:~8.21.0":
+  version: 8.21.0
+  resolution: "ws@npm:8.21.0"
+  peerDependencies:
+    bufferutil: ^4.0.1
+    utf-8-validate: ">=5.0.2"
+  peerDependenciesMeta:
+    bufferutil:
+      optional: true
+    utf-8-validate:
+      optional: true
+  checksum: 83ff89ae011bc5c3c5605a45a0d50e12589143c7500ca4de83a8d43b3cd26e71f422cb3206fd1a9e6d541d666eeb66255c30d095d62d413b3c7afe5d2c5cb928
+  languageName: node
+  linkType: hard
+
 "wsl-utils@npm:^0.1.0":
   version: 0.1.0
   resolution: "wsl-utils@npm:0.1.0"
   dependencies:
     is-wsl: ^3.1.0
   checksum: de4c92187e04c3c27b4478f410a02e81c351dc85efa3447bf1666f34fc80baacd890a6698ec91995631714086992036013286aea3d77e6974020d40a08e00aec
+  languageName: node
+  linkType: hard
+
+"xmlhttprequest-ssl@npm:~2.1.1":
+  version: 2.1.2
+  resolution: "xmlhttprequest-ssl@npm:2.1.2"
+  checksum: f8ecb894301dd024804669245888b3d5ceed2dfcdb4fddb0e38d811a07a2e3c227535f29b269eccf92005819457db3f270d2ff98df516abf95cfad1b9759512d
   languageName: node
   linkType: hard
 
@@ -11262,11 +11368,20 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zmodem.js@patch:zmodem.js@npm%3A0.1.10#./.yarn/patches/zmodem.js-npm-0.1.10-e5537fa2ed.patch::locator=ttyd%40workspace%3A.":
+"zmodem.js@patch:zmodem.js@npm%3A0.1.10#./.yarn/patches/zmodem.js-npm-0.1.10-e5537fa2ed.patch::locator=1agents-frontend%40workspace%3A.":
   version: 0.1.10
-  resolution: "zmodem.js@patch:zmodem.js@npm%3A0.1.10#./.yarn/patches/zmodem.js-npm-0.1.10-e5537fa2ed.patch::version=0.1.10&hash=064993&locator=ttyd%40workspace%3A."
+  resolution: "zmodem.js@patch:zmodem.js@npm%3A0.1.10#./.yarn/patches/zmodem.js-npm-0.1.10-e5537fa2ed.patch::version=0.1.10&hash=064993&locator=1agents-frontend%40workspace%3A."
   dependencies:
     crc-32: ^1.1.1
   checksum: ca52c5fad8a2e7df8aae678d50bf82701e94543547368470998c39af0a2e01908252d89a976c6748a89048dc332def688ad845082090035a18387c8611abe70b
+  languageName: node
+  linkType: hard
+
+"zrender@npm:5.6.1":
+  version: 5.6.1
+  resolution: "zrender@npm:5.6.1"
+  dependencies:
+    tslib: 2.3.0
+  checksum: 01caeac2d30f0083009aafa531ccb7fe991b6ac0ddd8134dc7b0015f794ed7e3d4fbfe5d32f61cb591014245eca15aeebcfc962cdebfe3829598f0c94ba3dc29
   languageName: node
   linkType: hard

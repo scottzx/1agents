@@ -115,241 +115,237 @@ func triggerTime(t *Task) *time.Time {
 }
 
 func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
-	cfg, err := s.tasksStore.Load(ref.Path)
-	if err != nil {
-		return
-	}
-
-	modified := false
 	now := time.Now().UTC()
+	// Mutate serializes the whole Load→evaluate→Save cycle against the
+	// headless runner's finish() and the chat-ws handlers, so a 5s tick can
+	// never overwrite a just-completed status with a stale snapshot.
+	_ = s.tasksStore.Mutate(ref.Path, func(cfg *TasksConfig) bool {
+		modified := false
 
-	taskMap := make(map[string]*Task)
-	childrenOf := make(map[string][]*Task)
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		taskMap[t.ID] = t
-		if t.ParentID != "" {
-			childrenOf[t.ParentID] = append(childrenOf[t.ParentID], t)
-		}
-	}
-
-	allChildrenCompleted := func(t *Task) bool {
-		for _, c := range childrenOf[t.ID] {
-			if c.Status != TaskStatusCompleted {
-				return false
+		taskMap := make(map[string]*Task)
+		childrenOf := make(map[string][]*Task)
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			taskMap[t.ID] = t
+			if t.ParentID != "" {
+				childrenOf[t.ParentID] = append(childrenOf[t.ParentID], t)
 			}
 		}
-		return true
-	}
 
-	// 1. Container parents (no description of their own): once every
-	//    subtask is completed, the parent is complete — nothing to run.
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		if t.Status == TaskStatusCompleted || t.Status == TaskStatusRunning {
-			continue
-		}
-		if t.Description == "" && len(childrenOf[t.ID]) > 0 && allChildrenCompleted(t) {
-			t.Status = TaskStatusCompleted
-			t.CompletedAt = &now
-			t.UpdatedAt = now
-			modified = true
-			log.Printf("[scheduler] Container task %s completed (all subtasks done)", t.ID)
-		}
-	}
-
-	// 2. Failed tasks with retry budget left go back to pending. The
-	//    failure reason is already on the timeline, so the next run's
-	//    injected background carries it.
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		if t.Status == TaskStatusFailed && t.RetryCount < t.MaxRetries {
-			t.RetryCount++
-			t.Status = TaskStatusPending
-			t.UpdatedAt = now
-			modified = true
-			log.Printf("[scheduler] Task %s requeued for retry %d/%d", t.ID, t.RetryCount, t.MaxRetries)
-		}
-	}
-
-	// 3. Recurring tasks: when an instance completes, spawn the next one
-	//    and strip the rule from the finished instance (history stays).
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		if t.Status != TaskStatusCompleted || t.Recurrence == nil {
-			continue
-		}
-		next := nextOccurrence(now, t.Recurrence)
-		clone := *t
-		clone.ID = newID()
-		clone.Status = TaskStatusPending
-		clone.ScheduleType = ScheduleTypeScheduled
-		clone.ScheduledAt = &next
-		clone.PlannedStart = nil
-		clone.StartedAt = nil
-		clone.CompletedAt = nil
-		clone.Summary = ""
-		clone.RetryCount = 0
-		clone.CreatedBy = "scheduler"
-		clone.CreatedAt = now
-		clone.UpdatedAt = now
-		clone.Replies = []Reply{}
-		clone.Sessions = []SessionMetadata{}
-		t.Recurrence = nil
-		t.UpdatedAt = now
-		cfg.Tasks = append(cfg.Tasks, clone)
-		modified = true
-		log.Printf("[scheduler] Recurring task %s respawned as %s (next run %s)", t.ID, clone.ID, next)
-	}
-	// cfg.Tasks may have been reallocated by append: rebuild the index
-	// before the ready-scan below.
-	taskMap = make(map[string]*Task)
-	childrenOf = make(map[string][]*Task)
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		taskMap[t.ID] = t
-		if t.ParentID != "" {
-			childrenOf[t.ParentID] = append(childrenOf[t.ParentID], t)
-		}
-	}
-
-	// 3.5 Dependency gating (blocked state): a task whose explicit
-	//     dependencies aren't all completed is surfaced as `blocked` so the
-	//     board shows the upstream wait; once they complete it returns to
-	//     pending and the ready-scan below can pick it up. Parent/subtask
-	//     gating is handled separately (allChildrenCompleted), so it doesn't
-	//     mark parents blocked here.
-	depsAllCompleted := func(t *Task) bool {
-		for _, depID := range t.DependsOn {
-			dep, ok := taskMap[depID]
-			if !ok || dep.Status != TaskStatusCompleted {
-				return false
+		allChildrenCompleted := func(t *Task) bool {
+			for _, c := range childrenOf[t.ID] {
+				if c.Status != TaskStatusCompleted {
+					return false
+				}
 			}
+			return true
 		}
-		return true
-	}
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		switch t.Status {
-		case TaskStatusPending, TaskStatusQueued:
-			if len(t.DependsOn) > 0 && !depsAllCompleted(t) {
-				t.Status = TaskStatusBlocked
+
+		// 1. Container parents (no description of their own): once every
+		//    subtask is completed, the parent is complete — nothing to run.
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			if t.Status == TaskStatusCompleted || t.Status == TaskStatusRunning {
+				continue
+			}
+			if t.Description == "" && len(childrenOf[t.ID]) > 0 && allChildrenCompleted(t) {
+				t.Status = TaskStatusCompleted
+				t.CompletedAt = &now
 				t.UpdatedAt = now
 				modified = true
+				log.Printf("[scheduler] Container task %s completed (all subtasks done)", t.ID)
 			}
-		case TaskStatusBlocked:
-			if depsAllCompleted(t) {
+		}
+
+		// 2. Failed tasks with retry budget left go back to pending. The
+		//    failure reason is already on the timeline, so the next run's
+		//    injected background carries it.
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			if t.Status == TaskStatusFailed && t.RetryCount < t.MaxRetries {
+				t.RetryCount++
 				t.Status = TaskStatusPending
 				t.UpdatedAt = now
 				modified = true
+				log.Printf("[scheduler] Task %s requeued for retry %d/%d", t.ID, t.RetryCount, t.MaxRetries)
 			}
 		}
-	}
 
-	// 3.6 Closes-link auto-close: when a task completes, any task it links to
-	//      with rel=="closes" is itself closed (GitHub-style "fixes #N").
-	//      "relates" links are pure cross-references and never auto-act.
-	//      Idempotent: an already-closed target is skipped.
-	for i := range cfg.Tasks {
-		src := &cfg.Tasks[i]
-		if src.Status != TaskStatusCompleted {
-			continue
-		}
-		for _, link := range src.Links {
-			if link.Rel != LinkCloses {
+		// 3. Recurring tasks: when an instance completes, spawn the next one
+		//    and strip the rule from the finished instance (history stays).
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			if t.Status != TaskStatusCompleted || t.Recurrence == nil {
 				continue
 			}
-			tgt, ok := taskMap[link.Target]
-			if !ok || tgt.IssueState == IssueClosed {
-				continue
-			}
-			tgt.Status = TaskStatusCompleted
-			tgt.IssueState = IssueClosed
-			tgt.CompletedAt = &now
-			tgt.UpdatedAt = now
-			tgt.Replies = append(tgt.Replies, Reply{
-				Author:    Author{Kind: "scheduler", Name: "scheduler"},
-				Text:      fmt.Sprintf("由 #%d 修复并关闭", src.Number),
-				Mode:      ModePureComment,
-				CreatedAt: now,
-			})
-			modified = true
-			log.Printf("[scheduler] Task %s closed by #%d (closes link)", tgt.ID, src.Number)
-		}
-	}
-
-	// 4. Collect ready tasks: trigger time arrived, dependencies met,
-	//    subtasks (implicit dependencies) all completed, issue open.
-	var ready []*Task
-	for i := range cfg.Tasks {
-		t := &cfg.Tasks[i]
-		if t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
-			continue
-		}
-		if t.IssueState == IssueClosed {
-			continue
-		}
-		if trig := triggerTime(t); trig != nil && trig.After(now) {
-			continue
-		}
-		depsMet := true
-		for _, depId := range t.DependsOn {
-			dep, exists := taskMap[depId]
-			if !exists || dep.Status != TaskStatusCompleted {
-				depsMet = false
-				break
-			}
-		}
-		if !depsMet {
-			continue
-		}
-		// 父任务天生将子任务作为依赖项: a parent with unfinished
-		// subtasks is not runnable.
-		if !allChildrenCompleted(t) {
-			continue
-		}
-		if t.Status == TaskStatusPending {
-			t.Status = TaskStatusQueued
+			next := nextOccurrence(now, t.Recurrence)
+			clone := *t
+			clone.ID = newID()
+			clone.Status = TaskStatusPending
+			clone.ScheduleType = ScheduleTypeScheduled
+			clone.ScheduledAt = &next
+			clone.PlannedStart = nil
+			clone.StartedAt = nil
+			clone.CompletedAt = nil
+			clone.Summary = ""
+			clone.RetryCount = 0
+			clone.CreatedBy = "scheduler"
+			clone.CreatedAt = now
+			clone.UpdatedAt = now
+			clone.Replies = []Reply{}
+			clone.Sessions = []SessionMetadata{}
+			t.Recurrence = nil
 			t.UpdatedAt = now
+			cfg.Tasks = append(cfg.Tasks, clone)
 			modified = true
+			log.Printf("[scheduler] Recurring task %s respawned as %s (next run %s)", t.ID, clone.ID, next)
 		}
-		ready = append(ready, t)
-	}
+		// cfg.Tasks may have been reallocated by append: rebuild the index
+		// before the ready-scan below.
+		taskMap = make(map[string]*Task)
+		childrenOf = make(map[string][]*Task)
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			taskMap[t.ID] = t
+			if t.ParentID != "" {
+				childrenOf[t.ParentID] = append(childrenOf[t.ParentID], t)
+			}
+		}
 
-	// 5. Highest priority first; FIFO by creation within a rank.
-	sort.SliceStable(ready, func(i, j int) bool {
-		ri, rj := PriorityRank(ready[i].Priority), PriorityRank(ready[j].Priority)
-		if ri != rj {
-			return ri < rj
+		// 3.5 Dependency gating (blocked state): a task whose explicit
+		//     dependencies aren't all completed is surfaced as `blocked` so the
+		//     board shows the upstream wait; once they complete it returns to
+		//     pending and the ready-scan below can pick it up. Parent/subtask
+		//     gating is handled separately (allChildrenCompleted), so it doesn't
+		//     mark parents blocked here.
+		depsAllCompleted := func(t *Task) bool {
+			for _, depID := range t.DependsOn {
+				dep, ok := taskMap[depID]
+				if !ok || dep.Status != TaskStatusCompleted {
+					return false
+				}
+			}
+			return true
 		}
-		return ready[i].CreatedAt.Before(ready[j].CreatedAt)
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			switch t.Status {
+			case TaskStatusPending, TaskStatusQueued:
+				if len(t.DependsOn) > 0 && !depsAllCompleted(t) {
+					t.Status = TaskStatusBlocked
+					t.UpdatedAt = now
+					modified = true
+				}
+			case TaskStatusBlocked:
+				if depsAllCompleted(t) {
+					t.Status = TaskStatusPending
+					t.UpdatedAt = now
+					modified = true
+				}
+			}
+		}
+
+		// 3.6 Closes-link auto-close: when a task completes, any task it links to
+		//      with rel=="closes" is itself closed (GitHub-style "fixes #N").
+		//      "relates" links are pure cross-references and never auto-act.
+		//      Idempotent: an already-closed target is skipped.
+		for i := range cfg.Tasks {
+			src := &cfg.Tasks[i]
+			if src.Status != TaskStatusCompleted {
+				continue
+			}
+			for _, link := range src.Links {
+				if link.Rel != LinkCloses {
+					continue
+				}
+				tgt, ok := taskMap[link.Target]
+				if !ok || tgt.IssueState == IssueClosed {
+					continue
+				}
+				tgt.Status = TaskStatusCompleted
+				tgt.IssueState = IssueClosed
+				tgt.CompletedAt = &now
+				tgt.UpdatedAt = now
+				tgt.Replies = append(tgt.Replies, Reply{
+					Author:    Author{Kind: "scheduler", Name: "scheduler"},
+					Text:      fmt.Sprintf("由 #%d 修复并关闭", src.Number),
+					Mode:      ModePureComment,
+					CreatedAt: now,
+				})
+				modified = true
+				log.Printf("[scheduler] Task %s closed by #%d (closes link)", tgt.ID, src.Number)
+			}
+		}
+
+		// 4. Collect ready tasks: trigger time arrived, dependencies met,
+		//    subtasks (implicit dependencies) all completed, issue open.
+		var ready []*Task
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			if t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
+				continue
+			}
+			if t.IssueState == IssueClosed {
+				continue
+			}
+			if trig := triggerTime(t); trig != nil && trig.After(now) {
+				continue
+			}
+			depsMet := true
+			for _, depId := range t.DependsOn {
+				dep, exists := taskMap[depId]
+				if !exists || dep.Status != TaskStatusCompleted {
+					depsMet = false
+					break
+				}
+			}
+			if !depsMet {
+				continue
+			}
+			// 父任务天生将子任务作为依赖项: a parent with unfinished
+			// subtasks is not runnable.
+			if !allChildrenCompleted(t) {
+				continue
+			}
+			if t.Status == TaskStatusPending {
+				t.Status = TaskStatusQueued
+				t.UpdatedAt = now
+				modified = true
+			}
+			ready = append(ready, t)
+		}
+
+		// 5. Highest priority first; FIFO by creation within a rank.
+		sort.SliceStable(ready, func(i, j int) bool {
+			ri, rj := PriorityRank(ready[i].Priority), PriorityRank(ready[j].Priority)
+			if ri != rj {
+				return ri < rj
+			}
+			return ready[i].CreatedAt.Before(ready[j].CreatedAt)
+		})
+
+		if len(ready) > 0 && s.Lock.TryAcquire(ref.Path, ready[0].ID) {
+			task := ready[0]
+			task.Status = TaskStatusRunning
+			task.StartedAt = &now
+			task.UpdatedAt = now
+			modified = true
+			log.Printf("[scheduler] Lock acquired. Task %s (%s, priority %s) starting in %s",
+				task.ID, task.Title, task.Priority, ref.Path)
+
+			if s.runner != nil {
+				// Copy the task before Save below mutates the slice.
+				run := *task
+				go s.runner.Execute(ref.Path, ref.ID, run)
+			} else {
+				// No executor attached (unit tests): release so the lock
+				// doesn't leak.
+				s.Lock.Release(ref.Path)
+			}
+		}
+
+		return modified
 	})
-
-	if len(ready) > 0 && s.Lock.TryAcquire(ref.Path, ready[0].ID) {
-		task := ready[0]
-		task.Status = TaskStatusRunning
-		task.StartedAt = &now
-		task.UpdatedAt = now
-		modified = true
-		log.Printf("[scheduler] Lock acquired. Task %s (%s, priority %s) starting in %s",
-			task.ID, task.Title, task.Priority, ref.Path)
-
-		if s.runner != nil {
-			// Copy the task before Save below mutates the slice.
-			run := *task
-			go s.runner.Execute(ref.Path, ref.ID, run)
-		} else {
-			// No executor attached (unit tests): release so the lock
-			// doesn't leak.
-			s.Lock.Release(ref.Path)
-		}
-	}
-
-	if modified {
-		if err := s.tasksStore.Save(ref.Path, cfg); err != nil {
-			log.Printf("[scheduler] Failed to save tasks config in %s: %v", ref.Path, err)
-		}
-	}
 }
 
 // nextOccurrence computes the next trigger after `after` for a simple-enum

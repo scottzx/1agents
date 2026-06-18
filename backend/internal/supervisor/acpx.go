@@ -107,9 +107,13 @@ func (s *AcpxSupervisor) supervisionLoop(ctx context.Context) {
 }
 
 func (s *AcpxSupervisor) startProcess(ctx context.Context, dir string) error {
+	acpxPort := "38082"
+	if v := os.Getenv("ACPX_PORT"); v != "" {
+		acpxPort = v
+	}
 	cmd := exec.CommandContext(ctx, "npx", "tsx", "bridge-server.js")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "ACPX_PORT=38082")
+	cmd.Env = append(os.Environ(), "ACPX_PORT="+acpxPort)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

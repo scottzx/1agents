@@ -55,7 +55,7 @@ export const loadWorkspaces = async (skipAutoSelect = false) => {
             return {
                 id: ws.id,
                 name: ws.name,
-                expanded: prev ? prev.expanded : false,
+                expanded: prev ? prev.expanded : ws.id === 'default',
                 sessions: prev ? prev.sessions : [],
             };
         });
@@ -235,6 +235,11 @@ export const updateWorkspace = async (ws: Workspace) => {
 
 /** Delete a workspace via DELETE /api/workspace/delete?id=xxx */
 export const deleteWorkspace = async (id: string) => {
+    const target = workspaces.value.find(w => w.id === id);
+    if (id === 'default' || target?.builtin) {
+        ui.showToast(t('app.toast.workspaceDeleteBuiltin', ui.language.value));
+        return;
+    }
     if (workspaces.value.length <= 1) {
         ui.showToast(t('app.toast.workspaceDeleteLast', ui.language.value));
         return;

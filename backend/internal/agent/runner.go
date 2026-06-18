@@ -78,6 +78,11 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		TaskID:      task.ID,
 		Name:        fmt.Sprintf("%s - 自动执行", task.Title),
 		AgentType:   agentType,
+		// Headless auto-runs are backend-silent: Role "auto" keeps this record
+		// out of the sidebar session list (see handler.list) so an AI-executed
+		// task doesn't spawn a chat box. The record still exists so "查看详情"
+		// can resume the transcript by id afterwards.
+		Role: SessionRoleAuto,
 		// Unattended runs must not block on permission prompts: nobody is
 		// at the browser to approve, so a pending request would time out
 		// and fail the task (confirmed decision: approve-all).
@@ -171,57 +176,54 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 
 // attachSessionMetadata records the run on Task.Sessions (status running).
 func (r *TaskRunner) attachSessionMetadata(workspacePath, taskID, sessionID, agentType string) {
-	cfg, err := r.tasksStore.Load(workspacePath)
-	if err != nil {
-		return
-	}
-	for i := range cfg.Tasks {
-		task := &cfg.Tasks[i]
-		if task.ID != taskID {
-			continue
+	_ = r.tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			task := &cfg.Tasks[i]
+			if task.ID != taskID {
+				continue
+			}
+			task.Sessions = append(task.Sessions, SessionMetadata{
+				ID:        sessionID,
+				Kind:      SessionKindChat,
+				Name:      "自动执行",
+				AgentType: agentType,
+				Status:    SessionStatusRunning,
+				CreatedAt: time.Now().UTC(),
+			})
+			return true
 		}
-		task.Sessions = append(task.Sessions, SessionMetadata{
-			ID:        sessionID,
-			Kind:      SessionKindChat,
-			Name:      "自动执行",
-			AgentType: agentType,
-			Status:    SessionStatusRunning,
-			CreatedAt: time.Now().UTC(),
-		})
-		_ = r.tasksStore.Save(workspacePath, cfg)
-		return
-	}
+		return false
+	})
 }
 
 // finish persists the terminal state of an automated run.
 func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status TaskStatus, summary string) {
-	cfg, err := r.tasksStore.Load(workspacePath)
-	if err != nil {
-		log.Printf("[runner] finish load %s: %v", taskID, err)
-		return
-	}
 	now := time.Now().UTC()
-	for i := range cfg.Tasks {
-		task := &cfg.Tasks[i]
-		if task.ID != taskID {
-			continue
-		}
-		task.Status = status
-		task.Summary = summary
-		task.UpdatedAt = now
-		if status == TaskStatusCompleted {
-			task.CompletedAt = &now
-		}
-		for j := range task.Sessions {
-			if task.Sessions[j].ID == sessionID {
-				task.Sessions[j].Status = SessionStatusIdle
-				task.Sessions[j].Summary = summary
+	err := r.tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
+		for i := range cfg.Tasks {
+			task := &cfg.Tasks[i]
+			if task.ID != taskID {
+				continue
 			}
+			task.Status = status
+			task.Summary = summary
+			task.UpdatedAt = now
+			if status == TaskStatusCompleted {
+				task.CompletedAt = &now
+			}
+			for j := range task.Sessions {
+				if task.Sessions[j].ID == sessionID {
+					task.Sessions[j].Status = SessionStatusIdle
+					task.Sessions[j].Summary = summary
+				}
+			}
+			return true
 		}
-		if err := r.tasksStore.Save(workspacePath, cfg); err != nil {
-			log.Printf("[runner] finish save %s: %v", taskID, err)
-		}
-		log.Printf("[runner] Task %s finished: %s (%s)", taskID, status, summary)
+		return false
+	})
+	if err != nil {
+		log.Printf("[runner] finish save %s: %v", taskID, err)
 		return
 	}
+	log.Printf("[runner] Task %s finished: %s (%s)", taskID, status, summary)
 }

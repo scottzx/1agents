@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 // Chat session index — thin fetch wrapper around the 1agents backend
 // /api/agent/* endpoints.
 //
@@ -5,7 +6,7 @@
 // service only manages the 1agents-side metadata that the sidebar uses to
 // list "my chat sessions"; the live conversation is owned by 1acp.
 
-import { AGENT_TYPES, type AgentType, type ChatSession } from '../components/types';
+import { AGENT_TYPES, type AgentType, type ChatSession, type PermissionMode } from '../components/types';
 
 export interface IndexChatSessionRequest {
     workspace_id: string;
@@ -13,6 +14,10 @@ export interface IndexChatSessionRequest {
     agent_type: AgentType;
     /** Optional issue-model soft link — set for sessions spawned from a task timeline. */
     task_id?: string;
+    /** Special-purpose session role. 'pm' = in-app AI Project Manager (project-locked task tools + PM system prompt). */
+    role?: string;
+    /** Initial permission policy for the session. Defaults to 'approve-reads' when omitted. */
+    permission_mode?: string;
 }
 
 /** Default agent type used when a workspace has none configured. */
@@ -52,7 +57,7 @@ export const agentService = {
      * Returns the canonical agent type list served by the backend.
      */
     async listAgentTypes(): Promise<AgentType[]> {
-        const res = await fetch('/api/agent/agent-types');
+        const res = await apiFetch('/agent/agent-types');
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as string[];
         // Defensive: backend may have a different list. Filter to the
@@ -68,7 +73,7 @@ export const agentService = {
      * backend (?refresh=1).
      */
     async getCatalog(refresh = false): Promise<AgentStatus[]> {
-        const res = await fetch(`/api/agent/catalog${refresh ? '?refresh=1' : ''}`);
+        const res = await apiFetch(`/agent/catalog${refresh ? '?refresh=1' : ''}`);
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawAgentStatus[];
         return data.map(normalizeAgentStatus);
@@ -76,12 +81,34 @@ export const agentService = {
 
     /**
      * GET /api/agent/sessions?workspace_id=…
+     *
+     * By default returns active sessions only (what the sidebar lists). Pass
+     * includeArchived=true (the 会话 archive view) to also return archived
+     * sessions, each flagged via ChatSession.archived.
      */
-    async list(workspaceId: string): Promise<ChatSession[]> {
-        const res = await fetch(`/api/agent/sessions?workspace_id=${encodeURIComponent(workspaceId)}`);
+    async list(workspaceId: string, includeArchived = false): Promise<ChatSession[]> {
+        const qs = `workspace_id=${encodeURIComponent(workspaceId)}${includeArchived ? '&include_archived=1' : ''}`;
+        const res = await apiFetch(`/agent/sessions?${qs}`);
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawChatSession[];
         return data.map(normalizeChatSession);
+    },
+
+    /**
+     * PATCH /api/agent/sessions/{id} with {archived}
+     *
+     * Soft-deletes (archived=true) or restores (false) a session. Archiving
+     * keeps the index record — closing a session from the sidebar archives it
+     * so its metadata stays searchable in the 会话 archive view.
+     */
+    async setArchived(id: string, archived: boolean): Promise<ChatSession> {
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return normalizeChatSession((await res.json()) as RawChatSession);
     },
 
     /**
@@ -89,7 +116,7 @@ export const agentService = {
      * Returns the indexed record, or null when the id is unknown.
      */
     async get(id: string): Promise<ChatSession | null> {
-        const res = await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`);
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`);
         if (res.status === 404) return null;
         if (!res.ok) throw new Error(await res.text());
         return normalizeChatSession((await res.json()) as RawChatSession);
@@ -102,7 +129,7 @@ export const agentService = {
      * ACP-only — the live conversation runs on 1acp via the chat WS bridge.
      */
     async index(req: IndexChatSessionRequest): Promise<ChatSession> {
-        const res = await fetch('/api/agent/sessions', {
+        const res = await apiFetch('/agent/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req),
@@ -118,7 +145,7 @@ export const agentService = {
      * separately via the chat WS bridge (globalBridgeManager.destroy).
      */
     async delete(id: string): Promise<void> {
-        const res = await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`, {
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`, {
             method: 'DELETE',
         });
         if (!res.ok) throw new Error(await res.text());
@@ -136,8 +163,12 @@ interface RawChatSession {
     acp_session_id?: string;
     session_key?: string;
     status?: string;
+    created_at?: string;
     last_event_at?: string;
+    archived_at?: string;
     active?: boolean;
+    role?: string;
+    permission_mode?: string;
 }
 
 interface RawAgentStatus {
@@ -171,8 +202,15 @@ function normalizeAgentStatus(raw: RawAgentStatus): AgentStatus {
     };
 }
 
+// Go marshals an unset time.Time as the zero time rather than omitting it
+// (encoding/json `omitempty` doesn't apply to structs), so guard against it.
+function cleanTime(iso?: string): string | undefined {
+    return iso && !iso.startsWith('0001-01-01') ? iso : undefined;
+}
+
 /** Coerce unknown / missing fields into the canonical ChatSession shape. */
 function normalizeChatSession(raw: RawChatSession): ChatSession {
+    const archivedAt = cleanTime(raw.archived_at);
     return {
         kind: 'chat',
         id: String(raw.id),
@@ -185,7 +223,12 @@ function normalizeChatSession(raw: RawChatSession): ChatSession {
         acpSessionId: raw.acp_session_id ? String(raw.acp_session_id) : undefined,
         sessionKey: String(raw.session_key ?? ''),
         status: (raw.status ?? 'idle') as ChatSession['status'],
-        lastEventAt: raw.last_event_at || undefined,
+        createdAt: cleanTime(raw.created_at),
+        lastEventAt: cleanTime(raw.last_event_at),
+        archivedAt,
+        archived: Boolean(archivedAt),
         active: Boolean(raw.active),
+        role: raw.role || undefined,
+        permissionMode: (raw.permission_mode as PermissionMode) || undefined,
     };
 }

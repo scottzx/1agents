@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,16 +24,22 @@ type Handler struct {
 	acpxClient *AcpxClient
 	scheduler  *Scheduler
 	catalog    *CatalogStore
+	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
+	// http://127.0.0.1:8080), injected into the AI Project Manager's
+	// task-tool MCP subprocess so it can call back into the task API.
+	selfBaseURL string
 }
 
-// NewHandler returns a Handler backed by stores and client.
-func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler, catalog *CatalogStore) *Handler {
+// NewHandler returns a Handler backed by stores and client. selfBaseURL is the
+// daemon's own loopback HTTP base used by the PM task-tool MCP subprocess.
+func NewHandler(store *Store, tasksStore *TasksStore, acpxClient *AcpxClient, scheduler *Scheduler, catalog *CatalogStore, selfBaseURL string) *Handler {
 	return &Handler{
-		store:      store,
-		tasksStore: tasksStore,
-		acpxClient: acpxClient,
-		scheduler:  scheduler,
-		catalog:    catalog,
+		store:       store,
+		tasksStore:  tasksStore,
+		acpxClient:  acpxClient,
+		scheduler:   scheduler,
+		catalog:     catalog,
+		selfBaseURL: selfBaseURL,
 	}
 }
 
@@ -137,6 +144,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		// bridge-server later trusts this string).
 		var body struct {
 			PermissionMode *string `json:"permission_mode,omitempty"`
+			Archived       *bool   `json:"archived,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -154,6 +162,17 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				log.Printf("[agent] update permission_mode %s: %v", id, err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.Archived != nil {
+			if err := h.store.SetArchived(id, *body.Archived); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("[agent] set archived %s: %v", id, err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -191,7 +210,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-	recs, err := h.store.ListByWorkspace(wsID)
+	// The sidebar lists active sessions only; the 会话 archive view passes
+	// include_archived=1 to also surface soft-deleted (archived) sessions.
+	includeArchived := r.URL.Query().Get("include_archived") == "1"
+	recs, err := h.store.ListByWorkspace(wsID, includeArchived)
 	if err != nil {
 		log.Printf("[agent] list for %s: %v", wsID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -200,6 +222,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	if recs == nil {
 		recs = []ChatSessionRecord{}
 	}
+
+	// Headless auto-run sessions execute silently in the backend; keep them
+	// out of the sidebar so an AI-executed task doesn't spawn a chat box.
+	// They stay resolvable by id (Get), so "查看详情" can still resume them.
+	filtered := recs[:0]
+	for _, rec := range recs {
+		if rec.Role == SessionRoleAuto {
+			continue
+		}
+		filtered = append(filtered, rec)
+	}
+	recs = filtered
 
 	var wsPath string
 	if len(recs) > 0 {
@@ -249,6 +283,15 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		CcProject:   body.CcProject,
 		CcSessionID: body.CcSessionID,
 		SessionKey:  body.SessionKey,
+		Role:        body.Role,
+	}
+	// AI Project Manager sessions default to approve-all: the task tools are
+	// already hard-locked to this project via env injection, so auto-approving
+	// keeps the conversation flowing instead of stalling on a permission prompt
+	// for every create_task/update_task. The user can still switch the mode
+	// manually afterwards (persisted via set_permission_mode).
+	if rec.Role == SessionRolePM {
+		rec.PermissionMode = "approve-all"
 	}
 	if err := h.store.Add(rec); err != nil {
 		if errors.Is(err, ErrDuplicate) {
@@ -315,14 +358,16 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "workspace_id and title are required", http.StatusBadRequest)
 			return
 		}
+		// assignee selects the executing agent; empty falls back to
+		// DefaultAgentType at run time (runner.go). Reject unknown values so a
+		// typo from the PM tool surfaces instead of silently defaulting.
+		if body.Assignee != "" && !IsSupportedAgentType(body.Assignee) {
+			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
+			return
+		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		cfg, err := h.tasksStore.Load(wsPath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -361,18 +406,84 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			newTask.ScheduleType = ScheduleTypeImmediate
 		}
 
-		cfg.Tasks = append(cfg.Tasks, newTask)
-		if err := h.tasksStore.Save(wsPath, cfg); err != nil {
+		if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
+			cfg.Tasks = append(cfg.Tasks, newTask)
+			return true
+		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// Save assigns the short number (#N) on the stored slice element, so
-		// return that one rather than the pre-save copy.
-		writeJSON(w, cfg.Tasks[len(cfg.Tasks)-1])
+		// Keep the roadmap's milestone list complete: a task may name a
+		// brand-new milestone that has no metadata row yet.
+		if newTask.Milestone != "" {
+			_ = h.tasksStore.EnsureMilestone(wsPath, newTask.Milestone)
+		}
+		// Save assigns the short number (#N) on the stored row, so re-fetch
+		// rather than returning the pre-save copy.
+		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
+		writeJSON(w, saved)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// HandleTaskResolve resolves a permalink reference to a task:
+//
+//	GET /api/agent/tasks/resolve?project={name|id}&number={n}
+//	  → {workspaceId, task}   (404 when the project or number is unknown)
+//
+// The frontend uses it to turn `#N` / `项目名#N` references and
+// /{project}/tasks/{number} deep links into an in-app task view. project may be
+// a display name or a project id; number is the per-project short id (#N).
+func (h *Handler) HandleTaskResolve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	project := r.URL.Query().Get("project")
+	numStr := r.URL.Query().Get("number")
+	number, err := strconv.Atoi(numStr)
+	if project == "" || err != nil || number <= 0 {
+		http.Error(w, "project and a positive number are required", http.StatusBadRequest)
+		return
+	}
+	task, workspaceID, ok, err := h.tasksStore.ResolveByNumber(project, number)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	// Prefer the workspace-registry id (what the frontend keys workspaces by)
+	// over the raw meta project id. The two are normally identical (project id
+	// == workspace id), but a project created lazily before its workspace is
+	// synced gets a random id; mapping the task's path back to the registry
+	// keeps deep-link navigation working regardless.
+	if wsID := h.workspaceIDForPath(task.WorkspacePath); wsID != "" {
+		workspaceID = wsID
+	}
+	writeJSON(w, map[string]any{"workspaceId": workspaceID, "task": task})
+}
+
+// workspaceIDForPath reverse-maps an absolute workspace path to its registry
+// workspace id, or "" when no workspace owns that path.
+func (h *Handler) workspaceIDForPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	cfg, err := workspace.NewHandler().LoadWorkspacesConfig()
+	if err != nil {
+		return ""
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.Path == path {
+			return ws.ID
+		}
+	}
+	return ""
 }
 
 // HandleTasksItem handles /api/agent/tasks/{id} and its sub-resources:
@@ -468,6 +579,7 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 // present in the body are touched.
 func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
+		Title              *string      `json:"title,omitempty"`
 		Description        *string      `json:"description,omitempty"`
 		IssueState         *string      `json:"issueState,omitempty"`
 		Status             *string      `json:"status,omitempty"`
@@ -487,6 +599,10 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Title != nil && strings.TrimSpace(*body.Title) == "" {
+		http.Error(w, "title must not be empty", http.StatusBadRequest)
 		return
 	}
 	if body.IssueState != nil {
@@ -516,9 +632,14 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			return
 		}
 	}
+	if body.Assignee != nil && *body.Assignee != "" && !IsSupportedAgentType(*body.Assignee) {
+		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
+		return
+	}
 
 	// Whole-config load/mutate/save (same path the CLI uses), so a single
-	// PATCH can touch any mix of fields atomically.
+	// PATCH can touch any mix of fields atomically. Mutate serializes the
+	// cycle so a concurrent scheduler/runner Save can't clobber the edit.
 	existing, ok, err := h.tasksStore.GetTask(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -528,80 +649,87 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
-	cfg, err := h.tasksStore.Load(existing.WorkspacePath)
-	if err != nil {
+	found := false
+	if err := h.tasksStore.Mutate(existing.WorkspacePath, func(cfg *TasksConfig) bool {
+		var target *Task
+		for i := range cfg.Tasks {
+			if cfg.Tasks[i].ID == id {
+				target = &cfg.Tasks[i]
+				break
+			}
+		}
+		if target == nil {
+			return false
+		}
+		found = true
+
+		if body.Title != nil {
+			target.Title = strings.TrimSpace(*body.Title)
+		}
+		if body.Description != nil {
+			target.Description = *body.Description
+		}
+		if body.IssueState != nil {
+			target.IssueState = IssueState(*body.IssueState)
+		}
+		if body.Status != nil {
+			target.Status = TaskStatus(*body.Status)
+			if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
+				now := time.Now().UTC()
+				target.CompletedAt = &now
+			}
+		}
+		if body.AcceptanceCriteria != nil {
+			target.AcceptanceCriteria = *body.AcceptanceCriteria
+		}
+		if body.Priority != nil {
+			target.Priority = Priority(*body.Priority)
+		}
+		if body.Assignee != nil {
+			target.Assignee = *body.Assignee
+		}
+		if body.Labels != nil {
+			target.Labels = *body.Labels
+		}
+		if body.ParentID != nil {
+			target.ParentID = *body.ParentID
+		}
+		if body.Milestone != nil {
+			target.Milestone = *body.Milestone
+		}
+		if body.Sprint != nil {
+			target.Sprint = *body.Sprint
+		}
+		if body.Type != nil {
+			target.Type = TaskType(*body.Type)
+		}
+		if body.Links != nil {
+			target.Links = *body.Links
+		}
+		if body.Recurrence != nil {
+			target.Recurrence = *body.Recurrence
+		}
+		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
+			target.MaxRetries = *body.MaxRetries
+		}
+		if body.PlannedStart != nil {
+			target.PlannedStart = body.PlannedStart
+		}
+		if body.PlannedEnd != nil {
+			target.PlannedEnd = body.PlannedEnd
+		}
+		target.UpdatedAt = time.Now().UTC()
+		return true
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var target *Task
-	for i := range cfg.Tasks {
-		if cfg.Tasks[i].ID == id {
-			target = &cfg.Tasks[i]
-			break
-		}
-	}
-	if target == nil {
+	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
-
-	if body.Description != nil {
-		target.Description = *body.Description
-	}
-	if body.IssueState != nil {
-		target.IssueState = IssueState(*body.IssueState)
-	}
-	if body.Status != nil {
-		target.Status = TaskStatus(*body.Status)
-		if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
-			now := time.Now().UTC()
-			target.CompletedAt = &now
-		}
-	}
-	if body.AcceptanceCriteria != nil {
-		target.AcceptanceCriteria = *body.AcceptanceCriteria
-	}
-	if body.Priority != nil {
-		target.Priority = Priority(*body.Priority)
-	}
-	if body.Assignee != nil {
-		target.Assignee = *body.Assignee
-	}
-	if body.Labels != nil {
-		target.Labels = *body.Labels
-	}
-	if body.ParentID != nil {
-		target.ParentID = *body.ParentID
-	}
-	if body.Milestone != nil {
-		target.Milestone = *body.Milestone
-	}
-	if body.Sprint != nil {
-		target.Sprint = *body.Sprint
-	}
-	if body.Type != nil {
-		target.Type = TaskType(*body.Type)
-	}
-	if body.Links != nil {
-		target.Links = *body.Links
-	}
-	if body.Recurrence != nil {
-		target.Recurrence = *body.Recurrence
-	}
-	if body.MaxRetries != nil && *body.MaxRetries >= 0 {
-		target.MaxRetries = *body.MaxRetries
-	}
-	if body.PlannedStart != nil {
-		target.PlannedStart = body.PlannedStart
-	}
-	if body.PlannedEnd != nil {
-		target.PlannedEnd = body.PlannedEnd
-	}
-	target.UpdatedAt = time.Now().UTC()
-
-	if err := h.tasksStore.Save(existing.WorkspacePath, cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if body.Milestone != nil && *body.Milestone != "" {
+		_ = h.tasksStore.EnsureMilestone(existing.WorkspacePath, *body.Milestone)
 	}
 
 	task, ok, err := h.tasksStore.GetTask(id)
@@ -621,11 +749,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 // allowed, opening or following up sessions is rejected with 422.
 func (h *Handler) handleTaskReplyCreate(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Text      string `json:"text"`
-		Mode      string `json:"mode"`
-		InReplyTo string `json:"inReplyTo"`
-		Author    string `json:"author"`
-		AgentType string `json:"agentType"`
+		Text       string `json:"text"`
+		Mode       string `json:"mode"`
+		InReplyTo  string `json:"inReplyTo"`
+		SessionRef string `json:"sessionRef"`
+		Author     string `json:"author"`
+		AgentType  string `json:"agentType"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -663,17 +792,209 @@ func (h *Handler) handleTaskReplyCreate(w http.ResponseWriter, r *http.Request, 
 		authorName = "user"
 	}
 	reply, err := h.tasksStore.AppendReply(id, Reply{
-		Author:    Author{Kind: "user", Name: authorName},
-		AgentType: body.AgentType,
-		Text:      body.Text,
-		InReplyTo: body.InReplyTo,
-		Mode:      mode,
+		Author:     Author{Kind: "user", Name: authorName},
+		AgentType:  body.AgentType,
+		Text:       body.Text,
+		InReplyTo:  body.InReplyTo,
+		SessionRef: body.SessionRef,
+		Mode:       mode,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, reply)
+}
+
+// ── Milestones REST API ────────────────────────────────────────────────────
+
+// HandleMilestonesRoot handles GET and POST /api/agent/milestones.
+//
+//	GET  /api/agent/milestones?workspace_id=…  → roadmap-ordered list w/ counts
+//	POST /api/agent/milestones                 → create a milestone
+func (h *Handler) HandleMilestonesRoot(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		wsID := r.URL.Query().Get("workspace_id")
+		if wsID == "" {
+			http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		list, err := h.tasksStore.ListMilestones(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, list)
+
+	case http.MethodPost:
+		var body struct {
+			WorkspaceID   string     `json:"workspace_id"`
+			Name          string     `json:"name"`
+			Description   string     `json:"description"`
+			TargetDate    *time.Time `json:"targetDate"`
+			PredecessorID string     `json:"predecessorId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" || strings.TrimSpace(body.Name) == "" {
+			http.Error(w, "workspace_id and name are required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		ms, err := h.tasksStore.CreateMilestone(wsPath, strings.TrimSpace(body.Name), body.Description, body.TargetDate, body.PredecessorID)
+		if err != nil {
+			if errors.Is(err, ErrMilestoneExists) {
+				http.Error(w, "milestone name already exists", http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, ms)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleMilestonesItem handles the milestone sub-resources:
+//
+//	PATCH  /api/agent/milestones/{id}     → edit name / description / target date
+//	DELETE /api/agent/milestones/{id}     → remove (tasks fall back to 未分组)
+//	POST   /api/agent/milestones/reorder  → set positions from an ordered id list
+//
+// All require workspace_id (query for PATCH/DELETE, body for reorder) so the
+// store resolves the owning project.
+func (h *Handler) HandleMilestonesItem(w http.ResponseWriter, r *http.Request) {
+	const prefix = "/api/agent/milestones/"
+	rest := r.URL.Path[len(prefix):]
+	if rest == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	if rest == "reorder" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			WorkspaceID string   `json:"workspace_id"`
+			Order       []string `json:"order"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" {
+			http.Error(w, "workspace_id is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := h.tasksStore.ReorderMilestones(wsPath, body.Order); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		list, err := h.tasksStore.ListMilestones(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, list)
+		return
+	}
+
+	if i := indexByte(rest, '/'); i >= 0 {
+		http.Error(w, "unsupported sub-path", http.StatusNotFound)
+		return
+	}
+	id := rest
+
+	switch r.Method {
+	case http.MethodPatch:
+		var body struct {
+			WorkspaceID   string      `json:"workspace_id"`
+			Name          *string     `json:"name,omitempty"`
+			Description   *string     `json:"description,omitempty"`
+			TargetDate    **time.Time `json:"targetDate,omitempty"`
+			PredecessorID *string     `json:"predecessorId,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if body.WorkspaceID == "" {
+			http.Error(w, "workspace_id is required", http.StatusBadRequest)
+			return
+		}
+		if body.Name != nil && strings.TrimSpace(*body.Name) == "" {
+			http.Error(w, "name must not be empty", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		patch := MilestonePatch{Description: body.Description, TargetDate: body.TargetDate, PredecessorID: body.PredecessorID}
+		if body.Name != nil {
+			trimmed := strings.TrimSpace(*body.Name)
+			patch.Name = &trimmed
+		}
+		ms, err := h.tasksStore.UpdateMilestone(wsPath, id, patch)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrMilestoneExists):
+				http.Error(w, "milestone name already exists", http.StatusConflict)
+			case errors.Is(err, ErrNotFound):
+				http.Error(w, "milestone not found", http.StatusNotFound)
+			default:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		writeJSON(w, ms)
+
+	case http.MethodDelete:
+		wsID := r.URL.Query().Get("workspace_id")
+		if wsID == "" {
+			http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+		wsPath, err := h.resolveWorkspacePath(wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := h.tasksStore.DeleteMilestone(wsPath, id); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				http.Error(w, "milestone not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // HandleChatWs handles WebSocket connections at /api/agent/chat/ws
@@ -702,11 +1023,14 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	// which both skips the background injection (issue-model decision G)
 	// and is passed to the bridge as resumeSessionId.
 	var acpSessionID string
+	var sessionRole string
 	if rec, ok, err := h.store.Get(sessionId); err == nil && ok {
 		acpSessionID = rec.AcpSessionID
+		sessionRole = rec.Role
 	}
 
 	var systemContext string
+	var mcpServers json.RawMessage
 	if taskId != "" {
 		cfg, err := h.tasksStore.Load(wsPath)
 		if err != nil {
@@ -725,6 +1049,20 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		if targetTask == nil {
 			http.Error(w, "task not found", http.StatusNotFound)
 			return
+		}
+
+		// Resume-id fallback: if the chat index record is gone (e.g. the user
+		// deleted the sidebar session) but the triggering reply recorded the
+		// agent's resume id, resume from that. The agent keeps the transcript
+		// locally (Claude ~/.claude/projects/…, Codex its own dir), so "查看详情"
+		// re-renders history by id instead of starting a fresh run.
+		if acpSessionID == "" && replyID != "" {
+			for i := range targetTask.Replies {
+				if targetTask.Replies[i].ID == replyID && targetTask.Replies[i].AcpSessionID != "" {
+					acpSessionID = targetTask.Replies[i].AcpSessionID
+					break
+				}
+			}
 		}
 
 		// Issue background injection (issue-model §9): description + the
@@ -746,48 +1084,69 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[agent] UpdateTask(%s, %s): %v", sessionId, taskId, err)
 		}
 
-		// Check state concurrency lock
-		if targetTask.Status != TaskStatusRunning {
+		// Execution-start vs. read-only resume: a non-empty acpSessionID means
+		// this open is resuming an existing agent session (e.g. "查看详情" on a
+		// finished run) — it must NOT acquire the workspace lock, flip the task
+		// to running, or re-execute. Only a genuinely new session (acpSessionID
+		// empty) starts execution.
+		if acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
 				http.Error(w, "Another session is already running in this workspace", http.StatusConflict)
 				return
 			}
-			// Update task state to running
-			targetTask.Status = TaskStatusRunning
 			now := time.Now().UTC()
-			targetTask.StartedAt = &now
-			targetTask.UpdatedAt = now
-
-			// Update or create session metadata
-			sessionExists := false
-			for i := range targetTask.Sessions {
-				if targetTask.Sessions[i].ID == sessionId {
-					targetTask.Sessions[i].Status = SessionStatusRunning
-					sessionExists = true
-					break
+			if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
+				for i := range cfg.Tasks {
+					t := &cfg.Tasks[i]
+					if t.ID != taskId {
+						continue
+					}
+					t.Status = TaskStatusRunning
+					t.StartedAt = &now
+					t.UpdatedAt = now
+					// Update or create session metadata
+					sessionExists := false
+					for j := range t.Sessions {
+						if t.Sessions[j].ID == sessionId {
+							t.Sessions[j].Status = SessionStatusRunning
+							sessionExists = true
+							break
+						}
+					}
+					if !sessionExists {
+						t.Sessions = append(t.Sessions, SessionMetadata{
+							ID:        sessionId,
+							Kind:      SessionKindChat,
+							Name:      "智能体排查与修复",
+							AgentType: agentType,
+							Status:    SessionStatusRunning,
+							CreatedAt: now,
+						})
+					}
+					return true
 				}
+				return false
+			}); err != nil {
+				log.Printf("[agent] mark task %s running: %v", taskId, err)
 			}
-			if !sessionExists {
-				targetTask.Sessions = append(targetTask.Sessions, SessionMetadata{
-					ID:        sessionId,
-					Kind:      SessionKindChat,
-					Name:      "智能体排查与修复",
-					AgentType: agentType,
-					Status:    SessionStatusRunning,
-					CreatedAt: now,
-				})
-			}
-
-			_ = h.tasksStore.Save(wsPath, cfg)
 		}
 		log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
+	} else if sessionRole == SessionRolePM {
+		// AI Project Manager session: inject the PM system prompt (new
+		// sessions only — resumed ones already carry their history) and a
+		// task-tool MCP server locked to this workspace.
+		if acpSessionID == "" {
+			systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID)
+		}
+		mcpServers = h.buildPMMcpServers(wsID)
+		log.Printf("[agent] Bridging AI Project Manager WebSocket for session %s (workspace %s)", sessionId, wsID)
 	} else {
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)
 	}
 
-	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
+	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
 }
 
 // buildIssueBackground renders the issue-model §9 plain-text background
@@ -881,9 +1240,15 @@ func isValidPermissionMode(mode string) bool {
 }
 
 func getProjectSlug(path string) string {
+	// Mirror Claude Code's cwd → project-dir slug exactly: every
+	// non-alphanumeric rune (including '.', '_', '/') becomes '-'. Keeping
+	// '.'/'_' here (as a previous version did) makes paths like
+	// "/Users/x/.coze" or ".../smart_cups" slug to "-x-.coze"/"smart_cups"
+	// instead of Claude's "-x--coze"/"smart-cups", so the session .jsonl is
+	// never found and the AI title never resolves.
 	var sb strings.Builder
 	for _, r := range path {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			sb.WriteRune(r)
 		} else {
 			sb.WriteRune('-')

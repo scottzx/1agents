@@ -1,10 +1,12 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { RightDrawerTab, Session } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
 import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
+import { TaskList } from './TaskList';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
@@ -19,6 +21,12 @@ interface RightPanelProps {
     closeDrawer: () => void;
     ccConnectUrl?: string;
     onSelectSession?: (session: Session) => void;
+    /**
+     * Overrides the aside's inline sizing. Desktop two-column passes a
+     * flex/split style; mobile/legacy leaves it unset to keep the fixed
+     * `rightPanelWidth` px behavior.
+     */
+    paneStyle?: string;
 
     // Context-dependent file actions (need app/workspace knowledge)
     onRefreshFlatFiles: () => void;
@@ -39,6 +47,7 @@ export function RightPanel({
     rightPanelWidth,
     closeDrawer,
     ccConnectUrl,
+    onSelectSession,
     onRefreshFlatFiles,
     onToggleFullscreen,
     onShareFile,
@@ -46,9 +55,33 @@ export function RightPanel({
     accessTokenExists,
     onGenerateAccessToken,
     onRevokeAccessToken,
+    paneStyle,
 }: RightPanelProps) {
     const [gitLoading, setGitLoading] = useState(false);
     const [gitRefreshFn, setGitRefreshFn] = useState<(() => void) | null>(null);
+    const taskSelectedId = useSignal<string | null>(null);
+    // Back stack for in-detail task→task navigation (e.g. clicking a #N
+    // reference). The header back arrow pops this so it returns to the task you
+    // came from (GitHub-style), falling back to the list when empty.
+    const taskNavStack = useSignal<string[]>([]);
+    const selectTask = (id: string | null) => {
+        const cur = taskSelectedId.value;
+        if (id === null) {
+            taskNavStack.value = [];
+        } else if (cur && cur !== id) {
+            taskNavStack.value = [...taskNavStack.value, cur];
+        }
+        taskSelectedId.value = id;
+    };
+    const taskBack = () => {
+        const stack = taskNavStack.value;
+        if (stack.length > 0) {
+            taskSelectedId.value = stack[stack.length - 1];
+            taskNavStack.value = stack.slice(0, -1);
+        } else {
+            taskSelectedId.value = null;
+        }
+    };
 
     const language = ui.language.value;
     const theme = ui.theme.value;
@@ -77,19 +110,42 @@ export function RightPanel({
                 return t('drawer.title.skills', language);
             case 'discovery':
                 return t('drawer.title.discovery', language);
+            case 'tasks':
+                return t('header.col.tasks', language);
             default:
                 return '';
         }
     };
 
+    // Desktop two-column passes an explicit flex/split style; otherwise fall
+    // back to the legacy fixed px width (mobile full-width overlay).
+    const asideStyle =
+        activeDrawerTab === 'none' ? '' : paneStyle !== undefined ? paneStyle : `width: ${rightPanelWidth}px`;
+
     return (
-        <aside
-            class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`}
-            style={activeDrawerTab !== 'none' ? `width: ${rightPanelWidth}px` : ''}
-        >
+        <aside class={`right-panel ${activeDrawerTab === 'none' ? 'collapsed' : ''}`} style={asideStyle}>
             <div class="panel-tabs-header">
                 <span class="panel-tab-title">{getDrawerTitle(activeDrawerTab)}</span>
                 <div class="panel-header-actions">
+                    {activeDrawerTab === 'tasks' && taskSelectedId.value !== null && (
+                        <div
+                            class="panel-back-btn"
+                            onClick={taskBack}
+                            title={taskNavStack.value.length > 0 ? '返回上一个任务' : '返回列表'}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <line x1="19" y1="12" x2="5" y2="12" />
+                                <polyline points="12 19 5 12 12 5" />
+                            </svg>
+                        </div>
+                    )}
                     {(activeDrawerTab === 'files' || activeDrawerTab === 'git') && (
                         <div
                             class={`panel-refresh-btn ${isSpinning ? 'spinning' : ''}`}
@@ -113,7 +169,15 @@ export function RightPanel({
                             </svg>
                         </div>
                     )}
-                    <div class="panel-close-btn" onClick={closeDrawer} title={t('drawer.collapse', language)}>
+                    <div
+                        class="panel-close-btn"
+                        onClick={() => {
+                            taskSelectedId.value = null;
+                            taskNavStack.value = [];
+                            closeDrawer();
+                        }}
+                        title={t('drawer.collapse', language)}
+                    >
                         <svg
                             viewBox="0 0 24 24"
                             fill="none"
@@ -148,10 +212,27 @@ export function RightPanel({
                 )}
             </div>
 
+            {/* Tasks panel (side-by-side with terminal/chat) */}
+            <div
+                class="panel-body-tasks"
+                style={`flex: 1; overflow: hidden; display: ${
+                    activeDrawerTab === 'tasks' ? 'flex' : 'none'
+                }; flex-direction: column; height: 100%; min-height: 0;`}
+            >
+                {activeDrawerTab === 'tasks' && (
+                    <TaskList
+                        workspaceId={activeWorkspaceId}
+                        selectedTaskId={taskSelectedId.value}
+                        onTaskSelect={selectTask}
+                        onSelectSession={onSelectSession}
+                    />
+                )}
+            </div>
+
             {/* Other drawer tab contents (files, git, settings) */}
             <div
                 class="panel-body-scroll"
-                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
+                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'tasks' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
             >
                 {activeDrawerTab === 'files' &&
                     (viewMode === 'list' ? (
@@ -210,6 +291,10 @@ export function RightPanel({
                         onRegisterRefresh={fn => setGitRefreshFn(() => fn)}
                         language={language}
                     />
+                )}
+
+                {activeDrawerTab === 'tasks' && (
+                    <TaskList workspaceId={activeWorkspaceId} onSelectSession={onSelectSession} />
                 )}
 
                 {activeDrawerTab === 'settings' && (

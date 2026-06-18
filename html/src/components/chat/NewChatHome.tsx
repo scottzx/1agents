@@ -1,20 +1,38 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS } from '../types';
+import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS, type PermissionMode } from '../types';
 import { t, type Lang } from '../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import { pickableAgents } from '../../stores/agentCatalogStore';
+import { sidebarMode } from '../../stores/uiStore';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
 import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
+import { PermissionModePicker } from './PermissionModePicker';
+
+/** Roles offered at creation. Dropdown-driven so more roles slot in later
+ *  (PMO / Executor / Verifier). 'pmo' is derived (not user-selectable): it
+ *  is emitted when 'pm' is chosen with the default (cross-project) workspace. */
+type ChatRole = 'general' | 'pm' | 'pmo';
+
+const ROLE_OPTIONS: { value: ChatRole; labelKey: string }[] = [
+    { value: 'general', labelKey: 'newchat.role.general' },
+    { value: 'pm', labelKey: 'newchat.role.pm' },
+];
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
     activeWorkspaceId: string;
-    onSubmitChat: (workspaceId: string, agentType: AgentType, prompt: string) => void;
+    onSubmitChat: (
+        workspaceId: string,
+        agentType: AgentType,
+        prompt: string,
+        role: ChatRole,
+        permissionMode: PermissionMode
+    ) => void;
     /**
      * Terminal mode: open a terminal in the workspace dir and optionally run
      * an initial command (e.g. `claude "..."`). cwd resolves to the
@@ -32,7 +50,7 @@ const TERMINAL_PRESETS: { value: TerminalPreset; label: string; bin?: string }[]
     { value: 'claude', label: 'Claude', bin: 'claude' },
     { value: 'codex', label: 'Codex', bin: 'codex' },
     { value: 'gemini', label: 'Gemini', bin: 'gemini' },
-    { value: 'shell', label: '纯 Shell' },
+    { value: 'shell', label: 'Shell' },
 ];
 
 /** Wrap a prompt as a single double-quoted bash argument, escaping the chars
@@ -51,13 +69,24 @@ export function NewChatHome({
 }: NewChatHomeProps) {
     const [prompt, setPrompt] = useState('');
     const [selectedAgent, setSelectedAgent] = useState<AgentType>('claudecode');
+    // Conversation role declared at creation (chat mode). 'general' = ordinary
+    // chat; 'pm' = AI 项目经理 (project-locked task tools + PM prompt).
+    const [selectedRole, setSelectedRole] = useState<ChatRole>('general');
     const [selectedPreset, setSelectedPreset] = useState<TerminalPreset>('claude');
+    const [selectedPermissionMode, setSelectedPermissionMode] = useState<PermissionMode>('approve-reads');
+    const [wsSearch, setWsSearch] = useState('');
     // useSignal (not useState) for the mode toggle — plain useState toggles
     // can fail to re-render under @preact/signals.
     const mode = useSignal<'chat' | 'terminal'>('chat');
-    // Frontend-only pre-selection. Switching the actual workspace context is
-    // deferred until the user sends a message (see handleSubmit → onSubmitChat).
-    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(activeWorkspaceId);
+    // Per-mode workspace selection: assistant mode always targets 'default';
+    // project mode tracks the user's picker choice separately.
+    const [projectWsId, setProjectWsId] = useState(
+        activeWorkspaceId !== 'default'
+            ? activeWorkspaceId
+            : workspaces.find(w => w.id !== 'default' && !w.builtin)?.id || activeWorkspaceId
+    );
+    const selectedWorkspaceId = sidebarMode.value === 'assistant' ? 'default' : projectWsId;
+    const setSelectedWorkspaceId = (id: string) => setProjectWsId(id);
     const wsDropdownOpen = useSignal(false);
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -76,7 +105,7 @@ export function NewChatHome({
     // installed, so a workspace's defaultAgent still renders.
     const pickable = pickableAgents.value;
     const agentOptions: { type: AgentType; label: string }[] = pickable.length
-        ? pickable.map(a => ({ type: a.type, label: a.label }))
+        ? pickable.map(a => ({ type: a.type, label: AGENT_TYPE_LABELS[a.type as AgentType] ?? a.label }))
         : AGENT_TYPES.map(ty => ({ type: ty, label: AGENT_TYPE_LABELS[ty] ?? ty }));
     if (selectedAgent && !agentOptions.some(o => o.type === selectedAgent)) {
         agentOptions.unshift({ type: selectedAgent, label: AGENT_TYPE_LABELS[selectedAgent] ?? selectedAgent });
@@ -128,7 +157,11 @@ export function NewChatHome({
         }
 
         if (!trimmed) return;
-        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed);
+        const effectiveRole: ChatRole =
+            (activeWorkspace.id === 'default' || activeWorkspace.builtin) && selectedRole === 'pm'
+                ? 'pmo'
+                : selectedRole;
+        onSubmitChat(activeWorkspace.id, selectedAgent, trimmed, effectiveRole, selectedPermissionMode);
         setPrompt('');
         attach.clear();
     };
@@ -142,8 +175,8 @@ export function NewChatHome({
 
     return (
         <div class="new-chat-home">
-            {/* Top Workspace Picker Dropdown */}
-            {activeWorkspace && (
+            {/* Top Workspace Picker Dropdown — only in project mode */}
+            {activeWorkspace && sidebarMode.value === 'project' && (
                 <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
                     <button
                         class="new-chat-ws-picker-trigger"
@@ -161,7 +194,11 @@ export function NewChatHome({
                         >
                             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                         </svg>
-                        <span class="ws-name">{activeWorkspace.name}</span>
+                        <span class="ws-name">
+                            {activeWorkspace.id === 'default' || activeWorkspace.builtin
+                                ? t('newchat.noProject', language)
+                                : activeWorkspace.name}
+                        </span>
                         <svg
                             class={`chevron ${wsDropdownOpen.value ? 'open' : ''}`}
                             viewBox="0 0 24 24"
@@ -176,34 +213,69 @@ export function NewChatHome({
                     </button>
                     {wsDropdownOpen.value && (
                         <div class="new-chat-ws-dropdown">
-                            <div class="dropdown-header">切换项目工作空间</div>
-                            {workspaces.map(ws => (
-                                <button
-                                    key={ws.id}
-                                    class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
-                                    onClick={() => {
-                                        setSelectedWorkspaceId(ws.id);
-                                        wsDropdownOpen.value = false;
-                                    }}
+                            <div class="dropdown-search-wrap">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    class="dropdown-search-icon"
                                 >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        style="width: 14px; height: 14px; opacity: 0.7;"
-                                    >
-                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                    </svg>
-                                    <span class="item-name">{ws.name}</span>
-                                    {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
-                                </button>
-                            ))}
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                </svg>
+                                <input
+                                    class="dropdown-search-input"
+                                    type="text"
+                                    placeholder="搜索项目…"
+                                    value={wsSearch}
+                                    onInput={(e: Event) => setWsSearch((e.target as HTMLInputElement).value)}
+                                    autoFocus
+                                />
+                                {wsSearch && (
+                                    <button class="dropdown-search-clear" onClick={() => setWsSearch('')} type="button">
+                                        ×
+                                    </button>
+                                )}
+                            </div>
+                            <div class="dropdown-list">
+                                {workspaces
+                                    .filter(ws => ws.id !== 'default' && !ws.builtin)
+                                    .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase()))
+                                    .map(ws => (
+                                        <button
+                                            key={ws.id}
+                                            class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
+                                            onClick={() => {
+                                                setSelectedWorkspaceId(ws.id);
+                                                wsDropdownOpen.value = false;
+                                                setWsSearch('');
+                                            }}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                style="width: 14px; height: 14px; opacity: 0.7;"
+                                            >
+                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                            </svg>
+                                            <span class="item-name">{ws.name}</span>
+                                            {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
+                                        </button>
+                                    ))}
+                                {workspaces
+                                    .filter(ws => ws.id !== 'default' && !ws.builtin)
+                                    .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase())).length ===
+                                    0 && <div class="dropdown-empty">无匹配项目</div>}
+                            </div>
                             <button
                                 class="dropdown-item open-folder"
                                 onClick={() => {
                                     onOpenFolder();
                                     wsDropdownOpen.value = false;
+                                    setWsSearch('');
                                 }}
                             >
                                 <svg
@@ -235,8 +307,8 @@ export function NewChatHome({
                         speech.isRecording
                             ? t('terminal.speech.listening', language)
                             : mode.value === 'terminal'
-                              ? '描述要让命令行执行什么（纯 Shell 可留空）'
-                              : 'Ask anything, @ to mention, / for actions'
+                              ? t('newchat.terminalPlaceholder', language)
+                              : t('newchat.chatPlaceholder', language)
                     }
                     value={prompt}
                     onInput={(e: Event) => setPrompt((e.target as HTMLTextAreaElement).value)}
@@ -246,11 +318,11 @@ export function NewChatHome({
                 <div class="new-chat-actions-row">
                     <div class="actions-left">
                         {/* Mode toggle: chat vs terminal — icon segmented control */}
-                        <div class="new-chat-mode-switch" role="group" aria-label="模式切换">
+                        <div class="new-chat-mode-switch" role="group" aria-label={t('newchat.modeSwitch', language)}>
                             <button
                                 type="button"
                                 class={`mode-switch-btn ${mode.value === 'chat' ? 'active' : ''}`}
-                                title="对话"
+                                title={t('newchat.modeChatTitle', language)}
                                 aria-pressed={mode.value === 'chat'}
                                 onClick={() => (mode.value = 'chat')}
                             >
@@ -268,7 +340,7 @@ export function NewChatHome({
                             <button
                                 type="button"
                                 class={`mode-switch-btn ${mode.value === 'terminal' ? 'active' : ''}`}
-                                title="终端"
+                                title={t('newchat.modeTerminalTitle', language)}
                                 aria-pressed={mode.value === 'terminal'}
                                 onClick={() => (mode.value = 'terminal')}
                             >
@@ -286,16 +358,7 @@ export function NewChatHome({
                             </button>
                         </div>
 
-                        {/* File upload trigger */}
-                        <AttachButton
-                            className="action-btn-circle plus-btn"
-                            onSelect={attach.upload}
-                            uploading={attach.uploading}
-                            title={attach.error || t('chat.composer.attach', language)}
-                            ariaLabel={t('chat.composer.attach', language)}
-                        />
-
-                        {/* Model / Agent selector (chat) — or preset selector (terminal) */}
+                        {/* Model / Agent selector (chat) or preset selector (terminal) */}
                         <div class="select-dropdown-wrapper">
                             {mode.value === 'terminal' ? (
                                 <select
@@ -307,7 +370,7 @@ export function NewChatHome({
                                 >
                                     {TERMINAL_PRESETS.map(p => (
                                         <option key={p.value} value={p.value}>
-                                            {p.label}
+                                            {p.value === 'shell' ? t('newchat.terminalShell', language) : p.label}
                                         </option>
                                     ))}
                                 </select>
@@ -337,29 +400,54 @@ export function NewChatHome({
                             </svg>
                         </div>
 
-                        {/* Environment Picker Dropdown (Placeholder) */}
-                        <div class="select-dropdown-wrapper">
-                            <select class="new-chat-select env-select" disabled>
-                                <option value="local">💻 Local</option>
-                            </select>
-                            <svg
-                                class="select-chevron"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                            >
-                                <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                        </div>
+                        {/* Role selector — chat mode only */}
+                        {mode.value === 'chat' && (
+                            <div class="select-dropdown-wrapper">
+                                <select
+                                    class="new-chat-select role-select"
+                                    value={selectedRole}
+                                    aria-label={t('newchat.role.aria', language)}
+                                    title={t('newchat.role.pmHint', language)}
+                                    onChange={(e: Event) =>
+                                        setSelectedRole((e.target as HTMLSelectElement).value as ChatRole)
+                                    }
+                                >
+                                    {ROLE_OPTIONS.map(r => (
+                                        <option key={r.value} value={r.value}>
+                                            {t(r.labelKey, language)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <svg
+                                    class="select-chevron"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </div>
+                        )}
+
+                        {/* Permission mode — chat mode only, cycle button */}
+                        {mode.value === 'chat' && (
+                            <PermissionModePicker
+                                value={selectedPermissionMode}
+                                onChange={setSelectedPermissionMode}
+                                variant="cycle"
+                            />
+                        )}
                     </div>
 
                     <div class="actions-right">
-                        {/* Mic Button — system speech-to-text. Hidden in the
-                            desktop (Tauri) build, where the native webview lacks
-                            a working Web Speech API and users have their own IME /
-                            dictation. `speech.available` further requires the API +
-                            a secure context. */}
+                        <AttachButton
+                            className="action-btn-circle plus-btn"
+                            onSelect={attach.upload}
+                            uploading={attach.uploading}
+                            title={attach.error || t('chat.composer.attach', language)}
+                            ariaLabel={t('chat.composer.attach', language)}
+                        />
                         {!IS_DESKTOP && speech.available && (
                             <MicButton
                                 className="action-btn-circle mic-btn"

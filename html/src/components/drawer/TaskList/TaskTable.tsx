@@ -1,118 +1,89 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 
-import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
+import { PRIORITY_RANK } from './constants';
+import { GridCell } from './TaskGridCell';
+import { DataGrid, type GridColumn } from './DataGrid';
+import { ALL_COLUMNS, compareTasks, groupValue, isSortable, GROUP_OPTIONS } from './gridConfig';
 import type { Task } from './types';
-import { fmtDateOnly, orderForTable, recurrenceLabel } from './utils';
 
 interface TaskTableProps {
+    /** Tasks to render (already filtered by the shared TaskFilterBar). */
     tasks: Task[];
+    /** Full task set for dependency resolution and empty-state messaging. */
+    allTasks: Task[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
     onDeleteTask: (taskId: string) => void;
+    onPatchTask: (taskId: string, patch: Record<string, unknown>) => Promise<void>;
 }
 
-export function TaskTable({ tasks, loading, onSelectTask, onDeleteTask }: TaskTableProps) {
-    if (loading && tasks.length === 0) {
-        return <div class="task-loading">正在载入任务列表...</div>;
-    }
+const colDefs = new Map(ALL_COLUMNS.map(c => [c.key, c]));
+const TASK_COLUMNS: GridColumn[] = ALL_COLUMNS.map(c => ({
+    key: c.key,
+    label: c.label,
+    width: c.width,
+    locked: c.locked,
+    groupable: c.groupable,
+    sortable: isSortable(c.key),
+}));
 
+const rank = (t: Task) => PRIORITY_RANK[t.priority || 'medium'] ?? 2;
+
+export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask, onPatchTask }: TaskTableProps) {
     return (
-        <table class="task-table">
-            <thead>
-                <tr>
-                    <th class="col-priority">优先级</th>
-                    <th class="col-status">状态</th>
-                    <th class="col-issue" title="Issue 状态">
-                        {'\u{1F513}'}
-                    </th>
-                    <th class="col-title">任务</th>
-                    <th class="col-assignee">执行</th>
-                    <th class="col-date">计划开始</th>
-                    <th class="col-date">计划完成</th>
-                    <th class="col-date">实际完成</th>
-                    <th class="col-deps">前置依赖</th>
-                    <th class="col-actions" />
-                </tr>
-            </thead>
-            <tbody>
-                {tasks.length === 0 && (
-                    <tr class="task-empty-row">
-                        <td colSpan={10}>暂无任务 —— 点击上方「+ 新建任务」创建第一个。</td>
-                    </tr>
-                )}
-                {orderForTable(tasks).map(({ task, isChild }) => {
-                    const deps = tasks.filter(t => task.dependsOn?.includes(t.id));
-                    const closed = task.issueState === 'closed';
-                    const prio = task.priority || 'medium';
-                    return (
-                        <tr
-                            key={task.id}
-                            class={`task-row status-${task.status}${closed ? ' issue-closed' : ''}${
-                                isChild ? ' task-row-child' : ''
-                            }`}
-                            onClick={() => onSelectTask(task.id)}
-                        >
-                            <td class="col-priority">
-                                <span class={`priority-badge priority-${prio}`}>{PRIORITY_LABELS[prio] || prio}</span>
-                            </td>
-                            <td class="col-status">
-                                <span class={`task-status-badge ${task.status}`}>
-                                    {task.status === 'running' && <span class="pulse-indicator" />}
-                                    {STATUS_LABELS[task.status] || task.status}
-                                </span>
-                            </td>
-                            <td class="col-issue">{closed ? '\u{1F512}' : '\u{1F513}'}</td>
-                            <td class="col-title">
-                                {isChild && <span class="subtask-indent">└─</span>}
-                                {task.number ? <span class="task-number">#{task.number}</span> : null}
-                                <span class="task-row-title">{task.title}</span>
-                                {(task.labels || []).map(l => (
-                                    <span key={l} class="task-label-tag">
-                                        {l}
-                                    </span>
-                                ))}
-                                {task.recurrence && (
-                                    <span class="task-recur-tag" title={recurrenceLabel(task.recurrence)}>
-                                        🔁
-                                    </span>
-                                )}
-                                {(task.replies?.length ?? 0) > 0 && (
-                                    <span class="task-reply-count">💬 {task.replies!.length}</span>
-                                )}
-                            </td>
-                            <td class="col-assignee">{task.assignee || 'claudecode'}</td>
-                            <td class="col-date">{fmtDateOnly(task.plannedStart)}</td>
-                            <td class="col-date">{fmtDateOnly(task.plannedEnd)}</td>
-                            <td class="col-date">{fmtDateOnly(task.completedAt)}</td>
-                            <td class="col-deps">
-                                {deps.length > 0
-                                    ? deps.map(d => (
-                                          <span key={d.id} class="dep-tag">
-                                              {d.status === 'completed' ? '✓ ' : ''}
-                                              {d.title}
-                                          </span>
-                                      ))
-                                    : '—'}
-                            </td>
-                            <td class="col-actions">
-                                <button
-                                    class="task-delete-btn"
-                                    onClick={(e: Event) => {
-                                        e.stopPropagation();
-                                        onDeleteTask(task.id);
-                                    }}
-                                    title="删除任务"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="3 6 5 6 21 6" />
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    </svg>
-                                </button>
-                            </td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
+        <DataGrid<Task>
+            rows={tasks}
+            totalCount={allTasks.length}
+            columns={TASK_COLUMNS}
+            groupOptions={GROUP_OPTIONS as Array<[string, string]>}
+            getRowKey={t => t.id}
+            loading={loading}
+            emptyAll="暂无任务 —— 点击上方「+ 新建任务」创建第一个。"
+            emptyFiltered="没有匹配筛选条件的任务。"
+            compare={compareTasks}
+            defaultCompare={(a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt)}
+            groupValue={(t, key) => groupValue(t, key as Parameters<typeof groupValue>[1])}
+            hierarchy={{
+                parentId: t => t.parentId,
+                label: '显示父子任务层级',
+                hint: '排序时子任务只在父任务内排序',
+            }}
+            rowClass={(t, isChild) =>
+                `task-row status-${t.status}${t.issueState === 'closed' ? ' issue-closed' : ''}${
+                    isChild ? ' task-row-child' : ''
+                }`
+            }
+            onPatchRow={onPatchTask}
+            onOpenRow={t => onSelectTask(t.id)}
+            renderCell={(task, col, helpers) => (
+                <GridCell
+                    key={col.key}
+                    task={task}
+                    col={colDefs.get(col.key)!}
+                    allTasks={allTasks}
+                    isChild={helpers.isChild}
+                    editing={helpers.editing}
+                    onStartEdit={helpers.startEdit}
+                    onCommit={helpers.commit}
+                    onCancel={helpers.cancel}
+                    onOpenDetail={helpers.openDetail}
+                />
+            )}
+            renderActions={task => (
+                <Fragment>
+                    <button class="task-open-btn" onClick={() => onSelectTask(task.id)} title="打开详情">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                    </button>
+                    <button class="task-delete-btn" onClick={() => onDeleteTask(task.id)} title="删除任务">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                    </button>
+                </Fragment>
+            )}
+        />
     );
 }

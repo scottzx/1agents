@@ -19,28 +19,33 @@ func NewSessionStore(db *DB) *SessionStore {
 }
 
 const sessionCols = `id, project_id, task_id, name, agent_type, cc_project,
-	cc_session_id, acp_session_id, session_key, permission_mode,
-	created_at, last_event_at`
+	cc_session_id, acp_session_id, session_key, permission_mode, role,
+	created_at, last_event_at, archived_at`
 
 func scanSession(r rowScanner) (ChatSessionRecord, error) {
 	var rec ChatSessionRecord
-	var createdAt, lastEventAt string
+	var createdAt, lastEventAt, archivedAt string
 	if err := r.Scan(&rec.ID, &rec.WorkspaceID, &rec.TaskID, &rec.Name, &rec.AgentType,
 		&rec.CcProject, &rec.CcSessionID, &rec.AcpSessionID, &rec.SessionKey,
-		&rec.PermissionMode, &createdAt, &lastEventAt); err != nil {
+		&rec.PermissionMode, &rec.Role, &createdAt, &lastEventAt, &archivedAt); err != nil {
 		return ChatSessionRecord{}, err
 	}
 	rec.CreatedAt = strToTime(createdAt)
 	rec.LastEventAt = strToTime(lastEventAt)
+	rec.ArchivedAt = strToTime(archivedAt)
 	return rec, nil
 }
 
-// ListByWorkspace returns all chat sessions belonging to a workspace,
-// sorted newest-first by CreatedAt.
-func (s *SessionStore) ListByWorkspace(workspaceID string) ([]ChatSessionRecord, error) {
-	rows, err := s.db.sql.Query(
-		`SELECT `+sessionCols+` FROM sessions
-		 WHERE project_id = ? ORDER BY created_at DESC`, workspaceID)
+// ListByWorkspace returns chat sessions belonging to a workspace, sorted
+// newest-first by CreatedAt. Archived sessions are excluded unless
+// includeArchived is set (the 会话 archive view passes true).
+func (s *SessionStore) ListByWorkspace(workspaceID string, includeArchived bool) ([]ChatSessionRecord, error) {
+	query := `SELECT ` + sessionCols + ` FROM sessions WHERE project_id = ?`
+	if !includeArchived {
+		query += ` AND archived_at = ''`
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := s.db.sql.Query(query, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,13 +81,13 @@ func (s *SessionStore) Add(rec ChatSessionRecord) error {
 	}
 	res, err := s.db.sql.Exec(`
 		INSERT INTO sessions (id, project_id, task_id, name, agent_type, cc_project,
-			cc_session_id, acp_session_id, session_key, permission_mode,
-			created_at, last_event_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			cc_session_id, acp_session_id, session_key, permission_mode, role,
+			created_at, last_event_at, archived_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`,
 		rec.ID, rec.WorkspaceID, rec.TaskID, rec.Name, rec.AgentType, rec.CcProject,
-		rec.CcSessionID, rec.AcpSessionID, rec.SessionKey, rec.PermissionMode,
-		timeToStr(rec.CreatedAt), timeToStr(rec.LastEventAt))
+		rec.CcSessionID, rec.AcpSessionID, rec.SessionKey, rec.PermissionMode, rec.Role,
+		timeToStr(rec.CreatedAt), timeToStr(rec.LastEventAt), timeToStr(rec.ArchivedAt))
 	if err != nil {
 		return err
 	}
@@ -99,6 +104,16 @@ func (s *SessionStore) Add(rec ChatSessionRecord) error {
 // Delete removes the record with the given id. Returns ErrNotFound if no match.
 func (s *SessionStore) Delete(id string) error {
 	return s.execOne(`DELETE FROM sessions WHERE id = ?`, id)
+}
+
+// SetArchived soft-deletes (archived=true) or restores (archived=false) a
+// session by stamping/clearing archived_at. Returns ErrNotFound if no match.
+func (s *SessionStore) SetArchived(id string, archived bool) error {
+	var at time.Time
+	if archived {
+		at = time.Now().UTC()
+	}
+	return s.execOne(`UPDATE sessions SET archived_at = ? WHERE id = ?`, timeToStr(at), id)
 }
 
 // Touch updates the LastEventAt timestamp on a record.

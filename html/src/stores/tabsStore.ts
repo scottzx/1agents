@@ -52,7 +52,34 @@ export const tabs = signal<Tab[]>([
 // project's task kanban by default.
 export const activeTabId = signal('tasks');
 export const activeTab = signal<'terminal' | 'agents' | 'console' | 'folders' | 'new_chat'>('terminal');
-export const activeDrawerTab = signal<RightDrawerTab>('none');
+
+/**
+ * The two-column right-artifact tabs. Only these are persisted across
+ * reloads (so the workbench restores which column was open); full-page
+ * modules and `pm` are transient.
+ */
+const CONTENT_DRAWER_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'git'];
+const DRAWER_KEY = '1agents-drawer-tab';
+/**
+ * Persist the artifact column's state across reloads. We store content tabs
+ * and the explicit `'none'` (so a user-closed column stays closed); transient
+ * tabs (pm / full-page modules) are left out so they don't clobber the
+ * remembered content tab.
+ */
+const persistDrawerTab = (tab: RightDrawerTab) => {
+    // Desktop-only: mobile keeps its unchanged full-screen overlay drawer.
+    if (ui.isMobile.value) return;
+    if (tab === 'none' || CONTENT_DRAWER_TABS.includes(tab)) localStorage.setItem(DRAWER_KEY, tab);
+};
+const initialDrawerTab = (): RightDrawerTab => {
+    // Mobile boots to the workbench (drawer closed) exactly as before.
+    if (ui.isMobile.value) return 'none';
+    const stored = localStorage.getItem(DRAWER_KEY) as RightDrawerTab | null;
+    // First-ever desktop load → project-landing default (项目管理 / kanban first).
+    if (stored === null) return 'tasks';
+    return CONTENT_DRAWER_TABS.includes(stored) ? stored : 'none';
+};
+export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
 /** Selected discovery category, drives the sidebar second-level menu. */
 export const discoveryCategory = signal('featured');
 
@@ -155,9 +182,34 @@ export const updateBrowserUrl = (tabId: string, url: string) => {
     });
 };
 
+/**
+ * Open a two-column content tab directly (no toggle) — used by the stage
+ * entry defaults. `tasks` carries no module/cc URL; `channels` needs its
+ * embed URL loaded.
+ */
+export const openContentTab = (tab: RightDrawerTab) => {
+    if (activeDrawerTab.value === tab) return;
+    activeDrawerTab.value = tab;
+    activeModulePath.value = '';
+    persistDrawerTab(tab);
+    if (tab === 'channels') wsStore.loadCcConnectUrl();
+    ui.triggerTerminalFit();
+};
+
+/** Close the right content column. */
+export const closeContentTab = () => {
+    if (activeDrawerTab.value === 'none') return;
+    activeDrawerTab.value = 'none';
+    activeModulePath.value = '';
+    persistDrawerTab('none');
+    ui.triggerTerminalFit();
+};
+
 // Coze click shortcut toggle dynamic drawer logic
 export const toggleDrawerTab = (tab: RightDrawerTab) => {
-    if (tab === 'tasks') {
+    // Mobile keeps the legacy 任务 subview (drives activeTabId); desktop
+    // treats 项目管理 as a normal right-column content tab.
+    if (tab === 'tasks' && ui.isMobile.value) {
         selectTab('tasks');
         return;
     }
@@ -165,17 +217,22 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
         // Collapse the drawer
         activeDrawerTab.value = 'none';
         activeModulePath.value = '';
+        persistDrawerTab('none');
     } else {
-        // Expand drawer with smart width: wider for channels, git, and files panels
+        // Expand drawer with smart width: widest for tasks, wide for
+        // channels/git/files, narrow otherwise.
         const smartWidth =
-            tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
-                ? Math.max(ui.rightPanelWidth.value, 450)
-                : 320;
+            tab === 'tasks'
+                ? Math.max(ui.rightPanelWidth.value, 500)
+                : tab === 'channels' || tab === 'providers' || tab === 'git' || tab === 'files'
+                  ? Math.max(ui.rightPanelWidth.value, 450)
+                  : 320;
 
         // Module-backed tabs get their entry path; non-module tabs clear it.
         const mod = getModuleByTab(tab);
         ui.rightPanelWidth.value = smartWidth;
         activeDrawerTab.value = tab;
+        persistDrawerTab(tab);
         activeModulePath.value = mod ? mod.entryPath : '';
         if (tab === 'channels') {
             wsStore.loadCcConnectUrl();

@@ -49,6 +49,7 @@ export const zhCN: Record<string, string> = {
     'app.toast.workspaceUpdated': '工作空间已更新 ✓',
     'app.toast.workspaceUpdateFailed': '更新失败: {err}',
     'app.toast.workspaceDeleteLast': '无法删除，系统需保留至少一个工作空间',
+    'app.toast.workspaceDeleteBuiltin': '内置工作空间不可删除',
     'app.toast.workspaceDeleted': '工作空间已删除 ✓',
     'app.toast.workspaceDeleteFailed': '删除失败: {err}',
     'app.toast.workspaceReorderFailed': '重排序失败: {err}',
@@ -105,6 +106,19 @@ export const zhCN: Record<string, string> = {
     'header.channels': 'AI 渠道连接',
     'header.files': '文件浏览器',
     'header.git': '版本控制 (Git)',
+    // ── Two-column workbench toolbar (WorkspaceHeader, desktop) ──
+    'header.col.tasks': '项目管理',
+    'header.col.channels': '渠道',
+    'header.col.files': '文件',
+    'header.col.git': 'Git',
+    'header.col.expandChat': '展开聊天栏',
+    'header.col.collapseChat': '收起聊天栏',
+    // ── New Conversation role selector ──
+    'newchat.role.aria': '会话角色',
+    'newchat.role.general': '通用',
+    'newchat.role.pm': 'PM',
+    'newchat.role.pmHint': '选择会话角色（PM = AI 项目经理：聊需求，自动拆解成带依赖的任务）',
+    'newchat.noProject': '无项目（跨项目）',
     'header.menu': '菜单',
     'header.openMenu': '打开功能菜单',
     'header.mobile.switchView': '切换视图',
@@ -123,6 +137,8 @@ export const zhCN: Record<string, string> = {
 
     // ── Sidebar (LeftSidebar.tsx) ─────────────────────────────────────────
     'sidebar.collapse': '折叠侧边栏',
+    'sidebar.conversations': '对话',
+    'sidebar.noChats': '暂无聊天',
     'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
     'sidebar.empty': '暂无工作空间',
@@ -136,6 +152,7 @@ export const zhCN: Record<string, string> = {
     'sidebar.chatSession': '聊天会话',
     'sidebar.noSessions': '暂无会话 — 点击工作空间旁的 + 创建',
     'sidebar.closeSession': '关闭会话',
+    'sidebar.archiveSession': '归档会话',
     'sidebar.renameSession': '重命名会话',
     'sidebar.providersTitle': '模型与服务商管理',
     'sidebar.providers': '模型管理',
@@ -376,6 +393,9 @@ export const zhCN: Record<string, string> = {
     'git.toast.pullSuccess': '拉取更新成功 ✓',
     'git.toast.pushFailedPrefix': '推送失败: {err}',
     'git.toast.pullFailedPrefix': '拉取失败: {err}',
+    'git.toast.fetching': '正在同步远程状态…',
+    'git.toast.fetchSuccess': '已同步远程状态 ✓',
+    'git.toast.fetchFailedPrefix': '同步失败: {err}',
     'git.toast.hashCopied': '提交哈希已成功复制 📋',
 
     'git.diff.close': '关闭差异',
@@ -387,6 +407,7 @@ export const zhCN: Record<string, string> = {
     'git.action.stage': '暂存文件',
     'git.action.push': '推送 (Push)',
     'git.action.pull': '拉取 (Pull)',
+    'git.action.fetch': '同步远程状态 (Fetch)',
 
     'git.clean.title': '工作区非常干净',
     'git.clean.desc': '没有任何未提交的更改。您可以安心开发新功能或切换到其他工作分支。',
@@ -427,6 +448,22 @@ export const zhCN: Record<string, string> = {
     'git.log.empty': '未匹配到任何提交记录',
     'git.log.tooltip': '作者: {author}\n完整哈希: {hash}',
     'git.log.copyHash': '点击复制完整哈希值',
+
+    // Worktrees
+    'git.worktrees.title': 'Worktrees',
+    'git.worktrees.main': '主',
+    'git.worktrees.current': '当前',
+    'git.worktrees.detached': '(分离 HEAD)',
+    'git.worktrees.clean': '没有未提交的更改',
+
+    // Graph history
+    'git.graph.title': '提交图形',
+    'git.graph.empty': '暂无提交记录',
+    'git.graph.noFiles': '该提交没有文件变更',
+
+    // Worktree switcher & commit box
+    'git.commit.sectionTitle': '提交说明',
+    'git.worktrees.switchTitle': '切换 worktree',
 
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
     'terminal.label.input': '输入',
@@ -470,6 +507,7 @@ export const zhCN: Record<string, string> = {
     'settings.nav.general': '通用与外观',
     'settings.nav.security': '安全设置',
     'settings.nav.agents': '智能体',
+    'settings.nav.relay': '中转旁路',
     'settings.nav.about': '关于与支持',
 
     'settings.agents.title': '智能体检测',
@@ -614,6 +652,52 @@ export const zhCN: Record<string, string> = {
     'app.ota.banner.body': '发现新版本: {current} → {latest}',
     'app.ota.banner.refresh': '立即刷新',
     'app.ota.banner.dismiss': '稍后再说',
+
+    // ── Sidebar mode toggle & nav controls (LeftSidebar.tsx) ─────────────
+    'sidebar.mode.assistant': '助手',
+    'sidebar.mode.project': '项目',
+    'sidebar.navCtrl.newConversation': '新对话',
+    'sidebar.navCtrl.history': '对话历史',
+    'sidebar.navCtrl.scheduledTasks': '定时任务',
+
+    // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
+    'newchat.wsDropdownHeader': '切换项目工作空间',
+    'newchat.terminalShell': '纯 Shell',
+    'newchat.terminalPlaceholder': '描述要让命令行执行什么（纯 Shell 可留空）',
+    'newchat.chatPlaceholder': '输入问题，@ 提及，/ 操作',
+    'newchat.modeSwitch': '模式切换',
+    'newchat.modeChatTitle': '对话',
+    'newchat.modeTerminalTitle': '终端',
+
+    // ── Sessions grid (sessionGrid.tsx / SessionsView.tsx) ────────────────
+    'session.col.name': '会话标题',
+    'session.col.role': '角色',
+    'session.col.status': '状态',
+    'session.col.created': '创建',
+    'session.col.lastActivity': '最近活动',
+    'session.col.task': '关联任务',
+    'session.group.none': '不分组',
+    'session.role.pmo': '总管',
+    'session.role.pm': '项目经理',
+    'session.role.executor': '执行者',
+    'session.role.verifier': '验收者',
+    'session.role.general': '对话',
+    'session.status.archived': '已归档',
+    'session.status.active': '活跃',
+    'session.unnamed': '(未命名会话)',
+    'session.openTitle': '打开会话',
+    'session.taskTitle': '查看关联任务时间轴',
+    'session.taskLink': '关联任务 ↗',
+    'session.taskBadge': '关联任务',
+    'sessions.searchPlaceholder': '按会话标题搜索…',
+    'sessions.emptyAll': '暂无会话。',
+    'sessions.emptyFiltered': '没有匹配的会话标题。',
+    'sessions.restoreTitle': '恢复对话（取消归档并打开）',
+
+    // ── Chat (MessageList.tsx, ChatPanel.tsx) ─────────────────────────────
+    'chat.initializing': '会话正在初始化…',
+    'chat.empty.send': '发送消息开始对话',
+    'chat.connecting': '正在连接…',
 };
 
 // English dictionary.
@@ -665,6 +749,7 @@ export const enUS: Record<string, string> = {
     'app.toast.workspaceUpdated': 'Workspace updated ✓',
     'app.toast.workspaceUpdateFailed': 'Update failed: {err}',
     'app.toast.workspaceDeleteLast': 'Cannot delete — at least one workspace must remain',
+    'app.toast.workspaceDeleteBuiltin': 'Built-in workspace cannot be deleted',
     'app.toast.workspaceDeleted': 'Workspace deleted ✓',
     'app.toast.workspaceDeleteFailed': 'Delete failed: {err}',
     'app.toast.workspaceReorderFailed': 'Reorder failed: {err}',
@@ -720,6 +805,20 @@ export const enUS: Record<string, string> = {
     'header.channels': 'AI Channels',
     'header.files': 'File Browser',
     'header.git': 'Version Control (Git)',
+    // ── Two-column workbench toolbar (WorkspaceHeader, desktop) ──
+    'header.col.tasks': 'Project',
+    'header.col.channels': 'Channels',
+    'header.col.files': 'Files',
+    'header.col.git': 'Git',
+    'header.col.expandChat': 'Expand chat column',
+    'header.col.collapseChat': 'Collapse chat column',
+    // ── New Conversation role selector ──
+    'newchat.role.aria': 'Conversation role',
+    'newchat.role.general': 'General',
+    'newchat.role.pm': 'PM',
+    'newchat.role.pmHint':
+        'Pick a conversation role (PM = AI Project Manager: discuss requirements, auto-split into dependency-aware tasks)',
+    'newchat.noProject': 'No project (cross-project)',
     'header.menu': 'Menu',
     'header.openMenu': 'Open feature menu',
     'header.mobile.switchView': 'Switch view',
@@ -738,6 +837,8 @@ export const enUS: Record<string, string> = {
 
     // ── Sidebar ──────────────────────────────────────────────────────────
     'sidebar.collapse': 'Collapse sidebar',
+    'sidebar.conversations': 'Conversations',
+    'sidebar.noChats': 'No chats yet',
     'sidebar.workspaces': 'Workspaces',
     'sidebar.newWorkspace': 'New workspace',
     'sidebar.empty': 'No workspaces yet',
@@ -751,6 +852,7 @@ export const enUS: Record<string, string> = {
     'sidebar.chatSession': 'Chat Session',
     'sidebar.noSessions': 'No sessions — click + next to a workspace to create one',
     'sidebar.closeSession': 'Close session',
+    'sidebar.archiveSession': 'Archive session',
     'sidebar.renameSession': 'Rename session',
     'sidebar.providersTitle': 'Model & Provider Management',
     'sidebar.providers': 'Models',
@@ -996,6 +1098,9 @@ export const enUS: Record<string, string> = {
     'git.toast.pullSuccess': 'Pulled updates ✓',
     'git.toast.pushFailedPrefix': 'Push failed: {err}',
     'git.toast.pullFailedPrefix': 'Pull failed: {err}',
+    'git.toast.fetching': 'Syncing with remote…',
+    'git.toast.fetchSuccess': 'Synced with remote ✓',
+    'git.toast.fetchFailedPrefix': 'Fetch failed: {err}',
     'git.toast.hashCopied': 'Commit hash copied 📋',
 
     'git.diff.close': 'Close diff',
@@ -1007,6 +1112,7 @@ export const enUS: Record<string, string> = {
     'git.action.stage': 'Stage file',
     'git.action.push': 'Push',
     'git.action.pull': 'Pull',
+    'git.action.fetch': 'Fetch (sync with remote)',
 
     'git.clean.title': 'Working tree clean',
     'git.clean.desc': 'Nothing to commit. Feel free to start a new feature or switch to another branch.',
@@ -1047,6 +1153,22 @@ export const enUS: Record<string, string> = {
     'git.log.empty': 'No commits matched',
     'git.log.tooltip': 'Author: {author}\nFull hash: {hash}',
     'git.log.copyHash': 'Click to copy the full hash',
+
+    // Worktrees
+    'git.worktrees.title': 'Worktrees',
+    'git.worktrees.main': 'main',
+    'git.worktrees.current': 'current',
+    'git.worktrees.detached': '(detached HEAD)',
+    'git.worktrees.clean': 'No uncommitted changes',
+
+    // Graph history
+    'git.graph.title': 'Commit Graph',
+    'git.graph.empty': 'No commits found',
+    'git.graph.noFiles': 'No file changes in this commit',
+
+    // Worktree switcher & commit box
+    'git.commit.sectionTitle': 'Commit message',
+    'git.worktrees.switchTitle': 'Switch worktree',
 
     // ── Terminal ─────────────────────────────────────────────────────────
     'terminal.label.input': 'Input',
@@ -1092,6 +1214,7 @@ export const enUS: Record<string, string> = {
     'settings.nav.general': 'General & Appearance',
     'settings.nav.security': 'Security',
     'settings.nav.agents': 'Agents',
+    'settings.nav.relay': 'Relay Bypass',
     'settings.nav.about': 'About & Support',
 
     'settings.agents.title': 'Agent Detection',
@@ -1244,4 +1367,50 @@ export const enUS: Record<string, string> = {
     'app.ota.banner.body': 'New version available: {current} → {latest}',
     'app.ota.banner.refresh': 'Refresh now',
     'app.ota.banner.dismiss': 'Dismiss',
+
+    // ── Sidebar mode toggle & nav controls (LeftSidebar.tsx) ─────────────
+    'sidebar.mode.assistant': 'Assistant',
+    'sidebar.mode.project': 'Project',
+    'sidebar.navCtrl.newConversation': 'New Conversation',
+    'sidebar.navCtrl.history': 'Conversation History',
+    'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
+
+    // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
+    'newchat.wsDropdownHeader': 'Switch project workspace',
+    'newchat.terminalShell': 'Shell',
+    'newchat.terminalPlaceholder': 'Describe what to run (leave blank for a bare shell)',
+    'newchat.chatPlaceholder': 'Ask anything, @ to mention, / for actions',
+    'newchat.modeSwitch': 'Switch mode',
+    'newchat.modeChatTitle': 'Chat',
+    'newchat.modeTerminalTitle': 'Terminal',
+
+    // ── Sessions grid (sessionGrid.tsx / SessionsView.tsx) ────────────────
+    'session.col.name': 'Session title',
+    'session.col.role': 'Role',
+    'session.col.status': 'Status',
+    'session.col.created': 'Created',
+    'session.col.lastActivity': 'Last activity',
+    'session.col.task': 'Linked task',
+    'session.group.none': 'No grouping',
+    'session.role.pmo': 'PMO',
+    'session.role.pm': 'PM',
+    'session.role.executor': 'Executor',
+    'session.role.verifier': 'Verifier',
+    'session.role.general': 'General',
+    'session.status.archived': 'Archived',
+    'session.status.active': 'Active',
+    'session.unnamed': '(Unnamed)',
+    'session.openTitle': 'Open session',
+    'session.taskTitle': 'View linked task timeline',
+    'session.taskLink': 'Linked task ↗',
+    'session.taskBadge': 'Linked task',
+    'sessions.searchPlaceholder': 'Search by title…',
+    'sessions.emptyAll': 'No sessions yet.',
+    'sessions.emptyFiltered': 'No sessions match your search.',
+    'sessions.restoreTitle': 'Restore (unarchive and open)',
+
+    // ── Chat (MessageList.tsx, ChatPanel.tsx) ─────────────────────────────
+    'chat.initializing': 'Session is initializing…',
+    'chat.empty.send': 'Send a message to start the conversation',
+    'chat.connecting': 'Connecting…',
 };

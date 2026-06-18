@@ -13,7 +13,7 @@ export function SessionStatusBar({ session, connection, typing }: SessionStatusB
     const connLabel = connectionLabel(connection);
     return (
         <div class="chat-status-bar">
-            <AgentAvatar agentType={session.agentType} class="chat-status-avatar" />
+            <AgentAvatar agentType={session.agentType} role={session.role} class="chat-status-avatar" />
             <span class="chat-status-agent">{AGENT_TYPE_LABELS[session.agentType] ?? session.agentType}</span>
             <span class={`chat-status-conn chat-status-${connection}`}>{connLabel}</span>
             {typing && <span class="chat-status-typing">正在生成…</span>}
@@ -34,6 +34,6 @@ function connectionLabel(state: ConnectionState): string {
         case 'closed':
             return '已关闭';
         case 'error':
-            return '错误';
+            return '会话不可用';
     }
 }

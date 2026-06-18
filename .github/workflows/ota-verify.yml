@@ -37,13 +37,13 @@ jobs:
 
           # Validate JSON schema (minimal check: required keys)
           python3 -c "
-import json
+          import json
 
-with open('_fake/manifest.json') as f:
-    m = json.load(f)
-assert 'components' in m, 'missing components'
-assert 'frontend' in m['components'], 'missing frontend'
-assert 'backend' in m['components'], 'missing backend'
-assert m['channel'] == 'stable'
-print('OK: manifest.json passes schema check')
+          with open('_fake/manifest.json') as f:
+              m = json.load(f)
+          assert 'components' in m, 'missing components'
+          assert 'frontend' in m['components'], 'missing frontend'
+          assert 'backend' in m['components'], 'missing backend'
+          assert m['channel'] == 'stable'
+          print('OK: manifest.json passes schema check')
           "

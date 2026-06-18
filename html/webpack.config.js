@@ -25,7 +25,10 @@ function getBackendPort() {
     }
 }
 
-const backendPort = getBackendPort();
+// BACKEND_PORT env overrides the daemon.json lookup so a dev server can be
+// pointed at an isolated backend instance (e.g. a feature build) without
+// touching the shared ~/.1agents/daemon.json.
+const backendPort = process.env.BACKEND_PORT || getBackendPort();
 
 // Find the first free port at or above `startPort` so `yarn start` never
 // crashes with EADDRINUSE — it just rolls forward to the next open port.
@@ -81,6 +84,12 @@ const baseConfig = {
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: devMode ? '[name].js' : '[name].[contenthash].js',
+        // Absolute public path so the SPA boots from any URL depth. Task
+        // permalinks like /{project}/tasks/{number} serve index.html, and with
+        // relative asset paths the browser would resolve app.js against
+        // /{project}/tasks/ and 404. Also fixes runtime chunk/worker loading at
+        // depth. The Go backend always serves the frontend from root.
+        publicPath: '/',
     },
     module: {
         rules: [

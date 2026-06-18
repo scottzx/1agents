@@ -1,13 +1,15 @@
 import { h, Component } from 'preact';
-import { AGENT_TYPE_LABELS, type AgentType } from '../types';
+import { t, getLang } from '../../i18n';
+import { AGENT_TYPE_LABELS, type AgentType, type PermissionMode } from '../types';
 import { AgentTypePicker } from './AgentTypePicker';
+import { PermissionModePicker } from './PermissionModePicker';
 
 interface SessionCreateModalProps {
     workspaceId: string;
     workspaceName: string;
     defaultAgent: AgentType;
     onCancel: () => void;
-    onSubmit: (name: string, agentType: AgentType) => void;
+    onSubmit: (name: string, agentType: AgentType, permissionMode: PermissionMode) => void;
     onPickAgent?: (onChange: (t: AgentType) => void) => void;
 }
 
@@ -20,6 +22,7 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
     state = {
         name: '',
         agentType: this.props.defaultAgent,
+        permissionMode: 'approve-reads' as PermissionMode,
     };
 
     componentDidUpdate(prevProps: SessionCreateModalProps) {
@@ -30,6 +33,8 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
 
     render() {
         const { workspaceName, onCancel, onSubmit } = this.props;
+        const { name, agentType, permissionMode } = this.state;
+        const lang = getLang();
         return (
             <div class="ws-modal-overlay" onClick={onCancel}>
                 <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
@@ -44,28 +49,30 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
                         <input
                             class="ws-modal-input"
                             placeholder="留空将自动生成"
-                            value={this.state.name}
+                            value={name}
                             onInput={(e: Event) => this.setState({ name: (e.target as HTMLInputElement).value })}
                             onKeyDown={(e: KeyboardEvent) => {
-                                if (e.key === 'Enter') onSubmit(this.state.name, this.state.agentType);
+                                if (e.key === 'Enter') onSubmit(name, agentType, permissionMode);
                             }}
                             autoFocus
                         />
                         <label class="ws-modal-label">智能体类型</label>
-                        <AgentTypePicker value={this.state.agentType} onChange={t => this.setState({ agentType: t })} />
+                        <AgentTypePicker value={agentType} onChange={v => this.setState({ agentType: v })} />
                         <p class="ws-modal-hint">
-                            会话创建后将固定使用 {AGENT_TYPE_LABELS[this.state.agentType] ?? this.state.agentType}，
-                            不可在会话过程中更换。
+                            会话创建后将固定使用 {AGENT_TYPE_LABELS[agentType] ?? agentType}， 不可在会话过程中更换。
                         </p>
+                        <label class="ws-modal-label">{t('chat.permission.mode.label', lang)}</label>
+                        <PermissionModePicker
+                            value={permissionMode}
+                            onChange={v => this.setState({ permissionMode: v })}
+                            variant="select"
+                        />
                     </div>
                     <div class="ws-modal-footer">
                         <button class="ws-modal-cancel" onClick={onCancel}>
                             取消
                         </button>
-                        <button
-                            class="ws-modal-confirm"
-                            onClick={() => onSubmit(this.state.name, this.state.agentType)}
-                        >
+                        <button class="ws-modal-confirm" onClick={() => onSubmit(name, agentType, permissionMode)}>
                             创建
                         </button>
                     </div>

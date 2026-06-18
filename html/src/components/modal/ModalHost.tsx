@@ -66,9 +66,16 @@ export function ModalHost() {
                             workspaceName={ws.name}
                             defaultAgent={ws.defaultAgent || DEFAULT_AGENT_TYPE}
                             onCancel={modal.closeChatCreate}
-                            onSubmit={(name, agentType) => {
+                            onSubmit={(name, agentType, permissionMode) => {
                                 modal.closeChatCreate();
-                                sess.createChatSession(chatCreateWsId, name, agentType);
+                                sess.createChatSession(
+                                    chatCreateWsId,
+                                    name,
+                                    agentType,
+                                    undefined,
+                                    undefined,
+                                    permissionMode
+                                );
                             }}
                         />
                     );

@@ -19,11 +19,49 @@ type TaskStore struct {
 	// importMu serializes the one-time lazy import of a workspace's legacy
 	// tasks.json so concurrent Loads don't double-insert.
 	importMu sync.Mutex
+	// mutateMu guards wsLocks; wsLocks holds one mutex per workspace path so
+	// Mutate can serialize the Load→modify→Save cycle (see Mutate).
+	mutateMu sync.Mutex
+	wsLocks  map[string]*sync.Mutex
 }
 
 // NewTaskStore returns a TaskStore over db.
 func NewTaskStore(db *DB) *TaskStore {
 	return &TaskStore{db: db}
+}
+
+// wsMutex returns the per-workspace lock used by Mutate, creating it on first use.
+func (s *TaskStore) wsMutex(workspacePath string) *sync.Mutex {
+	s.mutateMu.Lock()
+	defer s.mutateMu.Unlock()
+	if s.wsLocks == nil {
+		s.wsLocks = make(map[string]*sync.Mutex)
+	}
+	m, ok := s.wsLocks[workspacePath]
+	if !ok {
+		m = &sync.Mutex{}
+		s.wsLocks[workspacePath] = m
+	}
+	return m
+}
+
+// Mutate runs fn against the workspace's task config under a per-workspace lock
+// and persists the result when fn reports a change. Serializing the whole
+// Load→modify→Save cycle is what prevents concurrent writers (the scheduler
+// tick, the headless runner's finish, and the chat-ws handlers) from clobbering
+// each other's status updates with a stale whole-config snapshot.
+func (s *TaskStore) Mutate(workspacePath string, fn func(cfg *TasksConfig) (changed bool)) error {
+	m := s.wsMutex(workspacePath)
+	m.Lock()
+	defer m.Unlock()
+	cfg, err := s.Load(workspacePath)
+	if err != nil {
+		return err
+	}
+	if fn(cfg) {
+		return s.Save(workspacePath, cfg)
+	}
+	return nil
 }
 
 // taskCols is the canonical task column list shared by Load and GetTask
@@ -658,6 +696,49 @@ func (s *TaskStore) GetTask(taskID string) (Task, bool, error) {
 		return Task{}, false, err
 	}
 	return t, true, nil
+}
+
+// GetTaskByNumber returns the task carrying the per-project short number (#N)
+// within projectID, fully hydrated (children + workspace path). ok=false when
+// no task holds that number — e.g. a dangling #N reference in someone's text.
+func (s *TaskStore) GetTaskByNumber(projectID string, number int) (Task, bool, error) {
+	var id string
+	err := s.db.sql.QueryRow(
+		`SELECT id FROM tasks WHERE project_id = ? AND number = ?`, projectID, number).Scan(&id)
+	if err == sql.ErrNoRows {
+		return Task{}, false, nil
+	}
+	if err != nil {
+		return Task{}, false, err
+	}
+	return s.GetTask(id)
+}
+
+// ResolveByNumber resolves a (project, number) permalink reference to a task.
+// project may be either a project id or a display name — the id is tried first,
+// then the name (so a project literally named like an id still resolves). It
+// returns the task, its owning project id (== workspace id), and ok=false when
+// either the project or the number is unknown (callers render a friendly
+// not-found rather than erroring).
+func (s *TaskStore) ResolveByNumber(project string, number int) (Task, string, bool, error) {
+	p, ok, err := s.db.GetProject(project)
+	if err != nil {
+		return Task{}, "", false, err
+	}
+	if !ok {
+		p, ok, err = s.db.GetProjectByName(project)
+		if err != nil {
+			return Task{}, "", false, err
+		}
+		if !ok {
+			return Task{}, "", false, nil
+		}
+	}
+	t, ok, err := s.GetTaskByNumber(p.ID, number)
+	if err != nil || !ok {
+		return Task{}, "", false, err
+	}
+	return t, p.ID, true, nil
 }
 
 func (s *TaskStore) execOne(query string, args ...any) error {

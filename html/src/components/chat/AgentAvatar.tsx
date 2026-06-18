@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import type { AgentType } from '../types';
+import { RINGED_ROLES, type SessionRole } from '../types';
 import claudeLogo from '../../assets/harness-logos/claude-code-logo.svg';
 import codexLogo from '../../assets/harness-logos/codex-logo.svg';
 import cursorLogo from '../../assets/harness-logos/cursor-logo.svg';
@@ -11,6 +12,16 @@ interface AgentAvatarProps {
     agentType: AgentType | string;
     class?: string;
     title?: string;
+    /**
+     * Conversation role — adds a colored ring classifying the role (PMO /
+     * PM / Executor / Verifier). Baseline ('general' / empty) gets no ring.
+     */
+    role?: string;
+}
+
+/** Maps a role string to its avatar ring modifier class (or '' for baseline). */
+function roleRingClass(role?: string): string {
+    return role && RINGED_ROLES.includes(role as SessionRole) ? `agent-avatar--role-${role}` : '';
 }
 
 const AGENT_LOGOS: Record<string, string> = {
@@ -21,9 +32,9 @@ const AGENT_LOGOS: Record<string, string> = {
     openclaw: openclawLogo,
 };
 
-export function AgentAvatar({ agentType, class: className, title }: AgentAvatarProps) {
+export function AgentAvatar({ agentType, class: className, title, role }: AgentAvatarProps) {
     const logoSrc = AGENT_LOGOS[agentType];
-    const classes = ['agent-avatar', className].filter(Boolean).join(' ');
+    const classes = ['agent-avatar', roleRingClass(role), className].filter(Boolean).join(' ');
 
     if (!logoSrc) {
         // Fallback: render first two letters in uppercase
