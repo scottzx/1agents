@@ -789,3 +789,210 @@
   0% { transform: translateY(0); }
   50% { transform: translateY(2px); }
 }
+
+/* ── Stage 2/3 Gamified Dashboard Styles ── */
+.pixel-wb-status-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Effort LED Indicator */
+.pixel-effort-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #000;
+  border: 1px solid var(--pixel-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.pixel-effort-led .pixel-led-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: block;
+}
+.pixel-effort-led.effort-low .pixel-led-dot {
+  background: var(--pixel-green);
+  box-shadow: 0 0 6px var(--pixel-green-glow);
+}
+.pixel-effort-led.effort-middle .pixel-led-dot {
+  background: var(--pixel-cyan);
+  box-shadow: 0 0 6px var(--pixel-cyan-glow);
+}
+.pixel-effort-led.effort-high .pixel-led-dot {
+  background: var(--pixel-orange);
+  box-shadow: 0 0 6px var(--pixel-orange-glow);
+  animation: led-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes led-pulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+/* Employee HUD & Stamina Battery */
+.pixel-employee-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.pixel-stamina-battery {
+  width: 32px;
+  height: 8px;
+  background: #000;
+  border: 1px solid var(--pixel-border-light);
+  padding: 1px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.pixel-stamina-battery::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: 1px;
+  width: 2px;
+  height: 4px;
+  background: var(--pixel-border-light);
+}
+.pixel-stamina-fill {
+  height: 100%;
+  background: var(--pixel-green);
+}
+.pixel-stamina-fill.low { background: var(--pixel-red); }
+.pixel-stamina-fill.medium { background: var(--pixel-gold); }
+.pixel-stamina-fill.high { background: var(--pixel-green); }
+
+/* Active Skills List */
+.pixel-active-skills {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0;
+  overflow: hidden;
+}
+.pixel-skill-tag {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--pixel-cyan);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--pixel-border);
+  padding: 2px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+/* Zzz sleeping bubble */
+.pixel-zzz-bubble {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--pixel-cyan);
+  animation: zzz-float 2s ease-in-out infinite;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--pixel-border);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+@keyframes zzz-float {
+  0% { transform: translate(-50%, 0) scale(0.8); opacity: 0; }
+  50% { transform: translate(-40%, -10px) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -20px) scale(0.9); opacity: 0; }
+}
+
+/* Building in Public Release Modal */
+.release-dialog {
+  width: 600px !important;
+}
+.release-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.release-metric-card {
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid var(--pixel-border);
+  padding: 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+}
+.release-metric-card .metric-icon {
+  font-size: 20px;
+}
+.release-metric-card .metric-label {
+  font-size: 10px;
+  color: var(--pixel-border-light);
+}
+.release-metric-card .metric-val {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: var(--pixel-gold);
+}
+.release-reviews-box {
+  background: #000;
+  border: 2px solid var(--pixel-border);
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+}
+.release-reviews-box .reviews-header {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--pixel-gold);
+  margin-bottom: 8px;
+}
+.release-reviews-box .reviews-list {
+  max-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.release-reviews-box .review-item {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--pixel-text);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+}
+.release-phase-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.release-phase-selector .phase-btn {
+  background: #000;
+  border: 2px solid var(--pixel-border);
+  color: var(--pixel-border-light);
+  padding: 6px 12px;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  cursor: pointer;
+}
+.release-phase-selector .phase-btn.active {
+  border-color: var(--pixel-cyan);
+  color: var(--pixel-cyan);
+  box-shadow: 0 0 6px var(--pixel-cyan-glow);
+}
+.release-phase-selector .phase-btn:hover {
+  border-color: #fff;
+  color: #fff;
+}

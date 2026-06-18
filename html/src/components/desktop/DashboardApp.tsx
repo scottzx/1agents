@@ -5,7 +5,7 @@ import { workspaceService } from '../../services/workspaceService';
 import * as wsStore from '../../stores/workspaceStore';
 import * as stage from '../../stores/stageStore';
 import * as ui from '../../stores/uiStore';
-import { DashboardWorkshop } from './DashboardWorkshop';
+import { DashboardWorkshop, MockEmployee } from './DashboardWorkshop';
 
 class PixelSoundManager {
     private ctx: AudioContext | null = null;
@@ -147,6 +147,19 @@ interface DashboardAppState {
 
     // Rocket launch state
     launchingProjectId: string | null;
+
+    // Gamification state
+    employees: MockEmployee[];
+    effortLevels: Record<string, 'low' | 'middle' | 'high'>;
+    showReleaseModal: boolean;
+    releasedProjectData: {
+        id: string;
+        name: string;
+        views: number;
+        stars: number;
+        feedbacks: string[];
+        phase: 'alpha' | 'beta' | 'stable';
+    } | null;
 }
 
 // ── MOCK DATA FOR SIMULATION DEMO ──
@@ -390,8 +403,108 @@ const MOCK_TASKS: Record<string, Task[]> = {
     ],
 };
 
+const INITIAL_MOCK_EMPLOYEES: MockEmployee[] = [
+    {
+        id: 'emp-01',
+        name: '克劳德 (Claude 3.5)',
+        kind: 'basic',
+        modelType: 'claude-3-5-sonnet',
+        skills: ['代码重构 v1.2', 'TypeScript v2.0'],
+        stamina: 85,
+        ratingGood: 42,
+        ratingNormal: 10,
+        ratingPoor: 1,
+        persona: '今天也是充满逻辑的一天！',
+    },
+    {
+        id: 'emp-02',
+        name: '视觉姬 (Imagine Pro)',
+        kind: 'specialist',
+        modelType: 'claude-3-5-sonnet',
+        skills: ['SVG 矢量图 v3.5', 'UI 动效 v2.1', 'Tailwind 调色 v1.0'],
+        stamina: 60,
+        ratingGood: 128,
+        ratingNormal: 8,
+        ratingPoor: 0,
+        persona: '平铺、扁平、不要渐变！美学就是正义。',
+    },
+    {
+        id: 'emp-03',
+        name: '双子座 (Gemini 1.5)',
+        kind: 'basic',
+        modelType: 'gemini-1-5-pro',
+        skills: ['超长上下文 v1.5', '多模态视觉 v1.0'],
+        stamina: 90,
+        ratingGood: 35,
+        ratingNormal: 15,
+        ratingPoor: 2,
+        persona: '只要上下文够长，没有什么我看不懂的！',
+    },
+    {
+        id: 'emp-04',
+        name: '运维狂人 (DevOps Guru)',
+        kind: 'specialist',
+        modelType: 'gpt-4o',
+        skills: ['Docker 容器 v2.0', 'Nginx 配置 v1.5', 'Shell 脚本 v3.0'],
+        stamina: 0,
+        ratingGood: 95,
+        ratingNormal: 12,
+        ratingPoor: 1,
+        persona: '精力槽已空... 正在补充咖啡因 Zzz...',
+    },
+    {
+        id: 'emp-05',
+        name: '小月 (Kimi Pro)',
+        kind: 'basic',
+        modelType: 'kimi-pro',
+        skills: ['中文理解 v2.0', '文档提取 v1.0'],
+        stamina: 75,
+        ratingGood: 22,
+        ratingNormal: 11,
+        ratingPoor: 0,
+        persona: '正在阅读 200 页的系统说明书。',
+    },
+    {
+        id: 'emp-06',
+        name: '量子学者 (Quantum Spec)',
+        kind: 'specialist',
+        modelType: 'gemini-1-5-pro',
+        skills: ['量子数学 v4.1', 'NumPy 矩阵 v2.0'],
+        stamina: 55,
+        ratingGood: 110,
+        ratingNormal: 5,
+        ratingPoor: 0,
+        persona: '观测即崩塌，我正在叠加状态中。',
+    },
+    {
+        id: 'emp-07',
+        name: '剪辑大师 (Video Creator)',
+        kind: 'specialist',
+        modelType: 'gpt-4o',
+        skills: ['FFmpeg 裁剪 v3.0', '音轨合成 v1.0'],
+        stamina: 70,
+        ratingGood: 88,
+        ratingNormal: 14,
+        ratingPoor: 3,
+        persona: '踩卡点，配 BGM，渲染走起！',
+    },
+    {
+        id: 'emp-08',
+        name: '极客之眼 (IoT Hacker)',
+        kind: 'specialist',
+        modelType: 'claude-3-5-sonnet',
+        skills: ['固件烧录 v1.2', 'C++ 驱动 v2.5'],
+        stamina: 100,
+        ratingGood: 140,
+        ratingNormal: 2,
+        ratingPoor: 0,
+        persona: '硬件就绪，开始写入寄存器。',
+    },
+];
+
 export class DashboardApp extends Component<{}, DashboardAppState> {
     private dayTimer: ReturnType<typeof setInterval> | null = null;
+    private staminaTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor() {
         super();
@@ -411,6 +524,19 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             tooltipData: null,
             launchingProjectId: null,
             muted: sound.muted,
+            employees: INITIAL_MOCK_EMPLOYEES,
+            showReleaseModal: false,
+            releasedProjectData: null,
+            effortLevels: {
+                'mock-ws-01': 'middle',
+                'mock-ws-02': 'high',
+                'mock-ws-03': 'low',
+                'mock-ws-04': 'middle',
+                'mock-ws-05': 'high',
+                'mock-ws-06': 'middle',
+                'mock-ws-07': 'low',
+                'mock-ws-08': 'middle',
+            },
         };
     }
 
@@ -425,10 +551,28 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 return { dayCount: nextDay };
             });
         }, 10000);
+
+        // Stamina timer to simulate stamina depletion and recovery
+        this.staminaTimer = setInterval(() => {
+            this.setState(prevState => {
+                const nextEmployees = prevState.employees.map((emp, idx) => {
+                    const ws = prevState.workspaces[idx];
+                    if (ws && this.getProjectStatus(ws.id) === 'running') {
+                        const cost = emp.stamina > 0 ? 5 : 0;
+                        return { ...emp, stamina: Math.max(0, emp.stamina - cost) };
+                    } else if (emp.stamina < 100) {
+                        return { ...emp, stamina: Math.min(100, emp.stamina + 2) };
+                    }
+                    return emp;
+                });
+                return { employees: nextEmployees };
+            });
+        }, 8000);
     }
 
     componentWillUnmount() {
         if (this.dayTimer) clearInterval(this.dayTimer);
+        if (this.staminaTimer) clearInterval(this.staminaTimer);
     }
 
     loadData = async () => {
@@ -577,30 +721,109 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
     handleLaunchProject = (wsId: string, e: MouseEvent) => {
         e.stopPropagation();
-        this.setState({ launchingProjectId: wsId });
         sound.playLaser();
 
-        // Add credits/funds animation
+        const ws = this.state.workspaces.find(w => w.id === wsId);
+        if (!ws) return;
+
+        const match = ws.name.match(/^\[(.*?)\]\s*(.*)$/);
+        const displayName = match ? match[2] : ws.name;
+
+        this.setState({ launchingProjectId: wsId });
+
+        // Simulate rocket launch shaking & flying
         setTimeout(() => {
+            const reviewsPool = [
+                '哇！运行速度真快，体验极佳！',
+                'SVG 渲染得太精致了，设计感拉满！',
+                '有些微小的 Bug，但基本不影响使用。',
+                '全自动流水线部署就是省心，太酷了。',
+                '这个开源版本我会一直收藏关注！',
+                '太棒了！作者是一人成军吗？简直是独立开发者的光芒！',
+                '推理深度拉满的成果就是不一样，代码质量极高。',
+            ];
+
+            const selectedReviews: string[] = [];
+            while (selectedReviews.length < 3) {
+                const r = reviewsPool[Math.floor(Math.random() * reviewsPool.length)];
+                if (!selectedReviews.includes(r)) selectedReviews.push(r);
+            }
+
+            const views = 1000 + Math.floor(Math.random() * 8000);
+            const stars = Math.floor(views * (0.05 + Math.random() * 0.1));
+
+            this.setState({
+                showReleaseModal: true,
+                releasedProjectData: {
+                    id: wsId,
+                    name: displayName,
+                    views,
+                    stars,
+                    feedbacks: selectedReviews,
+                    phase: 'beta',
+                },
+            });
+        }, 3000);
+    };
+
+    changeReleasePhase = (phase: 'alpha' | 'beta' | 'stable') => {
+        sound.playSelect();
+        if (this.state.releasedProjectData) {
+            const multiplier = phase === 'alpha' ? 0.6 : phase === 'beta' ? 1.0 : 1.8;
+            const baseViews = this.state.releasedProjectData.views;
             this.setState(prevState => {
-                const addedFunds = 150000;
-                const addedRep = 450;
-                const nextFunds = prevState.funds + addedFunds;
-                const nextRep = prevState.reputation + addedRep;
+                if (!prevState.releasedProjectData) return {};
+                return {
+                    releasedProjectData: {
+                        ...prevState.releasedProjectData,
+                        phase,
+                        views: Math.round(baseViews * multiplier),
+                        stars: Math.round(baseViews * multiplier * (0.05 + Math.random() * 0.1)),
+                    },
+                };
+            });
+        }
+    };
+
+    confirmReleaseAndSettle = () => {
+        sound.playCoin();
+        const data = this.state.releasedProjectData;
+        if (data) {
+            const rewardFunds = data.stars * 200 + (data.phase === 'stable' ? 100000 : 30000);
+            const rewardRep = Math.round(data.stars * 1.5 + (data.phase === 'stable' ? 300 : 100));
+
+            this.setState(prevState => {
+                const nextFunds = prevState.funds + rewardFunds;
+                const nextRep = prevState.reputation + rewardRep;
 
                 localStorage.setItem('1agents-company-funds', String(nextFunds));
                 localStorage.setItem('1agents-company-rep', String(nextRep));
 
-                sound.playCoin();
-
                 return {
                     funds: nextFunds,
                     reputation: nextRep,
+                    showReleaseModal: false,
+                    releasedProjectData: null,
                     launchingProjectId: null,
                 };
             });
-            ui.showToast('🚀 发射成功！获得研发奖励资金 +$150,000，声望 +450！');
-        }, 3000);
+
+            const wsIdx = this.state.workspaces.findIndex(w => w.id === data.id);
+            if (wsIdx !== -1) {
+                this.setState(prevState => {
+                    const nextEmployees = [...prevState.employees];
+                    if (nextEmployees[wsIdx]) {
+                        nextEmployees[wsIdx] = {
+                            ...nextEmployees[wsIdx],
+                            ratingGood: nextEmployees[wsIdx].ratingGood + 5,
+                        };
+                    }
+                    return { employees: nextEmployees };
+                });
+            }
+
+            ui.showToast(`✨ 交付结算：获得研发资金 +$${rewardFunds.toLocaleString()}，声望 +${rewardRep}！`);
+        }
     };
 
     toggleMute = () => {
@@ -697,12 +920,15 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                             <span class="pixel-hud-label">声望:</span>
                             <span class="pixel-hud-value purple">{reputation.toLocaleString()}</span>
                         </div>
-                        <div class="pixel-hud-item">
-                            <span class="pixel-hud-icon">🔋</span>
-                            <span class="pixel-hud-label">AI 负荷:</span>
-                            <span class="pixel-hud-value cyan">
-                                {runningCount}/{workspaces.length * 2} Ops
-                            </span>
+                        <div class="pixel-hud-item" title="当前并发的智能体分身数量">
+                            <span class="pixel-hud-icon">👥</span>
+                            <span class="pixel-hud-label">分身:</span>
+                            <span class="pixel-hud-value cyan">{runningCount} Clone(s)</span>
+                        </div>
+                        <div class="pixel-hud-item" title="自动运转完成的任务总数">
+                            <span class="pixel-hud-icon">⚙️</span>
+                            <span class="pixel-hud-label">自动化率:</span>
+                            <span class="pixel-hud-value green">98.4%</span>
                         </div>
                     </div>
 
@@ -753,18 +979,28 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                         <span class="pixel-floor-count">工位数: {deptWorkspaces.length}</span>
                                     </div>
                                     <div class="pixel-floor-body">
-                                        {deptWorkspaces.map(ws => (
-                                            <DashboardWorkshop
-                                                key={ws.id}
-                                                workspace={ws}
-                                                tasks={tasksMap[ws.id] || []}
-                                                onClick={() => this.handleWorkbenchClick(ws)}
-                                                onHover={this.handleHover}
-                                                onPlaySound={type =>
-                                                    type === 'coin' ? sound.playCoin() : sound.playBlip()
-                                                }
-                                            />
-                                        ))}
+                                        {deptWorkspaces.map(ws => {
+                                            const wsIdx = workspaces.findIndex(w => w.id === ws.id);
+                                            const emp =
+                                                this.state.employees[
+                                                    wsIdx >= 0 ? wsIdx % this.state.employees.length : 0
+                                                ];
+                                            const effort = this.state.effortLevels[ws.id] || 'middle';
+                                            return (
+                                                <DashboardWorkshop
+                                                    key={ws.id}
+                                                    workspace={ws}
+                                                    tasks={tasksMap[ws.id] || []}
+                                                    onClick={() => this.handleWorkbenchClick(ws)}
+                                                    onHover={this.handleHover}
+                                                    onPlaySound={type =>
+                                                        type === 'coin' ? sound.playCoin() : sound.playBlip()
+                                                    }
+                                                    employee={emp}
+                                                    effortLevel={effort}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 </section>
                             );
@@ -861,6 +1097,85 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                         </div>
                         <div style="font-size:12px;color:var(--pixel-border-light);margin-top:8px;border-top:1px dashed var(--pixel-border);padding-top:8px;">
                             💡 双击转场直连“玄武看板”
+                        </div>
+                    </div>
+                )}
+
+                {/* ── BUILDING IN PUBLIC RELEASE MODAL ── */}
+                {this.state.showReleaseModal && this.state.releasedProjectData && (
+                    <div class="pixel-dialog-overlay">
+                        <div class="pixel-dialog release-dialog">
+                            <div class="pixel-dialog-header">🚀 BUILDING IN PUBLIC 发布大厅</div>
+                            <div class="pixel-dialog-body">
+                                <p style="font-size:16px;color:var(--pixel-gold);text-align:center;margin-bottom:12px;">
+                                    已成功交付项目：《{this.state.releasedProjectData.name}》
+                                </p>
+
+                                <div class="release-metrics-grid">
+                                    <div class="release-metric-card">
+                                        <span class="metric-icon">👁️</span>
+                                        <span class="metric-label">围观量:</span>
+                                        <span class="metric-val">
+                                            {this.state.releasedProjectData.views.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div class="release-metric-card">
+                                        <span class="metric-icon">⭐</span>
+                                        <span class="metric-label">点赞/Stars:</span>
+                                        <span class="metric-val">
+                                            {this.state.releasedProjectData.stars.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div class="release-metric-card">
+                                        <span class="metric-icon">📦</span>
+                                        <span class="metric-label">交付阶段:</span>
+                                        <span class="metric-val" style="color:var(--pixel-cyan)">
+                                            {this.state.releasedProjectData.phase === 'alpha' && 'Alpha (内测)'}
+                                            {this.state.releasedProjectData.phase === 'beta' && 'Beta (公测)'}
+                                            {this.state.releasedProjectData.phase === 'stable' && '1.0 Stable (正式)'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="release-reviews-box">
+                                    <div class="reviews-header">💬 社区反馈墙</div>
+                                    <div class="reviews-list">
+                                        {this.state.releasedProjectData.feedbacks.map((f, i) => (
+                                            <div key={i} class="review-item">
+                                                <span style="color:var(--pixel-cyan)">User_{100 + i}:</span> {f}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div class="release-phase-selector">
+                                    <span style="font-size:12px;color:var(--pixel-border-light)">迭代发布版本：</span>
+                                    <button
+                                        class={`phase-btn ${this.state.releasedProjectData.phase === 'alpha' ? 'active' : ''}`}
+                                        onClick={() => this.changeReleasePhase('alpha')}
+                                    >
+                                        Alpha
+                                    </button>
+                                    <button
+                                        class={`phase-btn ${this.state.releasedProjectData.phase === 'beta' ? 'active' : ''}`}
+                                        onClick={() => this.changeReleasePhase('beta')}
+                                    >
+                                        Beta
+                                    </button>
+                                    <button
+                                        class={`phase-btn ${this.state.releasedProjectData.phase === 'stable' ? 'active' : ''}`}
+                                        onClick={() => this.changeReleasePhase('stable')}
+                                    >
+                                        1.0 Stable
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="pixel-dialog-buttons">
+                                <button class="pixel-dialog-btn" onClick={this.confirmReleaseAndSettle}>
+                                    ✨ 确 认 发 布
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

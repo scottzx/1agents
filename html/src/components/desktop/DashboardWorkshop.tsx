@@ -2,12 +2,27 @@ import { h, Component } from 'preact';
 import { Workspace } from '../types';
 import { Task } from '../drawer/TaskList/types';
 
+export interface MockEmployee {
+    id: string;
+    name: string;
+    kind: 'basic' | 'specialist';
+    modelType: string;
+    skills: string[];
+    stamina: number;
+    ratingGood: number;
+    ratingNormal: number;
+    ratingPoor: number;
+    persona: string;
+}
+
 interface DashboardWorkshopProps {
     workspace: Workspace;
     tasks: Task[];
     onClick: () => void;
     onHover: (e: MouseEvent, visible: boolean, data: unknown) => void;
     onPlaySound?: (type: 'coin' | 'blip') => void;
+    employee: MockEmployee;
+    effortLevel: 'low' | 'middle' | 'high';
 }
 
 interface DashboardWorkshopState {
@@ -154,16 +169,16 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
         return { dept, displayName, themeClass, type, bgStyle };
     }
 
-    renderWorkerSVG(status: string, type: string) {
+    renderWorkerSVG(status: string, type: string, stamina: number) {
         // Return cute custom inline SVGs representing pixel art assets
         let handsClass = '';
         let headClass = '';
         let shirtColor = '#3c4268';
 
-        if (status === 'running') {
+        if (status === 'running' && stamina > 0) {
             handsClass = 'char-hands-typing';
             headClass = 'char-head-bob';
-        } else if (status === 'pending') {
+        } else if (status === 'pending' || stamina === 0) {
             headClass = 'char-head-bob';
         }
 
@@ -208,7 +223,7 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
                 )}
 
                 {/* Hands typing */}
-                {status === 'running' && (
+                {status === 'running' && stamina > 0 && (
                     <g class={handsClass}>
                         <rect x="8" y="14" width="2" height="2" fill="#fcd0a1" />
                         <rect x="14" y="14" width="2" height="2" fill="#fcd0a1" />
@@ -225,7 +240,7 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
     }
 
     render() {
-        const { workspace, tasks, onClick, onHover } = this.props;
+        const { workspace, tasks, onClick, onHover, employee, effortLevel } = this.props;
         const { logs, coins } = this.state;
 
         const status = this.getProjectStatus();
@@ -271,23 +286,56 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
                         <span class="pixel-wb-name">{displayName}</span>
                         <span class="pixel-wb-desc">{dept}</span>
                     </div>
-                    <span class={`pixel-wb-status-badge pixel-badge-${status}`}>
-                        {status === 'pending' && '策划中'}
-                        {status === 'running' && '进行中'}
-                        {status === 'completed' && '已完成'}
-                        {status === 'blocked' && '警告'}
-                        {status === 'failed' && '故障'}
-                    </span>
+                    <div class="pixel-wb-status-wrapper">
+                        {/* Effort Level LED */}
+                        <div
+                            class={`pixel-effort-led effort-${effortLevel}`}
+                            title={`当前投入度: ${effortLevel === 'low' ? '低 (LOW)' : effortLevel === 'middle' ? '中 (MID)' : '高 (HIGH)'}`}
+                        >
+                            <span class="pixel-led-dot" />
+                        </div>
+                        <span class={`pixel-wb-status-badge pixel-badge-${status}`}>
+                            {status === 'pending' && (employee.stamina === 0 ? '休眠中' : '策划中')}
+                            {status === 'running' && (employee.stamina === 0 ? '休眠中' : '进行中')}
+                            {status === 'completed' && '已完成'}
+                            {status === 'blocked' && '警告'}
+                            {status === 'failed' && (employee.stamina === 0 ? '休眠中' : '故障')}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Middle Worker/R&D Deck */}
                 <div class="pixel-wb-middle">
                     <div class="pixel-worker-sprite">
                         <div class="pixel-status-ring" />
-                        {this.renderWorkerSVG(status, type)}
+                        {this.renderWorkerSVG(status, type, employee.stamina)}
+                        {employee.stamina === 0 && <div class="pixel-zzz-bubble">Zzz...</div>}
                     </div>
                     <div class="pixel-wb-details">
-                        <span class="pixel-agent-label">👤 {activeAgent}</span>
+                        <div class="pixel-employee-hud">
+                            <span class="pixel-agent-label" title={`${employee.name} (${employee.modelType})`}>
+                                👤 {employee.name} {employee.kind === 'specialist' ? '★' : ''}
+                            </span>
+                            {/* Stamina battery */}
+                            <div class="pixel-stamina-battery" title={`精力值: ${employee.stamina}/100`}>
+                                <div
+                                    class={`pixel-stamina-fill ${employee.stamina < 30 ? 'low' : employee.stamina < 60 ? 'medium' : 'high'}`}
+                                    style={`width: ${employee.stamina}%`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Active skills snapshot */}
+                        <div class="pixel-active-skills" title={`装配技能: ${employee.skills.join(', ')}`}>
+                            {employee.skills.slice(0, 1).map((s, idx) => (
+                                <span key={idx} class="pixel-skill-tag">
+                                    {s}
+                                </span>
+                            ))}
+                            {employee.skills.length > 1 && (
+                                <span class="pixel-skill-tag">+ {employee.skills.length - 1}</span>
+                            )}
+                        </div>
 
                         {/* Progress telemetry */}
                         <div class="pixel-progress-container">
