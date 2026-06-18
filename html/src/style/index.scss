@@ -12637,8 +12637,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-top: 14px;
-  margin-bottom: 8px;
+  margin-top: 2px;
+  margin-bottom: 4px;
   padding: 0 4px;
 
   .nav-control-btn.new-chat-btn {
@@ -12649,10 +12649,10 @@ body {
     width: 100%;
     padding: 10px 14px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     border: none;
-    background: linear-gradient(135deg, var(--accent-color), #4f46e5);
+    background: var(--accent-color);
     color: #ffffff;
     cursor: pointer;
     transition: all 0.2s ease;

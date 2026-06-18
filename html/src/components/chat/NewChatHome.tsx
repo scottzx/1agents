@@ -43,7 +43,7 @@ const TERMINAL_PRESETS: { value: TerminalPreset; label: string; bin?: string }[]
     { value: 'claude', label: 'Claude', bin: 'claude' },
     { value: 'codex', label: 'Codex', bin: 'codex' },
     { value: 'gemini', label: 'Gemini', bin: 'gemini' },
-    { value: 'shell', label: '纯 Shell' },
+    { value: 'shell', label: 'Shell' },
 ];
 
 /** Wrap a prompt as a single double-quoted bash argument, escaping the chars
@@ -204,7 +204,7 @@ export function NewChatHome({
                     </button>
                     {wsDropdownOpen.value && (
                         <div class="new-chat-ws-dropdown">
-                            <div class="dropdown-header">切换项目工作空间</div>
+                            <div class="dropdown-header">{t('newchat.wsDropdownHeader', language)}</div>
                             {workspaces
                                 .filter(ws => ws.id !== 'default' && !ws.builtin)
                                 .map(ws => (
@@ -265,8 +265,8 @@ export function NewChatHome({
                         speech.isRecording
                             ? t('terminal.speech.listening', language)
                             : mode.value === 'terminal'
-                              ? '描述要让命令行执行什么（纯 Shell 可留空）'
-                              : 'Ask anything, @ to mention, / for actions'
+                              ? t('newchat.terminalPlaceholder', language)
+                              : t('newchat.chatPlaceholder', language)
                     }
                     value={prompt}
                     onInput={(e: Event) => setPrompt((e.target as HTMLTextAreaElement).value)}
@@ -276,11 +276,11 @@ export function NewChatHome({
                 <div class="new-chat-actions-row">
                     <div class="actions-left">
                         {/* Mode toggle: chat vs terminal — icon segmented control */}
-                        <div class="new-chat-mode-switch" role="group" aria-label="模式切换">
+                        <div class="new-chat-mode-switch" role="group" aria-label={t('newchat.modeSwitch', language)}>
                             <button
                                 type="button"
                                 class={`mode-switch-btn ${mode.value === 'chat' ? 'active' : ''}`}
-                                title="对话"
+                                title={t('newchat.modeChatTitle', language)}
                                 aria-pressed={mode.value === 'chat'}
                                 onClick={() => (mode.value = 'chat')}
                             >
@@ -298,7 +298,7 @@ export function NewChatHome({
                             <button
                                 type="button"
                                 class={`mode-switch-btn ${mode.value === 'terminal' ? 'active' : ''}`}
-                                title="终端"
+                                title={t('newchat.modeTerminalTitle', language)}
                                 aria-pressed={mode.value === 'terminal'}
                                 onClick={() => (mode.value = 'terminal')}
                             >
@@ -337,7 +337,7 @@ export function NewChatHome({
                                 >
                                     {TERMINAL_PRESETS.map(p => (
                                         <option key={p.value} value={p.value}>
-                                            {p.label}
+                                            {p.value === 'shell' ? t('newchat.terminalShell', language) : p.label}
                                         </option>
                                     ))}
                                 </select>

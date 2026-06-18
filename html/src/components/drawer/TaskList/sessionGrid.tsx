@@ -1,38 +1,42 @@
 import { h } from 'preact';
 import type { VNode } from 'preact';
 
+import { t, type Lang } from '../../../i18n';
 import { AGENT_TYPE_LABELS, type ChatSession } from '../../types';
 import type { CellHelpers, GridColumn } from './DataGrid';
 import { fmtDate } from './utils';
 
-// Human-readable labels for the conversation role declared at creation.
-export const ROLE_LABELS: Record<string, string> = {
-    pmo: '总管',
-    pm: '项目经理',
-    executor: '执行者',
-    verifier: '验收者',
-    general: '对话',
-};
+type RoleKey = 'pmo' | 'pm' | 'executor' | 'verifier' | 'general';
+const ROLE_KEYS: readonly RoleKey[] = ['pmo', 'pm', 'executor', 'verifier', 'general'];
+
+export function getRoleLabel(role: string, lang: Lang): string {
+    if (!ROLE_KEYS.includes(role as RoleKey)) return role;
+    return t(`session.role.${role as RoleKey}`, lang);
+}
 
 const agentLabel = (s: ChatSession) => AGENT_TYPE_LABELS[s.agentType] ?? s.agentType;
 const roleOf = (s: ChatSession) => s.role || 'general';
 
-export const SESSION_COLUMNS: GridColumn[] = [
-    { key: 'name', label: '会话标题', width: 260, locked: true },
-    { key: 'agentType', label: 'Agent', width: 120, groupable: true },
-    { key: 'role', label: '角色', width: 104, groupable: true },
-    { key: 'archived', label: '状态', width: 96, groupable: true },
-    { key: 'createdAt', label: '创建', width: 124 },
-    { key: 'lastEventAt', label: '最近活动', width: 124 },
-    { key: 'taskId', label: '关联任务', width: 130, sortable: false },
-];
+export function getSessionColumns(lang: Lang): GridColumn[] {
+    return [
+        { key: 'name', label: t('session.col.name', lang), width: 260, locked: true },
+        { key: 'agentType', label: 'Agent', width: 120, groupable: true },
+        { key: 'role', label: t('session.col.role', lang), width: 104, groupable: true },
+        { key: 'archived', label: t('session.col.status', lang), width: 96, groupable: true },
+        { key: 'createdAt', label: t('session.col.created', lang), width: 124 },
+        { key: 'lastEventAt', label: t('session.col.lastActivity', lang), width: 124 },
+        { key: 'taskId', label: t('session.col.task', lang), width: 130, sortable: false },
+    ];
+}
 
-export const SESSION_GROUP_OPTIONS: Array<[string, string]> = [
-    ['none', '不分组'],
-    ['archived', '状态'],
-    ['role', '角色'],
-    ['agentType', 'Agent'],
-];
+export function getSessionGroupOptions(lang: Lang): Array<[string, string]> {
+    return [
+        ['none', t('session.group.none', lang)],
+        ['archived', t('session.col.status', lang)],
+        ['role', t('session.col.role', lang)],
+        ['agentType', 'Agent'],
+    ];
+}
 
 const ts = (iso?: string): number => (iso ? new Date(iso).getTime() : 0);
 
@@ -43,7 +47,7 @@ export function compareSessions(a: ChatSession, b: ChatSession, key: string): nu
         case 'agentType':
             return agentLabel(a).localeCompare(agentLabel(b));
         case 'role':
-            return (ROLE_LABELS[roleOf(a)] ?? roleOf(a)).localeCompare(ROLE_LABELS[roleOf(b)] ?? roleOf(b));
+            return roleOf(a).localeCompare(roleOf(b));
         case 'archived':
             return Number(!!a.archived) - Number(!!b.archived);
         case 'createdAt':
@@ -62,12 +66,12 @@ export function sessionDefaultCompare(a: ChatSession, b: ChatSession): number {
     return Number(!!a.archived) - Number(!!b.archived) || t(b) - t(a);
 }
 
-export function sessionGroupValue(s: ChatSession, key: string): string {
+export function sessionGroupValue(s: ChatSession, key: string, lang: Lang): string {
     switch (key) {
         case 'archived':
-            return s.archived ? '已归档' : '活跃';
+            return s.archived ? t('session.status.archived', lang) : t('session.status.active', lang);
         case 'role':
-            return ROLE_LABELS[roleOf(s)] ?? roleOf(s);
+            return getRoleLabel(roleOf(s), lang);
         case 'agentType':
             return agentLabel(s);
         default:
@@ -82,20 +86,26 @@ interface SessionCellCtx {
 
 // Read-only cell renderer for the session DataGrid. Each branch returns a full
 // <td>, mirroring TaskGridCell's contract.
-export function renderSessionCell(s: ChatSession, col: GridColumn, helpers: CellHelpers, ctx: SessionCellCtx): VNode {
+export function renderSessionCell(
+    s: ChatSession,
+    col: GridColumn,
+    helpers: CellHelpers,
+    ctx: SessionCellCtx,
+    lang: Lang
+): VNode {
     switch (col.key) {
         case 'name':
             return (
                 <td class="col-session-name">
                     <button
                         class="session-name-link"
-                        title="打开会话"
+                        title={t('session.openTitle', lang)}
                         onClick={(e: Event) => {
                             e.stopPropagation();
                             helpers.openDetail();
                         }}
                     >
-                        {s.name || '(未命名会话)'}
+                        {s.name || t('session.unnamed', lang)}
                     </button>
                 </td>
             );
@@ -112,7 +122,7 @@ export function renderSessionCell(s: ChatSession, col: GridColumn, helpers: Cell
                     {role === 'general' ? (
                         '—'
                     ) : (
-                        <span class={`session-role-badge role-${role}`}>{ROLE_LABELS[role] ?? role}</span>
+                        <span class={`session-role-badge role-${role}`}>{getRoleLabel(role, lang)}</span>
                     )}
                 </td>
             );
@@ -121,7 +131,7 @@ export function renderSessionCell(s: ChatSession, col: GridColumn, helpers: Cell
             return (
                 <td class="col-session-state">
                     <span class={`session-state-badge ${s.archived ? 'archived' : 'active'}`}>
-                        {s.archived ? '已归档' : '活跃'}
+                        {s.archived ? t('session.status.archived', lang) : t('session.status.active', lang)}
                     </span>
                 </td>
             );
@@ -136,16 +146,16 @@ export function renderSessionCell(s: ChatSession, col: GridColumn, helpers: Cell
                         ctx.onSelectTask ? (
                             <button
                                 class="session-task-badge clickable"
-                                title="查看关联任务时间轴"
+                                title={t('session.taskTitle', lang)}
                                 onClick={(e: Event) => {
                                     e.stopPropagation();
                                     ctx.onSelectTask!(s.taskId!);
                                 }}
                             >
-                                关联任务 ↗
+                                {t('session.taskLink', lang)}
                             </button>
                         ) : (
-                            <span class="session-task-badge">关联任务</span>
+                            <span class="session-task-badge">{t('session.taskBadge', lang)}</span>
                         )
                     ) : (
                         '—'

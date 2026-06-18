@@ -293,7 +293,7 @@ export function LeftSidebar({
                             localStorage.setItem('1agents-sidebar-mode', 'assistant');
                         }}
                     >
-                        助手
+                        {t('sidebar.mode.assistant', language)}
                     </button>
                     <button
                         class={`mode-tab${sidebarMode.value === 'project' ? ' active' : ''}`}
@@ -302,7 +302,7 @@ export function LeftSidebar({
                             localStorage.setItem('1agents-sidebar-mode', 'project');
                         }}
                     >
-                        项目
+                        {t('sidebar.mode.project', language)}
                     </button>
                 </div>
 
@@ -323,7 +323,7 @@ export function LeftSidebar({
                             <line x1="12" y1="5" x2="12" y2="19" />
                             <line x1="5" y1="12" x2="19" y2="12" />
                         </svg>
-                        <span>New Conversation</span>
+                        <span>{t('sidebar.navCtrl.newConversation', language)}</span>
                     </button>
                     <div class="nav-control-item" onClick={() => alert('Conversation History: Placeholder')}>
                         <svg
@@ -338,7 +338,7 @@ export function LeftSidebar({
                             <circle cx="12" cy="12" r="10" />
                             <polyline points="12 6 12 12 16 14" />
                         </svg>
-                        <span>Conversation History</span>
+                        <span>{t('sidebar.navCtrl.history', language)}</span>
                     </div>
                     <div class="nav-control-item" onClick={() => alert('Scheduled Tasks: Placeholder')}>
                         <svg
@@ -355,7 +355,7 @@ export function LeftSidebar({
                             <line x1="8" y1="2" x2="8" y2="6" />
                             <line x1="3" y1="10" x2="21" y2="10" />
                         </svg>
-                        <span>Scheduled Tasks</span>
+                        <span>{t('sidebar.navCtrl.scheduledTasks', language)}</span>
                     </div>
                 </div>
             </div>

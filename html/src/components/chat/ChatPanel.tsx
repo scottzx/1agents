@@ -2,6 +2,8 @@ import { h, Component } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import type { ChatSession } from '../types';
+import { t } from '../../i18n';
+import * as ui from '../../stores/uiStore';
 import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
@@ -92,7 +94,11 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 items={items}
                 agentType={session.agentType}
                 typing={typing}
-                emptyHint={connection === 'connecting' ? '正在连接…' : '发送消息开始对话'}
+                emptyHint={
+                    connection === 'connecting'
+                        ? t('chat.connecting', ui.language.value)
+                        : t('chat.empty.send', ui.language.value)
+                }
                 loading={showInitLoading}
                 onRespondPermission={respondPermission}
                 onCancelQueued={cancelQueued}

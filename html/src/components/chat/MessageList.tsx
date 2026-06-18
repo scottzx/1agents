@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'preact/hooks';
 import { MessageBubble, GroupedChatItem, GroupedToolCall } from './MessageBubble';
 import type { ChatItem } from './hooks';
 import type { AgentType, PermissionDecision } from '../types';
+import { t } from '../../i18n';
+import * as ui from '../../stores/uiStore';
 
 interface MessageListProps {
     items: ChatItem[];
@@ -272,7 +274,7 @@ export function MessageList({
         return (
             <div class="chat-empty chat-loading">
                 <div class="chat-loading-spinner" aria-hidden="true" />
-                <p>{loadingHint ?? '会话正在初始化…'}</p>
+                <p>{loadingHint ?? t('chat.initializing', ui.language.value)}</p>
             </div>
         );
     }
@@ -280,7 +282,7 @@ export function MessageList({
     if (items.length === 0) {
         return (
             <div class="chat-empty">
-                <p>{emptyHint ?? '发送消息开始对话'}</p>
+                <p>{emptyHint ?? t('chat.empty.send', ui.language.value)}</p>
             </div>
         );
     }
