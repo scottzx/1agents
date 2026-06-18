@@ -631,6 +631,52 @@ export const zhCN: Record<string, string> = {
     'app.ota.banner.body': '发现新版本: {current} → {latest}',
     'app.ota.banner.refresh': '立即刷新',
     'app.ota.banner.dismiss': '稍后再说',
+
+    // ── Sidebar mode toggle & nav controls (LeftSidebar.tsx) ─────────────
+    'sidebar.mode.assistant': '助手',
+    'sidebar.mode.project': '项目',
+    'sidebar.navCtrl.newConversation': '新对话',
+    'sidebar.navCtrl.history': '对话历史',
+    'sidebar.navCtrl.scheduledTasks': '定时任务',
+
+    // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
+    'newchat.wsDropdownHeader': '切换项目工作空间',
+    'newchat.terminalShell': '纯 Shell',
+    'newchat.terminalPlaceholder': '描述要让命令行执行什么（纯 Shell 可留空）',
+    'newchat.chatPlaceholder': '输入问题，@ 提及，/ 操作',
+    'newchat.modeSwitch': '模式切换',
+    'newchat.modeChatTitle': '对话',
+    'newchat.modeTerminalTitle': '终端',
+
+    // ── Sessions grid (sessionGrid.tsx / SessionsView.tsx) ────────────────
+    'session.col.name': '会话标题',
+    'session.col.role': '角色',
+    'session.col.status': '状态',
+    'session.col.created': '创建',
+    'session.col.lastActivity': '最近活动',
+    'session.col.task': '关联任务',
+    'session.group.none': '不分组',
+    'session.role.pmo': '总管',
+    'session.role.pm': '项目经理',
+    'session.role.executor': '执行者',
+    'session.role.verifier': '验收者',
+    'session.role.general': '对话',
+    'session.status.archived': '已归档',
+    'session.status.active': '活跃',
+    'session.unnamed': '(未命名会话)',
+    'session.openTitle': '打开会话',
+    'session.taskTitle': '查看关联任务时间轴',
+    'session.taskLink': '关联任务 ↗',
+    'session.taskBadge': '关联任务',
+    'sessions.searchPlaceholder': '按会话标题搜索…',
+    'sessions.emptyAll': '暂无会话。',
+    'sessions.emptyFiltered': '没有匹配的会话标题。',
+    'sessions.restoreTitle': '恢复对话（取消归档并打开）',
+
+    // ── Chat (MessageList.tsx, ChatPanel.tsx) ─────────────────────────────
+    'chat.initializing': '会话正在初始化…',
+    'chat.empty.send': '发送消息开始对话',
+    'chat.connecting': '正在连接…',
 };
 
 // English dictionary.
@@ -1278,4 +1324,50 @@ export const enUS: Record<string, string> = {
     'app.ota.banner.body': 'New version available: {current} → {latest}',
     'app.ota.banner.refresh': 'Refresh now',
     'app.ota.banner.dismiss': 'Dismiss',
+
+    // ── Sidebar mode toggle & nav controls (LeftSidebar.tsx) ─────────────
+    'sidebar.mode.assistant': 'Assistant',
+    'sidebar.mode.project': 'Project',
+    'sidebar.navCtrl.newConversation': 'New Conversation',
+    'sidebar.navCtrl.history': 'Conversation History',
+    'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
+
+    // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
+    'newchat.wsDropdownHeader': 'Switch project workspace',
+    'newchat.terminalShell': 'Shell',
+    'newchat.terminalPlaceholder': 'Describe what to run (leave blank for a bare shell)',
+    'newchat.chatPlaceholder': 'Ask anything, @ to mention, / for actions',
+    'newchat.modeSwitch': 'Switch mode',
+    'newchat.modeChatTitle': 'Chat',
+    'newchat.modeTerminalTitle': 'Terminal',
+
+    // ── Sessions grid (sessionGrid.tsx / SessionsView.tsx) ────────────────
+    'session.col.name': 'Session title',
+    'session.col.role': 'Role',
+    'session.col.status': 'Status',
+    'session.col.created': 'Created',
+    'session.col.lastActivity': 'Last activity',
+    'session.col.task': 'Linked task',
+    'session.group.none': 'No grouping',
+    'session.role.pmo': 'PMO',
+    'session.role.pm': 'PM',
+    'session.role.executor': 'Executor',
+    'session.role.verifier': 'Verifier',
+    'session.role.general': 'General',
+    'session.status.archived': 'Archived',
+    'session.status.active': 'Active',
+    'session.unnamed': '(Unnamed)',
+    'session.openTitle': 'Open session',
+    'session.taskTitle': 'View linked task timeline',
+    'session.taskLink': 'Linked task ↗',
+    'session.taskBadge': 'Linked task',
+    'sessions.searchPlaceholder': 'Search by title…',
+    'sessions.emptyAll': 'No sessions yet.',
+    'sessions.emptyFiltered': 'No sessions match your search.',
+    'sessions.restoreTitle': 'Restore (unarchive and open)',
+
+    // ── Chat (MessageList.tsx, ChatPanel.tsx) ─────────────────────────────
+    'chat.initializing': 'Session is initializing…',
+    'chat.empty.send': 'Send a message to start the conversation',
+    'chat.connecting': 'Connecting…',
 };

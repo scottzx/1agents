@@ -3,11 +3,13 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
 import type { ChatSession, Session } from '../../types';
+import { t } from '../../../i18n';
+import * as ui from '../../../stores/uiStore';
 import { agentService } from '../../../services/agentService';
 import { DataGrid } from './DataGrid';
 import {
-    SESSION_COLUMNS,
-    SESSION_GROUP_OPTIONS,
+    getSessionColumns,
+    getSessionGroupOptions,
     compareSessions,
     renderSessionCell,
     sessionDefaultCompare,
@@ -43,6 +45,7 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const query = useSignal('');
+    const language = ui.language.value;
 
     const fetchSessions = useCallback(async () => {
         setLoading(true);
@@ -89,7 +92,7 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
                 <input
                     class="sessions-search"
                     type="search"
-                    placeholder="按会话标题搜索…"
+                    placeholder={t('sessions.searchPlaceholder', language)}
                     value={query.value}
                     onInput={e => (query.value = (e.target as HTMLInputElement).value)}
                 />
@@ -101,22 +104,22 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
             <DataGrid<ChatSession>
                 rows={filtered}
                 totalCount={sessions.length}
-                columns={SESSION_COLUMNS}
-                groupOptions={SESSION_GROUP_OPTIONS}
+                columns={getSessionColumns(language)}
+                groupOptions={getSessionGroupOptions(language)}
                 getRowKey={s => s.id}
                 loading={loading}
-                emptyAll="暂无会话。"
-                emptyFiltered="没有匹配的会话标题。"
+                emptyAll={t('sessions.emptyAll', language)}
+                emptyFiltered={t('sessions.emptyFiltered', language)}
                 compare={compareSessions}
                 defaultCompare={sessionDefaultCompare}
-                groupValue={sessionGroupValue}
+                groupValue={(s, key) => sessionGroupValue(s, key, language)}
                 rowClass={s => `task-row session-grid-row${s.archived ? ' archived' : ''}`}
                 onOpenRow={handleOpen}
-                renderCell={(s, col, helpers) => renderSessionCell(s, col, helpers, { onSelectTask })}
+                renderCell={(s, col, helpers) => renderSessionCell(s, col, helpers, { onSelectTask }, language)}
                 renderActions={s => (
                     <button
                         class="session-restore-btn"
-                        title={s.archived ? '恢复对话（取消归档并打开）' : '打开会话'}
+                        title={s.archived ? t('sessions.restoreTitle', language) : t('session.openTitle', language)}
                         onClick={() => handleOpen(s)}
                     >
                         {s.archived ? <RestoreIcon /> : <OpenIcon />}
