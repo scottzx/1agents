@@ -65,7 +65,14 @@ export function ModalHost() {
                             onCancel={modal.closeChatCreate}
                             onSubmit={(name, agentType, permissionMode) => {
                                 modal.closeChatCreate();
-                                sess.createChatSession(chatCreateWsId, name, agentType, undefined, undefined, permissionMode);
+                                sess.createChatSession(
+                                    chatCreateWsId,
+                                    name,
+                                    agentType,
+                                    undefined,
+                                    undefined,
+                                    permissionMode
+                                );
                             }}
                         />
                     );

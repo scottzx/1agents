@@ -59,8 +59,7 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
                         <label class="ws-modal-label">智能体类型</label>
                         <AgentTypePicker value={agentType} onChange={v => this.setState({ agentType: v })} />
                         <p class="ws-modal-hint">
-                            会话创建后将固定使用 {AGENT_TYPE_LABELS[agentType] ?? agentType}，
-                            不可在会话过程中更换。
+                            会话创建后将固定使用 {AGENT_TYPE_LABELS[agentType] ?? agentType}， 不可在会话过程中更换。
                         </p>
                         <label class="ws-modal-label">{t('chat.permission.mode.label', lang)}</label>
                         <PermissionModePicker
@@ -73,10 +72,7 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
                         <button class="ws-modal-cancel" onClick={onCancel}>
                             取消
                         </button>
-                        <button
-                            class="ws-modal-confirm"
-                            onClick={() => onSubmit(name, agentType, permissionMode)}
-                        >
+                        <button class="ws-modal-confirm" onClick={() => onSubmit(name, agentType, permissionMode)}>
                             创建
                         </button>
                     </div>
