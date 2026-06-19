@@ -11,92 +11,15 @@ import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from
 // method bodies (never at module-eval time) so the sessionStore ⇄ hooks import
 // cycle stays safe — see the cycle note in stores/sessionStore.ts.
 import { setLiveSessionStatus } from '../../stores/sessionStore';
+// Protocol types moved to the platform-agnostic core (Phase 0 carve). Re-exported
+// below so existing `./hooks` importers (MessageList, SessionStatusBar, …) stay
+// unchanged.
+import type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '../../core/protocol/types';
+// Pure protocol helpers carved into core (Phase 0). The stateful event folds
+// still live in this file's ChatBridgeManager.
+import { cryptoId, hasRenderableArguments, historyItemToChatItem } from '../../core/protocol/reducer';
 
-export interface ToolCallInfo {
-    id?: string;
-    toolName: string;
-    input: string;
-    toolCallId?: string;
-    output?: string;
-    isError?: boolean;
-    /**
-     * Inline permission request that the runtime emitted for this tool call.
-     * Lives as a sub-field (not a separate ChatItem) so the permission UI
-     * stays nested inside its tool_use card across both real-time streaming
-     * and history replay.
-     */
-    permission?: {
-        requestId: string;
-        toolName: string;
-        input: string;
-        options: Array<{ text: string; data: string }>;
-        resolved?: 'allow' | 'deny';
-    };
-}
-
-/**
- * Shape of each item sent in a `history_response`. Mirrors the kind union
- * the bridge-server produces when replaying an agent's native session
- * storage (e.g. Claude Code's ~/.claude/projects/.../<sessionId>.jsonl).
- */
-export type HistoryItem =
-    | { kind: 'user'; text: string; createdAt?: string }
-    | { kind: 'assistant_text'; text: string; createdAt?: string }
-    | { kind: 'thinking'; text: string; createdAt?: string }
-    | {
-          kind: 'tool_use';
-          toolName: string;
-          input: unknown;
-          toolCallId?: string;
-          createdAt?: string;
-      }
-    | {
-          kind: 'tool_result';
-          toolCallId?: string;
-          content: string;
-          isError: boolean;
-          createdAt?: string;
-      };
-
-export type ChatItem =
-    | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
-    | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
-    | { id: string; kind: 'thinking'; content: string; createdAt: number }
-    | {
-          id: string;
-          kind: 'tool_use';
-          toolName: string;
-          input: string;
-          calls: ToolCallInfo[];
-          createdAt: number;
-          toolCallId?: string;
-      }
-    | {
-          id: string;
-          kind: 'tool_result';
-          toolCallId?: string;
-          /** Tool name echoed by the realtime event, when available.
-           * Lets the "待分配" fallback group label orphan results with
-           * the real tool instead of a generic placeholder. */
-          toolName?: string;
-          content: string;
-          createdAt: number;
-          isError: boolean;
-      }
-    | {
-          id: string;
-          kind: 'permission_request';
-          toolCallId?: string;
-          requestId: string;
-          toolName: string;
-          input: string;
-          options: Array<{ text: string; data: string }>;
-          createdAt: number;
-          resolved?: 'allow' | 'deny';
-      }
-    | { id: string; kind: 'error'; content: string; createdAt: number };
-
-export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
+export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '../../core/protocol/types';
 
 interface UseBridgeState {
     items: ChatItem[];
@@ -1138,38 +1061,6 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     };
 }
 
-function cryptoId(): string {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-        return (crypto as Crypto).randomUUID();
-    }
-    return `id-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-}
-
-// Treat a tool_call event's `arguments` as "renderable" only when it
-// carries real data the card can show. The backend's SSE safety fallback
-// either omits `arguments` entirely (rawInput wasn't streamed yet) or
-// sends `arguments: {}` (the runtime's no-input placeholder); neither
-// should drive a card into the "no args" empty state, so drop them at
-// the source. Primitive empties ("" / 0 / false) are also dropped —
-// they would render as "无附加调用参数" just like a true empty object.
-function hasRenderableArguments(args: unknown): boolean {
-    if (args === undefined || args === null) return false;
-    if (typeof args === 'string') return args.length > 0;
-    if (typeof args === 'number') return Number.isFinite(args);
-    if (typeof args === 'boolean') return true;
-    if (Array.isArray(args)) return args.length > 0;
-    if (typeof args === 'object') {
-        return Object.keys(args as Record<string, unknown>).length > 0;
-    }
-    return true;
-}
-
-function parseCreatedAt(value: string | undefined): number {
-    if (!value) return Date.now();
-    const ts = new Date(value).getTime();
-    return Number.isFinite(ts) ? ts : Date.now();
-}
-
 // Walk the pending result/permission pools and fold any entries that
 // now match an existing tool_use in `items` straight into the call.
 // The number of pending entries is bounded by how many orphan
@@ -1239,54 +1130,4 @@ function tryAssignPending(state: SessionBridgeState): void {
     state.items = items;
     state.pendingResults = nextResults;
     state.pendingPermissions = nextPermissions;
-}
-
-// History ids are derived from the item's position (and toolCallId for
-// tool_use) instead of cryptoId(). Each `done` triggers a history
-// reload that rebuilds the whole list; random ids changed every React
-// key on every reload, remounting every bubble (visible flicker, all
-// expand/collapse state lost). Positional ids are stable between
-// consecutive reloads of the same on-disk record.
-function historyItemToChatItem(it: HistoryItem, index: number): ChatItem {
-    const createdAt = parseCreatedAt(it.createdAt);
-    switch (it.kind) {
-        case 'user':
-            return { id: `h-${index}`, kind: 'user', content: it.text, createdAt };
-        case 'assistant_text':
-            return {
-                id: `h-${index}`,
-                kind: 'assistant_text',
-                content: it.text,
-                createdAt,
-                streaming: false,
-            };
-        case 'thinking':
-            return { id: `h-${index}`, kind: 'thinking', content: it.text, createdAt };
-        case 'tool_use': {
-            const inputJson = typeof it.input === 'string' ? it.input : JSON.stringify(it.input ?? {}, null, 2);
-            const call: ToolCallInfo = {
-                toolName: it.toolName || 'tool',
-                input: inputJson,
-            };
-            if (it.toolCallId) call.toolCallId = it.toolCallId;
-            return {
-                id: `h-tool-${it.toolCallId || index}`,
-                kind: 'tool_use',
-                toolName: call.toolName,
-                input: call.input,
-                calls: [call],
-                createdAt,
-                ...(call.toolCallId ? { toolCallId: call.toolCallId } : {}),
-            };
-        }
-        case 'tool_result':
-            return {
-                id: `h-${index}`,
-                kind: 'tool_result',
-                content: it.content,
-                isError: !!it.isError,
-                createdAt,
-                ...(it.toolCallId ? { toolCallId: it.toolCallId } : {}),
-            };
-    }
 }

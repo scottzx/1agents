@@ -13214,5 +13214,8 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@import './dashboard';
+// NOTE: dashboard.scss 属于另一个 PR(DashboardWorkshop 功能),尚未入库。
+// 在本分支上 import 它会让 webpack 找不到样式表而构建失败,故先注释掉。
+// 待 DashboardWorkshop 的 PR 合入(dashboard.scss 入库)后,恢复下面这行。
+// @import './dashboard';
 

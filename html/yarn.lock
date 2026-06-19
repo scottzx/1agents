@@ -10,6 +10,7 @@ __metadata:
   resolution: "1agents-frontend@workspace:."
   dependencies:
     "@preact/signals": ^2.9.1
+    "@preact/signals-core": ^1.14.2
     "@typescript-eslint/eslint-plugin": ^7.1.1
     "@xterm/addon-canvas": ^0.7.0
     "@xterm/addon-clipboard": ^0.1.0
@@ -863,6 +864,13 @@ __metadata:
   version: 1.14.2
   resolution: "@preact/signals-core@npm:1.14.2"
   checksum: 3281f3ea5d443e433306157ba432d73f72b7fecdce4e023edd302eae533894043ba057761cba3ee8307359b8df0024720a0f2ab5c40240d5e6c5a8223a3955c9
+  languageName: node
+  linkType: hard
+
+"@preact/signals-core@npm:^1.14.2":
+  version: 1.14.3
+  resolution: "@preact/signals-core@npm:1.14.3"
+  checksum: f38ac7d9e428f2884e710ab072cd754c1ec26b911089d960746eb9dcb262bac1c8a3322a00ce8eabdf8cea84aec3286b132e501a4b340d37e7fe06a80a9c37a0
   languageName: node
   linkType: hard
 

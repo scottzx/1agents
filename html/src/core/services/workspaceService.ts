@@ -1,0 +1,76 @@
+import { apiFetch } from './apiClient';
+import { Workspace } from '../types';
+
+export const workspaceService = {
+    async list(): Promise<Workspace[]> {
+        const res = await apiFetch('/workspace/list');
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    },
+
+    async create(ws: Workspace): Promise<void> {
+        const res = await apiFetch('/workspace/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ws),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async update(ws: Workspace): Promise<void> {
+        const res = await apiFetch('/workspace/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ws),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async delete(id: string): Promise<void> {
+        const res = await apiFetch(`/workspace/delete?id=${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async reorder(ids: string[]): Promise<void> {
+        const res = await apiFetch('/workspace/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async listDirectories(path: string): Promise<{
+        currentPath: string;
+        parentPath: string | null;
+        directories: { name: string; path: string }[];
+    }> {
+        const res = await apiFetch(`/workspace/list-directories?path=${encodeURIComponent(path)}`);
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    },
+
+    async createDirectory(parentPath: string, name: string): Promise<string> {
+        const res = await apiFetch('/workspace/create-directory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parentPath, name }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        return data.path;
+    },
+
+    async getCcConnectUrl(workspaceId: string, theme: string, lang: string, path?: string): Promise<string> {
+        const res = await apiFetch('/cc-connect/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspace: workspaceId, theme, lang, path }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        return data.url;
+    },
+};
