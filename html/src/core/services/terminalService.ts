@@ -1,0 +1,66 @@
+import { TmuxWindow } from '../types';
+
+export const terminalService = {
+    async list(): Promise<TmuxWindow[]> {
+        const res = await fetch('/api/terminal/list');
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        return data.windows || [];
+    },
+
+    async create(workspaceId: string, cwd: string, initialCommand?: string): Promise<void> {
+        const body: { workspaceId: string; cwd: string; initialCommand?: string } = { workspaceId, cwd };
+        if (initialCommand) body.initialCommand = initialCommand;
+        const res = await fetch('/api/terminal/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async switch(windowIndex: number): Promise<void> {
+        const res = await fetch('/api/terminal/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ windowIndex }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async kill(windowIndex: number): Promise<void> {
+        const res = await fetch('/api/terminal/kill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ windowIndex }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async rename(windowName: string, name: string): Promise<void> {
+        const res = await fetch('/api/terminal/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ windowName, name }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async getMouse(): Promise<boolean> {
+        const res = await fetch('/api/terminal/mouse');
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        return !!data.mouse;
+    },
+
+    async setMouse(mouse: boolean): Promise<boolean> {
+        const res = await fetch('/api/terminal/mouse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mouse }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        return !!data.mouse;
+    },
+};

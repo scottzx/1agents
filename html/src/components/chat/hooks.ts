@@ -6,97 +6,45 @@
 
 import { useEffect, useCallback } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../types';
+import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // Imported for its side-effecting setter only; referenced exclusively inside
 // method bodies (never at module-eval time) so the sessionStore ⇄ hooks import
 // cycle stays safe — see the cycle note in stores/sessionStore.ts.
 import { setLiveSessionStatus } from '../../stores/sessionStore';
+// Protocol types moved to the platform-agnostic core (Phase 0 carve). Re-exported
+// below so existing `./hooks` importers (MessageList, SessionStatusBar, …) stay
+// unchanged.
+import type { ChatItem, ConnectionState } from '../../core/protocol/types';
+// Pure protocol folds + helpers carved into core (Phase 0). ChatBridgeManager is
+// now a thin transport adapter over these — it owns the WebSocket, listeners and
+// reconnect bookkeeping; all conversation-state transforms live in the reducer.
+import {
+    cryptoId,
+    hasRenderableArguments,
+    normalizeHistory,
+    applyTextDelta,
+    applyPromptQueued,
+    applyPromptCancelled,
+    applyToolCall,
+    applyToolResult,
+    applyPermissionRequest,
+    applyPermissionTimeout,
+    applyDone,
+    appendError,
+    resolvePermissionSide,
+    deriveLiveStatus,
+} from '../../core/protocol/reducer';
+import {
+    getHistoryAction,
+    promptAction,
+    closeSessionAction,
+    cancelQueuedAction,
+    respondPermissionAction,
+    setPermissionModeAction,
+    type BridgeEventPayload,
+} from '../../core/protocol/wireProtocol';
 
-export interface ToolCallInfo {
-    id?: string;
-    toolName: string;
-    input: string;
-    toolCallId?: string;
-    output?: string;
-    isError?: boolean;
-    /**
-     * Inline permission request that the runtime emitted for this tool call.
-     * Lives as a sub-field (not a separate ChatItem) so the permission UI
-     * stays nested inside its tool_use card across both real-time streaming
-     * and history replay.
-     */
-    permission?: {
-        requestId: string;
-        toolName: string;
-        input: string;
-        options: Array<{ text: string; data: string }>;
-        resolved?: 'allow' | 'deny';
-    };
-}
-
-/**
- * Shape of each item sent in a `history_response`. Mirrors the kind union
- * the bridge-server produces when replaying an agent's native session
- * storage (e.g. Claude Code's ~/.claude/projects/.../<sessionId>.jsonl).
- */
-export type HistoryItem =
-    | { kind: 'user'; text: string; createdAt?: string }
-    | { kind: 'assistant_text'; text: string; createdAt?: string }
-    | { kind: 'thinking'; text: string; createdAt?: string }
-    | {
-          kind: 'tool_use';
-          toolName: string;
-          input: unknown;
-          toolCallId?: string;
-          createdAt?: string;
-      }
-    | {
-          kind: 'tool_result';
-          toolCallId?: string;
-          content: string;
-          isError: boolean;
-          createdAt?: string;
-      };
-
-export type ChatItem =
-    | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
-    | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
-    | { id: string; kind: 'thinking'; content: string; createdAt: number }
-    | {
-          id: string;
-          kind: 'tool_use';
-          toolName: string;
-          input: string;
-          calls: ToolCallInfo[];
-          createdAt: number;
-          toolCallId?: string;
-      }
-    | {
-          id: string;
-          kind: 'tool_result';
-          toolCallId?: string;
-          /** Tool name echoed by the realtime event, when available.
-           * Lets the "待分配" fallback group label orphan results with
-           * the real tool instead of a generic placeholder. */
-          toolName?: string;
-          content: string;
-          createdAt: number;
-          isError: boolean;
-      }
-    | {
-          id: string;
-          kind: 'permission_request';
-          toolCallId?: string;
-          requestId: string;
-          toolName: string;
-          input: string;
-          options: Array<{ text: string; data: string }>;
-          createdAt: number;
-          resolved?: 'allow' | 'deny';
-      }
-    | { id: string; kind: 'error'; content: string; createdAt: number };
-
-export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
+export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '../../core/protocol/types';
 
 interface UseBridgeState {
     items: ChatItem[];
@@ -272,48 +220,24 @@ export class ChatBridgeManager {
         const ws = new WebSocket(wsUrl);
         state.ws = ws;
 
-        // Flush the streaming cursor on the trailing assistant_text block. Called
-        // whenever a non-text_delta event arrives, so the blink stops at the
-        // boundary between text and whatever comes next (tool, permission, ...).
-        const stopAssistantStreaming = () => {
-            const items = state.items;
-            if (items.length === 0) return;
-            const last = items[items.length - 1];
-            if (last && last.kind === 'assistant_text' && last.streaming) {
-                state.items = [...items.slice(0, -1), { ...last, streaming: false }];
-            }
-        };
-
         ws.onopen = () => {
             state.connection = 'connected';
             this.notify(state);
             ws.send(
-                JSON.stringify({
-                    action: 'get_history',
-                    sessionId: session.id,
-                    agentType: session.agentType,
-                    acpSessionId: session.acpSessionId,
-                })
+                JSON.stringify(
+                    getHistoryAction({
+                        sessionId: session.id,
+                        agentType: session.agentType,
+                        acpSessionId: session.acpSessionId,
+                    })
+                )
             );
         };
 
         ws.onmessage = e => {
-            let payload: {
-                event: string;
-                text?: string;
-                type?: string;
-                arguments?: unknown;
-                requestId?: string;
-                message?: string;
-                code?: string;
-                toolName?: string;
-                toolCallId?: string;
-                isError?: boolean;
-                messages?: Array<{ role: string; text: string }>;
-                items?: HistoryItem[];
-            };
+            let payload: BridgeEventPayload;
             try {
-                payload = JSON.parse(e.data) as typeof payload;
+                payload = JSON.parse(e.data) as BridgeEventPayload;
             } catch (err) {
                 console.error('[useBridgeManager] Failed to parse message:', err);
                 return;
@@ -347,49 +271,25 @@ export class ChatBridgeManager {
                     this.notify(state);
                     break;
                 case 'prompt_queued': {
-                    // Bridge accepted the prompt but couldn't start it
-                    // because another turn is already running. Mark the
-                    // most-recently-added user bubble as "queued" so the
-                    // UI can render a queue badge + per-item cancel
-                    // button on it. The bridge-supplied `requestId` is
-                    // stored on the bubble so the X button knows what
-                    // to send back in `cancel_queued`. When the next
-                    // turn starts (first text_delta after the active one
-                    // finishes), the FIFO drain in text_delta clears
-                    // this status.
+                    // Bridge accepted the prompt but couldn't start it because
+                    // another turn is already running. Mark the most-recent user
+                    // bubble as "queued" (the X button sends `requestId` back in
+                    // cancel_queued; the next turn's first text_delta drains it).
                     if (!state.turnStarted) break;
-                    const items = state.items;
-                    for (let i = items.length - 1; i >= 0; i--) {
-                        const it = items[i];
-                        if (it.kind !== 'user') continue;
-                        if (it.queueStatus === 'queued') break;
-                        state.items = [
-                            ...items.slice(0, i),
-                            { ...it, queueStatus: 'queued', queueRequestId: payload.requestId },
-                            ...items.slice(i + 1),
-                        ];
+                    const items = applyPromptQueued(state.items, payload.requestId);
+                    if (items !== state.items) {
+                        state.items = items;
                         this.notify(state);
-                        break;
                     }
                     break;
                 }
                 case 'prompt_cancelled': {
-                    // Bridge dropped a queued prompt without ever starting
-                    // it (e.g. user pressed cancel mid-flight). Clear
-                    // the queue badge from any still-queued user bubbles
-                    // — without this, the badge would linger forever
-                    // because the cancelled turn never produced a
-                    // text_delta to drain it.
-                    let mutated = false;
-                    const next = state.items.map(it => {
-                        if (it.kind === 'user' && it.queueStatus === 'queued') {
-                            mutated = true;
-                            return { ...it, queueStatus: undefined };
-                        }
-                        return it;
-                    });
+                    // Bridge dropped a queued prompt without ever starting it.
+                    // Clear the queue badge from still-queued user bubbles — the
+                    // cancelled turn never produces a text_delta to drain them.
+                    const { items, mutated } = applyPromptCancelled(state.items);
                     if (mutated) {
-                        state.items = next;
+                        state.items = items;
                         this.notify(state);
                     }
                     break;
@@ -397,327 +297,51 @@ export class ChatBridgeManager {
                 case 'text_delta': {
                     if (!state.turnStarted) break;
                     const delta = payload.text;
-                    const type = payload.type || 'output';
-                    if (!delta) return;
-
-                    const next = [...state.items];
-                    const last = next[next.length - 1];
-                    if (type === 'thought') {
-                        if (last && last.kind === 'thinking') {
-                            next[next.length - 1] = {
-                                ...last,
-                                content: last.content + delta,
-                            };
-                        } else {
-                            next.push({
-                                id: cryptoId(),
-                                kind: 'thinking',
-                                content: delta,
-                                createdAt: Date.now(),
-                            });
-                        }
-                    } else {
-                        if (last && last.kind === 'assistant_text' && last.streaming) {
-                            next[next.length - 1] = {
-                                ...last,
-                                content: last.content + delta,
-                                streaming: true,
-                            };
-                        } else {
-                            // First text_delta for a freshly dequeued turn.
-                            // Clear the queue badge from the oldest still-
-                            // queued user bubble — the bridge drains its
-                            // promptQueue FIFO, so the first remaining
-                            // queued bubble is the one that just started.
-                            for (let i = 0; i < next.length; i++) {
-                                const it = next[i];
-                                if (it.kind === 'user' && it.queueStatus === 'queued') {
-                                    next[i] = { ...it, queueStatus: undefined };
-                                    break;
-                                }
-                            }
-                            next.push({
-                                id: cryptoId(),
-                                kind: 'assistant_text',
-                                content: delta,
-                                createdAt: Date.now(),
-                                streaming: true,
-                            });
-                        }
-                    }
-                    state.items = next;
+                    if (!delta) break;
+                    state.items = applyTextDelta(state.items, delta, payload.type || 'output');
                     this.notify(state);
                     break;
                 }
                 case 'tool_call': {
                     if (!state.turnStarted) break;
                     // Backend's SSE safety fallback may emit tool_call events
-                    // without `arguments` (omitted) or with `arguments: {}`
-                    // (the runtime's no-input placeholder). Neither carries
-                    // any data we can render, and acting on them would
-                    // either synthesize a no-input call card or replace an
-                    // existing call's streamed input. Drop them here so the
-                    // next substantive event (or tool_result) is the only
-                    // thing that can move the call's state forward.
+                    // without `arguments` (omitted) or with `arguments: {}` (the
+                    // runtime's no-input placeholder); neither carries renderable
+                    // data, so drop them before they reach the fold.
                     if (!hasRenderableArguments(payload.arguments)) break;
-                    stopAssistantStreaming();
-                    const argsString =
-                        typeof payload.arguments === 'string'
-                            ? payload.arguments
-                            : JSON.stringify(payload.arguments, null, 2);
-                    const newCall: ToolCallInfo = {
-                        toolName: payload.toolName || 'tool',
-                        input: argsString,
-                    };
-                    if (payload.toolCallId) {
-                        newCall.toolCallId = payload.toolCallId;
-                    }
-                    const next = [...state.items];
-                    const last = next[next.length - 1];
-                    if (last && last.kind === 'tool_use') {
-                        // Multiple tool_call events for the same toolCallId
-                        // may arrive as more data streams in. Update the
-                        // existing call in place rather than appending a
-                        // duplicate so tool_result lands on the right call
-                        // and the tool_group stays tidy.
-                        const existingIdx = newCall.toolCallId
-                            ? last.calls.findIndex(c => c.toolCallId === newCall.toolCallId)
-                            : -1;
-                        if (existingIdx >= 0) {
-                            next[next.length - 1] = {
-                                ...last,
-                                calls: last.calls.map((c, idx) =>
-                                    idx === existingIdx
-                                        ? {
-                                              ...c,
-                                              toolName: newCall.toolName,
-                                              input: newCall.input,
-                                          }
-                                        : c
-                                ),
-                            };
-                        } else {
-                            next[next.length - 1] = {
-                                ...last,
-                                calls: [...last.calls, newCall],
-                            };
-                        }
-                    } else {
-                        next.push({
-                            id: cryptoId(),
-                            kind: 'tool_use',
-                            toolName: newCall.toolName,
-                            input: newCall.input,
-                            calls: [newCall],
-                            createdAt: Date.now(),
-                            ...(newCall.toolCallId ? { toolCallId: newCall.toolCallId } : {}),
-                        });
-                    }
-                    state.items = next;
-                    // Re-scan the pending result/permission pools and
-                    // fold any entry that matches the new call (or
-                    // earlier calls in this turn) onto its call. This
-                    // is what reconciles out-of-order arrivals — e.g.
-                    // a permission_request that beat the tool_call to
-                    // the wire, or a tool_result that arrived before
-                    // its call. Each scan is O(pending × items) but
-                    // the pool is bounded by per-turn orphan count
-                    // (a handful at most).
-                    tryAssignPending(state);
+                    const next = applyToolCall(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
                     this.notify(state);
                     break;
                 }
                 case 'tool_result': {
                     if (!state.turnStarted) break;
-                    stopAssistantStreaming();
-
-                    // Find the matching tool_use / call and fold the result onto
-                    // it in place. This mirrors the rendered history shape (a
-                    // call with both input and output attached) so the
-                    // tool_group can display the body during streaming, not
-                    // only after a history reload.
-                    const items = [...state.items];
-                    let matched = false;
-                    for (let i = items.length - 1; i >= 0; i--) {
-                        const item = items[i];
-                        if (item.kind !== 'tool_use') continue;
-                        if (payload.toolCallId) {
-                            const callIdx = item.calls.findIndex(c => c.toolCallId === payload.toolCallId);
-                            if (callIdx >= 0) {
-                                items[i] = {
-                                    ...item,
-                                    calls: item.calls.map((c, idx) =>
-                                        idx === callIdx
-                                            ? {
-                                                  ...c,
-                                                  output: payload.text || '',
-                                                  isError: !!payload.isError,
-                                              }
-                                            : c
-                                    ),
-                                };
-                                matched = true;
-                                break;
-                            }
-                        }
-                        // No toolCallId: attach to the most recent call in the
-                        // latest tool_use that doesn't have output yet.
-                        const openCallIdx = item.calls.findIndex(c => c.output === undefined);
-                        const targetIdx = openCallIdx >= 0 ? openCallIdx : item.calls.length - 1;
-                        if (targetIdx >= 0) {
-                            items[i] = {
-                                ...item,
-                                calls: item.calls.map((c, idx) =>
-                                    idx === targetIdx
-                                        ? {
-                                              ...c,
-                                              output: payload.text || '',
-                                              isError: !!payload.isError,
-                                          }
-                                        : c
-                                ),
-                            };
-                            matched = true;
-                            break;
-                        }
-                    }
-                    if (!matched) {
-                        // No tool_use yet — park the result in the
-                        // session-scoped pending pool. The next
-                        // tool_call will re-scan the pool and fold any
-                        // matching entry into its call. Leftover entries
-                        // are surfaced by the renderer as a "待分配"
-                        // tool_group so the data is never dropped.
-                        state.items = items;
-                        state.pendingResults = [
-                            ...state.pendingResults,
-                            {
-                                id: cryptoId(),
-                                kind: 'tool_result',
-                                toolCallId: payload.toolCallId,
-                                toolName: payload.toolName,
-                                content: payload.text || '',
-                                isError: !!payload.isError,
-                                createdAt: Date.now(),
-                            },
-                        ];
-                        this.notify(state);
-                        break;
-                    }
-                    state.items = items;
+                    const next = applyToolResult(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
                     this.notify(state);
                     break;
                 }
                 case 'permission_request': {
                     if (!state.turnStarted) break;
-                    stopAssistantStreaming();
-                    const argsString =
-                        typeof payload.arguments === 'string'
-                            ? payload.arguments
-                            : JSON.stringify(payload.arguments, null, 2);
-                    const requestId = payload.requestId || '';
-                    const toolCallId = payload.toolCallId;
-                    const toolName = payload.toolName || 'tool';
-                    const newPermission = {
-                        requestId,
-                        toolName,
-                        input: argsString,
-                        options: [] as Array<{ text: string; data: string }>,
-                    };
-
-                    // Mirror tool_result's reverse-scan + synthesize-fallback:
-                    // attach the permission to the matching tool_use so it
-                    // renders nested inside the tool card. If the permission
-                    // beat the tool_call over the wire, synthesize a stub
-                    // tool_use and let the later tool_call merge into it.
-                    const items = [...state.items];
-                    let matched = false;
-                    if (toolCallId) {
-                        for (let i = items.length - 1; i >= 0; i--) {
-                            const item = items[i];
-                            if (item.kind !== 'tool_use') continue;
-                            const callIdx = item.calls.findIndex(c => c.toolCallId === toolCallId);
-                            if (callIdx >= 0) {
-                                items[i] = {
-                                    ...item,
-                                    calls: item.calls.map((c, idx) =>
-                                        idx === callIdx ? { ...c, permission: newPermission } : c
-                                    ),
-                                };
-                                matched = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!matched) {
-                        // No tool_use yet — park the permission in the
-                        // session-scoped pending pool. The next
-                        // tool_call will re-scan and fold any matching
-                        // entry into its call. Synthesizing a stub
-                        // tool_use with `input: ''` here is what used
-                        // to produce a phantom "permission" card that
-                        // visually replaced the real call card.
-                        state.items = items;
-                        state.pendingPermissions = [
-                            ...state.pendingPermissions,
-                            {
-                                id: cryptoId(),
-                                kind: 'permission_request',
-                                toolCallId,
-                                requestId,
-                                toolName,
-                                input: argsString,
-                                options: [],
-                                createdAt: Date.now(),
-                            },
-                        ];
-                        this.notify(state);
-                        break;
-                    }
-                    state.items = items;
+                    const next = applyPermissionRequest(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
                     this.notify(state);
                     break;
                 }
                 case 'permission_timeout': {
                     if (!state.turnStarted) break;
-                    stopAssistantStreaming();
-                    const requestId = payload.requestId;
-                    // Mark the nested permission as denied so the inline UI
-                    // collapses, then surface the timeout as an error chip.
-                    state.items = state.items.map(it => {
-                        if (it.kind !== 'tool_use') return it;
-                        let touched = false;
-                        const calls = it.calls.map(c => {
-                            if (c.permission && c.permission.requestId === requestId) {
-                                touched = true;
-                                return { ...c, permission: { ...c.permission, resolved: 'deny' as const } };
-                            }
-                            return c;
-                        });
-                        return touched ? { ...it, calls } : it;
-                    });
-                    state.items = [
-                        ...state.items,
-                        {
-                            id: cryptoId(),
-                            kind: 'error',
-                            content: payload.message || 'Permission request timed out.',
-                            createdAt: Date.now(),
-                        },
-                    ];
+                    state.items = applyPermissionTimeout(state.items, payload.requestId, payload.message);
                     this.notify(state);
                     break;
                 }
                 case 'done': {
-                    const next = [...state.items];
-                    const last = next[next.length - 1];
-                    if (last && last.kind === 'assistant_text' && last.streaming) {
-                        next[next.length - 1] = {
-                            ...last,
-                            streaming: false,
-                        };
-                    }
-                    state.items = next;
+                    state.items = applyDone(state.items);
                     state.typing = false;
                     state.turnStarted = false;
                     this.notify(state);
@@ -725,56 +349,28 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'history_response': {
-                    const historyItems: HistoryItem[] =
-                        payload.items && payload.items.length > 0
-                            ? payload.items
-                            : (payload.messages || []).map(m => ({
-                                  kind: (m.role === 'user' ? 'user' : 'assistant_text') as 'user' | 'assistant_text',
-                                  text: m.text,
-                              }));
-                    const converted: ChatItem[] = historyItems.map((it, idx) => historyItemToChatItem(it, idx));
-                    state.items = converted;
-                    // History is authoritative: any entries the realtime
-                    // pool was holding (e.g. a tool_result that arrived
-                    // before the matching tool_call) are redundant now
-                    // that the on-disk record has been replayed. Drop
-                    // the pool so the renderer stops showing the
-                    // "待分配" group once the real history is in.
+                    state.items = normalizeHistory(payload.items, payload.messages);
+                    // History is authoritative: drop the realtime holding pools so
+                    // the renderer stops showing the "待分配" group once the
+                    // on-disk record has been replayed.
                     state.pendingResults = [];
                     state.pendingPermissions = [];
                     this.notify(state);
                     break;
                 }
                 case 'error': {
-                    // SESSION_NOT_FOUND arriving before `session_ready`
-                    // is the bridge's answer to any control action we
-                    // fired (or the Go backend re-fired) while the agent
-                    // was still spawning. Since the UI now gates input
-                    // on `ready`, the user can't trigger these anymore,
-                    // but we still defensively swallow them so the chat
-                    // stream doesn't get a misleading red banner during
-                    // the init window.
+                    // SESSION_NOT_FOUND before `session_ready` is the bridge
+                    // answering a control action fired during the init window
+                    // (the UI gates input on `ready`, so the user can't trigger
+                    // these). Swallow it so the stream doesn't flash a banner.
                     if (payload.code === 'SESSION_NOT_FOUND' && !state.ready) {
                         break;
                     }
-                    stopAssistantStreaming();
-                    state.items = [
-                        ...state.items,
-                        {
-                            id: cryptoId(),
-                            kind: 'error',
-                            content: payload.message || payload.code || 'Unknown error',
-                            createdAt: Date.now(),
-                        },
-                    ];
-                    // Only reload history when the error actually came from
-                    // inside a turn — that's the case where on-disk state
-                    // might be authoritative over what we have in memory.
-                    // Errors from out-of-turn control actions
-                    // (set_permission_mode, respond_permission for a stale
-                    // requestId, etc.) don't touch history; reloading then
-                    // just pulls a fresh history_response per error and
-                    // turns one bad input into a console storm.
+                    state.items = appendError(state.items, payload.message || payload.code || 'Unknown error');
+                    // Only reload history when the error came from inside a turn —
+                    // that's when on-disk state may be authoritative over memory.
+                    // Out-of-turn control errors don't touch history; reloading
+                    // then turns one bad input into a console storm.
                     const wasInTurn = state.turnStarted;
                     state.typing = false;
                     state.turnStarted = false;
@@ -842,13 +438,7 @@ export class ChatBridgeManager {
                 createdAt: Date.now(),
             },
         ];
-        state.ws.send(
-            JSON.stringify({
-                action: 'prompt',
-                sessionId: session.id,
-                text: content,
-            })
-        );
+        state.ws.send(JSON.stringify(promptAction(session.id, content)));
         state.typing = true;
         this.notify(state);
     }
@@ -862,12 +452,7 @@ export class ChatBridgeManager {
         // turn, drops the queue, closes the session). Stopping the
         // current turn while letting the queue keep running isn't
         // exposed in the UI.
-        state.ws.send(
-            JSON.stringify({
-                action: 'close_session',
-                sessionId: session.id,
-            })
-        );
+        state.ws.send(JSON.stringify(closeSessionAction(session.id)));
         state.typing = false;
         state.turnStarted = false;
         this.notify(state);
@@ -884,13 +469,7 @@ export class ChatBridgeManager {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
         if (!state.ready) return;
-        state.ws.send(
-            JSON.stringify({
-                action: 'cancel_queued',
-                sessionId: session.id,
-                requestId,
-            })
-        );
+        state.ws.send(JSON.stringify(cancelQueuedAction(session.id, requestId)));
         // Optimistically clear the badge so the user gets immediate
         // feedback; the bridge's `prompt_cancelled` event will
         // arrive later and be a no-op.
@@ -919,25 +498,12 @@ export class ChatBridgeManager {
                 break;
             }
         }
-        state.ws.send(
-            JSON.stringify({
-                action: 'respond_permission',
-                sessionId: session.id,
-                requestId,
-                toolCallId,
-                behavior: decision,
-            })
-        );
+        state.ws.send(JSON.stringify(respondPermissionAction(session.id, requestId, toolCallId, decision)));
         // `cancel` leaves the inline UI interactive so the user can re-decide
         // (the runtime will time the request out on its own if nothing
         // else happens). The four real decisions collapse the inline
         // permission into a one-line summary keyed on the allow/deny side.
-        const resolved: 'allow' | 'deny' | null =
-            decision === 'allow_once' || decision === 'allow_always'
-                ? 'allow'
-                : decision === 'reject_once' || decision === 'reject_always'
-                  ? 'deny'
-                  : null;
+        const resolved = resolvePermissionSide(decision);
         if (resolved) {
             state.items = state.items.map(it => {
                 if (it.kind !== 'tool_use') return it;
@@ -972,18 +538,10 @@ export class ChatBridgeManager {
         // it survives reloads. Both calls are fire-and-forget — if PATCH
         // fails the local toggle still reflects the user intent for the
         // current process lifetime.
-        // Field name is `permissionMode` (not `mode`) to match the JSON
-        // tag on backend/internal/agent.WsMessage.PermissionMode —
-        // otherwise the Go struct drops the field on the ReadJSON →
-        // WriteJSON forward and the bridge-server sees a missing param.
+        // setPermissionModeAction keeps the `permissionMode` field name aligned
+        // with the Go WsMessage JSON tag (see wireProtocol.ts).
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-            state.ws.send(
-                JSON.stringify({
-                    action: 'set_permission_mode',
-                    sessionId: session.id,
-                    permissionMode: mode,
-                })
-            );
+            state.ws.send(JSON.stringify(setPermissionModeAction(session.id, mode)));
         }
         void fetch(`/api/agent/sessions/${encodeURIComponent(session.id)}`, {
             method: 'PATCH',
@@ -997,12 +555,13 @@ export class ChatBridgeManager {
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
             state.ws.send(
-                JSON.stringify({
-                    action: 'get_history',
-                    sessionId: session.id,
-                    agentType: session.agentType,
-                    acpSessionId: session.acpSessionId,
-                })
+                JSON.stringify(
+                    getHistoryAction({
+                        sessionId: session.id,
+                        agentType: session.agentType,
+                        acpSessionId: session.acpSessionId,
+                    })
+                )
             );
         }
     }
@@ -1015,22 +574,6 @@ export class ChatBridgeManager {
             listener();
         }
     }
-}
-
-/**
- * Map a session's transient bridge state to the sidebar status dot. Only the
- * two live, attention-worthy states are surfaced — a pending permission
- * (blocked on the user) outranks streaming (a turn in flight). When neither
- * applies we return null so the sidebar falls back to the persisted status
- * (idle / completed / error) instead of fighting it.
- */
-function deriveLiveStatus(state: SessionBridgeState): ChatStatus | null {
-    const hasPendingPermission =
-        state.pendingPermissions.some(p => p.kind === 'permission_request' && !p.resolved) ||
-        state.items.some(it => it.kind === 'tool_use' && it.calls.some(c => c.permission && !c.permission.resolved));
-    if (hasPendingPermission) return 'awaiting_permission';
-    if (state.typing) return 'streaming';
-    return null;
 }
 
 export const globalBridgeManager = new ChatBridgeManager();
@@ -1136,157 +679,4 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         takenOver,
         retry,
     };
-}
-
-function cryptoId(): string {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-        return (crypto as Crypto).randomUUID();
-    }
-    return `id-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-}
-
-// Treat a tool_call event's `arguments` as "renderable" only when it
-// carries real data the card can show. The backend's SSE safety fallback
-// either omits `arguments` entirely (rawInput wasn't streamed yet) or
-// sends `arguments: {}` (the runtime's no-input placeholder); neither
-// should drive a card into the "no args" empty state, so drop them at
-// the source. Primitive empties ("" / 0 / false) are also dropped —
-// they would render as "无附加调用参数" just like a true empty object.
-function hasRenderableArguments(args: unknown): boolean {
-    if (args === undefined || args === null) return false;
-    if (typeof args === 'string') return args.length > 0;
-    if (typeof args === 'number') return Number.isFinite(args);
-    if (typeof args === 'boolean') return true;
-    if (Array.isArray(args)) return args.length > 0;
-    if (typeof args === 'object') {
-        return Object.keys(args as Record<string, unknown>).length > 0;
-    }
-    return true;
-}
-
-function parseCreatedAt(value: string | undefined): number {
-    if (!value) return Date.now();
-    const ts = new Date(value).getTime();
-    return Number.isFinite(ts) ? ts : Date.now();
-}
-
-// Walk the pending result/permission pools and fold any entries that
-// now match an existing tool_use in `items` straight into the call.
-// The number of pending entries is bounded by how many orphan
-// tool_results / permission_requests arrive in a single turn (a few
-// at most), so the linear scan is cheap. Returns the leftover
-// entries that still don't have a matching call — those stay in the
-// pool for the renderer to surface as a "待分配" tool_group.
-function tryAssignPending(state: SessionBridgeState): void {
-    if (state.pendingResults.length === 0 && state.pendingPermissions.length === 0) return;
-    let items = state.items;
-    const nextResults: ChatItem[] = [];
-    for (const p of state.pendingResults) {
-        if (p.kind !== 'tool_result') {
-            nextResults.push(p);
-            continue;
-        }
-        let matched = false;
-        for (let i = items.length - 1; i >= 0; i--) {
-            const it = items[i];
-            if (it.kind !== 'tool_use') continue;
-            const callIdx = p.toolCallId
-                ? it.calls.findIndex(c => c.toolCallId === p.toolCallId)
-                : it.calls.findIndex(c => c.output === undefined);
-            if (callIdx < 0) continue;
-            // Build the replacement from `it` (already narrowed to
-            // tool_use) — the map callback's `entry` is the full union
-            // and TS can't see that idx === i implies tool_use.
-            const updated = {
-                ...it,
-                calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, output: p.content, isError: p.isError })),
-            };
-            items = items.map((entry, idx) => (idx === i ? updated : entry));
-            matched = true;
-            break;
-        }
-        if (!matched) nextResults.push(p);
-    }
-    const nextPermissions: ChatItem[] = [];
-    for (const p of state.pendingPermissions) {
-        if (p.kind !== 'permission_request') {
-            nextPermissions.push(p);
-            continue;
-        }
-        let matched = false;
-        for (let i = items.length - 1; i >= 0; i--) {
-            const it = items[i];
-            if (it.kind !== 'tool_use') continue;
-            const callIdx = p.toolCallId ? it.calls.findIndex(c => c.toolCallId === p.toolCallId) : -1;
-            if (callIdx < 0) continue;
-            const newPermission = {
-                requestId: p.requestId,
-                toolName: p.toolName,
-                input: p.input,
-                options: p.options,
-                ...(p.resolved ? { resolved: p.resolved } : {}),
-            };
-            const updated = {
-                ...it,
-                calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, permission: newPermission })),
-            };
-            items = items.map((entry, idx) => (idx === i ? updated : entry));
-            matched = true;
-            break;
-        }
-        if (!matched) nextPermissions.push(p);
-    }
-    state.items = items;
-    state.pendingResults = nextResults;
-    state.pendingPermissions = nextPermissions;
-}
-
-// History ids are derived from the item's position (and toolCallId for
-// tool_use) instead of cryptoId(). Each `done` triggers a history
-// reload that rebuilds the whole list; random ids changed every React
-// key on every reload, remounting every bubble (visible flicker, all
-// expand/collapse state lost). Positional ids are stable between
-// consecutive reloads of the same on-disk record.
-function historyItemToChatItem(it: HistoryItem, index: number): ChatItem {
-    const createdAt = parseCreatedAt(it.createdAt);
-    switch (it.kind) {
-        case 'user':
-            return { id: `h-${index}`, kind: 'user', content: it.text, createdAt };
-        case 'assistant_text':
-            return {
-                id: `h-${index}`,
-                kind: 'assistant_text',
-                content: it.text,
-                createdAt,
-                streaming: false,
-            };
-        case 'thinking':
-            return { id: `h-${index}`, kind: 'thinking', content: it.text, createdAt };
-        case 'tool_use': {
-            const inputJson = typeof it.input === 'string' ? it.input : JSON.stringify(it.input ?? {}, null, 2);
-            const call: ToolCallInfo = {
-                toolName: it.toolName || 'tool',
-                input: inputJson,
-            };
-            if (it.toolCallId) call.toolCallId = it.toolCallId;
-            return {
-                id: `h-tool-${it.toolCallId || index}`,
-                kind: 'tool_use',
-                toolName: call.toolName,
-                input: call.input,
-                calls: [call],
-                createdAt,
-                ...(call.toolCallId ? { toolCallId: call.toolCallId } : {}),
-            };
-        }
-        case 'tool_result':
-            return {
-                id: `h-${index}`,
-                kind: 'tool_result',
-                content: it.content,
-                isError: !!it.isError,
-                createdAt,
-                ...(it.toolCallId ? { toolCallId: it.toolCallId } : {}),
-            };
-    }
 }
