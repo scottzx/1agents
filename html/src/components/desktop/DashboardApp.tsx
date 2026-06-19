@@ -1262,8 +1262,8 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                             <rect x="3" y="10" width="10" height="2" fill="var(--pixel-cyan)" />
                             <rect x="5" y="12" width="6" height="2" fill="var(--pixel-cyan)" />
                             {/* Face */}
-                            <rect x="4" y="6" width="2" height="2" fill="#000" />
-                            <rect x="10" y="6" width="2" height="2" fill="#000" />
+                            <rect x="4" y="6" width="2" height="2" fill="#5a3c20" />
+                            <rect x="10" y="6" width="2" height="2" fill="#5a3c20" />
                         </svg>
                         <div class="pixel-company-name-box">
                             {isEditingCompany ? (
@@ -1395,9 +1395,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                     {/* Intake Chamber */}
                     <div class="pixel-pipeline-chamber">
                         <svg class="pixel-chamber-icon" viewBox="0 0 16 16" width="42" height="42">
-                            <rect x="3" y="3" width="10" height="10" fill="#a85cf9" />
-                            <rect x="5" y="5" width="6" height="6" fill="#fff" opacity="0.3" />
-                            <rect x="7" y="1" width="2" height="2" fill="#ef7d1a" />
+                            <rect x="3" y="3" width="10" height="10" fill="#9b7bd4" />
+                            <rect x="5" y="5" width="6" height="6" fill="#fffaf0" opacity="0.35" />
+                            <rect x="7" y="1" width="2" height="2" fill="#d97b4a" />
                         </svg>
                         <span class="pixel-chamber-title">需求接收港</span>
                     </div>
@@ -1428,7 +1428,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                         d="M8,1 C8,1 11,4 11,8 L11,13 L5,13 L5,8 C5,4 8,1 8,1 Z"
                                         fill="var(--pixel-gold)"
                                     />
-                                    <rect x="7" y="4" width="2" height="4" fill="#000" />
+                                    <rect x="7" y="4" width="2" height="4" fill="#7a5a3c" />
                                     <rect x="4" y="11" width="8" height="2" fill="var(--pixel-red)" />
                                     <path d="M3,10 L5,10 L5,13 L3,13 Z" fill="var(--pixel-orange)" />
                                     <path d="M11,10 L13,10 L13,13 L11,13 Z" fill="var(--pixel-orange)" />
@@ -1437,9 +1437,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                             </div>
                         ) : (
                             <svg viewBox="0 0 16 16" width="42" height="42">
-                                <rect x="3" y="13" width="10" height="2" fill="#3c4268" />
-                                <rect x="7" y="5" width="2" height="8" fill="#3c4268" />
-                                <rect x="5" y="9" width="6" height="2" fill="#3c4268" />
+                                <rect x="3" y="13" width="10" height="2" fill="#e6d8b8" />
+                                <rect x="7" y="5" width="2" height="8" fill="#e6d8b8" />
+                                <rect x="5" y="9" width="6" height="2" fill="#e6d8b8" />
                             </svg>
                         )}
                         <span class="pixel-chamber-title">

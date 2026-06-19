@@ -187,58 +187,58 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
         }
 
         if (type === 'hardware') {
-            shirtColor = '#e5801c';
+            shirtColor = '#d97b4a';
         } else if (type === 'media') {
-            shirtColor = '#9246ea';
+            shirtColor = '#9b7bd4';
         } else if (type === 'research') {
-            shirtColor = '#2d9c51';
+            shirtColor = '#6fa84a';
         }
 
         return (
             <svg class="pixel-char-canvas" viewBox="0 0 24 24" width="48" height="48" style="image-rendering:pixelated">
                 {/* Desk/Table */}
-                <rect x="2" y="18" width="20" height="2" fill="#20243f" />
-                <rect x="4" y="20" width="2" height="4" fill="#17192f" />
-                <rect x="18" y="20" width="2" height="4" fill="#17192f" />
+                <rect x="2" y="18" width="20" height="2" fill="#c79a5e" />
+                <rect x="4" y="20" width="2" height="4" fill="#a07840" />
+                <rect x="18" y="20" width="2" height="4" fill="#a07840" />
 
                 {/* Chair */}
-                <rect x="7" y="14" width="10" height="2" fill="#5f6695" />
-                <rect x="11" y="16" width="2" height="4" fill="#3c4268" />
+                <rect x="7" y="14" width="10" height="2" fill="#d8b176" />
+                <rect x="11" y="16" width="2" height="4" fill="#c79a5e" />
 
                 {/* Body / Shirt */}
                 <g class={headClass}>
                     <rect x="9" y="10" width="6" height="7" fill={shirtColor} />
-                    <rect x="10" y="4" width="4" height="6" fill="#fcd0a1" /> {/* Head */}
-                    <rect x="9" y="3" width="6" height="2" fill="#20243f" /> {/* Hair */}
-                    <rect x="8" y="5" width="2" height="3" fill="#20243f" />
+                    <rect x="10" y="4" width="4" height="6" fill="#f4c890" /> {/* Head */}
+                    <rect x="9" y="3" width="6" height="2" fill="#7a5a3c" /> {/* Hair */}
+                    <rect x="8" y="5" width="2" height="3" fill="#7a5a3c" />
                 </g>
 
                 {/* Eyes */}
                 {status === 'failed' ? (
                     // Closed eyes / sleeping
                     <g class={headClass}>
-                        <rect x="11" y="6" width="2" height="1" fill="#20243f" />
+                        <rect x="11" y="6" width="2" height="1" fill="#7a5a3c" />
                     </g>
                 ) : (
                     <g class={headClass}>
-                        <rect x="10" y="6" width="1" height="1" fill="#000" />
-                        <rect x="13" y="6" width="1" height="1" fill="#000" />
+                        <rect x="10" y="6" width="1" height="1" fill="#5a3c20" />
+                        <rect x="13" y="6" width="1" height="1" fill="#5a3c20" />
                     </g>
                 )}
 
                 {/* Hands typing */}
                 {status === 'running' && stamina > 0 && (
                     <g class={handsClass}>
-                        <rect x="8" y="14" width="2" height="2" fill="#fcd0a1" />
-                        <rect x="14" y="14" width="2" height="2" fill="#fcd0a1" />
+                        <rect x="8" y="14" width="2" height="2" fill="#f4c890" />
+                        <rect x="14" y="14" width="2" height="2" fill="#f4c890" />
                     </g>
                 )}
 
                 {/* Computer Screen */}
-                <rect x="14" y="9" width="8" height="7" fill="#111424" />
-                <rect x="15" y="10" width="6" height="5" fill={status === 'running' ? '#38b764' : '#3c4268'} />
-                <rect x="17" y="16" width="2" height="2" fill="#3c4268" />
-                <rect x="15" y="18" width="6" height="1" fill="#3c4268" />
+                <rect x="14" y="9" width="8" height="7" fill="#d8c8a8" />
+                <rect x="15" y="10" width="6" height="5" fill={status === 'running' ? '#6fa84a' : '#cdb892'} />
+                <rect x="17" y="16" width="2" height="2" fill="#cdb892" />
+                <rect x="15" y="18" width="6" height="1" fill="#cdb892" />
             </svg>
         );
     }
