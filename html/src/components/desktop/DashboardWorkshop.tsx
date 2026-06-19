@@ -25,10 +25,8 @@ interface DashboardWorkshopProps {
     onClick: () => void;
     onHover: (e: MouseEvent, visible: boolean, data: unknown) => void;
     onPlaySound?: (type: 'coin' | 'blip') => void;
-    employee: MockEmployee;
+    cohort: MockEmployee[];
     effortLevel: 'low' | 'middle' | 'high';
-    onChangeEffortLevel?: (wsId: string, level: 'low' | 'middle' | 'high') => void;
-    onAssignEmployeeClick?: (wsId: string) => void;
 }
 
 interface DashboardWorkshopState {
@@ -40,26 +38,6 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
     private logInterval: ReturnType<typeof setInterval> | null = null;
     private logIdCounter = 0;
     private coinIdCounter = 0;
-
-    handleLedClick = (e: MouseEvent) => {
-        e.stopPropagation();
-        const { workspace, effortLevel, onChangeEffortLevel, onPlaySound } = this.props;
-        if (onPlaySound) onPlaySound('blip');
-        const levels: ('low' | 'middle' | 'high')[] = ['low', 'middle', 'high'];
-        const nextIdx = (levels.indexOf(effortLevel) + 1) % levels.length;
-        const nextLevel = levels[nextIdx];
-        if (onChangeEffortLevel) {
-            onChangeEffortLevel(workspace.id, nextLevel);
-        }
-    };
-
-    handleEmployeeHudClick = (e: MouseEvent) => {
-        e.stopPropagation();
-        const { workspace, onAssignEmployeeClick } = this.props;
-        if (onAssignEmployeeClick) {
-            onAssignEmployeeClick(workspace.id);
-        }
-    };
 
     constructor(props: DashboardWorkshopProps) {
         super(props);
@@ -266,7 +244,7 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
     }
 
     render() {
-        const { workspace, tasks, onClick, onHover, employee, effortLevel } = this.props;
+        const { workspace, tasks, onClick, onHover, cohort, effortLevel } = this.props;
         const { logs, coins } = this.state;
 
         const status = this.getProjectStatus();
@@ -290,8 +268,13 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
         const chunks = Array.from({ length: 10 });
         const filledChunks = Math.round(progressPercent / 10);
 
-        // Simulated Agent Name
-        const activeAgent = workspace.defaultAgent || 'claudecode';
+        // Compute average cohort stamina
+        const averageStamina =
+            cohort.length === 0 ? 0 : Math.round(cohort.reduce((acc, curr) => acc + curr.stamina, 0) / cohort.length);
+
+        // Cohort Names list
+        const cohortNames = cohort.map(c => c.name.split(' ')[0]).join(' + ') || '无智能体';
+        const activeAgent = cohort.map(c => c.name).join(', ') || '无智能体';
 
         return (
             <div
@@ -326,18 +309,16 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
                         {/* Effort Level LED */}
                         <div
                             class={`pixel-effort-led effort-${effortLevel}`}
-                            onClick={this.handleLedClick}
-                            style="cursor:pointer;"
-                            title={`当前投入度: ${effortLevel === 'low' ? '低 (点击切换)' : effortLevel === 'middle' ? '中 (点击切换)' : '高 (点击切换)'}`}
+                            title={`当前投入度: ${effortLevel === 'low' ? '低 (LOW)' : effortLevel === 'middle' ? '中 (MID)' : '高 (HIGH)'}`}
                         >
                             <span class="pixel-led-dot" />
                         </div>
                         <span class={`pixel-wb-status-badge pixel-badge-${status}`}>
-                            {status === 'pending' && (employee.stamina === 0 ? '休眠中' : '策划中')}
-                            {status === 'running' && (employee.stamina === 0 ? '休眠中' : '进行中')}
+                            {status === 'pending' && (averageStamina === 0 ? '休眠中' : '策划中')}
+                            {status === 'running' && (averageStamina === 0 ? '休眠中' : '进行中')}
                             {status === 'completed' && '已完成'}
                             {status === 'blocked' && '警告'}
-                            {status === 'failed' && (employee.stamina === 0 ? '休眠中' : '故障')}
+                            {status === 'failed' && (averageStamina === 0 ? '休眠中' : '故障')}
                         </span>
                     </div>
                 </div>
@@ -346,40 +327,41 @@ export class DashboardWorkshop extends Component<DashboardWorkshopProps, Dashboa
                 <div class="pixel-wb-middle">
                     <div class="pixel-worker-sprite">
                         <div class="pixel-status-ring" />
-                        {this.renderWorkerSVG(status, type, employee.stamina)}
-                        {employee.stamina === 0 && <div class="pixel-zzz-bubble">Zzz...</div>}
+                        {this.renderWorkerSVG(status, type, averageStamina)}
+                        {averageStamina === 0 && <div class="pixel-zzz-bubble">Zzz...</div>}
                     </div>
                     <div class="pixel-wb-details">
                         <div
                             class="pixel-employee-hud"
-                            onClick={this.handleEmployeeHudClick}
-                            title="点击指派或更换智能体员工"
-                            style="cursor:pointer;"
+                            title={`协同智能体梯队: ${cohort.map(c => `${c.name} (${c.modelType})`).join(', ')}`}
                         >
                             <span
                                 class="pixel-agent-label"
-                                style="text-decoration: underline dashed rgba(255, 255, 255, 0.4)"
+                                style="max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                             >
-                                👤 {employee.name} {employee.kind === 'specialist' ? '★' : ''}
+                                👥 {cohortNames}
                             </span>
                             {/* Stamina battery */}
-                            <div class="pixel-stamina-battery" title={`精力值: ${employee.stamina}/100 (点击分配)`}>
+                            <div class="pixel-stamina-battery" title={`梯队平均算力余额: ${averageStamina}%`}>
                                 <div
-                                    class={`pixel-stamina-fill ${employee.stamina < 30 ? 'low' : employee.stamina < 60 ? 'medium' : 'high'}`}
-                                    style={`width: ${employee.stamina}%`}
+                                    class={`pixel-stamina-fill ${averageStamina < 30 ? 'low' : averageStamina < 60 ? 'medium' : 'high'}`}
+                                    style={`width: ${averageStamina}%`}
                                 />
                             </div>
                         </div>
 
                         {/* Active skills snapshot */}
-                        <div class="pixel-active-skills" title={`装配技能: ${employee.skills.join(', ')}`}>
-                            {employee.skills.slice(0, 1).map((s, idx) => (
+                        <div
+                            class="pixel-active-skills"
+                            title={`搭载技能: ${cohort.flatMap(c => c.skills).join(', ')}`}
+                        >
+                            {cohort.slice(0, 2).map((c, idx) => (
                                 <span key={idx} class="pixel-skill-tag">
-                                    {s}
+                                    {c.skills[0] ? c.skills[0].split(' ')[0] : '常规技能'}
                                 </span>
                             ))}
-                            {employee.skills.length > 1 && (
-                                <span class="pixel-skill-tag">+ {employee.skills.length - 1}</span>
+                            {cohort.flatMap(c => c.skills).length > 2 && (
+                                <span class="pixel-skill-tag">+ {cohort.flatMap(c => c.skills).length - 2}</span>
                             )}
                         </div>
 

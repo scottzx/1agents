@@ -168,7 +168,7 @@ interface DashboardAppState {
     // Roster & Skill system states
     showRosterModal: boolean;
     rosterTab: 'employees' | 'specialists' | 'skills' | 'practice';
-    workspaceAssignments: Record<string, string>;
+    workspaceAssignments: Record<string, string[]>;
     skillCards: Array<{
         name: string;
         version: string;
@@ -188,7 +188,6 @@ interface DashboardAppState {
     }>;
     releasedProjectStage: 'rating' | 'settled';
     ratingMultiplier: number;
-    assigningWorkspaceId: string | null;
 }
 
 // ── MOCK DATA FOR SIMULATION DEMO ──
@@ -569,14 +568,14 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             showRosterModal: false,
             rosterTab: 'employees',
             workspaceAssignments: {
-                'mock-ws-01': 'emp-01',
-                'mock-ws-02': 'emp-02',
-                'mock-ws-03': 'emp-03',
-                'mock-ws-04': 'emp-04',
-                'mock-ws-05': 'emp-05',
-                'mock-ws-06': 'emp-06',
-                'mock-ws-07': 'emp-07',
-                'mock-ws-08': 'emp-08',
+                'mock-ws-01': ['emp-01', 'emp-02'],
+                'mock-ws-02': ['emp-03', 'emp-04'],
+                'mock-ws-03': ['emp-05', 'emp-02'],
+                'mock-ws-04': ['emp-08', 'emp-01'],
+                'mock-ws-05': ['emp-07', 'emp-04'],
+                'mock-ws-06': ['emp-06', 'emp-03'],
+                'mock-ws-07': ['emp-07', 'emp-02'],
+                'mock-ws-08': ['emp-08', 'emp-01'],
             },
             skillCards: [
                 { name: '代码重构', version: 'v1.2', cost: 45000, level: 1, good: 48, normal: 12, poor: 1 },
@@ -616,7 +615,6 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             ],
             releasedProjectStage: 'rating',
             ratingMultiplier: 1.0,
-            assigningWorkspaceId: null,
         };
     }
 
@@ -635,21 +633,35 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         // Stamina timer to simulate stamina depletion, recovery and task progress (3-second cycle)
         this.staminaTimer = setInterval(() => {
             this.setState(prevState => {
-                const { workspaces, workspaceAssignments, effortLevels, skillCards, employees, tasksMap } = prevState;
+                const {
+                    workspaces,
+                    workspaceAssignments,
+                    effortLevels,
+                    skillCards,
+                    employees,
+                    tasksMap,
+                    recentPractices,
+                    funds,
+                } = prevState;
 
                 // 1. Update employees stamina
-                const nextEmployees = employees.map(emp => {
-                    const assignedWS = workspaces.filter(ws => workspaceAssignments[ws.id] === emp.id);
-                    const runningWS = assignedWS.filter(ws => this.getProjectStatus(ws.id, tasksMap) === 'running');
-                    const activeClones = runningWS.length;
+                let nextEmployeesList = employees.map(emp => {
+                    let activeClones = 0;
+                    let totalCost = 0;
 
-                    if (activeClones > 0 && emp.stamina > 0) {
-                        let totalCost = 0;
-                        runningWS.forEach(ws => {
+                    workspaces.forEach(ws => {
+                        const cohortIds = workspaceAssignments[ws.id] || [];
+                        const isAssigned = cohortIds.includes(emp.id);
+                        const isRunning = this.getProjectStatus(ws.id, tasksMap) === 'running';
+                        if (isAssigned && isRunning) {
+                            activeClones++;
                             const effort = effortLevels[ws.id] || 'middle';
                             const costMap = { low: 2, middle: 4, high: 8 };
                             totalCost += costMap[effort];
-                        });
+                        }
+                    });
+
+                    if (activeClones > 0 && emp.stamina > 0) {
                         return { ...emp, stamina: Math.max(0, emp.stamina - totalCost) };
                     } else {
                         // Recover stamina
@@ -663,25 +675,34 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 let tasksUpdated = false;
 
                 workspaces.forEach(ws => {
-                    const empId = workspaceAssignments[ws.id] || 'emp-01';
-                    const emp = nextEmployees.find(e => e.id === empId) || nextEmployees[0];
+                    const cohortIds = workspaceAssignments[ws.id] || [];
+                    const cohort = cohortIds
+                        .map(id => nextEmployeesList.find(e => e.id === id))
+                        .filter(Boolean) as MockEmployee[];
+
+                    const averageStamina =
+                        cohort.length === 0
+                            ? 0
+                            : Math.round(cohort.reduce((acc, curr) => acc + curr.stamina, 0) / cohort.length);
                     const status = this.getProjectStatus(ws.id, nextTasksMap);
 
-                    if (status === 'running' && emp.stamina > 0) {
+                    if (status === 'running' && averageStamina > 0) {
                         const tasks = nextTasksMap[ws.id] || [];
                         const activeTaskIdx = tasks.findIndex(t => t.status === 'running');
                         if (activeTaskIdx !== -1) {
                             const activeTask = { ...tasks[activeTaskIdx] } as GamifiedTask;
                             const effort = effortLevels[ws.id] || 'middle';
 
-                            // Speed of progress: low = 7%, middle = 13%, high = 24%
+                            // Speed of progress: low = 7%, middle = 13%, high = 24% (plus skill modifiers)
                             let speedBoost = 1.0;
-                            emp.skills.forEach(skillName => {
-                                const cleanSkillName = skillName.split(' ')[0];
-                                const card = skillCards.find(c => c.name.startsWith(cleanSkillName));
-                                if (card) {
-                                    speedBoost += (card.level - 1) * 0.15;
-                                }
+                            cohort.forEach(emp => {
+                                emp.skills.forEach(skillName => {
+                                    const cleanSkillName = skillName.split(' ')[0];
+                                    const card = skillCards.find(c => c.name.startsWith(cleanSkillName));
+                                    if (card) {
+                                        speedBoost += (card.level - 1) * 0.1;
+                                    }
+                                });
                             });
                             const stepMap = { low: 7, middle: 13, high: 24 };
                             const baseStep = stepMap[effort];
@@ -723,9 +744,92 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                     }
                 });
 
+                // 3. Auto-encapsulate pending practices randomly (e.g. 5% chance per 3s tick)
+                let nextPractices = recentPractices;
+                if (Math.random() < 0.05) {
+                    const pendingPracIdx = nextPractices.findIndex(p => p.status === 'pending');
+                    if (pendingPracIdx !== -1) {
+                        const prac = nextPractices[pendingPracIdx];
+                        const firstWord = prac.title.replace(/^玄武\s*AI\s*/, '').substring(0, 4);
+                        const namePool = [
+                            `${firstWord}姬`,
+                            `专才-${firstWord}`,
+                            `${firstWord}极客`,
+                            `${firstWord}大拿`,
+                        ];
+                        const specName = namePool[Math.floor(Math.random() * namePool.length)];
+
+                        const newEmp: MockEmployee = {
+                            id: `emp-spec-${Date.now()}`,
+                            name: specName,
+                            kind: 'specialist',
+                            modelType: prac.model,
+                            skills: prac.skills,
+                            stamina: 100,
+                            ratingGood: 5,
+                            ratingNormal: 0,
+                            ratingPoor: 0,
+                            persona: `从《${prac.title.substring(0, 10)}...》最佳实践会话中自动封装沉淀出来的专属专家！`,
+                        };
+
+                        nextPractices = nextPractices.map((p, idx) =>
+                            idx === pendingPracIdx ? { ...p, status: 'encapsulated' as const } : p
+                        );
+                        nextEmployeesList = [...nextEmployeesList, newEmp];
+
+                        setTimeout(() => {
+                            sound.playLaser();
+                            ui.showToast(`🎉 PMO 自动封装成功！固化专才员工 [${specName}]！`);
+                        }, 50);
+                    }
+                }
+
+                // 4. Auto-upgrade skills randomly (e.g. 3% chance per tick)
+                let nextSkillCards = skillCards;
+                let nextFunds = funds;
+                if (Math.random() < 0.03 && funds > 80000) {
+                    const randomSkillIdx = Math.floor(Math.random() * nextSkillCards.length);
+                    const card = nextSkillCards[randomSkillIdx];
+                    const nextLevel = card.level + 1;
+                    const upgradeCost = card.cost;
+
+                    if (funds >= upgradeCost) {
+                        nextSkillCards = [...nextSkillCards];
+                        nextSkillCards[randomSkillIdx] = {
+                            ...card,
+                            level: nextLevel,
+                            version: `v${nextLevel}.0`,
+                            cost: Math.round(card.cost * 1.8),
+                        };
+
+                        // Also update employee skills
+                        const cleanName = card.name;
+                        nextEmployeesList = nextEmployeesList.map(emp => {
+                            const updatedSkills = emp.skills.map(s => {
+                                if (s.startsWith(cleanName)) {
+                                    return `${cleanName} v${nextLevel}.0`;
+                                }
+                                return s;
+                            });
+                            return { ...emp, skills: updatedSkills };
+                        });
+
+                        nextFunds = funds - upgradeCost;
+                        localStorage.setItem('1agents-company-funds', String(nextFunds));
+
+                        setTimeout(() => {
+                            sound.playLaser();
+                            ui.showToast(`✨ PMO 自动将技能卡 [${card.name}] 升级至 v${nextLevel}.0！`);
+                        }, 100);
+                    }
+                }
+
                 return {
-                    employees: nextEmployees,
+                    employees: nextEmployeesList,
                     tasksMap: tasksUpdated ? nextTasksMap : tasksMap,
+                    recentPractices: nextPractices,
+                    skillCards: nextSkillCards,
+                    funds: nextFunds,
                 };
             });
         }, 3000);
@@ -880,132 +984,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         return 'pending';
     }
 
-    handleChangeEffortLevel = (wsId: string, level: 'low' | 'middle' | 'high') => {
-        this.setState(prevState => {
-            const nextEffortLevels = { ...prevState.effortLevels };
-            nextEffortLevels[wsId] = level;
-            return { effortLevels: nextEffortLevels };
-        });
-    };
-
     toggleRosterModal = () => {
         sound.playSelect();
         this.setState(prevState => ({ showRosterModal: !prevState.showRosterModal }));
-    };
-
-    handleRenameEmployee = (empId: string) => {
-        sound.playSelect();
-        const emp = this.state.employees.find(e => e.id === empId);
-        if (!emp) return;
-        const newName = prompt(`请输入 [${emp.name}] 的新花名:`, emp.name);
-        if (newName && newName.trim()) {
-            this.setState(prevState => ({
-                employees: prevState.employees.map(e => (e.id === empId ? { ...e, name: newName.trim() } : e)),
-            }));
-        }
-    };
-
-    buyCaffeine = (empId: string) => {
-        if (this.state.funds < 10000) {
-            sound.playSelect();
-            ui.showToast('❌ 资金不足以购买精品咖啡电池！');
-            return;
-        }
-        sound.playCoin();
-        this.setState(prevState => {
-            const nextEmployees = prevState.employees.map(emp => {
-                if (emp.id === empId) {
-                    return { ...emp, stamina: Math.min(100, emp.stamina + 50) };
-                }
-                return emp;
-            });
-            const nextFunds = prevState.funds - 10000;
-            localStorage.setItem('1agents-company-funds', String(nextFunds));
-            return {
-                employees: nextEmployees,
-                funds: nextFunds,
-            };
-        });
-        ui.showToast('☕ 精品咖啡注入！精力电池恢复 +50！');
-    };
-
-    upgradeSkillCard = (idx: number) => {
-        const card = this.state.skillCards[idx];
-        if (this.state.funds < card.cost) {
-            sound.playSelect();
-            ui.showToast('❌ 研发资金不足，无法进行技能包升级！');
-            return;
-        }
-        sound.playLaser();
-        sound.playCoin();
-        this.setState(prevState => {
-            const nextSkills = [...prevState.skillCards];
-            const nextLevel = card.level + 1;
-            nextSkills[idx] = {
-                ...card,
-                level: nextLevel,
-                version: `v${nextLevel}.0`,
-                cost: Math.round(card.cost * 1.8),
-            };
-            const nextFunds = prevState.funds - card.cost;
-            localStorage.setItem('1agents-company-funds', String(nextFunds));
-
-            // Also update all employee configurations that have this skill to show the new version!
-            const cleanName = card.name;
-            const nextEmployees = prevState.employees.map(emp => {
-                const updatedSkills = emp.skills.map(s => {
-                    if (s.startsWith(cleanName)) {
-                        return `${cleanName} v${nextLevel}.0`;
-                    }
-                    return s;
-                });
-                return { ...emp, skills: updatedSkills };
-            });
-
-            return {
-                skillCards: nextSkills,
-                funds: nextFunds,
-                employees: nextEmployees,
-            };
-        });
-        ui.showToast(`✨ 技能卡 [${card.name}] 成功升级至 v${card.level + 1}.0！`);
-    };
-
-    encapsulateSpecialist = (pracId: string) => {
-        const prac = this.state.recentPractices.find(p => p.id === pracId);
-        if (!prac) return;
-
-        sound.playLaser();
-        const firstWord = prac.title.replace(/^玄武\s*AI\s*/, '').substring(0, 4);
-        const namePool = [`${firstWord}姬`, `专才-${firstWord}`, `${firstWord}极客`, `${firstWord}大拿`];
-        const specName = namePool[Math.floor(Math.random() * namePool.length)];
-
-        this.setState(prevState => {
-            const nextEmployees = [...prevState.employees];
-            const newEmp: MockEmployee = {
-                id: `emp-spec-${Date.now()}`,
-                name: specName,
-                kind: 'specialist',
-                modelType: prac.model,
-                skills: prac.skills,
-                stamina: 100,
-                ratingGood: 5,
-                ratingNormal: 0,
-                ratingPoor: 0,
-                persona: `我是从《${prac.title.substring(0, 10)}...》最佳实践会话中沉淀封装出来的专属专家，请指派！`,
-            };
-
-            const nextPractices = prevState.recentPractices.map(p =>
-                p.id === pracId ? { ...p, status: 'encapsulated' as const } : p
-            );
-
-            return {
-                employees: [...nextEmployees, newEmp],
-                recentPractices: nextPractices,
-            };
-        });
-
-        ui.showToast(`🎉 成功封装专才员工 [${specName}]！`);
     };
 
     generateRandomTasksForWorkspace(wsId: string): Task[] {
@@ -1061,6 +1042,24 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
         this.setState({ launchingProjectId: wsId });
 
+        // Calculate auto rating based on cohort stats
+        const cohortIds = this.state.workspaceAssignments[wsId] || [];
+        const cohort = cohortIds
+            .map(id => this.state.employees.find(e => e.id === id))
+            .filter(Boolean) as MockEmployee[];
+        const averageStamina =
+            cohort.length === 0 ? 0 : Math.round(cohort.reduce((acc, curr) => acc + curr.stamina, 0) / cohort.length);
+        const totalSkillsCount = cohort.flatMap(c => c.skills).length;
+
+        let autoRating: 'exceeds' | 'normal' | 'improvement' | 'poor' = 'normal';
+        if (averageStamina > 70 && totalSkillsCount >= 3) {
+            autoRating = 'exceeds';
+        } else if (averageStamina < 30) {
+            autoRating = 'poor';
+        } else if (averageStamina < 55) {
+            autoRating = 'improvement';
+        }
+
         // Simulate rocket launch shaking & flying
         setTimeout(() => {
             const reviewsPool = [
@@ -1095,26 +1094,14 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                     phase: 'beta',
                 },
             });
-        }, 3000);
-    };
 
-    changeReleasePhase = (phase: 'alpha' | 'beta' | 'stable') => {
-        sound.playSelect();
-        if (this.state.releasedProjectData) {
-            const multiplier = phase === 'alpha' ? 0.6 : phase === 'beta' ? 1.0 : 1.8;
-            const baseViews = this.state.releasedProjectData.views;
-            this.setState(prevState => {
-                if (!prevState.releasedProjectData) return {};
-                return {
-                    releasedProjectData: {
-                        ...prevState.releasedProjectData,
-                        phase,
-                        views: Math.round(baseViews * multiplier),
-                        stars: Math.round(baseViews * multiplier * (0.05 + Math.random() * 0.1)),
-                    },
-                };
-            });
-        }
+            // Automatically transition from 'rating' to 'settled' after 2.5s (simulated audit scan)
+            setTimeout(() => {
+                if (this.state.showReleaseModal && this.state.releasedProjectStage === 'rating') {
+                    this.rateProject(autoRating);
+                }
+            }, 2500);
+        }, 3000);
     };
 
     rateProject = (rating: 'exceeds' | 'normal' | 'improvement' | 'poor') => {
@@ -1163,10 +1150,10 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 localStorage.setItem('1agents-company-funds', String(nextFunds));
                 localStorage.setItem('1agents-company-rep', String(nextRep));
 
-                // 1. Update employee stats
-                const assignedEmpId = prevState.workspaceAssignments[data.id] || 'emp-01';
+                // 1. Update employee stats for all members in the cohort
+                const cohortIds = prevState.workspaceAssignments[data.id] || [];
                 const nextEmployees = prevState.employees.map(emp => {
-                    if (emp.id === assignedEmpId) {
+                    if (cohortIds.includes(emp.id)) {
                         return {
                             ...emp,
                             ratingGood: ratingCategory === 'good' ? emp.ratingGood + 1 : emp.ratingGood,
@@ -1178,10 +1165,11 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 });
 
                 // 2. Update skill card stats
-                const assignedEmp = prevState.employees.find(e => e.id === assignedEmpId) || prevState.employees[0];
                 const nextSkillCards = prevState.skillCards.map(card => {
                     const cleanSkillName = card.name.split(' ')[0];
-                    const hasSkill = assignedEmp.skills.some(s => s.startsWith(cleanSkillName));
+                    const hasSkill = prevState.employees
+                        .filter(e => cohortIds.includes(e.id))
+                        .some(e => e.skills.some(s => s.startsWith(cleanSkillName)));
                     if (hasSkill) {
                         return {
                             ...card,
@@ -1375,10 +1363,10 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                     </div>
                                     <div class="pixel-floor-body">
                                         {deptWorkspaces.map(ws => {
-                                            const empId = this.state.workspaceAssignments[ws.id] || 'emp-01';
-                                            const emp =
-                                                this.state.employees.find(e => e.id === empId) ||
-                                                this.state.employees[0];
+                                            const cohortIds = this.state.workspaceAssignments[ws.id] || [];
+                                            const cohort = cohortIds
+                                                .map(id => this.state.employees.find(e => e.id === id))
+                                                .filter(Boolean) as MockEmployee[];
                                             const effort = this.state.effortLevels[ws.id] || 'middle';
                                             return (
                                                 <DashboardWorkshop
@@ -1390,12 +1378,8 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                                     onPlaySound={type =>
                                                         type === 'coin' ? sound.playCoin() : sound.playBlip()
                                                     }
-                                                    employee={emp}
+                                                    cohort={cohort}
                                                     effortLevel={effort}
-                                                    onChangeEffortLevel={this.handleChangeEffortLevel}
-                                                    onAssignEmployeeClick={wsId =>
-                                                        this.setState({ assigningWorkspaceId: wsId })
-                                                    }
                                                 />
                                             );
                                         })}
@@ -1511,38 +1495,18 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
                                 {this.state.releasedProjectStage === 'rating' ? (
                                     <div style="text-align:center; margin: 20px 0;">
-                                        <p style="font-size:14px; color:#fff; margin-bottom:16px;">
-                                            请对本次执行任务的智能体（员工 + 技能）进行评分：
+                                        <p style="font-size:14px; color:#fff; margin-bottom:16px;" class="pixel-blink">
+                                            🔍 PMO 质量检验与自动审计扫描中...
                                         </p>
-                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                                            <button
-                                                class="pixel-dialog-btn exceeds"
-                                                onClick={() => this.rateProject('exceeds')}
-                                                style="border-color:var(--pixel-gold); color:var(--pixel-gold); font-size:18px;"
-                                            >
-                                                🌟 超乎期望 (Exceeds)
-                                            </button>
-                                            <button
-                                                class="pixel-dialog-btn normal"
-                                                onClick={() => this.rateProject('normal')}
-                                                style="border-color:var(--pixel-green); color:var(--pixel-green); font-size:18px;"
-                                            >
-                                                👍 正常 (Normal)
-                                            </button>
-                                            <button
-                                                class="pixel-dialog-btn improvement"
-                                                onClick={() => this.rateProject('improvement')}
-                                                style="border-color:var(--pixel-orange); color:var(--pixel-orange); font-size:18px;"
-                                            >
-                                                ⚠️ 有待提升 (Improve)
-                                            </button>
-                                            <button
-                                                class="pixel-dialog-btn poor"
-                                                onClick={() => this.rateProject('poor')}
-                                                style="border-color:var(--pixel-red); color:var(--pixel-red); font-size:18px;"
-                                            >
-                                                ❌ 糟糕 (Poor)
-                                            </button>
+                                        <div style="font-size:12px; color:var(--pixel-border-light); margin-top:20px;">
+                                            <div>🤖 正在评估协同智能体梯队贡献...</div>
+                                            <div>📊 正在校验执行日志与 Benchmark 分数...</div>
+                                            <div style="margin-top:15px; display:inline-block; width:200px; height:8px; border:2px solid var(--pixel-border); position:relative; overflow:hidden;">
+                                                <div
+                                                    class="pixel-loading-bar"
+                                                    style="height:100%; background:var(--pixel-green); width:60%; animation: loadingMove 2.5s infinite linear;"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 ) : (
@@ -1566,17 +1530,22 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                                 <span class="metric-icon">📦</span>
                                                 <span class="metric-label">交付阶段:</span>
                                                 <span class="metric-val" style="color:var(--pixel-cyan)">
-                                                    {this.state.releasedProjectData.phase === 'alpha' && 'Alpha (内测)'}
-                                                    {this.state.releasedProjectData.phase === 'beta' && 'Beta (公测)'}
-                                                    {this.state.releasedProjectData.phase === 'stable' &&
-                                                        '1.0 Stable (正式)'}
+                                                    Beta (公测)
                                                 </span>
                                             </div>
                                         </div>
 
                                         <div class="release-reviews-box">
                                             <div class="reviews-header">
-                                                💬 社区反馈墙 (加成: {Math.round(this.state.ratingMultiplier * 100)}%)
+                                                💬 社区反馈墙 (PMO 审计评价:{' '}
+                                                {this.state.ratingMultiplier === 1.35
+                                                    ? '🌟 超乎期望 (Exceeds)'
+                                                    : this.state.ratingMultiplier === 1.0
+                                                      ? '👍 正常 (Normal)'
+                                                      : this.state.ratingMultiplier === 0.7
+                                                        ? '⚠️ 有待提升 (Improve)'
+                                                        : '❌ 糟糕 (Poor)'}
+                                                )
                                             </div>
                                             <div class="reviews-list">
                                                 {this.state.releasedProjectData.feedbacks.map((f, i) => (
@@ -1587,28 +1556,13 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                             </div>
                                         </div>
 
-                                        <div class="release-phase-selector">
+                                        <div
+                                            class="release-phase-selector"
+                                            style="text-align: center; justify-content: center;"
+                                        >
                                             <span style="font-size:12px;color:var(--pixel-border-light)">
-                                                迭代发布版本：
+                                                💡 本次交付评价由 PMO 自动化审计生成，结果已存档。
                                             </span>
-                                            <button
-                                                class={`phase-btn ${this.state.releasedProjectData.phase === 'alpha' ? 'active' : ''}`}
-                                                onClick={() => this.changeReleasePhase('alpha')}
-                                            >
-                                                Alpha
-                                            </button>
-                                            <button
-                                                class={`phase-btn ${this.state.releasedProjectData.phase === 'beta' ? 'active' : ''}`}
-                                                onClick={() => this.changeReleasePhase('beta')}
-                                            >
-                                                Beta
-                                            </button>
-                                            <button
-                                                class={`phase-btn ${this.state.releasedProjectData.phase === 'stable' ? 'active' : ''}`}
-                                                onClick={() => this.changeReleasePhase('stable')}
-                                            >
-                                                1.0 Stable
-                                            </button>
                                         </div>
 
                                         <div class="pixel-dialog-buttons">
@@ -1682,88 +1636,6 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                         </div>
                     </div>
                 )}
-
-                {/* ── EMPLOYEE ASSIGNMENT MODAL ── */}
-                {this.state.assigningWorkspaceId && (
-                    <div class="pixel-dialog-overlay" onClick={() => this.setState({ assigningWorkspaceId: null })}>
-                        <div
-                            class="pixel-dialog assign-dialog"
-                            onClick={e => e.stopPropagation()}
-                            style="width: 450px;"
-                        >
-                            <div class="pixel-dialog-header">👤 指派智能体员工</div>
-                            <div class="pixel-dialog-body">
-                                <p style="margin-bottom:12px; text-align:center; color:var(--pixel-cyan); font-size:12px;">
-                                    请选择要指派到项目 《
-                                    {(() => {
-                                        const ws = this.state.workspaces.find(
-                                            w => w.id === this.state.assigningWorkspaceId
-                                        );
-                                        return ws ? ws.name.split(']')[1] || ws.name : '';
-                                    })()}
-                                    》 的员工：
-                                </p>
-                                <div
-                                    class="assign-employees-list"
-                                    style="display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto; padding:4px;"
-                                >
-                                    {this.state.employees.map(emp => {
-                                        const runningWS = this.state.workspaces.filter(
-                                            w =>
-                                                this.state.workspaceAssignments[w.id] === emp.id &&
-                                                this.getProjectStatus(w.id) === 'running'
-                                        );
-                                        const clones = runningWS.length;
-                                        return (
-                                            <div
-                                                key={emp.id}
-                                                class="assign-emp-item"
-                                                onClick={() => {
-                                                    sound.playSelect();
-                                                    this.setState(prevState => {
-                                                        const nextAssignments = { ...prevState.workspaceAssignments };
-                                                        nextAssignments[prevState.assigningWorkspaceId!] = emp.id;
-                                                        return {
-                                                            workspaceAssignments: nextAssignments,
-                                                            assigningWorkspaceId: null,
-                                                        };
-                                                    });
-                                                    ui.showToast(`👤 已将 [${emp.name}] 指派到该项目工位！`);
-                                                }}
-                                                style="background:rgba(0,0,0,0.4); border:2px solid var(--pixel-border); padding:8px 12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;"
-                                            >
-                                                <div>
-                                                    <span style="font-weight:bold; color:#fff;">{emp.name}</span>
-                                                    <span style="font-size:10px; color:var(--pixel-border-light); margin-left:8px;">
-                                                        ({emp.modelType})
-                                                    </span>
-                                                </div>
-                                                <div style="display:flex; align-items:center; gap:12px;">
-                                                    <span style="font-size:10px; color:var(--pixel-cyan);">
-                                                        {clones} 分身
-                                                    </span>
-                                                    <span
-                                                        style={`font-size:10px; color:${emp.stamina < 30 ? 'var(--pixel-red)' : emp.stamina < 60 ? 'var(--pixel-gold)' : 'var(--pixel-green)'};`}
-                                                    >
-                                                        ⚡ {emp.stamina}%
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            <div class="pixel-dialog-buttons">
-                                <button
-                                    class="pixel-dialog-btn"
-                                    onClick={() => this.setState({ assigningWorkspaceId: null })}
-                                >
-                                    取消指派
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         );
     }
@@ -1775,7 +1647,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                 {basicEmployees.map(emp => {
                     const runningWS = this.state.workspaces.filter(
                         w =>
-                            this.state.workspaceAssignments[w.id] === emp.id &&
+                            (this.state.workspaceAssignments[w.id] || []).includes(emp.id) &&
                             this.getProjectStatus(w.id) === 'running'
                     );
                     const clones = runningWS.length;
@@ -1796,13 +1668,6 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                     >
                                         {emp.name}
                                     </span>
-                                    <button
-                                        class="pixel-mini-btn"
-                                        onClick={() => this.handleRenameEmployee(emp.id)}
-                                        style="font-size:10px; background:#000; color:#fff; border:1px solid var(--pixel-border); cursor:pointer; padding:2px 6px;"
-                                    >
-                                        改名
-                                    </button>
                                 </div>
                                 <div class="card-details" style="font-size:12px; line-height:1.6;">
                                     <div class="detail-row">
@@ -1883,15 +1748,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                 </div>
                             </div>
                             <div class="card-actions" style="margin-top:8px;">
-                                {emp.stamina < 100 && (
-                                    <button
-                                        class="pixel-dialog-btn recharge-btn"
-                                        onClick={() => this.buyCaffeine(emp.id)}
-                                        style="width:100%; font-size:16px; padding:4px;"
-                                    >
-                                        ☕ 咖啡充能 ($10,000)
-                                    </button>
-                                )}
+                                <div style="font-size:10px; color:var(--pixel-border-light); text-align:center; padding: 4px; border: 1px dashed rgba(255,255,255,0.1);">
+                                    🔋 算力电量自动充能中
+                                </div>
                             </div>
                         </div>
                     );
@@ -1912,7 +1771,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                     specEmployees.map(emp => {
                         const runningWS = this.state.workspaces.filter(
                             w =>
-                                this.state.workspaceAssignments[w.id] === emp.id &&
+                                (this.state.workspaceAssignments[w.id] || []).includes(emp.id) &&
                                 this.getProjectStatus(w.id) === 'running'
                         );
                         const clones = runningWS.length;
@@ -1933,13 +1792,6 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                         >
                                             ★ {emp.name}
                                         </span>
-                                        <button
-                                            class="pixel-mini-btn"
-                                            onClick={() => this.handleRenameEmployee(emp.id)}
-                                            style="font-size:10px; background:#000; color:#fff; border:1px solid var(--pixel-purple); cursor:pointer; padding:2px 6px;"
-                                        >
-                                            改名
-                                        </button>
                                     </div>
                                     <div class="card-details" style="font-size:12px; line-height:1.6;">
                                         <div class="detail-row">
@@ -2020,15 +1872,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                     </div>
                                 </div>
                                 <div class="card-actions" style="margin-top:8px;">
-                                    {emp.stamina < 100 && (
-                                        <button
-                                            class="pixel-dialog-btn recharge-btn"
-                                            onClick={() => this.buyCaffeine(emp.id)}
-                                            style="width:100%; font-size:16px; padding:4px;"
-                                        >
-                                            ☕ 咖啡充能 ($10,000)
-                                        </button>
-                                    )}
+                                    <div style="font-size:10px; color:var(--pixel-border-light); text-align:center; padding: 4px; border: 1px dashed rgba(168,92,249,0.2);">
+                                        🔋 算力电量自动充能中
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -2068,13 +1914,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                 </div>
                             </div>
                         </div>
-                        <button
-                            class="pixel-dialog-btn upgrade-btn"
-                            onClick={() => this.upgradeSkillCard(idx)}
-                            style="width: 100%; font-size: 16px; padding: 4px; margin-top: 8px;"
-                        >
-                            ⚡ 升级至 v{card.level + 1}.0 (${card.cost.toLocaleString()})
-                        </button>
+                        <div style="width: 100%; font-size: 11px; padding: 6px 4px; margin-top: 8px; text-align: center; border: 1px dashed var(--pixel-border); color: var(--pixel-border-light); background: rgba(0,0,0,0.2);">
+                            ⚙️ 技能由 PMO 自动研发升级中
+                        </div>
                     </div>
                 ))}
             </div>
@@ -2109,16 +1951,16 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                         </div>
                         <div>
                             {prac.status === 'pending' ? (
-                                <button
-                                    class="pixel-dialog-btn encapsulate-btn"
-                                    onClick={() => this.encapsulateSpecialist(prac.id)}
-                                    style="font-size:16px; padding: 8px 12px;"
-                                >
-                                    封装专才
-                                </button>
+                                <span style="color:var(--pixel-gold); font-size:12px; display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                                    <span class="pixel-loading-dots">⏳ 自动归档中</span>
+                                    <span style="font-size:9px;color:var(--pixel-border-light)">PMO Syncing...</span>
+                                </span>
                             ) : (
-                                <span style="color:var(--pixel-green); font-size:14px; font-family:'Press Start 2P', monospace;">
-                                    已固化
+                                <span style="color:var(--pixel-green); font-size:12px; display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                                    <span>✅ 已固化</span>
+                                    <span style="font-size:9px;color:var(--pixel-border-light)">
+                                        Specialist Spawned
+                                    </span>
                                 </span>
                             )}
                         </div>

@@ -1134,3 +1134,42 @@
   background: var(--pixel-border-light);
 }
 
+/* V3 Loading progress bar scan animation */
+@keyframes loadingMove {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.pixel-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+
+.pixel-blink {
+  animation: text-blink 1.5s steps(2) infinite;
+}
+
+@keyframes text-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Loading Dots animation */
+.pixel-loading-dots::after {
+  content: '...';
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  vertical-align: bottom;
+  animation: loading-dots-anim 1.5s steps(4) infinite;
+}
+
+@keyframes loading-dots-anim {
+  0% { width: 0; }
+  33% { width: 0.5em; }
+  66% { width: 1em; }
+  100% { width: 1.5em; }
+}
+
