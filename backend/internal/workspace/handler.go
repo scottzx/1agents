@@ -135,6 +135,7 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 	if err := os.MkdirAll(defaultPath, 0o755); err != nil {
 		return fmt.Errorf("create default workspace dir: %w", err)
 	}
+	ensureProjectGuideFiles(defaultPath)
 	defaultWs := Workspace{
 		ID:           "default",
 		Name:         "对话",
@@ -210,6 +211,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Ensure the project has agent guidance files (CLAUDE.md / AGENTS.md).
+	ensureProjectGuideFiles(ws.Path)
 
 	// Dynamically register this workspace as a CC-Connect project
 	projName := ws.Name
