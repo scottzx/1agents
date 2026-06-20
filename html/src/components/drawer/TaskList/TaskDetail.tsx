@@ -11,6 +11,7 @@ import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
 import { taskPermalink } from '../../../stores/taskNavStore';
 import * as wsStore from '../../../stores/workspaceStore';
+import * as sessionStore from '../../../stores/sessionStore';
 import * as ui from '../../../stores/uiStore';
 
 interface TaskDetailProps {
@@ -241,6 +242,19 @@ export function TaskDetail({
         onSelectSession({ ...rec, taskId: task.id, initialMessage, active: true });
     };
 
+    // 讨论需求：a discussion is deliberately fuzzy, so we never auto-flip its
+    // type. Instead we open a PM conversation seeded with the discussion and let
+    // the PM clarify the deliverable, then create the requirement when it's clear.
+    const convertToRequirement = async () => {
+        if (!task) return;
+        // The discussion thread is injected as background by the backend, so the
+        // seed stays short — and the whole conversation is recorded back to this
+        // discussion's timeline (the session is linked via taskId).
+        const prompt =
+            '我们把这条讨论聊成一条清晰的需求吧。请先和我澄清：交付物到底是什么、验收标准是什么；聊清楚后用 create_task 建一条 requirement（必要时拆成任务）。如果发现还不够清晰，就先保留为讨论。';
+        await sessionStore.createPMSession(workspaceId, `讨论需求：${task.title}`, prompt, task.id);
+    };
+
     // Top-level composer: a pure comment (standalone timeline entry, no chat)
     // or the root of a new session branch. Follow-ups live inside each branch
     // (submitBranchFollowUp). For chat-driven modes the user turn is recorded
@@ -388,6 +402,11 @@ export function TaskDetail({
     const pendingDeps = deps.filter(d => d.status !== 'completed').length;
     const allDepsDone = pendingDeps === 0;
 
+    // A discussion is a free-form concept record, not an executable work item:
+    // hide the task-only panels (acceptance criteria, execution/checks box,
+    // assignee) so its detail page stays focused on the conversation.
+    const isDiscussion = task.type === 'discussion';
+
     return (
         <div class="task-dashboard-container task-detail-view">
             {/* GitHub style title header */}
@@ -410,6 +429,11 @@ export function TaskDetail({
                             🔗 链接
                         </button>
                     ) : null}
+                    {task.type === 'discussion' && (
+                        <button class="task-convert-btn" onClick={convertToRequirement}>
+                            {t('task.discussion.convert', lang)}
+                        </button>
+                    )}
                     <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
                         {closed ? t('task.detail.reopen', lang) : t('task.detail.close', lang)}
                     </button>
@@ -516,57 +540,61 @@ export function TaskDetail({
                                 </div>
                             </div>
 
-                            {/* Pinned Acceptance Criteria Card */}
-                            <div class="gh-comment-card is-user">
-                                <div class="gh-comment-header">
-                                    <div class="gh-comment-header-left">
-                                        <span>
-                                            ✅ <strong>验收标准 (Acceptance Criteria)</strong>
-                                        </span>
+                            {/* Pinned Acceptance Criteria Card (hidden for discussions) */}
+                            {!isDiscussion && (
+                                <div class="gh-comment-card is-user">
+                                    <div class="gh-comment-header">
+                                        <div class="gh-comment-header-left">
+                                            <span>
+                                                ✅ <strong>验收标准 (Acceptance Criteria)</strong>
+                                            </span>
+                                        </div>
+                                        <div class="gh-comment-actions">
+                                            {!editingAccept.value && (
+                                                <button
+                                                    class="task-desc-edit-btn"
+                                                    onClick={() => {
+                                                        setAcceptDraft(task.acceptanceCriteria || '');
+                                                        editingAccept.value = true;
+                                                    }}
+                                                >
+                                                    {t('common.edit', lang)}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div class="gh-comment-actions">
-                                        {!editingAccept.value && (
-                                            <button
-                                                class="task-desc-edit-btn"
-                                                onClick={() => {
-                                                    setAcceptDraft(task.acceptanceCriteria || '');
-                                                    editingAccept.value = true;
+                                    <div class="gh-comment-body">
+                                        {editingAccept.value ? (
+                                            <div class="task-desc-editor">
+                                                <textarea
+                                                    rows={3}
+                                                    value={acceptDraft}
+                                                    onInput={(e: Event) =>
+                                                        setAcceptDraft((e.target as HTMLTextAreaElement).value)
+                                                    }
+                                                />
+                                                <div class="task-desc-editor-actions">
+                                                    <button onClick={saveAcceptance}>{t('common.save', lang)}</button>
+                                                    <button onClick={() => (editingAccept.value = false)}>
+                                                        {t('common.cancel', lang)}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : task.acceptanceCriteria ? (
+                                            <div
+                                                class="markdown-body task-desc-md"
+                                                dangerouslySetInnerHTML={{
+                                                    __html: renderMarkdown(task.acceptanceCriteria, mdCtx),
                                                 }}
-                                            >
-                                                {t('common.edit', lang)}
-                                            </button>
+                                            />
+                                        ) : (
+                                            <span class="task-desc-empty">
+                                                {t('task.detail.acceptanceEmpty', lang)}
+                                            </span>
                                         )}
                                     </div>
                                 </div>
-                                <div class="gh-comment-body">
-                                    {editingAccept.value ? (
-                                        <div class="task-desc-editor">
-                                            <textarea
-                                                rows={3}
-                                                value={acceptDraft}
-                                                onInput={(e: Event) =>
-                                                    setAcceptDraft((e.target as HTMLTextAreaElement).value)
-                                                }
-                                            />
-                                            <div class="task-desc-editor-actions">
-                                                <button onClick={saveAcceptance}>{t('common.save', lang)}</button>
-                                                <button onClick={() => (editingAccept.value = false)}>
-                                                    {t('common.cancel', lang)}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : task.acceptanceCriteria ? (
-                                        <div
-                                            class="markdown-body task-desc-md"
-                                            dangerouslySetInnerHTML={{
-                                                __html: renderMarkdown(task.acceptanceCriteria, mdCtx),
-                                            }}
-                                        />
-                                    ) : (
-                                        <span class="task-desc-empty">{t('task.detail.acceptanceEmpty', lang)}</span>
-                                    )}
-                                </div>
-                            </div>
+                            )}
 
                             {/* Timeline: standalone comments + session branches */}
                             <div class="task-timeline">
@@ -662,181 +690,191 @@ export function TaskDetail({
                                 })}
                             </div>
 
-                            {/* Merge / Checks Status Box */}
-                            <div class="gh-merge-box">
-                                <div class={`gh-merge-icon-col status-${task.status}`}>
-                                    {task.status === 'completed' && '✓'}
-                                    {task.status === 'running' && '●'}
-                                    {task.status === 'failed' && '✗'}
-                                    {(task.status === 'pending' || task.status === 'queued') && '◷'}
-                                    {task.status === 'cancelled' && '⊘'}
-                                    {task.status === 'blocked' && '⚠'}
+                            {/* Merge / Checks Status Box (hidden for discussions — not executable) */}
+                            {!isDiscussion && (
+                                <div class="gh-merge-box">
+                                    <div class={`gh-merge-icon-col status-${task.status}`}>
+                                        {task.status === 'completed' && '✓'}
+                                        {task.status === 'running' && '●'}
+                                        {task.status === 'failed' && '✗'}
+                                        {(task.status === 'pending' || task.status === 'queued') && '◷'}
+                                        {task.status === 'cancelled' && '⊘'}
+                                        {task.status === 'blocked' && '⚠'}
+                                    </div>
+                                    <div class="gh-merge-content">
+                                        <h4 class="gh-merge-title">
+                                            {task.status === 'completed' && t('task.detail.mergeTitle.completed', lang)}
+                                            {task.status === 'running' && t('task.detail.mergeTitle.running', lang)}
+                                            {task.status === 'failed' && t('task.detail.mergeTitle.failed', lang)}
+                                            {(task.status === 'pending' || task.status === 'queued') &&
+                                                t('task.detail.mergeTitle.queued', lang)}
+                                            {task.status === 'cancelled' && t('task.detail.mergeTitle.cancelled', lang)}
+                                            {task.status === 'blocked' && t('task.detail.mergeTitle.blocked', lang)}
+                                        </h4>
+                                        <p class="gh-merge-desc">{t('task.detail.checksDesc', lang)}</p>
+
+                                        <div class="gh-check-item">
+                                            <span
+                                                class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}
+                                            >
+                                                {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
+                                            </span>
+                                            <span>
+                                                {t('task.detail.subtaskCheck', lang)
+                                                    .replace('{done}', String(completedSubtasks))
+                                                    .replace('{total}', String(totalSubtasks))}
+                                            </span>
+                                        </div>
+
+                                        <div class="gh-check-item">
+                                            <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
+                                                {hasAcceptance ? '✓' : 'warn'}
+                                            </span>
+                                            <span>
+                                                {t('task.detail.acceptanceLabel', lang)}
+                                                {hasAcceptance
+                                                    ? t('task.detail.acceptanceDefined', lang)
+                                                    : t('task.detail.acceptanceNotSet', lang)}
+                                            </span>
+                                        </div>
+
+                                        <div class="gh-check-item">
+                                            <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>
+                                                {allDepsDone ? '✓' : 'fail'}
+                                            </span>
+                                            <span>
+                                                {t('task.detail.depsLabel', lang)}
+                                                {allDepsDone
+                                                    ? t('task.detail.depsOk', lang)
+                                                    : t('task.detail.depsPending', lang).replace(
+                                                          '{n}',
+                                                          String(pendingDeps)
+                                                      )}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="gh-merge-actions">
+                                        {task.status === 'completed' && (
+                                            <button class="gh-merge-btn btn-todo" onClick={toggleIssueState}>
+                                                {t('task.detail.reopenTask', lang)}
+                                            </button>
+                                        )}
+                                        {task.status === 'running' && (
+                                            <button
+                                                class="gh-merge-btn btn-running"
+                                                onClick={() => patchTask({ status: 'cancelled' })}
+                                            >
+                                                {t('task.detail.cancelExec', lang)}
+                                            </button>
+                                        )}
+                                        {task.status === 'failed' && (
+                                            <button
+                                                class="gh-merge-btn btn-todo"
+                                                onClick={() => openNewSession('retry')}
+                                            >
+                                                {t('task.detail.retryExec', lang)}
+                                            </button>
+                                        )}
+                                        {(task.status === 'pending' || task.status === 'queued') && (
+                                            <button class="gh-merge-btn" onClick={() => openNewSession('start')}>
+                                                {t('task.detail.startAgent', lang)}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div class="gh-merge-content">
-                                    <h4 class="gh-merge-title">
-                                        {task.status === 'completed' && t('task.detail.mergeTitle.completed', lang)}
-                                        {task.status === 'running' && t('task.detail.mergeTitle.running', lang)}
-                                        {task.status === 'failed' && t('task.detail.mergeTitle.failed', lang)}
-                                        {(task.status === 'pending' || task.status === 'queued') &&
-                                            t('task.detail.mergeTitle.queued', lang)}
-                                        {task.status === 'cancelled' && t('task.detail.mergeTitle.cancelled', lang)}
-                                        {task.status === 'blocked' && t('task.detail.mergeTitle.blocked', lang)}
-                                    </h4>
-                                    <p class="gh-merge-desc">{t('task.detail.checksDesc', lang)}</p>
+                            )}
 
-                                    <div class="gh-check-item">
-                                        <span
-                                            class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}
-                                        >
-                                            {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
-                                        </span>
-                                        <span>
-                                            {t('task.detail.subtaskCheck', lang)
-                                                .replace('{done}', String(completedSubtasks))
-                                                .replace('{total}', String(totalSubtasks))}
-                                        </span>
-                                    </div>
-
-                                    <div class="gh-check-item">
-                                        <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
-                                            {hasAcceptance ? '✓' : 'warn'}
-                                        </span>
-                                        <span>
-                                            {t('task.detail.acceptanceLabel', lang)}
-                                            {hasAcceptance
-                                                ? t('task.detail.acceptanceDefined', lang)
-                                                : t('task.detail.acceptanceNotSet', lang)}
-                                        </span>
-                                    </div>
-
-                                    <div class="gh-check-item">
-                                        <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>
-                                            {allDepsDone ? '✓' : 'fail'}
-                                        </span>
-                                        <span>
-                                            {t('task.detail.depsLabel', lang)}
-                                            {allDepsDone
-                                                ? t('task.detail.depsOk', lang)
-                                                : t('task.detail.depsPending', lang).replace(
-                                                      '{n}',
-                                                      String(pendingDeps)
-                                                  )}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="gh-merge-actions">
-                                    {task.status === 'completed' && (
-                                        <button class="gh-merge-btn btn-todo" onClick={toggleIssueState}>
-                                            {t('task.detail.reopenTask', lang)}
-                                        </button>
-                                    )}
-                                    {task.status === 'running' && (
+                            {/* GitHub style composer (hidden for discussions — replies happen
+                                via the PM conversation opened by 讨论需求, not an inline form) */}
+                            {!isDiscussion && (
+                                <div class="gh-composer-card">
+                                    <div class="gh-composer-tabs">
                                         <button
-                                            class="gh-merge-btn btn-running"
-                                            onClick={() => patchTask({ status: 'cancelled' })}
-                                        >
-                                            {t('task.detail.cancelExec', lang)}
-                                        </button>
-                                    )}
-                                    {task.status === 'failed' && (
-                                        <button class="gh-merge-btn btn-todo" onClick={() => openNewSession('retry')}>
-                                            {t('task.detail.retryExec', lang)}
-                                        </button>
-                                    )}
-                                    {(task.status === 'pending' || task.status === 'queued') && (
-                                        <button class="gh-merge-btn" onClick={() => openNewSession('start')}>
-                                            {t('task.detail.startAgent', lang)}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* GitHub style composer */}
-                            <div class="gh-composer-card">
-                                <div class="gh-composer-tabs">
-                                    <button
-                                        class={`gh-composer-tab ${composerTab === 'write' ? 'active' : ''}`}
-                                        type="button"
-                                        onClick={() => setComposerTab('write')}
-                                    >
-                                        Write
-                                    </button>
-                                    <button
-                                        class={`gh-composer-tab ${composerTab === 'preview' ? 'active' : ''}`}
-                                        type="button"
-                                        onClick={() => setComposerTab('preview')}
-                                    >
-                                        Preview
-                                    </button>
-                                </div>
-
-                                <div class="gh-composer-body">
-                                    {composerTab === 'write' ? (
-                                        <textarea
-                                            rows={4}
-                                            placeholder={
-                                                closed
-                                                    ? 'Issue 已关闭，仅可评论...'
-                                                    : '写回复：评论、布置新一轮工作，或追问已有会话...'
-                                            }
-                                            value={replyText}
-                                            onInput={(e: Event) =>
-                                                setReplyText((e.target as HTMLTextAreaElement).value)
-                                            }
-                                        />
-                                    ) : replyText.trim() ? (
-                                        <div
-                                            class="gh-preview-box markdown-body"
-                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(replyText, mdCtx) }}
-                                        />
-                                    ) : (
-                                        <div class="gh-preview-box">Nothing to preview</div>
-                                    )}
-                                </div>
-
-                                <div class="gh-composer-footer">
-                                    <div class="gh-composer-options">
-                                        <label class={`gh-opt-label ${replyMode === 'pure_comment' ? 'active' : ''}`}>
-                                            <input
-                                                type="radio"
-                                                name="replyMode"
-                                                style={{ display: 'none' }}
-                                                checked={replyMode === 'pure_comment'}
-                                                onChange={() => setReplyMode('pure_comment')}
-                                            />
-                                            {t('task.detail.commentMode', lang)}
-                                        </label>
-                                        <label
-                                            class={`gh-opt-label ${replyMode === 'new' ? 'active' : ''} ${closed ? 'disabled' : ''}`}
-                                            title={closed ? 'Issue 已关闭，先重新打开' : ''}
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="replyMode"
-                                                style={{ display: 'none' }}
-                                                checked={replyMode === 'new'}
-                                                disabled={closed}
-                                                onChange={() => setReplyMode('new')}
-                                            />
-                                            {t('task.detail.newSessionMode', lang)}
-                                        </label>
-                                        <span class="gh-opt-hint">{t('task.detail.followupHint', lang)}</span>
-                                    </div>
-                                    <div class="gh-composer-actions">
-                                        <button type="button" class="gh-close-btn" onClick={toggleIssueState}>
-                                            {closed ? 'Reopen Issue' : 'Close Issue'}
-                                        </button>
-                                        <button
+                                            class={`gh-composer-tab ${composerTab === 'write' ? 'active' : ''}`}
                                             type="button"
-                                            class="gh-submit-btn"
-                                            disabled={submitting || !replyText.trim()}
-                                            onClick={submitReply}
+                                            onClick={() => setComposerTab('write')}
                                         >
-                                            {submitting ? 'Submitting...' : 'Comment'}
+                                            Write
+                                        </button>
+                                        <button
+                                            class={`gh-composer-tab ${composerTab === 'preview' ? 'active' : ''}`}
+                                            type="button"
+                                            onClick={() => setComposerTab('preview')}
+                                        >
+                                            Preview
                                         </button>
                                     </div>
+
+                                    <div class="gh-composer-body">
+                                        {composerTab === 'write' ? (
+                                            <textarea
+                                                rows={4}
+                                                placeholder={
+                                                    closed
+                                                        ? 'Issue 已关闭，仅可评论...'
+                                                        : '写回复：评论、布置新一轮工作，或追问已有会话...'
+                                                }
+                                                value={replyText}
+                                                onInput={(e: Event) =>
+                                                    setReplyText((e.target as HTMLTextAreaElement).value)
+                                                }
+                                            />
+                                        ) : replyText.trim() ? (
+                                            <div
+                                                class="gh-preview-box markdown-body"
+                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(replyText, mdCtx) }}
+                                            />
+                                        ) : (
+                                            <div class="gh-preview-box">Nothing to preview</div>
+                                        )}
+                                    </div>
+
+                                    <div class="gh-composer-footer">
+                                        <div class="gh-composer-options">
+                                            <label
+                                                class={`gh-opt-label ${replyMode === 'pure_comment' ? 'active' : ''}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="replyMode"
+                                                    style={{ display: 'none' }}
+                                                    checked={replyMode === 'pure_comment'}
+                                                    onChange={() => setReplyMode('pure_comment')}
+                                                />
+                                                {t('task.detail.commentMode', lang)}
+                                            </label>
+                                            <label
+                                                class={`gh-opt-label ${replyMode === 'new' ? 'active' : ''} ${closed ? 'disabled' : ''}`}
+                                                title={closed ? 'Issue 已关闭，先重新打开' : ''}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="replyMode"
+                                                    style={{ display: 'none' }}
+                                                    checked={replyMode === 'new'}
+                                                    disabled={closed}
+                                                    onChange={() => setReplyMode('new')}
+                                                />
+                                                {t('task.detail.newSessionMode', lang)}
+                                            </label>
+                                            <span class="gh-opt-hint">{t('task.detail.followupHint', lang)}</span>
+                                        </div>
+                                        <div class="gh-composer-actions">
+                                            <button type="button" class="gh-close-btn" onClick={toggleIssueState}>
+                                                {closed ? 'Reopen Issue' : 'Close Issue'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="gh-submit-btn"
+                                                disabled={submitting || !replyText.trim()}
+                                                onClick={submitReply}
+                                            >
+                                                {submitting ? 'Submitting...' : 'Comment'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
 
@@ -1095,19 +1133,21 @@ export function TaskDetail({
                 </div>
 
                 <div class={`task-detail-sidebar${sidebarCollapsed.value ? ' is-collapsed' : ''}`}>
-                    {/* Assignees */}
-                    <div class="gh-sidebar-panel">
-                        <div class="gh-sidebar-head">
-                            <span>Assignees</span>
-                            <span class="gh-sidebar-edit-icon">⚙</span>
-                        </div>
-                        <div class="gh-sidebar-body">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span class="gh-avatar">{getInitials(task.assignee || 'claudecode')}</span>
-                                <span>{task.assignee || 'claudecode'}</span>
+                    {/* Assignees (hidden for discussions — nobody executes a discussion) */}
+                    {!isDiscussion && (
+                        <div class="gh-sidebar-panel">
+                            <div class="gh-sidebar-head">
+                                <span>Assignees</span>
+                                <span class="gh-sidebar-edit-icon">⚙</span>
+                            </div>
+                            <div class="gh-sidebar-body">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span class="gh-avatar">{getInitials(task.assignee || 'claudecode')}</span>
+                                    <span>{task.assignee || 'claudecode'}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Labels */}
                     <div class="gh-sidebar-panel">

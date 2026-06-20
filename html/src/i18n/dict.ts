@@ -733,6 +733,8 @@ export const zhCN: Record<string, string> = {
     'task.type.task': '任务',
     'task.type.requirement': '需求',
     'task.type.bug': '缺陷',
+    'task.type.discussion': '讨论',
+    'task.discussion.convert': '讨论需求',
 
     // ── Task grid — link relation labels ──────────────────────────────────
     'task.link.closes': '修复 / 关闭',
@@ -1613,6 +1615,8 @@ export const enUS: Record<string, string> = {
     'task.type.task': 'Task',
     'task.type.requirement': 'Requirement',
     'task.type.bug': 'Bug',
+    'task.type.discussion': 'Discussion',
+    'task.discussion.convert': 'Discuss as requirement',
 
     // ── Task grid — link relation labels ──────────────────────────────────
     'task.link.closes': 'Fixes / Closes',

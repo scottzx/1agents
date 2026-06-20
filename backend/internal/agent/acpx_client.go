@@ -474,10 +474,14 @@ func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, sum
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
 			if task.ID == taskId {
-				// Update task status and summary
-				task.Status = TaskStatusCompleted
-				task.CompletedAt = &now
-				task.Summary = summary
+				// A discussion is a PM conversation, never an executable task:
+				// its turns must not flip it to completed. The agent's reply was
+				// already recorded to the timeline by writeAgentReply.
+				if task.Type != TaskTypeDiscussion {
+					task.Status = TaskStatusCompleted
+					task.CompletedAt = &now
+					task.Summary = summary
+				}
 				task.UpdatedAt = now
 
 				// Add or update session metadata
@@ -516,7 +520,11 @@ func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, er
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
 			if task.ID == taskId {
-				task.Status = TaskStatusFailed
+				// Discussions are PM conversations, not tasks — a turn error
+				// must not mark the discussion failed.
+				if task.Type != TaskTypeDiscussion {
+					task.Status = TaskStatusFailed
+				}
 				task.UpdatedAt = now
 
 				for j := range task.Sessions {

@@ -166,7 +166,8 @@ export const createChatSession = async (
     agentType: AgentType,
     initialMessage?: string,
     role?: string,
-    permissionMode?: import('../components/types').PermissionMode
+    permissionMode?: import('../components/types').PermissionMode,
+    taskId?: string
 ) => {
     const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
     if (!ws) {
@@ -187,6 +188,7 @@ export const createChatSession = async (
             agent_type: agentType,
             role,
             permission_mode: permissionMode,
+            task_id: taskId,
         });
         await loadChatSessions(workspaceId);
         // Auto-select the new session and switch to the agents tab.
@@ -201,6 +203,21 @@ export const createChatSession = async (
     } catch (err) {
         ui.showToast(`创建聊天失败: ${(err as Error).message}`);
     }
+};
+
+/**
+ * Open an AI Project Manager conversation for a workspace. The PM is the single
+ * entry for turning ideas into work: it decides, through the dialogue, whether
+ * to record a discussion card (still fuzzy) or create a requirement (clear,
+ * with a deliverable). Picks the workspace's default agent and maps the role to
+ * 'pmo' in the built-in default workspace (mirrors NewChatHome), so the backend
+ * attaches the project-locked tasks MCP either way.
+ */
+export const createPMSession = async (workspaceId: string, name: string, initialMessage?: string, taskId?: string) => {
+    const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
+    const agentType = (ws?.defaultAgent || 'claudecode') as AgentType;
+    const role = workspaceId === 'default' || ws?.builtin ? 'pmo' : 'pm';
+    await createChatSession(workspaceId, name, agentType, initialMessage, role, undefined, taskId);
 };
 
 export const onStartNewChat = () => {

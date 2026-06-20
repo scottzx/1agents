@@ -98,6 +98,7 @@ const (
 	TaskTypeTask        = meta.TaskTypeTask
 	TaskTypeRequirement = meta.TaskTypeRequirement
 	TaskTypeBug         = meta.TaskTypeBug
+	TaskTypeDiscussion  = meta.TaskTypeDiscussion
 
 	LinkCloses  = meta.LinkCloses
 	LinkRelates = meta.LinkRelates
