@@ -473,6 +473,9 @@ jobs:
           path: 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
 
   build-desktop:
+    # 暂时停用桌面版(Tauri)发布，本轮专注 Web + CLI。
+    # 恢复：删除下面这行 if 即可重新启用桌面构建。
+    if: ${{ false }}
     strategy:
       fail-fast: false
       matrix:
@@ -665,7 +668,8 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [prepare, build-linux, build-macos, build-desktop]
+    # 桌面版暂停，仅依赖 Linux/macOS 后端构建(含 Web dist)。
+    needs: [prepare, build-linux, build-macos]
     steps:
       - uses: actions/checkout@v6
 
@@ -769,6 +773,8 @@ jobs:
   # RCLONE_GDRIVE_CONF secret. Runs after `release` (which publishes the
   # installers) and never blocks the public release.
   mirror-desktop-to-gdrive:
+    # 桌面版停用期间无安装包可镜像，一并停用。
+    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: [prepare, release]
     steps:
@@ -795,3 +801,89 @@ jobs:
           rclone copy desktop "gdrive:1Agents发布/${{ needs.prepare.outputs.tag }}" \
             --transfers 2 --stats-one-line
           echo "=== mirrored to Google Drive ===" && rclone ls "gdrive:1Agents发布/${{ needs.prepare.outputs.tag }}"
+
+  # ── Mirror server/web OTA artifacts to the self-hosted release server ─────
+  # GitHub Releases stay the canonical source (the `release` job is untouched).
+  # This job ADDITIONALLY mirrors the backend tarballs + a self-hosted manifest
+  # to agents-ota.dreammate.work (served from /var/www/1agents/releases/<tag>/),
+  # then prunes to the most-recent 3 versions so the 40G box never fills up.
+  # Requires repo secrets OTA_DEPLOY_KEY / OTA_DEPLOY_HOST / OTA_DEPLOY_USER;
+  # skips cleanly when they're absent. Never blocks the public release.
+  mirror-ota-to-self-hosted:
+    runs-on: ubuntu-latest
+    needs: [prepare, release]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download backend tarballs from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p _mirror
+          gh release download "${{ needs.prepare.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '1agents-*.tar.gz' \
+            --dir _mirror
+          echo "=== downloaded ===" && ls -lh _mirror
+
+      - name: Stage artifacts and build self-hosted manifest
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          OTA_BASE_URL: https://agents-ota.dreammate.work
+        run: |
+          # Strip the version segment from filenames so build-manifest.py's
+          # platform regex matches; the version lives in the URL path instead.
+          mkdir -p _stage
+          for f in _mirror/1agents-*.tar.gz; do
+            base="$(basename "$f")"
+            new="$(echo "$base" | sed "s/^1agents-${TAG}-/1agents-/")"
+            cp "$f" "_stage/$new"
+          done
+          echo "=== staged ===" && ls -lh _stage
+
+          python3 scripts/build-manifest.py \
+            --version "$TAG" \
+            --artifacts _stage \
+            --base-url "$OTA_BASE_URL" \
+            --output _stage/manifest.json
+          echo "=== mirror manifest ===" && cat _stage/manifest.json
+
+      - name: Rsync to self-hosted OTA server and prune to last 3
+        env:
+          OTA_DEPLOY_KEY: ${{ secrets.OTA_DEPLOY_KEY }}
+          OTA_DEPLOY_HOST: ${{ secrets.OTA_DEPLOY_HOST }}
+          OTA_DEPLOY_USER: ${{ secrets.OTA_DEPLOY_USER }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          if [ -z "$OTA_DEPLOY_KEY" ] || [ -z "$OTA_DEPLOY_HOST" ]; then
+            echo "OTA_DEPLOY_KEY/HOST secret not set — skipping self-hosted mirror."
+            echo "To enable: add OTA_DEPLOY_KEY (deploy private key), OTA_DEPLOY_HOST, OTA_DEPLOY_USER repo secrets."
+            exit 0
+          fi
+          USER_NAME="${OTA_DEPLOY_USER:-ota-deploy}"
+          RELEASES_DIR="/var/www/1agents/releases"
+          BIN_DIR="/var/www/1agents/bin"
+
+          # Deploy key + known_hosts.
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OTA_DEPLOY_KEY" > ~/.ssh/ota_deploy
+          chmod 600 ~/.ssh/ota_deploy
+          ssh-keyscan -H "$OTA_DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH_OPTS="-i ~/.ssh/ota_deploy -o StrictHostKeyChecking=yes"
+
+          # Push this version's artifacts + manifest. The unprivileged
+          # ota-deploy user owns /var/www/1agents, so no root is needed.
+          ssh $SSH_OPTS "$USER_NAME@$OTA_DEPLOY_HOST" "mkdir -p $RELEASES_DIR/$TAG"
+          rsync -az -e "ssh $SSH_OPTS" _stage/ "$USER_NAME@$OTA_DEPLOY_HOST:$RELEASES_DIR/$TAG/"
+
+          # Refresh the top-level latest pointer + keep the prune script in sync,
+          # then trim to the most-recent 3 versions.
+          scp $SSH_OPTS scripts/ota-prune.sh "$USER_NAME@$OTA_DEPLOY_HOST:$BIN_DIR/ota-prune.sh"
+          ssh $SSH_OPTS "$USER_NAME@$OTA_DEPLOY_HOST" "
+            set -e
+            cp $RELEASES_DIR/$TAG/manifest.json $RELEASES_DIR/manifest.json
+            chmod +x $BIN_DIR/ota-prune.sh
+            $BIN_DIR/ota-prune.sh 3 $RELEASES_DIR
+            echo '=== server releases now ===' && ls -1 $RELEASES_DIR
+          "
+          echo "=== mirrored to https://agents-ota.dreammate.work/$TAG/ ==="

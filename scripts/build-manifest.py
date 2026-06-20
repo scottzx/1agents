@@ -58,20 +58,31 @@ def find_frontend(artifacts_dir: str, version: str) -> str | None:
     return path if os.path.isfile(path) else None
 
 
+def _asset_url(repo: str, version: str, base_url: str | None, filename: str) -> str:
+    """Build the download URL for a release asset.
+
+    When ``base_url`` is None we emit the canonical GitHub Releases URL
+    (unchanged legacy behaviour). When ``base_url`` is set (self-hosted
+    mirror, e.g. https://agents-ota.dreammate.work) we emit
+    ``{base_url}/{version}/{filename}`` instead.
+    """
+    if base_url:
+        return f"{base_url.rstrip('/')}/{version}/{filename}"
+    return f"https://github.com/{repo}/releases/download/{version}/{filename}"
+
+
 def build_manifest(
     version: str,
     repo: str,
     channel: str,
     artifacts_dir: str,
+    base_url: str | None = None,
 ) -> dict:
     backend_platforms = {}
     for platform, path in sorted(find_tarballs(artifacts_dir).items()):
         size = os.path.getsize(path)
         sha = sha256_file(path)
-        url = (
-            f"https://github.com/{repo}/releases/download/{version}"
-            f"/1agents-{platform}.tar.gz"
-        )
+        url = _asset_url(repo, version, base_url, f"1agents-{platform}.tar.gz")
         backend_platforms[platform] = {
             "url": url,
             "size": size,
@@ -81,10 +92,7 @@ def build_manifest(
     frontend = {"version": version, "entry": "", "integrity": ""}
     fe_path = find_frontend(artifacts_dir, version)
     if fe_path:
-        fe_url = (
-            f"https://github.com/{repo}/releases/download/{version}"
-            f"/frontend-v{version}.tar.gz"
-        )
+        fe_url = _asset_url(repo, version, base_url, f"frontend-v{version}.tar.gz")
         frontend["entry"] = fe_url
         frontend["integrity"] = f"sha256-{sha256_file(fe_path)}"
 
@@ -111,9 +119,20 @@ def main() -> None:
     p.add_argument("--repo", default="scottzx/1Agents", help="GitHub slug")
     p.add_argument("--channel", default="stable", help="Release channel")
     p.add_argument("--output", default="manifest.json", help="Output file path")
+    p.add_argument(
+        "--base-url",
+        default=None,
+        help=(
+            "Self-hosted mirror base URL (e.g. https://agents-ota.dreammate.work). "
+            "When set, asset URLs become {base_url}/{version}/{file}. "
+            "When omitted, canonical GitHub Releases URLs are used (legacy default)."
+        ),
+    )
     args = p.parse_args()
 
-    manifest = build_manifest(args.version, args.repo, args.channel, args.artifacts)
+    manifest = build_manifest(
+        args.version, args.repo, args.channel, args.artifacts, args.base_url
+    )
 
     with open(args.output, "w") as f:
         json.dump(manifest, f, indent=2)

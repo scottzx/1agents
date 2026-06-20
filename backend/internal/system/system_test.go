@@ -272,9 +272,65 @@ func TestUpdateDoubleStartRejected(t *testing.T) {
 	}
 }
 
+// ── Upstream source priority (mirror first, GitHub fallback) ─────────────────
+
+func TestFetchUpstreamPrefersMirror(t *testing.T) {
+	// A healthy mirror must win over GitHub. We point MirrorBaseURL at a
+	// local test server and keep Repo set; the mirror's body must be the
+	// one returned, and GitHub must not be consulted.
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/manifest.json" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`{"channel":"stable","components":{"frontend":{"version":"FROM-MIRROR"}}}`))
+	}))
+	defer mirror.Close()
+
+	oldMirror, oldRepo := MirrorBaseURL, Repo
+	t.Cleanup(func() { MirrorBaseURL, Repo = oldMirror, oldRepo })
+	MirrorBaseURL = mirror.URL
+	Repo = "scottzx/1Agents" // present but should never be reached
+
+	body, err := fetchUpstream()
+	if err != nil {
+		t.Fatalf("fetchUpstream: %v", err)
+	}
+	if !strings.Contains(string(body), "FROM-MIRROR") {
+		t.Errorf("expected mirror manifest, got: %s", body)
+	}
+}
+
+func TestUpstreamSourcesOrderAndToggles(t *testing.T) {
+	oldMirror, oldRepo := MirrorBaseURL, Repo
+	t.Cleanup(func() { MirrorBaseURL, Repo = oldMirror, oldRepo })
+
+	MirrorBaseURL, Repo = "https://m.example", "owner/repo"
+	got := upstreamSources()
+	if len(got) != 2 || got[0] != "https://m.example/manifest.json" {
+		t.Fatalf("want [mirror, github], got %v", got)
+	}
+	if !strings.Contains(got[1], "github.com/owner/repo") {
+		t.Errorf("fallback should be GitHub, got %q", got[1])
+	}
+
+	// Disabling the mirror leaves only GitHub.
+	MirrorBaseURL = ""
+	if got := upstreamSources(); len(got) != 1 || !strings.Contains(got[0], "github.com") {
+		t.Errorf("mirror off: want [github], got %v", got)
+	}
+}
+
 // ── Fetch manifest caching ──────────────────────────────────────────────────
 
 func TestCacheLifecycle(t *testing.T) {
+	// Force both upstreams off so fetchUpstream deterministically fails
+	// (the live mirror would otherwise be reachable from a networked CI
+	// and legitimately populate the cache, defeating this test).
+	oldMirror, oldRepo := MirrorBaseURL, Repo
+	t.Cleanup(func() { MirrorBaseURL, Repo = oldMirror, oldRepo })
+	MirrorBaseURL, Repo = "", ""
+
 	// Invalidate the in-memory cache.
 	cache.mu.Lock()
 	cache.fetchedAt = time.Time{}
