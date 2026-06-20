@@ -44,7 +44,7 @@ export interface Milestone {
 
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
-export type TaskType = 'task' | 'requirement' | 'bug';
+export type TaskType = 'task' | 'requirement' | 'bug' | 'discussion';
 
 // A GitHub-style peer cross-reference between work items (not hierarchy —
 // subtasks use parentId). target is the referenced task's id.

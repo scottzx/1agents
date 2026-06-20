@@ -79,6 +79,23 @@ func TestSchedulerSubtaskGatesParent(t *testing.T) {
 	}
 }
 
+func TestSchedulerSkipsDiscussion(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	// A discussion is a concept record: pending + open, but it must never be
+	// queued or run by the scheduler.
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "disc", Title: "方向讨论", Type: TaskTypeDiscussion, Description: "x",
+			IssueState: IssueOpen, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+	})
+
+	s.Tick()
+
+	if got := statusOf(t, store, ref.Path, "disc"); got != TaskStatusPending {
+		t.Fatalf("discussion = %s, want pending (never scheduled)", got)
+	}
+}
+
 func TestSchedulerContainerParentAutoCompletes(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()

@@ -75,8 +75,8 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 7 {
-		t.Fatalf("expected 7 tools, got %d", len(tools))
+	if len(tools) != 8 {
+		t.Fatalf("expected 8 tools, got %d", len(tools))
 	}
 }
 

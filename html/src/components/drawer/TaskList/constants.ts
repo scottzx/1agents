@@ -21,6 +21,7 @@ export const TYPE_LABELS: Record<string, string> = {
     task: '任务',
     requirement: '需求',
     bug: '缺陷',
+    discussion: '讨论',
 };
 
 export const LINK_REL_LABELS: Record<string, string> = {
@@ -59,6 +60,7 @@ export const getTypeLabels = (lang: Lang): Record<string, string> => ({
     task: t('task.type.task', lang),
     requirement: t('task.type.requirement', lang),
     bug: t('task.type.bug', lang),
+    discussion: t('task.type.discussion', lang),
 });
 
 export const getLinkRelLabels = (lang: Lang): Record<string, string> => ({

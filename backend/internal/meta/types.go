@@ -73,14 +73,17 @@ const (
 	ScheduleTypeScheduled ScheduleType = "scheduled"
 )
 
-// TaskType is the GitHub-style issue discriminator. Requirement/bug cards live
-// in the same tasks table as normal tasks; the "需求池" view filters by type.
+// TaskType is the GitHub-style issue discriminator. Requirement/bug/discussion
+// cards live in the same tasks table as normal tasks; the "需求池"/"讨论" views
+// filter by type. A discussion is a free-form conceptual record (no deliverable)
+// that never participates in scheduling — see the scheduler's ready loop.
 type TaskType string
 
 const (
 	TaskTypeTask        TaskType = "task"
 	TaskTypeRequirement TaskType = "requirement"
 	TaskTypeBug         TaskType = "bug"
+	TaskTypeDiscussion  TaskType = "discussion"
 )
 
 // LinkRel is the relation kind of a TaskLink. "closes" auto-closes the target

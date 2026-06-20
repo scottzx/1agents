@@ -18,7 +18,7 @@ var toolDefs = []map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"status": map[string]any{"type": "string", "description": "Optional status filter."},
-				"type":   map[string]any{"type": "string", "description": "Optional type filter: task, requirement, or bug."},
+				"type":   map[string]any{"type": "string", "description": "Optional type filter: task, requirement, bug, or discussion."},
 			},
 		},
 	},
@@ -86,6 +86,18 @@ var toolDefs = []map[string]any{
 		},
 	},
 	{
+		"name":        "create_discussion",
+		"description": "Create a discussion post in the current project. A discussion is a free-form conceptual/directional record with NO clear deliverable — it never gets scheduled or executed. Use this for pure discussion that isn't yet a concrete requirement/bug/task; once a clear, deliverable goal emerges, create a requirement/bug/task instead.",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"title"},
+			"properties": map[string]any{
+				"title":       map[string]any{"type": "string"},
+				"description": map[string]any{"type": "string", "description": "The discussion body (Markdown supported)."},
+			},
+		},
+	},
+	{
 		"name":        "update_task",
 		"description": "Update fields of an existing task in the current project. status may only be set to 'completed' or 'cancelled' (runnable states stay scheduler-owned). Only the fields you pass are changed.",
 		"inputSchema": map[string]any{
@@ -141,6 +153,8 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolUpdateMilestone(p.Arguments)
 	case "create_task":
 		return s.toolCreateTask(p.Arguments)
+	case "create_discussion":
+		return s.toolCreateDiscussion(p.Arguments)
 	case "update_task":
 		return s.toolUpdateTask(p.Arguments)
 	default:
@@ -337,6 +351,43 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"title":     created.Title,
 		"status":    created.Status,
 		"dependsOn": created.DependsOn,
+	})
+}
+
+func (s *server) toolCreateDiscussion(args json.RawMessage) map[string]any {
+	var a struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	if strings.TrimSpace(a.Title) == "" {
+		return toolErr("title is required")
+	}
+	body := map[string]any{
+		"workspace_id": s.workspaceID,
+		"title":        a.Title,
+		"description":  a.Description,
+		"type":         "discussion",
+	}
+	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("create discussion failed (%d): %s", status, strings.TrimSpace(string(resp))))
+	}
+	var created task
+	if err := json.Unmarshal(resp, &created); err != nil {
+		return toolText(string(resp))
+	}
+	return toolJSON(map[string]any{
+		"ok":     true,
+		"id":     created.ID,
+		"number": created.Number,
+		"title":  created.Title,
+		"type":   created.Type,
 	})
 }
 

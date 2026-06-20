@@ -3013,6 +3013,14 @@ body {
     }
   }
 
+  &.type-discussion {
+    border-left-color: var(--purple-fg);
+    &:hover {
+      border-color: rgba(var(--purple-rgb), 0.5);
+      box-shadow: var(--shadow-md);
+    }
+  }
+
   &:hover {
     transform: translateY(-2px);
   }
@@ -3237,6 +3245,10 @@ body {
     background-color: var(--bg-panel);
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
+  }
+  &.type-discussion {
+    background-color: var(--purple-bg);
+    color: var(--purple-fg);
   }
 }
 
@@ -3996,6 +4008,22 @@ body {
 
       &:hover {
         background-color: var(--bg-sidebar-hover);
+      }
+    }
+
+    .task-convert-btn {
+      background-color: var(--purple-bg);
+      border: 1px solid rgba(var(--purple-rgb), 0.35);
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      color: var(--purple-fg);
+      font-size: 12.5px;
+      font-weight: 500;
+
+      &:hover {
+        background-color: rgba(var(--purple-rgb), 0.18);
+        border-color: rgba(var(--purple-rgb), 0.55);
       }
     }
   }
@@ -5673,7 +5701,8 @@ body {
 
     .task-dashboard-header {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 12px;
 
       .create-task-btn-toggle {

@@ -285,6 +285,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
 				continue
 			}
+			if t.Type == TaskTypeDiscussion {
+				continue // 讨论是概念记录，永不调度执行
+			}
 			if t.IssueState == IssueClosed {
 				continue
 			}

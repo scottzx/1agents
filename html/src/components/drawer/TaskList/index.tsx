@@ -4,6 +4,7 @@ import { useSignal, signal } from '@preact/signals';
 
 import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
+import * as sessionStore from '../../../stores/sessionStore';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
@@ -13,6 +14,7 @@ import { TasksView } from './TasksView';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
+import { DiscussionView } from './DiscussionView';
 import { SessionsView } from './SessionsView';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
@@ -42,7 +44,7 @@ export function TaskList({
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
     const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
-    const view = useSignal<'overview' | 'tasks' | 'requirements' | 'sessions' | 'milestone'>('tasks');
+    const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'sessions' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -174,6 +176,18 @@ export function TaskList({
         }
     };
 
+    // New discussions are created by talking to the PM, not a form: it decides
+    // through the dialogue whether to record a discussion card (still fuzzy) or
+    // create a requirement (clear, with a deliverable).
+    const startDiscussionWithPM = useCallback(() => {
+        const prompt = [
+            '我想和你聊一个新的想法 / 方向。',
+            '',
+            '请通过对话帮我厘清：如果目标清晰、有明确交付物，就用 create_task 建一条 requirement；如果还不够清晰，就用 create_discussion 建一张讨论卡片，留待以后继续讨论。先问我想聊什么。',
+        ].join('\n');
+        return sessionStore.createPMSession(workspaceId, '新讨论', prompt);
+    }, [workspaceId]);
+
     const createMilestone = useCallback(
         async (fields: MilestoneFields) => {
             const res = await fetch('/api/agent/milestones', {
@@ -232,6 +246,12 @@ export function TaskList({
         );
     }
 
+    // Discussions live in the same tasks table but must never leak into the
+    // board/KPI views (scheduler, Kanban, Overview all treat them as noise).
+    // Split once here: boardTasks feeds the work-item views, discussions the 讨论 tab.
+    const discussions = tasks.filter(t => t.type === 'discussion');
+    const boardTasks = tasks.filter(t => t.type !== 'discussion');
+
     return (
         <div class="task-dashboard-container">
             <div class="task-dashboard-header">
@@ -239,8 +259,9 @@ export function TaskList({
                     {(
                         [
                             ['overview', '总览'],
-                            ['tasks', '任务'],
+                            ['discussion', '讨论'],
                             ['requirements', '需求'],
+                            ['tasks', '任务'],
                             ['sessions', '会话'],
                             ['milestone', '里程碑'],
                         ] as Array<[typeof view.value, string]>
@@ -251,8 +272,14 @@ export function TaskList({
                     ))}
                 </div>
                 <div class="task-header-actions">
-                    {/* Tasks are created only by agents (via MCP tools), never through a
-                        human form. Only milestones are user-creatable here. */}
+                    {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
+                        never through a human form. Discussions and milestones are the
+                        two user-creatable items here. */}
+                    {view.value === 'discussion' && (
+                        <button class="create-task-btn-toggle" onClick={startDiscussionWithPM}>
+                            + 新建讨论
+                        </button>
+                    )}
                     {view.value === 'milestone' && (
                         <button class="create-task-btn-toggle" onClick={() => (showMsForm.value = true)}>
                             + 新建里程碑
@@ -265,7 +292,7 @@ export function TaskList({
 
             {view.value === 'tasks' && (
                 <TasksView
-                    tasks={tasks}
+                    tasks={boardTasks}
                     loading={loading}
                     onSelectTask={setSelectedTaskId}
                     onDeleteTask={handleDeleteTask}
@@ -273,7 +300,8 @@ export function TaskList({
                     onStatusChange={handleStatusChange}
                 />
             )}
-            {view.value === 'overview' && <Overview tasks={tasks} />}
+            {view.value === 'overview' && <Overview tasks={boardTasks} />}
+            {view.value === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
             {view.value === 'sessions' && (
                 <SessionsView
                     workspaceId={workspaceId}
@@ -283,14 +311,14 @@ export function TaskList({
             )}
             {view.value === 'milestone' && (
                 <MilestoneView
-                    tasks={tasks}
+                    tasks={boardTasks}
                     milestones={milestones}
                     onSelectTask={setSelectedTaskId}
                     onPatchMilestone={patchMilestone}
                     onDeleteMilestone={deleteMilestone}
                 />
             )}
-            {view.value === 'requirements' && <RequirementPool tasks={tasks} onSelectTask={setSelectedTaskId} />}
+            {view.value === 'requirements' && <RequirementPool tasks={boardTasks} onSelectTask={setSelectedTaskId} />}
 
             <Modal show={showMsForm.value}>
                 <MilestoneForm

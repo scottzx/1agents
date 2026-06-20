@@ -290,7 +290,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	// keeps the conversation flowing instead of stalling on a permission prompt
 	// for every create_task/update_task. The user can still switch the mode
 	// manually afterwards (persisted via set_permission_mode).
-	if rec.Role == SessionRolePM {
+	if isProjectManagerRole(rec.Role) {
 		rec.PermissionMode = "approve-all"
 	}
 	if err := h.store.Add(rec); err != nil {
@@ -1069,7 +1069,19 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// full reply timeline, injected only when this is a NEW session.
 		// Resumed sessions already carry their own conversation history.
 		if acpSessionID == "" {
-			systemContext = buildIssueBackground(targetTask, wsPath)
+			if targetTask.Type == TaskTypeDiscussion {
+				// A discussion-linked session is a PM conversation, NOT an
+				// executor: the agent acts as PM (create_task / create_discussion)
+				// with the discussion thread as background. Its user prompts and
+				// final replies are recorded back to this discussion's timeline
+				// (writeUserReply / writeAgentReply, keyed on task_id).
+				systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID) + "\n\n" + buildIssueBackground(targetTask, wsPath)
+			} else {
+				systemContext = buildIssueBackground(targetTask, wsPath)
+			}
+		}
+		if targetTask.Type == TaskTypeDiscussion {
+			mcpServers = h.buildPMMcpServers(wsID)
 		}
 
 		// Link the triggering reply to this session (Reply.SessionRef) and
@@ -1088,8 +1100,9 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// this open is resuming an existing agent session (e.g. "查看详情" on a
 		// finished run) — it must NOT acquire the workspace lock, flip the task
 		// to running, or re-execute. Only a genuinely new session (acpSessionID
-		// empty) starts execution.
-		if acpSessionID == "" && targetTask.Status != TaskStatusRunning {
+		// empty) starts execution. Discussions are never executed, so a
+		// discussion-linked PM conversation skips this entirely.
+		if targetTask.Type != TaskTypeDiscussion && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
@@ -1133,10 +1146,10 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		log.Printf("[agent] Bridging Chat UI WebSocket for task %s, session %s", taskId, sessionId)
-	} else if sessionRole == SessionRolePM {
-		// AI Project Manager session: inject the PM system prompt (new
-		// sessions only — resumed ones already carry their history) and a
-		// task-tool MCP server locked to this workspace.
+	} else if isProjectManagerRole(sessionRole) {
+		// AI Project Manager session (pm, or pmo in the default workspace):
+		// inject the PM system prompt (new sessions only — resumed ones already
+		// carry their history) and a task-tool MCP server locked to this workspace.
 		if acpSessionID == "" {
 			systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID)
 		}
