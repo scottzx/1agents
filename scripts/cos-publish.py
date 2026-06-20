@@ -56,20 +56,16 @@ def main() -> None:
         ctype = "application/json" if name.endswith(".json") else "application/octet-stream"
         # Single PUT (not upload_file): files are < a few hundred MB, and a
         # simple PUT only needs cos:PutObject — avoiding the multipart APIs
-        # (ListMultipartUploads etc.) that the minimal CI policy doesn't grant.
+        # (ListMultipartUploads etc.). No per-object ACL: the bucket itself is
+        # public-read, so setting an ACL header (which needs cos:PutObjectACL)
+        # is unnecessary.
         with open(path, "rb") as fh:
-            client.put_object(
-                Bucket=bucket, Key=key, Body=fh, ContentType=ctype, ACL="public-read"
-            )
+            client.put_object(Bucket=bucket, Key=key, Body=fh, ContentType=ctype)
         print(f"[cos] uploaded {key}")
 
     with open(os.path.join(stage, "manifest.json"), "rb") as fh:
         client.put_object(
-            Bucket=bucket,
-            Key="manifest.json",
-            Body=fh,
-            ContentType="application/json",
-            ACL="public-read",
+            Bucket=bucket, Key="manifest.json", Body=fh, ContentType="application/json"
         )
     print("[cos] refreshed /manifest.json (latest pointer)")
 
