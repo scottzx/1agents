@@ -15,17 +15,25 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
-// Repo is the GitHub slug where releases are published. Kept as a
-// package var so tests can override it via Repo = "..."; in production
-// it's hard-coded to match the project's GitHub remote.
+// Package vars overridable by main.go / tests.
+//
+//   - MirrorBaseURL is the CDN OTA mirror; when non-empty it is the
+//     PRIMARY upstream. Its /manifest.json is tried first, and the binary
+//     URLs it contains point back at the CDN. Set it to the CDN base
+//     (e.g. "https://ota.example.com") once the COS+CDN bucket is
+//     provisioned; "" means GitHub-only.
+//   - Repo is the GitHub slug used for the FALLBACK upstream when the
+//     mirror is unreachable. Set to "" to disable the GitHub fallback.
 var (
-	Repo         = "scottzx/1Agents"
-	LocalVersion = "dev" // set from cmd/backend/main.go via ldflags
-	OTAEnabled   = false // set from cmd/backend/main.go; false in desktop/Docker mode
+	MirrorBaseURL = "https://1agents-ota-1258742922.cos.accelerate.myqcloud.com" // COS global-acceleration OTA mirror
+	Repo          = "scottzx/1Agents"
+	LocalVersion  = "dev" // set from cmd/backend/main.go via ldflags
+	OTAEnabled    = false // set from cmd/backend/main.go; false in desktop/Docker mode
 )
 
 const (
@@ -41,11 +49,11 @@ const (
 // releases/latest/download/manifest.json on GitHub Releases.
 // See docs/ota-architecture.md §4.1 for the canonical shape.
 type RootManifest struct {
-	Channel       string   `json:"channel"`
-	ReleasedAt    string   `json:"released_at"`
-	MinSupported  string   `json:"min_supported"`
-	Components    Components `json:"components"`
-	Previous      []PreviousRelease `json:"previous"`
+	Channel      string            `json:"channel"`
+	ReleasedAt   string            `json:"released_at"`
+	MinSupported string            `json:"min_supported"`
+	Components   Components        `json:"components"`
+	Previous     []PreviousRelease `json:"previous"`
 }
 
 type Components struct {
@@ -111,11 +119,22 @@ func emptyManifest() []byte {
 	return b
 }
 
-// fetchUpstream pulls the latest manifest from GitHub Releases. Any
-// network/parse error is returned to the caller; the caller decides
-// whether to fall back to the cached copy or the empty manifest.
-func fetchUpstream() ([]byte, error) {
-	url := fmt.Sprintf(manifestURL, Repo)
+// upstreamSources returns the manifest URLs to try, in priority order:
+// self-hosted mirror first, GitHub Releases as fallback. Either can be
+// disabled by setting its package var to "".
+func upstreamSources() []string {
+	var srcs []string
+	if MirrorBaseURL != "" {
+		srcs = append(srcs, strings.TrimRight(MirrorBaseURL, "/")+"/manifest.json")
+	}
+	if Repo != "" {
+		srcs = append(srcs, fmt.Sprintf(manifestURL, Repo))
+	}
+	return srcs
+}
+
+// fetchManifestFrom fetches and validates a manifest from a single URL.
+func fetchManifestFrom(url string) ([]byte, error) {
 	client := &http.Client{Timeout: upstreamTO}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -139,6 +158,27 @@ func fetchUpstream() ([]byte, error) {
 		return nil, fmt.Errorf("upstream body missing 'components' field")
 	}
 	return body, nil
+}
+
+// fetchUpstream pulls the latest manifest, preferring the self-hosted
+// mirror and falling back to GitHub Releases. Any network/parse error
+// from all sources is returned to the caller; the caller decides
+// whether to fall back to the cached copy or the empty manifest.
+func fetchUpstream() ([]byte, error) {
+	sources := upstreamSources()
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("no OTA upstream configured")
+	}
+	var lastErr error
+	for _, url := range sources {
+		body, err := fetchManifestFrom(url)
+		if err == nil {
+			return body, nil
+		}
+		log.Printf("[ota] upstream %s failed: %v", url, err)
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 // manifestWithCache returns the manifest body to serve. The order of
