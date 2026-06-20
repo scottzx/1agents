@@ -1,0 +1,99 @@
+name: OTA CDN Publish
+
+# After a GitHub Release is published (auto-release.yml stays the canonical
+# source and is untouched), mirror the OTA artifacts to Tencent Cloud COS so
+# China clients fetch updates from the CDN instead of GitHub. Runs separately
+# from the release so a slow/failed upload never blocks publishing.
+#
+# Required repo secrets (skips cleanly if unset):
+#   COS_SECRET_ID / COS_SECRET_KEY  — Tencent Cloud API credentials
+#   COS_BUCKET                      — bucket name, e.g. 1agents-ota-1300000000
+#   COS_REGION                      — e.g. ap-guangzhou
+#   OTA_CDN_BASE_URL                — public CDN base, e.g. https://ota.example.com
+#                                     (manifest asset URLs become {base}/{tag}/{file})
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to (re)publish to CDN, e.g. v20260620-1'
+        required: true
+
+jobs:
+  publish-cdn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve tag + gate on secrets
+        id: prep
+        env:
+          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+          COS_BUCKET: ${{ secrets.COS_BUCKET }}
+          OTA_CDN_BASE_URL: ${{ secrets.OTA_CDN_BASE_URL }}
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+          if [ -z "$COS_SECRET_ID" ] || [ -z "$COS_BUCKET" ] || [ -z "$OTA_CDN_BASE_URL" ]; then
+            echo "COS secrets not configured — skipping CDN publish."
+            echo "Set COS_SECRET_ID/COS_SECRET_KEY/COS_BUCKET/COS_REGION/OTA_CDN_BASE_URL to enable."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download backend tarballs from the release
+        if: steps.prep.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.prep.outputs.tag }}
+        run: |
+          mkdir -p _mirror
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern '1agents-*.tar.gz' \
+            --dir _mirror
+          echo "=== downloaded ===" && ls -lh _mirror
+
+      - name: Stage artifacts and build CDN manifest
+        if: steps.prep.outputs.go == 'true'
+        env:
+          TAG: ${{ steps.prep.outputs.tag }}
+          OTA_CDN_BASE_URL: ${{ secrets.OTA_CDN_BASE_URL }}
+        run: |
+          # Strip the version segment so build-manifest.py's platform regex
+          # matches; the version lives in the CDN URL path instead.
+          mkdir -p _stage
+          for f in _mirror/1agents-*.tar.gz; do
+            base="$(basename "$f")"
+            new="$(echo "$base" | sed "s/^1agents-${TAG}-/1agents-/")"
+            cp "$f" "_stage/$new"
+          done
+          echo "=== staged ===" && ls -lh _stage
+
+          python3 scripts/build-manifest.py \
+            --version "$TAG" \
+            --artifacts _stage \
+            --base-url "$OTA_CDN_BASE_URL" \
+            --output _stage/manifest.json
+          echo "=== CDN manifest ===" && cat _stage/manifest.json
+
+      - name: Upload to COS + keep the latest 3 versions
+        if: steps.prep.outputs.go == 'true'
+        env:
+          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+          COS_BUCKET: ${{ secrets.COS_BUCKET }}
+          COS_REGION: ${{ secrets.COS_REGION }}
+          TAG: ${{ steps.prep.outputs.tag }}
+        run: |
+          pip install -q "cos-python-sdk-v5>=1.9"
+          python3 scripts/cos-publish.py "$TAG" _stage 3

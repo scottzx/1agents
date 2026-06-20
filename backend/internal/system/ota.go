@@ -22,14 +22,15 @@ import (
 
 // Package vars overridable by main.go / tests.
 //
-//   - MirrorBaseURL is the self-hosted OTA mirror; it is the PRIMARY
-//     upstream. Its /manifest.json is tried first, and the binary URLs
-//     it contains point back at the mirror. Set to "" to disable the
-//     mirror and use GitHub only. (Future: point this at a CDN.)
+//   - MirrorBaseURL is the CDN OTA mirror; when non-empty it is the
+//     PRIMARY upstream. Its /manifest.json is tried first, and the binary
+//     URLs it contains point back at the CDN. Set it to the CDN base
+//     (e.g. "https://ota.example.com") once the COS+CDN bucket is
+//     provisioned; "" means GitHub-only.
 //   - Repo is the GitHub slug used for the FALLBACK upstream when the
 //     mirror is unreachable. Set to "" to disable the GitHub fallback.
 var (
-	MirrorBaseURL = "https://agents-ota.dreammate.work"
+	MirrorBaseURL = "" // TODO: set to the COS+CDN base URL once provisioned
 	Repo          = "scottzx/1Agents"
 	LocalVersion  = "dev" // set from cmd/backend/main.go via ldflags
 	OTAEnabled    = false // set from cmd/backend/main.go; false in desktop/Docker mode
