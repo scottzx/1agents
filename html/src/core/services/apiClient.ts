@@ -29,7 +29,10 @@ const LS_URL = 'oneagents.relay.url';
 const LS_NODE = 'oneagents.relay.node';
 
 export function relayUrl(): string {
-    return localStorage.getItem(LS_URL) || window.location.origin;
+    // Default to the origin the H5 is served from, including the build base
+    // path (__BASE_PATH__ = '' at root, '/tunnels' under a subpath mount), so a
+    // subpath-hosted SPA targets https://host/tunnels, not the bare origin.
+    return localStorage.getItem(LS_URL) || window.location.origin + __BASE_PATH__;
 }
 
 async function probeDirect(): Promise<boolean> {

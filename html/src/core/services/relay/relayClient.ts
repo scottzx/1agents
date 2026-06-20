@@ -37,6 +37,22 @@ export interface RelayMachine {
     variant: Variant;
 }
 
+/**
+ * Split a relay base URL into origin + base path (no trailing slash).
+ * HTTP calls just concat `${serverUrl}/v1/...` so they work with or without a
+ * base path, but socket.io treats a URL path as the namespace and resolves its
+ * `path` option against the bare origin — so the WS path must be built from
+ * origin + basePath explicitly. At root, basePath is '' and this is a no-op.
+ */
+function splitRelayUrl(serverUrl: string): { origin: string; basePath: string } {
+    try {
+        const u = new URL(serverUrl);
+        return { origin: u.origin, basePath: u.pathname.replace(/\/+$/, '') };
+    } catch {
+        return { origin: serverUrl, basePath: '' };
+    }
+}
+
 function headers(token?: string): Record<string, string> {
     const h: Record<string, string> = { 'content-type': 'application/json', 'X-Happy-Client': CLIENT_ID };
     if (token) h['Authorization'] = `Bearer ${token}`;
@@ -155,9 +171,10 @@ export async function listMachines(serverUrl: string, creds: RelayCredentials): 
 
 /** 建立 user-scoped 长连接。 */
 export function connect(serverUrl: string, creds: RelayCredentials): Promise<Socket> {
-    const socket = io(serverUrl, {
+    const { origin, basePath } = splitRelayUrl(serverUrl);
+    const socket = io(origin, {
         auth: { token: creds.token },
-        path: '/v1/updates',
+        path: `${basePath}/v1/updates`,
         transports: ['websocket'],
         autoConnect: false,
         reconnection: true,

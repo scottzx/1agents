@@ -89,7 +89,11 @@ const baseConfig = {
         // relative asset paths the browser would resolve app.js against
         // /{project}/tasks/ and 404. Also fixes runtime chunk/worker loading at
         // depth. The Go backend always serves the frontend from root.
-        publicPath: '/',
+        //
+        // PUBLIC_PATH overrides it for subpath hosting behind a relay/reverse
+        // proxy, e.g. PUBLIC_PATH=/tunnels/ when happy-server serves the H5
+        // under https://host/tunnels/. Keep the trailing slash.
+        publicPath: process.env.PUBLIC_PATH || '/',
     },
     module: {
         rules: [
@@ -117,6 +121,10 @@ const baseConfig = {
             __APP_VERSION__: JSON.stringify(buildMeta.version),
             __GIT_COMMIT__: JSON.stringify(buildMeta.commit),
             __BUILD_TIME__: JSON.stringify(buildMeta.buildTime),
+            // App base path (publicPath without trailing slash): '' at root,
+            // '/tunnels' under a subpath mount. Used to point the relay client
+            // at the same origin+path the H5 is served from.
+            __BASE_PATH__: JSON.stringify((process.env.PUBLIC_PATH || '/').replace(/\/+$/, '')),
         }),
         new ESLintPlugin({
             context: path.resolve(__dirname, '.'),
