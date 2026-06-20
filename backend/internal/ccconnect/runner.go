@@ -277,7 +277,25 @@ insecure = true
 						wsMap[ws.ID] = true
 					}
 
+					// Clean up existing workspace names that are raw cc-connect project
+					// names (contain the __<agentType> suffix). This repairs any workspaces
+					// that were imported before the display-name fix was applied.
 					wsModified := false
+					for i := range wsCfg.Workspaces {
+						ws := &wsCfg.Workspaces[i]
+						if idx := strings.LastIndex(ws.Name, "__"); idx >= 0 {
+							clean := strings.Trim(ws.Name[:idx], "_")
+							if clean == "" {
+								clean = filepath.Base(ws.Path)
+							}
+							if clean != ws.Name {
+								log.Printf("[ccconnect] Renaming polluted workspace name %q → %q", ws.Name, clean)
+								ws.Name = clean
+								wsModified = true
+							}
+						}
+					}
+
 					for _, proj := range cfg.Projects {
 						workDir, _ := proj.Agent.Options["work_dir"].(string)
 						if workDir == "" {
@@ -286,9 +304,18 @@ insecure = true
 
 						projID := sanitizeID(proj.Name)
 						if !wsMap[workDir] && !wsMap[projID] {
+							// Strip the __<agentType> suffix added by getCCProjectName so the
+							// display name is clean (e.g. "1agents__claudecode" → "1agents").
+							displayName := proj.Name
+							if idx := strings.LastIndex(displayName, "__"); idx >= 0 {
+								displayName = strings.Trim(displayName[:idx], "_")
+							}
+							if displayName == "" {
+								displayName = filepath.Base(workDir)
+							}
 							newWS := workspace.Workspace{
 								ID:     projID,
-								Name:   proj.Name,
+								Name:   displayName,
 								Path:   workDir,
 								Status: "active",
 							}
@@ -296,7 +323,7 @@ insecure = true
 							wsMap[workDir] = true
 							wsMap[projID] = true
 							wsModified = true
-							log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", proj.Name, workDir)
+							log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", displayName, workDir)
 						}
 					}
 
