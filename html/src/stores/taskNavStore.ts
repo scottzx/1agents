@@ -12,6 +12,8 @@ import { signal } from '@preact/signals';
 import * as wsStore from './workspaceStore';
 import * as tabsStore from './tabsStore';
 import * as ui from './uiStore';
+import * as fsStore from './fsStore';
+import { fsService } from '../services/fsService';
 import { parseTaskPermalink } from '../utils/markdown';
 
 /**
@@ -71,6 +73,32 @@ export const taskPermalink = (projectName: string, number: number): string =>
     `${window.location.origin}/${encodeURIComponent(projectName)}/tasks/${number}`;
 
 /**
+ * Open a file by its path (relative to the current workspace root, or
+ * absolute) in the right-side files pane's detail view — the same surface the
+ * file browser uses when you click a file. Silently does nothing when the file
+ * can't be found, so a mistyped ref is treated as a typo.
+ */
+const openFileByPath = async (path: string, line?: number, lineEnd?: number): Promise<void> => {
+    // Preflight: bail silently on 404 so a mistyped ref is treated as a typo
+    // rather than opening the pane onto an error.
+    try {
+        await fsService.read(path);
+    } catch {
+        return;
+    }
+
+    const name = path.split('/').pop() || path;
+    // Open the files pane (mobile = files subview, desktop = right column),
+    // then load the file into its detail view via the shared store action.
+    if (ui.isMobile.value) {
+        tabsStore.selectTab('files');
+    } else {
+        tabsStore.openContentTab('files');
+    }
+    void fsStore.openFileDetail({ name, path, isDir: false, size: 0, modTime: 0 }, line, lineEnd);
+};
+
+/**
  * Global delegated click handler for autolinked task references and pasted
  * permalink URLs. Intercepts left-clicks (no modifier) so navigation stays
  * in-app; modifier-clicks fall through to the browser (open in new tab works
@@ -82,6 +110,17 @@ const onDocumentClick = (e: MouseEvent): void => {
     }
     const anchor = (e.target as HTMLElement | null)?.closest('a');
     if (!anchor) return;
+
+    // Autolinked file-path reference (`path/to/file.ext` or `file.ts:42-85`).
+    if (anchor.hasAttribute('data-file-ref')) {
+        const path = anchor.getAttribute('data-path') || '';
+        if (!path) return;
+        const line = parseInt(anchor.getAttribute('data-line') || '', 10) || undefined;
+        const lineEnd = parseInt(anchor.getAttribute('data-line-end') || '', 10) || undefined;
+        e.preventDefault();
+        void openFileByPath(path, line, lineEnd);
+        return;
+    }
 
     // Autolinked `#N` reference carries explicit data attributes.
     if (anchor.hasAttribute('data-task-ref')) {

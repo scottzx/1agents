@@ -88,8 +88,71 @@ const taskRefExtension: TokenizerAndRendererExtension = {
     },
 };
 
+/** Build the file-ref anchor markup for a resolved path with optional line range. */
+const fileRefAnchor = (path: string, line?: number, lineEnd?: number): string => {
+    const display = line ? `${path}:${line}${lineEnd && lineEnd !== line ? `-${lineEnd}` : ''}` : path;
+    const lineAttr = line ? ` data-line="${line}"` : '';
+    const lineEndAttr = lineEnd ? ` data-line-end="${lineEnd}"` : '';
+    return `<a class="file-ref" href="#" data-file-ref data-path="${escapeHtml(path)}"${lineAttr}${lineEndAttr}>${escapeHtml(display)}</a>`;
+};
+
+// Backtick-wrapped path: `path/to/file.ext` or `path/to/file.ext:line-lineEnd`
+// No spaces, no '#' (avoids conflict with task refs like `project#90`).
+const FILE_PATH_RE = /^`([^\s`\n#]+\.[a-zA-Z][a-zA-Z0-9]{0,7})(?::(\d+)(?:-(\d+))?)?`/;
+
+// Bare absolute path without backticks: /path/to/file.ext or ~/path/to/file.ext
+// Requires ≥2 path segments (so single-segment `/api` won't match).
+// The (?!\/) guard prevents matching // (URL protocol-relative references).
+// The trailing lookahead anchors the path at whitespace or common punctuation.
+const BARE_PATH_RE =
+    /^(~?\/(?!\/)(?:[\w.\-_]+\/)+[\w.\-_]+\.[a-zA-Z][a-zA-Z0-9]{0,7})(?::(\d+)(?:-(\d+))?)?(?=[\s,，。、!！?？：:；;"'"'()[\]<>【】]|$)/;
+
+const fileRefExtension: TokenizerAndRendererExtension = {
+    name: 'fileRef',
+    level: 'inline',
+    start(src: string) {
+        // Backtick starts a potential backtick-wrapped ref; / or ~ start a bare path.
+        const m = src.match(/[`/~]/);
+        return m ? m.index : undefined;
+    },
+    tokenizer(src: string) {
+        // 1. Backtick-wrapped: `path/to/file.ext:line`
+        let m = FILE_PATH_RE.exec(src);
+        if (m) {
+            return {
+                type: 'fileRef',
+                raw: m[0],
+                path: m[1],
+                line: m[2] ? parseInt(m[2], 10) : undefined,
+                lineEnd: m[3] ? parseInt(m[3], 10) : undefined,
+            };
+        }
+        // 2. Bare absolute path: /Users/scott/file.ts or ~/project/file.go
+        m = BARE_PATH_RE.exec(src);
+        if (m) {
+            return {
+                type: 'fileRef',
+                raw: m[0],
+                path: m[1],
+                line: m[2] ? parseInt(m[2], 10) : undefined,
+                lineEnd: m[3] ? parseInt(m[3], 10) : undefined,
+            };
+        }
+        return undefined;
+    },
+    renderer(token) {
+        return fileRefAnchor(
+            token.path as string,
+            token.line as number | undefined,
+            token.lineEnd as number | undefined
+        );
+    },
+};
+
 const instance = new Marked({ gfm: true, breaks: true });
-instance.use({ extensions: [taskRefExtension] });
+// taskRef must be registered first so `project#N` is captured before fileRef
+// can see the backtick.
+instance.use({ extensions: [taskRefExtension, fileRefExtension] });
 
 /**
  * Render Markdown to an HTML string, autolinking task references using `c`.

@@ -27,6 +27,10 @@ interface FileDetailViewProps {
     onEditedContentChange: (content: string) => void;
     isStandalone?: boolean;
     onOpenPreview?: (path: string, name: string) => void;
+    /** When set, the code view scrolls to and highlights this 1-based line. */
+    targetLine?: number;
+    /** End of the highlighted range (inclusive); defaults to targetLine. */
+    targetLineEnd?: number;
     language: Lang;
 }
 
@@ -34,6 +38,10 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     private contentEl: HTMLDivElement | null = null;
     private editorEl: HTMLTextAreaElement | null = null;
     private savedScrollTop: number = 0;
+    // The DOM row for the current targetLine, and the path#line we last scrolled
+    // to (so re-renders from save/edit don't keep yanking the viewport back).
+    private codeTargetEl: HTMLDivElement | null = null;
+    private _lastScrolledKey = '';
 
     // ── Markdown worker plumbing ────────────────────────────────────────────
     // Parsing markdown with `marked()` blocks the main thread for hundreds of
@@ -153,6 +161,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
 
         // Kick off an initial parse if the mounted file is markdown.
         this.dispatchMarkdownParse();
+        this.scrollToTargetIfNeeded();
     }
 
     componentWillUnmount() {
@@ -165,6 +174,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     }
 
     componentDidUpdate(prevProps: FileDetailViewProps) {
+        // Scroll to the highlighted line once the code rows have rendered. Runs
+        // before the early-return below so it fires on the update that delivers
+        // the file content (the path-change update happens while still loading).
+        this.scrollToTargetIfNeeded();
+
         // Reset scroll position if the file has changed
         if (prevProps.selectedFsEntry.path !== this.props.selectedFsEntry.path) {
             this.savedScrollTop = 0;
@@ -244,6 +258,54 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     /** Minimal HTML escaper for fallback rendering when the worker is unavailable. */
     private escapeHtml(s: string): string {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /** Scroll the highlighted line into view once, per (file, line) pair. */
+    private scrollToTargetIfNeeded() {
+        const { targetLine, selectedFsEntry } = this.props;
+        if (targetLine === undefined || !this.codeTargetEl) return;
+        const key = `${selectedFsEntry.path}#${targetLine}`;
+        if (this._lastScrolledKey === key) return;
+        this._lastScrolledKey = key;
+        this.codeTargetEl.scrollIntoView({ block: 'center' });
+    }
+
+    /**
+     * Render code/plain-text with a line-number gutter, highlighting the target
+     * range. One node per line, so very large files fall back to a plain <pre>.
+     */
+    private renderCodePreview(content: string) {
+        const { targetLine, targetLineEnd } = this.props;
+        const lines = content.split('\n');
+        if (lines.length > 20000) {
+            return <pre class="fb-code-preview">{content}</pre>;
+        }
+        const end = targetLineEnd ?? targetLine;
+        return (
+            <div class="fb-code-view">
+                {lines.map((text, i) => {
+                    const ln = i + 1;
+                    const hl = targetLine !== undefined && ln >= targetLine && (end === undefined || ln <= end);
+                    const isFirst = ln === targetLine;
+                    return (
+                        <div
+                            key={ln}
+                            class={`fb-code-row${hl ? ' fb-code-row-hl' : ''}`}
+                            ref={
+                                isFirst
+                                    ? el => {
+                                          this.codeTargetEl = el as HTMLDivElement | null;
+                                      }
+                                    : undefined
+                            }
+                        >
+                            <span class="fb-code-gutter">{ln}</span>
+                            <span class="fb-code-text">{text || ' '}</span>
+                        </div>
+                    );
+                })}
+            </div>
+        );
     }
 
     render() {
@@ -618,7 +680,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             onClick={this.handleMarkdownClick}
                         />
                     ) : (
-                        <pre class="fb-code-preview">{fileContent}</pre>
+                        this.renderCodePreview(fileContent)
                     )}
                 </div>
             </div>
