@@ -53,18 +53,13 @@ def main() -> None:
         if not os.path.isfile(path):
             continue
         key = f"{tag}/{name}"
-        if name.endswith(".json"):
-            with open(path, "rb") as fh:
-                client.put_object(
-                    Bucket=bucket,
-                    Key=key,
-                    Body=fh,
-                    ContentType="application/json",
-                    ACL="public-read",
-                )
-        else:
-            client.upload_file(
-                Bucket=bucket, Key=key, LocalFilePath=path, ACL="public-read"
+        ctype = "application/json" if name.endswith(".json") else "application/octet-stream"
+        # Single PUT (not upload_file): files are < a few hundred MB, and a
+        # simple PUT only needs cos:PutObject — avoiding the multipart APIs
+        # (ListMultipartUploads etc.) that the minimal CI policy doesn't grant.
+        with open(path, "rb") as fh:
+            client.put_object(
+                Bucket=bucket, Key=key, Body=fh, ContentType=ctype, ACL="public-read"
             )
         print(f"[cos] uploaded {key}")
 
