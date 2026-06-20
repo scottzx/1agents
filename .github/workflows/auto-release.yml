@@ -576,7 +576,7 @@ jobs:
       - name: Install ttyd build dependencies (Windows)
         if: matrix.os_name == 'windows'
         shell: bash
-        run: vcpkg install libuv json-c "libwebsockets[libuv,ssl]" --triplet x64-windows-static
+        run: vcpkg install libuv json-c libwebsockets --triplet x64-windows-static
 
       - name: Build ttyd from source (Windows)
         if: matrix.os_name == 'windows'
