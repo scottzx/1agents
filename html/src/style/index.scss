@@ -8617,6 +8617,45 @@ body {
       cursor: text;
     }
 
+    // Code view with a line-number gutter (used for the `file.ext:42` jump).
+    .fb-code-view {
+      padding: 8px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--text-main);
+      cursor: text;
+    }
+
+    .fb-code-row {
+      display: flex;
+      align-items: flex-start;
+      border-left: 2px solid transparent;
+
+      &.fb-code-row-hl {
+        background: rgba(var(--accent-rgb), 0.12);
+        border-left-color: var(--accent-fg);
+      }
+    }
+
+    .fb-code-gutter {
+      flex: 0 0 auto;
+      min-width: 40px;
+      padding: 0 12px 0 14px;
+      text-align: right;
+      color: var(--text-muted);
+      user-select: none;
+    }
+
+    .fb-code-text {
+      flex: 1;
+      min-width: 0;
+      padding-right: 16px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-wrap: break-word;
+    }
+
     .fb-editor {
       flex: 1;
       width: 100%;
@@ -12269,6 +12308,26 @@ body {
   &:hover {
     text-decoration: underline;
     background-color: var(--accent-bg);
+  }
+}
+
+// File-path reference autolinks (`path/to/file.ext`) in Markdown.
+// Rendered as an inline monospace chip distinct from plain code spans.
+.file-ref {
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+
+  &:hover {
+    background: var(--btn-hover);
+    border-color: var(--accent-fg);
+    color: var(--accent-fg);
   }
 }
 

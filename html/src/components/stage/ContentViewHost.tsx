@@ -319,6 +319,8 @@ function renderFiles(app: App, language: Lang) {
             onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
             onEditedContentChange={content => (fs.editedContent.value = content)}
             onOpenPreview={IS_DESKTOP ? (path, name) => tabsStore.openPreviewTab(path, name) : undefined}
+            targetLine={fs.detailTargetLine.value ?? undefined}
+            targetLineEnd={fs.detailTargetLineEnd.value ?? undefined}
             language={language}
         />
     );

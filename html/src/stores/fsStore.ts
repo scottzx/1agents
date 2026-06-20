@@ -37,6 +37,10 @@ export const fileSaveMsg = signal('');
 export const isImagePreview = signal(false);
 export const detailFullscreen = signal(false);
 export const isEditingDetail = signal(false);
+// Line to scroll-to/highlight in the detail code view (from a `file.ext:42` ref);
+// null when the file was opened normally (no specific line).
+export const detailTargetLine = signal<number | null>(null);
+export const detailTargetLineEnd = signal<number | null>(null);
 
 // ── Flat file browser / search ──
 export const flatFiles = signal<FsEntry[]>([]);
@@ -136,9 +140,12 @@ export const selectFsFile = async (entry: FsEntry) => {
     }
 };
 
-/** Open a file in the detail pane of the flat browser. */
-export const openFileDetail = async (entry: FsEntry) => {
+/** Open a file in the detail pane of the flat browser. Pass a target line to
+ *  scroll to and highlight it (used by `file.ext:42` references). */
+export const openFileDetail = async (entry: FsEntry, targetLine?: number, targetLineEnd?: number) => {
     selectedFsEntry.value = entry;
+    detailTargetLine.value = targetLine ?? null;
+    detailTargetLineEnd.value = targetLineEnd ?? null;
     viewMode.value = 'detail';
     fileLoading.value = true;
     fileContent.value = '';

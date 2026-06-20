@@ -278,6 +278,8 @@ export function RightPanel({
                                 onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
                                 onEditedContentChange={content => (fs.editedContent.value = content)}
                                 onOpenPreview={onOpenPreview}
+                                targetLine={fs.detailTargetLine.value ?? undefined}
+                                targetLineEnd={fs.detailTargetLineEnd.value ?? undefined}
                                 language={language}
                             />
                         )
