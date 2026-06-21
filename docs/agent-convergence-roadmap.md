@@ -35,12 +35,30 @@
 ## 映射层(载重设计)
 
 ```
-happy AgentMessage(union) ── adapter/wire/envelope.mjs ──▶ Go WsMessage ──▶ happy-wire SessionEnvelope
+happy ACPMessageData(ACP 形) ── adapter/wire/envelope.mjs ──▶ Go WsMessage ──▶ happy-wire SessionEnvelope
 ```
 
 锚点:`backend/internal/agent/acpx_client.go` 的 `WsMessage` 已含对位字段
-(`Action`/`Event`/`Text`/`ToolName`/`ToolCallID`/`Arguments`/`Summary`/`AcpSessionID`),
-所以是**字段级映射,非结构重写**。这让 Go 后端继续当大脑、Node 侧说 happy/wire。
+(`Action`/`Event`/`Text`/`Type`/`ToolName`/`ToolCallID`/`Arguments`/`Summary`/`AcpSessionID`),
+所以是**字段级映射,非结构重写**。这让 Go 后端继续当大脑、Node 侧说 ACP/wire。
+
+### Wire 源以 ACP 为准(thinking 一等公民)
+
+映射的 **FROM 源是 happy 的 ACP 形 App 线协议 `ACPMessageData`,不是内部 `AgentMessage` union**。
+原因(thinking 是重要字段,以 ACP 为准):
+
+- happy 内部 `AgentMessage` 的 `model-output` 只有 `textDelta`/`fullText` —— **没有 thinking 通道**,
+  thinking 在那层被降级成 generic `EventMessage{name:'thinking'}`。
+- happy 真正的 App 线协议 `ACPMessageData`(`src/api/apiSession.ts`,注释:"the unified format for
+  all agent messages - CLI adapts each provider's format to ACP")是 **ACP 形、thinking/reasoning
+  一等公民**(`{type:'thinking';text}` / `{type:'reasoning';message}`)。
+- 故 `envelope.mjs` 把 `thinking`/`reasoning` 映射成 `text_delta type:'thought'`,前端 `reducer.ts`
+  的 `applyTextDelta` 据 `type==='thought'` 渲染独立 ThinkingBubble —— 与现网 acpx 路径一致。
+
+**M2 `runAgent` 必须 tap happy `MessageAdapter` 之后的 ACP 输出**(`sendAgentMessage` 携带的
+`ACPMessageData`),**不可消费内部 `AgentMessage` union** —— 否则 thinking 被降级。
+(顺带:happy 原生 claude 另有 `sendClaudeSessionMessage(RawJSONLines)` 通道,保留 Claude SDK
+thinking 块最忠实;若 M2 走原生 claude backend,thinking 同样保真。)
 
 ## 分阶段
 
@@ -52,8 +70,9 @@ happy AgentMessage(union) ── adapter/wire/envelope.mjs ──▶ Go WsMessag
 ### M2 — Claude 原生优先(收益最大)
 - 实现 `adapter/agent/runAgent.mjs`:happy `runAcp.ts` 的 **DI 重写**(注入 api/daemon/persistence
   等价物,**不** import `@/api`、`@/daemon`、`@/persistence`)。
-- 只让 `claude` 走 happy 原生 Claude Code backend;`AgentMessage` 经 `adapter/wire` 映射成
-  `WsMessage`,复用 chat 扇出路径。
+- 只让 `claude` 走 happy 原生 Claude Code backend;happy `MessageAdapter` 的 ACP 输出
+  `ACPMessageData` 经 `adapter/wire` 映射成 `WsMessage`,复用 chat 扇出路径(见上「Wire 源以 ACP
+  为准」—— 不消费内部 `AgentMessage` union,保 thinking)。
 - `catalog.go` 的 Claude 行从 ACP 路由翻成"由 Node agent backend 处理",其余 agent 仍走 acpx。
 - **验收闸:** Claude 聊天时间线与 acpx 路径逐字节一致(golden-file 契约测试)。
 

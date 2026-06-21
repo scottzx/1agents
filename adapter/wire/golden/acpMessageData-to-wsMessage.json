@@ -1,0 +1,85 @@
+{
+  "_doc": "Golden 对拍表:happy ACPMessageData(ACP 形 App 线协议)→ 前端 reducer 期望的精确 WsMessage。每条 { name, in, out }。out=null 表示该变体无前端事件、应被丢弃。⚠️ 这是从两端类型定义推导的契约基线,非现网 acpx 抓包(见 envelope.mjs 顶部「验收边界」)。",
+  "cases": [
+    {
+      "name": "message → text_delta(普通输出,不带 type)",
+      "in": { "type": "message", "message": "Hello" },
+      "out": { "event": "text_delta", "text": "Hello" }
+    },
+    {
+      "name": "message 空 → 丢弃",
+      "in": { "type": "message", "message": "" },
+      "out": null
+    },
+    {
+      "name": "⭐ thinking → text_delta type:'thought'(一等公民,前端渲染 ThinkingBubble)",
+      "in": { "type": "thinking", "text": "Let me reason about this" },
+      "out": { "event": "text_delta", "text": "Let me reason about this", "type": "thought" }
+    },
+    {
+      "name": "⭐ reasoning → text_delta type:'thought'(与 thinking 同走思考通道)",
+      "in": { "type": "reasoning", "message": "Considering the tradeoffs" },
+      "out": { "event": "text_delta", "text": "Considering the tradeoffs", "type": "thought" }
+    },
+    {
+      "name": "thinking 空 → 丢弃",
+      "in": { "type": "thinking", "text": "" },
+      "out": null
+    },
+    {
+      "name": "tool-call → tool_call(name→toolName, callId→toolCallId, input→arguments)",
+      "in": { "type": "tool-call", "callId": "call_1", "name": "Read", "input": { "file_path": "/a.txt" }, "id": "m1" },
+      "out": { "event": "tool_call", "toolName": "Read", "toolCallId": "call_1", "arguments": { "file_path": "/a.txt" } }
+    },
+    {
+      "name": "tool-result 字符串 output → tool_result(output→text, isError:false)",
+      "in": { "type": "tool-result", "callId": "call_1", "output": "file contents", "id": "m2" },
+      "out": { "event": "tool_result", "toolCallId": "call_1", "text": "file contents", "isError": false }
+    },
+    {
+      "name": "tool-result 对象 output → tool_result(JSON 串化进 text)",
+      "in": { "type": "tool-result", "callId": "call_2", "output": { "matches": 3 }, "id": "m3" },
+      "out": { "event": "tool_result", "toolCallId": "call_2", "text": "{\"matches\":3}", "isError": false }
+    },
+    {
+      "name": "tool-result isError:true → 透传",
+      "in": { "type": "tool-result", "callId": "call_3", "output": "boom", "isError": true, "id": "m4" },
+      "out": { "event": "tool_result", "toolCallId": "call_3", "text": "boom", "isError": true }
+    },
+    {
+      "name": "permission-request → permission_request(permissionId→requestId, description→message, options→arguments)",
+      "in": { "type": "permission-request", "permissionId": "perm_1", "toolName": "Bash", "description": "Run shell?", "options": ["allow", "deny"] },
+      "out": { "event": "permission_request", "requestId": "perm_1", "toolName": "Bash", "message": "Run shell?", "arguments": ["allow", "deny"] }
+    },
+    {
+      "name": "task_complete → done",
+      "in": { "type": "task_complete", "id": "t1" },
+      "out": { "event": "done" }
+    },
+    {
+      "name": "turn_aborted → done(回合结束)",
+      "in": { "type": "turn_aborted", "id": "t1" },
+      "out": { "event": "done" }
+    },
+    {
+      "name": "task_started → 丢弃(前端 turnStarted 客户端置位)",
+      "in": { "type": "task_started", "id": "t1" },
+      "out": null
+    },
+    {
+      "name": "file-edit → 丢弃(当前 acpx 前端无对应事件)",
+      "in": { "type": "file-edit", "description": "edited", "filePath": "/a.txt", "id": "m5" },
+      "out": null
+    },
+    {
+      "name": "terminal-output → 丢弃",
+      "in": { "type": "terminal-output", "data": "$ ls", "callId": "call_9" },
+      "out": null
+    },
+    {
+      "name": "token_count → 丢弃",
+      "in": { "type": "token_count", "input": 10, "output": 20 },
+      "out": null
+    }
+  ]
+}

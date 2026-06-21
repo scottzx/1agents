@@ -18,14 +18,20 @@
 | [`chat/`](chat/) | 聊天桥:拨本地 Go `/api/agent/chat/ws`,Go event 加密镜像成 relay session 消息经 `new-message` 扇出 | `wire/`、`ctx`、Node WS/fetch | happy-cli 内部;ttyd 细节 |
 | [`terminal/`](terminal/) | **(占位)** node-pty attach tmux,stdout 分帧过 relay,stdin/resize 回写 | `wire/`、`ctx`、`node-pty` | 直接耦合 ttyd 二进制 |
 | [`agent/`](agent/) | **(占位)** 未来消费 happy `AgentBackend`/`AgentRegistry` + DI 重写 `runAcp` | happy-cli Tier-1(库)、`wire/` | happy `runAcp.ts`、`@/api`、`@/daemon`、`@/persistence` |
-| [`wire/`](wire/) | **(占位)** `@1agents/wire` 薄封装;`SessionEnvelope` ↔ Go `WsMessage` 映射 | `@1agents/wire` | 其它一切(叶子) |
+| [`wire/`](wire/) | ACP 形 `ACPMessageData` ↔ Go `WsMessage` 字段映射(`toWsMessage`/`fromWsMessage`,thinking 一等公民)| stdlib(零依赖)| 其它一切(叶子)|
 
 ## 当前状态(M1 骨架)
 
 - ✅ `rpc/`、`chat/` —— 从 `modules/happy-adapter/index.mjs` 原样重定位,**行为不变**。
   旧入口 `modules/happy-adapter/index.mjs` 改为薄 shim re-export,`HAPPY_RPC_ADAPTER_ENTRY`
   旧路径仍可用。
-- 🚧 `terminal/`、`agent/`、`wire/` —— 占位 + 文档注释 + TODO,**不含可运行逻辑**。
+- ✅ `wire/` —— `envelope.mjs` 实现 happy ACP 形 `ACPMessageData` ↔ Go `WsMessage` 双向字段映射
+  (M2 的叶子依赖,零依赖、零构建)。**FROM 源取 ACPMessageData 而非内部 `AgentMessage` union**
+  —— 后者 model-output 纯文本会把 thinking 降级;ACPMessageData 是 ACP 形、thinking/reasoning
+  一等公民,映射成 `text_delta type:'thought'`。golden 对拍 + 往返测试见 `wire/envelope.test.mjs`
+  (`npm test` 或 `node --test`)。⚠️ golden 编码的是从两端类型定义推导的契约基线,
+  **非现网 acpx 抓包** —— M2 闸(逐字节对拍现网产出)仍未做,见 envelope.mjs 顶部「验收边界」。
+- 🚧 `terminal/`、`agent/` —— 占位 + 文档注释 + TODO,**不含可运行逻辑**。
   见 [agent 收敛路线图](../docs/agent-convergence-roadmap.md)的 M1/M2/M3。
 
 ## 怎么被加载(零耦合)

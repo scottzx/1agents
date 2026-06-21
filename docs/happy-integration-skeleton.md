@@ -43,7 +43,7 @@ C2 电脑端:happy-cli daemon ── 经 HAPPY_RPC_ADAPTER_ENTRY 加载 ──�
 │   ├── chat/chatBridge.mjs   # 聊天桥(issue #17 chat)— 已实现,从 happy-adapter 重定位
 │   ├── terminal/terminalBridge.mjs  # 终端桥(issue #17 terminal)— 占位
 │   ├── agent/{runAgent,registry}.mjs  # 未来 AgentBackend 家 — 占位
-│   └── wire/envelope.mjs     # @1agents/wire 封装 + AgentMessage↔WsMessage 映射 — 占位
+│   └── wire/envelope.mjs     # ACP 形 ACPMessageData↔WsMessage 映射(thinking 一等公民)— 已实现
 └── html/src/core/services/relay/
     ├── relayClient.ts        # 前端 relay 客户端(已有)
     ├── relayChatSocket.ts    # 聊天 ChatTransport(已有)
@@ -60,7 +60,7 @@ C2 电脑端:happy-cli daemon ── 经 HAPPY_RPC_ADAPTER_ENTRY 加载 ──�
 | `chat/` | 聊天桥:拨本地 Go chat WS,event 加密镜像成 relay session 消息 | `wire/`、`ctx`、Node WS/fetch | happy-cli 内部;ttyd 细节 |
 | `terminal/` | node-pty attach tmux,stdout 分帧过 relay,stdin/resize 回写 | `wire/`、`ctx`、`node-pty` | 直接耦合 ttyd 二进制 |
 | `agent/` | 消费 happy `AgentBackend`/`AgentRegistry` + DI 重写 runAcp | happy-cli Tier-1、`wire/` | happy `runAcp.ts`、`@/api`、`@/daemon`、`@/persistence` |
-| `wire/` | `@1agents/wire` 封装;`SessionEnvelope`↔`WsMessage` 映射 | `@1agents/wire` | 其它一切(叶子) |
+| `wire/` | ACP 形 `ACPMessageData`↔`WsMessage` 字段映射(thinking 一等公民)| stdlib(零依赖)| 其它一切(叶子) |
 
 ## issue #17 如何归位
 
@@ -90,8 +90,8 @@ relay 面向消息/RPC,**非透明高吞吐字节隧道**(assessment §200),终�
   确认现有 `relayChatSocket.ts` 流逐字节一致(现有 relay 聊天不回归)。
 - **Submodule 同步演练:** `git -C modules/happy-cli merge upstream/main`,确认 `adapter/` 零改动、
   `ctx` 契约 / Tier-1 导出面仍匹配 `ctxContract.d.ts`。
-- **契约测试(M2 闸):** golden-file 测 `adapter/wire/envelope.mjs` 把样本 happy `AgentMessage`
-  映成现有前端解析器期望的精确 `WsMessage` JSON。
+- **契约测试(M2 闸):** golden-file 测 `adapter/wire/envelope.mjs` 把样本 happy ACP 形
+  `ACPMessageData`(thinking 一等公民)映成现有前端解析器期望的精确 `WsMessage` JSON。
 
 ## 风险 & 开放问题
 
