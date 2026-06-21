@@ -8,8 +8,13 @@
  *
  * 流向(M2 首迁 claude,收益最大 —— 原生 stream-json 不丢特性):
  *   AgentBackend(happy Tier-1,native Claude Code)── onMessage(AgentMessage)
- *     → wire/envelope.mjs 映射 AgentMessage → Go WsMessage
+ *     → happy MessageAdapter 归一成 ACP 形 `ACPMessageData`(thinking/reasoning 一等公民)
+ *     → wire/envelope.mjs 映射 ACPMessageData → Go WsMessage
  *     → 经 relay session new-message 扇出给 H5(复用 chat 路径)
+ *
+ *   ⚠️ M2 消费点订正:tap happy `MessageAdapter` 之后的 **ACP 输出**(ACPMessageData),
+ *      **不可**直接消费内部 `AgentMessage` union —— 那层 model-output 是纯文本,会把 thinking
+ *      降级(详见 docs/agent-convergence-roadmap.md「Wire 源以 ACP 为准」)。
  *
  * 验收(M2 闸):claude 聊天时间线与现有 acpx 路径逐字节一致(golden-file 契约测试)。
  *
