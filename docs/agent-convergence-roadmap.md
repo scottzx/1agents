@@ -1,6 +1,14 @@
 # Agent 层收敛路线图:1acp/acpx → happy AgentBackend
 
 > 状态:路线图(M1 骨架已落,M2/M3 待实现)。配套:[集成骨架](happy-integration-skeleton.md)
+> · 跟踪 issue:[scottzx/1agents#180](https://github.com/scottzx/1agents/issues/180)
+
+> **⚠️ 1acp 是承重主链路,不是装饰 —— 现在不可删。** 现网 web agent chat 是
+> `前端 → Go → bridge-server(1acp) → claude-agent-acp/codex-acp` 的共生主链路:
+> Go `main.go:266`(`supervisor.NewAcpx` 开机拉起)、`handler.go:1162`(`acpxClient.Bridge` 全走它)、
+> `catalog.go:183`(适配器从 `modules/1acp` 解析);前端 `agentService.ts:5`「Web chat runs purely on 1acp」、
+> `wireProtocol.ts`/`permission.ts`/`hooks.ts` 的 ready/permission 全靠 bridge 回报。
+> 所以本路线图的本质是**用 happy+adapter 逐条复现 bridge-server.js 的职责后再退役它**,不是"加个传输"。
 
 ## 为什么收敛
 
@@ -49,10 +57,38 @@ happy AgentMessage(union) ── adapter/wire/envelope.mjs ──▶ Go WsMessag
 - `catalog.go` 的 Claude 行从 ACP 路由翻成"由 Node agent backend 处理",其余 agent 仍走 acpx。
 - **验收闸:** Claude 聊天时间线与 acpx 路径逐字节一致(golden-file 契约测试)。
 
-### M3 — Registry 替代 catalog,退役 acpx
+### M3 — Registry 替代 catalog,退役 acpx + 去 fork 化
 - 迁 Codex(AppServer)、Gemini(happy `AcpBackend`)。
 - `AgentRegistry` 成传输选择的唯一真相;`catalog.go` 静态表缩成安装元数据(label / 安装命令)。
 - 全部 agent 有原生/ACP happy backend 后,弃用 `modules/1acp` + `acpx_client.go`。
+- **去 fork 化(绑进退役步骤):** 长尾 ACP agent 改为 happy `AcpBackend` **spawn `npx acpx`(npm 包,非 fork)**
+  → 删 `modules/1acp` submodule + Go `supervisor/acpx.go`、`handler` 的 Bridge、`catalog` 的 1acp 解析
+  → 清 `.gitmodules` / `Makefile submodules`。结果:零 fork 维护面。
+
+## ⭐ 迁移重点:bridge-server.js 职责 + 4 patch 等价验证
+
+迁移**不是搬代码,是行为对拍**。`bridge-server.js`(+1218,我们自己的代码,却住在 fork 里)的职责
+必须在 happy+adapter 逐条复现,并以**现网 acpx 路径产出为基线录 golden-file**,迁移后逐字段对拍:
+
+| 验证项(原 fork patch) | 验什么 |
+|---|---|
+| session_ready 门禁 / ready 翻转 | ready 状态时序一致 |
+| permission callback + 模式归一(原 `conversation-model.ts +42`)| approve-all/deny-all 语义一致 |
+| tool_call 富信息:toolCallId / rawInput(原 `events.ts +74`)| **前端渲染依赖**,字段不丢 |
+| history replay / adapters(`acpSessionId`/`resumeSessionId`)| 历史回放一致 |
+| per-session mcpServers 注入(原 `session-options.ts +8`)| 每会话 MCP 生效 |
+| codex model 不回退(原 `codex-acp patch +26`)| codex 离开 acpx 后仍保留 config.toml model(此 patch 大概率自然变无关,但行为仍需验)|
+| prompt attachments 转发 + systemContext 追加 system prompt | 附件/系统上下文一致 |
+
+## ACP 版本策略
+
+- ⚠️ **版本号别混**:`acpx`(npm 包)自身 = **0.11.0**(= 我们 fork 基线);飙到 **0.28.x** 的是它依赖的
+  `@agentclientprotocol/sdk`。`npm i acpx@latest` 拿到的是 0.11.0,**现在去 fork 化无版本收益**,且会丢上述
+  4 patch —— 所以**不现在换**,绑进 M3 退役。SDK 新鲜度由 acpx 传递依赖带入,与用 fork 还是 npm 包无关。
+- happy 端 `@agentclientprotocol/sdk`(^0.14.1)**不本地 bump**(违反零耦合、每次同步上游冲突);靠 ACP wire
+  协商对接即可,**两端 SDK 版本无需一致**。要升走"上游 happy 提 PR"。
+- 长尾 fallback:happy `AcpBackend` 本就是通用 ACP client(`spawn(command, args)`,见 happy-cli
+  `acpAgentConfig.ts`),acpx 作为**被 spawn 的命令**接入,**不 import、不改 happy 源码**。
 
 ## 约束与开放问题
 
