@@ -86,7 +86,7 @@ export class RelayChatSocket implements ChatTransport {
 
     private async deliver(c: string): Promise<void> {
         const obj = await decrypt(this.machine.encryptionKey, this.machine.variant, decodeBase64(c));
-        if (obj == null) return;
+        if (obj === null || obj === undefined) return;
         // Bridge sentinel: the node-side Go WS closed → end this transport.
         if (typeof obj === 'object' && (obj as { event?: string }).event === '__relay_closed') {
             this.fail();
