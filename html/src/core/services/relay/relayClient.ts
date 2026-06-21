@@ -225,3 +225,45 @@ export async function proxyApi(
         headers: init?.headers,
     })) as { success: boolean; status?: number; body?: string; error?: string };
 }
+
+/**
+ * Agent 聊天流过中转(issue #17)。这三者只是 callMachine 的薄封装,配合
+ * relayChatSocket.ts 把聊天 WS 改走中转:节点边车把 Go 聊天流镜像成 Happy
+ * session 消息,H5 订阅 socket.on('update') 解密渲染(终端 ttyd 不走这里)。
+ */
+export interface RelayChatParams {
+    workspaceId: string;
+    taskId?: string;
+    sessionId: string; // 1Agents chat session id
+    agentType: string;
+    replyId?: string;
+}
+
+/** 在节点上开一条聊天桥,返回用于扇出过滤的 Happy session id。 */
+export async function openChat(
+    socket: Socket,
+    machine: RelayMachine,
+    params: RelayChatParams
+): Promise<{ happySessionId: string }> {
+    const r = (await callMachine(socket, machine, '1agents-chat-open', params)) as {
+        success: boolean;
+        happySessionId?: string;
+        error?: string;
+    };
+    if (!r.success || !r.happySessionId) throw new Error(r.error ?? 'open chat failed');
+    return { happySessionId: r.happySessionId };
+}
+
+/** 把一条原样 action JSON 经中转写进节点本地 Go 聊天 WS。 */
+export async function sendChat(socket: Socket, machine: RelayMachine, sessionId: string, raw: string): Promise<void> {
+    await callMachine(socket, machine, '1agents-chat-send', { sessionId, raw });
+}
+
+/** 关闭节点上的聊天桥(best-effort)。 */
+export async function closeChat(socket: Socket, machine: RelayMachine, sessionId: string): Promise<void> {
+    try {
+        await callMachine(socket, machine, '1agents-chat-close', { sessionId });
+    } catch {
+        /* best-effort */
+    }
+}

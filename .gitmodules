@@ -10,3 +10,6 @@
 [submodule "modules/1acp"]
 	path = modules/1acp
 	url = https://github.com/scottzx/1acp.git
+[submodule "modules/happy-cli"]
+	path = modules/happy-cli
+	url = https://github.com/scottzx/happy-cli.git

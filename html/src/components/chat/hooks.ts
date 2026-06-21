@@ -43,6 +43,10 @@ import {
     setPermissionModeAction,
     type BridgeEventPayload,
 } from '../../core/protocol/wireProtocol';
+// Backend transport mode (direct same-origin vs relay) + the relay chat transport.
+// In relay mode the chat WS rides the relay (issue #17); terminal stays direct.
+import { backendTarget } from '../../core/services/apiClient';
+import { RelayChatSocket, type ChatTransport } from '../../core/services/relay/relayChatSocket';
 
 export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '../../core/protocol/types';
 
@@ -81,7 +85,7 @@ export interface SessionBridgeState {
     items: ChatItem[];
     connection: ConnectionState;
     typing: boolean;
-    ws: WebSocket | null;
+    ws: ChatTransport | null;
     listeners: Set<() => void>;
     turnStarted: boolean;
     /**
@@ -211,13 +215,26 @@ export class ChatBridgeManager {
         state.takenOver = false;
         this.notify(state);
 
-        const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const taskId = session.taskId || '';
-        const replyId = session.replyId || '';
-        const wsUrl = `${wsProto}//${window.location.host}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}`;
-
-        console.log('[useBridgeManager] Connecting to backend websocket:', wsUrl);
-        const ws = new WebSocket(wsUrl);
+        // Pick the transport by how the backend is reached: relay mode tunnels the
+        // chat stream over the relay (issue #17); direct mode keeps the same-origin WS.
+        const target = backendTarget.value;
+        let ws: ChatTransport;
+        if (target.mode === 'relay') {
+            ws = new RelayChatSocket(target.socket, target.machine, {
+                workspaceId: session.workspaceId,
+                taskId: session.taskId,
+                sessionId: session.id,
+                agentType: session.agentType,
+                replyId: session.replyId,
+            });
+        } else {
+            const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const taskId = session.taskId || '';
+            const replyId = session.replyId || '';
+            const wsUrl = `${wsProto}//${window.location.host}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}`;
+            console.log('[useBridgeManager] Connecting to backend websocket:', wsUrl);
+            ws = new WebSocket(wsUrl) as unknown as ChatTransport;
+        }
         state.ws = ws;
 
         ws.onopen = () => {
