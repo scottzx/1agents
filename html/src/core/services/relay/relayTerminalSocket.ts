@@ -11,8 +11,9 @@
  *                    终端 session 过滤、用 machine key 解密 → onmessage 回吐给 xterm。
  *   Up(H5 → node):send() 把 stdin 经 RPC 转发;另需 resize 通道(cols/rows)。
  *
- * ⚠️ 见 adapter/terminal/terminalBridge.mjs 的 §200 吞吐风险 + Spike A。若 relay 不达标,
- *    本类不启用,终端继续走直连 ttyd / Cloudflare / Tailscale 后路。
+ * ⚠️ 见 adapter/terminal/terminalBridge.mjs 的 §200 吞吐风险 + Spike A。**终端定走 relay,不设
+ *    旁路隧道后路**;遇瓶颈靠分帧/批量/背压/结构化优化解决,不切传输。直连 ttyd 裸 WS 仅在
+ *    同源(无中转)场景保留。(Cloudflare 仅用户手动内网穿透,见 1agents-tunnel,与此解耦。)
  *
  * TODO(M1 spike → 实现):
  *   1. 复用 ChatTransport 接口(见 relayChatSocket.ts),实现 RelayTerminalSocket。

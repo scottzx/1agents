@@ -16,13 +16,15 @@
  * 依赖边界:`node-pty`(唯一原生依赖)、wire/、注入的 ctx;**不**直接耦合 ttyd 二进制。
  *
  * ⚠️ 最高风险(assessment §200):中转面向消息/RPC,非透明高吞吐字节隧道。终端裸字节过 relay
- *    可能延迟/吞吐不达标。实现前必须先跑 Spike A(见 docs/happy-integration-skeleton.md 验证段);
- *    不达标则终端走 Cloudflare/Tailscale 后路,relay 只承载控制/会话/聊天。
+ *    可能延迟/吞吐不达标。**决策(2026-06-21):终端定走 relay,不设旁路隧道后路。** 遇瓶颈的
+ *    出路是把流本身做高效/结构化(分帧、批量、背压,乃至 tmux 控制模式结构化事件),不是切传输。
+ *    实现前先跑 Spike A 标定优化目标(见 docs/happy-integration-skeleton.md 验证段)。
+ *    (Cloudflare 仅作为用户手动开启的内网穿透工具,见 1agents-tunnel skill,与本传输方案解耦。)
  *
  * TODO(M1 spike → 实现):
  *   1. node-pty spawn `tmux attach-session -t <session> -r`(只读 attach 先验证读流)。
  *   2. pty.onData 分帧:决定帧格式(raw base64 chunk vs asciinema v2 [t,type,data] vs tmux -CC 事件)。
- *   3. 背压:relay RPC 单条体积上限 + 帧序号,防止刷屏丢序。
+ *   3. 背压:relay RPC 单条体积上限 + 帧序号 + 批量合并,防止刷屏丢序/打爆中转。
  *   4. registerTerminalBridge(ctx, log) 注册 terminal-open/input/resize/close。
  *
  * @typedef {import('../rpc/ctxContract.js').AdapterCtx} AdapterCtx

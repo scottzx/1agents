@@ -69,18 +69,23 @@ C2 电脑端:happy-cli daemon ── 经 HAPPY_RPC_ADAPTER_ENTRY 加载 ──�
 - **聊天**(`html/src/components/chat/hooks.ts:234`)→ `relayChatSocket.ts` ⇄ `adapter/chat/chatBridge.mjs`。**已通**。
 - **终端**(`html/src/components/terminal/xterm/index.ts:291`)→ `relayTerminalSocket.ts` ⇄ `adapter/terminal/terminalBridge.mjs`(node-pty attach tmux)。**占位,待 M1 spike**。
 
-### Fallback(assessment §200)
+### 终端传输决策(2026-06-21):relay-only,无旁路后路
 
-relay 面向消息/RPC,**非透明高吞吐字节隧道**,终端裸字节过 relay 可能延迟/吞吐损耗。骨架保留
-现有直连 ttyd `/ws` 作为后路;若 Spike A 实测不达标,终端走 Cloudflare-tunnel/Tailscale
-(1Agents `--ssl`/`--tunnel` 已原生),relay 只承载控制/会话/聊天。
+relay 面向消息/RPC,**非透明高吞吐字节隧道**(assessment §200),终端裸字节过 relay 可能延迟/
+吞吐损耗。**决策:终端定走 relay,不设 Tailscale/Cloudflare 架构后路。** 遇瓶颈的出路是把终端流
+本身做高效/结构化 —— 分帧、批量合并、背压,乃至 tmux 控制模式(`-CC`)的结构化事件,让它和聊天流
+同质化共用中转。Spike A 的作用从"决定是否旁路"变为"标定优化目标"。
+
+直连 ttyd 裸 WS 仅在同源(无中转)场景保留。**Cloudflare 不是终端后路** —— 它只作为用户**手动开启**
+的内网穿透工具(见 `1agents-tunnel` skill),与终端传输方案完全解耦。
 
 ## 验证
 
-- **Spike A — 终端可行性(§200 风险,最高优先):** `adapter/terminal/` node-pty spawn
+- **Spike A — 终端吞吐标定(§200 风险,最高优先):** `adapter/terminal/` node-pty spawn
   `tmux attach -t <session>`,stdout 分块经 relay RPC 推到临时 H5(`relayTerminalSocket.ts`)。
-  在代表性负载(`yes` 刷屏、`vim` 滚动)测往返延迟 + 吞吐。通过标准:交互手感 ≤ 直连 ttyd 在可用
-  范围内;否则锁定 Cloudflare/Tailscale 后路再继续。
+  在代表性负载(`yes` 刷屏、`vim` 滚动)测往返延迟 + 吞吐。目标:交互手感 ≤ 直连 ttyd 在可用
+  范围内。**因终端定走 relay(无旁路后路),不达标 → 迭代优化方案**(分帧粒度/批量窗口/背压阈值/
+  tmux `-CC` 结构化事件),而非切传输。Spike A 标定的就是这些优化参数的基线。
 - **Spike B — 聊天重定位 parity:** `HAPPY_RPC_ADAPTER_ENTRY` 指向 `adapter/rpc/index.mjs`,
   确认现有 `relayChatSocket.ts` 流逐字节一致(现有 relay 聊天不回归)。
 - **Submodule 同步演练:** `git -C modules/happy-cli merge upstream/main`,确认 `adapter/` 零改动、
@@ -90,7 +95,8 @@ relay 面向消息/RPC,**非透明高吞吐字节隧道**,终端裸字节过 rel
 
 ## 风险 & 开放问题
 
-1. **终端过 relay 吞吐(最高):** §200 警告可能不达标。Spike A 必须先跑;后路已预设但分叉传输方案。
+1. **终端过 relay 吞吐(最高):** §200 警告可能不达标。**已定 relay-only、无旁路后路**,故风险
+   收敛为单一工程问题:把流做到足够高效(分帧/批量/背压/tmux `-CC`)。Spike A 先标定基线。
 2. **happy-cli Tier-1 引入机制:** `file:` 依赖 vs 引 happy-cli 编译 `dist` —— 影响多少 happy
    pnpm 依赖树漏进 daemon。M2 决策。
 3. **`runAcp.ts` DI 面:** 要注入什么(`@/api`/`@/daemon`/`@/persistence`),Go HTTP API 能否
