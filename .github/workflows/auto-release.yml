@@ -318,7 +318,7 @@ jobs:
           cp build/cc-connect release-pkg/bin/
           cp build/cc-switch release-pkg/bin/
           cp build/cloudflared release-pkg/bin/
-          cp temp-skill-manager/skill-manager/skill-manager release-pkg/bin/
+          cp -r temp-skill-manager/skill-manager/. release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
 
@@ -462,7 +462,7 @@ jobs:
           cp build-ttyd/cc-connect release-pkg/bin/
           cp build-ttyd/cc-switch release-pkg/bin/
           cp build-ttyd/cloudflared release-pkg/bin/
-          cp temp-skill-manager/skill-manager/skill-manager release-pkg/bin/
+          cp -r temp-skill-manager/skill-manager/. release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
 
