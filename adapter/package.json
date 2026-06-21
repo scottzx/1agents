@@ -1,0 +1,18 @@
+{
+  "name": "@1agents/adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "1Agents ⇄ Happy C2 接缝胶水。machine-scoped RPC handlers(控制面代理 + 聊天桥 + 终端桥)+ 未来 AgentBackend 家。由 happy-cli daemon 经 HAPPY_RPC_ADAPTER_ENTRY 动态加载,保持 happy-cli 为零 1Agents 代码的只读蓝图。",
+  "main": "rpc/index.mjs",
+  "exports": {
+    ".": "./rpc/index.mjs",
+    "./rpc": "./rpc/index.mjs",
+    "./chat": "./chat/chatBridge.mjs",
+    "./terminal": "./terminal/terminalBridge.mjs",
+    "./wire": "./wire/envelope.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@1agents/happy-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "1Agents-specific RPC handlers (relay chat bridge + HTTP proxy) loaded by the happy-cli daemon via HAPPY_RPC_ADAPTER_ENTRY. Keeps happy-cli a clean upstream blueprint.",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
