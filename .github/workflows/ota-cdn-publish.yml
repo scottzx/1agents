@@ -1,20 +1,26 @@
 name: OTA CDN Publish
 
-# After a GitHub Release is published (auto-release.yml stays the canonical
-# source and is untouched), mirror the OTA artifacts to Tencent Cloud COS so
-# China clients fetch updates from the CDN instead of GitHub. Runs separately
-# from the release so a slow/failed upload never blocks publishing.
+# After auto-release.yml finishes (it stays the canonical source and is
+# untouched), mirror the OTA artifacts to Tencent Cloud COS so China clients
+# fetch updates from the CDN instead of GitHub. Runs as a separate workflow so
+# a slow/failed upload never blocks publishing.
+#
+# Trigger: workflow_run on auto-release completion — NOT `on: release`, because
+# a release created by the built-in GITHUB_TOKEN (softprops/action-gh-release)
+# does NOT emit a `release` event that can trigger other workflows (GitHub
+# anti-recursion). workflow_run fires regardless and needs no PAT.
 #
 # Required repo secrets (skips cleanly if unset):
 #   COS_SECRET_ID / COS_SECRET_KEY  — Tencent Cloud API credentials
 #   COS_BUCKET                      — bucket name, e.g. 1agents-ota-1300000000
-#   COS_REGION                      — e.g. ap-guangzhou
+#   COS_ENDPOINT / COS_REGION       — optional; empty → COS global acceleration
 #   OTA_CDN_BASE_URL                — public CDN base, e.g. https://ota.example.com
 #                                     (manifest asset URLs become {base}/{tag}/{file})
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["auto-release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -24,20 +30,24 @@ on:
 jobs:
   publish-cdn:
     runs-on: ubuntu-latest
+    # On workflow_run, only proceed when auto-release actually succeeded.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Resolve tag + gate on secrets
         id: prep
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_BUCKET: ${{ secrets.COS_BUCKET }}
           OTA_CDN_BASE_URL: ${{ secrets.OTA_CDN_BASE_URL }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-          else
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag }}"
+          else
+            # workflow_run: auto-release just published the newest release.
+            TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --exclude-drafts --json tagName -q '.[0].tagName')
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Resolved tag: $TAG"
