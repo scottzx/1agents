@@ -169,7 +169,7 @@ const devConfig = {
         host: '0.0.0.0',
         static: path.join(__dirname, 'dist'),
         compress: true,
-        port: 9000,
+        port: 9084,
         hot: false,
         liveReload: false,
         client: false,

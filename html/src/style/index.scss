@@ -1976,7 +1976,6 @@ body {
   flex: 1;
   min-height: 0;
   gap: 12px;
-  touch-action: pan-y;
 }
 
 .task-dashboard-header {
@@ -3014,14 +3013,6 @@ body {
     }
   }
 
-  &.type-discussion {
-    border-left-color: var(--purple-fg);
-    &:hover {
-      border-color: rgba(var(--purple-rgb), 0.5);
-      box-shadow: var(--shadow-md);
-    }
-  }
-
   &:hover {
     transform: translateY(-2px);
   }
@@ -3247,10 +3238,6 @@ body {
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
   }
-  &.type-discussion {
-    background-color: var(--purple-bg);
-    color: var(--purple-fg);
-  }
 }
 
 .create-task-btn-toggle {
@@ -3266,22 +3253,6 @@ body {
 
   &:hover {
     background-color: var(--accent-dark);
-  }
-}
-
-.task-add-icon-btn {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  background: none; border: none; cursor: pointer;
-  font-size: 22px; font-weight: 700; line-height: 1;
-  color: var(--text-secondary);
-  border-radius: 6px;
-  transition: color 0.15s, background-color 0.15s;
-  flex-shrink: 0;
-
-  &:hover {
-    color: var(--accent-color);
-    background-color: var(--accent-light);
   }
 }
 
@@ -4025,22 +3996,6 @@ body {
 
       &:hover {
         background-color: var(--bg-sidebar-hover);
-      }
-    }
-
-    .task-convert-btn {
-      background-color: var(--purple-bg);
-      border: 1px solid rgba(var(--purple-rgb), 0.35);
-      border-radius: 6px;
-      padding: 4px 10px;
-      cursor: pointer;
-      color: var(--purple-fg);
-      font-size: 12.5px;
-      font-weight: 500;
-
-      &:hover {
-        background-color: rgba(var(--purple-rgb), 0.18);
-        border-color: rgba(var(--purple-rgb), 0.55);
       }
     }
   }
@@ -5718,8 +5673,7 @@ body {
 
     .task-dashboard-header {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      justify-content: flex-end;
       margin-bottom: 12px;
 
       .create-task-btn-toggle {
@@ -6727,7 +6681,6 @@ body {
     }
 
     .agent-catalog-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .agent-catalog-text { min-width: 0; overflow: hidden; }
 
     .agent-catalog-dot {
         flex: none; width: 9px; height: 9px; border-radius: 50%;
@@ -6787,9 +6740,6 @@ body {
         .sys-settings-btn { justify-content: center; }
         .agent-catalog-row { flex-direction: column; align-items: flex-start; }
         .agent-catalog-meta { max-width: 100%; }
-        .agent-catalog-header { flex-wrap: wrap; gap: 6px 12px; }
-        .agent-catalog-badges { flex-shrink: 1; justify-content: flex-start; }
-        .agent-catalog-install { align-self: stretch; }
     }
 }
 
@@ -8665,45 +8615,6 @@ body {
       word-break: break-all;
       overflow-wrap: break-word;
       cursor: text;
-    }
-
-    // Code view with a line-number gutter (used for the `file.ext:42` jump).
-    .fb-code-view {
-      padding: 8px 0;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12.5px;
-      line-height: 1.6;
-      color: var(--text-main);
-      cursor: text;
-    }
-
-    .fb-code-row {
-      display: flex;
-      align-items: flex-start;
-      border-left: 2px solid transparent;
-
-      &.fb-code-row-hl {
-        background: rgba(var(--accent-rgb), 0.12);
-        border-left-color: var(--accent-fg);
-      }
-    }
-
-    .fb-code-gutter {
-      flex: 0 0 auto;
-      min-width: 40px;
-      padding: 0 12px 0 14px;
-      text-align: right;
-      color: var(--text-muted);
-      user-select: none;
-    }
-
-    .fb-code-text {
-      flex: 1;
-      min-width: 0;
-      padding-right: 16px;
-      white-space: pre-wrap;
-      word-break: break-all;
-      overflow-wrap: break-word;
     }
 
     .fb-editor {
@@ -11620,21 +11531,6 @@ body {
   }
 }
 
-@media (max-width: 768px) {
-  .chat-messages {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  .chat-message-row-assistant {
-    max-width: 100%;
-
-    .chat-message-avatar {
-      display: none;
-    }
-  }
-}
-
 .chat-bubble-assistant {
   align-self: flex-start;
   background: var(--bg-panel);
@@ -12376,26 +12272,6 @@ body {
   }
 }
 
-// File-path reference autolinks (`path/to/file.ext`) in Markdown.
-// Rendered as an inline monospace chip distinct from plain code spans.
-.file-ref {
-  color: var(--text-main);
-  font-family: var(--font-mono);
-  font-size: 0.88em;
-  text-decoration: none;
-  cursor: pointer;
-  border-radius: 3px;
-  padding: 1px 4px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-
-  &:hover {
-    background: var(--btn-hover);
-    border-color: var(--accent-fg);
-    color: var(--accent-fg);
-  }
-}
-
 // Composer
 .chat-composer {
   display: flex;
@@ -12482,48 +12358,20 @@ body {
   }
 
   // Each mode picks up its own colour so the active state is glanceable
-  // without reading the label: 读取放行 = blue, 全部放行 = green, 全部拒绝 = red.
+  // without reading the label.
   &[data-mode="approve-reads"] {
-    border-color: rgba(var(--accent-color-rgb), 0.5);
-    color: var(--accent-color);
-    background: rgba(var(--accent-color-rgb), 0.1);
+    border-color: rgba(var(--success-rgb), 0.45);
+    color: var(--success-emphasis);
   }
   &[data-mode="approve-all"] {
-    border-color: rgba(var(--success-rgb), 0.5);
-    color: var(--success-emphasis);
-    background: rgba(var(--success-rgb), 0.1);
+    border-color: rgba(191, 135, 0, 0.55);
+    color: var(--warning-fg);
+    background: rgba(255, 212, 0, 0.12);
   }
   &[data-mode="deny-all"] {
     border-color: rgba(var(--danger-rgb), 0.55);
     color: var(--danger-fg);
     background: rgba(var(--danger-rgb), 0.08);
-  }
-}
-
-// ── Mobile composer: icon-only permission button ──
-// The inner composer keeps role + permission + send on one row; the secondary
-// controls (mode + agent) live in the separate outer bar below the box. The
-// permission shield drops its text label (the data-mode colour conveys state).
-@media (max-width: 768px) {
-  .new-chat-home {
-    padding-left: 16px;
-    padding-right: 16px;
-
-    .new-chat-actions-row {
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .actions-secondary {
-      flex-wrap: wrap;
-    }
-  }
-
-  .chat-composer-mode-btn {
-    padding: 0 8px;
-
-    .chat-composer-mode-label {
-      display: none;
-    }
   }
 }
 
@@ -13202,118 +13050,22 @@ body {
     }
   }
 
-  // Composer group — wraps the input box + the secondary control bar on one
-  // light-gray surface so they read as a single unit (no gap, no obvious
-  // whitespace transition into the secondary bar).
-  .new-chat-composer-group {
+  .new-chat-input-wrapper {
     max-width: 720px;
     width: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: 6px;
-    background: rgba(128, 128, 128, 0.08);
-    border-radius: var(--bento-radius-lg);
-  }
-
-  .new-chat-input-wrapper {
-    width: 100%;
-    box-sizing: border-box;
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--bento-radius);
+    border-radius: var(--bento-radius-lg);
     padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    box-shadow: var(--shadow-md);
     transition: border-color 0.2s, box-shadow 0.2s;
 
     &:focus-within {
       border-color: var(--accent-color);
-      box-shadow: 0 0 0 3px var(--accent-light);
-    }
-  }
-
-  // Outer composer layer — sits below the input box on the shared group
-  // surface (transparent itself), holding the less-used secondary controls
-  // (mode + agent). No gap above; it blends into the group's gray.
-  .new-chat-outer-bar {
-    width: 100%;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 6px 2px;
-  }
-
-  // Custom anchored dropdown (role / agent) — replaces native <select> so the
-  // menu always opens directly under the trigger (no popup drift on mobile).
-  .nc-select {
-    position: relative;
-    display: inline-flex;
-
-    .nc-select-trigger {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background-color: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 14px;
-      padding: 5px 10px;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      cursor: pointer;
-      outline: none;
-      white-space: nowrap;
-    }
-
-    .nc-select-chevron {
-      width: 14px;
-      height: 14px;
-      flex-shrink: 0;
-      opacity: 0.6;
-    }
-
-    .nc-select-menu {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      z-index: 100;
-      min-width: 100%;
-      max-height: 240px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      padding: 4px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      box-shadow: var(--shadow-lg);
-    }
-
-    .nc-select-option {
-      text-align: left;
-      white-space: nowrap;
-      border: none;
-      background: none;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 13px;
-      color: var(--text-main);
-      cursor: pointer;
-
-      &:hover {
-        background: var(--btn-hover);
-      }
-
-      &.active {
-        background: var(--accent-light);
-        color: var(--accent-color);
-        font-weight: 600;
-      }
+      box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-md);
     }
   }
 
@@ -13344,8 +13096,7 @@ body {
     padding-top: 12px;
   }
 
-  .actions-secondary,
-  .actions-primary {
+  .actions-left {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -13463,8 +13214,5 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-// NOTE: dashboard.scss 属于另一个 PR(DashboardWorkshop 功能),尚未入库。
-// 在本分支上 import 它会让 webpack 找不到样式表而构建失败,故先注释掉。
-// 待 DashboardWorkshop 的 PR 合入(dashboard.scss 入库)后,恢复下面这行。
-// @import './dashboard';
+@import './dashboard';
 
