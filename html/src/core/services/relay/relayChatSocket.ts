@@ -56,32 +56,55 @@ export class RelayChatSocket implements ChatTransport {
     }
 
     private async start(): Promise<void> {
+        // Subscribe to relay updates BEFORE opening the chat, so a message
+        // emitted while the open RPC is still in flight isn't dropped. A warm
+        // backend bridge re-emits `session_ready` synchronously on reconnect —
+        // faster than the open RPC round-trip — so registering the listener
+        // only after `await openChat` would miss it and leave the chat stuck
+        // "initializing". (A direct WebSocket can't deliver a message before
+        // its onmessage is assigned, so this race is unique to the relay path.)
+        // Until our happySessionId is known we can't filter by it, so buffer
+        // every update and replay it through the same filter once open resolves.
+        const pending: unknown[] = [];
+        this.updateHandler = (data: unknown) => {
+            if (this.happySessionId === null) {
+                pending.push(data);
+                return;
+            }
+            this.handleUpdate(data);
+        };
+        this.socket.on('update', this.updateHandler);
+
+        this.disconnectHandler = () => this.fail();
+        this.socket.on('disconnect', this.disconnectHandler);
+
         try {
             const { happySessionId } = await openChat(this.socket, this.machine, this.params);
             if (this.readyState === CLOSED) return; // closed before open resolved
             this.happySessionId = happySessionId;
 
-            this.updateHandler = (data: unknown) => {
-                // new-message payload (happy-server eventRouter.buildNewMessageUpdate):
-                //   { body: { t: 'new-message', sid, message: { content: { t, c } } } }
-                const body = (data as { body?: Record<string, unknown> } | undefined)?.body;
-                if (!body || body.t !== 'new-message') return;
-                if (body.sid !== happySessionId) return;
-                const message = body.message as { content?: { t?: string; c?: string } } | undefined;
-                const content = message?.content;
-                if (!content || content.t !== 'encrypted' || !content.c) return;
-                void this.deliver(content.c);
-            };
-            this.socket.on('update', this.updateHandler);
-
-            this.disconnectHandler = () => this.fail();
-            this.socket.on('disconnect', this.disconnectHandler);
-
             this.readyState = OPEN;
             this.onopen?.();
+
+            // Replay anything that landed during the open RPC round-trip.
+            for (const data of pending) this.handleUpdate(data);
+            pending.length = 0;
         } catch {
             this.fail();
         }
+    }
+
+    /** Filter a relay `update` down to this session and re-emit its Go WsMessage. */
+    private handleUpdate(data: unknown): void {
+        // new-message payload (happy-server eventRouter.buildNewMessageUpdate):
+        //   { body: { t: 'new-message', sid, message: { content: { t, c } } } }
+        const body = (data as { body?: Record<string, unknown> } | undefined)?.body;
+        if (!body || body.t !== 'new-message') return;
+        if (body.sid !== this.happySessionId) return;
+        const message = body.message as { content?: { t?: string; c?: string } } | undefined;
+        const content = message?.content;
+        if (!content || content.t !== 'encrypted' || !content.c) return;
+        void this.deliver(content.c);
     }
 
     private async deliver(c: string): Promise<void> {
