@@ -1976,6 +1976,7 @@ body {
   flex: 1;
   min-height: 0;
   gap: 12px;
+  touch-action: pan-y;
 }
 
 .task-dashboard-header {
@@ -6681,6 +6682,7 @@ body {
     }
 
     .agent-catalog-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .agent-catalog-text { min-width: 0; overflow: hidden; }
 
     .agent-catalog-dot {
         flex: none; width: 9px; height: 9px; border-radius: 50%;
