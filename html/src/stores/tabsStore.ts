@@ -211,12 +211,9 @@ export const closeContentTab = () => {
 
 // Coze click shortcut toggle dynamic drawer logic
 export const toggleDrawerTab = (tab: RightDrawerTab) => {
-    // Mobile keeps the legacy 任务 subview (drives activeTabId); desktop
-    // treats 项目管理 as a normal right-column content tab.
-    if (tab === 'tasks' && ui.isMobile.value) {
-        selectTab('tasks');
-        return;
-    }
+    // 任务 is a normal right-column / drawer content tab on both platforms now
+    // (the old mobile full-screen 任务 overlay was removed in favor of the
+    // unified in-project view switcher).
     if (activeDrawerTab.value === tab) {
         // Collapse the drawer
         activeDrawerTab.value = 'none';

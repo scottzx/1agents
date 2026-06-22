@@ -433,6 +433,162 @@
   }
 }
 
+/* New Conversation — floating action button (bottom-right of the home).
+   Positioned against .mobile-viewport (relative), so it floats just above the
+   bottom nav and stays put while the conversation list scrolls. */
+.mobile-fab {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-color);
+  color: var(--on-accent);
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(var(--accent-color-rgb), 0.4);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+
+  svg {
+    width: 26px;
+    height: 26px;
+    stroke-width: 2;
+  }
+
+  &:active {
+    transform: scale(0.94);
+    background: var(--accent-active);
+  }
+}
+
+/* Inline home search — filters the conversation list by conversation or
+   project name without leaving the page. */
+.mobile-home-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin-bottom: 16px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-page);
+
+  > svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    outline: none;
+    font-size: 14px;
+    color: var(--text-main);
+
+    &::placeholder {
+      color: var(--text-muted);
+    }
+  }
+
+  .search-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+
+    svg {
+      width: 14px;
+      height: 14px;
+      stroke-width: 2;
+    }
+  }
+}
+
+.mobile-home-empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 会话 / 项目 scope toggle in the New Conversation header (mobile only). */
+.new-chat-scope-switch {
+  display: inline-flex;
+  align-self: center;
+  gap: 2px;
+  margin: 12px auto 4px;
+  padding: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+
+  .scope-btn {
+    border: none;
+    background: none;
+    padding: 6px 20px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+
+    &.active {
+      background: var(--accent-color);
+      color: var(--on-accent);
+    }
+  }
+}
+
+/* "所属项目" chip on a session row in the session-first home. Tapping the
+   row selects this session AND makes its project the active context, so the
+   advanced-mode PM / 任务看板 (reached via the session-page hamburger) and any
+   new tasks created there target the right project. */
+.session-card-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background-color: var(--bg-page);
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-secondary);
+
+  svg {
+    width: 12px;
+    height: 12px;
+    stroke-width: 2;
+    flex-shrink: 0;
+    color: var(--icon-folder);
+  }
+
+  .proj-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+}
+
 .mobile-workspace-detail-body {
   padding: 16px;
   display: flex;
@@ -676,6 +832,20 @@
       }
     }
 
+    // Agent brand logo used as the leading icon (overrides AgentAvatar's
+    // default 28px to match the .session-card-icon slot).
+    .session-card-avatar {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      border-radius: 8px;
+
+      .agent-avatar-logo {
+        width: 22px;
+        height: 22px;
+      }
+    }
+
     .session-card-info {
       display: flex;
       flex-direction: column;
@@ -686,6 +856,15 @@
         align-items: center;
         gap: 6px;
         min-width: 0;
+      }
+
+      // Second line: 所属项目 chip + agent badge, side by side.
+      .session-card-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        margin-top: 4px;
       }
 
       .session-card-name {
@@ -726,6 +905,12 @@
     align-items: center;
     flex-shrink: 0;
     gap: 6px;
+
+    .session-card-date {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
 
     .status-badge {
       font-size: 10px;

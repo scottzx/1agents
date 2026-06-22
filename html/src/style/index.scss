@@ -12446,20 +12446,45 @@ body {
   }
 
   // Each mode picks up its own colour so the active state is glanceable
-  // without reading the label.
+  // without reading the label: 读取放行 = blue, 全部放行 = green, 全部拒绝 = red.
   &[data-mode="approve-reads"] {
-    border-color: rgba(var(--success-rgb), 0.45);
-    color: var(--success-emphasis);
+    border-color: rgba(var(--accent-color-rgb), 0.5);
+    color: var(--accent-color);
+    background: rgba(var(--accent-color-rgb), 0.1);
   }
   &[data-mode="approve-all"] {
-    border-color: rgba(191, 135, 0, 0.55);
-    color: var(--warning-fg);
-    background: rgba(255, 212, 0, 0.12);
+    border-color: rgba(var(--success-rgb), 0.5);
+    color: var(--success-emphasis);
+    background: rgba(var(--success-rgb), 0.1);
   }
   &[data-mode="deny-all"] {
     border-color: rgba(var(--danger-rgb), 0.55);
     color: var(--danger-fg);
     background: rgba(var(--danger-rgb), 0.08);
+  }
+}
+
+// ── Mobile composer: icon-only permission button ──
+// The inner composer keeps role + permission + send on one row; the secondary
+// controls (mode + agent) live in the separate outer bar below the box. The
+// permission shield drops its text label (the data-mode colour conveys state).
+@media (max-width: 768px) {
+  .new-chat-home {
+    .new-chat-actions-row {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .actions-secondary {
+      flex-wrap: wrap;
+    }
+  }
+
+  .chat-composer-mode-btn {
+    padding: 0 8px;
+
+    .chat-composer-mode-label {
+      display: none;
+    }
   }
 }
 
@@ -13138,22 +13163,118 @@ body {
     }
   }
 
-  .new-chat-input-wrapper {
+  // Composer group — wraps the input box + the secondary control bar on one
+  // light-gray surface so they read as a single unit (no gap, no obvious
+  // whitespace transition into the secondary bar).
+  .new-chat-composer-group {
     max-width: 720px;
     width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 6px;
+    background: rgba(128, 128, 128, 0.08);
+    border-radius: var(--bento-radius-lg);
+  }
+
+  .new-chat-input-wrapper {
+    width: 100%;
+    box-sizing: border-box;
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: var(--bento-radius-lg);
+    border-radius: var(--bento-radius);
     padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: var(--shadow-md);
     transition: border-color 0.2s, box-shadow 0.2s;
 
     &:focus-within {
       border-color: var(--accent-color);
-      box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-md);
+      box-shadow: 0 0 0 3px var(--accent-light);
+    }
+  }
+
+  // Outer composer layer — sits below the input box on the shared group
+  // surface (transparent itself), holding the less-used secondary controls
+  // (mode + agent). No gap above; it blends into the group's gray.
+  .new-chat-outer-bar {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 6px 2px;
+  }
+
+  // Custom anchored dropdown (role / agent) — replaces native <select> so the
+  // menu always opens directly under the trigger (no popup drift on mobile).
+  .nc-select {
+    position: relative;
+    display: inline-flex;
+
+    .nc-select-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      outline: none;
+      white-space: nowrap;
+    }
+
+    .nc-select-chevron {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      opacity: 0.6;
+    }
+
+    .nc-select-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 100;
+      min-width: 100%;
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .nc-select-option {
+      text-align: left;
+      white-space: nowrap;
+      border: none;
+      background: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--text-main);
+      cursor: pointer;
+
+      &:hover {
+        background: var(--btn-hover);
+      }
+
+      &.active {
+        background: var(--accent-light);
+        color: var(--accent-color);
+        font-weight: 600;
+      }
     }
   }
 
@@ -13184,7 +13305,8 @@ body {
     padding-top: 12px;
   }
 
-  .actions-left {
+  .actions-secondary,
+  .actions-primary {
     display: flex;
     align-items: center;
     gap: 8px;

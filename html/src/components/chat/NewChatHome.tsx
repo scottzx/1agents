@@ -59,6 +59,82 @@ function quoteArg(s: string): string {
     return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$') + '"';
 }
 
+interface SelectOption {
+    value: string;
+    label: string;
+}
+
+/**
+ * Custom anchored dropdown replacing a native <select>. Native select popups
+ * mis-position inside transformed / animated ancestors (notably in mobile
+ * webviews) — this renders a CSS-anchored menu directly under the trigger so
+ * it always opens in the right place. Closes on outside click /选项点击.
+ */
+function CustomSelect({
+    value,
+    options,
+    onChange,
+    ariaLabel,
+    title,
+}: {
+    value: string;
+    options: SelectOption[];
+    onChange: (v: string) => void;
+    ariaLabel?: string;
+    title?: string;
+}) {
+    const open = useSignal(false);
+    const ref = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!open.value) return;
+        const onDown = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) open.value = false;
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [open.value]);
+
+    const current = options.find(o => o.value === value);
+    return (
+        <div class="nc-select" ref={ref}>
+            <button
+                type="button"
+                class="nc-select-trigger"
+                aria-label={ariaLabel}
+                title={title}
+                aria-haspopup="listbox"
+                aria-expanded={open.value}
+                onClick={() => (open.value = !open.value)}
+            >
+                <span class="nc-select-value">{current?.label ?? value}</span>
+                <svg class="nc-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="6 9 12 15 18 9" />
+                </svg>
+            </button>
+            {open.value && (
+                <div class="nc-select-menu" role="listbox">
+                    {options.map(o => (
+                        <button
+                            type="button"
+                            key={o.value}
+                            role="option"
+                            aria-selected={o.value === value}
+                            class={`nc-select-option ${o.value === value ? 'active' : ''}`}
+                            onClick={() => {
+                                onChange(o.value);
+                                open.value = false;
+                            }}
+                        >
+                            {o.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function NewChatHome({
     workspaces,
     activeWorkspaceId,
@@ -189,7 +265,9 @@ export function NewChatHome({
 
     return (
         <div class="new-chat-home">
-            {/* Top Workspace Picker Dropdown — only in project mode */}
+            {/* Top Workspace Picker Dropdown — only in project mode. The 会话/项目
+                scope toggle that drives this lives in the mobile New Conversation
+                header (outside this component). */}
             {activeWorkspace && sidebarMode.value === 'project' && (
                 <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
                     <button
@@ -312,27 +390,99 @@ export function NewChatHome({
                 </div>
             )}
 
-            {/* Central Chat Input Box */}
-            <div class="new-chat-input-wrapper">
-                <AttachmentPreview attachments={attach.attachments} onRemove={attach.remove} />
-                <textarea
-                    class="new-chat-textarea"
-                    placeholder={
-                        speech.isRecording
-                            ? t('terminal.speech.listening', language)
-                            : mode.value === 'terminal'
-                              ? t('newchat.terminalPlaceholder', language)
-                              : t('newchat.chatPlaceholder', language)
-                    }
-                    value={prompt.value}
-                    onInput={(e: Event) => {
-                        prompt.value = (e.target as HTMLTextAreaElement).value;
-                    }}
-                    onKeyDown={handleKeyDown}
-                    rows={1}
-                />
-                <div class="new-chat-actions-row">
-                    <div class="actions-left">
+            {/* Composer group — the input box and the secondary control bar
+                share one light surface (no gap) so they read as a single unit. */}
+            <div class="new-chat-composer-group">
+                <div class="new-chat-input-wrapper">
+                    <AttachmentPreview attachments={attach.attachments} onRemove={attach.remove} />
+                    <textarea
+                        class="new-chat-textarea"
+                        placeholder={
+                            speech.isRecording
+                                ? t('terminal.speech.listening', language)
+                                : mode.value === 'terminal'
+                                  ? t('newchat.terminalPlaceholder', language)
+                                  : t('newchat.chatPlaceholder', language)
+                        }
+                        value={prompt.value}
+                        onInput={(e: Event) => {
+                            prompt.value = (e.target as HTMLTextAreaElement).value;
+                        }}
+                        onKeyDown={handleKeyDown}
+                        rows={1}
+                    />
+                    <div class="new-chat-actions-row">
+                        {/* Primary controls (role + permission) — stay on the first
+                        row on mobile, next to the send cluster. */}
+                        <div class="actions-primary">
+                            {/* Role selector — chat mode only; hidden in beginner mode (forced general) */}
+                            {mode.value === 'chat' && !isBeginnerMode.value && (
+                                <CustomSelect
+                                    value={selectedRole.value}
+                                    ariaLabel={t('newchat.role.aria', language)}
+                                    title={t('newchat.role.pmHint', language)}
+                                    options={ROLE_OPTIONS.map(r => ({
+                                        value: r.value,
+                                        label: t(r.labelKey, language),
+                                    }))}
+                                    onChange={v => (selectedRole.value = v as ChatRole)}
+                                />
+                            )}
+
+                            {/* Permission mode — chat mode only, cycle button */}
+                            {mode.value === 'chat' && (
+                                <PermissionModePicker
+                                    value={selectedPermissionMode.value}
+                                    onChange={v => {
+                                        selectedPermissionMode.value = v;
+                                    }}
+                                    variant="cycle"
+                                />
+                            )}
+                        </div>
+
+                        <div class="actions-right">
+                            <AttachButton
+                                className="action-btn-circle plus-btn"
+                                onSelect={attach.upload}
+                                uploading={attach.uploading}
+                                title={attach.error || t('chat.composer.attach', language)}
+                                ariaLabel={t('chat.composer.attach', language)}
+                            />
+                            {!IS_DESKTOP && speech.available && (
+                                <MicButton
+                                    className="action-btn-circle mic-btn"
+                                    recording={speech.isRecording}
+                                    onClick={speech.toggle}
+                                    title={speech.error || t('terminal.action.voice', language)}
+                                    ariaLabel={t('terminal.action.voice', language)}
+                                />
+                            )}
+                            <button
+                                type="button"
+                                class={`action-btn-circle send-btn ${mode.value === 'chat' && !prompt.value.trim() ? 'disabled' : ''}`}
+                                disabled={mode.value === 'chat' && !prompt.value.trim()}
+                                onClick={handleSubmit}
+                                title={t('chat.composer.send', language)}
+                                aria-label={t('chat.composer.send', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <polyline points="9 10 4 15 9 20" />
+                                    <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="new-chat-outer-bar">
+                    <div class="actions-secondary">
                         {/* Mode toggle: chat vs terminal — icon segmented control */}
                         <div class="new-chat-mode-switch" role="group" aria-label={t('newchat.modeSwitch', language)}>
                             <button
@@ -375,126 +525,22 @@ export function NewChatHome({
                         </div>
 
                         {/* Model / Agent selector (chat) or preset selector (terminal) */}
-                        <div class="select-dropdown-wrapper">
-                            {mode.value === 'terminal' ? (
-                                <select
-                                    class="new-chat-select model-select"
-                                    value={selectedPreset.value}
-                                    onChange={(e: Event) => {
-                                        selectedPreset.value = (e.target as HTMLSelectElement).value as TerminalPreset;
-                                    }}
-                                >
-                                    {TERMINAL_PRESETS.map(p => (
-                                        <option key={p.value} value={p.value}>
-                                            {p.value === 'shell' ? t('newchat.terminalShell', language) : p.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <select
-                                    class="new-chat-select model-select"
-                                    value={selectedAgent.value}
-                                    onChange={(e: Event) => {
-                                        selectedAgent.value = (e.target as HTMLSelectElement).value as AgentType;
-                                    }}
-                                >
-                                    {agentOptions.map(o => (
-                                        <option key={o.type} value={o.type}>
-                                            {o.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
-                            <svg
-                                class="select-chevron"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                            >
-                                <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                        </div>
-
-                        {/* Role selector — chat mode only; hidden in beginner mode (forced general) */}
-                        {mode.value === 'chat' && !isBeginnerMode.value && (
-                            <div class="select-dropdown-wrapper">
-                                <select
-                                    class="new-chat-select role-select"
-                                    value={selectedRole.value}
-                                    aria-label={t('newchat.role.aria', language)}
-                                    title={t('newchat.role.pmHint', language)}
-                                    onChange={(e: Event) => {
-                                        selectedRole.value = (e.target as HTMLSelectElement).value as ChatRole;
-                                    }}
-                                >
-                                    {ROLE_OPTIONS.map(r => (
-                                        <option key={r.value} value={r.value}>
-                                            {t(r.labelKey, language)}
-                                        </option>
-                                    ))}
-                                </select>
-                                <svg
-                                    class="select-chevron"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2.5"
-                                >
-                                    <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                            </div>
-                        )}
-
-                        {/* Permission mode — chat mode only, cycle button */}
-                        {mode.value === 'chat' && (
-                            <PermissionModePicker
-                                value={selectedPermissionMode.value}
-                                onChange={v => {
-                                    selectedPermissionMode.value = v;
-                                }}
-                                variant="cycle"
-                            />
-                        )}
-                    </div>
-
-                    <div class="actions-right">
-                        <AttachButton
-                            className="action-btn-circle plus-btn"
-                            onSelect={attach.upload}
-                            uploading={attach.uploading}
-                            title={attach.error || t('chat.composer.attach', language)}
-                            ariaLabel={t('chat.composer.attach', language)}
+                        <CustomSelect
+                            value={mode.value === 'terminal' ? selectedPreset.value : selectedAgent.value}
+                            ariaLabel={t('newchat.modeSwitch', language)}
+                            options={
+                                mode.value === 'terminal'
+                                    ? TERMINAL_PRESETS.map(p => ({
+                                          value: p.value,
+                                          label: p.value === 'shell' ? t('newchat.terminalShell', language) : p.label,
+                                      }))
+                                    : agentOptions.map(o => ({ value: o.type, label: o.label }))
+                            }
+                            onChange={v => {
+                                if (mode.value === 'terminal') selectedPreset.value = v as TerminalPreset;
+                                else selectedAgent.value = v as AgentType;
+                            }}
                         />
-                        {!IS_DESKTOP && speech.available && (
-                            <MicButton
-                                className="action-btn-circle mic-btn"
-                                recording={speech.isRecording}
-                                onClick={speech.toggle}
-                                title={speech.error || t('terminal.action.voice', language)}
-                                ariaLabel={t('terminal.action.voice', language)}
-                            />
-                        )}
-                        <button
-                            type="button"
-                            class={`action-btn-circle send-btn ${mode.value === 'chat' && !prompt.value.trim() ? 'disabled' : ''}`}
-                            disabled={mode.value === 'chat' && !prompt.value.trim()}
-                            onClick={handleSubmit}
-                            title={t('chat.composer.send', language)}
-                            aria-label={t('chat.composer.send', language)}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <polyline points="9 10 4 15 9 20" />
-                                <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                            </svg>
-                        </button>
                     </div>
                 </div>
             </div>

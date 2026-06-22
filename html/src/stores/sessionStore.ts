@@ -143,10 +143,31 @@ export const loadChatSessions = async (workspaceId?: string) => {
         const chats = await agentService.list(wsId);
         // All chats (incl. role='pm' AI 项目经理) show in the normal sidebar /
         // chat column now — PM is created via New Conversation, not a 副屏.
-        chatSessions.value = chats;
+        // Merge into the cross-workspace aggregate instead of replacing it, so
+        // other workspaces' sessions aren't wiped (the session-first mobile
+        // home lists every conversation across all projects).
+        chatSessions.value = [...chatSessions.value.filter(c => c.workspaceId !== wsId), ...chats];
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {
         console.error('[agent] list error:', err);
+    }
+};
+
+/**
+ * Load chat sessions for EVERY workspace and aggregate them, so the home /
+ * sidebar can show all conversations across the default workspace and all
+ * projects at once. The backend has no "all sessions" endpoint, so fan out
+ * one request per workspace and flatten.
+ */
+export const loadAllChatSessions = async () => {
+    const wss = wsStore.workspaces.value;
+    if (wss.length === 0) return;
+    try {
+        const lists = await Promise.all(wss.map(w => agentService.list(w.id).catch(() => [] as ChatSession[])));
+        chatSessions.value = lists.flat();
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+    } catch (err) {
+        console.error('[agent] list-all error:', err);
     }
 };
 
