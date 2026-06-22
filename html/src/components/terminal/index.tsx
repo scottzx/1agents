@@ -3,6 +3,7 @@ import { Component, h } from 'preact';
 import { Xterm, XtermOptions } from './xterm';
 
 import '@xterm/xterm/css/xterm.css';
+import { backendTarget } from '../../core/services/apiClient';
 import { Modal } from '../modal';
 import { t, type Lang } from '../i18n';
 import { createSpeechController, type SpeechController } from '../../utils/speechRecognition';
@@ -39,7 +40,8 @@ export class Terminal extends Component<Props, State> {
 
     constructor(props: Props) {
         super();
-        this.xterm = new Xterm(props, this.showModal);
+        // termId = 组件实例 id:relay 模式下用于节点侧 ttyd 桥的 session 路由/扇出过滤。
+        this.xterm = new Xterm({ ...props, termId: props.id }, this.showModal);
         this.state = {
             modal: false,
             showInputPanel: false,
@@ -65,7 +67,10 @@ export class Terminal extends Component<Props, State> {
     async componentDidMount() {
         this.props.onMobileDetect?.(this.props.isMobile);
 
-        await this.xterm.refreshToken();
+        // relay 模式无同源 /token(由节点侧 adapter 自取 ttyd token),跳过避免无谓报错。
+        if (backendTarget.value.mode !== 'relay') {
+            await this.xterm.refreshToken();
+        }
         if (this.isUnmounted || !this.container) return;
         this.xterm.open(this.container);
         this.xterm.connect();

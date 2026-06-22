@@ -23,10 +23,10 @@ export async function register(ctx) {
   // Agent 聊天流:本地 Go WS ⇄ Happy session 扇出(issue #17 chat)
   await registerChatBridge(ctx, log);
 
-  // 终端流:占位(M1 骨架不注册;实现见 ../terminal/terminalBridge.mjs)
-  registerTerminalBridge(ctx, log);
+  // 终端流:本机 ttyd WS ⇄ Happy session 扇出(issue #17 终端那一路)
+  await registerTerminalBridge(ctx, log);
 
-  log('registered: 1agents-proxy, 1agents-chat-open/send/close (terminal: skeleton)');
+  log('registered: 1agents-proxy, 1agents-chat-open/send/close, terminal-open/input/close');
 }
 
 export default { register };
