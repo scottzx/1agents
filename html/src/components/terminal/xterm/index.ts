@@ -10,6 +10,8 @@ import { ImageAddon } from '@xterm/addon-image';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { OverlayAddon } from './addons/overlay';
 import { ZmodemAddon } from './addons/zmodem';
+import { backendTarget } from '../../../core/services/apiClient';
+import { RelayTerminalSocket } from '../../../core/services/relay/relayTerminalSocket';
 
 import '@xterm/xterm/css/xterm.css';
 
@@ -63,6 +65,8 @@ export interface FlowControl {
 export interface XtermOptions {
     wsUrl: string;
     tokenUrl: string;
+    /** 稳定终端标识(relay 模式下用于节点侧 ttyd 桥的 session 路由/扇出过滤)。 */
+    termId?: string;
     flowControl: FlowControl;
     clientOptions: ClientOptions;
     termOptions: ITerminalOptions;
@@ -93,7 +97,7 @@ export class Xterm {
     private canvasAddon?: CanvasAddon;
     private zmodemAddon?: ZmodemAddon;
 
-    private socket?: WebSocket;
+    private socket?: WebSocket | RelayTerminalSocket;
     private token: string;
     private opened = false;
     private heartbeatInterval?: number;
@@ -119,6 +123,14 @@ export class Xterm {
         if (this.heartbeatInterval) {
             window.clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = undefined;
+        }
+        // relay 模式下显式关桥,释放节点侧 ttyd 连接(裸 WS 由浏览器回收,行为不变)。
+        if (this.socket instanceof RelayTerminalSocket) {
+            try {
+                this.socket.close();
+            } catch {
+                /* ignore */
+            }
         }
     }
 
@@ -288,7 +300,18 @@ export class Xterm {
 
     @bind
     public connect() {
-        this.socket = new WebSocket(this.options.wsUrl, ['tty']);
+        // 传输按后端从哪来选择(镜像聊天 components/chat/hooks.ts):relay 模式把终端流
+        // 载到中转(节点桥接本机 ttyd),direct 模式保持同源裸 WS。xterd 的 ttyd 协议逻辑不变。
+        const target = backendTarget.value;
+        if (target.mode === 'relay') {
+            this.socket = new RelayTerminalSocket(target.socket, target.machine, {
+                termId: this.options.termId ?? 'default',
+                cols: this.terminal.cols,
+                rows: this.terminal.rows,
+            });
+        } else {
+            this.socket = new WebSocket(this.options.wsUrl, ['tty']);
+        }
         const { socket, register } = this;
 
         socket.binaryType = 'arraybuffer';
