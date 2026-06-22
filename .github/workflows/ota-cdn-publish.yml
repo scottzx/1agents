@@ -93,7 +93,7 @@ jobs:
           # repackage as frontend-v${TAG}.tar.gz (files at top level). This fills
           # manifest.components.frontend.{entry,integrity} (build-manifest.py's
           # find_frontend looks for exactly this name), enabling the self-hosted
-          # server updater (scripts/server-h5-ota.sh) to pull just the ~3MB app
+          # server updater (1agents_server: scripts/server-h5-ota.sh) to pull the ~3MB app
           # bundle instead of a 50MB backend tarball. api/embed/ is intentionally
           # excluded — it changes rarely and the server updater preserves it
           # across swaps.
