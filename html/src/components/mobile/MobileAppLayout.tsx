@@ -184,6 +184,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
      */
     private _prevActiveTabId = tabsStore.activeTabId.value;
     private _disposeTabSync: (() => void) | null = null;
+    private _disposeDeepLink: (() => void) | null = null;
 
     // Swipe-to-archive state (class-level, no re-renders during active drag)
     private _swipeEl: HTMLElement | null = null;
@@ -206,12 +207,38 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                 }
             }
         });
+
+        // Consume a `?ws=&view=` deep link (set by app.tsx after workspaces
+        // load — which is AFTER this mount, hence an effect rather than a
+        // one-time read). Maps the unified `view` onto the mobile navigation:
+        // discovery/settings → 更多 subview; providers/skills → their tabs;
+        // tasks/channels/files/git → the session page's drawer for that project.
+        this._disposeDeepLink = effect(() => {
+            const dl = tabsStore.mobileDeepLink.value;
+            if (!dl) return;
+            tabsStore.mobileDeepLink.value = null;
+            if (dl.view === 'discovery' || dl.view === 'settings') {
+                this.setState({ activeMobileTab: 'more', activeMoreSubView: dl.view });
+            } else if (dl.view === 'providers') {
+                this.setState({ activeMobileTab: 'providers' });
+            } else if (dl.view === 'skills') {
+                this.setState({ activeMobileTab: 'skills', skillsInDetail: false });
+            } else {
+                // tasks / channels / files / git → enter the project's session page.
+                tabsStore.activeDrawerTab.value = dl.view;
+                this.setState({ activeMobileTab: 'workspaces', selectedWorkspaceId: dl.workspaceId });
+            }
+        });
     }
 
     componentWillUnmount() {
         if (this._disposeTabSync) {
             this._disposeTabSync();
             this._disposeTabSync = null;
+        }
+        if (this._disposeDeepLink) {
+            this._disposeDeepLink();
+            this._disposeDeepLink = null;
         }
     }
 

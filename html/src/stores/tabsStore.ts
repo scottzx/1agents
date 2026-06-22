@@ -87,6 +87,16 @@ export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
 /** Selected discovery category, drives the sidebar second-level menu. */
 export const discoveryCategory = signal('featured');
 
+/**
+ * Deep-link intent parsed from `?ws=<id>&view=<tab>` on boot (app.tsx
+ * `checkUrlDeepLink`). The 小程序 native shell loads main-H5 modules
+ * (tasks/files/git/discovery/settings) in a web-view with these params so the
+ * mobile layout can jump straight into the right project + view. Set once after
+ * workspaces load; MobileAppLayout consumes it (via effect) then clears it to
+ * null. Desktop ignores it beyond the activeDrawerTab side-effect already set.
+ */
+export const mobileDeepLink = signal<{ workspaceId: string; view: RightDrawerTab } | null>(null);
+
 // ── Module slot state ──
 /** Active sub-path inside the active module, e.g. "/skills/use". */
 export const activeModulePath = signal('');

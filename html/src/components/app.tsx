@@ -1,6 +1,6 @@
 import { h, Component } from 'preact';
 
-import { FsEntry } from './types';
+import { FsEntry, type RightDrawerTab } from './types';
 import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
@@ -133,6 +133,7 @@ export class App extends Component<{}, AppState> {
 
         sess.loadTmuxMouse();
         this.checkUrlPreview();
+        this.checkUrlDeepLink();
         // Task permalinks: intercept in-app clicks on `#N` autolinks and pasted
         // /{project}/tasks/{number} URLs, and resolve a deep link in the address
         // bar now that workspaces are loaded.
@@ -389,6 +390,38 @@ export class App extends Component<{}, AppState> {
         fs.viewMode.value = 'detail';
         fs.detailFullscreen.value = true;
         await fs.openFileDetail(entry);
+    };
+
+    /**
+     * Deep-link a main-H5 module from `?ws=<id>&view=<tab>`. The 小程序 native
+     * shell hosts tasks/files/git/discovery/settings in a web-view and passes
+     * these params so the (mobile) layout boots straight into the right project
+     * + view. We select the workspace, set the drawer tab (so desktop reacts
+     * too), and publish `mobileDeepLink` for MobileAppLayout to consume.
+     * `?preview=` (handled above) still wins for single-file sharing.
+     */
+    checkUrlDeepLink = async () => {
+        const params = new URLSearchParams(window.location.search);
+        const wsId = params.get('ws');
+        const view = params.get('view') as RightDrawerTab | null;
+        if (!wsId || !view) return;
+        const VALID: RightDrawerTab[] = [
+            'tasks',
+            'channels',
+            'files',
+            'git',
+            'discovery',
+            'settings',
+            'providers',
+            'skills',
+        ];
+        if (!VALID.includes(view)) return;
+        const ws = wsStore.workspaces.value.find(w => w.id === wsId);
+        if (ws && wsStore.activeWorkspaceId.value !== wsId) {
+            await wsStore.selectWorkspace(ws);
+        }
+        tabsStore.activeDrawerTab.value = view;
+        tabsStore.mobileDeepLink.value = { workspaceId: wsId, view };
     };
 
     render() {
