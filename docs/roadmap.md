@@ -68,13 +68,22 @@
 - ⬤ **2.4 小版本产品视频自动化**：[#145](https://github.com/scottzx/1agents/issues/145)（小版本发布即自动生成产品视频，类 hyperframe；**占位记录，需求回头细化**）
 
 ### 3.x — 信息收口 → 闭环可控
-- ⬤ **3.0 Inbox 信息收口 + 立项**：[#60](https://github.com/scottzx/1agents/issues/60)（统一收口层）、[#61](https://github.com/scottzx/1agents/issues/61)（PMO 需求分发）、[#67](https://github.com/scottzx/1agents/issues/67)（下游分叉·临时任务 vs 立项）
-- ⬤ **3.1 专家细化 + 开源吸收**：[#139](https://github.com/scottzx/1agents/issues/139)（PMO 员工层细化·专属提示词+工具）、[#138](https://github.com/scottzx/1agents/issues/138)（开源项目吸收·MIT 可合并）、[#137](https://github.com/scottzx/1agents/issues/137)（智能体角色模板·YAML frontmatter+markdown）
+
+> **Inbox 全上下文引擎 + 专家系统底座定稿** → [docs/features/inbox-context-engine/design.md](features/inbox-context-engine/design.md)。把 Inbox 升级为「全部外部上下文收口 + 自动运行引擎」，并据此搭角色仓/技能仓/开源吸收管线（吸收 kwiki/superpowers/gstack）。下列 ◯ 槽位拆 issue 时连续编号。
+
+- ⬤ **3.0 Inbox 信息收口 + 立项**：[#60](https://github.com/scottzx/1agents/issues/60)（统一收口层 → 扩 domain+depth 维度 + 收口规则，见 RFC §3）、[#61](https://github.com/scottzx/1agents/issues/61)（PMO 需求分发）、[#67](https://github.com/scottzx/1agents/issues/67)（下游分叉·临时任务 vs 立项；个人 Task PhaseA 为本期地基）
+  - ⬤ [#189](https://github.com/scottzx/1agents/issues/189) **Discussion 决策层**（合并 [#47](https://github.com/scottzx/1agents/issues/47) 建议卡）：对话线程 + 可选挂卡 + 拍板转需求/任务（RFC §3.1）
+- ⬤ **3.1 专家细化 + 开源吸收**：[#139](https://github.com/scottzx/1agents/issues/139)（PMO 员工层细化·专属提示词+工具）、[#138](https://github.com/scottzx/1agents/issues/138)（开源项目吸收·MIT 可合并 → superpowers/gstack 吸收管线，RFC §5）、[#137](https://github.com/scottzx/1agents/issues/137)（智能体角色模板·YAML frontmatter+markdown）
+  - ⬤ [#187](https://github.com/scottzx/1agents/issues/187) **三级解析 loader + 角色仓落点**（内置 embed + 用户/项目 `.1agents/roles|skills/` + 按名覆盖，RFC §4）
+  - ⬤ [#188](https://github.com/scottzx/1agents/issues/188) **superpowers/gstack 吸收管线**（submodule 参照 + 转化器 + `.absorbed.json` 增量同步，RFC §5）
+  - ⬤ [#190](https://github.com/scottzx/1agents/issues/190) **Inbox 自动调研管线**（定时爬虫 + L2 深度调研，gstack `/browse` 重映射 + 专家角色，接 [#133](https://github.com/scottzx/1agents/issues/133) 编排，RFC §3）
 - ⬤ **3.2 大屏 · 控**：[#142](https://github.com/scottzx/1agents/issues/142)（大屏交互层 Phase2·卡片直接下指令/派工）
 - ⬤ **3.3 闭环正反馈**：[#140](https://github.com/scottzx/1agents/issues/140)（社交数据回流→Inbox）、[#141](https://github.com/scottzx/1agents/issues/141)（项目阶段性归档/关闭：完成归档 or 竞品砍掉）
 
 ### 4.x — 经验复利（技能沉淀链）
 - ⬤ **4.0 复盘归档 + 技能沉淀链总纲**：[#144](https://github.com/scottzx/1agents/issues/144)（自动化流程复盘+归档机制）、[#143](https://github.com/scottzx/1agents/issues/143)（技能沉淀链 epic）
+  - ⬤ [#191](https://github.com/scottzx/1agents/issues/191) **kwiki 知识基底**（`raw/wiki/output` + ingest）：Inbox 沉淀 + 市场情报/个人健康落 wiki 的统一载体，是沉淀链的存储底座（RFC §3.3）
+  - ⬤ [#192](https://github.com/scottzx/1agents/issues/192) **提醒层**（复用 Scheduled Tasks）+ ◯ **个人 wiki**：个人/健康域下游（RFC §3.2 / §7 Phase 4）
 - ◯ **4.1 技能卡封装**（复用 skills 模块 `html/src/modules/registry.ts`）→ ◯ **4.2 任务模板** → ◯ **4.3 项目模板/项目架构（带技能+前后依赖+检查项）**：落在 [#143](https://github.com/scottzx/1agents/issues/143) 的 checklist，后续拆独立 issue 时连续编号
 
 ### 分支线 · 多设备集群
