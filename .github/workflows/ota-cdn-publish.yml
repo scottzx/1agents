@@ -89,6 +89,32 @@ jobs:
           done
           echo "=== staged ===" && ls -lh _stage
 
+          # Frontend OTA payload: extract html/dist from a backend tarball and
+          # repackage as frontend-v${TAG}.tar.gz (files at top level). This fills
+          # manifest.components.frontend.{entry,integrity} (build-manifest.py's
+          # find_frontend looks for exactly this name), enabling the self-hosted
+          # server updater (scripts/server-h5-ota.sh) to pull just the ~3MB app
+          # bundle instead of a 50MB backend tarball. api/embed/ is intentionally
+          # excluded — it changes rarely and the server updater preserves it
+          # across swaps.
+          fe_src=""
+          for cand in _stage/1agents-linux-amd64.tar.gz _stage/1agents-linux-arm64.tar.gz _stage/1agents-darwin-arm64.tar.gz; do
+            [ -f "$cand" ] && { fe_src="$cand"; break; }
+          done
+          if [ -n "$fe_src" ]; then
+            rm -rf _fe && mkdir -p _fe
+            tar -xzf "$fe_src" -C _fe
+            dist_dir="$(find _fe -type d -name dist | head -1)"
+            if [ -n "$dist_dir" ] && [ -f "$dist_dir/index.html" ]; then
+              tar -czf "_stage/frontend-v${TAG}.tar.gz" -C "$dist_dir" .
+              echo "=== frontend payload staged from $(basename "$fe_src") ===" && ls -lh "_stage/frontend-v${TAG}.tar.gz"
+            else
+              echo "WARN: dist/ with index.html not found in $fe_src — frontend payload skipped"
+            fi
+          else
+            echo "WARN: no backend tarball to derive frontend payload — skipped"
+          fi
+
           python3 scripts/build-manifest.py \
             --version "$TAG" \
             --artifacts _stage \

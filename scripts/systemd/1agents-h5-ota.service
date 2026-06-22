@@ -1,0 +1,13 @@
+[Unit]
+Description=1agents H5 静态目录 OTA 拉取更新 (oneshot)
+Documentation=https://github.com/scottzx/1agents
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# nvm 下的 pm2 不在默认 PATH,显式补上 node bin 目录
+Environment=PATH=/root/.nvm/versions/node/v22.17.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/root/bin/server-h5-ota.sh
+# 失败不致命:5 分钟后再试
+SuccessExitStatus=0

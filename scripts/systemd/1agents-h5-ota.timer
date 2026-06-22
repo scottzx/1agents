@@ -1,0 +1,13 @@
+[Unit]
+Description=1agents H5 静态目录 OTA 轮询 (前期 5 分钟一次,稳定后调低频率)
+
+[Timer]
+# 开机后 2 分钟首次跑,之后每 5 分钟一次(基于上次完成时间)
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=1agents-h5-ota.service
+
+[Install]
+WantedBy=timers.target
