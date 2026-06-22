@@ -74,14 +74,17 @@ def find_bundles(artifacts_dir: str) -> dict[str, str]:
 
 
 def build_tauri_manifests(
-    version: str, repo: str, notes: str, artifacts_dir: str
+    version: str, repo: str, notes: str, artifacts_dir: str, base_url: str = ""
 ) -> dict[str, dict]:
     bundles = find_bundles(artifacts_dir)
     manifests: dict[str, dict] = {}
     for tauri_key, filename in sorted(bundles.items()):
-        url = (
-            f"https://github.com/{repo}/releases/download/{version}/{filename}"
-        )
+        if base_url:
+            url = f"{base_url.rstrip('/')}/{version}/desktop/{filename}"
+        else:
+            url = (
+                f"https://github.com/{repo}/releases/download/{version}/{filename}"
+            )
         manifests[tauri_key] = {
             "version": version,
             "notes": notes,
@@ -102,11 +105,12 @@ def main() -> None:
     p.add_argument("--artifacts", required=True)
     p.add_argument("--repo", default="scottzx/1Agents")
     p.add_argument("--notes", default="", help="Release notes (plain text)")
+    p.add_argument("--base-url", default="", help="CDN base URL; when set, download URLs point to CDN instead of GitHub")
     p.add_argument("--output-dir", default="./_artifacts/manifests/desktop")
     args = p.parse_args()
 
     manifests = build_tauri_manifests(
-        args.version, args.repo, args.notes, args.artifacts
+        args.version, args.repo, args.notes, args.artifacts, args.base_url
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
