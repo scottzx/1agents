@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
 import { t } from '../../../i18n';
@@ -65,6 +65,62 @@ export function TaskDetail({
 
     // Sidebar collapse toggle
     const sidebarCollapsed = useSignal(false);
+
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || !onBack) return;
+
+        let startX = 0,
+            startY = 0,
+            active = false;
+
+        const onDown = (e: PointerEvent) => {
+            const rect = el.getBoundingClientRect();
+            if (e.clientX - rect.left > 40) return;
+            startX = e.clientX;
+            startY = e.clientY;
+            active = true;
+            el.setPointerCapture(e.pointerId);
+        };
+        const onMove = (e: PointerEvent) => {
+            if (!active) return;
+            const dx = e.clientX - startX;
+            const dy = Math.abs(e.clientY - startY);
+            if (dy > Math.abs(dx) + 5) {
+                active = false;
+                return;
+            }
+            if (dx < 0) return;
+            el.style.transform = `translateX(${dx}px)`;
+            el.style.transition = 'none';
+        };
+        const onUp = (e: PointerEvent) => {
+            if (!active) return;
+            active = false;
+            const dx = e.clientX - startX;
+            if (dx > 80) {
+                el.style.transition = 'transform 0.22s ease';
+                el.style.transform = 'translateX(110%)';
+                setTimeout(onBack!, 220);
+            } else {
+                el.style.transition = 'transform 0.25s ease';
+                el.style.transform = '';
+            }
+        };
+
+        el.addEventListener('pointerdown', onDown);
+        el.addEventListener('pointermove', onMove);
+        el.addEventListener('pointerup', onUp);
+        el.addEventListener('pointercancel', onUp);
+        return () => {
+            el.removeEventListener('pointerdown', onDown);
+            el.removeEventListener('pointermove', onMove);
+            el.removeEventListener('pointerup', onUp);
+            el.removeEventListener('pointercancel', onUp);
+        };
+    }, [onBack]);
 
     const getInitials = (name: string) => {
         if (!name) return '?';
@@ -408,7 +464,7 @@ export function TaskDetail({
     const isDiscussion = task.type === 'discussion';
 
     return (
-        <div class="task-dashboard-container task-detail-view">
+        <div class="task-dashboard-container task-detail-view" ref={containerRef}>
             {/* GitHub style title header */}
             <div class="gh-header-top">
                 {onBack && (

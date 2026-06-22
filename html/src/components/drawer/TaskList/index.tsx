@@ -276,13 +276,13 @@ export function TaskList({
                         never through a human form. Discussions and milestones are the
                         two user-creatable items here. */}
                     {view.value === 'discussion' && (
-                        <button class="create-task-btn-toggle" onClick={startDiscussionWithPM}>
-                            + 新建讨论
+                        <button class="task-add-icon-btn" title="新建讨论" onClick={startDiscussionWithPM}>
+                            +
                         </button>
                     )}
                     {view.value === 'milestone' && (
-                        <button class="create-task-btn-toggle" onClick={() => (showMsForm.value = true)}>
-                            + 新建里程碑
+                        <button class="task-add-icon-btn" title="新建里程碑" onClick={() => (showMsForm.value = true)}>
+                            +
                         </button>
                     )}
                 </div>

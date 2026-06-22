@@ -1976,6 +1976,7 @@ body {
   flex: 1;
   min-height: 0;
   gap: 12px;
+  touch-action: pan-y;
 }
 
 .task-dashboard-header {
@@ -3265,6 +3266,22 @@ body {
 
   &:hover {
     background-color: var(--accent-dark);
+  }
+}
+
+.task-add-icon-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  font-size: 22px; font-weight: 700; line-height: 1;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  transition: color 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--accent-color);
+    background-color: var(--accent-light);
   }
 }
 
@@ -6710,6 +6727,7 @@ body {
     }
 
     .agent-catalog-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .agent-catalog-text { min-width: 0; overflow: hidden; }
 
     .agent-catalog-dot {
         flex: none; width: 9px; height: 9px; border-radius: 50%;
@@ -6769,6 +6787,9 @@ body {
         .sys-settings-btn { justify-content: center; }
         .agent-catalog-row { flex-direction: column; align-items: flex-start; }
         .agent-catalog-meta { max-width: 100%; }
+        .agent-catalog-header { flex-wrap: wrap; gap: 6px 12px; }
+        .agent-catalog-badges { flex-shrink: 1; justify-content: flex-start; }
+        .agent-catalog-install { align-self: stretch; }
     }
 }
 
@@ -11599,6 +11620,21 @@ body {
   }
 }
 
+@media (max-width: 768px) {
+  .chat-messages {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .chat-message-row-assistant {
+    max-width: 100%;
+
+    .chat-message-avatar {
+      display: none;
+    }
+  }
+}
+
 .chat-bubble-assistant {
   align-self: flex-start;
   background: var(--bg-panel);
@@ -12470,6 +12506,9 @@ body {
 // permission shield drops its text label (the data-mode colour conveys state).
 @media (max-width: 768px) {
   .new-chat-home {
+    padding-left: 16px;
+    padding-right: 16px;
+
     .new-chat-actions-row {
       flex-wrap: wrap;
       gap: 8px;
