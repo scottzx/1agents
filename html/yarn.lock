@@ -9,6 +9,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "1agents-frontend@workspace:."
   dependencies:
+    "@1agents/wire": ^0.1.0
     "@preact/signals": ^2.9.1
     "@preact/signals-core": ^1.14.2
     "@typescript-eslint/eslint-plugin": ^7.1.1
@@ -63,6 +64,16 @@ __metadata:
     zmodem.js: ^0.1.10
   languageName: unknown
   linkType: soft
+
+"@1agents/wire@npm:^0.1.0":
+  version: 0.1.0
+  resolution: "@1agents/wire@npm:0.1.0"
+  dependencies:
+    "@paralleldrive/cuid2": ^2.2.2
+    zod: ^4.0.0
+  checksum: 89045359b544b83da1994e0e42708a05a1071b715749652ff34cd99994f4a506ed8a2e01ddddcc07e0a30459078a861f3a880c21021b986c4810a894d431a32b
+  languageName: node
+  linkType: hard
 
 "@babel/code-frame@npm:^7.0.0":
   version: 7.29.0
@@ -514,6 +525,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@noble/hashes@npm:^1.1.5":
+  version: 1.8.0
+  resolution: "@noble/hashes@npm:1.8.0"
+  checksum: c94e98b941963676feaba62475b1ccfa8341e3f572adbb3b684ee38b658df44100187fa0ef4220da580b13f8d27e87d5492623c8a02ecc61f23fb9960c7918f5
+  languageName: node
+  linkType: hard
+
 "@nodelib/fs.scandir@npm:2.1.5":
   version: 2.1.5
   resolution: "@nodelib/fs.scandir@npm:2.1.5"
@@ -545,6 +563,15 @@ __metadata:
     "@nodelib/fs.scandir": 2.1.5
     fastq: ^1.6.0
   checksum: 190c643f156d8f8f277bf2a6078af1ffde1fd43f498f187c2db24d35b4b4b5785c02c7dc52e356497b9a1b65b13edc996de08de0b961c32844364da02986dc53
+  languageName: node
+  linkType: hard
+
+"@paralleldrive/cuid2@npm:^2.2.2":
+  version: 2.3.1
+  resolution: "@paralleldrive/cuid2@npm:2.3.1"
+  dependencies:
+    "@noble/hashes": ^1.1.5
+  checksum: 1310abcdf8f50721725bf7394f89cb6e704308cdfb62da6a251d93c036d4c4ae45987ed10dcf58d0ccdd1e8fdf0b860351306f582457b5146154cb1e660bbd39
   languageName: node
   linkType: hard
 
@@ -11382,6 +11409,13 @@ __metadata:
   dependencies:
     crc-32: ^1.1.1
   checksum: ca52c5fad8a2e7df8aae678d50bf82701e94543547368470998c39af0a2e01908252d89a976c6748a89048dc332def688ad845082090035a18387c8611abe70b
+  languageName: node
+  linkType: hard
+
+"zod@npm:^4.0.0":
+  version: 4.4.3
+  resolution: "zod@npm:4.4.3"
+  checksum: bf236fdee7a5a5ec645eef5bfea3aad34e7df912931c2a23bc17e5b59882482751da42392916529da52ff9bc70f584797a5d496f1fb81f2d1a4c90fdd3922d2a
   languageName: node
   linkType: hard
 
