@@ -403,7 +403,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                 <div class="sys-settings-card">
                     <div
                         class="sys-settings-action-row"
-                        style="justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px;"
+                        style="flex-direction: row; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px;"
                     >
                         <span class="sys-settings-card-subtitle" style="font-size: 12px; font-weight: 500;">
                             {t('settings.agents.summary', language, {
@@ -450,17 +450,6 @@ export function SystemSettings(props: SystemSettingsProps) {
                                         {a.cliCapable && (
                                             <span class="agent-cap-badge cli">
                                                 {t('settings.agents.capCli', language)}
-                                            </span>
-                                        )}
-                                        {a.integrated ? (
-                                            <span class="agent-transport-badge">
-                                                {a.ccTransport === 'acp'
-                                                    ? t('settings.agents.transportAcp', language)
-                                                    : t('settings.agents.transportCli', language)}
-                                            </span>
-                                        ) : (
-                                            <span class="agent-transport-badge detect-only">
-                                                {t('settings.agents.detectOnly', language)}
                                             </span>
                                         )}
                                     </div>

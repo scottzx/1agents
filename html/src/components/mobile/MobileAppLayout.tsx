@@ -74,6 +74,23 @@ function renderSettingsCategoryIcon(cat: SettingsCategory) {
                     <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
             );
+        case 'relay':
+            return (
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <circle cx="12" cy="12" r="2" />
+                    <path d="M4.93 4.93a10 10 0 0 0 0 14.14" />
+                    <path d="M7.76 7.76a6 6 0 0 0 0 8.49" />
+                    <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                </svg>
+            );
         default:
             return null;
     }
@@ -168,6 +185,17 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
     private _prevActiveTabId = tabsStore.activeTabId.value;
     private _disposeTabSync: (() => void) | null = null;
 
+    // Swipe-to-archive state (class-level, no re-renders during active drag)
+    private _swipeEl: HTMLElement | null = null;
+    private _swipeBg: HTMLElement | null = null;
+    private _swipeId = '';
+    private _swipeIsChat = false;
+    private _swipeSessionIndex = 0;
+    private _swipeStartX = 0;
+    private _swipeStartY = 0;
+    private _swipeLocked: 'h' | 'v' | null = null;
+    private _didSwipe = false;
+
     componentDidMount() {
         this._disposeTabSync = effect(() => {
             const id = tabsStore.activeTabId.value;
@@ -230,6 +258,63 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         // beginner → assistant (stay simple on the default workspace).
         ui.sidebarMode.value = ui.isBeginnerMode.value ? 'assistant' : 'project';
         this.setState({ showNewChat: true });
+    };
+
+    private onSwipeDown = (e: PointerEvent, sessionId: string, isChatSession: boolean, sessionIndex: number) => {
+        if (e.button !== 0 && e.pointerType !== 'touch') return;
+        this._swipeEl = e.currentTarget as HTMLElement;
+        this._swipeBg = (e.currentTarget as HTMLElement).previousElementSibling as HTMLElement;
+        this._swipeId = sessionId;
+        this._swipeIsChat = isChatSession;
+        this._swipeSessionIndex = sessionIndex;
+        this._swipeStartX = e.clientX;
+        this._swipeStartY = e.clientY;
+        this._swipeLocked = null;
+        this._didSwipe = false;
+        this._swipeEl.setPointerCapture(e.pointerId);
+    };
+
+    private onSwipeMove = (e: PointerEvent) => {
+        if (!this._swipeEl) return;
+        const dx = e.clientX - this._swipeStartX;
+        const dy = e.clientY - this._swipeStartY;
+        if (!this._swipeLocked) {
+            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+            this._swipeLocked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+        }
+        if (this._swipeLocked !== 'h') return;
+        e.preventDefault();
+        const clamped = Math.max(0, Math.min(dx, 90));
+        this._swipeEl.style.transform = `translateX(${clamped}px)`;
+        this._swipeEl.style.transition = 'none';
+        if (this._swipeBg) {
+            this._swipeBg.style.opacity = String(Math.min(clamped / 80, 1));
+        }
+        if (clamped > 4) this._didSwipe = true;
+    };
+
+    private onSwipeUp = (e: PointerEvent) => {
+        if (!this._swipeEl) return;
+        const el = this._swipeEl;
+        const bg = this._swipeBg;
+        const dx = e.clientX - this._swipeStartX;
+        this._swipeEl = null;
+        this._swipeBg = null;
+        if (this._swipeLocked === 'h' && dx > 80 && this._swipeIsChat) {
+            // Archive confirmed (chat sessions only)
+            sess.killChatSession(this._swipeId);
+            // slide off
+            el.style.transition = 'transform 0.2s ease';
+            el.style.transform = 'translateX(100%)';
+        } else {
+            // Snap back
+            el.style.transition = 'transform 0.25s ease';
+            el.style.transform = 'translateX(0)';
+            if (bg) {
+                bg.style.opacity = '0';
+                bg.style.transition = 'opacity 0.25s ease';
+            }
+        }
     };
 
     render() {
@@ -445,75 +530,111 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             return (
                                                 <div class="mobile-session-cards-grid">
                                                     <div class="mobile-menu-group">
-                                                        {filtered.map(({ s, wsName }) => {
+                                                        {filtered.map(({ s, wsName }, idx) => {
                                                             const sessionAgent = isChat(s) ? s.agentType : s.agent;
                                                             const timeLabel = formatSessionTime(
                                                                 isChat(s) ? s.lastEventAt || s.createdAt : undefined
                                                             );
                                                             return (
-                                                                <div
-                                                                    key={s.id}
-                                                                    class={`mobile-session-item-row ${s.active ? 'active' : ''}`}
-                                                                    onClick={() => this.openSession(s)}
-                                                                >
-                                                                    <div class="card-left">
-                                                                        {sessionAgent ? (
-                                                                            <AgentAvatar
-                                                                                agentType={
-                                                                                    TERM_AGENT_LOGO_KEY[sessionAgent] ||
-                                                                                    sessionAgent
-                                                                                }
-                                                                                role={isChat(s) ? s.role : undefined}
-                                                                                class="session-card-avatar"
-                                                                            />
-                                                                        ) : (
-                                                                            <div class="session-card-icon">
-                                                                                <svg
-                                                                                    viewBox="0 0 24 24"
-                                                                                    fill="none"
-                                                                                    stroke="currentColor"
-                                                                                >
-                                                                                    <polyline points="4 17 10 11 4 5" />
-                                                                                    <line
-                                                                                        x1="12"
-                                                                                        x2="20"
-                                                                                        y1="19"
-                                                                                        y2="19"
-                                                                                    />
-                                                                                </svg>
-                                                                            </div>
-                                                                        )}
-                                                                        <div class="session-card-info">
-                                                                            <div class="session-card-name-row">
-                                                                                <span class="session-card-name">
-                                                                                    {s.name}
-                                                                                </span>
-                                                                            </div>
-                                                                            <div class="session-card-meta-row">
-                                                                                <span
-                                                                                    class="session-card-project"
-                                                                                    title={wsName}
-                                                                                >
+                                                                <div key={s.id} class="swipe-row-wrapper">
+                                                                    <div class="swipe-bg-archive" aria-hidden="true">
+                                                                        <svg
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            stroke-width="2"
+                                                                            stroke-linecap="round"
+                                                                            stroke-linejoin="round"
+                                                                        >
+                                                                            <polyline points="21 8 21 21 3 21 3 8" />
+                                                                            <rect x="1" y="3" width="22" height="5" />
+                                                                            <line x1="10" y1="12" x2="14" y2="12" />
+                                                                        </svg>
+                                                                        <span>归档</span>
+                                                                    </div>
+                                                                    <div
+                                                                        class={`mobile-session-item-row ${s.active ? 'active' : ''}`}
+                                                                        onPointerDown={(e: PointerEvent) =>
+                                                                            this.onSwipeDown(
+                                                                                e,
+                                                                                isChat(s) ? s.id : '',
+                                                                                isChat(s),
+                                                                                idx
+                                                                            )
+                                                                        }
+                                                                        onPointerMove={this.onSwipeMove}
+                                                                        onPointerUp={this.onSwipeUp}
+                                                                        onPointerCancel={this.onSwipeUp}
+                                                                        onClick={(e: MouseEvent) => {
+                                                                            if (this._didSwipe) {
+                                                                                e.stopPropagation();
+                                                                                return;
+                                                                            }
+                                                                            this.openSession(s);
+                                                                        }}
+                                                                    >
+                                                                        <div class="card-left">
+                                                                            {sessionAgent ? (
+                                                                                <AgentAvatar
+                                                                                    agentType={
+                                                                                        TERM_AGENT_LOGO_KEY[
+                                                                                            sessionAgent
+                                                                                        ] || sessionAgent
+                                                                                    }
+                                                                                    role={
+                                                                                        isChat(s) ? s.role : undefined
+                                                                                    }
+                                                                                    class="session-card-avatar"
+                                                                                />
+                                                                            ) : (
+                                                                                <div class="session-card-icon">
                                                                                     <svg
                                                                                         viewBox="0 0 24 24"
                                                                                         fill="none"
                                                                                         stroke="currentColor"
                                                                                     >
-                                                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                                                        <polyline points="4 17 10 11 4 5" />
+                                                                                        <line
+                                                                                            x1="12"
+                                                                                            x2="20"
+                                                                                            y1="19"
+                                                                                            y2="19"
+                                                                                        />
                                                                                     </svg>
-                                                                                    <span class="proj-name">
-                                                                                        {wsName}
+                                                                                </div>
+                                                                            )}
+                                                                            <div class="session-card-info">
+                                                                                <div class="session-card-name-row">
+                                                                                    <span class="session-card-name">
+                                                                                        {s.name}
                                                                                     </span>
-                                                                                </span>
+                                                                                </div>
+                                                                                <div class="session-card-meta-row">
+                                                                                    <span
+                                                                                        class="session-card-project"
+                                                                                        title={wsName}
+                                                                                    >
+                                                                                        <svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor"
+                                                                                        >
+                                                                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                                                        </svg>
+                                                                                        <span class="proj-name">
+                                                                                            {wsName}
+                                                                                        </span>
+                                                                                    </span>
+                                                                                </div>
                                                                             </div>
                                                                         </div>
-                                                                    </div>
-                                                                    <div class="card-right">
-                                                                        {timeLabel && (
-                                                                            <span class="session-card-date">
-                                                                                {timeLabel}
-                                                                            </span>
-                                                                        )}
+                                                                        <div class="card-right">
+                                                                            {timeLabel && (
+                                                                                <span class="session-card-date">
+                                                                                    {timeLabel}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             );
