@@ -51,8 +51,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         toggleLeftSidebar,
         activeDrawerTab,
         toggleDrawerTab,
-        activeTab,
-        setActiveTab,
         workspaceName,
         sessionName,
         tmuxMouseOn,
@@ -60,7 +58,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         isTerminalView,
         language,
         onBack,
-        hasChatSession,
     } = props;
 
     // Mobile hamburger menu open state
@@ -98,21 +95,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <line x1="12" x2="12" y1="12" y2="15" />
         </svg>
     );
-    // Terminal / session icon
-    const IconSession = (
-        <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" x2="20" y1="19" y2="19" />
-        </svg>
-    );
-    // AI Agent / chat icon
+    // AI Agent / chat icon (used as the unified 会话 view icon on mobile)
     const IconAgents = (
         <svg
             viewBox="0 0 24 24"
@@ -205,19 +188,20 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const hasContent = stage.hasContent.value;
     const chatShown = collapsed !== 'chat';
 
-    // session tab is "active" when terminal is shown and right panel is closed
-    const sessionActive = activeTab === 'terminal' && activeDrawerTab === 'none';
+    // "会话" view is active when no artifact drawer is open — the current
+    // session's workbench (chat or terminal) is showing.
+    const sessionActive = activeDrawerTab === 'none';
 
-    const handleSessionClick = () => {
-        setActiveTab('terminal');
-        // On mobile: collapse the right panel to reveal the terminal full-screen
+    // Show the current session: close any open artifact drawer (keeps the
+    // session's own chat/terminal tab as-is).
+    const handleShowSession = () => {
         if (activeDrawerTab !== 'none') {
             toggleDrawerTab(activeDrawerTab);
         }
         closeMobileMenu();
     };
 
-    // Helper: toggle a drawer tab and close the mobile menu
+    // Helper: switch to a drawer view and close the mobile menu.
     const handleDrawerToggle = (tab: RightDrawerTab) => {
         toggleDrawerTab(tab);
         closeMobileMenu();
@@ -393,42 +377,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <div class={`mobile-menu-drawer ${mobileMenuOpen.value ? 'open' : ''}`}>
                 <div class="mobile-menu-section-title">{t('header.mobile.switchView', language)}</div>
 
+                {/* Unified in-project views, fixed order: 会话 · 任务 · 文件 · 版本 · 渠道.
+                    会话 shows the current session; the rest are scoped to its
+                    project (activeWorkspaceId). Tapping one switches the whole pane. */}
                 <button
-                    id="mob-menu-terminal"
+                    id="mob-menu-session"
                     class={`mobile-menu-item ${sessionActive ? 'active' : ''}`}
-                    onClick={handleSessionClick}
+                    onClick={handleShowSession}
                 >
-                    <span class="mob-menu-icon">{IconSession}</span>
-                    <span class="mob-menu-label">{t('header.mobile.workbench', language)}</span>
+                    <span class="mob-menu-icon">{IconAgents}</span>
+                    <span class="mob-menu-label">{t('header.mobile.session', language)}</span>
                     {sessionActive && <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>}
                 </button>
 
-                {hasChatSession && (
-                    <button
-                        id="mob-menu-agents"
-                        class={`mobile-menu-item ${activeTab === 'agents' ? 'active' : ''}`}
-                        onClick={() => {
-                            setActiveTab('agents');
-                            closeMobileMenu();
-                        }}
-                    >
-                        <span class="mob-menu-icon">{IconAgents}</span>
-                        <span class="mob-menu-label">智能体</span>
-                        {activeTab === 'agents' && <span class="mob-menu-badge">当前</span>}
-                    </button>
-                )}
-
-                <button
-                    id="mob-menu-channels"
-                    class={`mobile-menu-item ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                    onClick={() => handleDrawerToggle('channels')}
-                >
-                    <span class="mob-menu-icon">{IconChannels}</span>
-                    <span class="mob-menu-label">{t('header.mobile.channels', language)}</span>
-                    {activeDrawerTab === 'channels' && (
-                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
-                    )}
-                </button>
                 {!isBeginnerMode.value && (
                     <button
                         id="mob-menu-tasks"
@@ -436,9 +397,9 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         onClick={() => handleDrawerToggle('tasks')}
                     >
                         <span class="mob-menu-icon">{IconTasks}</span>
-                        <span class="mob-menu-label">任务仪表盘</span>
+                        <span class="mob-menu-label">{t('header.mobile.tasks', language)}</span>
                         {activeDrawerTab === 'tasks' && (
-                            <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                            <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                         )}
                     </button>
                 )}
@@ -451,7 +412,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconFiles}</span>
                     <span class="mob-menu-label">{t('header.mobile.files', language)}</span>
                     {activeDrawerTab === 'files' && (
-                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>
 
@@ -463,7 +424,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconGit}</span>
                     <span class="mob-menu-label">{t('header.mobile.git', language)}</span>
                     {activeDrawerTab === 'git' && (
-                        <span class="mob-menu-badge">{t('header.mobile.opening', language)}</span>
+                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
+                    )}
+                </button>
+
+                <button
+                    id="mob-menu-channels"
+                    class={`mobile-menu-item ${activeDrawerTab === 'channels' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('channels')}
+                >
+                    <span class="mob-menu-icon">{IconChannels}</span>
+                    <span class="mob-menu-label">{t('header.mobile.channels', language)}</span>
+                    {activeDrawerTab === 'channels' && (
+                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>
             </div>

@@ -107,10 +107,9 @@ export class App extends Component<{}, AppState> {
         // Synchronize terminal windows + cached chat sessions into folders
         sess.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
 
-        // If we already have an active workspace, also refresh its chat sessions.
-        if (wsStore.activeWorkspaceId.value) {
-            sess.loadChatSessions(wsStore.activeWorkspaceId.value);
-        }
+        // Load conversations across ALL workspaces so the session-first home and
+        // the sidebar list every project's sessions, not just the active one.
+        sess.loadAllChatSessions();
 
         // Select default workspace if none is active, otherwise sync backend root
         const workspaces = wsStore.workspaces.value;

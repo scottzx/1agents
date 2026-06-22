@@ -2,9 +2,10 @@ import { h, Component, Fragment } from 'preact';
 import { effect } from '@preact/signals';
 
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
-import { isChat } from '../types';
+import { isChat, AGENT_TYPE_LABELS, type Session } from '../types';
+import { NewChatHome } from '../chat/NewChatHome';
+import { AgentAvatar } from '../chat/AgentAvatar';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
-import { TaskList } from '../drawer/TaskList';
 import { WorkbenchCanvas } from '../shared/WorkbenchCanvas';
 import { RightPanelHost } from '../shared/RightPanelHost';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
@@ -78,6 +79,32 @@ function renderSettingsCategoryIcon(cat: SettingsCategory) {
     }
 }
 
+/**
+ * Short timestamp for a conversation row on the session-first home: HH:MM when
+ * it's today, otherwise MM-DD. Chats carry `lastEventAt`/`createdAt`; terminals
+ * have none, so they render blank.
+ */
+function formatSessionTime(iso?: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Terminal `agent` values come from backend detection ('claude', …); map the
+ * ones whose name differs from the AgentAvatar logo key (others pass through to
+ * AgentAvatar's two-letter fallback). Mirrors SessionRow.
+ */
+const TERM_AGENT_LOGO_KEY: Record<string, string> = {
+    claude: 'claudecode',
+};
+
 interface MobileAppLayoutProps {
     app: App;
     state: AppState;
@@ -86,7 +113,19 @@ interface MobileAppLayoutProps {
 interface MobileAppLayoutState {
     activeMobileTab: 'workspaces' | 'providers' | 'skills' | 'more';
     selectedWorkspaceId: string;
-    inSessionView: boolean;
+    /**
+     * Home search query — filters the flat conversation list in place by
+     * conversation name OR project (workspace) name, so the user finds a
+     * conversation/project without leaving the home.
+     */
+    homeSearch: string;
+    /**
+     * The cross-project New Conversation landing (desktop's NewChatHome). It is
+     * the unified entry for starting any conversation — the user picks the
+     * project / agent / first message inside it — so it lives at the top level,
+     * reachable from the home screen regardless of the selected workspace.
+     */
+    showNewChat: boolean;
     skillsInDetail: boolean;
     /**
      * The path the skills iframe was last mounted with, baked into its URL
@@ -109,7 +148,8 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
     state: MobileAppLayoutState = {
         activeMobileTab: 'workspaces',
         selectedWorkspaceId: '',
-        inSessionView: false,
+        homeSearch: '',
+        showNewChat: false,
         skillsInDetail: false,
         mountedSkillsPath: '',
         activeMoreSubView: 'menu',
@@ -118,46 +158,29 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
     };
 
     /**
-     * Mirrors workspace switches (auto-select on load, deletes, …) into the
-     * local navigation state. Replaces the former componentWillReceiveProps
-     * prop comparison now that activeWorkspaceId lives in a signal: the
-     * effect fires on every signal write, the previous-value guard keeps the
-     * original "only on change" semantics.
-     */
-    private _prevActiveWsId = wsStore.activeWorkspaceId.value;
-    private _disposeWsSync: (() => void) | null = null;
-    /**
      * Mirrors "the workbench tab became active" into the local navigation
      * state. Replaces the former componentWillReceiveProps prop comparison
-     * now that activeTabId lives in a signal.
+     * now that activeTabId lives in a signal. (The home is session-first, so
+     * entering a session page is driven explicitly by `openSession` / the
+     * new-chat flow — we no longer auto-sync `selectedWorkspaceId` from the
+     * active workspace, which would jump into a session page on load.)
      */
     private _prevActiveTabId = tabsStore.activeTabId.value;
     private _disposeTabSync: (() => void) | null = null;
 
     componentDidMount() {
-        this._disposeWsSync = effect(() => {
-            const id = wsStore.activeWorkspaceId.value;
-            if (id !== this._prevActiveWsId) {
-                this._prevActiveWsId = id;
-                this.setState({ selectedWorkspaceId: id });
-            }
-        });
         this._disposeTabSync = effect(() => {
             const id = tabsStore.activeTabId.value;
             if (id !== this._prevActiveTabId) {
                 this._prevActiveTabId = id;
                 if (id === 'terminal') {
-                    this.setState({ activeMobileTab: 'workspaces', inSessionView: true });
+                    this.setState({ activeMobileTab: 'workspaces' });
                 }
             }
         });
     }
 
     componentWillUnmount() {
-        if (this._disposeWsSync) {
-            this._disposeWsSync();
-            this._disposeWsSync = null;
-        }
         if (this._disposeTabSync) {
             this._disposeTabSync();
             this._disposeTabSync = null;
@@ -185,12 +208,37 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         }
     };
 
+    /**
+     * Open (resume) a conversation straight from the session-first home — one
+     * tap into the session page, no workspace drill-down. selectSession sets
+     * the right tab (terminal / agents); we clear any artifact drawer so the
+     * workbench leads, and enter the project shell for that session's workspace.
+     */
+    openSession = (s: Session) => {
+        sess.selectSession(s);
+        tabsStore.activeDrawerTab.value = 'none';
+        this.setState({ selectedWorkspaceId: s.workspaceId });
+    };
+
+    /** Open the unified New Conversation landing (cross-project). */
+    openNewChat = () => {
+        sess.onStartNewChat();
+        // NewChatHome only shows the project picker (and lets the chosen project
+        // take effect) in 'project' mode; 'assistant' mode locks every chat to
+        // the 'default' workspace. Mobile has no sidebar toggle for this, so
+        // derive it from the UI mode: advanced → project (pick a project),
+        // beginner → assistant (stay simple on the default workspace).
+        ui.sidebarMode.value = ui.isBeginnerMode.value ? 'assistant' : 'project';
+        this.setState({ showNewChat: true });
+    };
+
     render() {
         const { app, state } = this.props;
         const {
             activeMobileTab,
             selectedWorkspaceId,
-            inSessionView,
+            homeSearch,
+            showNewChat,
             skillsInDetail,
             activeMoreSubView,
             activeSettingsCategory,
@@ -202,7 +250,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;
         const folders = wsStore.folders.value;
-        const workspacesLoading = wsStore.workspacesLoading.value;
         const activeSession = sess.activeSession.value;
         const tmuxMouseOn = sess.tmuxMouseOn.value;
         const selectedFsEntry = fs.selectedFsEntry.value;
@@ -221,6 +268,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         // Bottom bar is visible only on level-1 screens
         const showBottomBar =
             !selectedWorkspaceId &&
+            !showNewChat &&
             !skillsInDetail &&
             activeMoreSubView === 'menu' &&
             activeTabObj?.type !== 'preview' &&
@@ -234,335 +282,277 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                     {/* ── Tab 1: Workspaces ── */}
                     {activeMobileTab === 'workspaces' && (
                         <Fragment>
-                            {/* 1.1 Workspaces Level-1 List View */}
-                            {!selectedWorkspaceId && (
-                                <div class="mobile-tab-content">
-                                    <div class="mobile-menu-view scrollable">
-                                        <div class="mobile-menu-header">
-                                            <h2>{t('sidebar.workspaces', language) || '工作空间'}</h2>
-                                            <p>
-                                                {t('mobile.workspaces.desc', language) ||
-                                                    '管理并协同您的分布式设备节点'}
-                                            </p>
-                                        </div>
-                                        {workspacesLoading && workspaces.length === 0 ? (
-                                            <div class="fb-loading">
-                                                <div class="fb-loading-spinner" />
-                                                <span>{t('app.loading.workspaces', language)}</span>
-                                            </div>
-                                        ) : (
-                                            <div class="mobile-workspace-list">
-                                                <div class="mobile-menu-group">
-                                                    {workspaces.map(ws => (
-                                                        <div key={ws.id} class="mobile-workspace-item-row">
-                                                            <div
-                                                                class="item-main"
-                                                                onClick={() => {
-                                                                    this.setState({ selectedWorkspaceId: ws.id });
-                                                                    wsStore.selectWorkspace(ws);
-                                                                }}
-                                                            >
-                                                                <div class="ws-icon-circle">
-                                                                    <svg
-                                                                        viewBox="0 0 24 24"
-                                                                        fill="none"
-                                                                        stroke="currentColor"
-                                                                    >
-                                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                                    </svg>
-                                                                </div>
-                                                                <div class="ws-details">
-                                                                    <span class="ws-title">{ws.name}</span>
-                                                                    <span class="ws-path">{ws.path}</span>
-                                                                </div>
-                                                            </div>
-                                                            <div class="item-actions">
-                                                                <button
-                                                                    onClick={() => modal.openRenameWorkspaceModal(ws)}
-                                                                    class="action-btn"
-                                                                    title="Edit"
-                                                                >
-                                                                    <svg
-                                                                        viewBox="0 0 24 24"
-                                                                        fill="none"
-                                                                        stroke="currentColor"
-                                                                    >
-                                                                        <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                                                                    </svg>
-                                                                </button>
-                                                                <button
-                                                                    onClick={() =>
-                                                                        this.setState({
-                                                                            pendingConfirm: {
-                                                                                kind: 'workspace',
-                                                                                name: ws.name,
-                                                                                workspaceId: ws.id,
-                                                                            },
-                                                                        })
-                                                                    }
-                                                                    class="action-btn delete"
-                                                                    title="Delete"
-                                                                >
-                                                                    <svg
-                                                                        viewBox="0 0 24 24"
-                                                                        fill="none"
-                                                                        stroke="currentColor"
-                                                                    >
-                                                                        <polyline points="3 6 5 6 21 6" />
-                                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                                                    </svg>
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <button
-                                                    class="mobile-add-workspace-btn"
-                                                    onClick={modal.openCreateWorkspacePicker}
-                                                >
-                                                    + {t('app.workspace.create', language) || '新建工作空间'}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* 1.2 Workspace Detail View (Session Selection) */}
-                            {selectedWorkspaceId && !inSessionView && (
-                                <div class="mobile-tab-content scrollable">
+                            {/* 1.0 New Conversation — unified, cross-project landing.
+                                Overlays everything; the project is picked inside. */}
+                            {showNewChat && (
+                                <div class="mobile-subview-layout">
                                     <div class="mobile-subview-header">
                                         <button
                                             class="mobile-subview-back-btn"
-                                            onClick={() => this.setState({ selectedWorkspaceId: '' })}
+                                            onClick={() => this.setState({ showNewChat: false })}
                                         >
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <polyline points="15 18 9 12 15 6" />
                                             </svg>
                                         </button>
-                                        <div class="mobile-subview-title">
-                                            {t('mobile.selectSession', language) || '会话选择'}
-                                        </div>
+                                        <div class="mobile-subview-title">{t('sidebar.newChat', language)}</div>
                                     </div>
 
-                                    <div class="mobile-workspace-detail-body">
-                                        <div class="workspace-banner">
-                                            <div class="banner-icon">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                </svg>
-                                            </div>
-                                            <div class="banner-text-info">
-                                                <h3>{activeWorkspace?.name}</h3>
-                                                <p>{activeWorkspacePath}</p>
-                                            </div>
-                                        </div>
+                                    {/* 会话 / 项目 scope toggle — pinned below the header.
+                                        会话 = default workspace (no picker); 项目 = pick a
+                                        project. Drives NewChatHome via ui.sidebarMode. */}
+                                    <div
+                                        class="new-chat-scope-switch"
+                                        role="group"
+                                        aria-label={t('newchat.scope.aria', language)}
+                                    >
+                                        <button
+                                            type="button"
+                                            class={`scope-btn ${ui.sidebarMode.value === 'assistant' ? 'active' : ''}`}
+                                            aria-pressed={ui.sidebarMode.value === 'assistant'}
+                                            onClick={() => (ui.sidebarMode.value = 'assistant')}
+                                        >
+                                            {t('newchat.scope.chat', language)}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class={`scope-btn ${ui.sidebarMode.value === 'project' ? 'active' : ''}`}
+                                            aria-pressed={ui.sidebarMode.value === 'project'}
+                                            onClick={() => (ui.sidebarMode.value = 'project')}
+                                        >
+                                            {t('newchat.scope.project', language)}
+                                        </button>
+                                    </div>
 
-                                        {(() => {
-                                            const folder = folders.find(f => f.id === selectedWorkspaceId);
-                                            const sessions = folder?.sessions || [];
-
-                                            return (
-                                                <Fragment>
-                                                    <div class="mobile-session-section-title">
-                                                        <span>
-                                                            {t('mobile.sessionList', language, {
-                                                                count: sessions.length,
-                                                            })}
-                                                        </span>
-                                                        <button
-                                                            class="mobile-new-session-inline-btn"
-                                                            onClick={async () => {
-                                                                await sess.createTerminal(
-                                                                    selectedWorkspaceId,
-                                                                    activeWorkspacePath
-                                                                );
-                                                                this.setState({ inSessionView: true });
-                                                            }}
-                                                        >
-                                                            {t('mobile.newSession', language) || '+ 新建会话'}
-                                                        </button>
-                                                    </div>
-
-                                                    {sessions.length === 0 ? (
-                                                        <div class="mobile-no-sessions">
-                                                            <div class="no-session-icon">
-                                                                <svg
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                >
-                                                                    <polyline points="4 17 10 11 4 5" />
-                                                                    <line x1="12" x2="20" y1="19" y2="19" />
-                                                                </svg>
-                                                            </div>
-                                                            <p>
-                                                                {t('mobile.noSessionsActive', language) ||
-                                                                    '当前空间下暂无活动终端会话'}
-                                                            </p>
-                                                            <button
-                                                                class="mobile-primary-btn"
-                                                                onClick={async () => {
-                                                                    await sess.createTerminal(
-                                                                        selectedWorkspaceId,
-                                                                        activeWorkspacePath
-                                                                    );
-                                                                    this.setState({ inSessionView: true });
-                                                                }}
-                                                            >
-                                                                {t('mobile.createFirstSession', language) ||
-                                                                    '创建并进入第一个会话'}
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div class="mobile-session-container">
-                                                            <div class="mobile-session-cards-grid">
-                                                                <div class="mobile-menu-group">
-                                                                    {sessions.map(s => {
-                                                                        const isActive = activeSession?.id === s.id;
-                                                                        const sessionAgent = isChat(s)
-                                                                            ? s.agentType
-                                                                            : s.agent;
-                                                                        const sessionCwd = isChat(s)
-                                                                            ? undefined
-                                                                            : s.cwd;
-                                                                        const sessionIndex = isChat(s) ? -1 : s.index;
-                                                                        return (
-                                                                            <div
-                                                                                key={s.id}
-                                                                                class={`mobile-session-item-row ${isActive ? 'active' : ''}`}
-                                                                                onClick={() => {
-                                                                                    sess.selectSession(s);
-                                                                                    this.setState({
-                                                                                        inSessionView: true,
-                                                                                    });
-                                                                                }}
-                                                                            >
-                                                                                <div class="card-left">
-                                                                                    <div class="session-card-icon">
-                                                                                        {isChat(s) ? (
-                                                                                            <span style="font-size: 16px;">
-                                                                                                💬
-                                                                                            </span>
-                                                                                        ) : (
-                                                                                            <svg
-                                                                                                viewBox="0 0 24 24"
-                                                                                                fill="none"
-                                                                                                stroke="currentColor"
-                                                                                            >
-                                                                                                <polyline points="4 17 10 11 4 5" />
-                                                                                                <line
-                                                                                                    x1="12"
-                                                                                                    x2="20"
-                                                                                                    y1="19"
-                                                                                                    y2="19"
-                                                                                                />
-                                                                                            </svg>
-                                                                                        )}
-                                                                                    </div>
-                                                                                    <div class="session-card-info">
-                                                                                        <div class="session-card-name-row">
-                                                                                            <span class="session-card-name">
-                                                                                                {s.name}
-                                                                                            </span>
-                                                                                            {sessionAgent ? (
-                                                                                                <span class="session-card-agent">
-                                                                                                    {sessionAgent ===
-                                                                                                    'antigravity'
-                                                                                                        ? 'agy'
-                                                                                                        : sessionAgent
-                                                                                                              .charAt(0)
-                                                                                                              .toUpperCase() +
-                                                                                                          sessionAgent.slice(
-                                                                                                              1
-                                                                                                          )}
-                                                                                                </span>
-                                                                                            ) : null}
-                                                                                        </div>
-                                                                                        <span class="session-card-cwd">
-                                                                                            {sessionCwd ||
-                                                                                                activeWorkspacePath}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="card-right">
-                                                                                    <span
-                                                                                        class={`status-badge ${s.status || 'idle'}`}
-                                                                                    >
-                                                                                        {s.status || 'idle'}
-                                                                                    </span>
-                                                                                    <button
-                                                                                        class="action-btn"
-                                                                                        title={t(
-                                                                                            'sidebar.renameSession',
-                                                                                            language
-                                                                                        )}
-                                                                                        onClick={e => {
-                                                                                            e.stopPropagation();
-                                                                                            modal.openRenameSessionModal(
-                                                                                                s
-                                                                                            );
-                                                                                        }}
-                                                                                    >
-                                                                                        <svg
-                                                                                            viewBox="0 0 24 24"
-                                                                                            fill="none"
-                                                                                            stroke="currentColor"
-                                                                                        >
-                                                                                            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                                                                                        </svg>
-                                                                                    </button>
-                                                                                    <button
-                                                                                        class="action-btn delete"
-                                                                                        title={t(
-                                                                                            'sidebar.closeSession',
-                                                                                            language
-                                                                                        )}
-                                                                                        onClick={e => {
-                                                                                            e.stopPropagation();
-                                                                                            this.setState({
-                                                                                                pendingConfirm: {
-                                                                                                    kind: 'session',
-                                                                                                    name: s.name,
-                                                                                                    sessionIndex:
-                                                                                                        sessionIndex,
-                                                                                                    isChat: isChat(s),
-                                                                                                    sessionId: s.id,
-                                                                                                },
-                                                                                            });
-                                                                                        }}
-                                                                                    >
-                                                                                        <svg
-                                                                                            viewBox="0 0 24 24"
-                                                                                            fill="none"
-                                                                                            stroke="currentColor"
-                                                                                        >
-                                                                                            <polyline points="3 6 5 6 21 6" />
-                                                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                                                                        </svg>
-                                                                                    </button>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </Fragment>
-                                            );
-                                        })()}
+                                    <div
+                                        class="mobile-subview-content"
+                                        style="overflow: hidden; display: flex; flex-direction: column;"
+                                    >
+                                        <NewChatHome
+                                            workspaces={workspaces}
+                                            activeWorkspaceId={activeWorkspaceId}
+                                            onSubmitChat={async (wsId, agentType, prompt, role, permissionMode) => {
+                                                const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
+                                                await sess.createChatSession(
+                                                    wsId,
+                                                    name,
+                                                    agentType,
+                                                    prompt,
+                                                    role === 'pm' ? 'pm' : undefined,
+                                                    permissionMode
+                                                );
+                                                tabsStore.activeDrawerTab.value = 'none';
+                                                this.setState({
+                                                    showNewChat: false,
+                                                    selectedWorkspaceId: wsId,
+                                                });
+                                            }}
+                                            onSubmitTerminal={(wsId, cwd, initialCommand) => {
+                                                sess.createTerminal(wsId, cwd, initialCommand);
+                                                tabsStore.activeDrawerTab.value = 'none';
+                                                this.setState({
+                                                    showNewChat: false,
+                                                    selectedWorkspaceId: wsId,
+                                                });
+                                            }}
+                                            onOpenFolder={modal.openCreateWorkspacePicker}
+                                            language={language}
+                                        />
                                     </div>
                                 </div>
                             )}
 
-                            {/* 1.3 Session Workbench/Terminal Detail View */}
-                            {selectedWorkspaceId && inSessionView && (
+                            {/* 1.1 Home — session-first. All conversations across every
+                                workspace live here: an inline search box (filters by
+                                conversation OR project name) and a flat list (tap to
+                                resume directly). New Conversation is the floating button
+                                bottom-right. Workspaces are a per-row 所属项目 chip. */}
+                            {!selectedWorkspaceId && (
+                                <div class="mobile-tab-content">
+                                    <div class="mobile-menu-view scrollable">
+                                        <div class="mobile-menu-header">
+                                            <h2>{t('mobile.home.title', language) || '对话'}</h2>
+                                            <p>{t('mobile.home.desc', language) || '继续已有会话，或新建一个'}</p>
+                                        </div>
+
+                                        {folders.some(f => f.sessions.length > 0) && (
+                                            <div class="mobile-home-search">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                    <circle cx="11" cy="11" r="8" />
+                                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                                </svg>
+                                                <input
+                                                    type="text"
+                                                    placeholder={
+                                                        t('mobile.home.searchPlaceholder', language) ||
+                                                        '搜索会话或项目…'
+                                                    }
+                                                    value={homeSearch}
+                                                    onInput={e =>
+                                                        this.setState({
+                                                            homeSearch: (e.target as HTMLInputElement).value,
+                                                        })
+                                                    }
+                                                />
+                                                {homeSearch && (
+                                                    <button
+                                                        class="search-clear"
+                                                        title={t('common.clear', language) || '清除'}
+                                                        onClick={() => this.setState({ homeSearch: '' })}
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {(() => {
+                                            const q = homeSearch.trim().toLowerCase();
+                                            const all = folders.flatMap(f =>
+                                                f.sessions.map(s => ({ s, wsName: f.name }))
+                                            );
+                                            all.sort((a, b) => {
+                                                if (!!a.s.active !== !!b.s.active) return a.s.active ? -1 : 1;
+                                                const ta = isChat(a.s) ? a.s.lastEventAt || a.s.createdAt || '' : '';
+                                                const tb = isChat(b.s) ? b.s.lastEventAt || b.s.createdAt || '' : '';
+                                                return tb.localeCompare(ta);
+                                            });
+                                            const filtered = q
+                                                ? all.filter(
+                                                      ({ s, wsName }) =>
+                                                          s.name.toLowerCase().includes(q) ||
+                                                          wsName.toLowerCase().includes(q)
+                                                  )
+                                                : all;
+                                            if (all.length === 0) {
+                                                return (
+                                                    <div class="mobile-home-empty">
+                                                        {t('mobile.home.empty', language) ||
+                                                            '还没有会话，点上方新建聊天开始'}
+                                                    </div>
+                                                );
+                                            }
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <div class="mobile-home-empty">
+                                                        {t('mobile.home.noMatch', language) || '没有匹配的会话或项目'}
+                                                    </div>
+                                                );
+                                            }
+                                            return (
+                                                <div class="mobile-session-cards-grid">
+                                                    <div class="mobile-menu-group">
+                                                        {filtered.map(({ s, wsName }) => {
+                                                            const sessionAgent = isChat(s) ? s.agentType : s.agent;
+                                                            const timeLabel = formatSessionTime(
+                                                                isChat(s) ? s.lastEventAt || s.createdAt : undefined
+                                                            );
+                                                            return (
+                                                                <div
+                                                                    key={s.id}
+                                                                    class={`mobile-session-item-row ${s.active ? 'active' : ''}`}
+                                                                    onClick={() => this.openSession(s)}
+                                                                >
+                                                                    <div class="card-left">
+                                                                        {sessionAgent ? (
+                                                                            <AgentAvatar
+                                                                                agentType={
+                                                                                    TERM_AGENT_LOGO_KEY[sessionAgent] ||
+                                                                                    sessionAgent
+                                                                                }
+                                                                                role={isChat(s) ? s.role : undefined}
+                                                                                class="session-card-avatar"
+                                                                            />
+                                                                        ) : (
+                                                                            <div class="session-card-icon">
+                                                                                <svg
+                                                                                    viewBox="0 0 24 24"
+                                                                                    fill="none"
+                                                                                    stroke="currentColor"
+                                                                                >
+                                                                                    <polyline points="4 17 10 11 4 5" />
+                                                                                    <line
+                                                                                        x1="12"
+                                                                                        x2="20"
+                                                                                        y1="19"
+                                                                                        y2="19"
+                                                                                    />
+                                                                                </svg>
+                                                                            </div>
+                                                                        )}
+                                                                        <div class="session-card-info">
+                                                                            <div class="session-card-name-row">
+                                                                                <span class="session-card-name">
+                                                                                    {s.name}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div class="session-card-meta-row">
+                                                                                <span
+                                                                                    class="session-card-project"
+                                                                                    title={wsName}
+                                                                                >
+                                                                                    <svg
+                                                                                        viewBox="0 0 24 24"
+                                                                                        fill="none"
+                                                                                        stroke="currentColor"
+                                                                                    >
+                                                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                                                    </svg>
+                                                                                    <span class="proj-name">
+                                                                                        {wsName}
+                                                                                    </span>
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="card-right">
+                                                                        {timeLabel && (
+                                                                            <span class="session-card-date">
+                                                                                {timeLabel}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    {/* New Conversation — floating action button (bottom-right).
+                                        Hidden while the New Conversation overlay is up (it sits
+                                        above the home, which stays mounted underneath). */}
+                                    {!showNewChat && (
+                                        <button
+                                            class="mobile-fab"
+                                            onClick={this.openNewChat}
+                                            title={t('sidebar.newChat', language)}
+                                            aria-label={t('sidebar.newChat', language)}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                                <line x1="12" y1="8" x2="12" y2="14" />
+                                                <line x1="9" y1="11" x2="15" y2="11" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            {/* 1.2 Session page — entered by tapping a conversation on the
+                                home. The hamburger switches the in-project views (工作台 /
+                                智能体 / 任务看板 / 渠道 / 文件 / Git). Back returns to the
+                                session-first home. */}
+                            {selectedWorkspaceId && (
                                 <div class="mobile-tab-content">
                                     <WorkspaceHeader
                                         leftSidebarOpen={false}
                                         toggleLeftSidebar={() => {}}
-                                        onBack={() => this.setState({ inSessionView: false })}
+                                        onBack={() => this.setState({ selectedWorkspaceId: '' })}
                                         activeDrawerTab={activeDrawerTab}
                                         toggleDrawerTab={tabsStore.toggleDrawerTab}
                                         activeTab={tabsStore.activeTab.value}
@@ -599,7 +589,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             window.open(`/api/fs/view/${encodedPath}`, '_blank');
                                                         }
                                                     }}
-                                                    onSelectSession={s => sess.selectSession(s)}
+                                                    onSelectSession={s => {
+                                                        sess.selectSession(s);
+                                                        tabsStore.activeDrawerTab.value = 'none';
+                                                    }}
                                                 />
                                             </div>
                                         )}
@@ -939,32 +932,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                             </div>
                         </div>
                     )}
-
-                    {activeTabObj?.type === 'tasks' && (
-                        <div class="mobile-subview-layout">
-                            <div class="mobile-subview-header">
-                                <button class="mobile-subview-back-btn" onClick={() => tabsStore.selectTab('terminal')}>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                        <polyline points="15 18 9 12 15 6" />
-                                    </svg>
-                                </button>
-                                <div class="mobile-subview-title">项目任务</div>
-                            </div>
-                            <div
-                                class="mobile-subview-content scrollable"
-                                style="background-color: var(--bg-panel); padding: 12px 16px;"
-                            >
-                                <TaskList
-                                    workspaceId={selectedWorkspaceId || activeWorkspaceId}
-                                    onSelectSession={s => {
-                                        sess.selectSession(s);
-                                        tabsStore.selectTab('terminal');
-                                        this.setState({ inSessionView: true });
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {/* ── Bottom Navigation Bar ── */}
@@ -975,9 +942,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                             onClick={() => this.setMobileTab('workspaces')}
                         >
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                             </svg>
-                            {t('sidebar.workspaces', language) || '工作空间'}
+                            {t('mobile.nav.chats', language) || '对话'}
                         </button>
                         <button
                             class={`mobile-tab-btn ${activeMobileTab === 'providers' ? 'active' : ''}`}
