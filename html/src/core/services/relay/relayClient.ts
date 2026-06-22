@@ -267,3 +267,43 @@ export async function closeChat(socket: Socket, machine: RelayMachine, sessionId
         /* best-effort */
     }
 }
+
+/**
+ * 终端流过中转(issue #17 终端那一路)。同样只是 callMachine 的薄封装,配合
+ * relayTerminalSocket.ts 把终端 WS 改走中转:节点边车把本机 ttyd 的二进制帧
+ * 镜像成 Happy session 消息,H5 订阅 socket.on('update') 解密后逐帧喂给 xterm。
+ */
+export interface RelayTerminalParams {
+    termId: string;
+    cols: number;
+    rows: number;
+}
+
+/** 在节点上开一条终端桥,返回用于扇出过滤的 Happy session id。 */
+export async function openTerminal(
+    socket: Socket,
+    machine: RelayMachine,
+    params: RelayTerminalParams
+): Promise<{ happySessionId: string }> {
+    const r = (await callMachine(socket, machine, 'terminal-open', params)) as {
+        success: boolean;
+        happySessionId?: string;
+        error?: string;
+    };
+    if (!r.success || !r.happySessionId) throw new Error(r.error ?? 'open terminal failed');
+    return { happySessionId: r.happySessionId };
+}
+
+/** 把一帧原始 ttyd 字节(base64)经中转写进节点本地 ttyd WS。 */
+export async function inputTerminal(socket: Socket, machine: RelayMachine, termId: string, raw: string): Promise<void> {
+    await callMachine(socket, machine, 'terminal-input', { termId, raw });
+}
+
+/** 关闭节点上的终端桥(best-effort)。 */
+export async function closeTerminal(socket: Socket, machine: RelayMachine, termId: string): Promise<void> {
+    try {
+        await callMachine(socket, machine, 'terminal-close', { termId });
+    } catch {
+        /* best-effort */
+    }
+}

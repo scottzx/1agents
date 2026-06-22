@@ -1,24 +1,128 @@
 /**
- * RelayTerminalSocket — 占位(M1 骨架,尚未实现)。
+ * RelayTerminalSocket — 把终端流(ttyd)载到中转上,替代同源 `wss://…/ws`(issue #17 终端那一路)。
  *
- * 终端流过中转(issue #17 终端那一路)的前端半。设计上**完全仿照** relayChatSocket.ts 的
- * `ChatTransport` 模式:做一个 WebSocket 形状的薄传输,让 xterm 几乎不用改 —— 只换构造哪个 socket
- * (直连 ttyd 裸 WS vs 本类),选择方式同聊天今日做法。
+ * 与 RelayChatSocket 同思路,但**镜像 xterm 实际用到的 WebSocket EventTarget 面**
+ * (`addEventListener` + `binaryType` + `send(Uint8Array)` + `readyState`),而非聊天的
+ * `onmessage=` 属性式接口——所以它 `extends EventTarget`,xterm 的 ttyd 协议逻辑一行不改。
  *
- * 对接的 node 侧:adapter/terminal/terminalBridge.mjs(node-pty attach tmux)。
+ *   Down(node → H5):节点桥把本机 ttyd 的二进制帧批量镜像成 Happy session 消息
+ *                    `{ frames: [base64, ...] }`;本类订阅 `socket.on('update')`,按 happySessionId
+ *                    过滤、用 machine key 解密、**逐帧** dispatch `message`(data=ArrayBuffer)给 xterm。
+ *   Up(H5 → node):send() 把 xterm 发的原始 ttyd 帧(输入/resize/pause/resume/心跳)经 RPC 透传。
  *
- *   Down(node → H5):node 桥把 pty.onData 分帧 → relay → 本类订阅 relay update、按
- *                    终端 session 过滤、用 machine key 解密 → onmessage 回吐给 xterm。
- *   Up(H5 → node):send() 把 stdin 经 RPC 转发;另需 resize 通道(cols/rows)。
- *
- * ⚠️ 见 adapter/terminal/terminalBridge.mjs 的 §200 吞吐风险 + Spike A。**终端定走 relay,不设
- *    旁路隧道后路**;遇瓶颈靠分帧/批量/背压/结构化优化解决,不切传输。直连 ttyd 裸 WS 仅在
- *    同源(无中转)场景保留。(Cloudflare 仅用户手动内网穿透,见 1agents-tunnel,与此解耦。)
- *
- * TODO(M1 spike → 实现):
- *   1. 复用 ChatTransport 接口(见 relayChatSocket.ts),实现 RelayTerminalSocket。
- *   2. 帧格式与 terminalBridge.mjs 对齐(raw chunk / asciinema v2 / tmux -CC 事件)。
- *   3. resize:新增 relayClient 的 terminal-resize RPC helper。
+ * 节点侧对接:adapter/terminal/terminalBridge.mjs(桥接本机 ttyd,不引入 node-pty)。
  */
+import type { Socket } from 'socket.io-client';
+import { decrypt, encodeBase64, decodeBase64 } from './crypto';
+import { openTerminal, inputTerminal, closeTerminal, type RelayMachine, type RelayTerminalParams } from './relayClient';
 
-export const PLACEHOLDER = true; // M1 占位,无实现。
+// 对齐 WebSocket.{CONNECTING,OPEN,CLOSED} 数值常量。
+const CONNECTING = 0;
+const OPEN = 1;
+const CLOSED = 3;
+
+export class RelayTerminalSocket extends EventTarget {
+    // xterm 会设置/读取这两个,保持 WebSocket 形状。
+    binaryType: 'arraybuffer' | 'blob' = 'arraybuffer';
+    readyState = CONNECTING;
+
+    private happySessionId: string | null = null;
+    private updateHandler: ((data: unknown) => void) | null = null;
+    private disconnectHandler: (() => void) | null = null;
+
+    constructor(
+        private socket: Socket,
+        private machine: RelayMachine,
+        private params: RelayTerminalParams
+    ) {
+        super();
+        // start() 在稍后的 tick 完成:此时 xterm 已同步注册好 open/message/close 监听。
+        void this.start();
+    }
+
+    private async start(): Promise<void> {
+        try {
+            const { happySessionId } = await openTerminal(this.socket, this.machine, this.params);
+            if (this.readyState === CLOSED) return; // open 期间已被关闭
+            this.happySessionId = happySessionId;
+
+            this.updateHandler = (data: unknown) => {
+                // new-message payload(happy-server eventRouter.buildNewMessageUpdate):
+                //   { body: { t: 'new-message', sid, message: { content: { t, c } } } }
+                const body = (data as { body?: Record<string, unknown> } | undefined)?.body;
+                if (!body || body.t !== 'new-message') return;
+                if (body.sid !== happySessionId) return;
+                const message = body.message as { content?: { t?: string; c?: string } } | undefined;
+                const content = message?.content;
+                if (!content || content.t !== 'encrypted' || !content.c) return;
+                void this.deliver(content.c);
+            };
+            this.socket.on('update', this.updateHandler);
+
+            this.disconnectHandler = () => this.fail();
+            this.socket.on('disconnect', this.disconnectHandler);
+
+            this.readyState = OPEN;
+            this.dispatchEvent(new Event('open'));
+        } catch {
+            this.fail();
+        }
+    }
+
+    private async deliver(c: string): Promise<void> {
+        const obj = await decrypt(this.machine.encryptionKey, this.machine.variant, decodeBase64(c));
+        if (obj === null || obj === undefined) return;
+        // 桥哨兵:节点侧 ttyd WS 关了 → 结束本传输(xterm 触发重连)。
+        if (typeof obj === 'object' && (obj as { event?: string }).event === '__relay_closed') {
+            this.fail();
+            return;
+        }
+        const frames = (obj as { frames?: string[] }).frames;
+        if (!Array.isArray(frames)) return;
+        for (const f of frames) {
+            // decodeBase64 返回精确尺寸的 Uint8Array,.buffer 即该帧字节;
+            // xterm 的 onSocketData 读 event.data 当 ArrayBuffer。
+            const u8 = decodeBase64(f);
+            this.dispatchEvent(new MessageEvent('message', { data: u8.buffer }));
+        }
+    }
+
+    /** xterm 用 socket.send(Uint8Array|string) 发原始 ttyd 帧;透传给节点桥。 */
+    send(data: string | ArrayBuffer | ArrayBufferView): void {
+        if (this.readyState !== OPEN) return;
+        let u8: Uint8Array;
+        if (typeof data === 'string') u8 = new TextEncoder().encode(data);
+        else if (data instanceof ArrayBuffer) u8 = new Uint8Array(data);
+        else u8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        // 不阻塞 xterm:fire-and-forget(RPC 内部有 30s ack 超时兜底)。
+        void inputTerminal(this.socket, this.machine, this.params.termId, encodeBase64(u8));
+    }
+
+    close(): void {
+        if (this.readyState === CLOSED) return;
+        this.readyState = CLOSED;
+        this.cleanup();
+        void closeTerminal(this.socket, this.machine, this.params.termId);
+        // 正常关闭:code 1000,xterm 不重连。
+        this.dispatchEvent(new CloseEvent('close', { code: 1000 }));
+    }
+
+    /** 异常结束(open 失败 / relay 掉线 / 桥哨兵):code≠1000 让 xterm 重连。 */
+    private fail(): void {
+        if (this.readyState === CLOSED) return;
+        this.readyState = CLOSED;
+        this.cleanup();
+        this.dispatchEvent(new CloseEvent('close', { code: 1006 }));
+    }
+
+    private cleanup(): void {
+        if (this.updateHandler) {
+            this.socket.off('update', this.updateHandler);
+            this.updateHandler = null;
+        }
+        if (this.disconnectHandler) {
+            this.socket.off('disconnect', this.disconnectHandler);
+            this.disconnectHandler = null;
+        }
+    }
+}
