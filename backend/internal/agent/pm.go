@@ -85,32 +85,82 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 （当前项目 workspace_id=%s，仅供你理解上下文；工具已自动锁定，无需也无法手动指定项目。）`, projectName, workspaceID)
 }
 
-// buildPMMcpServers builds the per-session MCP server config (a JSON array of
-// one ACP stdio McpServer) for the project-locked task tools. The lock is the
-// ONEAGENTS_WORKSPACE_ID env var — the tools expose no project parameter, so
-// the agent is confined to workspaceID.
-func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
+// buildTasksMcpServer builds the ACP stdio McpServer entry for the
+// project-locked task tools. The lock is the ONEAGENTS_WORKSPACE_ID env var —
+// the tools expose no project parameter, so the agent is confined to
+// workspaceID. Credentials (the internal token) are injected here in Go, never
+// from a role template's YAML. Returns nil if the executable can't be resolved.
+func (h *Handler) buildTasksMcpServer(workspaceID string) map[string]any {
 	exe, err := os.Executable()
 	if err != nil || exe == "" {
-		log.Printf("[agent] PM mcpServers: cannot resolve executable: %v", err)
+		log.Printf("[agent] tasks mcpServer: cannot resolve executable: %v", err)
 		return nil
 	}
-	servers := []map[string]any{
-		{
-			"type":    "stdio",
-			"name":    "tasks",
-			"command": exe,
-			"args":    []string{"mcp-tasks"},
-			"env": []map[string]string{
-				{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
-				{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
-				{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
-			},
+	return map[string]any{
+		"type":    "stdio",
+		"name":    "tasks",
+		"command": exe,
+		"args":    []string{"mcp-tasks"},
+		"env": []map[string]string{
+			{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
+			{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
+			{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
 		},
+	}
+}
+
+// buildPMMcpServers builds the per-session MCP server config (a JSON array of
+// one ACP stdio McpServer) for the project-locked task tools. Retained as the
+// hardcoded fallback for the PM/PMO path when the role template can't be
+// resolved; the template-driven path uses buildMcpServersFromRole.
+func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
+	srv := h.buildTasksMcpServer(workspaceID)
+	if srv == nil {
+		return nil
+	}
+	b, err := json.Marshal([]map[string]any{srv})
+	if err != nil {
+		log.Printf("[agent] PM mcpServers: marshal failed: %v", err)
+		return nil
+	}
+	return b
+}
+
+// resolvePMRole resolves the builtin "pm" role template for a PM/PMO session
+// and returns its rendered system prompt and per-session MCP config. Both the
+// pm and pmo role codes map to the single "pm" template. If the template can't
+// be loaded or its engine isn't available, it falls back to the hardcoded PM
+// builders so PM sessions never regress (#137).
+func (h *Handler) resolvePMRole(workspacePath, workspaceID string) (prompt string, mcpServers json.RawMessage) {
+	projectName := h.workspaceName(workspaceID)
+	if tpl, ok := LoadRoles(workspacePath).Resolve("pm"); ok && tpl.Available {
+		return renderRolePrompt(tpl, projectName, workspaceID), h.buildMcpServersFromRole(tpl, workspaceID)
+	}
+	return buildPMSystemPrompt(projectName, workspaceID), h.buildPMMcpServers(workspaceID)
+}
+
+// buildMcpServersFromRole turns a role template's mcp_servers list into the
+// per-session MCP server config. Each named server maps to a Go-built entry
+// (credentials injected server-side). Unknown names are logged and skipped.
+// Returns nil when no server resolves.
+func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID string) json.RawMessage {
+	var servers []map[string]any
+	for _, name := range tpl.McpServers {
+		switch name {
+		case "tasks", "mcp-tasks":
+			if srv := h.buildTasksMcpServer(workspaceID); srv != nil {
+				servers = append(servers, srv)
+			}
+		default:
+			log.Printf("[agent] role %s: unknown mcp server %q (skipped)", tpl.Name, name)
+		}
+	}
+	if len(servers) == 0 {
+		return nil
 	}
 	b, err := json.Marshal(servers)
 	if err != nil {
-		log.Printf("[agent] PM mcpServers: marshal failed: %v", err)
+		log.Printf("[agent] role mcpServers: marshal failed: %v", err)
 		return nil
 	}
 	return b
