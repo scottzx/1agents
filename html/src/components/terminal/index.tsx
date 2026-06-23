@@ -262,16 +262,9 @@ export class Terminal extends Component<Props, State> {
                 {isMobile && showInputPanel && (
                     <div class="mobile-input-panel">
                         <div class="panel-inner">
-                            {isHttps && (
-                                <MicButton
-                                    className="panel-btn key-btn-mic"
-                                    recording={isRecording}
-                                    onClick={this.toggleSpeech}
-                                    title={t('terminal.action.voice', language)}
-                                    ariaLabel={t('terminal.action.voice', language)}
-                                />
-                            )}
-                            <div class={`panel-textarea-wrapper ${isRecording ? 'recording-active' : ''}`}>
+                            <div
+                                class={`panel-textarea-wrapper ${isRecording ? 'recording-active' : ''} ${isHttps ? 'has-mic' : ''}`}
+                            >
                                 <textarea
                                     ref={el => {
                                         this.panelInputRef = el;
@@ -291,6 +284,15 @@ export class Terminal extends Component<Props, State> {
                                     autoCapitalize="off"
                                     spellcheck={false}
                                 />
+                                {isHttps && (
+                                    <MicButton
+                                        className="panel-mic-inline-btn key-btn-mic"
+                                        recording={isRecording}
+                                        onClick={this.toggleSpeech}
+                                        title={t('terminal.action.voice', language)}
+                                        ariaLabel={t('terminal.action.voice', language)}
+                                    />
+                                )}
                                 <button
                                     class="panel-send-inline-btn"
                                     onClick={this.sendPanelInput}

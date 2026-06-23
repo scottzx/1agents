@@ -432,14 +432,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                             class={`agent-catalog-dot ${a.installed ? 'installed' : 'missing'}`}
                                             aria-hidden="true"
                                         />
-                                        <div class="agent-catalog-text">
-                                            <div class="agent-catalog-name">{a.label}</div>
-                                            <div class="agent-catalog-meta">
-                                                {a.installed
-                                                    ? a.path || t('settings.agents.installed', language)
-                                                    : t('settings.agents.notInstalled', language)}
-                                            </div>
-                                        </div>
+                                        <span class="agent-catalog-name">{a.label}</span>
                                     </div>
                                     <div class="agent-catalog-badges">
                                         {a.acpCapable && (
@@ -455,18 +448,56 @@ export function SystemSettings(props: SystemSettingsProps) {
                                     </div>
                                 </div>
 
+                                {a.installed && a.path && (
+                                    <div class="agent-catalog-path-row">
+                                        <code class="agent-catalog-path-text" title={a.path}>
+                                            {a.path}
+                                        </code>
+                                    </div>
+                                )}
+
                                 {!a.installed && a.installCommand && (
-                                    <div class="agent-catalog-install">
-                                        <code class="agent-catalog-cmd" title={a.installCommand}>
+                                    <div class="agent-catalog-path-row">
+                                        <code class="agent-catalog-path-text" title={a.installCommand}>
                                             {a.installCommand}
                                         </code>
                                         <button
-                                            class="agent-catalog-copy"
+                                            class="agent-catalog-copy-btn"
+                                            title={
+                                                copiedAgent.value === a.type
+                                                    ? t('settings.agents.copied', language)
+                                                    : t('settings.agents.copy', language)
+                                            }
                                             onClick={() => copyInstall(a.type, a.installCommand!)}
                                         >
-                                            {copiedAgent.value === a.type
-                                                ? t('settings.agents.copied', language)
-                                                : t('settings.agents.copy', language)}
+                                            {copiedAgent.value === a.type ? (
+                                                <svg
+                                                    width="14"
+                                                    height="14"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.5"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <polyline points="20 6 9 17 4 12" />
+                                                </svg>
+                                            ) : (
+                                                <svg
+                                                    width="14"
+                                                    height="14"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                                </svg>
+                                            )}
                                         </button>
                                     </div>
                                 )}
