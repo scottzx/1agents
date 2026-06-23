@@ -112,6 +112,23 @@ export class App extends Component<{}, AppState> {
         // the sidebar list every project's sessions, not just the active one.
         sess.loadAllChatSessions();
 
+        // Relay long-connections WILL drop on mobile (cell handoff, screen
+        // lock, NAT timeout). Stability comes from recovering losslessly, not
+        // from never dropping: on every relay reconnect, re-fetch authoritative
+        // state via REST so a push lost during the gap is backfilled (mirrors
+        // the happy mobile app's onReconnected re-sync). Active chats re-open
+        // through their own socket disconnect handlers; here we realign the
+        // lists the UI renders off.
+        if (target.mode === 'relay') {
+            target.socket.io.on('reconnect', () => {
+                void Promise.all([
+                    wsStore.loadWorkspaces(true),
+                    sess.loadTerminals(),
+                    agentCatalog.loadAgentCatalog(),
+                ]).then(() => sess.loadAllChatSessions());
+            });
+        }
+
         // Select default workspace if none is active, otherwise sync backend root
         const workspaces = wsStore.workspaces.value;
         const activeWorkspaceId = wsStore.activeWorkspaceId.value;

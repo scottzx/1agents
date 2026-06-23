@@ -175,7 +175,11 @@ export function connect(serverUrl: string, creds: RelayCredentials): Promise<Soc
     const socket = io(origin, {
         auth: { token: creds.token },
         path: `${basePath}/v1/updates`,
-        transports: ['websocket'],
+        // Allow the polling fallback, not websocket-only: on flaky mobile
+        // networks a bare websocket can drop to nothing, whereas polling keeps
+        // the session alive (and silently upgrades back to websocket). The
+        // server already advertises both transports.
+        transports: ['websocket', 'polling'],
         autoConnect: false,
         reconnection: true,
     });
