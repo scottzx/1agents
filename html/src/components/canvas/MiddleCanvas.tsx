@@ -54,20 +54,20 @@ export function MiddleCanvas({
                         // would otherwise expose the hidden anchor window's shell.
                         <TerminalEmptyState language={language} />
                     ) : (
-                    <Terminal
-                        id="terminal-container"
-                        wsUrl={wsUrl}
-                        tokenUrl={tokenUrl}
-                        clientOptions={clientOptions}
-                        termOptions={termOptions}
-                        flowControl={flowControl}
-                        isMobile={isMobile}
-                        onMobileDetect={onMobileDetect}
-                        onKeyboardStateChange={onKeyboardStateChange}
-                        tmuxMouseOn={tmuxMouseOn}
-                        onTmuxMouseToggle={onTmuxMouseToggle}
-                        language={language}
-                    />
+                        <Terminal
+                            id="terminal-container"
+                            wsUrl={wsUrl}
+                            tokenUrl={tokenUrl}
+                            clientOptions={clientOptions}
+                            termOptions={termOptions}
+                            flowControl={flowControl}
+                            isMobile={isMobile}
+                            onMobileDetect={onMobileDetect}
+                            onKeyboardStateChange={onKeyboardStateChange}
+                            tmuxMouseOn={tmuxMouseOn}
+                            onTmuxMouseToggle={onTmuxMouseToggle}
+                            language={language}
+                        />
                     )
                 ) : activeTab === 'agents' ? (
                     activeChatSession ? (
