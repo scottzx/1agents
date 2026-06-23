@@ -327,9 +327,13 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         const dx = e.clientX - this._swipeStartX;
         this._swipeEl = null;
         this._swipeBg = null;
-        if (this._swipeLocked === 'h' && dx > 80 && this._swipeIsChat) {
-            // Archive confirmed (chat sessions only)
-            sess.killChatSession(this._swipeId);
+        if (this._swipeLocked === 'h' && dx > 80) {
+            // Commit: chat sessions archive, terminal sessions close.
+            if (this._swipeIsChat) {
+                sess.killChatSession(this._swipeId);
+            } else {
+                sess.killTerminal(this._swipeSessionIndex);
+            }
             // slide off
             el.style.transition = 'transform 0.2s ease';
             el.style.transform = 'translateX(100%)';
@@ -564,20 +568,64 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                             );
                                                             return (
                                                                 <div key={s.id} class="swipe-row-wrapper">
-                                                                    <div class="swipe-bg-archive" aria-hidden="true">
-                                                                        <svg
-                                                                            viewBox="0 0 24 24"
-                                                                            fill="none"
-                                                                            stroke="currentColor"
-                                                                            stroke-width="2"
-                                                                            stroke-linecap="round"
-                                                                            stroke-linejoin="round"
-                                                                        >
-                                                                            <polyline points="21 8 21 21 3 21 3 8" />
-                                                                            <rect x="1" y="3" width="22" height="5" />
-                                                                            <line x1="10" y1="12" x2="14" y2="12" />
-                                                                        </svg>
-                                                                        <span>归档</span>
+                                                                    <div
+                                                                        class={`swipe-bg-archive ${
+                                                                            isChat(s) ? '' : 'swipe-bg-close'
+                                                                        }`}
+                                                                        aria-hidden="true"
+                                                                    >
+                                                                        {isChat(s) ? (
+                                                                            <>
+                                                                                <svg
+                                                                                    viewBox="0 0 24 24"
+                                                                                    fill="none"
+                                                                                    stroke="currentColor"
+                                                                                    stroke-width="2"
+                                                                                    stroke-linecap="round"
+                                                                                    stroke-linejoin="round"
+                                                                                >
+                                                                                    <polyline points="21 8 21 21 3 21 3 8" />
+                                                                                    <rect
+                                                                                        x="1"
+                                                                                        y="3"
+                                                                                        width="22"
+                                                                                        height="5"
+                                                                                    />
+                                                                                    <line
+                                                                                        x1="10"
+                                                                                        y1="12"
+                                                                                        x2="14"
+                                                                                        y2="12"
+                                                                                    />
+                                                                                </svg>
+                                                                                <span>归档</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <svg
+                                                                                    viewBox="0 0 24 24"
+                                                                                    fill="none"
+                                                                                    stroke="currentColor"
+                                                                                    stroke-width="2"
+                                                                                    stroke-linecap="round"
+                                                                                    stroke-linejoin="round"
+                                                                                >
+                                                                                    <line
+                                                                                        x1="18"
+                                                                                        y1="6"
+                                                                                        x2="6"
+                                                                                        y2="18"
+                                                                                    />
+                                                                                    <line
+                                                                                        x1="6"
+                                                                                        y1="6"
+                                                                                        x2="18"
+                                                                                        y2="18"
+                                                                                    />
+                                                                                </svg>
+                                                                                <span>关闭</span>
+                                                                            </>
+                                                                        )}
                                                                     </div>
                                                                     <div
                                                                         class={`mobile-session-item-row ${s.active ? 'active' : ''}`}
@@ -586,7 +634,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                 e,
                                                                                 isChat(s) ? s.id : '',
                                                                                 isChat(s),
-                                                                                idx
+                                                                                isChat(s) ? idx : s.index
                                                                             )
                                                                         }
                                                                         onPointerMove={this.onSwipeMove}

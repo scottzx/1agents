@@ -810,6 +810,12 @@
     height: 20px;
     stroke: currentColor;
   }
+
+  // Terminal sessions close (hard kill) instead of archiving — signal the
+  // destructive, non-recoverable action with the danger color.
+  &.swipe-bg-close {
+    background: var(--danger-emphasis);
+  }
 }
 
 .mobile-session-item-row {
