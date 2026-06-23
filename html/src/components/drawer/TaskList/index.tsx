@@ -188,6 +188,26 @@ export function TaskList({
         return sessionStore.createPMSession(workspaceId, '新讨论', prompt);
     }, [workspaceId]);
 
+    // When hosted inside the panel (controlled mode), publish the current view's
+    // create action to the panel header instead of rendering an inline button
+    // row. Standalone (ContentViewHost) keeps its own inline buttons.
+    useEffect(() => {
+        if (!isControlled) {
+            taskNav.taskAddAction.value = null;
+            return;
+        }
+        if (view.value === 'discussion') {
+            taskNav.taskAddAction.value = { title: '新建讨论', run: () => void startDiscussionWithPM() };
+        } else if (view.value === 'milestone') {
+            taskNav.taskAddAction.value = { title: '新建里程碑', run: () => (showMsForm.value = true) };
+        } else {
+            taskNav.taskAddAction.value = null;
+        }
+        return () => {
+            taskNav.taskAddAction.value = null;
+        };
+    }, [isControlled, view.value, startDiscussionWithPM, showMsForm]);
+
     const createMilestone = useCallback(
         async (fields: MilestoneFields) => {
             const res = await fetch('/api/agent/milestones', {
@@ -271,21 +291,29 @@ export function TaskList({
                         </button>
                     ))}
                 </div>
-                <div class="task-header-actions">
-                    {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
-                        never through a human form. Discussions and milestones are the
-                        two user-creatable items here. */}
-                    {view.value === 'discussion' && (
-                        <button class="task-add-icon-btn" title="新建讨论" onClick={startDiscussionWithPM}>
-                            +
-                        </button>
-                    )}
-                    {view.value === 'milestone' && (
-                        <button class="task-add-icon-btn" title="新建里程碑" onClick={() => (showMsForm.value = true)}>
-                            +
-                        </button>
-                    )}
-                </div>
+                {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
+                    never through a human form. Discussions and milestones are the two
+                    user-creatable items. When hosted in the panel these "+" actions move
+                    to panel-tabs-header (see the taskAddAction bridge); standalone keeps
+                    them inline here. */}
+                {!isControlled && (
+                    <div class="task-header-actions">
+                        {view.value === 'discussion' && (
+                            <button class="task-add-icon-btn" title="新建讨论" onClick={startDiscussionWithPM}>
+                                +
+                            </button>
+                        )}
+                        {view.value === 'milestone' && (
+                            <button
+                                class="task-add-icon-btn"
+                                title="新建里程碑"
+                                onClick={() => (showMsForm.value = true)}
+                            >
+                                +
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {error && <div class="task-error">{error}</div>}

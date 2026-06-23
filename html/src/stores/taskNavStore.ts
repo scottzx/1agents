@@ -24,6 +24,26 @@ import { parseTaskPermalink } from '../utils/markdown';
  */
 export const pendingTaskNav = signal<{ workspaceId: string; taskId: string } | null>(null);
 
+/**
+ * Mobile back-button bridge. The task-detail selection state lives inside
+ * RightPanel (local signals), but on mobile the single back affordance is the
+ * app header. RightPanel publishes whether a task is open (`taskHasSelection`)
+ * and how to step back one level (`taskBackHandler`); the mobile header calls
+ * the handler when a task is open, else falls through to its own onBack. Desktop
+ * keeps RightPanel's own panel-back-btn and ignores this bridge.
+ */
+export const taskHasSelection = signal(false);
+export const taskBackHandler = signal<(() => void) | null>(null);
+
+/**
+ * Add-action bridge for the panel header. When TaskList runs inside the panel
+ * (controlled mode), it publishes the current view's create action here —
+ * 新建讨论 / 新建里程碑 — so the panel-tabs-header can render one "+" on the
+ * right instead of a second button row inside the board. null = no add action
+ * for the current view (or TaskList is standalone and renders its own button).
+ */
+export const taskAddAction = signal<{ title: string; run: () => void } | null>(null);
+
 /** Clear a consumed request (called by TaskList once it applies the selection). */
 export const consumePendingTaskNav = (): void => {
     pendingTaskNav.value = null;
