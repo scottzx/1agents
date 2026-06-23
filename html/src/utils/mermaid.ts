@@ -20,6 +20,43 @@ let mermaidPromise: Promise<MermaidApi> | null = null;
 let initializedTheme: 'light' | 'dark' | null = null;
 let idSeq = 0;
 
+// Open a rendered diagram full-size in a click-to-dismiss overlay. The inline
+// diagram is height-capped for readability (see `.mermaid-block` in the SCSS),
+// so this is how the user inspects a large one. Built imperatively to match the
+// diagrams themselves, which live outside the preact tree (innerHTML SVG).
+function openLightbox(svgMarkup: string): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'mermaid-lightbox-overlay';
+
+    const content = document.createElement('div');
+    content.className = 'mermaid-lightbox-content';
+    content.innerHTML = svgMarkup;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'mermaid-lightbox-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '✕';
+
+    overlay.appendChild(content);
+    overlay.appendChild(closeBtn);
+
+    const close = () => {
+        overlay.remove();
+        document.removeEventListener('keydown', onKey);
+    };
+    const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') close();
+    };
+    // Backdrop and the ✕ dismiss; clicks on the diagram itself don't (so it
+    // stays open while panning a large diagram).
+    overlay.addEventListener('click', close);
+    content.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(overlay);
+}
+
 async function getMermaid(theme: 'light' | 'dark'): Promise<MermaidApi> {
     if (!mermaidPromise) {
         mermaidPromise = import('mermaid').then(m => m.default as unknown as MermaidApi);
@@ -66,6 +103,13 @@ export async function renderMermaidBlocks(root: HTMLElement | null, theme: 'ligh
             block.innerHTML = svg;
             block.dataset.renderedTheme = theme;
             block.classList.remove('has-error');
+            block.classList.add('is-rendered');
+            // Click to open full-size. Assigned (not addEventListener) so a
+            // theme re-render replaces the handler instead of stacking one.
+            block.onclick = () => {
+                const node = block.querySelector('svg');
+                if (node) openLightbox(node.outerHTML);
+            };
         } catch {
             // Parse/render error: leave the <pre> source fallback, flag it, and
             // mark it done so we don't loop on the same bad input at this theme.

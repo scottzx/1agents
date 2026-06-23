@@ -82,16 +82,25 @@
   }
 
   /* Mermaid diagrams: centered SVG once rendered; the inner <pre> source
-     fallback inherits the fenced-code styling above until that swap happens. */
+     fallback inherits the fenced-code styling above until that swap happens.
+     Height-capped so a tall diagram scrolls in place instead of dominating the
+     message; `safe` centering keeps an overflowing diagram from clipping its
+     edges when scrolled. Click a rendered diagram to open it full-size. */
   .mermaid-block {
     margin: 1em 0;
     display: flex;
-    justify-content: center;
-    overflow-x: auto;
+    justify-content: safe center;
+    align-items: safe center;
+    max-height: 360px;
+    overflow: auto;
 
     svg {
       max-width: 100%;
       height: auto;
+    }
+
+    &.is-rendered {
+      cursor: zoom-in;
     }
 
     .mermaid-fallback {
@@ -7409,6 +7418,63 @@ body {
   align-items: center;
   justify-content: center;
   animation: fadeIn 0.15s ease;
+}
+
+/* Full-size preview for a clicked mermaid diagram. Mounted on <body> by
+   utils/mermaid.ts, so it lives at the top level (not under .markdown-body). */
+.mermaid-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2050;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  animation: fadeIn 0.15s ease;
+}
+
+.mermaid-lightbox-content {
+  max-width: 95vw;
+  max-height: 92vh;
+  overflow: auto;
+  padding: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-lg);
+  box-shadow: var(--shadow-lg), 0 20px 40px rgba(0, 0, 0, 0.15);
+
+  svg {
+    width: auto;
+    height: auto;
+    max-width: 88vw !important;
+    max-height: 84vh !important;
+  }
+}
+
+.mermaid-lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+
+  &:hover {
+    color: var(--text-main);
+    background: var(--btn-hover);
+  }
 }
 
 .ws-modal {
