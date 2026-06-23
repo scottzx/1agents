@@ -2020,6 +2020,13 @@ body {
       box-shadow: 0 2px 8px rgba(var(--accent-color-rgb), 0.3);
     }
   }
+
+  @media (max-width: 480px) {
+    button {
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+  }
 }
 
 /* ── Kanban board ── */
@@ -6672,17 +6679,16 @@ body {
     .agent-catalog-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 
     .agent-catalog-row {
-        display: flex; flex-direction: column; gap: 10px;
+        display: flex; flex-direction: column; gap: 8px;
         padding: 12px 14px; border-radius: 10px;
         background-color: var(--bg-card); border: 1px solid var(--border-color);
     }
 
     .agent-catalog-header {
-        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
 
-    .agent-catalog-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .agent-catalog-text { min-width: 0; overflow: hidden; }
+    .agent-catalog-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; overflow: hidden; }
 
     .agent-catalog-dot {
         flex: none; width: 9px; height: 9px; border-radius: 50%;
@@ -6690,12 +6696,9 @@ body {
         &.missing { background-color: var(--text-muted); }
     }
 
-    .agent-catalog-name { font-size: 13px; font-weight: 600; color: var(--text-main); }
-
-    .agent-catalog-meta {
-        font-size: 11.5px; color: var(--text-muted); margin-top: 2px;
-        font-family: var(--font-mono);
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px;
+    .agent-catalog-name {
+        font-size: 13px; font-weight: 600; color: var(--text-main);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
     .agent-catalog-badges { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
@@ -6712,26 +6715,29 @@ body {
         &.detect-only { color: var(--warning-fg); border-color: var(--warning-fg); background-color: rgba(var(--warning-rgb), 0.08); }
     }
 
-    .agent-catalog-install {
-        display: flex; align-items: stretch; gap: 8px;
-        padding-left: 19px; // align under the name, past the status dot
+    .agent-catalog-path-row {
+        display: flex; align-items: center; gap: 6px;
+        width: 100%; min-width: 0; box-sizing: border-box;
+        padding-left: 17px; // align under name, past the 9px dot + 8px gap
     }
 
-    .agent-catalog-cmd {
-        flex: 1; min-width: 0;
-        display: flex; align-items: center;
-        padding: 7px 10px; border-radius: 7px;
+    .agent-catalog-path-text {
+        flex: 1; min-width: 0; display: block;
+        padding: 6px 10px; border-radius: 7px;
         background-color: var(--bg-page); border: 1px solid var(--border-color);
-        font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary);
-        overflow-x: auto; white-space: nowrap; user-select: all;
+        font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);
+        overflow-x: auto; white-space: nowrap;
+        scrollbar-width: none;
+        &::-webkit-scrollbar { display: none; }
     }
 
-    .agent-catalog-copy {
-        flex: none; padding: 0 12px; border-radius: 7px;
-        border: 1px solid var(--accent-color); background-color: transparent;
-        color: var(--accent-color); font-size: 11.5px; font-weight: 600;
-        font-family: var(--font-sans); cursor: pointer; transition: all 0.15s ease;
-        &:hover { background-color: var(--accent-light); }
+    .agent-catalog-copy-btn {
+        flex: none; width: 30px; height: 30px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 7px; border: 1px solid var(--border-color);
+        background-color: var(--bg-page); color: var(--text-muted);
+        cursor: pointer; transition: all 0.15s ease;
+        &:hover { color: var(--accent-color); border-color: var(--accent-color); background-color: var(--accent-light); }
     }
 
     @media (max-width: 640px) {
@@ -6740,8 +6746,6 @@ body {
         .sys-settings-theme-grid { grid-template-columns: 1fr; }
         .sys-settings-action-row { flex-direction: column; align-items: stretch; }
         .sys-settings-btn { justify-content: center; }
-        .agent-catalog-row { flex-direction: column; align-items: flex-start; }
-        .agent-catalog-meta { max-width: 100%; }
     }
 }
 
