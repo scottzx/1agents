@@ -10,9 +10,9 @@ import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // Imported for its side-effecting setter only; referenced exclusively inside
 // method bodies (never at module-eval time) so the sessionStore ⇄ hooks import
 // cycle stays safe — see the cycle note in stores/sessionStore.ts.
-import { setLiveSessionStatus } from '../../stores/sessionStore';
+import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/sessionStore';
 // Protocol types moved to the platform-agnostic core (Phase 0 carve). Re-exported
-// below so existing `./hooks` importers (MessageList, SessionStatusBar, …) stay
+// below so existing `./hooks` importers (MessageList, ChatPanel, …) stay
 // unchanged.
 import type { ChatItem, ConnectionState } from '../../core/protocol/types';
 // Pure protocol folds + helpers carved into core (Phase 0). ChatBridgeManager is
@@ -189,6 +189,7 @@ export class ChatBridgeManager {
             }
             this.sessions.delete(sessionId);
             setLiveSessionStatus(sessionId, null);
+            setLiveSessionConnection(sessionId, null);
         }
     }
 
@@ -587,6 +588,10 @@ export class ChatBridgeManager {
         // Publish the derived live status into sessionStore so the sidebar dot
         // tracks this session in real time, then repaint the chat subscribers.
         setLiveSessionStatus(state.sessionId, deriveLiveStatus(state));
+        // Also mirror the raw WS connection state so the workspace header can
+        // show the active session's connection status (the chat status bar
+        // that used to own this was merged into the header).
+        setLiveSessionConnection(state.sessionId, state.connection);
         for (const listener of state.listeners) {
             listener();
         }

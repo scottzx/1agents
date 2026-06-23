@@ -10,6 +10,7 @@ import {
     type ChatStatus,
     type AgentType,
 } from '../components/types';
+import type { ConnectionState } from '../core/protocol/types';
 import { terminalService } from '../services/terminalService';
 import { agentService } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
@@ -66,6 +67,29 @@ export const setLiveSessionStatus = (sessionId: string, status: ChatStatus | nul
     }
     if (cur === status) return;
     liveSessionStatus.value = { ...liveSessionStatus.value, [sessionId]: status };
+};
+
+/**
+ * Live WebSocket connection state keyed by session id. Mirrors what the chat
+ * bridge tracks internally (idle/connecting/connected/reconnecting/closed/
+ * error) so the workspace header can show the active session's connection
+ * status — the chat status bar used to own this, but it now lives in the
+ * header. Only sessions with a live bridge get an entry; cleared on destroy.
+ */
+export const liveSessionConnection = signal<Record<string, ConnectionState>>({});
+
+/** Set or clear a session's live connection state (no-op when unchanged). */
+export const setLiveSessionConnection = (sessionId: string, conn: ConnectionState | null) => {
+    const cur = liveSessionConnection.value[sessionId];
+    if (conn === null) {
+        if (cur === undefined) return;
+        const next = { ...liveSessionConnection.value };
+        delete next[sessionId];
+        liveSessionConnection.value = next;
+        return;
+    }
+    if (cur === conn) return;
+    liveSessionConnection.value = { ...liveSessionConnection.value, [sessionId]: conn };
 };
 
 /** Sync tmux windows + chat sessions into workspace folders as sessions */

@@ -1,8 +1,10 @@
 import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
-import { RightDrawerTab, isFullPageTab } from '../types';
+import { RightDrawerTab, isFullPageTab, type AgentType } from '../types';
 import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
+import type { ConnectionState } from '../../core/protocol/types';
+import { AgentAvatar } from '../chat/AgentAvatar';
 import * as stage from '../../stores/stageStore';
 import { isBeginnerMode, isMobile } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
@@ -18,6 +20,8 @@ interface WorkspaceHeaderProps {
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
     keyboardVisible?: boolean;
     workspaceName: string;
+    /** Absolute path of the active workspace — shown in the info-icon tooltip. */
+    workspacePath?: string;
     sessionName: string;
     tmuxMouseOn?: boolean;
     onTmuxMouseToggle?: () => void;
@@ -37,6 +41,15 @@ interface WorkspaceHeaderProps {
     onBack?: () => void;
     /** True when the active workspace has at least one chat session. */
     hasChatSession?: boolean;
+    /**
+     * Active chat session descriptors. When set (i.e. the active session is a
+     * chat), the header renders the agent avatar and the live connection
+     * status — the former chat status bar, now merged into the header. Absent
+     * for terminal/tasks views, which fall back to just the name group.
+     */
+    agentType?: AgentType;
+    sessionRole?: string;
+    connection?: ConnectionState;
 }
 
 const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
@@ -53,12 +66,16 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         activeDrawerTab,
         toggleDrawerTab,
         workspaceName,
+        workspacePath,
         sessionName,
         tmuxMouseOn,
         onTmuxMouseToggle,
         isTerminalView,
         language,
         onBack,
+        agentType,
+        sessionRole,
+        connection,
     } = props;
 
     // Mobile hamburger menu open state
@@ -270,8 +287,39 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         </div>
                     ) : (
                         <div class="header-title-group">
-                            <span class="ws-name">{workspaceName || t('header.noWorkspace', language)}</span>
+                            {agentType && (
+                                <AgentAvatar agentType={agentType} role={sessionRole} class="header-agent-avatar" />
+                            )}
                             <span class="session-name">{sessionName || t('header.noSession', language)}</span>
+                            {connection && (
+                                <span class={`header-conn header-conn-${connection}`}>
+                                    {connectionLabel(connection)}
+                                </span>
+                            )}
+                            {(workspaceName || workspacePath) && (
+                                <span class="header-project-info" tabIndex={0}>
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <circle cx="12" cy="12" r="10" />
+                                        <line x1="12" y1="16" x2="12" y2="12" />
+                                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                                    </svg>
+                                    <span class="header-project-tooltip">
+                                        <span class="header-project-tooltip-name">
+                                            {workspaceName || t('header.noWorkspace', language)}
+                                        </span>
+                                        {workspacePath && (
+                                            <span class="header-project-tooltip-path">{workspacePath}</span>
+                                        )}
+                                    </span>
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>
@@ -453,4 +501,22 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             </div>
         </Fragment>
     );
+}
+
+/** Connection-state label, ported verbatim from the former SessionStatusBar. */
+function connectionLabel(state: ConnectionState): string {
+    switch (state) {
+        case 'idle':
+            return '未连接';
+        case 'connecting':
+            return '连接中…';
+        case 'connected':
+            return '已连接';
+        case 'reconnecting':
+            return '连接已断开，正在重连…';
+        case 'closed':
+            return '已关闭';
+        case 'error':
+            return '会话不可用';
+    }
 }
