@@ -10,7 +10,9 @@ import { AgentAvatar } from './AgentAvatar';
 import { t, getLang } from '../../i18n';
 import type { AgentType, PermissionDecision } from '../types';
 import { renderMarkdown } from '../../utils/markdown';
+import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
+import { theme } from '../../stores/uiStore';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -153,12 +155,24 @@ function AssistantBubble({
     // (#N, `项目名#N`) autolink. Numbers are optimistic in chat (the task list
     // isn't loaded here); a dead reference falls back to a not-found toast.
     const html = renderMarkdown(content, { projectName: activeProjectName() });
+
+    // Draw any ```mermaid blocks once the text is in the DOM. Reading the theme
+    // signal here subscribes this bubble, so a light/dark toggle re-renders the
+    // diagram. We hold off while streaming — a partially-arrived diagram is a
+    // parse error, so the raw-source fallback shows until the turn completes.
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const currentTheme = theme.value;
+    useEffect(() => {
+        if (streaming) return;
+        renderMermaidBlocks(bodyRef.current, currentTheme);
+    }, [html, streaming, currentTheme]);
+
     return (
         <div class="chat-message-row chat-message-row-assistant">
             {agentType && <AgentAvatar agentType={agentType} class="chat-message-avatar" />}
             <div class="chat-bubble chat-bubble-assistant">
                 <div class="chat-bubble-body">
-                    <div class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                    <div ref={bodyRef} class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
                     {streaming && <span class="chat-cursor">▍</span>}
                 </div>
             </div>
