@@ -13,3 +13,6 @@
 [submodule "modules/happy-cli"]
 	path = modules/happy-cli
 	url = https://github.com/scottzx/happy-cli.git
+[submodule "modules/superpowers"]
+	path = modules/superpowers
+	url = https://github.com/obra/superpowers.git
