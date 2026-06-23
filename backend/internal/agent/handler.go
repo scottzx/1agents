@@ -341,6 +341,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Milestone          string       `json:"milestone"`
 			Sprint             string       `json:"sprint"`
 			Type               string       `json:"type"`
+			Source             string       `json:"source"`
 			Recurrence         *Recurrence  `json:"recurrence"`
 			MaxRetries         *int         `json:"maxRetries"`
 			ScheduleType       ScheduleType `json:"scheduleType"`
@@ -363,6 +364,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// typo from the PM tool surfaces instead of silently defaulting.
 		if body.Assignee != "" && !IsSupportedAgentType(body.Assignee) {
 			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
+			return
+		}
+		if body.Source != "" && TaskSource(body.Source) != TaskSourceAgent {
+			http.Error(w, "source must be empty or agent-suggested", http.StatusBadRequest)
 			return
 		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
@@ -389,6 +394,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Milestone:          body.Milestone,
 			Sprint:             body.Sprint,
 			Type:               TaskType(body.Type),
+			Source:             TaskSource(body.Source),
 			Recurrence:         body.Recurrence,
 			MaxRetries:         maxRetries,
 			ScheduleType:       body.ScheduleType,
@@ -591,6 +597,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		Milestone          *string      `json:"milestone,omitempty"`
 		Sprint             *string      `json:"sprint,omitempty"`
 		Type               *string      `json:"type,omitempty"`
+		Source             *string      `json:"source,omitempty"`
 		Recurrence         **Recurrence `json:"recurrence,omitempty"`
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
@@ -634,6 +641,13 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if body.Assignee != nil && *body.Assignee != "" && !IsSupportedAgentType(*body.Assignee) {
 		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
+		return
+	}
+	// Adopting an AI suggestion is a PATCH with source:"" (clears the marker so
+	// the card joins the board); the only other accepted value is the marker
+	// itself. Anything else is a typo and is rejected.
+	if body.Source != nil && *body.Source != "" && TaskSource(*body.Source) != TaskSourceAgent {
+		http.Error(w, "source must be empty or agent-suggested", http.StatusBadRequest)
 		return
 	}
 
@@ -702,6 +716,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Type != nil {
 			target.Type = TaskType(*body.Type)
+		}
+		if body.Source != nil {
+			target.Source = TaskSource(*body.Source)
 		}
 		if body.Links != nil {
 			target.Links = *body.Links

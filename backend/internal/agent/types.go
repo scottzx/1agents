@@ -60,6 +60,7 @@ type (
 	ScheduleType      = meta.ScheduleType
 	TaskStatus        = meta.TaskStatus
 	TaskType          = meta.TaskType
+	TaskSource        = meta.TaskSource
 	IssueState        = meta.IssueState
 	SessionKind       = meta.SessionKind
 	SessionStatus     = meta.SessionStatus
@@ -99,6 +100,8 @@ const (
 	TaskTypeRequirement = meta.TaskTypeRequirement
 	TaskTypeBug         = meta.TaskTypeBug
 	TaskTypeDiscussion  = meta.TaskTypeDiscussion
+
+	TaskSourceAgent = meta.TaskSourceAgent
 
 	LinkCloses  = meta.LinkCloses
 	LinkRelates = meta.LinkRelates

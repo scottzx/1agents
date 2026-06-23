@@ -96,6 +96,24 @@ func TestSchedulerSkipsDiscussion(t *testing.T) {
 	}
 }
 
+func TestSchedulerSkipsSuggestion(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	// An AI suggestion (issue #47) is a proposal: pending + open like a normal
+	// task, but source = agent-suggested must hold it out of scheduling until a
+	// human adopts it (which clears the source marker).
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "sug", Title: "顺手清理死代码", Source: TaskSourceAgent, Description: "见 foo.go:42",
+			IssueState: IssueOpen, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+	})
+
+	s.Tick()
+
+	if got := statusOf(t, store, ref.Path, "sug"); got != TaskStatusPending {
+		t.Fatalf("suggestion = %s, want pending (never scheduled until adopted)", got)
+	}
+}
+
 func TestSchedulerContainerParentAutoCompletes(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()

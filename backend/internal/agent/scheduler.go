@@ -288,6 +288,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.Type == TaskTypeDiscussion {
 				continue // 讨论是概念记录，永不调度执行
 			}
+			if t.Source == TaskSourceAgent {
+				continue // AI 建议未被采纳前不进入调度
+			}
 			if t.IssueState == IssueClosed {
 				continue
 			}

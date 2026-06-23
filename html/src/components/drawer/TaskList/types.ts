@@ -46,6 +46,11 @@ export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
 export type TaskType = 'task' | 'requirement' | 'bug' | 'discussion';
 
+// How a task entered the pool. '' (omitted) = normal user/PM-created task;
+// 'agent-suggested' marks an AI suggestion (issue #47) — held out of the board
+// until a human 采纳 (clears source) or 忽略 (deletes) it.
+export type TaskSource = 'agent-suggested';
+
 // A GitHub-style peer cross-reference between work items (not hierarchy —
 // subtasks use parentId). target is the referenced task's id.
 export type LinkRel = 'closes' | 'relates';
@@ -80,6 +85,7 @@ export interface Task {
     parentId?: string;
     milestone?: string;
     type?: TaskType;
+    source?: TaskSource;
     number?: number;
     links?: TaskLink[];
     acceptanceCriteria?: string;

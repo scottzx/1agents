@@ -4,7 +4,6 @@ import { useSignal, signal } from '@preact/signals';
 
 import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
-import * as sessionStore from '../../../stores/sessionStore';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
@@ -14,7 +13,7 @@ import { TasksView } from './TasksView';
 import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
-import { DiscussionView } from './DiscussionView';
+import { SuggestionView } from './SuggestionView';
 import { SessionsView } from './SessionsView';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
@@ -44,7 +43,7 @@ export function TaskList({
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
     const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
-    const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'sessions' | 'milestone'>('tasks');
+    const view = useSignal<'overview' | 'suggestion' | 'requirements' | 'tasks' | 'sessions' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -176,29 +175,44 @@ export function TaskList({
         }
     };
 
-    // New discussions are created by talking to the PM, not a form: it decides
-    // through the dialogue whether to record a discussion card (still fuzzy) or
-    // create a requirement (clear, with a deliverable).
-    const startDiscussionWithPM = useCallback(() => {
-        const prompt = [
-            '我想和你聊一个新的想法 / 方向。',
-            '',
-            '请通过对话帮我厘清：如果目标清晰、有明确交付物，就用 create_task 建一条 requirement；如果还不够清晰，就用 create_discussion 建一张讨论卡片，留待以后继续讨论。先问我想聊什么。',
-        ].join('\n');
-        return sessionStore.createPMSession(workspaceId, '新讨论', prompt);
-    }, [workspaceId]);
+    // 采纳 an AI suggestion: clear its source marker so the card stops being a
+    // suggestion and joins the board as a normal task (the scheduler can then
+    // pick it up per its type/status). Reuses the inline PATCH path so the
+    // change lands instantly in the cached list.
+    const handleAdoptSuggestion = useCallback(
+        (taskId: string) => handlePatchTask(taskId, { source: '' }),
+        [handlePatchTask]
+    );
+
+    // 忽略 an AI suggestion: withdraw it entirely (dismiss). Suggestions are
+    // disposable proposals, so this deletes rather than retiring to a board
+    // column.
+    const handleDismissSuggestion = useCallback(
+        async (taskId: string) => {
+            if (!confirm('忽略这条 AI 建议？将从建议列表中移除。')) return;
+            try {
+                const res = await fetch(`/api/agent/tasks/${taskId}?workspace_id=${encodeURIComponent(workspaceId)}`, {
+                    method: 'DELETE',
+                });
+                if (!res.ok) throw new Error('Failed to dismiss suggestion');
+                fetchTasks();
+            } catch (err) {
+                alert((err as Error).message);
+            }
+        },
+        [workspaceId, fetchTasks]
+    );
 
     // When hosted inside the panel (controlled mode), publish the current view's
     // create action to the panel header instead of rendering an inline button
-    // row. Standalone (ContentViewHost) keeps its own inline buttons.
+    // row. Standalone (ContentViewHost) keeps its own inline buttons. The AI 建议
+    // view has no create action — suggestions are emitted by agents, not users.
     useEffect(() => {
         if (!isControlled) {
             taskNav.taskAddAction.value = null;
             return;
         }
-        if (view.value === 'discussion') {
-            taskNav.taskAddAction.value = { title: '新建讨论', run: () => void startDiscussionWithPM() };
-        } else if (view.value === 'milestone') {
+        if (view.value === 'milestone') {
             taskNav.taskAddAction.value = { title: '新建里程碑', run: () => (showMsForm.value = true) };
         } else {
             taskNav.taskAddAction.value = null;
@@ -206,7 +220,7 @@ export function TaskList({
         return () => {
             taskNav.taskAddAction.value = null;
         };
-    }, [isControlled, view.value, startDiscussionWithPM, showMsForm]);
+    }, [isControlled, view.value, showMsForm]);
 
     const createMilestone = useCallback(
         async (fields: MilestoneFields) => {
@@ -266,11 +280,12 @@ export function TaskList({
         );
     }
 
-    // Discussions live in the same tasks table but must never leak into the
-    // board/KPI views (scheduler, Kanban, Overview all treat them as noise).
-    // Split once here: boardTasks feeds the work-item views, discussions the 讨论 tab.
-    const discussions = tasks.filter(t => t.type === 'discussion');
-    const boardTasks = tasks.filter(t => t.type !== 'discussion');
+    // AI suggestions (source === 'agent-suggested') and discussions live in the
+    // same tasks table but must never leak into the board/KPI views (scheduler,
+    // Kanban, Overview all treat them as noise). Split once here: boardTasks
+    // feeds the work-item views, suggestions feed the AI 建议 tab.
+    const suggestions = tasks.filter(t => t.source === 'agent-suggested');
+    const boardTasks = tasks.filter(t => t.type !== 'discussion' && t.source !== 'agent-suggested');
 
     return (
         <div class="task-dashboard-container">
@@ -279,7 +294,7 @@ export function TaskList({
                     {(
                         [
                             ['overview', '总览'],
-                            ['discussion', '讨论'],
+                            ['suggestion', 'AI 建议'],
                             ['requirements', '需求'],
                             ['tasks', '任务'],
                             ['sessions', '会话'],
@@ -292,17 +307,12 @@ export function TaskList({
                     ))}
                 </div>
                 {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
-                    never through a human form. Discussions and milestones are the two
-                    user-creatable items. When hosted in the panel these "+" actions move
-                    to panel-tabs-header (see the taskAddAction bridge); standalone keeps
-                    them inline here. */}
+                    never through a human form; AI 建议 likewise comes from agents.
+                    Milestones are the one user-creatable item here. When hosted in the
+                    panel this "+" action moves to panel-tabs-header (see the
+                    taskAddAction bridge); standalone keeps it inline here. */}
                 {!isControlled && (
                     <div class="task-header-actions">
-                        {view.value === 'discussion' && (
-                            <button class="task-add-icon-btn" title="新建讨论" onClick={startDiscussionWithPM}>
-                                +
-                            </button>
-                        )}
                         {view.value === 'milestone' && (
                             <button
                                 class="task-add-icon-btn"
@@ -329,7 +339,14 @@ export function TaskList({
                 />
             )}
             {view.value === 'overview' && <Overview tasks={boardTasks} />}
-            {view.value === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
+            {view.value === 'suggestion' && (
+                <SuggestionView
+                    tasks={suggestions}
+                    onSelectTask={setSelectedTaskId}
+                    onAdopt={handleAdoptSuggestion}
+                    onDismiss={handleDismissSuggestion}
+                />
+            )}
             {view.value === 'sessions' && (
                 <SessionsView
                     workspaceId={workspaceId}

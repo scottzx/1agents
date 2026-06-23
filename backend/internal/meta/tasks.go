@@ -71,7 +71,7 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	summary, created_at, updated_at,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-	sprint, type, number, links`
+	sprint, type, number, links, source`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
@@ -82,7 +82,7 @@ func scanTask(r rowScanner) (Task, error) {
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
 		&t.Priority, &t.Assignee, &labels, &t.CreatedBy, &t.ParentID, &t.Milestone,
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
-		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links); err != nil {
+		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links, &t.Source); err != nil {
 		return Task{}, err
 	}
 	t.ScheduledAt = valToTimePtr(scheduledAt)
@@ -460,8 +460,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			completed_at, summary, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-			sprint, type, number, links)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sprint, type, number, links, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -490,7 +490,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			sprint = excluded.sprint,
 			type = excluded.type,
 			number = excluded.number,
-			links = excluded.links`,
+			links = excluded.links,
+			source = excluded.source`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
@@ -498,7 +499,7 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.Priority, t.Assignee, stringsToJSON(t.Labels), t.CreatedBy, t.ParentID,
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
 		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type,
-		t.Number, linksToJSON(t.Links))
+		t.Number, linksToJSON(t.Links), t.Source)
 	if err != nil {
 		return err
 	}

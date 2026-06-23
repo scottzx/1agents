@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 8
+const schemaVersion = 9
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -145,6 +145,11 @@ func (db *DB) migrateSchema() error {
 	if version < 8 {
 		if _, err := db.sql.Exec(schemaV8); err != nil {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
+		}
+	}
+	if version < 9 {
+		if _, err := db.sql.Exec(schemaV9); err != nil {
+			return fmt.Errorf("meta: apply schema v9: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -322,6 +327,14 @@ UPDATE milestones SET position = sub.rn FROM (
         PARTITION BY project_id ORDER BY created_at, name
     ) - 1 AS rn FROM milestones
 ) AS sub WHERE milestones.id = sub.id;
+`
+
+// schemaV9 adds the AI-suggestion source marker (issue #47). DEFAULT '' keeps
+// every existing row a normal task; source = 'agent-suggested' marks a proposed
+// task that an executing agent bubbled up, held out of the board/scheduler until
+// a human adopts (clears source) or dismisses (deletes) it.
+const schemaV9 = `
+ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT '';
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

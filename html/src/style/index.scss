@@ -3218,6 +3218,50 @@ body {
   }
 }
 
+/* ── AI 建议 (suggestion) chip — purple family marks the AI-emitted source,
+   with one-click 采纳 / 忽略 actions (issue #47). ── */
+.requirement-type-badge.suggestion-badge {
+  background-color: var(--purple-bg);
+  color: var(--purple-fg);
+}
+
+.suggestion-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+
+  .suggestion-btn {
+    flex: 1;
+    padding: 5px 0;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-panel);
+    color: var(--text-secondary);
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+
+    &.adopt {
+      background-color: var(--success-bg);
+      border-color: rgba(var(--success-rgb), 0.4);
+      color: var(--success-fg);
+
+      &:hover {
+        background-color: var(--success-emphasis);
+        border-color: var(--success-emphasis);
+        color: var(--on-accent);
+      }
+    }
+
+    &.dismiss:hover {
+      border-color: var(--border-color);
+      color: var(--text-main);
+      background-color: var(--btn-hover);
+    }
+  }
+}
+
 /* ── Sessions view (会话归档检索) ── */
 .sessions-view {
   flex: 1;

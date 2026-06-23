@@ -86,6 +86,19 @@ const (
 	TaskTypeDiscussion  TaskType = "discussion"
 )
 
+// TaskSource marks how a task entered the pool. The empty default means a
+// normal task (user- or PM-created). "agent-suggested" marks an AI suggestion
+// (issue #47, the spawn_task model): a self-contained work item an executing
+// agent bubbled up. Suggestions are held out of the board/scheduler until a
+// human 采纳 (adopt → clears Source so it becomes a normal task) or 忽略
+// (dismiss → deletes it). Source is orthogonal to Type: a suggestion keeps its
+// intended type (task/requirement/bug), so adoption is just clearing the flag.
+type TaskSource string
+
+const (
+	TaskSourceAgent TaskSource = "agent-suggested"
+)
+
 // LinkRel is the relation kind of a TaskLink. "closes" auto-closes the target
 // when the source task completes (GitHub-style "fixes #N"); "relates" is a
 // plain cross-reference kept for indexing/navigation only (never automatic).
@@ -252,6 +265,10 @@ type Task struct {
 	// Links are GitHub-style peer cross-references to other tasks. They drive
 	// indexing/navigation; "closes" links also auto-close their target.
 	Links []TaskLink `json:"links,omitempty"`
+	// ── suggestion source (schema v9) ──
+	// Source marks an AI-suggested task (issue #47). Empty = normal task;
+	// "agent-suggested" cards stay out of the board/scheduler until adopted.
+	Source TaskSource `json:"source,omitempty"`
 
 	// ── automation fields (schema v2) ──
 	AcceptanceCriteria string      `json:"acceptanceCriteria,omitempty"` // injected; agent self-checks before completing
