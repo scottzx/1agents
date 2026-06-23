@@ -74,6 +74,13 @@ export async function registerChatBridge(ctx, log) {
   ctx.registerHandler('1agents-chat-open', async (data) => {
     const existing = bridges.get(data.sessionId);
     if (existing && existing.goWs.readyState === 1) {
+      // The local Go WS is already warm, so the Go backend won't fire a fresh
+      // `session_ready` — it only emits one per new chat WS connection. Reusing
+      // the socket therefore leaves the H5 hanging on "initializing" whenever it
+      // reopens an already-open chat (e.g. switching back to a warm session).
+      // Synthesize the gate signal so the H5 unblocks; history is reloaded over
+      // the same socket via the get-history action the H5 sends on open.
+      void postMessage(existing.happySessionId, { event: 'session_ready', sessionId: data.sessionId });
       return { success: true, happySessionId: existing.happySessionId };
     }
     try {
