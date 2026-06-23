@@ -541,7 +541,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             tasksMap: {},
             loading: true,
             useMock: localStorage.getItem('1agents-db-use-mock') === 'true',
-            companyName: localStorage.getItem('1agents-company-name') || '玄武智能科技工坊',
+            companyName: localStorage.getItem('1agents-company-name') || '一万数字军团',
             isEditingCompany: false,
             dayCount: Number(localStorage.getItem('1agents-company-day') || '148'),
             funds: Number(localStorage.getItem('1agents-company-funds') || '2456800'),
