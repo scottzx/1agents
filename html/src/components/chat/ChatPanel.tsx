@@ -7,7 +7,6 @@ import * as ui from '../../stores/uiStore';
 import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
-import { SessionStatusBar } from './SessionStatusBar';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 
 interface ChatPanelProps {
@@ -78,7 +77,6 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
 
     return (
         <div class="chat-panel">
-            <SessionStatusBar session={session} connection={connection} typing={typing} />
             {takenOver && !bannerDismissed.value && (
                 <SessionTakenOverBanner
                     onRetry={() => {

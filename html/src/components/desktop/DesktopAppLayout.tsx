@@ -218,7 +218,15 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 toggleTheme={ui.toggleTheme}
                                 keyboardVisible={keyboardVisible}
                                 workspaceName={activeWorkspace?.name || ''}
+                                workspacePath={activeWorkspace?.path || ''}
                                 sessionName={activeSession?.name || ''}
+                                agentType={activeSession && isChat(activeSession) ? activeSession.agentType : undefined}
+                                sessionRole={activeSession && isChat(activeSession) ? activeSession.role : undefined}
+                                connection={
+                                    activeSession && isChat(activeSession)
+                                        ? sess.liveSessionConnection.value[activeSession.id] ?? 'idle'
+                                        : undefined
+                                }
                                 tmuxMouseOn={tmuxMouseOn}
                                 onTmuxMouseToggle={sess.toggleTmuxMouse}
                                 isTerminalView={activeTabId === 'terminal' && primaryView.kind === 'terminal'}
