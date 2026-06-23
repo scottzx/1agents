@@ -342,7 +342,9 @@ export const switchTerminal = async (windowIndex: number) => {
 
 /** Kill a terminal tab via POST /api/terminal/kill */
 export const killTerminal = async (windowIndex: number) => {
-    if (terminalWindows.value.length <= 1) return;
+    // No "last window" guard: the backend keeps a hidden anchor window alive to
+    // hold the tmux session, so any real terminal may be closed. When none
+    // remain the pane shows an empty state (see ContentViewHost/MiddleCanvas).
     try {
         await terminalService.kill(windowIndex);
         await loadTerminals();

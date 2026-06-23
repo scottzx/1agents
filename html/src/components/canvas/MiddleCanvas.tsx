@@ -5,6 +5,8 @@ import type { ClientOptions, FlowControl } from '../terminal/xterm';
 import { t, type Lang } from '../i18n';
 import type { ChatSession } from '../types';
 import { ChatPanel } from '../chat/ChatPanel';
+import { TerminalEmptyState } from '../shared/TerminalEmptyState';
+import * as sess from '../../stores/sessionStore';
 
 interface MiddleCanvasProps {
     activeTab: 'terminal' | 'agents' | 'console' | 'folders';
@@ -47,20 +49,26 @@ export function MiddleCanvas({
             {/* ── Terminal / agents canvas ────────────────────────────────────── */}
             <div class="terminal-card">
                 {activeTab === 'terminal' ? (
-                    <Terminal
-                        id="terminal-container"
-                        wsUrl={wsUrl}
-                        tokenUrl={tokenUrl}
-                        clientOptions={clientOptions}
-                        termOptions={termOptions}
-                        flowControl={flowControl}
-                        isMobile={isMobile}
-                        onMobileDetect={onMobileDetect}
-                        onKeyboardStateChange={onKeyboardStateChange}
-                        tmuxMouseOn={tmuxMouseOn}
-                        onTmuxMouseToggle={onTmuxMouseToggle}
-                        language={language}
-                    />
+                    sess.terminalWindows.value.length === 0 ? (
+                        // No real terminals → empty state instead of xterm, which
+                        // would otherwise expose the hidden anchor window's shell.
+                        <TerminalEmptyState language={language} />
+                    ) : (
+                        <Terminal
+                            id="terminal-container"
+                            wsUrl={wsUrl}
+                            tokenUrl={tokenUrl}
+                            clientOptions={clientOptions}
+                            termOptions={termOptions}
+                            flowControl={flowControl}
+                            isMobile={isMobile}
+                            onMobileDetect={onMobileDetect}
+                            onKeyboardStateChange={onKeyboardStateChange}
+                            tmuxMouseOn={tmuxMouseOn}
+                            onTmuxMouseToggle={onTmuxMouseToggle}
+                            language={language}
+                        />
+                    )
                 ) : activeTab === 'agents' ? (
                     activeChatSession ? (
                         <ChatPanel

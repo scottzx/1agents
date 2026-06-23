@@ -17,6 +17,7 @@ import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 import { Terminal } from '../terminal';
+import { TerminalEmptyState } from '../shared/TerminalEmptyState';
 import { ChatPanel } from '../chat/ChatPanel';
 import { NewChatHome } from '../chat/NewChatHome';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
@@ -171,6 +172,11 @@ const cardWrap = (children: h.JSX.Element) => (
 );
 
 function renderTerminal(app: App, theme: 'light' | 'dark', fontSize: number) {
+    // No real terminals → show the empty state instead of mounting xterm, which
+    // would otherwise expose the hidden anchor window's bare shell.
+    if (sess.terminalWindows.value.length === 0) {
+        return cardWrap(<TerminalEmptyState language={ui.language.value} />);
+    }
     const termOptions = {
         ...baseTermOptions,
         theme: theme === 'light' ? lightTermTheme : darkTermTheme,

@@ -71,6 +71,30 @@ func NewHandler(cfg *config.Config) *Handler {
 	}
 }
 
+// anchorWindowName is the hidden "anchor" window that keeps the tmux session
+// (and thus the ttyd attachment) alive even when the user closes every real
+// terminal. It is created with the session and never exposed to the client:
+// listWindows includes it, but the List API filters it out via filterAnchors.
+// Real terminal windows are always named "{workspaceId}_{n}" (with an
+// underscore), so any window whose name has no underscore is the anchor.
+const anchorWindowName = "p"
+
+func isAnchorWindow(name string) bool {
+	return !strings.Contains(name, "_")
+}
+
+// filterAnchors drops anchor windows so they never reach the frontend.
+func filterAnchors(windows []TmuxWindow) []TmuxWindow {
+	out := make([]TmuxWindow, 0, len(windows))
+	for _, win := range windows {
+		if isAnchorWindow(win.Name) {
+			continue
+		}
+		out = append(out, win)
+	}
+	return out
+}
+
 // ── POST /api/terminal/create ──────────────────────────────────────────────
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -128,34 +152,8 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	nextNum := h.nextWindowNum(req.WorkspaceID)
 	winName := fmt.Sprintf("%s_%d", req.WorkspaceID, nextNum)
 
-	// If the only window is the placeholder, rename it instead of creating new one
-	windows, _ := h.listWindows()
-	if len(windows) == 1 && !strings.Contains(windows[0].Name, "_") {
-		renameCmd := exec.Command("tmux", "rename-window", "-t", h.session+":0", winName)
-		if out, err := renameCmd.CombinedOutput(); err != nil {
-			log.Printf("[terminal] rename placeholder error: %v (output: %s)", err, string(out))
-		} else {
-			// Synchronize shell directory to workspace Cwd, then optionally run
-			// the initial command (e.g. `claude "..."`).
-			if req.Cwd != "" || req.InitialCommand != "" {
-				line := "clear"
-				if req.Cwd != "" {
-					line = fmt.Sprintf("cd %q && clear", req.Cwd)
-				}
-				if req.InitialCommand != "" {
-					line = line + " && " + req.InitialCommand
-				}
-				cdCmd := exec.Command("tmux", "send-keys", "-t", h.session+":0", line, "C-m")
-				_ = cdCmd.Run()
-			}
-			// Switch to the renamed window
-			h.selectWindow(0)
-			win := &TmuxWindow{Index: 0, Name: winName, Active: true, WorkspaceID: req.WorkspaceID}
-			writeJSON(w, http.StatusCreated, win)
-			return
-		}
-	}
-
+	// The anchor window (created by ensureSession) holds the session open, so
+	// every real terminal is a fresh window — we never consume the anchor.
 	args := []string{"new-window", "-a", "-t", h.session, "-n", winName}
 	if req.Cwd != "" {
 		args = append(args, "-c", req.Cwd)
@@ -202,7 +200,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			h.mu.RLock()
 			defer h.mu.RUnlock()
 			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"windows": h.mockWindows,
+				"windows": filterAnchors(h.mockWindows),
 				"session": "",
 			})
 			return
@@ -226,7 +224,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"windows": windows,
+		"windows": filterAnchors(windows),
 		"session": h.session,
 	})
 }
@@ -249,11 +247,6 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 
-		if len(h.mockWindows) <= 1 {
-			http.Error(w, "cannot kill the last terminal window", http.StatusBadRequest)
-			return
-		}
-
 		idx := -1
 		for i, win := range h.mockWindows {
 			if win.Index == req.WindowIndex {
@@ -264,6 +257,11 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 
 		if idx == -1 {
 			http.Error(w, "window not found", http.StatusNotFound)
+			return
+		}
+
+		if isAnchorWindow(h.mockWindows[idx].Name) {
+			http.Error(w, "cannot kill the anchor window", http.StatusBadRequest)
 			return
 		}
 
@@ -292,11 +290,6 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(windows) <= 1 {
-		http.Error(w, "cannot kill the last terminal window", http.StatusBadRequest)
-		return
-	}
-
 	// Check if the target window index exists; capture its name so we can clean
 	// up any persisted custom display name before the window is gone.
 	exists := false
@@ -310,6 +303,14 @@ func (h *Handler) Kill(w http.ResponseWriter, r *http.Request) {
 	}
 	if !exists {
 		http.Error(w, "window not found", http.StatusNotFound)
+		return
+	}
+
+	// The hidden anchor must survive — killing it would destroy the tmux
+	// session. Real terminals may always be closed (down to zero), and the
+	// frontend shows an empty state once none remain.
+	if isAnchorWindow(winName) {
+		http.Error(w, "cannot kill the anchor window", http.StatusBadRequest)
 		return
 	}
 
@@ -407,6 +408,16 @@ func (h *Handler) sessionExists() bool {
 	return exec.Command("tmux", "has-session", "-t", h.session).Run() == nil
 }
 
+// EnsureStartupSession creates the tmux session and its hidden anchor window
+// (index 0, a root shell) at boot, so the anchor always exists before any user
+// action and is recreated whenever the backend restarts. No-op in mock mode.
+func (h *Handler) EnsureStartupSession() {
+	if h.session == "" {
+		return
+	}
+	h.ensureSession()
+}
+
 // ensureSession creates the tmux session in detached mode if it doesn't exist.
 // This is needed because ttyd only spawns tmux inside its PTY when a WebSocket
 // client connects, but the API needs the session available before that.
@@ -417,11 +428,29 @@ func (h *Handler) ensureSession() {
 	if h.sessionExists() {
 		// Just in case, ensure mouse mode is on for this session
 		_ = exec.Command("tmux", "set-option", "-t", h.session, "mouse", "on").Run()
+		h.ensureAnchor()
 		return
 	}
 	log.Printf("[terminal] creating tmux session '%s' in detached mode", h.session)
-	_ = exec.Command("tmux", "new-session", "-d", "-s", h.session, "-n", "p").Run()
+	_ = exec.Command("tmux", "new-session", "-d", "-s", h.session, "-n", anchorWindowName).Run()
 	_ = exec.Command("tmux", "set-option", "-t", h.session, "mouse", "on").Run()
+}
+
+// ensureAnchor guarantees the hidden anchor window exists so the tmux session
+// (and the ttyd attachment) survives even when the user closes every real
+// terminal. Sessions created before the anchor model — or whose anchor was
+// somehow removed — get one added without stealing focus (-d).
+func (h *Handler) ensureAnchor() {
+	windows, err := h.listWindows()
+	if err != nil {
+		return
+	}
+	for _, win := range windows {
+		if isAnchorWindow(win.Name) {
+			return
+		}
+	}
+	_ = exec.Command("tmux", "new-window", "-d", "-t", h.session, "-n", anchorWindowName).Run()
 }
 
 // nextWindowNum finds the next available N for workspace_<N> naming.
