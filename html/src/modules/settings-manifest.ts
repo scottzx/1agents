@@ -13,7 +13,7 @@
 
 import type { ModuleManifest } from './module-types';
 
-export type SettingsCategory = 'general' | 'agents' | 'relay' | 'about';
+export type SettingsCategory = 'general' | 'agents' | 'relay' | 'updates' | 'about';
 
 export interface SettingsNavItem {
     key: SettingsCategory;
@@ -27,6 +27,7 @@ export const SETTINGS_CATEGORIES: SettingsNavItem[] = [
     { key: 'agents', path: '/agents', i18nKey: 'settings.nav.agents' },
     { key: 'general', path: '/general', i18nKey: 'settings.nav.general' },
     { key: 'relay', path: '/relay', i18nKey: 'settings.nav.relay' },
+    { key: 'updates', path: '/updates', i18nKey: 'settings.nav.updates' },
     { key: 'about', path: '/about', i18nKey: 'settings.nav.about' },
 ];
 

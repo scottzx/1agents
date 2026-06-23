@@ -592,6 +592,25 @@ export const zhCN: Record<string, string> = {
     'settings.feedback.formDesc': '提交功能建议或问题反馈，帮助我们改进产品。',
     'settings.feedback.open': '打开反馈表',
 
+    // ── 版本更新 ──
+    'settings.nav.updates': '检查更新',
+    'settings.updates.title': '版本更新',
+    'settings.updates.desc': '查看前端与后端组件的当前版本，并在有新版本时一键升级。',
+    'settings.updates.frontend': '前端',
+    'settings.updates.backend': '后端',
+    'settings.updates.current': '当前版本',
+    'settings.updates.latest': '最新版本',
+    'settings.updates.upToDate': '已是最新',
+    'settings.updates.available': '可升级',
+    'settings.updates.checking': '检查中…',
+    'settings.updates.refreshBtn': '刷新页面',
+    'settings.updates.updateBtn': '立即更新',
+    'settings.updates.checkBtn': '重新检查',
+    'settings.updates.noInfo': '暂无版本信息',
+    'settings.updates.error': '检查失败',
+    'settings.updates.updating': '正在更新后端，请稍候…',
+    'settings.updates.updateDone': '更新完成，服务即将重启',
+
     'settings.about.title': '关于系统',
     'settings.about.desc': '查看应用信息、提供反馈联系、进行数据重置或查看开源鸣谢。',
     'settings.about.tagline': '智能 AI 工作空间管理器',
@@ -679,11 +698,6 @@ export const zhCN: Record<string, string> = {
     'mobile.confirmDeleteSession.message': '确定要删除会话 “{name}” 吗?此操作无法撤销。',
     'mobile.confirmDeleteWorkspace.title': '删除工作空间',
     'mobile.confirmDeleteWorkspace.message': '确定要删除工作空间 “{name}” 吗?此操作无法撤销。',
-    // ── OTA update banner ──
-    'app.ota.banner.body': '发现新版本: {current} → {latest}',
-    'app.ota.banner.refresh': '立即刷新',
-    'app.ota.banner.dismiss': '稍后再说',
-
     // ── Sidebar mode toggle & nav controls (LeftSidebar.tsx) ─────────────
     'sidebar.mode.assistant': '助手',
     'sidebar.mode.project': '项目',
@@ -1519,6 +1533,26 @@ export const enUS: Record<string, string> = {
     'settings.feedback.formDesc': 'Submit feature requests or bug reports to help us improve.',
     'settings.feedback.open': 'Open Feedback Form',
 
+    // ── Version Updates ──
+    'settings.nav.updates': 'Updates',
+    'settings.updates.title': 'Version Updates',
+    'settings.updates.desc':
+        'View current versions for frontend and backend components and upgrade when a new release is available.',
+    'settings.updates.frontend': 'Frontend',
+    'settings.updates.backend': 'Backend',
+    'settings.updates.current': 'Current',
+    'settings.updates.latest': 'Latest',
+    'settings.updates.upToDate': 'Up to date',
+    'settings.updates.available': 'Update available',
+    'settings.updates.checking': 'Checking…',
+    'settings.updates.refreshBtn': 'Refresh page',
+    'settings.updates.updateBtn': 'Update now',
+    'settings.updates.checkBtn': 'Check again',
+    'settings.updates.noInfo': 'Version info unavailable',
+    'settings.updates.error': 'Check failed',
+    'settings.updates.updating': 'Updating backend, please wait…',
+    'settings.updates.updateDone': 'Update complete, service restarting',
+
     'settings.about.title': 'About System',
     'settings.about.desc': 'View application info, feedback, reset data, and open-source acknowledgements.',
     'settings.about.tagline': 'Intelligent AI Workspace Manager',
@@ -1612,11 +1646,6 @@ export const enUS: Record<string, string> = {
     'mobile.confirmDeleteSession.message': 'Delete session "{name}"? This action cannot be undone.',
     'mobile.confirmDeleteWorkspace.title': 'Delete workspace',
     'mobile.confirmDeleteWorkspace.message': 'Delete workspace "{name}"? This action cannot be undone.',
-    // ── OTA update banner ──
-    'app.ota.banner.body': 'New version available: {current} → {latest}',
-    'app.ota.banner.refresh': 'Refresh now',
-    'app.ota.banner.dismiss': 'Dismiss',
-
     // ── Sidebar mode toggle & nav controls (LeftSidebar.tsx) ─────────────
     'sidebar.mode.assistant': 'Assistant',
     'sidebar.mode.project': 'Project',
