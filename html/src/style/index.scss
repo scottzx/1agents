@@ -83,20 +83,21 @@
 
   /* Mermaid diagrams: centered SVG once rendered; the inner <pre> source
      fallback inherits the fenced-code styling above until that swap happens.
-     Height-capped so a tall diagram scrolls in place instead of dominating the
-     message; `safe` centering keeps an overflowing diagram from clipping its
-     edges when scrolled. Click a rendered diagram to open it full-size. */
+     The whole diagram is always shown in the bubble — a tall one is scaled
+     DOWN to fit the height cap (the SVG's own preserveAspectRatio letterboxes
+     it), never clipped or scrolled. Click a rendered diagram to open it
+     full-size for detail. */
   .mermaid-block {
     margin: 1em 0;
     display: flex;
-    justify-content: safe center;
-    align-items: safe center;
-    max-height: 360px;
-    overflow: auto;
+    justify-content: center;
 
     svg {
-      max-width: 100%;
+      width: 100%;
       height: auto;
+      // Scale a tall diagram down so it fits without clipping; mermaid's own
+      // inline `max-width` keeps a small one from stretching past its size.
+      max-height: 55vh;
     }
 
     &.is-rendered {
@@ -8108,37 +8109,76 @@ body {
   animation: fadeIn 0.15s ease;
 }
 
-/* Full-size preview for a clicked mermaid diagram. Mounted on <body> by
-   utils/mermaid.ts, so it lives at the top level (not under .markdown-body). */
+/* Full-size pan/zoom viewer for a clicked mermaid diagram. Mounted on <body>
+   by utils/mermaid.ts, so it lives at the top level (not under .markdown-body).
+   `touch-action: none` hands pinch/drag gestures to our pointer handlers
+   instead of the browser's page zoom/scroll. */
 .mermaid-lightbox-overlay {
   position: fixed;
   inset: 0;
   z-index: 2050;
-  background: rgba(15, 23, 42, 0.55);
+  overflow: hidden;
+  touch-action: none;
+  background: rgba(15, 23, 42, 0.6);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
   animation: fadeIn 0.15s ease;
 }
 
-.mermaid-lightbox-content {
-  max-width: 95vw;
-  max-height: 92vh;
-  overflow: auto;
-  padding: 24px;
+.mermaid-lightbox-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+  cursor: grab;
+  user-select: none;
+  // A solid panel behind the diagram so light-theme strokes/text stay legible
+  // over the blurred backdrop.
+  padding: 16px;
   background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--bento-radius-lg);
-  box-shadow: var(--shadow-lg), 0 20px 40px rgba(0, 0, 0, 0.15);
+  border-radius: var(--bento-radius);
+  box-shadow: var(--shadow-lg), 0 20px 40px rgba(0, 0, 0, 0.2);
+
+  &:active {
+    cursor: grabbing;
+  }
 
   svg {
-    width: auto;
-    height: auto;
-    max-width: 88vw !important;
-    max-height: 84vh !important;
+    display: block;
+  }
+}
+
+.mermaid-lightbox-toolbar {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+
+  button {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text-main);
+      background: var(--btn-hover);
+    }
   }
 }
 
