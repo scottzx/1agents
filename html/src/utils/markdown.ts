@@ -15,7 +15,7 @@
 // back to a friendly not-found when followed. A plain `` `#2` `` (no project
 // name) stays an ordinary code span, which doubles as the escape hatch.
 
-import { Marked, type TokenizerAndRendererExtension } from 'marked';
+import { Marked, type RendererObject, type TokenizerAndRendererExtension } from 'marked';
 
 export interface MarkdownContext {
     /** Active project (display name) used to build same-project `#N` links. */
@@ -149,10 +149,29 @@ const fileRefExtension: TokenizerAndRendererExtension = {
     },
 };
 
+// A ```mermaid fenced block is emitted as an inert placeholder carrying the
+// diagram source (URI-encoded so newlines survive the attribute). The raw code
+// is kept inside as a <pre> fallback — that's what shows until a consumer with
+// a live DOM (the chat bubble) lazy-loads mermaid and swaps in the SVG, and
+// what stays put in contexts that never run that step (task descriptions etc.).
+const mermaidRenderer: RendererObject = {
+    code(token) {
+        if ((token.lang || '').trim().split(/\s+/)[0] === 'mermaid') {
+            const src = token.text;
+            return (
+                `<div class="mermaid-block" data-mermaid="${encodeURIComponent(src)}">` +
+                `<pre class="mermaid-fallback"><code>${escapeHtml(src)}</code></pre></div>`
+            );
+        }
+        // Returning false defers to marked's default code renderer.
+        return false;
+    },
+};
+
 const instance = new Marked({ gfm: true, breaks: true });
 // taskRef must be registered first so `project#N` is captured before fileRef
 // can see the backtick.
-instance.use({ extensions: [taskRefExtension, fileRefExtension] });
+instance.use({ extensions: [taskRefExtension, fileRefExtension], renderer: mermaidRenderer });
 
 /**
  * Render Markdown to an HTML string, autolinking task references using `c`.

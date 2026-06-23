@@ -81,6 +81,30 @@
     }
   }
 
+  /* Mermaid diagrams: centered SVG once rendered; the inner <pre> source
+     fallback inherits the fenced-code styling above until that swap happens. */
+  .mermaid-block {
+    margin: 1em 0;
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+
+    svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .mermaid-fallback {
+      width: 100%;
+      margin: 0;
+    }
+
+    &.has-error .mermaid-fallback code::before {
+      content: '⚠ ';
+      color: var(--warning-fg);
+    }
+  }
+
   /* Blockquote */
   blockquote {
     margin: 1em 0;

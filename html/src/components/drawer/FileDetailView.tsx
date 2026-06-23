@@ -152,7 +152,6 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         // Spin up the markdown worker. `new URL(..., import.meta.url)` is the
         // webpack 5-native pattern; ts-loader + webpack will emit a separate
         // worker chunk and bundle `marked` into it.
-        // @ts-expect-error import.meta requires module:es2020+ in tsconfig; webpack 5 emits the correct URL at build time.
         this._mdWorker = new Worker(new URL('../../workers/markdown.worker.ts', import.meta.url), {
             type: 'module',
         });
