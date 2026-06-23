@@ -497,6 +497,9 @@ export const zhCN: Record<string, string> = {
     // ── Middle canvas (MiddleCanvas.tsx) ──────────────────────────────────
     'canvas.terminalReady': '终端就绪',
     'canvas.terminalReadyDesc': '在全局导航栏中点击【终端】以开始交互会话。',
+    'canvas.noTerminal': '暂无终端',
+    'canvas.noTerminalDesc': '当前没有打开的终端会话，点击下方按钮新建一个。',
+    'canvas.createTerminal': '新建终端',
 
     // ── Welcome (WelcomeOnboarding.tsx) ───────────────────────────────────
     'welcome.title': '欢迎使用 1Agents',
@@ -1380,6 +1383,9 @@ export const enUS: Record<string, string> = {
     // ── Middle canvas ────────────────────────────────────────────────────
     'canvas.terminalReady': 'Terminal ready',
     'canvas.terminalReadyDesc': 'Click [Terminal] in the top nav to start an interactive session.',
+    'canvas.noTerminal': 'No terminals',
+    'canvas.noTerminalDesc': 'There are no open terminal sessions. Tap the button below to create one.',
+    'canvas.createTerminal': 'New terminal',
 
     // ── Welcome ──────────────────────────────────────────────────────────
     'welcome.title': 'Welcome to 1Agents',

@@ -252,6 +252,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/context/get", ctxHandler.Get) // GET
 	// ── Terminal API (tmux session management) ────────────────────────────────
 	termHandler := terminal.NewHandler(cfg)
+	// Create the hidden anchor window (tmux index 0, root shell) at boot so it
+	// always exists before any user action and survives a backend restart.
+	termHandler.EnsureStartupSession()
 	mux.HandleFunc("/api/terminal/create", termHandler.Create) // POST {workspaceId, cwd}
 	mux.HandleFunc("/api/terminal/list", termHandler.List)     // GET
 	mux.HandleFunc("/api/terminal/kill", termHandler.Kill)     // POST {windowIndex}
