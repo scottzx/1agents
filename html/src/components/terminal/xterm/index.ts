@@ -99,6 +99,7 @@ export class Xterm {
 
     private socket?: WebSocket | RelayTerminalSocket;
     private token: string;
+    private containerObserver?: ResizeObserver;
     private opened = false;
     private heartbeatInterval?: number;
     private title?: string;
@@ -116,6 +117,8 @@ export class Xterm {
     ) {}
 
     dispose() {
+        this.containerObserver?.disconnect();
+        this.containerObserver = undefined;
         for (const d of this.disposables) {
             d.dispose();
         }
@@ -208,6 +211,15 @@ export class Xterm {
 
         terminal.open(parent);
         fitAddon.fit();
+
+        let fitTimeout: number;
+        this.containerObserver = new ResizeObserver(() => {
+            window.clearTimeout(fitTimeout);
+            fitTimeout = window.setTimeout(() => {
+                fitAddon.fit();
+            }, 100);
+        });
+        this.containerObserver.observe(parent);
     }
 
     @bind
