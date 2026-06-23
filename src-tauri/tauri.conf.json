@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.oneagents.desktop",
   "build": {
-    "frontendDist": "../html/dist",
+    "frontendDist": "../frontend/dist",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },

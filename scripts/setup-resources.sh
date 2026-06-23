@@ -83,12 +83,12 @@ fi
 
 # 5. Copy frontend assets
 echo "=== Copying frontend static assets ==="
-if [ ! -d "html/dist" ]; then
-    echo "WARNING: html/dist not found. Running frontend build first..."
+if [ ! -d "frontend/dist" ]; then
+    echo "WARNING: frontend/dist not found. Running frontend build first..."
     make frontend
 fi
 
 rm -rf "$RESOURCE_DIR/dist"
-cp -r html/dist "$RESOURCE_DIR/dist"
+cp -r frontend/dist "$RESOURCE_DIR/dist"
 
 echo "=== Resources setup completed successfully ==="

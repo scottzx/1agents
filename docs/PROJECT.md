@@ -35,8 +35,8 @@
   - `onClose`: `() => void`
 
 ## Code Layout
-- Main view wrapper: `html/src/components/app.tsx`
-- Tab types: `html/src/components/types.ts`
-- Workspace Header: `html/src/components/header/WorkspaceHeader.tsx`
-- Left Sidebar: `html/src/components/sidebar/LeftSidebar.tsx`
-- Settings UI: `html/src/components/drawer/ThemeSettings.tsx` (to be rewritten or replaced)
+- Main view wrapper: `frontend/src/components/app.tsx`
+- Tab types: `frontend/src/components/types.ts`
+- Workspace Header: `frontend/src/components/header/WorkspaceHeader.tsx`
+- Left Sidebar: `frontend/src/components/sidebar/LeftSidebar.tsx`
+- Settings UI: `frontend/src/components/drawer/ThemeSettings.tsx` (to be rewritten or replaced)

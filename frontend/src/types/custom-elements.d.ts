@@ -3,7 +3,7 @@
  *
  * The 1agents host renders `<cc-connect-panel>` and `<skills-panel>` as
  * plain JSX. They are defined at runtime by ESM modules served from
- * /api/embed/* (see `html/src/template.html`). Without this file
+ * /api/embed/* (see `frontend/src/template.html`). Without this file
  * TypeScript treats the tags as unknown IntrinsicElements and refuses
  * to compile.
  *

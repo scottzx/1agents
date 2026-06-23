@@ -55,7 +55,7 @@ function findFreePort(startPort, maxTries = 50) {
     });
 }
 
-// ── Build-time version metadata (consumed by html/src/version.ts) ────────────
+// ── Build-time version metadata (consumed by frontend/src/version.ts) ────────────
 // Order of precedence:
 //   1. Environment variables (CI passes these explicitly).
 //   2. `git describe` / `git rev-parse` (local dev).
@@ -109,6 +109,10 @@ const baseConfig = {
             {
                 test: /\.svg$/,
                 type: 'asset/inline',
+            },
+            {
+                test: /\.(woff2?|ttf|otf|eot)$/,
+                type: 'asset/resource',
             },
         ],
     },

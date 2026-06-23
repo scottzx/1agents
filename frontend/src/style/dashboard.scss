@@ -1,6 +1,14 @@
 /* ── 一万数字军团 Dashboard — Blue-Black Tech Theme ── */
 
-@import url('https://cdn.jsdelivr.net/npm/zpix@1.0.2/dist/zpix.css');
+/* Locally vendored Zpix pixel font (src/assets/fonts/zpix.woff2).
+   Replaces a dead jsdelivr CDN @import; webpack emits the file via asset/resource. */
+@font-face {
+  font-family: 'zpix';
+  src: url('../assets/fonts/zpix.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   /* ── Palette: Blue-Black Tech ── */

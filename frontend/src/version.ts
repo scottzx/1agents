@@ -1,6 +1,6 @@
 // Build-time version metadata injected by webpack.DefinePlugin
-// (see html/webpack.config.js → buildMeta). The ambient declarations
-// live in html/src/global.d.ts; this module re-exports them under
+// (see frontend/webpack.config.js → buildMeta). The ambient declarations
+// live in frontend/src/global.d.ts; this module re-exports them under
 // camelCase names for ergonomic consumption in TypeScript.
 
 export const APP_VERSION: string = __APP_VERSION__;
