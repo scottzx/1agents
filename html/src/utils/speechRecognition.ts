@@ -175,7 +175,7 @@ export function createSpeechController(options: SpeechControllerOptions): Speech
 
             recognition.onerror = (event: SpeechErrorEvent) => {
                 console.error('Speech recognition error:', event.error);
-                if (event.error === 'no-speech') {
+                if (event.error === 'no-speech' || event.error === 'aborted') {
                     cleanup();
                     return;
                 }
