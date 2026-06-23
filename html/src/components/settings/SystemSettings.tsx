@@ -1,10 +1,15 @@
 import { h, Fragment } from 'preact';
+import { useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { t, type Lang } from '../../i18n';
 import type { SettingsCategory } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
 import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
+import { APP_VERSION, isNewer } from '../../version';
+import { fetchManifest } from '../../ota/checker';
+import type { RootManifest } from '../../ota/checker';
+import { apply as applyFrontendUpdate } from '../../ota/applier';
 
 export type { SettingsCategory };
 
@@ -49,6 +54,78 @@ export function SystemSettings(props: SystemSettingsProps) {
     // Agent type whose install command was just copied (transient checkmark).
     const copiedAgent = useSignal('');
     const creditsExpanded = useSignal(false);
+
+    // ── Updates panel state ─────────────────────────────────────────────────
+    const versionLoading = useSignal(false);
+    const versionError = useSignal('');
+    const manifest = useSignal<RootManifest | null>(null);
+    const backendCurrent = useSignal('');
+    const backendLatest = useSignal('');
+    const backendUpdating = useSignal(false);
+    const backendUpdateLog = useSignal('');
+    const backendUpdateDone = useSignal(false);
+
+    const loadVersionInfo = async () => {
+        versionLoading.value = true;
+        versionError.value = '';
+        try {
+            const [mfst, versionRes] = await Promise.all([
+                fetchManifest(),
+                fetch('/api/system/version').then(r => r.json()),
+            ]);
+            manifest.value = mfst;
+            backendCurrent.value = versionRes.current ?? '';
+            backendLatest.value = versionRes.latest ?? '';
+        } catch (err) {
+            versionError.value = String(err);
+        } finally {
+            versionLoading.value = false;
+        }
+    };
+
+    useEffect(() => {
+        if (activeCategory === 'updates') {
+            loadVersionInfo();
+        }
+    }, [activeCategory]);
+
+    const handleFrontendUpdate = () => {
+        if (manifest.value) applyFrontendUpdate(manifest.value);
+        else window.location.reload();
+    };
+
+    const handleBackendUpdate = async () => {
+        backendUpdating.value = true;
+        backendUpdateLog.value = '';
+        backendUpdateDone.value = false;
+        try {
+            await fetch('/api/system/update', { method: 'POST' });
+        } catch (_) {
+            /* backend may already be restarting */
+        }
+
+        const poll = setInterval(async () => {
+            try {
+                const res = await fetch('/api/system/update/status');
+                const data = await res.json();
+                const lines: string[] = data.lines ?? [];
+                backendUpdateLog.value = lines.join('\n');
+                const last = lines[lines.length - 1] ?? '';
+                if (
+                    last.includes('done') ||
+                    last.includes('restart') ||
+                    last.includes('error') ||
+                    last.includes('failed')
+                ) {
+                    clearInterval(poll);
+                    backendUpdating.value = false;
+                    backendUpdateDone.value = !last.includes('error') && !last.includes('failed');
+                }
+            } catch (_) {
+                /* ignore transient errors during restart */
+            }
+        }, 1000);
+    };
 
     const handleResetCache = () => {
         if (!confirmReset.value) {
@@ -667,6 +744,193 @@ export function SystemSettings(props: SystemSettingsProps) {
         },
     ];
 
+    const frontendLatest = manifest.value?.components?.frontend?.version ?? '';
+    const frontendHasUpdate = !!frontendLatest && isNewer(frontendLatest, APP_VERSION);
+    const backendHasUpdate =
+        !!backendLatest.value && !!backendCurrent.value && isNewer(backendLatest.value, backendCurrent.value);
+
+    const renderUpdates = () => (
+        <div class="sys-settings-section">
+            <div class="sys-settings-section-title">{t('settings.nav.updates', language)}</div>
+            <div class="sys-settings-section-desc">{t('settings.updates.desc', language)}</div>
+
+            <div class="sys-settings-sub-title">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="width: 14px; height: 14px;"
+                >
+                    <polyline points="23 4 23 10 17 10" />
+                    <polyline points="1 20 1 14 7 14" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                {t('settings.updates.title', language)}
+            </div>
+
+            {versionLoading.value ? (
+                <div class="sys-settings-card">
+                    <span style="color: var(--text-muted); font-size: 13px;">
+                        {t('settings.updates.checking', language)}
+                    </span>
+                </div>
+            ) : versionError.value ? (
+                <div class="sys-settings-card">
+                    <span style="color: var(--danger-fg); font-size: 13px;">
+                        {t('settings.updates.error', language)}: {versionError.value}
+                    </span>
+                </div>
+            ) : (
+                <div class="sys-settings-update-grid">
+                    {/* Frontend */}
+                    <div class="sys-settings-card sys-settings-update-card">
+                        <div class="sys-settings-update-card-body">
+                            <div class="sys-settings-update-icon">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                                    <line x1="8" y1="21" x2="16" y2="21" />
+                                    <line x1="12" y1="17" x2="12" y2="21" />
+                                </svg>
+                            </div>
+                            <div class="sys-settings-update-info">
+                                <div class="sys-settings-update-name">{t('settings.updates.frontend', language)}</div>
+                                <div class="sys-settings-update-versions">
+                                    <span class="sys-settings-version-chip">{APP_VERSION || '—'}</span>
+                                    {frontendLatest && frontendLatest !== APP_VERSION && (
+                                        <Fragment>
+                                            <span class="sys-settings-update-arrow">→</span>
+                                            <span class="sys-settings-version-chip new">{frontendLatest}</span>
+                                        </Fragment>
+                                    )}
+                                    <span
+                                        class={`sys-settings-update-badge ${frontendHasUpdate ? 'available' : 'uptodate'}`}
+                                    >
+                                        {frontendHasUpdate
+                                            ? t('settings.updates.available', language)
+                                            : t('settings.updates.upToDate', language)}
+                                    </span>
+                                </div>
+                            </div>
+                            {frontendHasUpdate && (
+                                <button class="sys-settings-btn primary" onClick={handleFrontendUpdate}>
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <polyline points="23 4 23 10 17 10" />
+                                        <polyline points="1 20 1 14 7 14" />
+                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                                    </svg>
+                                    {t('settings.updates.refreshBtn', language)}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Backend */}
+                    <div class="sys-settings-card sys-settings-update-card">
+                        <div class="sys-settings-update-card-body">
+                            <div
+                                class="sys-settings-update-icon"
+                                style="background-color: rgba(var(--success-rgb), 0.1);"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    style="stroke: var(--success-fg);"
+                                >
+                                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                            </div>
+                            <div class="sys-settings-update-info">
+                                <div class="sys-settings-update-name">{t('settings.updates.backend', language)}</div>
+                                <div class="sys-settings-update-versions">
+                                    <span class="sys-settings-version-chip">{backendCurrent.value || '—'}</span>
+                                    {backendLatest.value && backendLatest.value !== backendCurrent.value && (
+                                        <Fragment>
+                                            <span class="sys-settings-update-arrow">→</span>
+                                            <span class="sys-settings-version-chip new">{backendLatest.value}</span>
+                                        </Fragment>
+                                    )}
+                                    <span
+                                        class={`sys-settings-update-badge ${backendUpdating.value ? 'checking' : backendHasUpdate ? 'available' : 'uptodate'}`}
+                                    >
+                                        {backendUpdating.value
+                                            ? t('settings.updates.checking', language)
+                                            : backendHasUpdate
+                                              ? t('settings.updates.available', language)
+                                              : t('settings.updates.upToDate', language)}
+                                    </span>
+                                </div>
+                            </div>
+                            {backendHasUpdate && !backendUpdating.value && !backendUpdateDone.value && (
+                                <button class="sys-settings-btn primary" onClick={handleBackendUpdate}>
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                    </svg>
+                                    {t('settings.updates.updateBtn', language)}
+                                </button>
+                            )}
+                        </div>
+                        {(backendUpdating.value || backendUpdateLog.value) && (
+                            <div class="sys-settings-update-log">
+                                {backendUpdateLog.value || t('settings.updates.updating', language)}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div class="sys-settings-action-row" style="margin-top: 4px;">
+                <button class="sys-settings-btn ghost" onClick={loadVersionInfo} disabled={versionLoading.value}>
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <polyline points="23 4 23 10 17 10" />
+                        <polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                    {t('settings.updates.checkBtn', language)}
+                </button>
+            </div>
+        </div>
+    );
+
     const renderAbout = () => (
         <div class="sys-settings-section">
             <div class="sys-settings-section-title">{t('settings.nav.about', language)}</div>
@@ -1023,6 +1287,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderAgents();
             case 'relay':
                 return renderRelay();
+            case 'updates':
+                return renderUpdates();
             case 'about':
                 return renderAbout();
             default:

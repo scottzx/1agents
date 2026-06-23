@@ -7398,6 +7398,59 @@ body {
         .meta-link { color: var(--accent-color); text-decoration: none; &:hover { text-decoration: underline; } }
     }
 
+    // ── Updates panel ──────────────────────────────────────────────────────────
+    .sys-settings-update-grid { display: flex; flex-direction: column; gap: 10px; }
+
+    .sys-settings-update-card {
+        flex-direction: column; gap: 0;
+        padding: 14px 16px;
+    }
+
+    .sys-settings-update-card-body {
+        display: flex; align-items: center; gap: 12px;
+    }
+
+    .sys-settings-update-icon {
+        width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+        background-color: var(--accent-light);
+        display: flex; align-items: center; justify-content: center;
+        svg { width: 17px; height: 17px; stroke: var(--accent-color); }
+    }
+
+    .sys-settings-update-info { flex: 1; min-width: 0; }
+
+    .sys-settings-update-name {
+        font-size: 13px; font-weight: 600; color: var(--text-main); margin-bottom: 5px;
+    }
+
+    .sys-settings-update-versions {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+
+    .sys-settings-version-chip {
+        font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+        padding: 2px 8px; border-radius: 5px;
+        background-color: var(--bg-page); border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        &.new { background-color: rgba(var(--accent-color-rgb), 0.08); border-color: var(--accent-color); color: var(--accent-color); }
+    }
+
+    .sys-settings-update-arrow { color: var(--text-muted); font-size: 11px; }
+
+    .sys-settings-update-badge {
+        font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 5px;
+        &.uptodate { background-color: rgba(var(--success-rgb), 0.1); color: var(--success-fg); }
+        &.available { background-color: rgba(var(--accent-color-rgb), 0.1); color: var(--accent-color); }
+        &.checking { background-color: var(--bg-page); color: var(--text-muted); border: 1px solid var(--border-color); }
+    }
+
+    .sys-settings-update-log {
+        margin-top: 12px; padding: 10px 12px;
+        background-color: #0d0d0d; border-radius: 8px;
+        font-family: var(--font-mono); font-size: 11px; color: #d4d4d4; line-height: 1.6;
+        max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+    }
+
     .agent-catalog-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 
     .agent-catalog-row {

@@ -11,8 +11,6 @@ import { ModalHost } from './modal/ModalHost';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
 import { t } from '../i18n';
-import { check as checkOta, type UpdateInfo } from '../ota/checker';
-import { UpdateBanner } from '../ota/UpdateBanner';
 import { DesktopAppLayout } from './desktop/DesktopAppLayout';
 import { MobileAppLayout } from './mobile/MobileAppLayout';
 import { DashboardApp } from './desktop/DashboardApp';
@@ -45,8 +43,6 @@ export interface AppState {
     accessAuthenticated: boolean;
     // 中转模式但未选节点 → 显示配对门禁,而不是误进工作空间引导
     backendGateVisible: boolean;
-    // ── Frontend OTA update state ──
-    otaUpdate: UpdateInfo | null;
 }
 
 // Drag resizer state (module-level for perf)
@@ -68,7 +64,6 @@ export class App extends Component<{}, AppState> {
             accessAuthRequired: false,
             accessAuthenticated: true,
             backendGateVisible: false,
-            otaUpdate: null,
         };
     }
 
@@ -182,9 +177,6 @@ export class App extends Component<{}, AppState> {
         this._terminalPollInterval = setInterval(() => {
             sess.loadTerminals();
         }, 3000);
-
-        // Frontend OTA: non-blocking manifest check (throttled inside checker).
-        this.checkForFrontendUpdate();
     }
 
     /**
@@ -256,18 +248,6 @@ export class App extends Component<{}, AppState> {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             fs.saveFile();
-        }
-    };
-
-    /**
-     * Fire-and-forget frontend OTA check. The checker is self-throttling
-     * (6h) and soft-fails on missing manifest endpoint, so it's safe to
-     * call from componentDidMount without try/catch here.
-     */
-    checkForFrontendUpdate = async () => {
-        const info = await checkOta();
-        if (info.hasUpdate) {
-            this.setState({ otaUpdate: info });
         }
     };
 
@@ -448,7 +428,7 @@ export class App extends Component<{}, AppState> {
             return <DashboardApp />;
         }
 
-        const { accessGateVisible, backendGateVisible, otaUpdate } = this.state;
+        const { accessGateVisible, backendGateVisible } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;
         const workspaces = wsStore.workspaces.value;
@@ -571,7 +551,6 @@ export class App extends Component<{}, AppState> {
 
         return (
             <div class="app-container" style="display: flex; flex-direction: column;">
-                {otaUpdate && <UpdateBanner info={otaUpdate} language={language} />}
                 {!uiMode ? (
                     <ModeSelectOnboarding language={language} onSelect={this.onSelectMode} />
                 ) : hasLoadedWorkspaces && workspaces.length === 0 ? (
