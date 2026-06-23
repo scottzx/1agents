@@ -10,8 +10,8 @@ import { ImageAddon } from '@xterm/addon-image';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { OverlayAddon } from './addons/overlay';
 import { ZmodemAddon } from './addons/zmodem';
-import { backendTarget } from '../../../core/services/apiClient';
-import { RelayTerminalSocket } from '../../../core/services/relay/relayTerminalSocket';
+import { backendTarget } from '@1agents/core/services/apiClient';
+import { RelayTerminalSocket } from '@1agents/core/services/relay/relayTerminalSocket';
 
 import '@xterm/xterm/css/xterm.css';
 

@@ -9,6 +9,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "1agents-frontend@workspace:."
   dependencies:
+    "@1agents/core": "workspace:*"
     "@1agents/wire": ^0.1.0
     "@preact/signals": ^2.9.1
     "@preact/signals-core": ^1.14.2
@@ -63,6 +64,16 @@ __metadata:
     webpack-merge: ^5.10.0
     whatwg-fetch: ^3.6.20
     zmodem.js: ^0.1.10
+  languageName: unknown
+  linkType: soft
+
+"@1agents/core@workspace:*, @1agents/core@workspace:packages/core":
+  version: 0.0.0-use.local
+  resolution: "@1agents/core@workspace:packages/core"
+  dependencies:
+    "@preact/signals-core": ^1.14.2
+    socket.io-client: ^4.8.3
+    tweetnacl: ^1.0.3
   languageName: unknown
   linkType: soft
 

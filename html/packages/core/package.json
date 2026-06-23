@@ -1,0 +1,18 @@
+{
+  "name": "@1agents/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-agnostic core for 1agents frontends: API/relay services, wire protocol, platform bridge, shared types. No DOM/Preact-view dependencies — consumed as TypeScript source by the web (html), and (planned) the Taro mini-program / RN app.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "engines": {
+    "node": ">=12"
+  },
+  "dependencies": {
+    "@preact/signals-core": "^1.14.2",
+    "socket.io-client": "^4.8.3",
+    "tweetnacl": "^1.0.3"
+  }
+}

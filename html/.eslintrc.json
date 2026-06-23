@@ -17,7 +17,7 @@
       }
     },
     {
-      "files": ["src/core/**/*.ts", "src/core/**/*.tsx"],
+      "files": ["packages/core/**/*.ts", "packages/core/**/*.tsx"],
       "rules": {
         "no-restricted-imports": [
           "error",

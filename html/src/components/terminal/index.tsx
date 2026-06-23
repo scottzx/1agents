@@ -3,7 +3,7 @@ import { Component, h } from 'preact';
 import { Xterm, XtermOptions } from './xterm';
 
 import '@xterm/xterm/css/xterm.css';
-import { backendTarget } from '../../core/services/apiClient';
+import { backendTarget } from '@1agents/core/services/apiClient';
 import { Modal } from '../modal';
 import { t, type Lang } from '../i18n';
 import { createSpeechController, type SpeechController } from '../../utils/speechRecognition';

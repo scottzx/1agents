@@ -1,0 +1,19 @@
+{
+  // Standalone typecheck for @1agents/core (run `tsc --noEmit -p packages/core`).
+  // The web app (html) currently compiles these sources under its own tsconfig
+  // via ts-loader; this config documents the package's intended boundary and
+  // lets the planned Taro / RN consumers typecheck core in isolation.
+  "extends": "../../node_modules/gts/tsconfig-google.json",
+  "compilerOptions": {
+    "module": "es2020",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "declaration": false,
+    "noEmit": true,
+    "noImplicitAny": false,
+    // No DOM-view libs: core must stay framework/runtime-agnostic. WebSocket,
+    // fetch, etc. come from the host platform via the platform bridge.
+    "lib": ["es2020", "dom"]
+  },
+  "include": ["**/*.ts"]
+}

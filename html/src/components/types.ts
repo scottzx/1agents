@@ -1,11 +1,11 @@
 import type { Lang } from './i18n';
-import type { ChatSession } from '../core/types';
+import type { ChatSession } from '@1agents/core/types';
 
 // Shared wire shapes (AgentType, ChatSession, ChatStatus, SessionRole,
 // PermissionMode/Decision, FsEntry, Workspace, TmuxWindow, …) moved to the
 // platform-agnostic core (Phase 0 carve). Re-exported here so existing
 // `../types` importers stay unchanged.
-export * from '../core/types';
+export * from '@1agents/core/types';
 
 /** A terminal session — mirrors a tmux window, belongs to a workspace. */
 export interface TerminalSession {

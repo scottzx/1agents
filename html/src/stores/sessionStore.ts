@@ -10,7 +10,7 @@ import {
     type ChatStatus,
     type AgentType,
 } from '../components/types';
-import type { ConnectionState } from '../core/protocol/types';
+import type { ConnectionState } from '@1agents/core/protocol/types';
 import { terminalService } from '../services/terminalService';
 import { agentService } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
