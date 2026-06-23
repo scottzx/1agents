@@ -5,6 +5,7 @@ import { useSignal, signal } from '@preact/signals';
 import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
 import * as sessionStore from '../../../stores/sessionStore';
+import { agentService } from '../../../services/agentService';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
@@ -15,7 +16,6 @@ import { Overview } from './Overview';
 import { MilestoneView } from './MilestoneView';
 import { RequirementPool } from './RequirementPool';
 import { DiscussionView } from './DiscussionView';
-import { SuggestionView } from './SuggestionView';
 import { SessionsView } from './SessionsView';
 
 const cachedTasks = signal<Record<string, Task[]>>({});
@@ -45,9 +45,9 @@ export function TaskList({
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
     const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
-    const view = useSignal<
-        'overview' | 'discussion' | 'suggestion' | 'requirements' | 'tasks' | 'sessions' | 'milestone'
-    >('tasks');
+    const showSessions = useSignal(false); // sessions popup, opened from the 总览 会话 card
+    const [sessionCount, setSessionCount] = useState(0);
+    const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -97,16 +97,29 @@ export function TaskList({
         }
     }, [workspaceId, setTasks]);
 
+    // The 总览 会话 card shows the live count of active (non-archived) sessions.
+    const fetchSessionCount = useCallback(async () => {
+        if (!workspaceId) return;
+        try {
+            const data = await agentService.list(workspaceId);
+            setSessionCount(data.length);
+        } catch {
+            // session count is non-critical; the overview still renders
+        }
+    }, [workspaceId]);
+
     // Polling tasks status changes every 5 seconds
     useEffect(() => {
         fetchTasks();
         fetchMilestones();
+        fetchSessionCount();
         const timer = setInterval(() => {
             fetchTasks();
             fetchMilestones();
+            fetchSessionCount();
         }, 5000);
         return () => clearInterval(timer);
-    }, [fetchTasks, fetchMilestones]);
+    }, [fetchTasks, fetchMilestones, fetchSessionCount]);
 
     // Reset detail selection and load cached data when switching workspaces
     useEffect(() => {
@@ -304,7 +317,7 @@ export function TaskList({
     // suggestions (source === 'agent-suggested') live in the same tasks table but
     // must never leak into the board/KPI views (scheduler, Kanban, Overview all
     // treat them as noise). Split once here: boardTasks feeds the work-item views,
-    // discussions the 讨论 tab, suggestions the AI 建议 tab.
+    // discussions the 讨论 tab, suggestions are merged into the 需求 pool (filterable).
     const discussions = tasks.filter(t => t.type === 'discussion');
     const suggestions = tasks.filter(t => t.source === 'agent-suggested');
     const boardTasks = tasks.filter(t => t.type !== 'discussion' && t.source !== 'agent-suggested');
@@ -317,10 +330,8 @@ export function TaskList({
                         [
                             ['overview', '总览'],
                             ['discussion', '讨论'],
-                            ['suggestion', 'AI 建议'],
                             ['requirements', '需求'],
                             ['tasks', '任务'],
-                            ['sessions', '会话'],
                             ['milestone', '里程碑'],
                         ] as Array<[typeof view.value, string]>
                     ).map(([key, label]) => (
@@ -366,23 +377,14 @@ export function TaskList({
                     onStatusChange={handleStatusChange}
                 />
             )}
-            {view.value === 'overview' && <Overview tasks={boardTasks} />}
+            {view.value === 'overview' && (
+                <Overview
+                    tasks={boardTasks}
+                    sessionCount={sessionCount}
+                    onOpenSessions={() => (showSessions.value = true)}
+                />
+            )}
             {view.value === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
-            {view.value === 'suggestion' && (
-                <SuggestionView
-                    tasks={suggestions}
-                    onSelectTask={setSelectedTaskId}
-                    onAdopt={handleAdoptSuggestion}
-                    onDismiss={handleDismissSuggestion}
-                />
-            )}
-            {view.value === 'sessions' && (
-                <SessionsView
-                    workspaceId={workspaceId}
-                    onSelectSession={onSelectSession}
-                    onSelectTask={setSelectedTaskId}
-                />
-            )}
             {view.value === 'milestone' && (
                 <MilestoneView
                     tasks={boardTasks}
@@ -392,7 +394,15 @@ export function TaskList({
                     onDeleteMilestone={deleteMilestone}
                 />
             )}
-            {view.value === 'requirements' && <RequirementPool tasks={boardTasks} onSelectTask={setSelectedTaskId} />}
+            {view.value === 'requirements' && (
+                <RequirementPool
+                    tasks={boardTasks}
+                    suggestions={suggestions}
+                    onSelectTask={setSelectedTaskId}
+                    onAdopt={handleAdoptSuggestion}
+                    onDismiss={handleDismissSuggestion}
+                />
+            )}
 
             <Modal show={showMsForm.value}>
                 <MilestoneForm
@@ -401,6 +411,37 @@ export function TaskList({
                     onSubmit={createMilestone}
                 />
             </Modal>
+
+            {/* Sessions popup — opened from the 总览 会话 card. SessionsView is a
+                wide DataGrid, so it uses its own roomy overlay rather than the
+                narrow form Modal above. Backdrop / ✕ both close it. */}
+            {showSessions.value && (
+                <div class="sessions-modal-overlay" onClick={() => (showSessions.value = false)}>
+                    <div class="sessions-modal-box" onClick={e => e.stopPropagation()}>
+                        <div class="sessions-modal-header">
+                            <span>会话</span>
+                            <button
+                                class="sessions-modal-close"
+                                title="关闭"
+                                onClick={() => (showSessions.value = false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <SessionsView
+                            workspaceId={workspaceId}
+                            onSelectSession={s => {
+                                showSessions.value = false;
+                                onSelectSession?.(s);
+                            }}
+                            onSelectTask={id => {
+                                showSessions.value = false;
+                                setSelectedTaskId(id);
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
