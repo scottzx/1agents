@@ -3,7 +3,7 @@ import { useSignal } from '@preact/signals';
 import { RightDrawerTab, isFullPageTab, type AgentType } from '../types';
 import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
-import type { ConnectionState } from '../../core/protocol/types';
+import type { ConnectionState } from '@1agents/core/protocol/types';
 import { AgentAvatar } from '../chat/AgentAvatar';
 import * as stage from '../../stores/stageStore';
 import { isBeginnerMode, isMobile } from '../../stores/uiStore';

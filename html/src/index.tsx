@@ -4,8 +4,8 @@ if (process.env.NODE_ENV === 'development') {
 import 'whatwg-fetch';
 import { h, render } from 'preact';
 import { App } from './components/app';
-import { initPlatformBridge } from './core/platform/bridge';
-import { installRelayFetch } from './core/services/relay/installRelayFetch';
+import { initPlatformBridge } from '@1agents/core/platform/bridge';
+import { installRelayFetch } from '@1agents/core/services/relay/installRelayFetch';
 import './style/index.scss';
 
 // 同步包装 window.fetch:让 1skills / cc-connect 嵌入面板的取数在 relay 模式下也走中转。

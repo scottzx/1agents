@@ -1,3 +1,3 @@
 // Re-export shim — moved to core/services (Phase 0 carve). Import from
-// '../core/services/accessService' directly in new code; this preserves existing importers.
-export * from '../core/services/accessService';
+// '@1agents/core/services/accessService' directly in new code; this preserves existing importers.
+export * from '@1agents/core/services/accessService';

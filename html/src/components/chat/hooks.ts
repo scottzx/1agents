@@ -14,7 +14,7 @@ import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/ses
 // Protocol types moved to the platform-agnostic core (Phase 0 carve). Re-exported
 // below so existing `./hooks` importers (MessageList, ChatPanel, …) stay
 // unchanged.
-import type { ChatItem, ConnectionState } from '../../core/protocol/types';
+import type { ChatItem, ConnectionState } from '@1agents/core/protocol/types';
 // Pure protocol folds + helpers carved into core (Phase 0). ChatBridgeManager is
 // now a thin transport adapter over these — it owns the WebSocket, listeners and
 // reconnect bookkeeping; all conversation-state transforms live in the reducer.
@@ -33,7 +33,7 @@ import {
     appendError,
     resolvePermissionSide,
     deriveLiveStatus,
-} from '../../core/protocol/reducer';
+} from '@1agents/core/protocol/reducer';
 import {
     getHistoryAction,
     promptAction,
@@ -42,13 +42,13 @@ import {
     respondPermissionAction,
     setPermissionModeAction,
     type BridgeEventPayload,
-} from '../../core/protocol/wireProtocol';
+} from '@1agents/core/protocol/wireProtocol';
 // Backend transport mode (direct same-origin vs relay) + the relay chat transport.
 // In relay mode the chat WS rides the relay (issue #17); terminal stays direct.
-import { backendTarget } from '../../core/services/apiClient';
-import { RelayChatSocket, type ChatTransport } from '../../core/services/relay/relayChatSocket';
+import { backendTarget } from '@1agents/core/services/apiClient';
+import { RelayChatSocket, type ChatTransport } from '@1agents/core/services/relay/relayChatSocket';
 
-export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '../../core/protocol/types';
+export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '@1agents/core/protocol/types';
 
 interface UseBridgeState {
     items: ChatItem[];

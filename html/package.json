@@ -9,6 +9,9 @@
   },
   "author": "scottzx",
   "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "prestart": "gulp clean",
     "start": "NODE_ENV=development && webpack serve",
@@ -54,6 +57,7 @@
     "webpack-merge": "^5.10.0"
   },
   "dependencies": {
+    "@1agents/core": "workspace:*",
     "@1agents/wire": "^0.1.0",
     "@preact/signals": "^2.9.1",
     "@preact/signals-core": "^1.14.2",
