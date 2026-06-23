@@ -117,6 +117,40 @@ var toolDefs = []map[string]any{
 	},
 }
 
+// taskScopedTools is the tool subset advertised and accepted in a task-locked
+// (executor) session: read its own task, list (filtered to itself), and update
+// its own task. The PM-only create_*/milestone tools are withheld so the lock
+// cannot be sidestepped by creating sibling tasks. See #50.
+var taskScopedTools = map[string]bool{
+	"list_tasks":  true,
+	"get_task":    true,
+	"update_task": true,
+}
+
+// listedTools returns the tools advertised by tools/list: the full set for a
+// project-wide PM session, or the narrowed task-scoped subset when locked.
+func (s *server) listedTools() []map[string]any {
+	if s.taskID == "" {
+		return toolDefs
+	}
+	out := make([]map[string]any, 0, len(taskScopedTools))
+	for _, d := range toolDefs {
+		if name, _ := d["name"].(string); taskScopedTools[name] {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// idInScope reports whether id is addressable in this session: exactly the
+// locked task when task-scoped, otherwise any task in the locked workspace.
+func (s *server) idInScope(id string) bool {
+	if s.taskID != "" {
+		return id == s.taskID
+	}
+	return s.idInWorkspace(id)
+}
+
 // task is the subset of the daemon's task JSON the tools surface.
 type task struct {
 	ID                 string   `json:"id"`
@@ -139,6 +173,9 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return toolErr("invalid tool call params: " + err.Error())
+	}
+	if s.taskID != "" && !taskScopedTools[p.Name] {
+		return toolErr(fmt.Sprintf("tool %q is not available in this task-scoped session", p.Name))
 	}
 	switch p.Name {
 	case "list_tasks":
@@ -192,6 +229,9 @@ func (s *server) toolListTasks(args json.RawMessage) map[string]any {
 	}
 	out := make([]task, 0, len(tasks))
 	for _, t := range tasks {
+		if s.taskID != "" && t.ID != s.taskID {
+			continue // task-locked: only the bound task is visible
+		}
 		if a.Status != "" && t.Status != a.Status {
 			continue
 		}
@@ -212,8 +252,8 @@ func (s *server) toolGetTask(args json.RawMessage) map[string]any {
 	if err := json.Unmarshal(args, &a); err != nil || a.ID == "" {
 		return toolErr("id is required")
 	}
-	if !s.idInWorkspace(a.ID) {
-		return toolErr("task not found in this project: " + a.ID)
+	if !s.idInScope(a.ID) {
+		return toolErr("task not accessible in this session: " + a.ID)
 	}
 	status, body, err := s.api.do("GET", "/api/agent/tasks/"+url.PathEscape(a.ID), nil, nil)
 	if err != nil {
@@ -406,8 +446,8 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	if err := json.Unmarshal(idRaw, &id); err != nil || id == "" {
 		return toolErr("id is required")
 	}
-	if !s.idInWorkspace(id) {
-		return toolErr("task not found in this project: " + id)
+	if !s.idInScope(id) {
+		return toolErr("task not accessible in this session: " + id)
 	}
 
 	patch := map[string]json.RawMessage{}

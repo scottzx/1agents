@@ -85,27 +85,34 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 （当前项目 workspace_id=%s，仅供你理解上下文；工具已自动锁定，无需也无法手动指定项目。）`, projectName, workspaceID)
 }
 
-// buildTasksMcpServer builds the ACP stdio McpServer entry for the
-// project-locked task tools. The lock is the ONEAGENTS_WORKSPACE_ID env var —
-// the tools expose no project parameter, so the agent is confined to
-// workspaceID. Credentials (the internal token) are injected here in Go, never
-// from a role template's YAML. Returns nil if the executable can't be resolved.
-func (h *Handler) buildTasksMcpServer(workspaceID string) map[string]any {
+// buildTasksMcpServer builds the ACP stdio McpServer entry for the task tools.
+// The workspace lock is the ONEAGENTS_WORKSPACE_ID env var — the tools expose
+// no project parameter, so the agent is confined to workspaceID. A non-empty
+// taskID additionally injects ONEAGENTS_TASK_ID, narrowing the session to a
+// single task (executor scope, #50): the server then withholds the PM-only
+// create/milestone tools and confines reads/writes to that task. Credentials
+// (the internal token) are injected here in Go, never from a role template's
+// YAML. Returns nil if the executable can't be resolved.
+func (h *Handler) buildTasksMcpServer(workspaceID, taskID string) map[string]any {
 	exe, err := os.Executable()
 	if err != nil || exe == "" {
 		log.Printf("[agent] tasks mcpServer: cannot resolve executable: %v", err)
 		return nil
+	}
+	env := []map[string]string{
+		{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
+		{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
+		{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
+	}
+	if taskID != "" {
+		env = append(env, map[string]string{"name": "ONEAGENTS_TASK_ID", "value": taskID})
 	}
 	return map[string]any{
 		"type":    "stdio",
 		"name":    "tasks",
 		"command": exe,
 		"args":    []string{"mcp-tasks"},
-		"env": []map[string]string{
-			{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
-			{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
-			{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
-		},
+		"env":     env,
 	}
 }
 
@@ -114,7 +121,7 @@ func (h *Handler) buildTasksMcpServer(workspaceID string) map[string]any {
 // hardcoded fallback for the PM/PMO path when the role template can't be
 // resolved; the template-driven path uses buildMcpServersFromRole.
 func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
-	srv := h.buildTasksMcpServer(workspaceID)
+	srv := h.buildTasksMcpServer(workspaceID, "") // PM is project-wide; no task lock
 	if srv == nil {
 		return nil
 	}
@@ -134,21 +141,22 @@ func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
 func (h *Handler) resolvePMRole(workspacePath, workspaceID string) (prompt string, mcpServers json.RawMessage) {
 	projectName := h.workspaceName(workspaceID)
 	if tpl, ok := LoadRoles(workspacePath).Resolve("pm"); ok && tpl.Available {
-		return renderRolePrompt(tpl, projectName, workspaceID), h.buildMcpServersFromRole(tpl, workspaceID)
+		return renderRolePrompt(tpl, projectName, workspaceID), h.buildMcpServersFromRole(tpl, workspaceID, "")
 	}
 	return buildPMSystemPrompt(projectName, workspaceID), h.buildPMMcpServers(workspaceID)
 }
 
 // buildMcpServersFromRole turns a role template's mcp_servers list into the
 // per-session MCP server config. Each named server maps to a Go-built entry
-// (credentials injected server-side). Unknown names are logged and skipped.
-// Returns nil when no server resolves.
-func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID string) json.RawMessage {
+// (credentials injected server-side). A non-empty taskID locks the task tools
+// to a single task (executor scope, #50); pass "" for project-wide roles.
+// Unknown names are logged and skipped. Returns nil when no server resolves.
+func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID, taskID string) json.RawMessage {
 	var servers []map[string]any
 	for _, name := range tpl.McpServers {
 		switch name {
 		case "tasks", "mcp-tasks":
-			if srv := h.buildTasksMcpServer(workspaceID); srv != nil {
+			if srv := h.buildTasksMcpServer(workspaceID, taskID); srv != nil {
 				servers = append(servers, srv)
 			}
 		default:
