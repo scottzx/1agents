@@ -4,7 +4,8 @@ import { RightDrawerTab, isFullPageTab } from '../types';
 import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
 import * as stage from '../../stores/stageStore';
-import { isBeginnerMode } from '../../stores/uiStore';
+import { isBeginnerMode, isMobile } from '../../stores/uiStore';
+import * as taskNav from '../../stores/taskNavStore';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -214,7 +215,17 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     {onBack ? (
                         <button
                             class="header-back-btn"
-                            onClick={onBack}
+                            onClick={() => {
+                                // Mobile single-back: step out of an open task first
+                                // (detail → parent task → list), then fall through to
+                                // the workspace-level back. Desktop keeps its own
+                                // panel-back-btn and uses onBack directly.
+                                if (isMobile.value && taskNav.taskHasSelection.value && taskNav.taskBackHandler.value) {
+                                    taskNav.taskBackHandler.value();
+                                } else {
+                                    onBack();
+                                }
+                            }}
                             style="margin-right: 8px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--text-main); cursor: pointer; padding: 4px;"
                             title="Back"
                         >

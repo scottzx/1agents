@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { RightDrawerTab, Session } from '../types';
 import { FlatFileBrowser } from './FlatFileBrowser';
@@ -12,6 +12,7 @@ import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
+import * as taskNav from '../../stores/taskNavStore';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -83,6 +84,20 @@ export function RightPanel({
         }
     };
 
+    // Publish the task back-step + selection state for the mobile header bridge
+    // (see taskNavStore): on mobile the app header is the single back affordance.
+    const hasTaskSelection = activeDrawerTab === 'tasks' && taskSelectedId.value !== null;
+    useEffect(() => {
+        taskNav.taskBackHandler.value = taskBack;
+        return () => {
+            taskNav.taskBackHandler.value = null;
+            taskNav.taskHasSelection.value = false;
+        };
+    }, []);
+    useEffect(() => {
+        taskNav.taskHasSelection.value = hasTaskSelection;
+    }, [hasTaskSelection]);
+
     const language = ui.language.value;
     const theme = ui.theme.value;
     const viewMode = fs.viewMode.value;
@@ -127,6 +142,27 @@ export function RightPanel({
             <div class="panel-tabs-header">
                 <span class="panel-tab-title">{getDrawerTitle(activeDrawerTab)}</span>
                 <div class="panel-header-actions">
+                    {/* Board-level create action (新建讨论 / 新建里程碑), published by
+                        TaskList for the current view. Hidden while a task is open. */}
+                    {activeDrawerTab === 'tasks' && taskSelectedId.value === null && taskNav.taskAddAction.value && (
+                        <button
+                            class="panel-add-btn"
+                            title={taskNav.taskAddAction.value.title}
+                            onClick={() => taskNav.taskAddAction.value?.run()}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                        </button>
+                    )}
                     {activeDrawerTab === 'tasks' && taskSelectedId.value !== null && (
                         <div
                             class="panel-back-btn"

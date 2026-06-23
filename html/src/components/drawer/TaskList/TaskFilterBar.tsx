@@ -6,6 +6,56 @@ import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
 
 export type TaskView = 'list' | 'board' | 'calendar';
 
+// View-toggle icons (feather-style, currentColor). Shown on mobile where the
+// toggle collapses to icons-only; desktop keeps the text labels.
+const ListIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <line x1="8" y1="6" x2="21" y2="6" />
+        <line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" />
+        <line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+);
+
+const BoardIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <rect x="3" y="3" width="7" height="18" rx="1" />
+        <rect x="14" y="3" width="7" height="11" rx="1" />
+    </svg>
+);
+
+const CalendarIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+);
+
 interface FilterBarProps {
     search: Signal<string>;
     statusFilter: Signal<string[]>;
@@ -46,7 +96,7 @@ export function TaskFilterBar({
     );
 
     return (
-        <div class="task-grid-toolbar">
+        <div class="task-grid-toolbar task-filter-bar">
             <div class="grid-toolbar-search">
                 <input
                     type="text"
@@ -98,17 +148,35 @@ export function TaskFilterBar({
             </div>
 
             <div class="task-view-toggle">
-                <button class={taskView.value === 'list' ? 'active' : ''} onClick={() => (taskView.value = 'list')}>
-                    列表
+                <button
+                    class={taskView.value === 'list' ? 'active' : ''}
+                    title="列表"
+                    onClick={() => (taskView.value = 'list')}
+                >
+                    <span class="tvt-icon">
+                        <ListIcon />
+                    </span>
+                    <span class="tvt-label">列表</span>
                 </button>
-                <button class={taskView.value === 'board' ? 'active' : ''} onClick={() => (taskView.value = 'board')}>
-                    看板
+                <button
+                    class={taskView.value === 'board' ? 'active' : ''}
+                    title="看板"
+                    onClick={() => (taskView.value = 'board')}
+                >
+                    <span class="tvt-icon">
+                        <BoardIcon />
+                    </span>
+                    <span class="tvt-label">看板</span>
                 </button>
                 <button
                     class={taskView.value === 'calendar' ? 'active' : ''}
+                    title="日历"
                     onClick={() => (taskView.value = 'calendar')}
                 >
-                    日历
+                    <span class="tvt-icon">
+                        <CalendarIcon />
+                    </span>
+                    <span class="tvt-label">日历</span>
                 </button>
             </div>
         </div>

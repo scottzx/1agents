@@ -2062,6 +2062,21 @@ body {
   }
 }
 
+/* Mobile: tighten the dashboard header — smaller gap below it and a size-smaller
+   view-switcher. Scoped to the panel context where the board renders on phones. */
+@media (max-width: 768px) {
+  .right-panel .task-dashboard-container {
+    gap: 8px;
+  }
+  .right-panel .task-dashboard-header {
+    margin-bottom: 0;
+  }
+  .task-view-switcher button {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+}
+
 /* ── Kanban board ── */
 .kanban-board {
   flex: 1;
@@ -3560,6 +3575,9 @@ body {
     background-color: var(--bg-panel);
 
     button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 5px 14px;
       font-size: 12.5px;
       border: none;
@@ -3575,6 +3593,17 @@ body {
       }
       &:not(.active):hover {
         background-color: var(--btn-hover);
+      }
+    }
+
+    // Desktop: text labels only; icons are revealed on mobile (see below).
+    .tvt-icon {
+      display: none;
+      align-items: center;
+
+      svg {
+        width: 16px;
+        height: 16px;
       }
     }
   }
@@ -3596,6 +3625,43 @@ body {
       color: var(--accent-color);
       border-color: var(--accent-color);
       background-color: var(--accent-light);
+    }
+  }
+}
+
+/* Mobile: keep the filter toolbar on a single row — search/filter flex on the
+   left, the view-toggle collapses to three icons pinned right. */
+@media (max-width: 768px) {
+  .task-grid-toolbar.task-filter-bar {
+    flex-wrap: nowrap;
+    gap: 6px;
+
+    .grid-toolbar-search {
+      flex: 1;
+      min-width: 0;
+
+      input {
+        width: 100%;
+      }
+    }
+
+    .grid-toolbar-popover-host {
+      flex-shrink: 0;
+    }
+
+    .task-view-toggle {
+      flex-shrink: 0;
+
+      button {
+        padding: 6px 9px;
+      }
+
+      .tvt-icon {
+        display: inline-flex;
+      }
+      .tvt-label {
+        display: none;
+      }
     }
   }
 }
@@ -4057,23 +4123,127 @@ body {
       min-width: 0;
     }
 
+    /* ── Mobile (default): properties live in a bottom sheet ─────────────── */
+    // Backdrop dims the page behind the open sheet.
+    .task-detail-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s ease, visibility 0.25s ease;
+      z-index: 60;
+
+      &.is-open {
+        opacity: 1;
+        visibility: visible;
+      }
+    }
+
     .task-detail-sidebar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 61;
       display: flex;
       flex-direction: column;
       gap: 16px;
-      flex-shrink: 0;
       width: 100%;
+      max-height: 82vh;
+      overflow-y: auto;
+      padding: 0 16px 24px;
+      background: var(--bg-card-glass, var(--bg-card));
+      backdrop-filter: var(--backdrop-blur);
+      -webkit-backdrop-filter: var(--backdrop-blur);
+      border-top: 1px solid var(--border-glass, var(--border-color));
+      border-radius: var(--bento-radius-lg) var(--bento-radius-lg) 0 0;
+      box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+      transform: translateY(100%);
+      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+
+      &.drawer-open {
+        transform: translateY(0);
+      }
     }
 
+    // Drag-handle + title bar — sticky at the top of the sheet on mobile.
+    .task-drawer-handle {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0 12px;
+      margin: 0 0 4px;
+      background: inherit;
+
+      .task-drawer-grip {
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--border-color);
+      }
+
+      .task-drawer-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+
+      .task-drawer-close {
+        margin-left: auto;
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 50%;
+        font-size: 20px;
+        line-height: 1;
+        color: var(--text-secondary);
+        cursor: pointer;
+
+        &:hover {
+          background: var(--btn-hover);
+          color: var(--text-main);
+        }
+      }
+    }
+
+    /* ── Desktop (≥900px): properties are a permanent right column ───────── */
     @media (min-width: 900px) {
       display: grid;
       grid-template-columns: 1.8fr 1.2fr;
       align-items: start;
       gap: 20px;
 
+      .task-detail-backdrop { display: none; }
+
       .task-detail-sidebar {
+        position: static;
+        z-index: auto;
         width: auto;
+        max-height: none;
+        overflow: visible;
+        padding: 0;
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        border-top: none;
+        border-radius: 0;
+        box-shadow: none;
+        transform: none;
       }
+
+      .task-drawer-handle { display: none; }
 
       // Sidebar collapsed: single full-width column
       &.sidebar-collapsed {
@@ -4519,19 +4689,66 @@ body {
   }
 
   /* ── GitHub-style Task Detail Redesign ── */
+
+  /* Perf: the timeline can hold many cards. backdrop-filter blur is cheap for a
+     single glass surface but murderous when stacked 10+ deep (compositing cost
+     spikes → janky load + >500ms tab switches on mobile). These cards sit on an
+     opaque page, so drop the blur and use a solid surface — the bento radius /
+     border / shadow still carry the look. (The mobile bottom-sheet keeps blur:
+     it's a single overlay.) */
+  .gh-comment-card,
+  .gh-merge-box,
+  .gh-composer-card,
+  .gh-sidebar-panel,
+  .task-checklist-item,
+  .task-addlink-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--bg-card);
+  }
+
   .gh-header-top {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 8px;
 
+    // Issue status as an icon to the left of the title (open = success ring +
+    // dot, closed = danger check-ring). Text label lives in the drawer now.
+    .gh-status-icon {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      margin-top: 2px;
+
+      svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      &.open {
+        color: var(--success-fg);
+      }
+      &.closed {
+        color: var(--danger-fg);
+      }
+    }
+
     .gh-title {
+      flex: 1;
       font-size: 22px;
       font-weight: 500;
       color: var(--text-main);
       margin: 0;
       line-height: 1.25;
+      min-width: 0;
+      // Clamp the title to two lines so a long title never pushes the body
+      // (and the tabs) off-screen.
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
 
       .gh-number {
         color: var(--text-muted);
@@ -4543,40 +4760,31 @@ body {
       display: flex;
       gap: 8px;
       align-items: center;
+      flex-shrink: 0;
     }
-  }
 
-  .gh-header-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: 16px;
-    font-size: 13px;
-    color: var(--text-secondary);
-
-    .gh-status-badge {
+    // Permalink: icon-only, transparent — no border, no label.
+    .task-permalink-btn {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 4px 12px;
-      border-radius: 2em;
-      font-size: 13px;
-      font-weight: 600;
-      color: #fff;
+      justify-content: center;
+      padding: 4px;
+      background: transparent;
+      border: none;
+      border-radius: var(--bento-radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--bento-transition);
 
-      &.open {
-        background-color: #2da44e;
+      svg {
+        width: 17px;
+        height: 17px;
       }
-      &.closed {
-        background-color: #cf222e;
+
+      &:hover {
+        color: var(--accent-color);
+        background: var(--btn-hover);
       }
-    }
-    
-    .gh-meta-text {
-      line-height: 1.4;
     }
   }
 
@@ -4584,9 +4792,19 @@ body {
     display: flex;
     gap: 4px;
     border-bottom: 1px solid var(--border-color);
-    margin-bottom: 20px;
+    margin-bottom: 8px;
     padding-bottom: 0px;
     align-items: center;
+
+    .gh-tab-icon {
+      display: inline-flex;
+      align-items: center;
+
+      svg {
+        width: 15px;
+        height: 15px;
+      }
+    }
 
     .gh-tab-btn {
       background: transparent;
@@ -4623,6 +4841,34 @@ body {
         font-size: 11px;
         font-weight: 500;
         color: var(--text-secondary);
+      }
+    }
+
+    // Mobile-only: pill that opens the properties bottom sheet. Hidden on
+    // wide screens where the sidebar is a permanent right column.
+    .gh-properties-btn {
+      display: none;
+      margin-left: auto;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      border: 1px solid var(--border-color);
+      border-radius: 2em;
+      padding: 5px 12px;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+
+      svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      &:hover {
+        background: var(--btn-hover);
+        color: var(--text-main);
       }
     }
 
@@ -4669,18 +4915,30 @@ body {
         &:nth-child(3) { transform: translateY(-6px) rotate(-45deg); background: var(--accent-fg); }
       }
     }
+
+    // Mobile: swap the desktop collapse hamburger for the properties pill.
+    @media (max-width: 899px) {
+      .gh-sidebar-toggle-btn { display: none; }
+      .gh-properties-btn { display: inline-flex; }
+    }
+
+    // Very narrow: drop tab text, keep icon + badge so the row never overflows.
+    @media (max-width: 480px) {
+      .gh-tab-btn {
+        padding: 8px 10px;
+        .gh-tab-label { display: none; }
+      }
+    }
   }
 
-  /* GitHub Comment Card */
+  /* Comment Card — Bento surface with an internal header/body strip layout */
   .gh-comment-card {
-    border: 1px solid var(--border-glass, var(--border-color));
-    border-radius: 8px;
-    background-color: var(--bg-card-glass, rgba(var(--bg-card), 0.85));
+    @extend %bento-card;
+    padding: 0; // header/body strips manage their own padding
+    gap: 0;
+    border-radius: var(--bento-radius);
     margin-bottom: 16px;
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
-    display: flex;
-    flex-direction: column;
 
     &.is-agent {
       border-color: rgba(var(--accent-color-rgb), 0.2);
@@ -4817,15 +5075,15 @@ body {
     }
   }
 
-  /* Automated Checks / Merge Box */
+  /* Automated Checks / Merge Box — Bento surface, three-column on wide screens */
   .gh-merge-box {
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background-color: var(--bg-card);
+    @extend %bento-card;
+    padding: 0;
+    gap: 0;
+    border-radius: var(--bento-radius);
     margin-bottom: 20px;
     overflow: hidden;
-    display: flex;
-    box-shadow: var(--shadow-sm);
+    flex-direction: row;
 
     .gh-merge-icon-col {
       width: 60px;
@@ -4884,7 +5142,7 @@ body {
           font-weight: 600;
           &.pass { color: var(--success-fg); }
           &.fail { color: var(--danger-fg); }
-          &.warn { color: #d29922; }
+          &.warn { color: var(--warning-fg); }
         }
       }
     }
@@ -4896,28 +5154,28 @@ body {
       border-left: 1px solid var(--border-color);
 
       .gh-merge-btn {
-        background-color: #2da44e;
-        border: 1px solid #2da44e;
-        border-radius: 6px;
-        color: #fff;
+        background-color: var(--success-emphasis);
+        border: 1px solid var(--success-emphasis);
+        border-radius: var(--bento-radius-sm);
+        color: var(--on-accent);
         padding: 6px 16px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        transition: all 0.2s ease;
+        box-shadow: var(--shadow-sm);
+        transition: var(--bento-transition);
         white-space: nowrap;
 
         &:hover {
-          background-color: #2c974b;
+          filter: brightness(0.93);
         }
 
         &.btn-running {
-          background-color: #cf222e;
-          border-color: #cf222e;
+          background-color: var(--danger-emphasis);
+          border-color: var(--danger-emphasis);
 
           &:hover {
-            background-color: #a31b24;
+            filter: brightness(0.9);
           }
         }
 
@@ -4931,15 +5189,33 @@ body {
         }
       }
     }
+
+    // Narrow screens: stack the three columns vertically so nothing overflows
+    @media (max-width: 599px) {
+      flex-direction: column;
+
+      .gh-merge-icon-col {
+        width: 100%;
+        height: 44px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .gh-merge-actions {
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+
+        .gh-merge-btn { width: 100%; }
+      }
+    }
   }
 
-  /* Comment Composer in GitHub Style */
+  /* Comment Composer — Bento surface */
   .gh-composer-card {
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background-color: var(--bg-card);
+    @extend %bento-card;
+    padding: 0;
+    gap: 0;
+    border-radius: var(--bento-radius);
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
 
     .gh-composer-tabs {
       display: flex;
@@ -5066,17 +5342,18 @@ body {
         }
 
         .gh-submit-btn {
-          background-color: #2da44e;
-          border: 1px solid #2da44e;
-          border-radius: 6px;
-          color: #fff;
+          background-color: var(--success-emphasis);
+          border: 1px solid var(--success-emphasis);
+          border-radius: var(--bento-radius-sm);
+          color: var(--on-accent);
           padding: 6px 16px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
+          transition: var(--bento-transition);
 
           &:hover {
-            background-color: #2c974b;
+            filter: brightness(0.93);
           }
 
           &:disabled {
@@ -5088,23 +5365,20 @@ body {
     }
   }
 
-  /* GitHub Sidebar Panels */
+  /* Sidebar / drawer panels — each property group is a Bento card */
   .gh-sidebar-panel {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 16px;
-    margin-bottom: 16px;
-
-    &:last-child {
-      border-bottom: none;
-    }
+    @extend %bento-card;
+    gap: 8px;
+    padding: var(--bento-pad);
 
     .gh-sidebar-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
-      font-size: 12.5px;
+      font-size: 11px;
       font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
       color: var(--text-secondary);
 
       .gh-sidebar-edit-icon {
@@ -5114,6 +5388,17 @@ body {
         &:hover {
           color: var(--accent-color);
         }
+      }
+
+      // Status icon sits in the head; keep its case/letterspacing out of it.
+      .gh-status-icon {
+        display: inline-flex;
+        text-transform: none;
+        letter-spacing: 0;
+
+        svg { width: 16px; height: 16px; }
+        &.open { color: var(--success-fg); }
+        &.closed { color: var(--danger-fg); }
       }
     }
 
@@ -5125,7 +5410,263 @@ body {
         color: var(--text-muted);
         font-size: 12.5px;
       }
+
+      .gh-meta-text {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 12.5px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+
+        strong { color: var(--text-main); }
+      }
+
+      // Open / close toggle, moved here from the header.
+      .task-issue-toggle-btn {
+        display: block;
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        border-radius: var(--bento-radius-sm);
+        padding: 6px 12px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: var(--bento-transition);
+
+        &:hover {
+          background: var(--btn-hover);
+          color: var(--text-main);
+          border-color: var(--accent-color);
+        }
+      }
     }
+
+    .gh-assignee-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .gh-label-list {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .gh-dates-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .gh-session-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .gh-session-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 8px;
+      padding: 6px 8px;
+      background: transparent;
+      border: 1px solid var(--border-color);
+      border-radius: var(--bento-radius-sm);
+      text-align: left;
+      font-size: 12.5px;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: var(--bento-transition);
+
+      &:hover {
+        border-color: var(--accent-color);
+        background: var(--btn-hover);
+      }
+
+      .task-status-badge { font-size: 10px; }
+    }
+  }
+
+  /* ── Tab content shared bits (subtasks / relations) ── */
+  .task-tab-title {
+    margin: 0 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .task-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .task-checklist-item {
+      @extend %bento-card;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+
+      .priority-badge { font-size: 10px; }
+
+      .task-checklist-title {
+        font-size: 13.5px;
+        color: var(--text-main);
+
+        &.is-done { text-decoration: line-through; color: var(--text-muted); }
+      }
+
+      .task-status-badge {
+        margin-left: auto;
+        font-size: 10.5px;
+      }
+    }
+  }
+
+  .task-rel-group {
+    margin-bottom: 24px;
+
+    .task-rel-group-title {
+      margin: 0 0 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .task-rel-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .task-link-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--bento-radius-sm);
+      background: var(--bg-card-glass, var(--bg-card));
+
+      .task-link-rel {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .task-link-target {
+        background: none;
+        border: none;
+        color: var(--accent-color);
+        cursor: pointer;
+        text-align: left;
+        font-weight: 500;
+
+        &:disabled { cursor: default; color: var(--text-secondary); }
+      }
+
+      .task-link-remove {
+        margin-left: auto;
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+
+        &:hover { color: var(--danger-fg); }
+      }
+    }
+  }
+
+  .task-addlink-card {
+    @extend %bento-card;
+    padding: var(--bento-pad);
+    gap: 12px;
+
+    .task-addlink-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .task-addlink-select {
+      padding: 6px 8px;
+      border-radius: var(--bento-radius-sm);
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-card);
+      color: var(--text-main);
+
+      &.task-link-target-select { flex: 1; min-width: 150px; }
+    }
+
+    .gh-submit-btn {
+      padding: 6px 14px;
+      border-radius: var(--bento-radius-sm);
+      background-color: var(--accent-color);
+      color: var(--on-accent);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+
+      &:disabled { opacity: 0.5; cursor: not-allowed; }
+    }
+  }
+}
+
+/* ── Task detail: mobile compaction ──────────────────────────────────────
+   Shrink the chrome (title, meta, tabs, card padding) on phones so more of
+   the actual conversation is visible above the fold. */
+@media (max-width: 600px) {
+  .task-detail-view {
+    .gh-header-top {
+      gap: 10px;
+      margin-bottom: 6px;
+
+      .gh-title {
+        font-size: 17px;
+        line-height: 1.3;
+      }
+    }
+
+    .gh-actions {
+      gap: 6px;
+
+      button {
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+    }
+
+    .gh-detail-tabs {
+      margin-bottom: 8px;
+
+      .gh-tab-btn {
+        padding: 7px 9px;
+        font-size: 13px;
+      }
+    }
+
+    .gh-comment-card {
+      margin-bottom: 12px;
+
+      .gh-comment-header { padding: 7px 12px; }
+      .gh-comment-body {
+        padding: 12px;
+        font-size: 13px;
+      }
+    }
+
+    .task-tab-title { font-size: 14px; margin-bottom: 12px; }
+
+    .gh-sidebar-panel { padding: 12px; }
   }
 }
 
@@ -5532,6 +6073,15 @@ body {
 /* ==========================================================================
    RIGHT COLUMN: DYNAMIC PANEL (Slides out dynamically from right)
    ========================================================================== */
+
+/* Mobile: the app header is the single back affordance (it steps out of an open
+   task, then the workspace — see WorkspaceHeader + taskNavStore), so the panel's
+   own back arrow is redundant inside the mobile drawer container. Desktop keeps
+   it. */
+.mobile-drawer-flat-container .right-panel .panel-tabs-header .panel-back-btn {
+  display: none;
+}
+
 .right-panel {
   width: 320px;
   background-color: var(--bg-panel);
@@ -5601,6 +6151,31 @@ body {
 
       &.spinning svg {
         animation: fb-spin 1s linear infinite;
+      }
+    }
+
+    // Board create action — a single blue "+" on the right of the panel header.
+    .panel-add-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: var(--accent-color);
+      cursor: pointer;
+      transition: all 0.2s;
+
+      svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      &:hover {
+        background-color: var(--accent-light);
       }
     }
   }
@@ -5714,7 +6289,7 @@ body {
 
     .task-dashboard-header {
       display: flex;
-      justify-content: flex-end;
+      justify-content: flex-start;
       margin-bottom: 12px;
 
       .create-task-btn-toggle {

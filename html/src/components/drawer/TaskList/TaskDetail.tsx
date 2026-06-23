@@ -14,6 +14,99 @@ import * as wsStore from '../../../stores/workspaceStore';
 import * as sessionStore from '../../../stores/sessionStore';
 import * as ui from '../../../stores/uiStore';
 
+// Tab / control icons — feather-style outline, inherit color via currentColor
+// (matches the inline-SVG convention in SessionsView/TaskTable).
+const ConversationIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+);
+
+const SubtasksIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <polyline points="9 11 12 14 22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+);
+
+const RelationsIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+);
+
+const PropertiesIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="15" y1="3" x2="15" y2="21" />
+    </svg>
+);
+
+const PermalinkIcon = () => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+        <path d="M15 7h2a5 5 0 0 1 0 10h-2" />
+        <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+);
+
+// Issue status icon — open = ring with a dot (in progress), closed = check ring.
+const StatusIcon = ({ closed }: { closed: boolean }) =>
+    closed ? (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+        </svg>
+    ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+        </svg>
+    );
+
 interface TaskDetailProps {
     workspaceId: string;
     taskId: string;
@@ -63,10 +156,24 @@ export function TaskDetail({
     const [activeTab, setActiveTab] = useState<'conversation' | 'subtasks' | 'relations'>('conversation');
     const [composerTab, setComposerTab] = useState<'write' | 'preview'>('write');
 
-    // Sidebar collapse toggle
+    // Sidebar collapse toggle (desktop) / bottom-drawer open (mobile).
     const sidebarCollapsed = useSignal(false);
+    const drawerOpen = useSignal(false);
+
+    // One control, two behaviours: on narrow screens the properties panel is a
+    // bottom sheet (toggle drawerOpen); on wide screens it's a collapsible
+    // right column (toggle sidebarCollapsed).
+    const toggleSidebar = () => {
+        if (typeof window !== 'undefined' && window.matchMedia('(max-width: 899px)').matches) {
+            drawerOpen.value = !drawerOpen.value;
+        } else {
+            sidebarCollapsed.value = !sidebarCollapsed.value;
+        }
+    };
 
     const containerRef = useRef<HTMLDivElement>(null);
+    // Raw bytes of the last task payload, for poll de-duplication (see fetchTask).
+    const lastRawRef = useRef('');
 
     useEffect(() => {
         const el = containerRef.current;
@@ -142,7 +249,9 @@ export function TaskDetail({
                         <span>{fmtDate(rp.createdAt)}</span>
                     </div>
                     <div class="gh-comment-actions">
-                        <span class="gh-role-badge">{isAgent ? 'Agent' : 'User'}</span>
+                        <span class="gh-role-badge">
+                            {isAgent ? t('task.detail.roleAgent', lang) : t('task.detail.roleUser', lang)}
+                        </span>
                     </div>
                 </div>
                 <div class="gh-comment-body">
@@ -161,8 +270,14 @@ export function TaskDetail({
             if (!res.ok) {
                 throw new Error(`Failed to load task: ${res.statusText}`);
             }
-            setTask(await res.json());
+            // Skip the state update (and the full re-render + markdown re-parse it
+            // triggers) when the polled payload is byte-identical to the last one.
+            // Go's JSON encoding is deterministic, so unchanged state → same bytes.
+            const text = await res.text();
             setError('');
+            if (text === lastRawRef.current) return;
+            lastRawRef.current = text;
+            setTask(JSON.parse(text));
         } catch (err) {
             setError((err as Error).message);
         }
@@ -465,13 +580,19 @@ export function TaskDetail({
 
     return (
         <div class="task-dashboard-container task-detail-view" ref={containerRef}>
-            {/* GitHub style title header */}
+            {/* GitHub style title header — status icon · title · permalink */}
             <div class="gh-header-top">
                 {onBack && (
                     <button class="task-back-btn" onClick={onBack}>
                         {t('task.detail.back', lang)}
                     </button>
                 )}
+                <span
+                    class={`gh-status-icon ${closed ? 'closed' : 'open'}`}
+                    title={closed ? t('task.detail.statusClosed', lang) : t('task.detail.statusOpen', lang)}
+                >
+                    <StatusIcon closed={closed} />
+                </span>
                 <h3 class="gh-title">
                     {task.title} <span class="gh-number">#{task.number || ''}</span>
                 </h3>
@@ -482,7 +603,7 @@ export function TaskDetail({
                             title={t('task.detail.permalink', lang)}
                             onClick={copyPermalink}
                         >
-                            🔗 链接
+                            <PermalinkIcon />
                         </button>
                     ) : null}
                     {task.type === 'discussion' && (
@@ -490,18 +611,7 @@ export function TaskDetail({
                             {t('task.discussion.convert', lang)}
                         </button>
                     )}
-                    <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
-                        {closed ? t('task.detail.reopen', lang) : t('task.detail.close', lang)}
-                    </button>
                 </div>
-            </div>
-
-            <div class="gh-header-meta">
-                <span class={`gh-status-badge ${closed ? 'closed' : 'open'}`}>{closed ? 'Closed' : 'Open'}</span>
-                <span class="gh-meta-text">
-                    <strong>{task.createdBy || 'scottzx'}</strong>{' '}
-                    {closed ? t('task.detail.closedBy', lang) : t('task.detail.createdBy', lang)} · {replies.length}
-                </span>
             </div>
 
             {/* GitHub style tab navigation */}
@@ -510,20 +620,37 @@ export function TaskDetail({
                     class={`gh-tab-btn ${activeTab === 'conversation' ? 'active' : ''}`}
                     onClick={() => setActiveTab('conversation')}
                 >
-                    💬 Conversation <span class="gh-tab-badge">{replies.length + (task.description ? 1 : 0)}</span>
+                    <span class="gh-tab-icon">
+                        <ConversationIcon />
+                    </span>
+                    <span class="gh-tab-label">{t('task.detail.tabConversation', lang)}</span>
+                    <span class="gh-tab-badge">{replies.length + (task.description ? 1 : 0)}</span>
                 </button>
                 <button
                     class={`gh-tab-btn ${activeTab === 'subtasks' ? 'active' : ''}`}
                     onClick={() => setActiveTab('subtasks')}
                 >
-                    📋 Checklist / Subtasks <span class="gh-tab-badge">{subtasks.length}</span>
+                    <span class="gh-tab-icon">
+                        <SubtasksIcon />
+                    </span>
+                    <span class="gh-tab-label">{t('task.detail.tabSubtasks', lang)}</span>
+                    <span class="gh-tab-badge">{subtasks.length}</span>
                 </button>
                 <button
                     class={`gh-tab-btn ${activeTab === 'relations' ? 'active' : ''}`}
                     onClick={() => setActiveTab('relations')}
                 >
-                    🔗 Relations <span class="gh-tab-badge">{outgoing.length + backlinks.length}</span>
+                    <span class="gh-tab-icon">
+                        <RelationsIcon />
+                    </span>
+                    <span class="gh-tab-label">{t('task.detail.tabRelations', lang)}</span>
+                    <span class="gh-tab-badge">{outgoing.length + backlinks.length}</span>
                 </button>
+                {/* Mobile-only: open the properties bottom sheet */}
+                <button class="gh-properties-btn" onClick={() => (drawerOpen.value = true)}>
+                    <PropertiesIcon /> {t('task.detail.propertiesBtn', lang)}
+                </button>
+                {/* Desktop-only: collapse the right column */}
                 <button
                     class={`gh-sidebar-toggle-btn${sidebarCollapsed.value ? ' is-collapsed' : ''}`}
                     title={
@@ -531,7 +658,7 @@ export function TaskDetail({
                             ? t('task.detail.sidebarExpand', lang)
                             : t('task.detail.sidebarCollapse', lang)
                     }
-                    onClick={() => (sidebarCollapsed.value = !sidebarCollapsed.value)}
+                    onClick={toggleSidebar}
                 >
                     <span />
                     <span />
@@ -552,7 +679,7 @@ export function TaskDetail({
                                         <span>{t('task.detail.createdTask', lang)}</span>
                                     </div>
                                     <div class="gh-comment-actions">
-                                        <span class="gh-role-badge">Author</span>
+                                        <span class="gh-role-badge">{t('task.detail.roleAuthor', lang)}</span>
                                         {!editingDesc.value && (
                                             <button
                                                 class="task-desc-edit-btn"
@@ -602,7 +729,7 @@ export function TaskDetail({
                                     <div class="gh-comment-header">
                                         <div class="gh-comment-header-left">
                                             <span>
-                                                ✅ <strong>验收标准 (Acceptance Criteria)</strong>
+                                                ✅ <strong>{t('task.detail.acceptanceTitle', lang)}</strong>
                                             </span>
                                         </div>
                                         <div class="gh-comment-actions">
@@ -850,14 +977,14 @@ export function TaskDetail({
                                             type="button"
                                             onClick={() => setComposerTab('write')}
                                         >
-                                            Write
+                                            {t('task.detail.composerWrite', lang)}
                                         </button>
                                         <button
                                             class={`gh-composer-tab ${composerTab === 'preview' ? 'active' : ''}`}
                                             type="button"
                                             onClick={() => setComposerTab('preview')}
                                         >
-                                            Preview
+                                            {t('task.detail.composerPreview', lang)}
                                         </button>
                                     </div>
 
@@ -867,8 +994,8 @@ export function TaskDetail({
                                                 rows={4}
                                                 placeholder={
                                                     closed
-                                                        ? 'Issue 已关闭，仅可评论...'
-                                                        : '写回复：评论、布置新一轮工作，或追问已有会话...'
+                                                        ? t('task.detail.composerPlaceholderClosed', lang)
+                                                        : t('task.detail.composerPlaceholder', lang)
                                                 }
                                                 value={replyText}
                                                 onInput={(e: Event) =>
@@ -881,7 +1008,9 @@ export function TaskDetail({
                                                 dangerouslySetInnerHTML={{ __html: renderMarkdown(replyText, mdCtx) }}
                                             />
                                         ) : (
-                                            <div class="gh-preview-box">Nothing to preview</div>
+                                            <div class="gh-preview-box">
+                                                {t('task.detail.composerNothingPreview', lang)}
+                                            </div>
                                         )}
                                     </div>
 
@@ -901,7 +1030,7 @@ export function TaskDetail({
                                             </label>
                                             <label
                                                 class={`gh-opt-label ${replyMode === 'new' ? 'active' : ''} ${closed ? 'disabled' : ''}`}
-                                                title={closed ? 'Issue 已关闭，先重新打开' : ''}
+                                                title={closed ? t('task.detail.reopenHint', lang) : ''}
                                             >
                                                 <input
                                                     type="radio"
@@ -917,7 +1046,9 @@ export function TaskDetail({
                                         </div>
                                         <div class="gh-composer-actions">
                                             <button type="button" class="gh-close-btn" onClick={toggleIssueState}>
-                                                {closed ? 'Reopen Issue' : 'Close Issue'}
+                                                {closed
+                                                    ? t('task.detail.reopenIssue', lang)
+                                                    : t('task.detail.closeIssue', lang)}
                                             </button>
                                             <button
                                                 type="button"
@@ -925,7 +1056,9 @@ export function TaskDetail({
                                                 disabled={submitting || !replyText.trim()}
                                                 onClick={submitReply}
                                             >
-                                                {submitting ? 'Submitting...' : 'Comment'}
+                                                {submitting
+                                                    ? t('task.detail.commentSubmitting', lang)
+                                                    : t('task.detail.commentSubmit', lang)}
                                             </button>
                                         </div>
                                     </div>
@@ -936,43 +1069,29 @@ export function TaskDetail({
 
                     {activeTab === 'subtasks' && (
                         <div class="gh-subtasks-tab-content">
-                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>
-                                Checklist ({completedSubtasks}/{totalSubtasks})
+                            <h4 class="task-tab-title">
+                                {t('task.detail.checklistTitle', lang)} ({completedSubtasks}/{totalSubtasks})
                             </h4>
                             {subtasks.length === 0 ? (
                                 <div class="task-desc-empty">{t('task.detail.subtasksEmpty', lang)}</div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div class="task-checklist">
                                     {subtasks.map(st => (
-                                        <div
-                                            key={st.id}
-                                            class="gh-comment-card"
-                                            style={{ marginBottom: '8px', padding: '12px' }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <input type="checkbox" checked={st.status === 'completed'} disabled />
-                                                <span
-                                                    class={`priority-badge priority-${st.priority || 'medium'}`}
-                                                    style={{ fontSize: '10px' }}
-                                                >
-                                                    {priorityLabels[st.priority || 'medium']}
-                                                </span>
-                                                <span
-                                                    style={{
-                                                        fontSize: '13.5px',
-                                                        textDecoration:
-                                                            st.status === 'completed' ? 'line-through' : 'none',
-                                                    }}
-                                                >
-                                                    {st.title}
-                                                </span>
-                                                <span
-                                                    class={`task-status-badge ${st.status}`}
-                                                    style={{ marginLeft: 'auto', fontSize: '10.5px' }}
-                                                >
-                                                    {statusLabels[st.status] || st.status}
-                                                </span>
-                                            </div>
+                                        <div key={st.id} class="task-checklist-item">
+                                            <input type="checkbox" checked={st.status === 'completed'} disabled />
+                                            <span class={`priority-badge priority-${st.priority || 'medium'}`}>
+                                                {priorityLabels[st.priority || 'medium']}
+                                            </span>
+                                            <span
+                                                class={`task-checklist-title${
+                                                    st.status === 'completed' ? ' is-done' : ''
+                                                }`}
+                                            >
+                                                {st.title}
+                                            </span>
+                                            <span class={`task-status-badge ${st.status}`}>
+                                                {statusLabels[st.status] || st.status}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
@@ -982,79 +1101,32 @@ export function TaskDetail({
 
                     {activeTab === 'relations' && (
                         <div class="gh-relations-tab-content">
-                            <h4 style={{ margin: '0 0 16px 0', fontSize: '15px' }}>
-                                {t('task.detail.relationsTitle', lang)}
-                            </h4>
+                            <h4 class="task-tab-title">{t('task.detail.relationsTitle', lang)}</h4>
 
-                            <div style={{ marginBottom: '24px' }}>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                                    {t('task.detail.outgoingTitle', lang)}
-                                </h5>
+                            <div class="task-rel-group">
+                                <h5 class="task-rel-group-title">{t('task.detail.outgoingTitle', lang)}</h5>
                                 {outgoing.length === 0 ? (
-                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>
-                                        {t('task.detail.outgoingEmpty', lang)}
-                                    </div>
+                                    <div class="task-desc-empty">{t('task.detail.outgoingEmpty', lang)}</div>
                                 ) : (
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '8px',
-                                            marginBottom: '16px',
-                                        }}
-                                    >
+                                    <div class="task-rel-list">
                                         {outgoing.map(link => {
                                             const tgt = taskById.get(link.target);
                                             return (
-                                                <div
-                                                    key={`${link.target}-${link.rel}`}
-                                                    class="task-link-row"
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        padding: '8px',
-                                                        border: '1px solid var(--border-color)',
-                                                        borderRadius: '6px',
-                                                    }}
-                                                >
-                                                    <span
-                                                        class={`task-link-rel rel-${link.rel}`}
-                                                        style={{
-                                                            fontSize: '11px',
-                                                            padding: '2px 6px',
-                                                            borderRadius: '4px',
-                                                        }}
-                                                    >
+                                                <div key={`${link.target}-${link.rel}`} class="task-link-row">
+                                                    <span class={`task-link-rel rel-${link.rel}`}>
                                                         {linkRelLabels[link.rel] || link.rel}
                                                     </span>
                                                     <button
                                                         class="task-link-target"
                                                         disabled={!tgt || !onNavigate}
                                                         onClick={() => tgt && onNavigate && onNavigate(tgt.id)}
-                                                        style={{
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            color: 'var(--accent-color)',
-                                                            cursor: 'pointer',
-                                                            textAlign: 'left',
-                                                            fontWeight: '500',
-                                                        }}
                                                     >
                                                         {linkLabel(tgt)}
                                                     </button>
                                                     <button
                                                         class="task-link-remove"
-                                                        title="移除关联"
+                                                        title={t('task.detail.removeLink', lang)}
                                                         onClick={() => removeLink(link)}
-                                                        style={{
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            color: 'var(--text-muted)',
-                                                            cursor: 'pointer',
-                                                            fontSize: '16px',
-                                                            marginLeft: 'auto',
-                                                        }}
                                                     >
                                                         ×
                                                     </button>
@@ -1065,53 +1137,23 @@ export function TaskDetail({
                                 )}
                             </div>
 
-                            <div style={{ marginBottom: '24px' }}>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                                    {t('task.detail.backlinkTitle', lang)}
-                                </h5>
+                            <div class="task-rel-group">
+                                <h5 class="task-rel-group-title">{t('task.detail.backlinkTitle', lang)}</h5>
                                 {backlinks.length === 0 ? (
-                                    <div class="task-desc-empty" style={{ marginBottom: '12px' }}>
-                                        {t('task.detail.backlinkEmpty', lang)}
-                                    </div>
+                                    <div class="task-desc-empty">{t('task.detail.backlinkEmpty', lang)}</div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div class="task-rel-list">
                                         {backlinks.map(src => {
                                             const link = (src.links || []).find(l => l.target === task.id);
                                             return (
-                                                <div
-                                                    key={src.id}
-                                                    class="task-link-row"
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        padding: '8px',
-                                                        border: '1px solid var(--border-color)',
-                                                        borderRadius: '6px',
-                                                    }}
-                                                >
-                                                    <span
-                                                        class={`task-link-rel rel-${link?.rel || 'relates'}`}
-                                                        style={{
-                                                            fontSize: '11px',
-                                                            padding: '2px 6px',
-                                                            borderRadius: '4px',
-                                                        }}
-                                                    >
+                                                <div key={src.id} class="task-link-row">
+                                                    <span class={`task-link-rel rel-${link?.rel || 'relates'}`}>
                                                         {linkRelLabels[link?.rel || 'relates']}
                                                     </span>
                                                     <button
                                                         class="task-link-target"
                                                         disabled={!onNavigate}
                                                         onClick={() => onNavigate && onNavigate(src.id)}
-                                                        style={{
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            color: 'var(--accent-color)',
-                                                            cursor: 'pointer',
-                                                            textAlign: 'left',
-                                                            fontWeight: '500',
-                                                        }}
                                                     >
                                                         {linkLabel(src)}
                                                     </button>
@@ -1123,24 +1165,13 @@ export function TaskDetail({
                             </div>
 
                             {/* Add link form */}
-                            <div class="gh-comment-card" style={{ padding: '16px' }}>
-                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12.5px' }}>
-                                    {t('task.detail.addLinkTitle', lang)}
-                                </h5>
-                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <div class="task-addlink-card">
+                                <h5 class="task-rel-group-title">{t('task.detail.addLinkTitle', lang)}</h5>
+                                <div class="task-addlink-row">
                                     <select
-                                        class="task-link-target-select"
+                                        class="task-addlink-select task-link-target-select"
                                         value={linkTarget}
                                         onChange={(e: Event) => setLinkTarget((e.target as HTMLSelectElement).value)}
-                                        style={{
-                                            flex: 1,
-                                            minWidth: '150px',
-                                            padding: '6px',
-                                            borderRadius: '6px',
-                                            border: '1px solid var(--border-color)',
-                                            backgroundColor: 'var(--bg-card)',
-                                            color: 'var(--text-main)',
-                                        }}
                                     >
                                         <option value="">{t('task.detail.linkTargetPlaceholder', lang)}</option>
                                         {linkOptions.map(tgt => (
@@ -1150,36 +1181,16 @@ export function TaskDetail({
                                         ))}
                                     </select>
                                     <select
-                                        class="task-link-rel-select"
+                                        class="task-addlink-select task-link-rel-select"
                                         value={linkRel}
                                         onChange={(e: Event) =>
                                             setLinkRel((e.target as HTMLSelectElement).value as LinkRel)
                                         }
-                                        style={{
-                                            padding: '6px',
-                                            borderRadius: '6px',
-                                            border: '1px solid var(--border-color)',
-                                            backgroundColor: 'var(--bg-card)',
-                                            color: 'var(--text-main)',
-                                        }}
                                     >
                                         <option value="relates">{t('task.link.relates', lang)}</option>
                                         <option value="closes">{t('task.link.closes', lang)}</option>
                                     </select>
-                                    <button
-                                        class="gh-submit-btn"
-                                        disabled={!linkTarget}
-                                        onClick={addLink}
-                                        style={{
-                                            padding: '6px 14px',
-                                            borderRadius: '6px',
-                                            backgroundColor: 'var(--accent-color)',
-                                            color: '#fff',
-                                            border: 'none',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                        }}
-                                    >
+                                    <button class="gh-submit-btn" disabled={!linkTarget} onClick={addLink}>
                                         {t('task.detail.addLink', lang)}
                                     </button>
                                 </div>
@@ -1188,16 +1199,59 @@ export function TaskDetail({
                     )}
                 </div>
 
-                <div class={`task-detail-sidebar${sidebarCollapsed.value ? ' is-collapsed' : ''}`}>
+                {/* Backdrop: only visible while the mobile bottom-sheet is open */}
+                <div
+                    class={`task-detail-backdrop${drawerOpen.value ? ' is-open' : ''}`}
+                    onClick={() => (drawerOpen.value = false)}
+                />
+
+                <div
+                    class={`task-detail-sidebar${sidebarCollapsed.value ? ' is-collapsed' : ''}${
+                        drawerOpen.value ? ' drawer-open' : ''
+                    }`}
+                >
+                    {/* Drag handle + header — only rendered visually on the mobile sheet */}
+                    <div class="task-drawer-handle">
+                        <span class="task-drawer-grip" />
+                        <span class="task-drawer-title">{t('task.detail.propertiesTitle', lang)}</span>
+                        <button
+                            class="task-drawer-close"
+                            title={t('task.detail.drawerClose', lang)}
+                            onClick={() => (drawerOpen.value = false)}
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    {/* Status: issue meta + open/close toggle (moved out of the header) */}
+                    <div class="gh-sidebar-panel">
+                        <div class="gh-sidebar-head">
+                            <span>{t('task.detail.sideStatus', lang)}</span>
+                            <span class={`gh-status-icon ${closed ? 'closed' : 'open'}`}>
+                                <StatusIcon closed={closed} />
+                            </span>
+                        </div>
+                        <div class="gh-sidebar-body">
+                            <div class="gh-meta-text">
+                                <strong>{task.createdBy || 'scottzx'}</strong>{' '}
+                                {closed ? t('task.detail.closedBy', lang) : t('task.detail.createdBy', lang)} ·{' '}
+                                {replies.length}
+                            </div>
+                            <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
+                                {closed ? t('task.detail.reopen', lang) : t('task.detail.close', lang)}
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Assignees (hidden for discussions — nobody executes a discussion) */}
                     {!isDiscussion && (
                         <div class="gh-sidebar-panel">
                             <div class="gh-sidebar-head">
-                                <span>Assignees</span>
+                                <span>{t('task.detail.sideAssignees', lang)}</span>
                                 <span class="gh-sidebar-edit-icon">⚙</span>
                             </div>
                             <div class="gh-sidebar-body">
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div class="gh-assignee-row">
                                     <span class="gh-avatar">{getInitials(task.assignee || 'claudecode')}</span>
                                     <span>{task.assignee || 'claudecode'}</span>
                                 </div>
@@ -1208,14 +1262,14 @@ export function TaskDetail({
                     {/* Labels */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
-                            <span>Labels</span>
+                            <span>{t('task.detail.sideLabels', lang)}</span>
                             <span class="gh-sidebar-edit-icon">⚙</span>
                         </div>
                         <div class="gh-sidebar-body">
                             {(task.labels || []).length === 0 ? (
-                                <span class="gh-no-item">None yet</span>
+                                <span class="gh-no-item">{t('task.detail.noLabels', lang)}</span>
                             ) : (
-                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                <div class="gh-label-list">
                                     {(task.labels || []).map(l => (
                                         <span key={l} class="task-label-tag">
                                             {l}
@@ -1229,14 +1283,14 @@ export function TaskDetail({
                     {/* Milestone */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
-                            <span>Milestone</span>
+                            <span>{t('task.detail.sideMilestone', lang)}</span>
                             <span class="gh-sidebar-edit-icon">⚙</span>
                         </div>
                         <div class="gh-sidebar-body">
                             {task.milestone ? (
                                 <div>🏁 {task.milestone}</div>
                             ) : (
-                                <span class="gh-no-item">No milestone</span>
+                                <span class="gh-no-item">{t('task.detail.noMilestone', lang)}</span>
                             )}
                         </div>
                     </div>
@@ -1244,7 +1298,7 @@ export function TaskDetail({
                     {/* Priority */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
-                            <span>Priority</span>
+                            <span>{t('task.detail.sidePriority', lang)}</span>
                             <span class="gh-sidebar-edit-icon">⚙</span>
                         </div>
                         <div class="gh-sidebar-body">
@@ -1257,18 +1311,9 @@ export function TaskDetail({
                     {/* Dates & Schedule */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
-                            <span>Dates & Schedule</span>
+                            <span>{t('task.detail.sideDates', lang)}</span>
                         </div>
-                        <div
-                            class="gh-sidebar-body"
-                            style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '6px',
-                                fontSize: '12px',
-                                color: 'var(--text-secondary)',
-                            }}
-                        >
+                        <div class="gh-sidebar-body gh-dates-body">
                             {task.recurrence && <div>🔁 {recurrenceLabel(task.recurrence)}</div>}
                             {(task.retryCount ?? 0) > 0 && (
                                 <div>
@@ -1291,38 +1336,24 @@ export function TaskDetail({
                     {/* Development sessions */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
-                            <span>Development</span>
+                            <span>{t('task.detail.sideDevelopment', lang)}</span>
                         </div>
                         <div class="gh-sidebar-body">
                             {task.sessions.length === 0 ? (
-                                <span class="gh-no-item">No sessions active</span>
+                                <span class="gh-no-item">{t('task.detail.noSessions', lang)}</span>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div class="gh-session-list">
                                     {task.sessions.map((s, idx) => (
                                         <button
                                             key={s.id}
+                                            class="gh-session-btn"
                                             onClick={() => openSession(s.id, s.agentType)}
-                                            style={{
-                                                background: 'none',
-                                                border: '1px solid var(--border-color)',
-                                                borderRadius: '6px',
-                                                padding: '6px',
-                                                textAlign: 'left',
-                                                cursor: 'pointer',
-                                                fontSize: '12.5px',
-                                                color: 'var(--text-main)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                width: '100%',
-                                            }}
                                         >
                                             <span>
                                                 #{idx + 1} {s.agentType}
                                             </span>
                                             <span
                                                 class={`task-status-badge ${s.status === 'running' ? 'running' : 'completed'}`}
-                                                style={{ fontSize: '10px' }}
                                             >
                                                 {s.status === 'running'
                                                     ? t('task.detail.sessionRunningBadge', lang)
@@ -1336,9 +1367,9 @@ export function TaskDetail({
                     </div>
 
                     {/* Actions */}
-                    <div class="gh-sidebar-panel" style={{ borderBottom: 'none' }}>
+                    <div class="gh-sidebar-panel gh-sidebar-panel-last">
                         <div class="gh-sidebar-head">
-                            <span>Danger Zone</span>
+                            <span>{t('task.detail.sideDanger', lang)}</span>
                         </div>
                         <div class="gh-sidebar-body">
                             <button class="task-delete-link" onClick={() => onDelete(task.id)}>
