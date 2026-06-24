@@ -1201,28 +1201,10 @@ func buildIssueBackground(t *Task, wsPath string) string {
 	var b strings.Builder
 	b.WriteString("=== ISSUE BACKGROUND ===\n")
 	fmt.Fprintf(&b, "Task ID: %s\n", t.ID)
-	fmt.Fprintf(&b, "Title: %s\n", t.Title)
-	issueState := t.IssueState
-	if issueState == "" {
-		issueState = IssueOpen
-	}
-	fmt.Fprintf(&b, "Issue State: %s\n", issueState)
-	fmt.Fprintf(&b, "Workflow Status: %s\n", t.Status)
 	fmt.Fprintf(&b, "Workspace: %s\n", wsPath)
-	// Card content is YAML-frontmatter Markdown: inject the prose body and lift
-	// acceptance out of the frontmatter (falling back to the legacy column for
-	// pre-frontmatter rows) so it stays a prominent, separate block.
-	_, body := SplitFrontmatter(t.Description)
-	if body != "" {
-		fmt.Fprintf(&b, "\nDescription:\n%s\n", body)
-	}
-	acceptance := t.AcceptanceCriteria
-	if fm := FrontmatterAcceptance(t.Description); fm != "" {
-		acceptance = fm
-	}
-	if acceptance != "" {
-		fmt.Fprintf(&b, "\n=== ACCEPTANCE CRITERIA ===\n%s\n", acceptance)
-	}
+	// Render the card as a self-describing YAML-frontmatter doc: readable
+	// metadata (one-way from the columns) + acceptance + prose body.
+	fmt.Fprintf(&b, "\n=== CARD ===\n%s", RenderCardDoc(*t))
 	if len(t.Replies) > 0 {
 		fmt.Fprintf(&b, "\nReplies (chronological, %d entries):\n---\n", len(t.Replies))
 		for i, rp := range t.Replies {

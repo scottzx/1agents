@@ -85,6 +85,7 @@ var PriorityRank = meta.PriorityRank
 var (
 	SplitFrontmatter      = meta.SplitFrontmatter
 	FrontmatterAcceptance = meta.FrontmatterAcceptance
+	RenderCardDoc         = meta.RenderCardDoc
 )
 
 const (
