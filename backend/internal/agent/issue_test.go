@@ -25,11 +25,13 @@ func TestBuildIssueBackground(t *testing.T) {
 	for _, want := range []string{
 		"=== ISSUE BACKGROUND ===",
 		"Task ID: task_abc123",
-		"Title: 优化登录流程",
-		"Issue State: open",
-		"Workflow Status: running",
 		"Workspace: /tmp/ws",
-		"Description:\n当前登录流程太慢",
+		// Card rendered as self-describing frontmatter (RenderCardDoc).
+		"=== CARD ===",
+		"title: 优化登录流程",
+		"issueState: open",
+		"status: running",
+		"当前登录流程太慢",
 		"Replies (chronological, 2 entries):",
 		"[1] scott @ 2026-06-09T14:20:00Z",
 		"    先调研一下当前的实现",

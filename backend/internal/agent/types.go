@@ -60,6 +60,7 @@ type (
 	ScheduleType      = meta.ScheduleType
 	TaskStatus        = meta.TaskStatus
 	TaskType          = meta.TaskType
+	TaskSource        = meta.TaskSource
 	IssueState        = meta.IssueState
 	SessionKind       = meta.SessionKind
 	SessionStatus     = meta.SessionStatus
@@ -82,6 +83,13 @@ type (
 // PriorityRank re-exports the scheduler ordering helper.
 var PriorityRank = meta.PriorityRank
 
+// Frontmatter helpers (card content is YAML-frontmatter Markdown).
+var (
+	SplitFrontmatter      = meta.SplitFrontmatter
+	FrontmatterAcceptance = meta.FrontmatterAcceptance
+	RenderCardDoc         = meta.RenderCardDoc
+)
+
 const (
 	ScheduleTypeImmediate = meta.ScheduleTypeImmediate
 	ScheduleTypeScheduled = meta.ScheduleTypeScheduled
@@ -102,6 +110,8 @@ const (
 	TaskTypeRequirement = meta.TaskTypeRequirement
 	TaskTypeBug         = meta.TaskTypeBug
 	TaskTypeDiscussion  = meta.TaskTypeDiscussion
+
+	TaskSourceAgent = meta.TaskSourceAgent
 
 	LinkCloses  = meta.LinkCloses
 	LinkRelates = meta.LinkRelates

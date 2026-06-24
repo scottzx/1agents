@@ -11,6 +11,10 @@ import { fmtDateOnly } from './utils';
 
 interface OverviewProps {
     tasks: Task[];
+    // Live count of active sessions + opener for the sessions popup (the 会话
+    // tab was folded into this overview card).
+    sessionCount: number;
+    onOpenSessions: () => void;
 }
 
 // ── KPI card helpers ────────────────────────────────────────────────────────
@@ -27,7 +31,7 @@ function cssVar(name: string): string {
 
 const PRIORITY_ORDER: Array<Task['priority']> = ['urgent', 'high', 'medium', 'low'];
 
-export function Overview({ tasks }: OverviewProps) {
+export function Overview({ tasks, sessionCount, onOpenSessions }: OverviewProps) {
     const lang = language.value;
     // Subscribe to theme so options recompute (with fresh token reads) on swap.
     const activeTheme = theme.value;
@@ -322,6 +326,11 @@ export function Overview({ tasks }: OverviewProps) {
                         <div class="overview-stat-label">{s.label}</div>
                     </div>
                 ))}
+                {/* 会话: folded in from the removed 会话 tab — click to open the popup. */}
+                <div class="bento-card overview-stat stat-sessions clickable" role="button" onClick={onOpenSessions}>
+                    <div class="overview-stat-num">{sessionCount}</div>
+                    <div class="overview-stat-label">{t('task.overview.kpi.sessions', lang)}</div>
+                </div>
             </div>
 
             {!hasData ? (

@@ -5,6 +5,7 @@ import { useSignal, signal } from '@preact/signals';
 import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
 import * as sessionStore from '../../../stores/sessionStore';
+import { agentService } from '../../../services/agentService';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
@@ -44,7 +45,9 @@ export function TaskList({
     const selectedTaskId = isControlled ? externalSelectedTaskId ?? null : internalSelectedTaskId;
     const setSelectedTaskId = isControlled ? (id: string | null) => onTaskSelect(id) : setInternalSelectedTaskId;
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
-    const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'sessions' | 'milestone'>('tasks');
+    const showSessions = useSignal(false); // sessions popup, opened from the 总览 会话 card
+    const [sessionCount, setSessionCount] = useState(0);
+    const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
         (newTasks: Task[]) => {
@@ -94,16 +97,29 @@ export function TaskList({
         }
     }, [workspaceId, setTasks]);
 
+    // The 总览 会话 card shows the live count of active (non-archived) sessions.
+    const fetchSessionCount = useCallback(async () => {
+        if (!workspaceId) return;
+        try {
+            const data = await agentService.list(workspaceId);
+            setSessionCount(data.length);
+        } catch {
+            // session count is non-critical; the overview still renders
+        }
+    }, [workspaceId]);
+
     // Polling tasks status changes every 5 seconds
     useEffect(() => {
         fetchTasks();
         fetchMilestones();
+        fetchSessionCount();
         const timer = setInterval(() => {
             fetchTasks();
             fetchMilestones();
+            fetchSessionCount();
         }, 5000);
         return () => clearInterval(timer);
-    }, [fetchTasks, fetchMilestones]);
+    }, [fetchTasks, fetchMilestones, fetchSessionCount]);
 
     // Reset detail selection and load cached data when switching workspaces
     useEffect(() => {
@@ -176,6 +192,8 @@ export function TaskList({
         }
     };
 
+    // The 讨论区 doubles as a notepad / requirement-grooming space: jot down
+    // fuzzy ideas and directions before they're clear enough to be a requirement.
     // New discussions are created by talking to the PM, not a form: it decides
     // through the dialogue whether to record a discussion card (still fuzzy) or
     // create a requirement (clear, with a deliverable).
@@ -188,9 +206,38 @@ export function TaskList({
         return sessionStore.createPMSession(workspaceId, '新讨论', prompt);
     }, [workspaceId]);
 
+    // 采纳 an AI suggestion: clear its source marker so the card stops being a
+    // suggestion and joins the board as a normal task (the scheduler can then
+    // pick it up per its type/status). Reuses the inline PATCH path so the
+    // change lands instantly in the cached list.
+    const handleAdoptSuggestion = useCallback(
+        (taskId: string) => handlePatchTask(taskId, { source: '' }),
+        [handlePatchTask]
+    );
+
+    // 忽略 an AI suggestion: withdraw it entirely (dismiss). Suggestions are
+    // disposable proposals, so this deletes rather than retiring to a board
+    // column.
+    const handleDismissSuggestion = useCallback(
+        async (taskId: string) => {
+            if (!confirm('忽略这条 AI 建议？将从建议列表中移除。')) return;
+            try {
+                const res = await fetch(`/api/agent/tasks/${taskId}?workspace_id=${encodeURIComponent(workspaceId)}`, {
+                    method: 'DELETE',
+                });
+                if (!res.ok) throw new Error('Failed to dismiss suggestion');
+                fetchTasks();
+            } catch (err) {
+                alert((err as Error).message);
+            }
+        },
+        [workspaceId, fetchTasks]
+    );
+
     // When hosted inside the panel (controlled mode), publish the current view's
     // create action to the panel header instead of rendering an inline button
-    // row. Standalone (ContentViewHost) keeps its own inline buttons.
+    // row. Standalone (ContentViewHost) keeps its own inline buttons. The AI 建议
+    // view has no create action — suggestions are emitted by agents, not users.
     useEffect(() => {
         if (!isControlled) {
             taskNav.taskAddAction.value = null;
@@ -266,11 +313,14 @@ export function TaskList({
         );
     }
 
-    // Discussions live in the same tasks table but must never leak into the
-    // board/KPI views (scheduler, Kanban, Overview all treat them as noise).
-    // Split once here: boardTasks feeds the work-item views, discussions the 讨论 tab.
+    // Discussions (type === 'discussion', the notepad / grooming space) and AI
+    // suggestions (source === 'agent-suggested') live in the same tasks table but
+    // must never leak into the board/KPI views (scheduler, Kanban, Overview all
+    // treat them as noise). Split once here: boardTasks feeds the work-item views,
+    // discussions the 讨论 tab, suggestions are merged into the 需求 pool (filterable).
     const discussions = tasks.filter(t => t.type === 'discussion');
-    const boardTasks = tasks.filter(t => t.type !== 'discussion');
+    const suggestions = tasks.filter(t => t.source === 'agent-suggested');
+    const boardTasks = tasks.filter(t => t.type !== 'discussion' && t.source !== 'agent-suggested');
 
     return (
         <div class="task-dashboard-container">
@@ -282,7 +332,6 @@ export function TaskList({
                             ['discussion', '讨论'],
                             ['requirements', '需求'],
                             ['tasks', '任务'],
-                            ['sessions', '会话'],
                             ['milestone', '里程碑'],
                         ] as Array<[typeof view.value, string]>
                     ).map(([key, label]) => (
@@ -292,10 +341,10 @@ export function TaskList({
                     ))}
                 </div>
                 {/* Tasks/requirements/bugs are created only by agents (via MCP tools),
-                    never through a human form. Discussions and milestones are the two
-                    user-creatable items. When hosted in the panel these "+" actions move
-                    to panel-tabs-header (see the taskAddAction bridge); standalone keeps
-                    them inline here. */}
+                    never through a human form; AI 建议 likewise comes from agents.
+                    Discussions and milestones are the two user-creatable items. When
+                    hosted in the panel these "+" actions move to panel-tabs-header (see
+                    the taskAddAction bridge); standalone keeps them inline here. */}
                 {!isControlled && (
                     <div class="task-header-actions">
                         {view.value === 'discussion' && (
@@ -328,15 +377,14 @@ export function TaskList({
                     onStatusChange={handleStatusChange}
                 />
             )}
-            {view.value === 'overview' && <Overview tasks={boardTasks} />}
-            {view.value === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
-            {view.value === 'sessions' && (
-                <SessionsView
-                    workspaceId={workspaceId}
-                    onSelectSession={onSelectSession}
-                    onSelectTask={setSelectedTaskId}
+            {view.value === 'overview' && (
+                <Overview
+                    tasks={boardTasks}
+                    sessionCount={sessionCount}
+                    onOpenSessions={() => (showSessions.value = true)}
                 />
             )}
+            {view.value === 'discussion' && <DiscussionView tasks={discussions} onSelectTask={setSelectedTaskId} />}
             {view.value === 'milestone' && (
                 <MilestoneView
                     tasks={boardTasks}
@@ -346,7 +394,15 @@ export function TaskList({
                     onDeleteMilestone={deleteMilestone}
                 />
             )}
-            {view.value === 'requirements' && <RequirementPool tasks={boardTasks} onSelectTask={setSelectedTaskId} />}
+            {view.value === 'requirements' && (
+                <RequirementPool
+                    tasks={boardTasks}
+                    suggestions={suggestions}
+                    onSelectTask={setSelectedTaskId}
+                    onAdopt={handleAdoptSuggestion}
+                    onDismiss={handleDismissSuggestion}
+                />
+            )}
 
             <Modal show={showMsForm.value}>
                 <MilestoneForm
@@ -355,6 +411,37 @@ export function TaskList({
                     onSubmit={createMilestone}
                 />
             </Modal>
+
+            {/* Sessions popup — opened from the 总览 会话 card. SessionsView is a
+                wide DataGrid, so it uses its own roomy overlay rather than the
+                narrow form Modal above. Backdrop / ✕ both close it. */}
+            {showSessions.value && (
+                <div class="sessions-modal-overlay" onClick={() => (showSessions.value = false)}>
+                    <div class="sessions-modal-box" onClick={e => e.stopPropagation()}>
+                        <div class="sessions-modal-header">
+                            <span>会话</span>
+                            <button
+                                class="sessions-modal-close"
+                                title="关闭"
+                                onClick={() => (showSessions.value = false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <SessionsView
+                            workspaceId={workspaceId}
+                            onSelectSession={s => {
+                                showSessions.value = false;
+                                onSelectSession?.(s);
+                            }}
+                            onSelectTask={id => {
+                                showSessions.value = false;
+                                setSelectedTaskId(id);
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

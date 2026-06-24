@@ -2619,7 +2619,7 @@ body {
   /* KPI row: fixed 4 across (任务/需求/待办/阻塞) — stays one row even when narrow */
   .overview-kpis {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: var(--bento-gap, 12px);
   }
 
@@ -2665,6 +2665,14 @@ body {
     &.stat-failed {
       border-bottom: 3px solid var(--danger-fg);
       &:hover { border-color: rgba(var(--danger-rgb), 0.5); box-shadow: var(--glow-danger), var(--shadow-md); }
+    }
+    &.stat-sessions {
+      border-bottom: 3px solid var(--purple-fg);
+      &:hover { border-color: rgba(var(--purple-rgb), 0.5); box-shadow: var(--shadow-md); }
+    }
+    &.clickable {
+      cursor: pointer;
+      &:hover { transform: translateY(-2px); }
     }
   }
 
@@ -3114,6 +3122,60 @@ body {
 }
 
 /* ── Requirement pool (需求池) ── */
+/* The 需求池 hosts a filter bar above a scrollable card grid. */
+.requirement-pool-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.requirement-filter {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: flex-start;
+  background-color: rgba(var(--bg-panel), 0.6);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--border-glass, var(--border-color));
+  border-radius: 20px;
+  padding: 3px;
+  gap: 3px;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    border-radius: 18px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+      color: var(--text-main);
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    &.active {
+      background: var(--accent-color);
+      color: #ffffff !important;
+      box-shadow: 0 2px 8px rgba(var(--accent-color-rgb), 0.3);
+    }
+
+    .requirement-filter-count {
+      font-size: 11px;
+      font-weight: 700;
+      opacity: 0.7;
+    }
+  }
+}
+
 .requirement-pool {
   flex: 1;
   min-height: 0;
@@ -3214,6 +3276,163 @@ body {
       margin-left: auto;
       font-size: 10.5px;
       color: var(--text-muted);
+    }
+  }
+}
+
+/* ── AI 建议 (suggestion) chip — purple family marks the AI-emitted source,
+   with one-click 采纳 / 忽略 actions (issue #47). ── */
+.requirement-type-badge.suggestion-badge {
+  background-color: var(--purple-bg);
+  color: var(--purple-fg);
+}
+
+.suggestion-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+
+  .suggestion-btn {
+    flex: 1;
+    padding: 5px 0;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-panel);
+    color: var(--text-secondary);
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+
+    &.adopt {
+      background-color: var(--success-bg);
+      border-color: rgba(var(--success-rgb), 0.4);
+      color: var(--success-fg);
+
+      &:hover {
+        background-color: var(--success-emphasis);
+        border-color: var(--success-emphasis);
+        color: var(--on-accent);
+      }
+    }
+
+    &.dismiss:hover {
+      border-color: var(--border-color);
+      color: var(--text-main);
+      background-color: var(--btn-hover);
+    }
+  }
+}
+
+/* Requirement/bug pool-card foot badges: open/closed issue state + the
+   user-confirm gate (待确认 / 已确认). No workflow status here — these are
+   non-executable issues. */
+.issue-state-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.open {
+    background-color: var(--success-bg);
+    color: var(--success-fg);
+  }
+  &.closed {
+    background-color: var(--purple-bg);
+    color: var(--purple-fg);
+  }
+}
+
+.confirm-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.pending {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+  }
+  &.confirmed {
+    background-color: var(--accent-light);
+    color: var(--accent-color);
+  }
+}
+
+/* Acceptance criteria (parsed from frontmatter) — read-only list on the detail
+   page; edited via the description doc's `acceptance:` key. */
+.acceptance-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.6;
+}
+
+.gh-acceptance-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Sessions popup — wide overlay for the 总览 会话 card (the 会话 tab was
+   folded into the overview). The narrow form Modal can't host the DataGrid. ── */
+.sessions-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.sessions-modal-box {
+  width: min(1100px, 92vw);
+  height: min(80vh, 760px);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  box-shadow: var(--shadow-lg);
+  padding: 20px;
+  overflow: hidden;
+}
+
+.sessions-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+
+  .sessions-modal-close {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 15px;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s, color 0.15s;
+
+    &:hover {
+      background-color: var(--btn-hover);
+      color: var(--text-main);
     }
   }
 }
@@ -4893,6 +5112,32 @@ body {
         color: var(--accent-color);
         background: var(--btn-hover);
       }
+    }
+
+    // 讨论需求 / 与 AI 讨论 / 确认可排期 — pill actions in the issue header.
+    .task-convert-btn,
+    .task-confirm-btn {
+      padding: 4px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border-radius: var(--bento-radius-sm);
+      border: 1px solid var(--border-color);
+      background: var(--bg-panel);
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: var(--bento-transition);
+
+      &:hover {
+        color: var(--text-main);
+        background: var(--btn-hover);
+      }
+    }
+
+    .task-confirm-btn.confirmed {
+      background: var(--success-bg);
+      border-color: rgba(var(--success-rgb), 0.4);
+      color: var(--success-fg);
     }
   }
 

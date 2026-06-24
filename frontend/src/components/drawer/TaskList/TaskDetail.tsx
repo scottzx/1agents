@@ -9,6 +9,7 @@ import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constant
 import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
+import { parseFrontmatter } from '../../../utils/frontmatter';
 import { taskPermalink } from '../../../stores/taskNavStore';
 import * as wsStore from '../../../stores/workspaceStore';
 import * as sessionStore from '../../../stores/sessionStore';
@@ -117,6 +118,38 @@ interface TaskDetailProps {
     onSelectSession?: (session: Session) => void;
 }
 
+// Card content is YAML-frontmatter Markdown: the frontmatter holds the
+// machine-recognizable acceptance criteria, the body is free prose. These
+// templates seed an empty editor so the author (or AI) fills the right shape —
+// the bug body's 复现/期望/实际 sections also satisfy the confirm gate's check.
+const REQ_DESC_TEMPLATE = ['---', 'acceptance:', '  - ', '---', '## 背景', '', '## 过程', '', '## 预期结果', ''].join(
+    '\n'
+);
+
+const BUG_DESC_TEMPLATE = [
+    '---',
+    'acceptance:',
+    '  - ',
+    '---',
+    '## 现象',
+    '',
+    '## 复现步骤',
+    '1. ',
+    '2. ',
+    '',
+    '## 期望结果',
+    '',
+    '## 实际结果',
+    '',
+].join('\n');
+
+// Pick the seed template for an empty card by type.
+function cardTemplate(type: string | undefined): string {
+    if (type === 'bug') return BUG_DESC_TEMPLATE;
+    if (type === 'requirement') return REQ_DESC_TEMPLATE;
+    return '';
+}
+
 export function TaskDetail({
     workspaceId,
     taskId,
@@ -136,10 +169,6 @@ export function TaskDetail({
     // Description editing
     const editingDesc = useSignal(false);
     const [descDraft, setDescDraft] = useState('');
-
-    // Acceptance criteria editing
-    const editingAccept = useSignal(false);
-    const [acceptDraft, setAcceptDraft] = useState('');
 
     // Reply composer (top-level: pure comment or new session only)
     const [replyText, setReplyText] = useState('');
@@ -295,6 +324,7 @@ export function TaskDetail({
         acceptanceCriteria?: string;
         links?: TaskLink[];
         status?: Task['status'];
+        userConfirm?: boolean;
     }) => {
         const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`, {
             method: 'PATCH',
@@ -311,15 +341,6 @@ export function TaskDetail({
         try {
             await patchTask({ description: descDraft });
             editingDesc.value = false;
-        } catch (err) {
-            alert((err as Error).message);
-        }
-    };
-
-    const saveAcceptance = async () => {
-        try {
-            await patchTask({ acceptanceCriteria: acceptDraft });
-            editingAccept.value = false;
         } catch (err) {
             alert((err as Error).message);
         }
@@ -424,6 +445,54 @@ export function TaskDetail({
         const prompt =
             '我们把这条讨论聊成一条清晰的需求吧。请先和我澄清：交付物到底是什么、验收标准是什么；聊清楚后用 create_task 建一条 requirement（必要时拆成任务）。如果发现还不够清晰，就先保留为讨论。';
         await sessionStore.createPMSession(workspaceId, `讨论需求：${task.title}`, prompt, task.id);
+    };
+
+    // 与 AI 讨论(需求/缺陷):open a PM session linked to this issue to clarify its
+    // scope/boundary before it's confirmed for scheduling. The card stays a
+    // requirement/bug; the conversation is recorded back to its timeline.
+    const discussIssue = async () => {
+        if (!task) return;
+        const isBug = task.type === 'bug';
+        const kind = isBug ? '缺陷' : '需求';
+        const need = isBug
+            ? '描述（现象 + 复现步骤 + 期望结果 vs 实际结果）、验收标准（怎样算修好）'
+            : '描述（要解决什么 + 范围边界）、验收标准（怎样算做对、做完）';
+        const prompt = `我们来把这条${kind}的边界聊清楚，并补全这些必填要素：${need}。\n\n请先问我还不清楚的地方；澄清后请帮我把这些内容完善好（后续你可用任务工具回填到这张卡片）。补全后我才能点「确认，可排期」，再由你拆成可执行的任务。`;
+        await sessionStore.createPMSession(workspaceId, `讨论${kind}：${task.title}`, prompt, task.id);
+    };
+
+    // What's still missing before a requirement/bug can be confirmed: title +
+    // description + acceptance, and for bugs the description must also cover
+    // 复现/期望/实际 (kept as a Markdown template inside description, so this is
+    // a keyword check — the real quality comes from the 与 AI 讨论 pass).
+    const confirmBlockers = (): string[] => {
+        if (!task) return [];
+        const { acceptance, body } = parseFrontmatter(task.description);
+        const miss: string[] = [];
+        if (!task.title?.trim()) miss.push('标题');
+        if (!body.trim()) miss.push('描述');
+        if (!acceptance.some(a => a.trim())) miss.push('验收标准（frontmatter acceptance）');
+        if (task.type === 'bug') {
+            if (!body.includes('复现')) miss.push('复现步骤');
+            if (!body.includes('期望')) miss.push('期望结果');
+            if (!body.includes('实际')) miss.push('实际结果');
+        }
+        return miss;
+    };
+
+    // Toggle the user-confirmed gate. Confirming requires the essentials to be
+    // filled (otherwise prompt what's missing); un-confirming is unconditional.
+    // Only confirmed requirements/bugs may be scheduled by the PM (#49).
+    const toggleUserConfirm = async () => {
+        if (!task) return;
+        if (!task.userConfirm) {
+            const miss = confirmBlockers();
+            if (miss.length) {
+                alert(`确认前请先补全：${miss.join('、')}。\n可点「与 AI 讨论」让 AI 帮你完善这些内容。`);
+                return;
+            }
+        }
+        await patchTask({ userConfirm: !task.userConfirm });
     };
 
     // Top-level composer: a pure comment (standalone timeline entry, no chat)
@@ -566,8 +635,14 @@ export function TaskDetail({
     const completedSubtasks = subtasks.filter(s => s.status === 'completed').length;
     const allSubtasksDone = totalSubtasks > 0 && completedSubtasks === totalSubtasks;
 
-    // Acceptance criteria check
-    const hasAcceptance = !!task.acceptanceCriteria;
+    // Card content is YAML-frontmatter Markdown: structured keys (acceptance)
+    // come from the frontmatter, the prose body is what we render/edit-display.
+    const parsed = parseFrontmatter(task.description);
+    const acceptanceLines = parsed.acceptance.filter(a => a.trim());
+
+    // Acceptance criteria check (frontmatter is the source; fall back to the
+    // legacy column for pre-frontmatter rows).
+    const hasAcceptance = acceptanceLines.length > 0 || !!task.acceptanceCriteria;
 
     // Dependencies check
     const pendingDeps = deps.filter(d => d.status !== 'completed').length;
@@ -577,6 +652,12 @@ export function TaskDetail({
     // hide the task-only panels (acceptance criteria, execution/checks box,
     // assignee) so its detail page stays focused on the conversation.
     const isDiscussion = task.type === 'discussion';
+    // Requirements and bugs are open/closed issue items too: like discussions
+    // they are non-executable (the PM breaks confirmed ones into tasks), so they
+    // share the discussion-style detail page — conversation + 与 AI 讨论, no
+    // acceptance/checks/assignee/composer. isNonExecutable gates those panels.
+    const isIssueItem = task.type === 'requirement' || task.type === 'bug';
+    const isNonExecutable = isDiscussion || isIssueItem;
 
     return (
         <div class="task-dashboard-container task-detail-view" ref={containerRef}>
@@ -609,6 +690,20 @@ export function TaskDetail({
                     {task.type === 'discussion' && (
                         <button class="task-convert-btn" onClick={convertToRequirement}>
                             {t('task.discussion.convert', lang)}
+                        </button>
+                    )}
+                    {isIssueItem && (
+                        <button class="task-convert-btn" onClick={discussIssue}>
+                            与 AI 讨论
+                        </button>
+                    )}
+                    {isIssueItem && (
+                        <button
+                            class={`task-confirm-btn${task.userConfirm ? ' confirmed' : ''}`}
+                            onClick={toggleUserConfirm}
+                            title="只有已确认的需求/缺陷，PM 才能排期"
+                        >
+                            {task.userConfirm ? '已确认 ✓' : '确认，可排期'}
                         </button>
                     )}
                 </div>
@@ -684,7 +779,10 @@ export function TaskDetail({
                                             <button
                                                 class="task-desc-edit-btn"
                                                 onClick={() => {
-                                                    setDescDraft(task.description || '');
+                                                    // Seed the frontmatter template for an empty
+                                                    // requirement/bug so acceptance + sections are
+                                                    // ready to fill.
+                                                    setDescDraft(task.description || cardTemplate(task.type));
                                                     editingDesc.value = true;
                                                 }}
                                             >
@@ -710,11 +808,11 @@ export function TaskDetail({
                                                 </button>
                                             </div>
                                         </div>
-                                    ) : task.description ? (
+                                    ) : parsed.body ? (
                                         <div
                                             class="markdown-body task-desc-md"
                                             dangerouslySetInnerHTML={{
-                                                __html: renderMarkdown(task.description, mdCtx),
+                                                __html: renderMarkdown(parsed.body, mdCtx),
                                             }}
                                         />
                                     ) : (
@@ -723,7 +821,8 @@ export function TaskDetail({
                                 </div>
                             </div>
 
-                            {/* Pinned Acceptance Criteria Card (hidden for discussions) */}
+                            {/* Pinned Acceptance Criteria Card. Requirements/bugs need it
+                                (it gates 确认,可排期); only fuzzy discussions hide it. */}
                             {!isDiscussion && (
                                 <div class="gh-comment-card is-user">
                                     <div class="gh-comment-header">
@@ -732,37 +831,17 @@ export function TaskDetail({
                                                 ✅ <strong>{t('task.detail.acceptanceTitle', lang)}</strong>
                                             </span>
                                         </div>
-                                        <div class="gh-comment-actions">
-                                            {!editingAccept.value && (
-                                                <button
-                                                    class="task-desc-edit-btn"
-                                                    onClick={() => {
-                                                        setAcceptDraft(task.acceptanceCriteria || '');
-                                                        editingAccept.value = true;
-                                                    }}
-                                                >
-                                                    {t('common.edit', lang)}
-                                                </button>
-                                            )}
-                                        </div>
+                                        {/* Acceptance lives in the description's YAML frontmatter
+                                            (acceptance:) — edit it via 描述 编辑, not here. */}
+                                        <span class="gh-acceptance-hint">在「描述」的 frontmatter 中编辑</span>
                                     </div>
                                     <div class="gh-comment-body">
-                                        {editingAccept.value ? (
-                                            <div class="task-desc-editor">
-                                                <textarea
-                                                    rows={3}
-                                                    value={acceptDraft}
-                                                    onInput={(e: Event) =>
-                                                        setAcceptDraft((e.target as HTMLTextAreaElement).value)
-                                                    }
-                                                />
-                                                <div class="task-desc-editor-actions">
-                                                    <button onClick={saveAcceptance}>{t('common.save', lang)}</button>
-                                                    <button onClick={() => (editingAccept.value = false)}>
-                                                        {t('common.cancel', lang)}
-                                                    </button>
-                                                </div>
-                                            </div>
+                                        {acceptanceLines.length > 0 ? (
+                                            <ul class="acceptance-list">
+                                                {acceptanceLines.map((a, i) => (
+                                                    <li key={i}>{a}</li>
+                                                ))}
+                                            </ul>
                                         ) : task.acceptanceCriteria ? (
                                             <div
                                                 class="markdown-body task-desc-md"
@@ -874,7 +953,7 @@ export function TaskDetail({
                             </div>
 
                             {/* Merge / Checks Status Box (hidden for discussions — not executable) */}
-                            {!isDiscussion && (
+                            {!isNonExecutable && (
                                 <div class="gh-merge-box">
                                     <div class={`gh-merge-icon-col status-${task.status}`}>
                                         {task.status === 'completed' && '✓'}
@@ -969,7 +1048,7 @@ export function TaskDetail({
 
                             {/* GitHub style composer (hidden for discussions — replies happen
                                 via the PM conversation opened by 讨论需求, not an inline form) */}
-                            {!isDiscussion && (
+                            {!isNonExecutable && (
                                 <div class="gh-composer-card">
                                     <div class="gh-composer-tabs">
                                         <button
@@ -1244,7 +1323,7 @@ export function TaskDetail({
                     </div>
 
                     {/* Assignees (hidden for discussions — nobody executes a discussion) */}
-                    {!isDiscussion && (
+                    {!isNonExecutable && (
                         <div class="gh-sidebar-panel">
                             <div class="gh-sidebar-head">
                                 <span>{t('task.detail.sideAssignees', lang)}</span>

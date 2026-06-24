@@ -341,6 +341,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Milestone          string       `json:"milestone"`
 			Sprint             string       `json:"sprint"`
 			Type               string       `json:"type"`
+			Source             string       `json:"source"`
+			UserConfirm        bool         `json:"userConfirm"`
 			Recurrence         *Recurrence  `json:"recurrence"`
 			MaxRetries         *int         `json:"maxRetries"`
 			Verifier           string       `json:"verifier"`
@@ -365,6 +367,18 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// typo from the PM tool surfaces instead of silently defaulting.
 		if body.Assignee != "" && !IsSupportedAgentType(body.Assignee) {
 			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
+			return
+		}
+		if body.Source != "" && TaskSource(body.Source) != TaskSourceAgent {
+			http.Error(w, "source must be empty or agent-suggested", http.StatusBadRequest)
+			return
+		}
+		// AI suggestions are only ever requirements or bugs — never executable
+		// tasks (issue #47 model). A suggestion is a proposed issue the user
+		// clarifies and confirms before the PM schedules it.
+		if TaskSource(body.Source) == TaskSourceAgent &&
+			TaskType(body.Type) != TaskTypeRequirement && TaskType(body.Type) != TaskTypeBug {
+			http.Error(w, "agent-suggested tasks must be of type requirement or bug", http.StatusBadRequest)
 			return
 		}
 		if body.Verifier != "" && !IsSupportedAgentType(body.Verifier) {
@@ -401,6 +415,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Milestone:          body.Milestone,
 			Sprint:             body.Sprint,
 			Type:               TaskType(body.Type),
+			Source:             TaskSource(body.Source),
+			UserConfirm:        body.UserConfirm,
 			Recurrence:         body.Recurrence,
 			MaxRetries:         maxRetries,
 			ScheduleType:       body.ScheduleType,
@@ -611,6 +627,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		Milestone          *string      `json:"milestone,omitempty"`
 		Sprint             *string      `json:"sprint,omitempty"`
 		Type               *string      `json:"type,omitempty"`
+		Source             *string      `json:"source,omitempty"`
+		UserConfirm        *bool        `json:"userConfirm,omitempty"`
 		Recurrence         **Recurrence `json:"recurrence,omitempty"`
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
 		Verifier           *string      `json:"verifier,omitempty"`
@@ -656,6 +674,13 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if body.Assignee != nil && *body.Assignee != "" && !IsSupportedAgentType(*body.Assignee) {
 		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
+		return
+	}
+	// Adopting an AI suggestion is a PATCH with source:"" (clears the marker so
+	// the card joins the board); the only other accepted value is the marker
+	// itself. Anything else is a typo and is rejected.
+	if body.Source != nil && *body.Source != "" && TaskSource(*body.Source) != TaskSourceAgent {
+		http.Error(w, "source must be empty or agent-suggested", http.StatusBadRequest)
 		return
 	}
 	if body.Verifier != nil && *body.Verifier != "" && !IsSupportedAgentType(*body.Verifier) {
@@ -728,6 +753,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Type != nil {
 			target.Type = TaskType(*body.Type)
+		}
+		if body.Source != nil {
+			target.Source = TaskSource(*body.Source)
+		}
+		if body.UserConfirm != nil {
+			target.UserConfirm = *body.UserConfirm
 		}
 		if body.Links != nil {
 			target.Links = *body.Links
@@ -1257,20 +1288,10 @@ func buildIssueBackground(t *Task, wsPath string) string {
 	var b strings.Builder
 	b.WriteString("=== ISSUE BACKGROUND ===\n")
 	fmt.Fprintf(&b, "Task ID: %s\n", t.ID)
-	fmt.Fprintf(&b, "Title: %s\n", t.Title)
-	issueState := t.IssueState
-	if issueState == "" {
-		issueState = IssueOpen
-	}
-	fmt.Fprintf(&b, "Issue State: %s\n", issueState)
-	fmt.Fprintf(&b, "Workflow Status: %s\n", t.Status)
 	fmt.Fprintf(&b, "Workspace: %s\n", wsPath)
-	if t.Description != "" {
-		fmt.Fprintf(&b, "\nDescription:\n%s\n", t.Description)
-	}
-	if t.AcceptanceCriteria != "" {
-		fmt.Fprintf(&b, "\n=== ACCEPTANCE CRITERIA ===\n%s\n", t.AcceptanceCriteria)
-	}
+	// Render the card as a self-describing YAML-frontmatter doc: readable
+	// metadata (one-way from the columns) + acceptance + prose body.
+	fmt.Fprintf(&b, "\n=== CARD ===\n%s", RenderCardDoc(*t))
 	if len(t.Replies) > 0 {
 		fmt.Fprintf(&b, "\nReplies (chronological, %d entries):\n---\n", len(t.Replies))
 		for i, rp := range t.Replies {
