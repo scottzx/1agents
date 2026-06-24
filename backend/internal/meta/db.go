@@ -147,20 +147,15 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
 		}
 	}
-	if version < 9 {
-		if _, err := db.sql.Exec(schemaV9); err != nil {
-			return fmt.Errorf("meta: apply schema v9: %w", err)
-		}
-	}
-	if version < 10 {
-		if _, err := db.sql.Exec(schemaV10); err != nil {
-			return fmt.Errorf("meta: apply schema v10: %w", err)
-		}
-	}
-	if version < 11 {
-		if _, err := db.sql.Exec(schemaV11); err != nil {
-			return fmt.Errorf("meta: apply schema v11: %w", err)
-		}
+	// Schema v9–v11 only add tasks columns, but the v9 branch collision between
+	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
+	// with user_version bumped to the latest while the other branch's columns
+	// were never added. A version-gated ALTER can't recover that: it re-adds an
+	// existing column ("duplicate column name") or skips a missing one forever.
+	// Run unconditionally (NOT under a version gate) so a DB already at the
+	// latest user_version but missing columns still gets healed — idempotent.
+	if err := db.ensureTasksColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile tasks columns: %w", err)
 	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
@@ -168,6 +163,59 @@ func (db *DB) migrateSchema() error {
 		}
 	}
 	return nil
+}
+
+// ensureTasksColumns adds any of the schema v9–v11 tasks columns that are
+// missing, skipping those already present. Idempotent and independent of
+// user_version, so it recovers DBs left half-migrated by the v9 branch
+// collision (#47 ⇄ #50). DDL must match the original ADD COLUMN definitions.
+func (db *DB) ensureTasksColumns() error {
+	have, err := db.tasksColumns()
+	if err != nil {
+		return err
+	}
+	type col struct{ name, ddl string }
+	wanted := []col{
+		{"verifier", "ALTER TABLE tasks ADD COLUMN verifier TEXT NOT NULL DEFAULT ''"},
+		{"review_max_attempts", "ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0"},
+		{"review_count", "ALTER TABLE tasks ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0"},
+		{"review", "ALTER TABLE tasks ADD COLUMN review TEXT NOT NULL DEFAULT ''"},
+		{"source", "ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT ''"},
+		{"user_confirm", "ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, c := range wanted {
+		if have[c.name] {
+			continue
+		}
+		if _, err := db.sql.Exec(c.ddl); err != nil {
+			return fmt.Errorf("add tasks.%s: %w", c.name, err)
+		}
+	}
+	return nil
+}
+
+// tasksColumns returns the set of column names currently on the tasks table.
+func (db *DB) tasksColumns() (map[string]bool, error) {
+	rows, err := db.sql.Query("PRAGMA table_info(tasks)")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var (
+			cid        int
+			name, typ  string
+			notNull    int
+			dflt       sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &primaryKey); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
 }
 
 const schemaV1 = `
@@ -339,33 +387,10 @@ UPDATE milestones SET position = sub.rn FROM (
 ) AS sub WHERE milestones.id = sub.id;
 `
 
-// schemaV9 adds the three-role verification fields (#50). verifier names the
-// reviewing agent type (empty = no verification, so every pre-v9 task keeps
-// completing on executor finish); review_max_attempts caps the execute→verify
-// retry loop (0 = default); review_count tracks consumed cycles; review holds
-// the latest verdict as a JSON blob (” = none yet). All defaults are inert, so
-// existing rows behave exactly as before.
-const schemaV9 = `
-ALTER TABLE tasks ADD COLUMN verifier            TEXT    NOT NULL DEFAULT '';
-ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tasks ADD COLUMN review_count        INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tasks ADD COLUMN review              TEXT    NOT NULL DEFAULT '';
-`
-
-// schemaV10 adds the AI-suggestion source marker (issue #47). DEFAULT '' keeps
-// every existing row a normal task; source = 'agent-suggested' marks a proposed
-// task that an executing agent bubbled up, held out of the board/scheduler until
-// a human adopts (clears source) or dismisses (deletes) it.
-const schemaV10 = `
-ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT '';
-`
-
-// schemaV11 adds the requirement/bug confirmation gate (user_confirm). DEFAULT 0
-// keeps every existing row unconfirmed; only confirmed requirements/bugs may be
-// scheduled by the PM. Stored as INTEGER (0/1) — SQLite has no native bool.
-const schemaV11 = `
-ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0;
-`
+// Schema v9–v11 added tasks columns (#50 verifier/review fields; #47 source and
+// user_confirm). These ALTERs now live in ensureTasksColumns, which adds them
+// idempotently regardless of user_version — see the note in migrateSchema for
+// why the version-gated form couldn't recover the v9 branch collision.
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 
