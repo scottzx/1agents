@@ -31,6 +31,36 @@ func isProjectManagerRole(role string) bool {
 // them from the sidebar; they remain resolvable by id for "查看详情" resume.
 const SessionRoleAuto = "auto"
 
+// SessionRoleExecutor and SessionRoleVerifier are the two task-bound roles of
+// the #50 permission model. Both are locked to a single task_id (the tasks MCP
+// confines reads/writes to it); they differ in persona and in whether they
+// execute: the executor runs its assigned task, the verifier only reviews the
+// submitted output and does not execute.
+const (
+	SessionRoleExecutor = "executor"
+	SessionRoleVerifier = "verifier"
+)
+
+// isExecutorRole / isVerifierRole report the task-bound roles.
+func isExecutorRole(role string) bool { return role == SessionRoleExecutor }
+func isVerifierRole(role string) bool { return role == SessionRoleVerifier }
+
+// roleTemplateName maps a session role code to its builtin role-template name.
+// pm and pmo share the single "pm" template; executor/verifier map 1:1. Returns
+// "" for roles with no template (general / auto).
+func roleTemplateName(role string) string {
+	switch {
+	case isProjectManagerRole(role):
+		return "pm"
+	case isExecutorRole(role):
+		return SessionRoleExecutor
+	case isVerifierRole(role):
+		return SessionRoleVerifier
+	default:
+		return ""
+	}
+}
+
 // workspaceName resolves a workspace id to its display name, falling back to
 // the id when it can't be looked up.
 func (h *Handler) workspaceName(workspaceID string) string {
@@ -85,32 +115,109 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 （当前项目 workspace_id=%s，仅供你理解上下文；工具已自动锁定，无需也无法手动指定项目。）`, projectName, workspaceID)
 }
 
-// buildPMMcpServers builds the per-session MCP server config (a JSON array of
-// one ACP stdio McpServer) for the project-locked task tools. The lock is the
-// ONEAGENTS_WORKSPACE_ID env var — the tools expose no project parameter, so
-// the agent is confined to workspaceID.
-func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
+// buildTasksMcpServer builds the ACP stdio McpServer entry for the task tools.
+// The workspace lock is the ONEAGENTS_WORKSPACE_ID env var — the tools expose
+// no project parameter, so the agent is confined to workspaceID. A non-empty
+// taskID additionally injects ONEAGENTS_TASK_ID, narrowing the session to a
+// single task (executor scope, #50): the server then withholds the PM-only
+// create/milestone tools and confines reads/writes to that task. Credentials
+// (the internal token) are injected here in Go, never from a role template's
+// YAML. Returns nil if the executable can't be resolved.
+func (h *Handler) buildTasksMcpServer(workspaceID, taskID string) map[string]any {
 	exe, err := os.Executable()
 	if err != nil || exe == "" {
-		log.Printf("[agent] PM mcpServers: cannot resolve executable: %v", err)
+		log.Printf("[agent] tasks mcpServer: cannot resolve executable: %v", err)
 		return nil
 	}
-	servers := []map[string]any{
-		{
-			"type":    "stdio",
-			"name":    "tasks",
-			"command": exe,
-			"args":    []string{"mcp-tasks"},
-			"env": []map[string]string{
-				{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
-				{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
-				{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
-			},
-		},
+	env := []map[string]string{
+		{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
+		{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
+		{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
+	}
+	if taskID != "" {
+		env = append(env, map[string]string{"name": "ONEAGENTS_TASK_ID", "value": taskID})
+	}
+	return map[string]any{
+		"type":    "stdio",
+		"name":    "tasks",
+		"command": exe,
+		"args":    []string{"mcp-tasks"},
+		"env":     env,
+	}
+}
+
+// buildPMMcpServers builds the per-session MCP server config (a JSON array of
+// one ACP stdio McpServer) for the project-locked task tools. Retained as the
+// hardcoded fallback for the PM/PMO path when the role template can't be
+// resolved; the template-driven path uses buildMcpServersFromRole.
+func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
+	srv := h.buildTasksMcpServer(workspaceID, "") // PM is project-wide; no task lock
+	if srv == nil {
+		return nil
+	}
+	b, err := json.Marshal([]map[string]any{srv})
+	if err != nil {
+		log.Printf("[agent] PM mcpServers: marshal failed: %v", err)
+		return nil
+	}
+	return b
+}
+
+// resolvePMRole resolves the builtin "pm" role template for a PM/PMO session
+// and returns its rendered system prompt and per-session MCP config. Both the
+// pm and pmo role codes map to the single "pm" template. If the template can't
+// be loaded or its engine isn't available, it falls back to the hardcoded PM
+// builders so PM sessions never regress (#137).
+func (h *Handler) resolvePMRole(workspacePath, workspaceID string) (prompt string, mcpServers json.RawMessage) {
+	projectName := h.workspaceName(workspaceID)
+	if tpl, ok := LoadRoles(workspacePath).Resolve("pm"); ok && tpl.Available {
+		return renderRolePrompt(tpl, projectName, workspaceID), h.buildMcpServersFromRole(tpl, workspaceID, "")
+	}
+	return buildPMSystemPrompt(projectName, workspaceID), h.buildPMMcpServers(workspaceID)
+}
+
+// roleInjection resolves the builtin role template for a task-bound role
+// (executor/verifier, #50) and returns its rendered persona plus a tasks MCP
+// locked to taskID. ok is false when the role has no template, so the caller
+// falls back to the default task background. Unlike resolvePMRole this does not
+// gate on engine availability — the persona and task lock apply regardless of
+// which agent drives the session.
+func (h *Handler) roleInjection(role, workspacePath, workspaceID, taskID string) (prompt string, mcpServers json.RawMessage, ok bool) {
+	name := roleTemplateName(role)
+	if name == "" {
+		return "", nil, false
+	}
+	tpl, found := LoadRoles(workspacePath).Resolve(name)
+	if !found {
+		return "", nil, false
+	}
+	return renderRolePrompt(tpl, h.workspaceName(workspaceID), workspaceID),
+		h.buildMcpServersFromRole(tpl, workspaceID, taskID), true
+}
+
+// buildMcpServersFromRole turns a role template's mcp_servers list into the
+// per-session MCP server config. Each named server maps to a Go-built entry
+// (credentials injected server-side). A non-empty taskID locks the task tools
+// to a single task (executor scope, #50); pass "" for project-wide roles.
+// Unknown names are logged and skipped. Returns nil when no server resolves.
+func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID, taskID string) json.RawMessage {
+	var servers []map[string]any
+	for _, name := range tpl.McpServers {
+		switch name {
+		case "tasks", "mcp-tasks":
+			if srv := h.buildTasksMcpServer(workspaceID, taskID); srv != nil {
+				servers = append(servers, srv)
+			}
+		default:
+			log.Printf("[agent] role %s: unknown mcp server %q (skipped)", tpl.Name, name)
+		}
+	}
+	if len(servers) == 0 {
+		return nil
 	}
 	b, err := json.Marshal(servers)
 	if err != nil {
-		log.Printf("[agent] PM mcpServers: marshal failed: %v", err)
+		log.Printf("[agent] role mcpServers: marshal failed: %v", err)
 		return nil
 	}
 	return b

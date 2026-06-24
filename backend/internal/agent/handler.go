@@ -1068,20 +1068,34 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// Issue background injection (issue-model §9): description + the
 		// full reply timeline, injected only when this is a NEW session.
 		// Resumed sessions already carry their own conversation history.
-		if acpSessionID == "" {
-			if targetTask.Type == TaskTypeDiscussion {
-				// A discussion-linked session is a PM conversation, NOT an
-				// executor: the agent acts as PM (create_task / create_discussion)
-				// with the discussion thread as background. Its user prompts and
-				// final replies are recorded back to this discussion's timeline
-				// (writeUserReply / writeAgentReply, keyed on task_id).
-				systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID) + "\n\n" + buildIssueBackground(targetTask, wsPath)
-			} else {
+		if targetTask.Type == TaskTypeDiscussion {
+			// A discussion-linked session is a PM conversation, NOT an
+			// executor: the agent acts as PM (create_task / create_discussion)
+			// with the discussion thread as background. Its user prompts and
+			// final replies are recorded back to this discussion's timeline
+			// (writeUserReply / writeAgentReply, keyed on task_id). Persona +
+			// task MCP are role-template-driven (hardcoded fallback) — see #137.
+			pmPrompt, pmMcp := h.resolvePMRole(wsPath, wsID)
+			if acpSessionID == "" {
+				systemContext = pmPrompt + "\n\n" + buildIssueBackground(targetTask, wsPath)
+			}
+			mcpServers = pmMcp
+		} else if isExecutorRole(sessionRole) || isVerifierRole(sessionRole) {
+			// #50: an executor/verifier session is bound to this one task. Its
+			// persona is role-template-driven and its tasks MCP is locked to
+			// taskId, so reads/writes can't escape the assignment (executor) or
+			// the under-review task (verifier). The executor still runs its task
+			// (below); the verifier only reviews and is excluded from execution.
+			if prompt, mcp, ok := h.roleInjection(sessionRole, wsPath, wsID, taskId); ok {
+				if acpSessionID == "" {
+					systemContext = prompt + "\n\n" + buildIssueBackground(targetTask, wsPath)
+				}
+				mcpServers = mcp
+			} else if acpSessionID == "" {
 				systemContext = buildIssueBackground(targetTask, wsPath)
 			}
-		}
-		if targetTask.Type == TaskTypeDiscussion {
-			mcpServers = h.buildPMMcpServers(wsID)
+		} else if acpSessionID == "" {
+			systemContext = buildIssueBackground(targetTask, wsPath)
 		}
 
 		// Link the triggering reply to this session (Reply.SessionRef) and
@@ -1102,7 +1116,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// to running, or re-execute. Only a genuinely new session (acpSessionID
 		// empty) starts execution. Discussions are never executed, so a
 		// discussion-linked PM conversation skips this entirely.
-		if targetTask.Type != TaskTypeDiscussion && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
+		if targetTask.Type != TaskTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
@@ -1150,10 +1164,12 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// AI Project Manager session (pm, or pmo in the default workspace):
 		// inject the PM system prompt (new sessions only — resumed ones already
 		// carry their history) and a task-tool MCP server locked to this workspace.
+		// Persona + MCP are role-template-driven (hardcoded fallback) — see #137.
+		pmPrompt, pmMcp := h.resolvePMRole(wsPath, wsID)
 		if acpSessionID == "" {
-			systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID)
+			systemContext = pmPrompt
 		}
-		mcpServers = h.buildPMMcpServers(wsID)
+		mcpServers = pmMcp
 		log.Printf("[agent] Bridging AI Project Manager WebSocket for session %s (workspace %s)", sessionId, wsID)
 	} else {
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)

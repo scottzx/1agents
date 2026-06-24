@@ -136,6 +136,101 @@ func TestGetTaskRejectsForeignId(t *testing.T) {
 	}
 }
 
+// ── task-scoped (executor) lock, #50 ────────────────────────────────────────
+
+// newTaskScopedServer is newTestServer with the session locked to taskID.
+func newTaskScopedServer(t *testing.T, taskID string, h http.HandlerFunc) (*server, *bytes.Buffer, *httptest.Server) {
+	t.Helper()
+	s, buf, api := newTestServer(t, h)
+	s.taskID = taskID
+	return s, buf, api
+}
+
+func TestTaskScopedToolsListIsNarrowed(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	res, _ := env["result"].(map[string]any)
+	tools, _ := res["tools"].([]any)
+	if len(tools) != 3 {
+		t.Fatalf("expected 3 task-scoped tools, got %d", len(tools))
+	}
+	for _, tl := range tools {
+		name, _ := tl.(map[string]any)["name"].(string)
+		if !taskScopedTools[name] {
+			t.Errorf("unexpected tool advertised in task scope: %q", name)
+		}
+	}
+}
+
+func TestTaskScopedBlocksPMTools(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("create_task must not hit the API in a task-scoped session (path %s)", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"X"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("expected task-scope rejection, got: %s", text)
+	}
+}
+
+func TestTaskScopedRejectsForeignTask(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		// A foreign id must be rejected before any single-task API call.
+		t.Errorf("must not hit API for a foreign id (path %s)", r.URL.Path)
+	})
+	// get_task on the other task
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_task","arguments":{"id":"t2"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("get_task foreign: expected rejection, got: %s", text)
+	}
+	// update_task on the other task
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t2","status":"completed"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("update_task foreign: expected rejection, got: %s", text)
+	}
+}
+
+func TestTaskScopedListFiltersToSelf(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(twoTasks()))
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_tasks","arguments":{}}}`)
+	text, isErr := resultText(t, env)
+	if isErr {
+		t.Fatalf("unexpected error: %s", text)
+	}
+	var payload struct {
+		Count int `json:"count"`
+		Tasks []struct {
+			ID string `json:"id"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		t.Fatalf("decode: %v (%s)", err, text)
+	}
+	if payload.Count != 1 || payload.Tasks[0].ID != "t1" {
+		t.Fatalf("task-scoped list should return only t1, got: %s", text)
+	}
+}
+
+func TestTaskScopedAllowsOwnUpdate(t *testing.T) {
+	var patched bool
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
+			patched = true
+			w.Write([]byte(`{"id":"t1","status":"completed"}`))
+			return
+		}
+		http.Error(w, "unexpected", 400)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("own-task update should succeed, got error: %s", text)
+	}
+	if !patched {
+		t.Fatal("expected PATCH /api/agent/tasks/t1")
+	}
+}
+
 func TestListMilestones(t *testing.T) {
 	// list_milestones now proxies GET /api/agent/milestones (first-class
 	// milestone entities) rather than aggregating tasks client-side.

@@ -14,6 +14,10 @@
 //
 //	ONEAGENTS_BASE_URL        e.g. http://127.0.0.1:8080
 //	ONEAGENTS_WORKSPACE_ID    the locked workspace id
+//	ONEAGENTS_TASK_ID         optional: locks the session to a single task
+//	                          (executor scope, #50). When set, the tool surface
+//	                          narrows to reading/updating just that task; the
+//	                          PM-only create/milestone tools are withheld.
 //	ONEAGENTS_INTERNAL_TOKEN  loopback bearer accepted by authMiddleware
 package mcptasks
 
@@ -48,6 +52,7 @@ func Run() error {
 			http:    &http.Client{Timeout: 30 * time.Second},
 		},
 		workspaceID: workspaceID,
+		taskID:      os.Getenv("ONEAGENTS_TASK_ID"),
 		out:         bufio.NewWriter(os.Stdout),
 	}
 	return s.loop(os.Stdin)
@@ -70,7 +75,11 @@ type rpcError struct {
 type server struct {
 	api         *apiClient
 	workspaceID string
-	out         *bufio.Writer
+	// taskID, when non-empty, locks the session to a single task (executor
+	// scope, #50): get/update/list are confined to it and PM-only tools are
+	// withheld. Empty means project-wide PM scope.
+	taskID string
+	out    *bufio.Writer
 }
 
 func (s *server) loop(in io.Reader) error {
@@ -114,7 +123,7 @@ func (s *server) handleLine(line []byte) {
 			s.reply(req.ID, map[string]any{})
 		}
 	case "tools/list":
-		s.reply(req.ID, map[string]any{"tools": toolDefs})
+		s.reply(req.ID, map[string]any{"tools": s.listedTools()})
 	case "tools/call":
 		s.reply(req.ID, s.onToolCall(req.Params))
 	default:
