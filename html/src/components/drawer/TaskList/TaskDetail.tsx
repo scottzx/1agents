@@ -117,6 +117,13 @@ interface TaskDetailProps {
     onSelectSession?: (session: Session) => void;
 }
 
+// Seeded into a bug's description editor when empty: the confirm gate requires
+// 复现/期望/实际 to be present, so the template both guides the author and
+// satisfies the keyword check once filled.
+const BUG_DESC_TEMPLATE = ['## 现象', '', '## 复现步骤', '1. ', '2. ', '', '## 期望结果', '', '## 实际结果', ''].join(
+    '\n'
+);
+
 export function TaskDetail({
     workspaceId,
     taskId,
@@ -432,15 +439,46 @@ export function TaskDetail({
     // requirement/bug; the conversation is recorded back to its timeline.
     const discussIssue = async () => {
         if (!task) return;
-        const kind = task.type === 'bug' ? '缺陷' : '需求';
-        const prompt = `我们来把这条${kind}的边界聊清楚：到底要解决什么、范围多大、验收标准是什么、有哪些约束或依赖。聊清楚后我会确认它「可排期」，再由你拆成可执行的任务。先问我还有哪些不清楚的地方。`;
+        const isBug = task.type === 'bug';
+        const kind = isBug ? '缺陷' : '需求';
+        const need = isBug
+            ? '描述（现象 + 复现步骤 + 期望结果 vs 实际结果）、验收标准（怎样算修好）'
+            : '描述（要解决什么 + 范围边界）、验收标准（怎样算做对、做完）';
+        const prompt = `我们来把这条${kind}的边界聊清楚，并补全这些必填要素：${need}。\n\n请先问我还不清楚的地方；澄清后请帮我把这些内容完善好（后续你可用任务工具回填到这张卡片）。补全后我才能点「确认，可排期」，再由你拆成可执行的任务。`;
         await sessionStore.createPMSession(workspaceId, `讨论${kind}：${task.title}`, prompt, task.id);
     };
 
-    // Toggle the user-confirmed gate. Only confirmed requirements/bugs may be
-    // scheduled by the PM (#49); flipping it is a plain PATCH.
+    // What's still missing before a requirement/bug can be confirmed: title +
+    // description + acceptance, and for bugs the description must also cover
+    // 复现/期望/实际 (kept as a Markdown template inside description, so this is
+    // a keyword check — the real quality comes from the 与 AI 讨论 pass).
+    const confirmBlockers = (): string[] => {
+        if (!task) return [];
+        const miss: string[] = [];
+        if (!task.title?.trim()) miss.push('标题');
+        if (!task.description?.trim()) miss.push('描述');
+        if (!task.acceptanceCriteria?.trim()) miss.push('验收标准');
+        if (task.type === 'bug') {
+            const d = task.description || '';
+            if (!d.includes('复现')) miss.push('复现步骤');
+            if (!d.includes('期望')) miss.push('期望结果');
+            if (!d.includes('实际')) miss.push('实际结果');
+        }
+        return miss;
+    };
+
+    // Toggle the user-confirmed gate. Confirming requires the essentials to be
+    // filled (otherwise prompt what's missing); un-confirming is unconditional.
+    // Only confirmed requirements/bugs may be scheduled by the PM (#49).
     const toggleUserConfirm = async () => {
         if (!task) return;
+        if (!task.userConfirm) {
+            const miss = confirmBlockers();
+            if (miss.length) {
+                alert(`确认前请先补全：${miss.join('、')}。\n可点「与 AI 讨论」让 AI 帮你完善这些内容。`);
+                return;
+            }
+        }
         await patchTask({ userConfirm: !task.userConfirm });
     };
 
@@ -722,7 +760,12 @@ export function TaskDetail({
                                             <button
                                                 class="task-desc-edit-btn"
                                                 onClick={() => {
-                                                    setDescDraft(task.description || '');
+                                                    // Seed the bug template when starting from an
+                                                    // empty bug, so 复现/期望/实际 are ready to fill.
+                                                    setDescDraft(
+                                                        task.description ||
+                                                            (task.type === 'bug' ? BUG_DESC_TEMPLATE : '')
+                                                    );
                                                     editingDesc.value = true;
                                                 }}
                                             >
@@ -761,8 +804,9 @@ export function TaskDetail({
                                 </div>
                             </div>
 
-                            {/* Pinned Acceptance Criteria Card (hidden for discussions) */}
-                            {!isNonExecutable && (
+                            {/* Pinned Acceptance Criteria Card. Requirements/bugs need it
+                                (it gates 确认,可排期); only fuzzy discussions hide it. */}
+                            {!isDiscussion && (
                                 <div class="gh-comment-card is-user">
                                     <div class="gh-comment-header">
                                         <div class="gh-comment-header-left">
