@@ -194,7 +194,7 @@ jobs:
         run: |
           pip install -q "cos-python-sdk-v5>=1.9"
           python3 - <<'PYEOF'
-          import os
+          import os, time
           from qcloud_cos import CosConfig, CosS3Client
 
           tag = os.environ["TAG"]
@@ -209,13 +209,24 @@ jobs:
               kwargs["Region"] = region
           else:
               kwargs["Region"] = "ap-shanghai"  # 区域域名(全球加速已停用)
+          kwargs["Timeout"] = 300  # 海外 runner→COS 慢链路,给足单请求时间
           client = CosS3Client(CosConfig(**kwargs))
 
           def put(local, key):
               ctype = "application/json" if local.endswith(".json") else "application/octet-stream"
-              with open(local, "rb") as fh:
-                  client.put_object(Bucket=bucket, Key=key, Body=fh, ContentType=ctype)
-              print(f"[cos] uploaded {key}")
+              # UserNetworkTooSlow(慢网)是 4xx,SDK 不自动重试 → 应用层重试+退避。
+              for attempt in range(6):
+                  try:
+                      with open(local, "rb") as fh:
+                          client.put_object(Bucket=bucket, Key=key, Body=fh, ContentType=ctype)
+                      print(f"[cos] uploaded {key}")
+                      return
+                  except Exception as e:
+                      if attempt == 5:
+                          raise
+                      wait = min(2 ** attempt, 30)
+                      print(f"[cos] upload {key} failed ({type(e).__name__}), retry {attempt+1}/5 in {wait}s")
+                      time.sleep(wait)
 
           # Upload installers + updater payloads under {tag}/desktop/
           for name in sorted(os.listdir("_desktop")):

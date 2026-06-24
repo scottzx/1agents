@@ -20,6 +20,7 @@ credentials (the bucket must not block public access).
 import os
 import re
 import sys
+import time
 
 from qcloud_cos import CosConfig, CosS3Client
 
@@ -45,7 +46,23 @@ def main() -> None:
         kwargs["Region"] = region
     else:
         kwargs["Region"] = DEFAULT_REGION  # regional domain (no acceleration)
+    kwargs["Timeout"] = 300  # 海外 runner→COS 慢链路,给足单请求时间
     client = CosS3Client(CosConfig(**kwargs))
+
+    # UserNetworkTooSlow(慢网导致 COS 中止上传)返回 4xx → CosServiceError,
+    # SDK 不会自动重试(它只重试 ConnectionError/Timeout),所以加应用层重试+退避。
+    def put_retry(key, path, ctype):
+        for attempt in range(6):
+            try:
+                with open(path, "rb") as fh:
+                    client.put_object(Bucket=bucket, Key=key, Body=fh, ContentType=ctype)
+                return
+            except Exception as e:
+                if attempt == 5:
+                    raise
+                wait = min(2 ** attempt, 30)
+                print(f"[cos] upload {key} failed ({type(e).__name__}), retry {attempt+1}/5 in {wait}s")
+                time.sleep(wait)
 
     # 1) Upload this version's files under <tag>/, refresh the latest pointer.
     for name in sorted(os.listdir(stage)):
@@ -59,14 +76,10 @@ def main() -> None:
         # (ListMultipartUploads etc.). No per-object ACL: the bucket itself is
         # public-read, so setting an ACL header (which needs cos:PutObjectACL)
         # is unnecessary.
-        with open(path, "rb") as fh:
-            client.put_object(Bucket=bucket, Key=key, Body=fh, ContentType=ctype)
+        put_retry(key, path, ctype)
         print(f"[cos] uploaded {key}")
 
-    with open(os.path.join(stage, "manifest.json"), "rb") as fh:
-        client.put_object(
-            Bucket=bucket, Key="manifest.json", Body=fh, ContentType="application/json"
-        )
+    put_retry("manifest.json", os.path.join(stage, "manifest.json"), "application/json")
     print("[cos] refreshed /manifest.json (latest pointer)")
 
     # 2) Prune: keep the newest `retain` version prefixes (vYYYYMMDD-N/).
