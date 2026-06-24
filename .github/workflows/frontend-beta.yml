@@ -1,23 +1,22 @@
 name: frontend-beta
 
-# Publishes a DEV/BETA frontend bundle to a SEPARATE COS path (frontend-beta/),
-# consumed only by the dev domain (agent-dev.dreammate.work).
+# Publishes a DEV/BETA frontend bundle as a GitHub *prerelease* on a rolling
+# tag (frontend-beta), consumed only by agent-dev.dreammate.work.
 #
-# Fully isolated from the stable release pipeline (auto-release.yml /
-# ota-cdn-publish.yml): its own version line (v{date}.beta.N), its own COS
-# prefix, its own latest pointer (frontend-beta/manifest.json). Nothing here
-# touches the stable root manifest.json or the {tag}/ trees.
+# Why a GitHub prerelease instead of COS: the runner uploads to GitHub on its
+# own network (fast — no UserNetworkTooSlow like the trans-pacific COS upload),
+# and the China VPS pulls the asset through a gh-proxy file-acceleration mirror
+# (direct github.com is blocked from that host). This is NOT a formal release —
+# it is a prerelease, kept off the stable channel entirely.
 #
-# The dev server points its OTA MirrorBaseURL at {OTA_CDN_BASE_URL}/frontend-beta
-# so it fetches frontend-beta/manifest.json and only its frontend updates. The
-# manifest carries NO backend platform binaries, so the dev server's backend
-# self-update stays a no-op.
+# Isolated from the stable pipeline (auto-release.yml / ota-cdn-publish.yml):
+# its own version line (v{date}.beta.N), its own rolling prerelease tag, its own
+# assets (manifest.json + frontend-{version}.tar.gz). The manifest carries NO
+# backend binaries, so the dev server's backend self-update stays a no-op.
 #
-# Required repo secrets (skips cleanly if unset):
-#   COS_SECRET_ID / COS_SECRET_KEY  — Tencent Cloud API credentials
-#   COS_BUCKET                      — bucket name
-#   COS_ENDPOINT / COS_REGION       — optional; empty → COS global acceleration
-#   OTA_CDN_BASE_URL                — public CDN base, e.g. https://ota.example.com
+# VPS side: server-h5-ota-dev.sh reads
+#   {gh-proxy}/https://github.com/<repo>/releases/download/frontend-beta/manifest.json
+# and downloads the tarball the same way.
 
 on:
   push:
@@ -27,13 +26,16 @@ on:
       - ".github/workflows/frontend-beta.yml"
   workflow_dispatch:
 
-# Keep only the newest beta build running; cancel superseded pushes.
+# Rolling "latest beta": newest push wins, cancel any superseded in-flight run.
 concurrency:
   group: frontend-beta
   cancel-in-progress: true
 
+permissions:
+  contents: write  # create/update the prerelease
+
 env:
-  RETAIN: "5"  # beta versions to keep under frontend-beta/
+  BETA_TAG: frontend-beta
 
 jobs:
   publish:
@@ -41,70 +43,35 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Gate on COS secrets
-        id: gate
-        env:
-          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
-          COS_BUCKET: ${{ secrets.COS_BUCKET }}
-          OTA_CDN_BASE_URL: ${{ secrets.OTA_CDN_BASE_URL }}
-        run: |
-          if [ -z "$COS_SECRET_ID" ] || [ -z "$COS_BUCKET" ] || [ -z "$OTA_CDN_BASE_URL" ]; then
-            echo "COS secrets not configured — skipping beta publish."
-            echo "go=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Compute beta version (v{date}.beta.N)
-        if: steps.gate.outputs.go == 'true'
         id: version
         env:
-          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
-          COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
-          COS_BUCKET: ${{ secrets.COS_BUCKET }}
-          COS_ENDPOINT: ${{ secrets.COS_ENDPOINT }}
-          COS_REGION: ${{ secrets.COS_REGION }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pip install -q "cos-python-sdk-v5>=1.9"
-          DATE_STR=$(date -u +'%Y%m%d')
-          NEXT_N=$(python3 - "$DATE_STR" <<'PYEOF'
-          import os, re, sys
-          from qcloud_cos import CosConfig, CosS3Client
-
-          date_str = sys.argv[1]
-          bucket = os.environ["COS_BUCKET"]
-          endpoint = os.environ.get("COS_ENDPOINT", "").strip()
-          region = os.environ.get("COS_REGION", "").strip()
-          kwargs = {"SecretId": os.environ["COS_SECRET_ID"], "SecretKey": os.environ["COS_SECRET_KEY"]}
-          if endpoint:
-              kwargs["Endpoint"] = endpoint
-          elif region:
-              kwargs["Region"] = region
-          else:
-              kwargs["Region"] = "ap-shanghai"  # 区域域名(全球加速已停用)
-          kwargs["Timeout"] = 300  # 海外 runner→COS 慢链路,给足单请求时间
-          client = CosS3Client(CosConfig(**kwargs))
-
-          # List version dirs under frontend-beta/ and find the max N for today.
-          resp = client.list_objects(Bucket=bucket, Prefix="frontend-beta/", Delimiter="/")
-          rx = re.compile(rf"^frontend-beta/v{date_str}\.beta\.(\d+)/$")
-          ns = [int(m.group(1)) for p in resp.get("CommonPrefixes", [])
-                if (m := rx.match(p["Prefix"]))]
-          print(max(ns) + 1 if ns else 1)
-          PYEOF
-          )
-          VERSION="v${DATE_STR}.beta.${NEXT_N}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Computed beta version: $VERSION"
+          # N is the per-day counter. Derive it from the version currently
+          # published on the rolling prerelease (one manifest read on the runner,
+          # direct to GitHub = fast). Same day → +1, new day or none → 1.
+          DATE=$(date -u +%Y%m%d)
+          rm -rf /tmp/curbeta && mkdir -p /tmp/curbeta
+          CUR=""
+          if gh release download "$BETA_TAG" --repo "${{ github.repository }}" \
+               --pattern manifest.json --dir /tmp/curbeta 2>/dev/null; then
+            CUR=$(python3 -c "import json;print(json.load(open('/tmp/curbeta/manifest.json'))['components']['frontend']['version'])" 2>/dev/null || echo "")
+          fi
+          if [[ "$CUR" == v${DATE}.beta.* ]]; then
+            N=$(( ${CUR##*.} + 1 ))
+          else
+            N=1
+          fi
+          echo "version=v${DATE}.beta.${N}" >> "$GITHUB_OUTPUT"
+          echo "Computed beta version: v${DATE}.beta.${N} (previous: ${CUR:-none})"
 
       - name: Set up Node.js
-        if: steps.gate.outputs.go == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '24'
 
       - name: Cache Yarn dependencies
-        if: steps.gate.outputs.go == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -115,7 +82,6 @@ jobs:
             ${{ runner.os }}-yarn-
 
       - name: Build frontend (beta version baked in)
-        if: steps.gate.outputs.go == 'true'
         working-directory: frontend
         env:
           # Baked into __APP_VERSION__ via webpack DefinePlugin so the running
@@ -128,105 +94,55 @@ jobs:
           yarn build
 
       - name: Stage bundle + build beta manifest
-        if: steps.gate.outputs.go == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          OTA_CDN_BASE_URL: ${{ secrets.OTA_CDN_BASE_URL }}
+          REPO: ${{ github.repository }}
         run: |
           mkdir -p _stage
           # Files at top level so the server updater can swap dist/ directly.
-          # Name matches build-manifest.py's find_frontend (frontend-v{version}).
-          tar -czf "_stage/frontend-v${VERSION}.tar.gz" -C frontend/dist .
-          echo "=== staged ===" && ls -lh _stage
+          tar -czf "_stage/frontend-${VERSION}.tar.gz" -C frontend/dist .
+          python3 - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          ver = os.environ["VERSION"]
+          repo = os.environ["REPO"]
+          tar = f"_stage/frontend-{ver}.tar.gz"
+          sha = hashlib.sha256(open(tar, "rb").read()).hexdigest()
+          # Plain GitHub asset URL (proxy-agnostic). The VPS prepends its own
+          # gh-proxy prefix; backend.platforms is empty → no backend self-update.
+          entry = f"https://github.com/{repo}/releases/download/frontend-beta/frontend-{ver}.tar.gz"
+          m = {
+              "channel": "beta",
+              "released_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "min_supported": "0.0.0",
+              "manifest_version": 1,
+              "components": {
+                  "frontend": {"version": ver, "entry": entry, "integrity": f"sha256-{sha}"},
+                  "backend": {"version": ver, "platforms": {}},
+              },
+              "previous": [],
+          }
+          json.dump(m, open("_stage/manifest.json", "w"), indent=2)
+          print(json.dumps(m, indent=2))
+          PY
 
-          # build-manifest.py emits the standard OTA schema (channel + frontend +
-          # backend). With no backend tarballs in _stage, backend.platforms is
-          # empty → dev server backend self-update is a no-op. base-url is the
-          # beta subpath so frontend.entry points inside frontend-beta/.
-          python3 scripts/build-manifest.py \
-            --version "$VERSION" \
-            --channel beta \
-            --base-url "${OTA_CDN_BASE_URL%/}/frontend-beta" \
-            --artifacts _stage \
-            --output _stage/manifest.json
-          echo "=== beta manifest ===" && cat _stage/manifest.json
-
-      - name: Upload to COS (frontend-beta/) + prune
-        if: steps.gate.outputs.go == 'true'
+      - name: Publish GitHub prerelease (rolling frontend-beta)
         env:
-          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
-          COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
-          COS_BUCKET: ${{ secrets.COS_BUCKET }}
-          COS_ENDPOINT: ${{ secrets.COS_ENDPOINT }}
-          COS_REGION: ${{ secrets.COS_REGION }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
-          RETAIN: ${{ env.RETAIN }}
+          REPO: ${{ github.repository }}
         run: |
-          pip install -q "cos-python-sdk-v5>=1.9"
-          python3 - <<'PYEOF'
-          import os, re, time
-          from qcloud_cos import CosConfig, CosS3Client
-
-          version = os.environ["VERSION"]
-          retain = int(os.environ["RETAIN"])
-          bucket = os.environ["COS_BUCKET"]
-          endpoint = os.environ.get("COS_ENDPOINT", "").strip()
-          region = os.environ.get("COS_REGION", "").strip()
-          kwargs = {"SecretId": os.environ["COS_SECRET_ID"], "SecretKey": os.environ["COS_SECRET_KEY"]}
-          if endpoint:
-              kwargs["Endpoint"] = endpoint
-          elif region:
-              kwargs["Region"] = region
-          else:
-              kwargs["Region"] = "ap-shanghai"  # 区域域名(全球加速已停用)
-          kwargs["Timeout"] = 300  # 海外 runner→COS 慢链路,给足单请求时间
-          client = CosS3Client(CosConfig(**kwargs))
-
-          def put(local, key):
-              ctype = "application/json" if local.endswith(".json") else "application/octet-stream"
-              # UserNetworkTooSlow(慢网)是 4xx,SDK 不自动重试 → 应用层重试+退避。
-              for attempt in range(6):
-                  try:
-                      with open(local, "rb") as fh:
-                          client.put_object(Bucket=bucket, Key=key, Body=fh, ContentType=ctype)
-                      print(f"[cos] uploaded {key}")
-                      return
-                  except Exception as e:
-                      if attempt == 5:
-                          raise
-                      wait = min(2 ** attempt, 30)
-                      print(f"[cos] upload {key} failed ({type(e).__name__}), retry {attempt+1}/5 in {wait}s")
-                      time.sleep(wait)
-
-          # 1) Versioned snapshot under frontend-beta/{version}/.
-          for name in sorted(os.listdir("_stage")):
-              path = os.path.join("_stage", name)
-              if os.path.isfile(path):
-                  put(path, f"frontend-beta/{version}/{name}")
-
-          # 2) Refresh the latest pointer the dev server reads.
-          put("_stage/manifest.json", "frontend-beta/manifest.json")
-          print("[cos] refreshed frontend-beta/manifest.json (latest pointer)")
-
-          # 3) Prune: keep the newest `retain` beta version dirs.
-          resp = client.list_objects(Bucket=bucket, Prefix="frontend-beta/", Delimiter="/")
-          rx = re.compile(r"^frontend-beta/v(\d{8})\.beta\.(\d+)/$")
-          vers = []
-          for p in resp.get("CommonPrefixes", []):
-              m = rx.match(p["Prefix"])
-              if m:
-                  vers.append((int(m.group(1)), int(m.group(2)), p["Prefix"]))
-          vers.sort()  # by (date, N) numerically — v...beta.10 > v...beta.9
-          for _, _, pfx in vers[:-retain] if len(vers) > retain else []:
-              marker = ""
-              while True:
-                  r = client.list_objects(Bucket=bucket, Prefix=pfx, Marker=marker)
-                  for c in r.get("Contents", []):
-                      client.delete_object(Bucket=bucket, Key=c["Key"])
-                  if r.get("IsTruncated") == "true":
-                      marker = r.get("NextMarker", "")
-                  else:
-                      break
-              print(f"[cos] pruned old beta {pfx}")
-          print(f"[cos] kept newest {retain}")
-          PYEOF
+          # Create the rolling prerelease once; thereafter clobber its assets.
+          # No delete-then-create, so there is never a window with no release.
+          gh release create "$BETA_TAG" --repo "$REPO" --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Frontend Beta (rolling latest — NOT a stable release)" \
+            --notes "agent-dev 前端最新 dev 构建,滚动更新。由 server-h5-ota-dev.sh 经 gh-proxy 拉取。非正式 release。" \
+            2>/dev/null || true
+          gh release upload "$BETA_TAG" --repo "$REPO" --clobber \
+            "_stage/manifest.json" "_stage/frontend-${VERSION}.tar.gz"
+          # Prune older frontend-*.tar.gz assets, keep only the current one.
+          gh release view "$BETA_TAG" --repo "$REPO" --json assets -q '.assets[].name' \
+            | grep -E '^frontend-.*\.tar\.gz$' | grep -vx "frontend-${VERSION}.tar.gz" \
+            | while read -r a; do gh release delete-asset "$BETA_TAG" "$a" --repo "$REPO" --yes 2>/dev/null || true; done
+          echo "Published $VERSION to prerelease $BETA_TAG"
