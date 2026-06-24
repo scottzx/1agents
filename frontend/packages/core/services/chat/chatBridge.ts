@@ -1,0 +1,624 @@
+// ChatBridgeManager — framework-agnostic owner of the per-session chat
+// WebSocket. Carved out of the web app's components/chat/hooks.ts (#216 §5) so
+// the 小程序 client can reuse it: it owns the socket, listeners and reconnect
+// bookkeeping; all conversation-state transforms live in the core reducer.
+//
+// Host couplings are injected via ChatBridgeOptions:
+//   - directWsOrigin(): the ws(s):// origin for direct mode (web derives it
+//     from window.location; weapp from a configured backend address).
+//   - onStatus/onConnection: optional mirrors into a host store (sidebar dot /
+//     header connection indicator).
+// The transport itself goes through the platform bridge's connectSocket(), so
+// direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
+// the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
+
+import type { ChatItem, ConnectionState } from '../../protocol/types';
+import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
+import {
+    cryptoId,
+    hasRenderableArguments,
+    normalizeHistory,
+    applyTextDelta,
+    applyPromptQueued,
+    applyPromptCancelled,
+    applyToolCall,
+    applyToolResult,
+    applyPermissionRequest,
+    applyPermissionTimeout,
+    applyDone,
+    appendError,
+    resolvePermissionSide,
+    deriveLiveStatus,
+} from '../../protocol/reducer';
+import {
+    getHistoryAction,
+    promptAction,
+    closeSessionAction,
+    cancelQueuedAction,
+    respondPermissionAction,
+    setPermissionModeAction,
+    type BridgeEventPayload,
+} from '../../protocol/wireProtocol';
+import { getPlatformBridge } from '../../platform/bridge';
+import type { PlatformSocket } from '../../platform/socket';
+import { apiFetch, backendTarget } from '../apiClient';
+import { RelayChatSocket, type ChatTransport } from '../relay/relayChatSocket';
+
+export const DEFAULT_PERMISSION_MODE: PermissionMode = 'approve-reads';
+
+/** Mirror WebSocket.OPEN without referencing the (weapp-absent) global. */
+const WS_OPEN = 1;
+
+/** Host-specific dependencies the manager needs but core can't supply itself. */
+export interface ChatBridgeOptions {
+    /**
+     * The ws:// or wss:// origin for the direct-mode chat WS (no trailing
+     * slash), e.g. "wss://host". Web derives it from window.location; the
+     * mini-program from its configured backend address.
+     */
+    directWsOrigin(): string;
+    /** Mirror the derived live status into a host store (e.g. the sidebar dot). */
+    onStatus?(sessionId: string, status: ChatStatus | null): void;
+    /** Mirror the raw connection state into a host store (e.g. the header). */
+    onConnection?(sessionId: string, conn: ConnectionState | null): void;
+}
+
+export interface SessionBridgeState {
+    /** The owning session's id — used to publish live status into the host store. */
+    sessionId: string;
+    items: ChatItem[];
+    connection: ConnectionState;
+    typing: boolean;
+    ws: ChatTransport | null;
+    listeners: Set<() => void>;
+    turnStarted: boolean;
+    /**
+     * Real-time-only holding pen for tool_result and permission_request
+     * events that arrived before (or without) their matching tool_call.
+     * Each new tool_call re-scans these lists and folds any matching
+     * entries into the call's tool_use; leftover entries are surfaced
+     * by the renderer as a "待分配" tool_group so the data is never
+     * silently dropped. The pool is cleared on history reload because
+     * the historical record is authoritative.
+     */
+    pendingResults: ChatItem[];
+    pendingPermissions: ChatItem[];
+    /**
+     * True once the bridge-server confirms the session is initialized
+     * (`session_ready` event). New sessions sit at `ready = false` for a
+     * brief window while the bridge spawns the agent process; during
+     * that window, prompt/cancel/set_permission_mode would all bounce
+     * with SESSION_NOT_FOUND, so the UI must gate input on this flag.
+     */
+    ready: boolean;
+    /**
+     * True once this session has reached `session_ready` at least once (never
+     * reset). Distinguishes a live session that merely dropped — which should
+     * reconnect indefinitely — from one that never connected (e.g. resuming a
+     * transcript whose session is unrecoverable), which should give up after a
+     * few attempts instead of looping forever and spamming the console.
+     */
+    everReady: boolean;
+    /** Per-session permission policy mirrored from the backend record. */
+    permissionMode: PermissionMode;
+    /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
+    reconnectAttempt: number;
+    /** Pending setTimeout handle for the next reconnect; null when idle. */
+    reconnectTimer: ReturnType<typeof setTimeout> | null;
+    /** True when destroy() was called; prevents the onclose handler from scheduling a reconnect. */
+    closedByUser: boolean;
+    /**
+     * True once this connection was taken over by a newer one (the bridge
+     * emitted `session_taken_over` right before closing us). Suppresses the
+     * onclose auto-reconnect so two tabs don't ping-pong the bridge, and
+     * drives the "session opened elsewhere" banner. Cleared on the next
+     * connect() (i.e. when the user hits 重试).
+     */
+    takenOver: boolean;
+}
+
+export class ChatBridgeManager {
+    private sessions = new Map<string, SessionBridgeState>();
+
+    constructor(private opts: ChatBridgeOptions) {}
+
+    getOrCreate(session: ChatSession): SessionBridgeState {
+        let state = this.sessions.get(session.id);
+        if (!state) {
+            state = {
+                sessionId: session.id,
+                items: [],
+                connection: 'idle',
+                typing: false,
+                ws: null,
+                listeners: new Set(),
+                turnStarted: false,
+                pendingResults: [],
+                pendingPermissions: [],
+                // New sessions stay `ready: false` until the bridge-server
+                // emits `session_ready`; the UI gates input on this so we
+                // don't bounce prompts with SESSION_NOT_FOUND during the
+                // brief window the agent process is spawning.
+                ready: false,
+                everReady: false,
+                // The list endpoint (GET /api/agent/sessions?workspace_id=…)
+                // already serializes ChatSessionRecord.PermissionMode onto
+                // the ChatSession object, so we can trust the field
+                // verbatim instead of doing a second GET per session.
+                permissionMode: session.permissionMode ?? DEFAULT_PERMISSION_MODE,
+                reconnectAttempt: 0,
+                reconnectTimer: null,
+                closedByUser: false,
+                takenOver: false,
+            };
+            this.sessions.set(session.id, state);
+            this.connect(session, state);
+        }
+        return state;
+    }
+
+    destroy(sessionId: string) {
+        const state = this.sessions.get(sessionId);
+        if (state) {
+            state.closedByUser = true;
+            if (state.reconnectTimer) {
+                clearTimeout(state.reconnectTimer);
+                state.reconnectTimer = null;
+            }
+            if (state.ws) {
+                if (state.ws.readyState === WS_OPEN) {
+                    state.ws.send(JSON.stringify({ action: 'close_session', sessionId }));
+                }
+                state.ws.close();
+            }
+            this.sessions.delete(sessionId);
+            this.opts.onStatus?.(sessionId, null);
+            this.opts.onConnection?.(sessionId, null);
+        }
+    }
+
+    /**
+     * Reclaim a session that was taken over by another tab/browser. Used by
+     * the "重试" button on the takeover banner — reconnecting makes THIS
+     * connection the newest, so the bridge hands ownership back here (and the
+     * other tab gets its own takeover banner). connect() clears `takenOver`.
+     */
+    retry(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state) return;
+        this.connect(session, state);
+    }
+
+    private connect(session: ChatSession, state: SessionBridgeState) {
+        state.connection = 'connecting';
+        // Reset `ready` on every (re)connect. The bridge-server emits a
+        // fresh `session_ready` after each `ensure_session`, so we wait
+        // for the new confirmation before letting the user act again.
+        state.ready = false;
+        // A fresh connect (incl. the user hitting 重试 after being taken
+        // over) reclaims ownership, so clear the takeover flag/banner.
+        state.takenOver = false;
+        this.notify(state);
+
+        // Pick the transport by how the backend is reached: relay mode tunnels the
+        // chat stream over the relay (issue #17); direct mode keeps the same-origin WS.
+        const target = backendTarget.value;
+        let ws: ChatTransport;
+        if (target.mode === 'relay') {
+            ws = new RelayChatSocket(target.socket, target.machine, {
+                workspaceId: session.workspaceId,
+                taskId: session.taskId,
+                sessionId: session.id,
+                agentType: session.agentType,
+                replyId: session.replyId,
+            });
+        } else {
+            const taskId = session.taskId || '';
+            const replyId = session.replyId || '';
+            const wsUrl = `${this.opts.directWsOrigin()}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}`;
+            console.log('[ChatBridgeManager] Connecting to backend websocket:', wsUrl);
+            // Route through the platform transport seam so weapp uses
+            // Taro.connectSocket while web/Tauri use the browser WebSocket.
+            ws = new PlatformChatTransport(getPlatformBridge().connectSocket(wsUrl));
+        }
+        state.ws = ws;
+
+        ws.onopen = () => {
+            state.connection = 'connected';
+            this.notify(state);
+            ws.send(
+                JSON.stringify(
+                    getHistoryAction({
+                        sessionId: session.id,
+                        agentType: session.agentType,
+                        acpSessionId: session.acpSessionId,
+                    })
+                )
+            );
+        };
+
+        ws.onmessage = e => {
+            let payload: BridgeEventPayload;
+            try {
+                payload = JSON.parse(e.data) as BridgeEventPayload;
+            } catch (err) {
+                console.error('[ChatBridgeManager] Failed to parse message:', err);
+                return;
+            }
+
+            const event = payload.event;
+            console.log('[ChatBridgeManager] Received event:', event, payload);
+
+            switch (event) {
+                case 'session_ready':
+                    // Flip the gate so the Composer / mode toggle unblock.
+                    // `state.typing` is intentionally untouched — the
+                    // bridge signals per-turn activity with `done` / `error`,
+                    // not with `session_ready`.
+                    state.reconnectAttempt = 0;
+                    state.ready = true;
+                    state.everReady = true;
+                    this.notify(state);
+                    break;
+                case 'session_taken_over':
+                    // A newer connection (another tab/browser) took over this
+                    // session. The bridge closes us right after this event;
+                    // mark takenOver so onclose skips the auto-reconnect (no
+                    // ping-pong) and ChatPanel surfaces the banner.
+                    state.takenOver = true;
+                    state.ready = false;
+                    if (state.reconnectTimer) {
+                        clearTimeout(state.reconnectTimer);
+                        state.reconnectTimer = null;
+                    }
+                    this.notify(state);
+                    break;
+                case 'prompt_queued': {
+                    // Bridge accepted the prompt but couldn't start it because
+                    // another turn is already running. Mark the most-recent user
+                    // bubble as "queued" (the X button sends `requestId` back in
+                    // cancel_queued; the next turn's first text_delta drains it).
+                    if (!state.turnStarted) break;
+                    const items = applyPromptQueued(state.items, payload.requestId);
+                    if (items !== state.items) {
+                        state.items = items;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'prompt_cancelled': {
+                    // Bridge dropped a queued prompt without ever starting it.
+                    // Clear the queue badge from still-queued user bubbles — the
+                    // cancelled turn never produces a text_delta to drain them.
+                    const { items, mutated } = applyPromptCancelled(state.items);
+                    if (mutated) {
+                        state.items = items;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'text_delta': {
+                    if (!state.turnStarted) break;
+                    const delta = payload.text;
+                    if (!delta) break;
+                    state.items = applyTextDelta(state.items, delta, payload.type || 'output');
+                    this.notify(state);
+                    break;
+                }
+                case 'tool_call': {
+                    if (!state.turnStarted) break;
+                    // Backend's SSE safety fallback may emit tool_call events
+                    // without `arguments` (omitted) or with `arguments: {}` (the
+                    // runtime's no-input placeholder); neither carries renderable
+                    // data, so drop them before they reach the fold.
+                    if (!hasRenderableArguments(payload.arguments)) break;
+                    const next = applyToolCall(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
+                case 'tool_result': {
+                    if (!state.turnStarted) break;
+                    const next = applyToolResult(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
+                case 'permission_request': {
+                    if (!state.turnStarted) break;
+                    const next = applyPermissionRequest(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
+                case 'permission_timeout': {
+                    if (!state.turnStarted) break;
+                    state.items = applyPermissionTimeout(state.items, payload.requestId, payload.message);
+                    this.notify(state);
+                    break;
+                }
+                case 'done': {
+                    state.items = applyDone(state.items);
+                    state.typing = false;
+                    state.turnStarted = false;
+                    this.notify(state);
+                    this.reloadHistory(session, state);
+                    break;
+                }
+                case 'history_response': {
+                    state.items = normalizeHistory(payload.items, payload.messages);
+                    // History is authoritative: drop the realtime holding pools so
+                    // the renderer stops showing the "待分配" group once the
+                    // on-disk record has been replayed.
+                    state.pendingResults = [];
+                    state.pendingPermissions = [];
+                    this.notify(state);
+                    break;
+                }
+                case 'error': {
+                    // SESSION_NOT_FOUND before `session_ready` is the bridge
+                    // answering a control action fired during the init window
+                    // (the UI gates input on `ready`, so the user can't trigger
+                    // these). Swallow it so the stream doesn't flash a banner.
+                    if (payload.code === 'SESSION_NOT_FOUND' && !state.ready) {
+                        break;
+                    }
+                    state.items = appendError(state.items, payload.message || payload.code || 'Unknown error');
+                    // Only reload history when the error came from inside a turn —
+                    // that's when on-disk state may be authoritative over memory.
+                    // Out-of-turn control errors don't touch history; reloading
+                    // then turns one bad input into a console storm.
+                    const wasInTurn = state.turnStarted;
+                    state.typing = false;
+                    state.turnStarted = false;
+                    this.notify(state);
+                    if (wasInTurn) {
+                        this.reloadHistory(session, state);
+                    }
+                    break;
+                }
+            }
+        };
+
+        ws.onclose = () => {
+            // closedByUser: explicit destroy(). takenOver: a newer connection
+            // claimed the session. Either way, do NOT auto-reconnect — the
+            // takeover path is what would otherwise ping-pong two tabs.
+            if (state.closedByUser || state.takenOver) {
+                state.connection = 'closed';
+                this.notify(state);
+                return;
+            }
+            // A session that never connected (e.g. "查看详情" on a transcript the
+            // backend can't resume) keeps failing the open handshake. Give up
+            // after a few tries with a clear unavailable state instead of an
+            // endless reconnect loop. A session that *was* live (everReady) only
+            // dropped — keep reconnecting indefinitely.
+            if (!state.everReady && state.reconnectAttempt >= 4) {
+                state.connection = 'error';
+                state.typing = false;
+                this.notify(state);
+                return;
+            }
+            state.connection = 'reconnecting';
+            state.typing = false;
+            this.notify(state);
+            const delay = Math.min(30_000, 1_000 * Math.pow(2, state.reconnectAttempt));
+            state.reconnectAttempt++;
+            state.reconnectTimer = setTimeout(() => {
+                state.reconnectTimer = null;
+                this.connect(session, state);
+            }, delay);
+        };
+
+        ws.onerror = () => {
+            // onclose always fires after onerror in the browser WebSocket API;
+            // let onclose own the reconnect logic to avoid double-scheduling.
+        };
+    }
+
+    send(session: ChatSession, content: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        // Refuse prompts sent before the bridge confirms initialization.
+        // The bridge would answer with SESSION_NOT_FOUND and we'd be left
+        // with an orphan user bubble in the stream.
+        if (!state.ready) return;
+        state.turnStarted = true;
+        const msgId = cryptoId();
+        state.items = [
+            ...state.items,
+            {
+                id: msgId,
+                kind: 'user',
+                content,
+                createdAt: Date.now(),
+            },
+        ];
+        state.ws.send(JSON.stringify(promptAction(session.id, content)));
+        state.typing = true;
+        this.notify(state);
+    }
+
+    cancel(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        // `cancel` on the wire is mapped to terminate-session: the only
+        // user-facing stop semantics are "终止对话" (cancels the active
+        // turn, drops the queue, closes the session). Stopping the
+        // current turn while letting the queue keep running isn't
+        // exposed in the UI.
+        state.ws.send(JSON.stringify(closeSessionAction(session.id)));
+        state.typing = false;
+        state.turnStarted = false;
+        this.notify(state);
+    }
+
+    /**
+     * Remove a single queued prompt (one the bridge has not started
+     * yet). Distinct from `cancel`, which only stops the active turn;
+     * the queue keeps running. Used by the X button on queued user
+     * bubbles — `requestId` is the queue id echoed back in
+     * `prompt_queued`.
+     */
+    cancelQueued(session: ChatSession, requestId: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        state.ws.send(JSON.stringify(cancelQueuedAction(session.id, requestId)));
+        // Optimistically clear the badge so the user gets immediate
+        // feedback; the bridge's `prompt_cancelled` event will
+        // arrive later and be a no-op.
+        state.items = state.items.map(it => {
+            if (it.kind === 'user' && it.queueRequestId === requestId) {
+                return { ...it, queueStatus: undefined, queueRequestId: undefined };
+            }
+            return it;
+        });
+        this.notify(state);
+    }
+
+    respondPermission(session: ChatSession, requestId: string, decision: PermissionDecision) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        // Find the nested permission sub-item and capture the originating
+        // toolCallId so the response can be linked back to the tool_use
+        // block in the audit/log chain.
+        let toolCallId: string | undefined;
+        for (const it of state.items) {
+            if (it.kind !== 'tool_use') continue;
+            const match = it.calls.find(c => c.permission?.requestId === requestId);
+            if (match) {
+                toolCallId = match.toolCallId;
+                break;
+            }
+        }
+        state.ws.send(JSON.stringify(respondPermissionAction(session.id, requestId, toolCallId, decision)));
+        // `cancel` leaves the inline UI interactive so the user can re-decide
+        // (the runtime will time the request out on its own if nothing
+        // else happens). The four real decisions collapse the inline
+        // permission into a one-line summary keyed on the allow/deny side.
+        const resolved = resolvePermissionSide(decision);
+        if (resolved) {
+            state.items = state.items.map(it => {
+                if (it.kind !== 'tool_use') return it;
+                let touched = false;
+                const calls = it.calls.map(c => {
+                    if (c.permission && c.permission.requestId === requestId) {
+                        touched = true;
+                        return { ...c, permission: { ...c.permission, resolved } };
+                    }
+                    return c;
+                });
+                return touched ? { ...it, calls } : it;
+            });
+            this.notify(state);
+        } else if (toolCallId === undefined) {
+            // Should not happen: every permission_request has a matching
+            // toolCallId by the time the user clicks a button. Logged
+            // for visibility in case a future event source breaks the
+            // invariant.
+            console.warn('[ChatBridgeManager] respond_permission: no nested permission found for requestId', requestId);
+        }
+    }
+
+    setPermissionMode(session: ChatSession, mode: PermissionMode) {
+        const state = this.sessions.get(session.id);
+        if (!state) return;
+        if (state.permissionMode === mode) return;
+        state.permissionMode = mode;
+        this.notify(state);
+        // Notify the bridge-server immediately so the gate flips before
+        // the next permission request; persist via the REST endpoint so
+        // it survives reloads. Both calls are fire-and-forget — if PATCH
+        // fails the local toggle still reflects the user intent for the
+        // current process lifetime.
+        // setPermissionModeAction keeps the `permissionMode` field name aligned
+        // with the Go WsMessage JSON tag (see wireProtocol.ts).
+        if (state.ws && state.ws.readyState === WS_OPEN) {
+            state.ws.send(JSON.stringify(setPermissionModeAction(session.id, mode)));
+        }
+        void apiFetch(`/agent/sessions/${encodeURIComponent(session.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permission_mode: mode }),
+        }).catch(err => {
+            console.warn('[ChatBridgeManager] PATCH permission_mode failed:', err);
+        });
+    }
+
+    private reloadHistory(session: ChatSession, state: SessionBridgeState) {
+        if (state.ws && state.ws.readyState === WS_OPEN) {
+            state.ws.send(
+                JSON.stringify(
+                    getHistoryAction({
+                        sessionId: session.id,
+                        agentType: session.agentType,
+                        acpSessionId: session.acpSessionId,
+                    })
+                )
+            );
+        }
+    }
+
+    private notify(state: SessionBridgeState) {
+        // Publish the derived live status into the host store so the sidebar dot
+        // tracks this session in real time, then repaint the chat subscribers.
+        this.opts.onStatus?.(state.sessionId, deriveLiveStatus(state));
+        // Also mirror the raw WS connection state so the workspace header can
+        // show the active session's connection status.
+        this.opts.onConnection?.(state.sessionId, state.connection);
+        for (const listener of state.listeners) {
+            listener();
+        }
+    }
+}
+
+/**
+ * Adapt a PlatformSocket (onOpen/onMessage callbacks, string readyState) to the
+ * browser-WebSocket-shaped ChatTransport the manager consumes. Handlers are
+ * registered eagerly; the manager assigns its on* properties synchronously
+ * after construction, before any async socket event can fire.
+ */
+class PlatformChatTransport implements ChatTransport {
+    onopen: ((ev?: unknown) => void) | null = null;
+    onmessage: ((ev: { data: string }) => void) | null = null;
+    onclose: ((ev?: unknown) => void) | null = null;
+    onerror: ((ev?: unknown) => void) | null = null;
+
+    constructor(private sock: PlatformSocket) {
+        sock.onOpen(() => this.onopen?.());
+        sock.onMessage(data => this.onmessage?.({ data }));
+        sock.onClose(info => this.onclose?.(info));
+        sock.onError(err => this.onerror?.(err));
+    }
+
+    get readyState(): number {
+        switch (this.sock.readyState) {
+            case 'connecting':
+                return 0;
+            case 'open':
+                return 1;
+            case 'closing':
+                return 2;
+            default:
+                return 3;
+        }
+    }
+
+    send(data: string): void {
+        this.sock.send(data);
+    }
+
+    close(): void {
+        this.sock.close();
+    }
+}
