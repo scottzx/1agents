@@ -81,7 +81,7 @@ jobs:
           elif region:
               kwargs["Region"] = region
           else:
-              kwargs["Endpoint"] = "cos.accelerate.myqcloud.com"
+              kwargs["Region"] = "ap-shanghai"  # 区域域名(全球加速已停用)
           client = CosS3Client(CosConfig(**kwargs))
 
           # List version dirs under frontend-beta/ and find the max N for today.
@@ -177,7 +177,7 @@ jobs:
           elif region:
               kwargs["Region"] = region
           else:
-              kwargs["Endpoint"] = "cos.accelerate.myqcloud.com"
+              kwargs["Region"] = "ap-shanghai"  # 区域域名(全球加速已停用)
           client = CosS3Client(CosConfig(**kwargs))
 
           def put(local, key):

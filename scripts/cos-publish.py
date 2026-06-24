@@ -11,8 +11,8 @@ Usage:
 
 Env: COS_SECRET_ID, COS_SECRET_KEY, COS_BUCKET
      COS_ENDPOINT (optional) / COS_REGION (optional) — when neither is set,
-     defaults to COS global acceleration (cos.accelerate.myqcloud.com) so the
-     overseas GitHub runner uploads via the nearest PoP.
+     defaults to the ap-shanghai regional domain (global acceleration is no
+     longer enabled on the bucket).
 
 Objects are written public-read so OTA clients can download them without
 credentials (the bucket must not block public access).
@@ -23,7 +23,7 @@ import sys
 
 from qcloud_cos import CosConfig, CosS3Client
 
-ACCELERATE_ENDPOINT = "cos.accelerate.myqcloud.com"
+DEFAULT_REGION = "ap-shanghai"  # global acceleration is no longer enabled
 
 
 def main() -> None:
@@ -44,7 +44,7 @@ def main() -> None:
     elif region:
         kwargs["Region"] = region
     else:
-        kwargs["Endpoint"] = ACCELERATE_ENDPOINT  # global acceleration
+        kwargs["Region"] = DEFAULT_REGION  # regional domain (no acceleration)
     client = CosS3Client(CosConfig(**kwargs))
 
     # 1) Upload this version's files under <tag>/, refresh the latest pointer.
