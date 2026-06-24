@@ -7,6 +7,8 @@
 // bridge.ts), so it never enters the web bundle.
 
 import type { PlatformBridge, UploadResult } from './bridge';
+import type { ConnectSocketOptions, PlatformSocket } from './socket';
+import { BrowserSocket } from './web';
 
 interface TauriCore {
     invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -37,5 +39,10 @@ export class TauriPlatformBridge implements PlatformBridge {
             return;
         }
         await core.invoke('open_in_external_browser', { url });
+    }
+
+    /** The Tauri webview has a standard `WebSocket`, so reuse the browser impl. */
+    connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket {
+        return new BrowserSocket(url, opts);
     }
 }

@@ -9,6 +9,9 @@
 // `initPlatformBridge`) so its code + Tauri APIs never enter the web bundle.
 
 import { WebPlatformBridge } from './web';
+import type { ConnectSocketOptions, PlatformSocket } from './socket';
+
+export type { ConnectSocketOptions, PlatformSocket, SocketCloseInfo, SocketReadyState } from './socket';
 
 /** Result of saving an uploaded file on the backend. Mirrors POST /api/fs/upload. */
 export interface UploadResult {
@@ -30,6 +33,12 @@ export interface PlatformBridge {
      * Web falls back to window.open; Tauri invokes the host command.
      */
     openExternal(url: string): Promise<void>;
+    /**
+     * Open a realtime socket to `url` (ws://… or wss://…). Web/Tauri wrap the
+     * browser `WebSocket`; the 小程序 host wraps `Taro.connectSocket`. The
+     * returned socket buffers `send` until open.
+     */
+    connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket;
 }
 
 let current: PlatformBridge = new WebPlatformBridge();
@@ -58,4 +67,14 @@ export async function initPlatformBridge(): Promise<void> {
     if (!isTauri()) return;
     const { TauriPlatformBridge } = await import('./tauri');
     current = new TauriPlatformBridge();
+}
+
+/**
+ * Explicitly install a platform bridge. Used by hosts that core can't
+ * auto-detect from inside the web bundle — notably the 小程序 (Taro) client,
+ * whose app entry constructs a Taro-backed bridge and injects it at launch so
+ * core never imports `@tarojs/taro`.
+ */
+export function setPlatformBridge(bridge: PlatformBridge): void {
+    current = bridge;
 }

@@ -1,6 +1,14 @@
+import * as path from 'path';
 import { defineConfig } from '@tarojs/cli';
 import devConfig from './dev';
 import prodConfig from './prod';
+
+// @1agents/core ships TypeScript source and is consumed as a workspace symlink,
+// so its files resolve under packages/core (outside src/). Taro only transpiles
+// src/ by default, so force its compiler to also process the core package —
+// otherwise the runtime (value) imports from core fail to parse as plain JS.
+// Use the real resolved path (Taro sets resolve.symlinks=true).
+const corePath = path.resolve(__dirname, '..', '..', 'core');
 
 // Taro 3 (weapp-first) base config. RN target is reserved via `build:rn`;
 // view layer is written per-platform while business logic comes from
@@ -25,7 +33,14 @@ export default defineConfig(async merge => {
       options: {},
     },
     framework: 'react',
-    compiler: 'webpack5',
+    // Object form so prebundle can be disabled: the esbuild prebundle scans
+    // node_modules deps (incl. the symlinked @1agents/core) and bypasses the
+    // babel rule, leaving core's TS unparsed. Disabling it routes core through
+    // the normal pipeline together with compile.include below.
+    compiler: {
+      type: 'webpack5',
+      prebundle: { enable: false },
+    },
     cache: {
       enable: false,
     },
@@ -45,6 +60,17 @@ export default defineConfig(async merge => {
         cssModules: {
           enable: false,
         },
+      },
+      // Force the babel 'script' rule to also transpile @1agents/core's TS
+      // source. Match both the resolved real path (packages/core) and the
+      // workspace-symlink path (node_modules/@1agents/core) since webpack may
+      // present either to the rule's include matcher.
+      webpackChain(chain: any) {
+        chain.module
+          .rule('script')
+          .include.add(corePath)
+          .add(/node_modules[\\/]@1agents[\\/]core[\\/]/)
+          .end();
       },
     },
     h5: {

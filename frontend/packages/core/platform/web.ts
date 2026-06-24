@@ -1,6 +1,7 @@
 // Web (browser) platform bridge — the default host.
 
 import type { PlatformBridge, UploadResult } from './bridge';
+import type { ConnectSocketOptions, PlatformSocket, SocketCloseInfo, SocketReadyState } from './socket';
 
 export class WebPlatformBridge implements PlatformBridge {
     /**
@@ -18,5 +19,68 @@ export class WebPlatformBridge implements PlatformBridge {
 
     async openExternal(url: string): Promise<void> {
         window.open(url, '_blank', 'noopener');
+    }
+
+    connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket {
+        return new BrowserSocket(url, opts);
+    }
+}
+
+/**
+ * `PlatformSocket` over the browser `WebSocket`. Buffers `send` until the
+ * connection opens so callers needn't await `onOpen`. The browser constructor
+ * can't set headers, so `opts.headers` is ignored (web is same-origin anyway).
+ */
+export class BrowserSocket implements PlatformSocket {
+    private ws: WebSocket;
+    private outbox: string[] = [];
+
+    constructor(url: string, opts?: ConnectSocketOptions) {
+        this.ws = new WebSocket(url, opts?.protocols);
+        this.ws.addEventListener('open', () => {
+            for (const msg of this.outbox) this.ws.send(msg);
+            this.outbox = [];
+        });
+    }
+
+    get readyState(): SocketReadyState {
+        switch (this.ws.readyState) {
+            case WebSocket.CONNECTING:
+                return 'connecting';
+            case WebSocket.OPEN:
+                return 'open';
+            case WebSocket.CLOSING:
+                return 'closing';
+            default:
+                return 'closed';
+        }
+    }
+
+    send(data: string): void {
+        if (this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(data);
+        } else {
+            this.outbox.push(data);
+        }
+    }
+
+    close(code?: number, reason?: string): void {
+        this.ws.close(code, reason);
+    }
+
+    onOpen(cb: () => void): void {
+        this.ws.addEventListener('open', () => cb());
+    }
+
+    onMessage(cb: (data: string) => void): void {
+        this.ws.addEventListener('message', ev => cb(typeof ev.data === 'string' ? ev.data : String(ev.data)));
+    }
+
+    onClose(cb: (info: SocketCloseInfo) => void): void {
+        this.ws.addEventListener('close', ev => cb({ code: ev.code, reason: ev.reason }));
+    }
+
+    onError(cb: (err: unknown) => void): void {
+        this.ws.addEventListener('error', ev => cb(ev));
     }
 }
