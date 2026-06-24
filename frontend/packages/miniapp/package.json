@@ -1,0 +1,50 @@
+{
+  "name": "@1agents/miniapp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "1Agents mini-program (Taro 3 + React) — weapp first, RN later. Reuses @1agents/core for business logic.",
+  "templateInfo": {
+    "name": "default",
+    "typescript": true,
+    "css": "sass",
+    "framework": "React"
+  },
+  "scripts": {
+    "build:weapp": "taro build --type weapp",
+    "build:rn": "taro build --type rn",
+    "dev:weapp": "taro build --type weapp --watch"
+  },
+  "browserslist": [
+    "last 3 versions",
+    "Android >= 4.1",
+    "ios >= 8"
+  ],
+  "dependencies": {
+    "@1agents/core": "workspace:*",
+    "@babel/runtime": "^7.24.0",
+    "@tarojs/components": "3.6.40",
+    "@tarojs/helper": "3.6.40",
+    "@tarojs/plugin-framework-react": "3.6.40",
+    "@tarojs/plugin-platform-weapp": "3.6.40",
+    "@tarojs/react": "3.6.40",
+    "@tarojs/runtime": "3.6.40",
+    "@tarojs/shared": "3.6.40",
+    "@tarojs/taro": "3.6.40",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@tarojs/cli": "3.6.40",
+    "@tarojs/webpack5-runner": "3.6.40",
+    "@types/react": "^18.2.0",
+    "@types/webpack-env": "^1.18.4",
+    "babel-preset-taro": "3.6.40",
+    "postcss": "^8.4.35",
+    "typescript": "^5.3.3",
+    "webpack": "5.78.0"
+  },
+  "installConfig": {
+    "hoistingLimits": "workspaces"
+  }
+}
