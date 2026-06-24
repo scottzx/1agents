@@ -17,7 +17,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: modules/ttyd/src/html.h
-          key: html-header-${{ runner.os }}-${{ hashFiles('html/package.json', 'html/yarn.lock', 'html/gulpfile.js', 'html/webpack.config.js', 'html/tsconfig.json', 'html/src/**') }}
+          key: html-header-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**') }}
 
       - name: Set up Node.js
         if: steps.cache-html-h.outputs.cache-hit != 'true'
@@ -30,15 +30,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            html/.yarn/cache
-            html/.yarn/install-state.gz
-          key: ${{ runner.os }}-yarn-${{ hashFiles('html/yarn.lock') }}
+            frontend/.yarn/cache
+            frontend/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ hashFiles('frontend/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
 
       - name: Install and Build Frontend
         if: steps.cache-html-h.outputs.cache-hit != 'true'
-        working-directory: html
+        working-directory: frontend
         run: |
           corepack enable
           yarn install

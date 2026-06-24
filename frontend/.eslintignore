@@ -1,0 +1,5 @@
+dist/
+# The Taro mini-program is a separate sub-project with its own conventions
+# (2-space, Taro template idioms) and its own tsc gate — not linted by the
+# web app's gts config.
+packages/miniapp/

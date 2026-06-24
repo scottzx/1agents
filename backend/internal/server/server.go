@@ -471,7 +471,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Static frontend assets + task permalink deep links ───────────────────
 	// This catch-all must be registered last so it does not shadow the routes
-	// above. html/dist must contain an index.html for SPA-style navigation.
+	// above. frontend/dist must contain an index.html for SPA-style navigation.
 	//
 	// GitHub-style task URLs (/{project}/tasks/{number}) have no file on disk,
 	// so the catch-all serves the SPA index for them and lets the frontend

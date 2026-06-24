@@ -755,7 +755,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
-// NOTE: Keep in sync with getFileTag in html/src/components/types.ts
+// NOTE: Keep in sync with getFileTag in frontend/src/components/types.ts
 func getFileTagFromExt(ext string) string {
 	switch ext {
 	case "md", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv":

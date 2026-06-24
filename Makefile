@@ -29,7 +29,7 @@ help:
 	@echo "Available targets:"
 	@echo "  make all               - Build all components (frontend, ttyd, cc-connect, cc-switch, backend)"
 	@echo "  make submodules        - Init/update all git submodules (cc-connect, cc-switch-cli, 1acp, 1skills)"
-	@echo "  make frontend          - Build frontend assets (html/) and generate modules/ttyd/src/html.h"
+	@echo "  make frontend          - Build frontend assets (frontend/) and generate modules/ttyd/src/html.h"
 	@echo "  make ttyd              - Compile native ttyd C server natively on the current host"
 	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
 	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
@@ -58,8 +58,8 @@ submodule-cc-switch:
 	git submodule update --init modules/cc-switch-cli
 
 frontend:
-	@echo "=== Building Frontend (html/)..."
-	cd html && corepack enable && yarn install && yarn build
+	@echo "=== Building Frontend (frontend/)..."
+	cd frontend && corepack enable && yarn install && yarn build
 
 ttyd:
 	@echo "=== Building ttyd terminal server..."
@@ -123,7 +123,7 @@ package: all
 	cp build/ttyd dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/cc-connect dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/cc-switch dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
-	cp -r html/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
+	cp -r frontend/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
 	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
 	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
 
@@ -136,7 +136,7 @@ install-hooks:
 clean:
 	@echo "=== Cleaning build artifacts..."
 	rm -rf build build-ttyd dist
-	rm -rf html/dist modules/ttyd/src/html.h
+	rm -rf frontend/dist modules/ttyd/src/html.h
 	$(MAKE) -C modules/cc-connect clean
 	rm -rf src-tauri/resources src-tauri/target
 	cargo clean --manifest-path modules/cc-switch-cli/src-tauri/Cargo.toml
@@ -145,7 +145,7 @@ clean:
 
 tauri-resources: all
 	@echo "=== Rebuilding frontend for Tauri (Desktop Mode) ==="
-	cd html && corepack enable && yarn install && IS_DESKTOP=true yarn build
+	cd frontend && corepack enable && yarn install && IS_DESKTOP=true yarn build
 	@echo "=== Setting up Tauri resources ==="
 	./scripts/setup-resources.sh
 
@@ -155,7 +155,7 @@ tauri-dev: tauri-resources
 
 tauri-dev-dual: tauri-resources
 	@echo "=== Starting 1agents Go daemon in background ==="
-	./build/1agents -ttyd-bin ./build/ttyd -static html/dist -listen 0.0.0.0:38080 & \
+	./build/1agents -ttyd-bin ./build/ttyd -static frontend/dist -listen 0.0.0.0:38080 & \
 	DAEMON_PID=$$! ; \
 	trap "echo 'Stopping Go daemon...'; kill $$DAEMON_PID 2>/dev/null" EXIT INT TERM ; \
 	echo "Waiting for Go daemon to bind..." ; \
