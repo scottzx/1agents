@@ -31,7 +31,7 @@ type Config struct {
 	WorkDir string
 
 	// StaticDir is the directory containing the compiled frontend assets.
-	// Example: "./html/dist"
+	// Example: "./frontend/dist"
 	StaticDir string
 
 	// RestartDelay is how long the supervisor waits before restarting ttyd
@@ -77,7 +77,7 @@ func Default() *Config {
 		SkillsAddr:       "127.0.0.1:38085",
 		SkillsBinaryPath: "python3",
 		WorkDir:          "~",
-		StaticDir:        "./html/dist",
+		StaticDir:        "./frontend/dist",
 		RestartDelay:     3 * time.Second,
 		MaxRestarts:      5,
 	}

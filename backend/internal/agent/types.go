@@ -76,6 +76,8 @@ type (
 	Priority          = meta.Priority
 	Recurrence        = meta.Recurrence
 	WorkspaceRef      = meta.WorkspaceRef
+	ReviewVerdict     = meta.ReviewVerdict
+	CriterionResult   = meta.CriterionResult
 )
 
 // PriorityRank re-exports the scheduler ordering helper.
@@ -92,13 +94,14 @@ const (
 	ScheduleTypeImmediate = meta.ScheduleTypeImmediate
 	ScheduleTypeScheduled = meta.ScheduleTypeScheduled
 
-	TaskStatusPending   = meta.TaskStatusPending
-	TaskStatusQueued    = meta.TaskStatusQueued
-	TaskStatusRunning   = meta.TaskStatusRunning
-	TaskStatusCompleted = meta.TaskStatusCompleted
-	TaskStatusFailed    = meta.TaskStatusFailed
-	TaskStatusCancelled = meta.TaskStatusCancelled
-	TaskStatusBlocked   = meta.TaskStatusBlocked
+	TaskStatusPending       = meta.TaskStatusPending
+	TaskStatusQueued        = meta.TaskStatusQueued
+	TaskStatusRunning       = meta.TaskStatusRunning
+	TaskStatusCompleted     = meta.TaskStatusCompleted
+	TaskStatusFailed        = meta.TaskStatusFailed
+	TaskStatusCancelled     = meta.TaskStatusCancelled
+	TaskStatusBlocked       = meta.TaskStatusBlocked
+	TaskStatusPendingReview = meta.TaskStatusPendingReview
 
 	IssueOpen   = meta.IssueOpen
 	IssueClosed = meta.IssueClosed

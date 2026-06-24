@@ -81,6 +81,7 @@ var toolDefs = []map[string]any{
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
 				"assignee":           map[string]any{"type": "string", "description": "Executing agent type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). Set this to run different tasks on different agents. Empty defaults to claudecode."},
+				"verifier":           map[string]any{"type": "string", "description": "Optional reviewing agent type. When set (and acceptanceCriteria is non-empty), after the executor finishes a verifier of this type auto-checks the output against the criteria; the task only completes when every criterion passes, otherwise it re-executes. Empty = no verification."},
 				"dependsOn":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
 			},
 		},
@@ -112,9 +113,99 @@ var toolDefs = []map[string]any{
 				"milestone":          map[string]any{"type": "string"},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
 				"assignee":           map[string]any{"type": "string", "description": "Executing agent type, e.g. 'claudecode' or 'codex'. Empty defaults to claudecode."},
+				"verifier":           map[string]any{"type": "string", "description": "Reviewing agent type for post-execution verification; empty disables verification. See create_task."},
 			},
 		},
 	},
+	{
+		"name":        "submit_review",
+		"description": "Submit your verification verdict for the task under review (verifier role only). Report one result per acceptance criterion: pass=true if the executor's output meets it, pass=false with a concrete comment on what is missing. The server marks the task completed only when EVERY criterion passes; otherwise it sends the task back for another execution round (or fails it once the review budget is exhausted). You do not set the task status yourself — this verdict drives it.",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"criteria"},
+			"properties": map[string]any{
+				"criteria": map[string]any{
+					"type":        "array",
+					"description": "Per-criterion judgement; report every acceptance criterion.",
+					"items": map[string]any{
+						"type":     "object",
+						"required": []string{"criterion", "pass"},
+						"properties": map[string]any{
+							"criterion": map[string]any{"type": "string", "description": "The acceptance criterion being judged (quote/paraphrase it)."},
+							"pass":      map[string]any{"type": "boolean", "description": "Whether the executor's output satisfies this criterion."},
+							"comment":   map[string]any{"type": "string", "description": "Required when pass=false: what is missing and how to fix it."},
+						},
+					},
+				},
+				"summary": map[string]any{"type": "string", "description": "Optional overall note recorded with the verdict."},
+			},
+		},
+	},
+}
+
+// reviewVerifier is "verifier" — the ONEAGENTS_TASK_ROLE value selecting the
+// hard read-only review scope.
+const reviewVerifier = "verifier"
+
+// executorScopedTools is the tool subset advertised and accepted in a task-
+// locked executor session: read its own task, list (filtered to itself), and
+// update its own task. The PM-only create_*/milestone tools are withheld so the
+// lock cannot be sidestepped by creating sibling tasks. See #50.
+var executorScopedTools = map[string]bool{
+	"list_tasks":  true,
+	"get_task":    true,
+	"update_task": true,
+}
+
+// verifierScopedTools is the hard read-only review subset: read the task, list
+// (filtered to itself), and submit a verdict. update_task is deliberately
+// absent — a verifier judges, it never edits the task. See #50.
+var verifierScopedTools = map[string]bool{
+	"list_tasks":    true,
+	"get_task":      true,
+	"submit_review": true,
+}
+
+// scopedTools returns the allowed tool set for the current task-locked role:
+// verifier → hard read-only + submit_review; otherwise the executor surface.
+func (s *server) scopedTools() map[string]bool {
+	if s.taskRole == reviewVerifier {
+		return verifierScopedTools
+	}
+	return executorScopedTools
+}
+
+// listedTools returns the tools advertised by tools/list: the PM set for a
+// project-wide session, or the narrowed task-scoped subset when locked. The
+// PM set excludes submit_review (it is meaningless without a task lock and a
+// verifier role); the scoped sets allow-list explicitly.
+func (s *server) listedTools() []map[string]any {
+	out := make([]map[string]any, 0, len(toolDefs))
+	if s.taskID == "" {
+		for _, d := range toolDefs {
+			if name, _ := d["name"].(string); name == "submit_review" {
+				continue
+			}
+			out = append(out, d)
+		}
+		return out
+	}
+	allowed := s.scopedTools()
+	for _, d := range toolDefs {
+		if name, _ := d["name"].(string); allowed[name] {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// idInScope reports whether id is addressable in this session: exactly the
+// locked task when task-scoped, otherwise any task in the locked workspace.
+func (s *server) idInScope(id string) bool {
+	if s.taskID != "" {
+		return id == s.taskID
+	}
+	return s.idInWorkspace(id)
 }
 
 // task is the subset of the daemon's task JSON the tools surface.
@@ -140,6 +231,9 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 	if err := json.Unmarshal(params, &p); err != nil {
 		return toolErr("invalid tool call params: " + err.Error())
 	}
+	if s.taskID != "" && !s.scopedTools()[p.Name] {
+		return toolErr(fmt.Sprintf("tool %q is not available in this task-scoped session", p.Name))
+	}
 	switch p.Name {
 	case "list_tasks":
 		return s.toolListTasks(p.Arguments)
@@ -157,6 +251,8 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolCreateDiscussion(p.Arguments)
 	case "update_task":
 		return s.toolUpdateTask(p.Arguments)
+	case "submit_review":
+		return s.toolSubmitReview(p.Arguments)
 	default:
 		return toolErr("unknown tool: " + p.Name)
 	}
@@ -192,6 +288,9 @@ func (s *server) toolListTasks(args json.RawMessage) map[string]any {
 	}
 	out := make([]task, 0, len(tasks))
 	for _, t := range tasks {
+		if s.taskID != "" && t.ID != s.taskID {
+			continue // task-locked: only the bound task is visible
+		}
 		if a.Status != "" && t.Status != a.Status {
 			continue
 		}
@@ -212,8 +311,8 @@ func (s *server) toolGetTask(args json.RawMessage) map[string]any {
 	if err := json.Unmarshal(args, &a); err != nil || a.ID == "" {
 		return toolErr("id is required")
 	}
-	if !s.idInWorkspace(a.ID) {
-		return toolErr("task not found in this project: " + a.ID)
+	if !s.idInScope(a.ID) {
+		return toolErr("task not accessible in this session: " + a.ID)
 	}
 	status, body, err := s.api.do("GET", "/api/agent/tasks/"+url.PathEscape(a.ID), nil, nil)
 	if err != nil {
@@ -314,6 +413,7 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		Priority           string   `json:"priority"`
 		Milestone          string   `json:"milestone"`
 		Assignee           string   `json:"assignee"`
+		Verifier           string   `json:"verifier"`
 		DependsOn          []string `json:"dependsOn"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
@@ -331,6 +431,7 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"priority":           a.Priority,
 		"milestone":          a.Milestone,
 		"assignee":           a.Assignee,
+		"verifier":           a.Verifier,
 		"dependsOn":          a.DependsOn,
 	}
 	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
@@ -406,12 +507,12 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	if err := json.Unmarshal(idRaw, &id); err != nil || id == "" {
 		return toolErr("id is required")
 	}
-	if !s.idInWorkspace(id) {
-		return toolErr("task not found in this project: " + id)
+	if !s.idInScope(id) {
+		return toolErr("task not accessible in this session: " + id)
 	}
 
 	patch := map[string]json.RawMessage{}
-	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee"} {
+	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier"} {
 		if v, ok := raw[f]; ok {
 			patch[f] = v
 		}
@@ -425,6 +526,42 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	}
 	if status != 200 {
 		return toolErr(fmt.Sprintf("update task failed (%d): %s", status, strings.TrimSpace(string(resp))))
+	}
+	return toolText(string(resp))
+}
+
+// toolSubmitReview posts the verifier's verdict to the daemon's review
+// endpoint, which computes overall pass (all criteria) and drives the task's
+// state machine (completed / re-execute / failed). Verifier scope only; the
+// task is always the env-locked one, so no id parameter is accepted.
+func (s *server) toolSubmitReview(args json.RawMessage) map[string]any {
+	if s.taskID == "" {
+		return toolErr("submit_review is only available in a task-scoped verifier session")
+	}
+	var a struct {
+		Criteria []struct {
+			Criterion string `json:"criterion"`
+			Pass      bool   `json:"pass"`
+			Comment   string `json:"comment"`
+		} `json:"criteria"`
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	if len(a.Criteria) == 0 {
+		return toolErr("criteria is required: report a result for each acceptance criterion")
+	}
+	body := map[string]any{
+		"criteria": a.Criteria,
+		"summary":  a.Summary,
+	}
+	status, resp, err := s.api.do("POST", "/api/agent/tasks/"+url.PathEscape(s.taskID)+"/review", nil, body)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("submit review failed (%d): %s", status, strings.TrimSpace(string(resp))))
 	}
 	return toolText(string(resp))
 }

@@ -345,6 +345,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			UserConfirm        bool         `json:"userConfirm"`
 			Recurrence         *Recurrence  `json:"recurrence"`
 			MaxRetries         *int         `json:"maxRetries"`
+			Verifier           string       `json:"verifier"`
+			ReviewMaxAttempts  *int         `json:"reviewMaxAttempts"`
 			ScheduleType       ScheduleType `json:"scheduleType"`
 			ScheduledAt        *time.Time   `json:"scheduledAt"`
 			PlannedStart       *time.Time   `json:"plannedStart"`
@@ -379,6 +381,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "agent-suggested tasks must be of type requirement or bug", http.StatusBadRequest)
 			return
 		}
+		if body.Verifier != "" && !IsSupportedAgentType(body.Verifier) {
+			http.Error(w, "unknown verifier agent type: "+body.Verifier, http.StatusBadRequest)
+			return
+		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -389,6 +395,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
 			maxRetries = *body.MaxRetries
 		}
+		reviewMaxAttempts := 0
+		if body.ReviewMaxAttempts != nil && *body.ReviewMaxAttempts >= 0 {
+			reviewMaxAttempts = *body.ReviewMaxAttempts
+		}
 		newTask := Task{
 			ID:                 newID(),
 			Title:              body.Title,
@@ -398,6 +408,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Status:             TaskStatusPending,
 			Priority:           Priority(body.Priority),
 			Assignee:           body.Assignee,
+			Verifier:           body.Verifier,
+			ReviewMaxAttempts:  reviewMaxAttempts,
 			Labels:             body.Labels,
 			ParentID:           body.ParentID,
 			Milestone:          body.Milestone,
@@ -529,6 +541,14 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 		h.handleTaskReplyCreate(w, r, id)
 		return
 	}
+	if sub == "review" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.handleTaskReview(w, r, id)
+		return
+	}
 	if sub != "" {
 		http.Error(w, "unsupported sub-path", http.StatusNotFound)
 		return
@@ -611,6 +631,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		UserConfirm        *bool        `json:"userConfirm,omitempty"`
 		Recurrence         **Recurrence `json:"recurrence,omitempty"`
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
+		Verifier           *string      `json:"verifier,omitempty"`
+		ReviewMaxAttempts  *int         `json:"reviewMaxAttempts,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
 		PlannedEnd         *time.Time   `json:"plannedEnd,omitempty"`
 		Links              *[]TaskLink  `json:"links,omitempty"`
@@ -659,6 +681,10 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	// itself. Anything else is a typo and is rejected.
 	if body.Source != nil && *body.Source != "" && TaskSource(*body.Source) != TaskSourceAgent {
 		http.Error(w, "source must be empty or agent-suggested", http.StatusBadRequest)
+		return
+	}
+	if body.Verifier != nil && *body.Verifier != "" && !IsSupportedAgentType(*body.Verifier) {
+		http.Error(w, "unknown verifier agent type: "+*body.Verifier, http.StatusBadRequest)
 		return
 	}
 
@@ -743,6 +769,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
 			target.MaxRetries = *body.MaxRetries
 		}
+		if body.Verifier != nil {
+			target.Verifier = *body.Verifier
+		}
+		if body.ReviewMaxAttempts != nil && *body.ReviewMaxAttempts >= 0 {
+			target.ReviewMaxAttempts = *body.ReviewMaxAttempts
+		}
 		if body.PlannedStart != nil {
 			target.PlannedStart = body.PlannedStart
 		}
@@ -770,6 +802,45 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if !ok {
 		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, task)
+}
+
+// handleTaskReview records a verifier's verdict (from the submit_review MCP
+// tool) and drives the task's verification state machine. Internal-token only
+// in practice — the verifier MCP subprocess is the sole caller. The task id is
+// the locked task; the verifier agent type is read from the task itself, not
+// trusted from the request. See applyReviewVerdict (#50).
+func (h *Handler) handleTaskReview(w http.ResponseWriter, r *http.Request, id string) {
+	var body struct {
+		Criteria []CriterionResult `json:"criteria"`
+		Summary  string            `json:"summary"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if len(body.Criteria) == 0 {
+		http.Error(w, "criteria is required", http.StatusBadRequest)
+		return
+	}
+	existing, ok, err := h.tasksStore.GetTask(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	verifier := existing.Verifier
+	if verifier == "" {
+		verifier = SessionRoleVerifier
+	}
+	task, err := applyReviewVerdict(h.tasksStore, existing.WorkspacePath, id, body.Criteria, body.Summary, verifier)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	writeJSON(w, task)
@@ -1099,20 +1170,34 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// Issue background injection (issue-model §9): description + the
 		// full reply timeline, injected only when this is a NEW session.
 		// Resumed sessions already carry their own conversation history.
-		if acpSessionID == "" {
-			if targetTask.Type == TaskTypeDiscussion {
-				// A discussion-linked session is a PM conversation, NOT an
-				// executor: the agent acts as PM (create_task / create_discussion)
-				// with the discussion thread as background. Its user prompts and
-				// final replies are recorded back to this discussion's timeline
-				// (writeUserReply / writeAgentReply, keyed on task_id).
-				systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID) + "\n\n" + buildIssueBackground(targetTask, wsPath)
-			} else {
+		if targetTask.Type == TaskTypeDiscussion {
+			// A discussion-linked session is a PM conversation, NOT an
+			// executor: the agent acts as PM (create_task / create_discussion)
+			// with the discussion thread as background. Its user prompts and
+			// final replies are recorded back to this discussion's timeline
+			// (writeUserReply / writeAgentReply, keyed on task_id). Persona +
+			// task MCP are role-template-driven (hardcoded fallback) — see #137.
+			pmPrompt, pmMcp := h.resolvePMRole(wsPath, wsID)
+			if acpSessionID == "" {
+				systemContext = pmPrompt + "\n\n" + buildIssueBackground(targetTask, wsPath)
+			}
+			mcpServers = pmMcp
+		} else if isExecutorRole(sessionRole) || isVerifierRole(sessionRole) {
+			// #50: an executor/verifier session is bound to this one task. Its
+			// persona is role-template-driven and its tasks MCP is locked to
+			// taskId, so reads/writes can't escape the assignment (executor) or
+			// the under-review task (verifier). The executor still runs its task
+			// (below); the verifier only reviews and is excluded from execution.
+			if prompt, mcp, ok := h.roleInjection(sessionRole, wsPath, wsID, taskId); ok {
+				if acpSessionID == "" {
+					systemContext = prompt + "\n\n" + buildIssueBackground(targetTask, wsPath)
+				}
+				mcpServers = mcp
+			} else if acpSessionID == "" {
 				systemContext = buildIssueBackground(targetTask, wsPath)
 			}
-		}
-		if targetTask.Type == TaskTypeDiscussion {
-			mcpServers = h.buildPMMcpServers(wsID)
+		} else if acpSessionID == "" {
+			systemContext = buildIssueBackground(targetTask, wsPath)
 		}
 
 		// Link the triggering reply to this session (Reply.SessionRef) and
@@ -1133,7 +1218,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// to running, or re-execute. Only a genuinely new session (acpSessionID
 		// empty) starts execution. Discussions are never executed, so a
 		// discussion-linked PM conversation skips this entirely.
-		if targetTask.Type != TaskTypeDiscussion && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
+		if targetTask.Type != TaskTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
@@ -1181,10 +1266,12 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// AI Project Manager session (pm, or pmo in the default workspace):
 		// inject the PM system prompt (new sessions only — resumed ones already
 		// carry their history) and a task-tool MCP server locked to this workspace.
+		// Persona + MCP are role-template-driven (hardcoded fallback) — see #137.
+		pmPrompt, pmMcp := h.resolvePMRole(wsPath, wsID)
 		if acpSessionID == "" {
-			systemContext = buildPMSystemPrompt(h.workspaceName(wsID), wsID)
+			systemContext = pmPrompt
 		}
-		mcpServers = h.buildPMMcpServers(wsID)
+		mcpServers = pmMcp
 		log.Printf("[agent] Bridging AI Project Manager WebSocket for session %s (workspace %s)", sessionId, wsID)
 	} else {
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)

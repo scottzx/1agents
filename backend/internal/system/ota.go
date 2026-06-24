@@ -30,7 +30,7 @@ import (
 //   - Repo is the GitHub slug used for the FALLBACK upstream when the
 //     mirror is unreachable. Set to "" to disable the GitHub fallback.
 var (
-	MirrorBaseURL = "https://1agents-ota-1258742922.cos.accelerate.myqcloud.com" // COS global-acceleration OTA mirror
+	MirrorBaseURL = "https://1agents-ota-1258742922.cos.ap-shanghai.myqcloud.com" // COS regional OTA mirror (no CDN acceleration)
 	Repo          = "scottzx/1Agents"
 	LocalVersion  = "dev" // set from cmd/backend/main.go via ldflags
 	OTAEnabled    = false // set from cmd/backend/main.go; false in desktop/Docker mode

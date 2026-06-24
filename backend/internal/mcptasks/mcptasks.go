@@ -14,6 +14,14 @@
 //
 //	ONEAGENTS_BASE_URL        e.g. http://127.0.0.1:8080
 //	ONEAGENTS_WORKSPACE_ID    the locked workspace id
+//	ONEAGENTS_TASK_ID         optional: locks the session to a single task
+//	                          (executor scope, #50). When set, the tool surface
+//	                          narrows to reading/updating just that task; the
+//	                          PM-only create/milestone tools are withheld.
+//	ONEAGENTS_TASK_ROLE       optional: "executor" (default when task-locked) or
+//	                          "verifier". The verifier scope is hard read-only —
+//	                          update_task is withheld and submit_review is added,
+//	                          so a reviewer can only judge, never edit (#50).
 //	ONEAGENTS_INTERNAL_TOKEN  loopback bearer accepted by authMiddleware
 package mcptasks
 
@@ -48,6 +56,8 @@ func Run() error {
 			http:    &http.Client{Timeout: 30 * time.Second},
 		},
 		workspaceID: workspaceID,
+		taskID:      os.Getenv("ONEAGENTS_TASK_ID"),
+		taskRole:    os.Getenv("ONEAGENTS_TASK_ROLE"),
 		out:         bufio.NewWriter(os.Stdout),
 	}
 	return s.loop(os.Stdin)
@@ -70,7 +80,16 @@ type rpcError struct {
 type server struct {
 	api         *apiClient
 	workspaceID string
-	out         *bufio.Writer
+	// taskID, when non-empty, locks the session to a single task (executor
+	// scope, #50): get/update/list are confined to it and PM-only tools are
+	// withheld. Empty means project-wide PM scope.
+	taskID string
+	// taskRole selects the task-locked tool surface: "verifier" is hard
+	// read-only (no update_task, plus submit_review); anything else ("executor"
+	// or unset) keeps the read+update_task executor surface. Ignored when
+	// taskID is empty (PM scope).
+	taskRole string
+	out      *bufio.Writer
 }
 
 func (s *server) loop(in io.Reader) error {
@@ -114,7 +133,7 @@ func (s *server) handleLine(line []byte) {
 			s.reply(req.ID, map[string]any{})
 		}
 	case "tools/list":
-		s.reply(req.ID, map[string]any{"tools": toolDefs})
+		s.reply(req.ID, map[string]any{"tools": s.listedTools()})
 	case "tools/call":
 		s.reply(req.ID, s.onToolCall(req.Params))
 	default:

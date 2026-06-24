@@ -1,0 +1,99 @@
+// Platform bridge — the seam between platform-agnostic core code and the
+// host capabilities that differ across the web workbench, the Tauri
+// desktop/mobile shell, and (later) the 小程序 client.
+//
+// Phase 0 establishes the geometry: core/services route host-divergent
+// operations (file upload, opening an external browser) through a bridge that
+// `getPlatformBridge()` resolves at runtime. The web bridge is the static
+// default; the Tauri bridge is lazily swapped in at boot (see
+// `initPlatformBridge`) so its code + Tauri APIs never enter the web bundle.
+
+import { WebPlatformBridge } from './web';
+import type { ConnectSocketOptions, PlatformSocket } from './socket';
+
+export type { ConnectSocketOptions, PlatformSocket, SocketCloseInfo, SocketReadyState } from './socket';
+
+/** Result of saving an uploaded file on the backend. Mirrors POST /api/fs/upload. */
+export interface UploadResult {
+    /** Absolute path of the saved file on the host. */
+    path: string;
+    /** Original base name (with extension). */
+    name: string;
+}
+
+/**
+ * Synchronous key-value storage. Web/Tauri back it with localStorage; the
+ * 小程序 host with Taro's synchronous storage. String values only.
+ */
+export interface PlatformStorage {
+    get(key: string): string | null;
+    set(key: string, value: string): void;
+    remove(key: string): void;
+}
+
+export interface PlatformBridge {
+    /**
+     * Upload an arbitrary file to the backend, which saves it under a
+     * randomized /tmp name and returns the absolute path the local agent can
+     * read. The web and Tauri implementations hit the same POST endpoint.
+     */
+    uploadFile(file: File): Promise<UploadResult>;
+    /**
+     * Open a URL in the user's real external browser (not an in-app webview).
+     * Web falls back to window.open; Tauri invokes the host command.
+     */
+    openExternal(url: string): Promise<void>;
+    /**
+     * Open a realtime socket to `url` (ws://… or wss://…). Web/Tauri wrap the
+     * browser `WebSocket`; the 小程序 host wraps `Taro.connectSocket`. The
+     * returned socket buffers `send` until open.
+     */
+    connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket;
+    /**
+     * HTTP request. Web/Tauri use the global `fetch` (so a same-origin relative
+     * URL and any installed fetch wrapper keep working); the 小程序 host wraps
+     * `Taro.request` and returns a minimal `Response`-shaped object exposing the
+     * `ok`/`status`/`json()`/`text()` surface the services use.
+     */
+    httpFetch(url: string, init?: RequestInit): Promise<Response>;
+    /** Synchronous key-value storage (web: localStorage; weapp: Taro storage). */
+    readonly storage: PlatformStorage;
+}
+
+let current: PlatformBridge = new WebPlatformBridge();
+
+/** Runtime check for the Tauri (desktop/mobile) host. */
+function isTauri(): boolean {
+    return typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: object }).__TAURI__;
+}
+
+/**
+ * Resolve the active platform bridge. Synchronous so call sites (e.g.
+ * fsService.upload) stay simple. Returns the web bridge until
+ * `initPlatformBridge()` has swapped in the Tauri bridge on desktop —
+ * harmless for uploadFile, which is identical across hosts.
+ */
+export function getPlatformBridge(): PlatformBridge {
+    return current;
+}
+
+/**
+ * Swap in the host-specific bridge once, at app boot. Dynamically imports the
+ * Tauri bridge only when running under Tauri so the desktop-only code path is
+ * tree-shaken out of the web bundle. No-op on the web.
+ */
+export async function initPlatformBridge(): Promise<void> {
+    if (!isTauri()) return;
+    const { TauriPlatformBridge } = await import('./tauri');
+    current = new TauriPlatformBridge();
+}
+
+/**
+ * Explicitly install a platform bridge. Used by hosts that core can't
+ * auto-detect from inside the web bundle — notably the 小程序 (Taro) client,
+ * whose app entry constructs a Taro-backed bridge and injects it at launch so
+ * core never imports `@tarojs/taro`.
+ */
+export function setPlatformBridge(bridge: PlatformBridge): void {
+    current = bridge;
+}

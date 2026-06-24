@@ -71,18 +71,20 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	summary, created_at, updated_at,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-	sprint, type, number, links, source, user_confirm`
+	sprint, type, number, links,
+	verifier, review_max_attempts, review_count, review, source, user_confirm`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt sql.NullString
-	var createdAt, updatedAt, labels, recurrence, links string
+	var createdAt, updatedAt, labels, recurrence, links, review string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
 		&t.Priority, &t.Assignee, &labels, &t.CreatedBy, &t.ParentID, &t.Milestone,
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
-		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links, &t.Source,
+		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links,
+		&t.Verifier, &t.ReviewMaxAttempts, &t.ReviewCount, &review, &t.Source,
 		&t.UserConfirm); err != nil {
 		return Task{}, err
 	}
@@ -96,6 +98,7 @@ func scanTask(r rowScanner) (Task, error) {
 	t.Labels = jsonToStrings(labels)
 	t.Recurrence = jsonToRecurrence(recurrence)
 	t.Links = jsonToLinks(links)
+	t.Review = jsonToReview(review)
 	t.DependsOn = []string{}
 	t.Replies = []Reply{}
 	t.Sessions = []SessionMetadata{}
@@ -166,6 +169,28 @@ func jsonToRecurrence(s string) *Recurrence {
 		return nil
 	}
 	return &r
+}
+
+func reviewToJSON(v *ReviewVerdict) string {
+	if v == nil {
+		return ""
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func jsonToReview(s string) *ReviewVerdict {
+	if s == "" {
+		return nil
+	}
+	var v ReviewVerdict
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil
+	}
+	return &v
 }
 
 // Load returns all tasks for the workspace at workspacePath, oldest-first
@@ -461,8 +486,9 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			completed_at, summary, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
-			sprint, type, number, links, source, user_confirm)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sprint, type, number, links,
+			verifier, review_max_attempts, review_count, review, source, user_confirm)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -492,6 +518,10 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			type = excluded.type,
 			number = excluded.number,
 			links = excluded.links,
+			verifier = excluded.verifier,
+			review_max_attempts = excluded.review_max_attempts,
+			review_count = excluded.review_count,
+			review = excluded.review,
 			source = excluded.source,
 			user_confirm = excluded.user_confirm`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
@@ -501,7 +531,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.Priority, t.Assignee, stringsToJSON(t.Labels), t.CreatedBy, t.ParentID,
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
 		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type,
-		t.Number, linksToJSON(t.Links), t.Source, t.UserConfirm)
+		t.Number, linksToJSON(t.Links),
+		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), t.Source, t.UserConfirm)
 	if err != nil {
 		return err
 	}

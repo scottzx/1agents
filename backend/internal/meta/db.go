@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 10
+const schemaVersion = 11
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -155,6 +155,11 @@ func (db *DB) migrateSchema() error {
 	if version < 10 {
 		if _, err := db.sql.Exec(schemaV10); err != nil {
 			return fmt.Errorf("meta: apply schema v10: %w", err)
+		}
+	}
+	if version < 11 {
+		if _, err := db.sql.Exec(schemaV11); err != nil {
+			return fmt.Errorf("meta: apply schema v11: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -334,18 +339,31 @@ UPDATE milestones SET position = sub.rn FROM (
 ) AS sub WHERE milestones.id = sub.id;
 `
 
-// schemaV9 adds the AI-suggestion source marker (issue #47). DEFAULT '' keeps
+// schemaV9 adds the three-role verification fields (#50). verifier names the
+// reviewing agent type (empty = no verification, so every pre-v9 task keeps
+// completing on executor finish); review_max_attempts caps the execute→verify
+// retry loop (0 = default); review_count tracks consumed cycles; review holds
+// the latest verdict as a JSON blob (” = none yet). All defaults are inert, so
+// existing rows behave exactly as before.
+const schemaV9 = `
+ALTER TABLE tasks ADD COLUMN verifier            TEXT    NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN review_count        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN review              TEXT    NOT NULL DEFAULT '';
+`
+
+// schemaV10 adds the AI-suggestion source marker (issue #47). DEFAULT '' keeps
 // every existing row a normal task; source = 'agent-suggested' marks a proposed
 // task that an executing agent bubbled up, held out of the board/scheduler until
 // a human adopts (clears source) or dismisses (deletes) it.
-const schemaV9 = `
+const schemaV10 = `
 ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT '';
 `
 
-// schemaV10 adds the requirement/bug confirmation gate (user_confirm). DEFAULT 0
+// schemaV11 adds the requirement/bug confirmation gate (user_confirm). DEFAULT 0
 // keeps every existing row unconfirmed; only confirmed requirements/bugs may be
 // scheduled by the PM. Stored as INTEGER (0/1) — SQLite has no native bool.
-const schemaV10 = `
+const schemaV11 = `
 ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0;
 `
 

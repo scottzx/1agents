@@ -48,16 +48,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── File system API ──────────────────────────────────────────────────────
 	fsHandler := fs.NewHandler(cfg.WorkDir)
-	mux.HandleFunc("/api/fs/list", fsHandler.List)          // GET  ?path=.
-	mux.HandleFunc("/api/fs/search", fsHandler.Search)      // GET  ?query=xxx&tag=all/doc/img/code
-	mux.HandleFunc("/api/fs/read", fsHandler.Read)          // GET  ?path=./main.go
-	mux.HandleFunc("/api/fs/view", fsHandler.View)          // GET  ?path=./page.html (serves with correct content-type)
-	mux.HandleFunc("/api/fs/view/", fsHandler.View)         // GET  /api/fs/view/relative/path (prefix route for relative assets support)
-	mux.HandleFunc("/api/fs/image", fsHandler.Image)        // GET  ?path=./image.png (returns base64 data URL, deprecated)
-	mux.HandleFunc("/api/fs/image/", fsHandler.ImageStream) // GET  /api/fs/image/relative/path (streams raw bytes; preferred)
+	mux.HandleFunc("/api/fs/list", fsHandler.List)              // GET  ?path=.
+	mux.HandleFunc("/api/fs/search", fsHandler.Search)          // GET  ?query=xxx&tag=all/doc/img/code
+	mux.HandleFunc("/api/fs/read", fsHandler.Read)              // GET  ?path=./main.go
+	mux.HandleFunc("/api/fs/view", fsHandler.View)              // GET  ?path=./page.html (serves with correct content-type)
+	mux.HandleFunc("/api/fs/view/", fsHandler.View)             // GET  /api/fs/view/relative/path (prefix route for relative assets support)
+	mux.HandleFunc("/api/fs/image", fsHandler.Image)            // GET  ?path=./image.png (returns base64 data URL, deprecated)
+	mux.HandleFunc("/api/fs/image/", fsHandler.ImageStream)     // GET  /api/fs/image/relative/path (streams raw bytes; preferred)
 	mux.HandleFunc("/api/fs/write", fsHandler.Write)            // POST ?path=./main.go
 	mux.HandleFunc("/api/fs/upload", fsHandler.Upload)          // POST multipart/form-data (field "file") → saves to /tmp, returns {path,name}
-	mux.HandleFunc("/api/fs/upload-to", fsHandler.UploadTo)    // POST multipart/form-data (field "file") → saves to specified path
+	mux.HandleFunc("/api/fs/upload-to", fsHandler.UploadTo)     // POST multipart/form-data (field "file") → saves to specified path
 	mux.HandleFunc("/api/fs/open-folder", fsHandler.OpenFolder) // POST ?path=... → opens folder in Finder/Explorer
 	mux.HandleFunc("/api/fs/rename", fsHandler.Rename)          // POST ?oldPath=...&newPath=...
 	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)            // POST ?path=./newdir
@@ -119,9 +119,17 @@ func NewRouter(cfg *config.Config) http.Handler {
 				}
 				return refs, nil
 			})
-			// Headless executor: scheduler-triggered tasks run through the
-			// 1acp bridge with no frontend involved (automation-first).
-			scheduler.SetRunner(agent.NewTaskRunner(acpxPort, tasksStore, agentStore, scheduler))
+			// Loopback base for the PM/verifier task-tool MCP subprocess to call
+			// back into this daemon's HTTP API (always http on 127.0.0.1; the
+			// internal-token bypass in authMiddleware accepts it). The verifier
+			// runner posts verdicts here via submit_review, so the runner needs
+			// it too — built before the runner is wired.
+			_, selfPort, _ := net.SplitHostPort(cfg.ListenAddr)
+			selfBaseURL := "http://127.0.0.1:" + selfPort
+
+			// Headless executor/verifier: scheduler-triggered tasks run through
+			// the 1acp bridge with no frontend involved (automation-first).
+			scheduler.SetRunner(agent.NewTaskRunner(acpxPort, selfBaseURL, tasksStore, agentStore, scheduler))
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
@@ -129,12 +137,6 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// process-wide with the cc-connect runner (which curates the
 			// management API's creatable-agent list from the same probe).
 			catalogStore := agent.DefaultCatalog()
-
-			// Loopback base for the PM task-tool MCP subprocess to call back
-			// into this daemon's HTTP API (always http on 127.0.0.1; the
-			// internal-token bypass in authMiddleware accepts it).
-			_, selfPort, _ := net.SplitHostPort(cfg.ListenAddr)
-			selfBaseURL := "http://127.0.0.1:" + selfPort
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
 			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)     // GET
@@ -454,6 +456,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/update", sysHandler.Update)              // POST — trigger OTA update (non-blocking, returns 202)
 	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus) // GET  — real-time update progress log
 	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)             // GET  — frontend OTA manifest (proxied from GitHub Releases)
+	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)             // GET  — happy daemon status + machine credentials
+	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart)  // POST — start happy daemon
+	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)    // POST — stop happy daemon
 
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
@@ -466,7 +471,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Static frontend assets + task permalink deep links ───────────────────
 	// This catch-all must be registered last so it does not shadow the routes
-	// above. html/dist must contain an index.html for SPA-style navigation.
+	// above. frontend/dist must contain an index.html for SPA-style navigation.
 	//
 	// GitHub-style task URLs (/{project}/tasks/{number}) have no file on disk,
 	// so the catch-all serves the SPA index for them and lets the frontend

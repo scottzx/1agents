@@ -1,0 +1,40 @@
+{
+  "extends": "./node_modules/gts/",
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.tsx"],
+      "parserOptions": {
+        "jsxPragma": "h"
+      },
+      "rules": {
+        "@typescript-eslint/no-duplicate-enum-values": "off"
+      }
+    },
+    {
+      "files": ["gulpfile.js", "webpack.config.js"],
+      "rules": {
+        "node/no-unpublished-require": "off"
+      }
+    },
+    {
+      "files": ["packages/core/**/*.ts", "packages/core/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["preact", "preact/*", "@preact/signals", "@preact/signals/*"],
+                "message": "core/ must stay platform-agnostic — no preact or @preact/signals in core. Use @preact/signals-core (dependency-free) for reactive state."
+              },
+              {
+                "group": ["**/components/**", "**/components", "../components/*"],
+                "message": "core/ must not depend on the UI layer (components/)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
