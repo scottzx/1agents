@@ -9,6 +9,7 @@ import { Segmented } from '../../components/ui/Segmented';
 import { useT, useUI } from '../../hooks/useUI';
 import type { Lang } from '../../i18n';
 import type { Theme } from '../../store/uiStore';
+import { normalizeOrigin, isHttpOrigin } from '@1agents/core/services/apiClient';
 import { BACKEND_BASE, BACKEND_OVERRIDE_KEY, defaultBackend } from '../../config';
 import './index.scss';
 
@@ -27,12 +28,11 @@ export default function Settings() {
   ];
 
   const save = () => {
-    const v = draft.trim();
-    if (!/^https?:\/\//.test(v)) {
+    if (!isHttpOrigin(draft)) {
       Taro.showToast({ title: t('settings.backend.invalid'), icon: 'none' });
       return;
     }
-    Taro.setStorageSync(BACKEND_OVERRIDE_KEY, v);
+    Taro.setStorageSync(BACKEND_OVERRIDE_KEY, normalizeOrigin(draft));
     Taro.showToast({ title: t('settings.backend.saved'), icon: 'none' });
   };
 

@@ -55,8 +55,22 @@ export function relayUrl(): string {
  * which connects to a user-configured backend address.
  */
 export function setDirectBackend(baseUrl: string): void {
-    directBaseUrl = baseUrl.replace(/\/+$/, '');
+    directBaseUrl = normalizeOrigin(baseUrl);
     backendTarget.value = { mode: 'direct' };
+}
+
+/**
+ * Trim surrounding whitespace and strip trailing slashes from a backend/relay
+ * origin. Shared by every settings form that lets a user type an address (web
+ * relay pairing, 小程序 backend override) so they normalize identically.
+ */
+export function normalizeOrigin(raw: string): string {
+    return raw.trim().replace(/\/+$/, '');
+}
+
+/** True when `raw` is a usable http(s) origin (the bar settings inputs validate against). */
+export function isHttpOrigin(raw: string): boolean {
+    return /^https?:\/\//.test(raw.trim());
 }
 
 async function probeDirect(): Promise<boolean> {

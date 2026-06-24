@@ -22,7 +22,7 @@ import {
     type RelayCredentials,
     type RelayMachine,
 } from '../../services/relay/relayClient';
-import { setRelayNode } from '../../services/apiClient';
+import { setRelayNode, normalizeOrigin } from '../../services/apiClient';
 
 const LS_URL = 'oneagents.relay.url';
 
@@ -82,7 +82,7 @@ export function RelayPairingPanel({
     }, []);
 
     const setUrl = (v: string) => {
-        relayUrl.value = v.replace(/\/+$/, '');
+        relayUrl.value = normalizeOrigin(v);
         localStorage.setItem(LS_URL, relayUrl.value);
     };
     const run = async (label: string, fn: () => Promise<void>) => {
