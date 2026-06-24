@@ -114,7 +114,31 @@ const (
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"
 	TaskStatusBlocked   TaskStatus = "blocked"
+	// TaskStatusPendingReview marks a task whose executor finished but which is
+	// configured for verification (Task.Verifier set): the scheduler picks it up
+	// and runs the verifier headlessly instead of completing it. See #50.
+	TaskStatusPendingReview TaskStatus = "pending_review"
 )
+
+// CriterionResult is the verifier's per-acceptance-criterion judgement.
+type CriterionResult struct {
+	Criterion string `json:"criterion"`
+	Pass      bool   `json:"pass"`
+	Comment   string `json:"comment,omitempty"`
+}
+
+// ReviewVerdict is the latest verification result a verifier submitted (via the
+// submit_review MCP tool) for a task. Overall Pass is server-computed as "every
+// criterion passed" — the verifier reports per-criterion results, the server
+// decides done/loop/fail. Attempt mirrors Task.ReviewCount for display. See #50.
+type ReviewVerdict struct {
+	Pass      bool              `json:"pass"`
+	Criteria  []CriterionResult `json:"criteria,omitempty"`
+	Summary   string            `json:"summary,omitempty"`
+	Attempt   int               `json:"attempt"`
+	Verifier  string            `json:"verifier,omitempty"` // agent type that judged
+	CreatedAt time.Time         `json:"createdAt"`
+}
 
 // Priority drives scheduler ordering when several tasks are ready at once
 // (Linear/Jira style; urgent runs first).
@@ -260,6 +284,22 @@ type Task struct {
 	RetryCount         int         `json:"retryCount,omitempty"`
 	TimeoutMinutes     int         `json:"timeoutMinutes,omitempty"` // 0 = runner default idle timeout
 
+	// ── verification fields (schema v9, #50) ──
+	// Verifier is the agent type that reviews this task after the executor
+	// finishes; empty = no verification (executor completion is final). When set
+	// (and AcceptanceCriteria is non-empty), executor completion routes the task
+	// to pending_review and the scheduler runs a headless verifier pass.
+	Verifier string `json:"verifier,omitempty"`
+	// ReviewMaxAttempts caps how many verification cycles a task may consume
+	// before a rejected verdict becomes a terminal failure (报异常). 0 = the
+	// effective default (defaultReviewMaxAttempts). Independent of MaxRetries,
+	// which governs execution crashes.
+	ReviewMaxAttempts int `json:"reviewMaxAttempts,omitempty"`
+	// ReviewCount counts verification cycles that ended in rejection.
+	ReviewCount int `json:"reviewCount,omitempty"`
+	// Review holds the latest verdict (per-criterion results + overall pass).
+	Review *ReviewVerdict `json:"review,omitempty"`
+
 	CreatedAt     time.Time         `json:"createdAt"`
 	UpdatedAt     time.Time         `json:"updatedAt"`
 	StartedAt     *time.Time        `json:"startedAt,omitempty"`
@@ -293,7 +333,7 @@ type Milestone struct {
 	// empty value makes the milestone a root. Empty when the parent is unset.
 	PredecessorID string    `json:"predecessorId,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 	// Total / Completed are computed by joining tasks on Name at list time
 	// (not persisted), so the roadmap can render a progress bar per stage.
 	Total     int `json:"total"`

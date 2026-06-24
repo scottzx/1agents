@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 8
+const schemaVersion = 9
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -145,6 +145,11 @@ func (db *DB) migrateSchema() error {
 	if version < 8 {
 		if _, err := db.sql.Exec(schemaV8); err != nil {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
+		}
+	}
+	if version < 9 {
+		if _, err := db.sql.Exec(schemaV9); err != nil {
+			return fmt.Errorf("meta: apply schema v9: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -322,6 +327,19 @@ UPDATE milestones SET position = sub.rn FROM (
         PARTITION BY project_id ORDER BY created_at, name
     ) - 1 AS rn FROM milestones
 ) AS sub WHERE milestones.id = sub.id;
+`
+
+// schemaV9 adds the three-role verification fields (#50). verifier names the
+// reviewing agent type (empty = no verification, so every pre-v9 task keeps
+// completing on executor finish); review_max_attempts caps the execute→verify
+// retry loop (0 = default); review_count tracks consumed cycles; review holds
+// the latest verdict as a JSON blob (” = none yet). All defaults are inert, so
+// existing rows behave exactly as before.
+const schemaV9 = `
+ALTER TABLE tasks ADD COLUMN verifier            TEXT    NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN review_count        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN review              TEXT    NOT NULL DEFAULT '';
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

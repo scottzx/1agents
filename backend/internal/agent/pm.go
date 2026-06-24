@@ -64,6 +64,12 @@ func roleTemplateName(role string) string {
 // workspaceName resolves a workspace id to its display name, falling back to
 // the id when it can't be looked up.
 func (h *Handler) workspaceName(workspaceID string) string {
+	return resolveWorkspaceName(workspaceID)
+}
+
+// resolveWorkspaceName is the Handler-free form of workspaceName, so the
+// headless runner can render role-template prompts without a Handler.
+func resolveWorkspaceName(workspaceID string) string {
 	wsHandler := workspace.NewHandler()
 	cfg, err := wsHandler.LoadWorkspacesConfig()
 	if err != nil {
@@ -115,27 +121,39 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 （当前项目 workspace_id=%s，仅供你理解上下文；工具已自动锁定，无需也无法手动指定项目。）`, projectName, workspaceID)
 }
 
-// buildTasksMcpServer builds the ACP stdio McpServer entry for the task tools.
+// buildTasksMcpServer builds the ACP stdio McpServer entry for the task tools,
+// using this daemon's loopback base URL. See tasksMcpServerEntry.
+func (h *Handler) buildTasksMcpServer(workspaceID, taskID, taskRole string) map[string]any {
+	return tasksMcpServerEntry(h.selfBaseURL, workspaceID, taskID, taskRole)
+}
+
+// tasksMcpServerEntry builds the ACP stdio McpServer entry for the task tools.
 // The workspace lock is the ONEAGENTS_WORKSPACE_ID env var — the tools expose
 // no project parameter, so the agent is confined to workspaceID. A non-empty
 // taskID additionally injects ONEAGENTS_TASK_ID, narrowing the session to a
-// single task (executor scope, #50): the server then withholds the PM-only
-// create/milestone tools and confines reads/writes to that task. Credentials
-// (the internal token) are injected here in Go, never from a role template's
-// YAML. Returns nil if the executable can't be resolved.
-func (h *Handler) buildTasksMcpServer(workspaceID, taskID string) map[string]any {
+// single task (#50): the server withholds the PM-only create/milestone tools
+// and confines reads/writes to that task. taskRole ("executor"/"verifier")
+// selects the locked tool surface — verifier is hard read-only + submit_review.
+// Credentials (the internal token) are injected here in Go, never from a role
+// template's YAML. Free function (not a Handler method) so the headless runner
+// can build a verifier server without a Handler. Returns nil if the executable
+// can't be resolved.
+func tasksMcpServerEntry(baseURL, workspaceID, taskID, taskRole string) map[string]any {
 	exe, err := os.Executable()
 	if err != nil || exe == "" {
 		log.Printf("[agent] tasks mcpServer: cannot resolve executable: %v", err)
 		return nil
 	}
 	env := []map[string]string{
-		{"name": "ONEAGENTS_BASE_URL", "value": h.selfBaseURL},
+		{"name": "ONEAGENTS_BASE_URL", "value": baseURL},
 		{"name": "ONEAGENTS_WORKSPACE_ID", "value": workspaceID},
 		{"name": "ONEAGENTS_INTERNAL_TOKEN", "value": localtoken.Token},
 	}
 	if taskID != "" {
 		env = append(env, map[string]string{"name": "ONEAGENTS_TASK_ID", "value": taskID})
+		if taskRole != "" {
+			env = append(env, map[string]string{"name": "ONEAGENTS_TASK_ROLE", "value": taskRole})
+		}
 	}
 	return map[string]any{
 		"type":    "stdio",
@@ -151,7 +169,7 @@ func (h *Handler) buildTasksMcpServer(workspaceID, taskID string) map[string]any
 // hardcoded fallback for the PM/PMO path when the role template can't be
 // resolved; the template-driven path uses buildMcpServersFromRole.
 func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
-	srv := h.buildTasksMcpServer(workspaceID, "") // PM is project-wide; no task lock
+	srv := h.buildTasksMcpServer(workspaceID, "", "") // PM is project-wide; no task lock
 	if srv == nil {
 		return nil
 	}
@@ -171,7 +189,7 @@ func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
 func (h *Handler) resolvePMRole(workspacePath, workspaceID string) (prompt string, mcpServers json.RawMessage) {
 	projectName := h.workspaceName(workspaceID)
 	if tpl, ok := LoadRoles(workspacePath).Resolve("pm"); ok && tpl.Available {
-		return renderRolePrompt(tpl, projectName, workspaceID), h.buildMcpServersFromRole(tpl, workspaceID, "")
+		return renderRolePrompt(tpl, projectName, workspaceID), h.buildMcpServersFromRole(tpl, workspaceID, "", "")
 	}
 	return buildPMSystemPrompt(projectName, workspaceID), h.buildPMMcpServers(workspaceID)
 }
@@ -192,20 +210,21 @@ func (h *Handler) roleInjection(role, workspacePath, workspaceID, taskID string)
 		return "", nil, false
 	}
 	return renderRolePrompt(tpl, h.workspaceName(workspaceID), workspaceID),
-		h.buildMcpServersFromRole(tpl, workspaceID, taskID), true
+		h.buildMcpServersFromRole(tpl, workspaceID, taskID, name), true
 }
 
 // buildMcpServersFromRole turns a role template's mcp_servers list into the
 // per-session MCP server config. Each named server maps to a Go-built entry
 // (credentials injected server-side). A non-empty taskID locks the task tools
-// to a single task (executor scope, #50); pass "" for project-wide roles.
-// Unknown names are logged and skipped. Returns nil when no server resolves.
-func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID, taskID string) json.RawMessage {
+// to a single task (#50); pass "" for project-wide roles. taskRole
+// ("executor"/"verifier") selects the locked tool surface. Unknown names are
+// logged and skipped. Returns nil when no server resolves.
+func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID, taskID, taskRole string) json.RawMessage {
 	var servers []map[string]any
 	for _, name := range tpl.McpServers {
 		switch name {
 		case "tasks", "mcp-tasks":
-			if srv := h.buildTasksMcpServer(workspaceID, taskID); srv != nil {
+			if srv := h.buildTasksMcpServer(workspaceID, taskID, taskRole); srv != nil {
 				servers = append(servers, srv)
 			}
 		default:
