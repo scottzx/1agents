@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -102,6 +103,76 @@ func TestTasksMcpServerTaskLock(t *testing.T) {
 	unlocked := h.buildTasksMcpServer("ws1", "")
 	if _, ok := envValue(unlocked, "ONEAGENTS_TASK_ID"); ok {
 		t.Error("unlocked: ONEAGENTS_TASK_ID should be absent for project-wide PM")
+	}
+}
+
+// TestBuiltinExecutorVerifierTemplates: both task-bound role templates parse,
+// carry the tasks MCP, and use placeholders renderable by renderRolePrompt.
+func TestBuiltinExecutorVerifierTemplates(t *testing.T) {
+	for _, name := range []string{"executor", "verifier"} {
+		reg := LoadRoles("")
+		tpl, ok := reg.Resolve(name)
+		if !ok {
+			t.Fatalf("builtin %q not resolved", name)
+		}
+		if tpl.Source != "builtin" || tpl.Name != name {
+			t.Errorf("%s: Source=%q Name=%q", name, tpl.Source, tpl.Name)
+		}
+		if len(tpl.McpServers) != 1 || tpl.McpServers[0] != "tasks" {
+			t.Errorf("%s: McpServers=%v, want [tasks]", name, tpl.McpServers)
+		}
+		if tpl.Prompt == "" {
+			t.Errorf("%s: empty prompt", name)
+		}
+	}
+}
+
+// TestRoleTemplateName maps role codes to template names.
+func TestRoleTemplateName(t *testing.T) {
+	cases := map[string]string{
+		"pm":       "pm",
+		"pmo":      "pm",
+		"executor": "executor",
+		"verifier": "verifier",
+		"general":  "",
+		"auto":     "",
+	}
+	for role, want := range cases {
+		if got := roleTemplateName(role); got != want {
+			t.Errorf("roleTemplateName(%q) = %q, want %q", role, got, want)
+		}
+	}
+}
+
+// TestRoleInjectionTaskLock: an executor/verifier injection binds the tasks MCP
+// to the given task_id (ONEAGENTS_TASK_ID present), and an unknown role yields
+// ok=false.
+func TestRoleInjectionTaskLock(t *testing.T) {
+	h := &Handler{selfBaseURL: "http://127.0.0.1:9999"}
+
+	for _, role := range []string{"executor", "verifier"} {
+		prompt, mcp, ok := h.roleInjection(role, "", "ws1", "task-77")
+		if !ok {
+			t.Fatalf("%s: roleInjection ok=false", role)
+		}
+		if prompt == "" {
+			t.Errorf("%s: empty persona", role)
+		}
+		if mcp == nil {
+			t.Fatalf("%s: nil mcp", role)
+		}
+		var arr []map[string]any
+		if err := json.Unmarshal(mcp, &arr); err != nil || len(arr) != 1 {
+			t.Fatalf("%s: mcp decode: %v (%s)", role, err, mcp)
+		}
+		raw, _ := json.Marshal(arr[0])
+		if !strings.Contains(string(raw), "ONEAGENTS_TASK_ID") || !strings.Contains(string(raw), "task-77") {
+			t.Errorf("%s: tasks MCP not locked to task-77: %s", role, raw)
+		}
+	}
+
+	if _, _, ok := h.roleInjection("general", "", "ws1", "task-77"); ok {
+		t.Error("roleInjection for unknown role should be ok=false")
 	}
 }
 

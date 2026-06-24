@@ -1080,6 +1080,20 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 				systemContext = pmPrompt + "\n\n" + buildIssueBackground(targetTask, wsPath)
 			}
 			mcpServers = pmMcp
+		} else if isExecutorRole(sessionRole) || isVerifierRole(sessionRole) {
+			// #50: an executor/verifier session is bound to this one task. Its
+			// persona is role-template-driven and its tasks MCP is locked to
+			// taskId, so reads/writes can't escape the assignment (executor) or
+			// the under-review task (verifier). The executor still runs its task
+			// (below); the verifier only reviews and is excluded from execution.
+			if prompt, mcp, ok := h.roleInjection(sessionRole, wsPath, wsID, taskId); ok {
+				if acpSessionID == "" {
+					systemContext = prompt + "\n\n" + buildIssueBackground(targetTask, wsPath)
+				}
+				mcpServers = mcp
+			} else if acpSessionID == "" {
+				systemContext = buildIssueBackground(targetTask, wsPath)
+			}
 		} else if acpSessionID == "" {
 			systemContext = buildIssueBackground(targetTask, wsPath)
 		}
@@ -1102,7 +1116,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// to running, or re-execute. Only a genuinely new session (acpSessionID
 		// empty) starts execution. Discussions are never executed, so a
 		// discussion-linked PM conversation skips this entirely.
-		if targetTask.Type != TaskTypeDiscussion && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
+		if targetTask.Type != TaskTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
