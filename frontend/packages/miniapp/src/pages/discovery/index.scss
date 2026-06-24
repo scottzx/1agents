@@ -1,0 +1,22 @@
+/* 发现页布局 — header + 分类区 */
+.dc-head {
+  padding: 40px 32px 8px;
+}
+
+.dc-head__title {
+  display: block;
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.dc-head__sub {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+  color: var(--text-secondary);
+}
+
+.dc-body {
+  padding: 0 24px;
+}

@@ -1,0 +1,13 @@
+.ui-section {
+  margin-bottom: 32px;
+
+  &__title {
+    display: block;
+    font-size: 24px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 16px;
+    padding: 0 4px;
+  }
+}

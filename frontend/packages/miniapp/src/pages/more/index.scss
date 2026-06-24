@@ -1,0 +1,22 @@
+// 更多 tab — header + padded Section container.
+.more-head {
+  padding: 40px 32px 8px;
+
+  &__title {
+    display: block;
+    font-size: 40px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  &__sub {
+    display: block;
+    margin-top: 8px;
+    font-size: 24px;
+    color: var(--text-secondary);
+  }
+}
+
+.more-body {
+  padding: 0 24px;
+}

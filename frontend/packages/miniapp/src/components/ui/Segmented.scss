@@ -1,0 +1,19 @@
+// Segmented 分段控件样式
+.seg {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+
+  &__item {
+    padding: 12px 28px;
+    font-size: 26px;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+
+    &--active {
+      background: var(--accent-color);
+      color: var(--on-accent);
+    }
+  }
+}

@@ -1,0 +1,57 @@
+// 系统设置页样式：外观行 / 后端地址输入 + 按钮 / 说明文本
+.st {
+  padding: 8px 32px 40px;
+}
+
+.st-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+
+  &__label {
+    font-size: 28px;
+    color: var(--text-main);
+  }
+}
+
+.st-input {
+  margin: 8px 0 16px;
+  height: 80px;
+  padding: 0 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  font-size: 26px;
+}
+
+.st-btns {
+  display: flex;
+  gap: 16px;
+}
+
+.st-btn {
+  flex: 1;
+  font-size: 28px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+
+  &--primary {
+    background: var(--accent-color);
+    color: var(--on-accent);
+    border: none;
+  }
+}
+
+.st-note {
+  display: block;
+  margin-top: 12px;
+  font-size: 22px;
+  color: var(--text-muted);
+}

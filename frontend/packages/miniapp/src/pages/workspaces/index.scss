@@ -1,0 +1,57 @@
+/* Workspaces home — session list with fixed new-chat footer. */
+.ws-content {
+  padding: 0 24px 180px;
+}
+
+.ws-head {
+  padding: 40px 32px 16px;
+
+  &__title {
+    display: block;
+    font-size: 40px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  &__sub {
+    display: block;
+    margin-top: 8px;
+    font-size: 24px;
+    color: var(--text-secondary);
+  }
+}
+
+.ws-card {
+  margin-bottom: 16px;
+
+  &__name {
+    display: block;
+    font-size: 30px;
+    color: var(--text-main);
+    margin-bottom: 14px;
+  }
+
+  &__tags {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+}
+
+.ws-foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px 32px calc(20px + env(safe-area-inset-bottom));
+  background: var(--bg-page);
+  border-top: 1px solid var(--border-color);
+
+  &__btn {
+    width: 100%;
+    background: var(--accent-color);
+    color: var(--on-accent);
+    font-size: 30px;
+    border-radius: var(--radius);
+  }
+}
