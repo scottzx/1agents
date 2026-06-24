@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
-import { PRIORITY_LABELS, STATUS_LABELS, TYPE_LABELS } from './constants';
+import { PRIORITY_LABELS, TYPE_LABELS } from './constants';
 import type { Task } from './types';
 
 interface RequirementPoolProps {
@@ -111,8 +111,13 @@ export function RequirementPool({ tasks, suggestions, onSelectTask, onAdopt, onD
                                     </div>
                                 ) : (
                                     <div class="requirement-card-foot">
-                                        <span class={`task-status-badge ${task.status}`}>
-                                            {STATUS_LABELS[task.status] || task.status}
+                                        {/* Requirements/bugs are open/closed issues, not executable
+                                            tasks — no pending/running/failed status here. */}
+                                        <span class={`issue-state-badge ${task.issueState || 'open'}`}>
+                                            {task.issueState === 'closed' ? '已关闭' : '开放'}
+                                        </span>
+                                        <span class={`confirm-badge ${task.userConfirm ? 'confirmed' : 'pending'}`}>
+                                            {task.userConfirm ? '已确认' : '待确认'}
                                         </span>
                                         {task.milestone && <span class="requirement-card-ms">{task.milestone}</span>}
                                     </div>

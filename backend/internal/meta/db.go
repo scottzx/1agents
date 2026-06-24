@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 9
+const schemaVersion = 10
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -150,6 +150,11 @@ func (db *DB) migrateSchema() error {
 	if version < 9 {
 		if _, err := db.sql.Exec(schemaV9); err != nil {
 			return fmt.Errorf("meta: apply schema v9: %w", err)
+		}
+	}
+	if version < 10 {
+		if _, err := db.sql.Exec(schemaV10); err != nil {
+			return fmt.Errorf("meta: apply schema v10: %w", err)
 		}
 	}
 	if version < schemaVersion {
@@ -335,6 +340,13 @@ UPDATE milestones SET position = sub.rn FROM (
 // a human adopts (clears source) or dismisses (deletes) it.
 const schemaV9 = `
 ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT '';
+`
+
+// schemaV10 adds the requirement/bug confirmation gate (user_confirm). DEFAULT 0
+// keeps every existing row unconfirmed; only confirmed requirements/bugs may be
+// scheduled by the PM. Stored as INTEGER (0/1) — SQLite has no native bool.
+const schemaV10 = `
+ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0;
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

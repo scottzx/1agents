@@ -295,6 +295,7 @@ export function TaskDetail({
         acceptanceCriteria?: string;
         links?: TaskLink[];
         status?: Task['status'];
+        userConfirm?: boolean;
     }) => {
         const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`, {
             method: 'PATCH',
@@ -424,6 +425,23 @@ export function TaskDetail({
         const prompt =
             '我们把这条讨论聊成一条清晰的需求吧。请先和我澄清：交付物到底是什么、验收标准是什么；聊清楚后用 create_task 建一条 requirement（必要时拆成任务）。如果发现还不够清晰，就先保留为讨论。';
         await sessionStore.createPMSession(workspaceId, `讨论需求：${task.title}`, prompt, task.id);
+    };
+
+    // 与 AI 讨论(需求/缺陷):open a PM session linked to this issue to clarify its
+    // scope/boundary before it's confirmed for scheduling. The card stays a
+    // requirement/bug; the conversation is recorded back to its timeline.
+    const discussIssue = async () => {
+        if (!task) return;
+        const kind = task.type === 'bug' ? '缺陷' : '需求';
+        const prompt = `我们来把这条${kind}的边界聊清楚：到底要解决什么、范围多大、验收标准是什么、有哪些约束或依赖。聊清楚后我会确认它「可排期」，再由你拆成可执行的任务。先问我还有哪些不清楚的地方。`;
+        await sessionStore.createPMSession(workspaceId, `讨论${kind}：${task.title}`, prompt, task.id);
+    };
+
+    // Toggle the user-confirmed gate. Only confirmed requirements/bugs may be
+    // scheduled by the PM (#49); flipping it is a plain PATCH.
+    const toggleUserConfirm = async () => {
+        if (!task) return;
+        await patchTask({ userConfirm: !task.userConfirm });
     };
 
     // Top-level composer: a pure comment (standalone timeline entry, no chat)
@@ -577,6 +595,12 @@ export function TaskDetail({
     // hide the task-only panels (acceptance criteria, execution/checks box,
     // assignee) so its detail page stays focused on the conversation.
     const isDiscussion = task.type === 'discussion';
+    // Requirements and bugs are open/closed issue items too: like discussions
+    // they are non-executable (the PM breaks confirmed ones into tasks), so they
+    // share the discussion-style detail page — conversation + 与 AI 讨论, no
+    // acceptance/checks/assignee/composer. isNonExecutable gates those panels.
+    const isIssueItem = task.type === 'requirement' || task.type === 'bug';
+    const isNonExecutable = isDiscussion || isIssueItem;
 
     return (
         <div class="task-dashboard-container task-detail-view" ref={containerRef}>
@@ -609,6 +633,20 @@ export function TaskDetail({
                     {task.type === 'discussion' && (
                         <button class="task-convert-btn" onClick={convertToRequirement}>
                             {t('task.discussion.convert', lang)}
+                        </button>
+                    )}
+                    {isIssueItem && (
+                        <button class="task-convert-btn" onClick={discussIssue}>
+                            与 AI 讨论
+                        </button>
+                    )}
+                    {isIssueItem && (
+                        <button
+                            class={`task-confirm-btn${task.userConfirm ? ' confirmed' : ''}`}
+                            onClick={toggleUserConfirm}
+                            title="只有已确认的需求/缺陷，PM 才能排期"
+                        >
+                            {task.userConfirm ? '已确认 ✓' : '确认，可排期'}
                         </button>
                     )}
                 </div>
@@ -724,7 +762,7 @@ export function TaskDetail({
                             </div>
 
                             {/* Pinned Acceptance Criteria Card (hidden for discussions) */}
-                            {!isDiscussion && (
+                            {!isNonExecutable && (
                                 <div class="gh-comment-card is-user">
                                     <div class="gh-comment-header">
                                         <div class="gh-comment-header-left">
@@ -874,7 +912,7 @@ export function TaskDetail({
                             </div>
 
                             {/* Merge / Checks Status Box (hidden for discussions — not executable) */}
-                            {!isDiscussion && (
+                            {!isNonExecutable && (
                                 <div class="gh-merge-box">
                                     <div class={`gh-merge-icon-col status-${task.status}`}>
                                         {task.status === 'completed' && '✓'}
@@ -969,7 +1007,7 @@ export function TaskDetail({
 
                             {/* GitHub style composer (hidden for discussions — replies happen
                                 via the PM conversation opened by 讨论需求, not an inline form) */}
-                            {!isDiscussion && (
+                            {!isNonExecutable && (
                                 <div class="gh-composer-card">
                                     <div class="gh-composer-tabs">
                                         <button
@@ -1244,7 +1282,7 @@ export function TaskDetail({
                     </div>
 
                     {/* Assignees (hidden for discussions — nobody executes a discussion) */}
-                    {!isDiscussion && (
+                    {!isNonExecutable && (
                         <div class="gh-sidebar-panel">
                             <div class="gh-sidebar-head">
                                 <span>{t('task.detail.sideAssignees', lang)}</span>

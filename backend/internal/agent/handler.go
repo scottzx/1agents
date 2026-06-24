@@ -342,6 +342,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Sprint             string       `json:"sprint"`
 			Type               string       `json:"type"`
 			Source             string       `json:"source"`
+			UserConfirm        bool         `json:"userConfirm"`
 			Recurrence         *Recurrence  `json:"recurrence"`
 			MaxRetries         *int         `json:"maxRetries"`
 			ScheduleType       ScheduleType `json:"scheduleType"`
@@ -370,6 +371,14 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "source must be empty or agent-suggested", http.StatusBadRequest)
 			return
 		}
+		// AI suggestions are only ever requirements or bugs — never executable
+		// tasks (issue #47 model). A suggestion is a proposed issue the user
+		// clarifies and confirms before the PM schedules it.
+		if TaskSource(body.Source) == TaskSourceAgent &&
+			TaskType(body.Type) != TaskTypeRequirement && TaskType(body.Type) != TaskTypeBug {
+			http.Error(w, "agent-suggested tasks must be of type requirement or bug", http.StatusBadRequest)
+			return
+		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -395,6 +404,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Sprint:             body.Sprint,
 			Type:               TaskType(body.Type),
 			Source:             TaskSource(body.Source),
+			UserConfirm:        body.UserConfirm,
 			Recurrence:         body.Recurrence,
 			MaxRetries:         maxRetries,
 			ScheduleType:       body.ScheduleType,
@@ -598,6 +608,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		Sprint             *string      `json:"sprint,omitempty"`
 		Type               *string      `json:"type,omitempty"`
 		Source             *string      `json:"source,omitempty"`
+		UserConfirm        *bool        `json:"userConfirm,omitempty"`
 		Recurrence         **Recurrence `json:"recurrence,omitempty"`
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
@@ -719,6 +730,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Source != nil {
 			target.Source = TaskSource(*body.Source)
+		}
+		if body.UserConfirm != nil {
+			target.UserConfirm = *body.UserConfirm
 		}
 		if body.Links != nil {
 			target.Links = *body.Links

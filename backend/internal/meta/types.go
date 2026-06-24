@@ -269,6 +269,12 @@ type Task struct {
 	// Source marks an AI-suggested task (issue #47). Empty = normal task;
 	// "agent-suggested" cards stay out of the board/scheduler until adopted.
 	Source TaskSource `json:"source,omitempty"`
+	// ── requirement/bug confirmation (schema v10) ──
+	// UserConfirm marks a requirement/bug the user has confirmed as ready for
+	// the PM to schedule (break down into executable tasks). Requirements and
+	// bugs are non-executable issue items (open/closed only); the scheduler
+	// never runs them directly, and the PM may only plan the confirmed ones.
+	UserConfirm bool `json:"userConfirm,omitempty"`
 
 	// ── automation fields (schema v2) ──
 	AcceptanceCriteria string      `json:"acceptanceCriteria,omitempty"` // injected; agent self-checks before completing

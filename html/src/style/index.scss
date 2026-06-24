@@ -3324,6 +3324,44 @@ body {
   }
 }
 
+/* Requirement/bug pool-card foot badges: open/closed issue state + the
+   user-confirm gate (待确认 / 已确认). No workflow status here — these are
+   non-executable issues. */
+.issue-state-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.open {
+    background-color: var(--success-bg);
+    color: var(--success-fg);
+  }
+  &.closed {
+    background-color: var(--purple-bg);
+    color: var(--purple-fg);
+  }
+}
+
+.confirm-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.pending {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+  }
+  &.confirmed {
+    background-color: var(--accent-light);
+    color: var(--accent-color);
+  }
+}
+
 /* ── Sessions popup — wide overlay for the 总览 会话 card (the 会话 tab was
    folded into the overview). The narrow form Modal can't host the DataGrid. ── */
 .sessions-modal-overlay {
@@ -5059,6 +5097,32 @@ body {
         color: var(--accent-color);
         background: var(--btn-hover);
       }
+    }
+
+    // 讨论需求 / 与 AI 讨论 / 确认可排期 — pill actions in the issue header.
+    .task-convert-btn,
+    .task-confirm-btn {
+      padding: 4px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border-radius: var(--bento-radius-sm);
+      border: 1px solid var(--border-color);
+      background: var(--bg-panel);
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: var(--bento-transition);
+
+      &:hover {
+        color: var(--text-main);
+        background: var(--btn-hover);
+      }
+    }
+
+    .task-confirm-btn.confirmed {
+      background: var(--success-bg);
+      border-color: rgba(var(--success-rgb), 0.4);
+      color: var(--success-fg);
     }
   }
 

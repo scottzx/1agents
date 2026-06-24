@@ -288,6 +288,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.Type == TaskTypeDiscussion {
 				continue // 讨论是概念记录，永不调度执行
 			}
+			if t.Type == TaskTypeRequirement || t.Type == TaskTypeBug {
+				continue // 需求/缺陷是 open/close 的议题，不可直接执行；由 PM 拆成任务后再排期
+			}
 			if t.Source == TaskSourceAgent {
 				continue // AI 建议未被采纳前不进入调度
 			}

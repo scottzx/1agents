@@ -86,6 +86,9 @@ export interface Task {
     milestone?: string;
     type?: TaskType;
     source?: TaskSource;
+    // Requirement/bug only: user has confirmed the issue is ready for the PM to
+    // schedule (break into executable tasks). Non-executable items stay open/closed.
+    userConfirm?: boolean;
     number?: number;
     links?: TaskLink[];
     acceptanceCriteria?: string;
