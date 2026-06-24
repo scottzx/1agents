@@ -1,5 +1,9 @@
 /// <reference types="@tarojs/taro" />
 
+// Build-time base path constant referenced by @1agents/core's apiClient
+// (web injects it via webpack DefinePlugin; here Taro defineConstants sets '').
+declare const __BASE_PATH__: string;
+
 declare module '*.png';
 declare module '*.gif';
 declare module '*.jpg';

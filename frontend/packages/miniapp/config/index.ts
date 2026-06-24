@@ -27,7 +27,12 @@ export default defineConfig(async merge => {
     sourceRoot: 'src',
     outputRoot: 'dist',
     plugins: [],
-    defineConstants: {},
+    // __BASE_PATH__ is a web-only build constant referenced by @1agents/core's
+    // apiClient (relay default origin). The mini-program has no subpath mount, so
+    // define it as '' to keep the shared module compiling/running here.
+    defineConstants: {
+      __BASE_PATH__: JSON.stringify(''),
+    },
     copy: {
       patterns: [],
       options: {},
