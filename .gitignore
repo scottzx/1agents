@@ -80,3 +80,4 @@ npm/bin/*
 tmp_home/
 .isolated_env/
 
+cache/
