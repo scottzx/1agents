@@ -1,3 +1,10 @@
+// Global design tokens (light/dark) + the .screen base surface. Each page's
+// <Screen> wrapper carries the theme class; this import makes the variable
+// definitions available app-wide.
+@import './style/tokens.scss';
+
+// Neutral page backdrop behind safe areas / overscroll. <Screen> sets the real
+// per-theme color via Taro.setBackgroundColor; this is just the static fallback.
 page {
-  background-color: #070b14;
+  background-color: #080b11;
 }

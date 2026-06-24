@@ -1,0 +1,83 @@
+// Design tokens for the mini-program (weapp + future RN view layer).
+//
+// Names and values mirror the web app's tokens in frontend/src/style/index.scss
+// (GitHub Primer palette) so the two frontends stay visually consistent. The
+// web keys themes off [data-theme="dark"] on <html>; weapp can't put a dynamic
+// class on `page`, so the <Screen> wrapper carries `.theme--light` / `.theme--dark`
+// on each page root and the CSS variables cascade to descendants.
+//
+// Always consume these via var(--token) in component SCSS — never raw hex — so
+// light/dark switching works for free. If a token is missing, add it to BOTH
+// theme blocks.
+
+@mixin tokens-light {
+  // Surfaces
+  --bg-page: #f4f6f9;
+  --bg-card: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-elevated: #eef1f5;
+  // Text
+  --text-main: #1f2328;
+  --text-secondary: #57606a;
+  --text-muted: #8c959f;
+  // Lines
+  --border-color: #e1e4e8;
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  // Accent
+  --accent-color: #0969da;
+  --accent-light: rgba(9, 105, 218, 0.08);
+  --on-accent: #ffffff;
+  // Status
+  --success-fg: #1a7f37;
+  --danger-fg: #cf222e;
+  --warning-fg: #9a6700;
+  // Shape & type
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+  --font-mono: 'JetBrains Mono', Consolas, monospace;
+}
+
+@mixin tokens-dark {
+  // Surfaces
+  --bg-page: #080b11;
+  --bg-card: #0d111a;
+  --bg-panel: #0d111a;
+  --bg-elevated: #161b22;
+  // Text
+  --text-main: #e6edf3;
+  --text-secondary: #8d96a0;
+  --text-muted: #484f58;
+  // Lines
+  --border-color: #1e2535;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  // Accent
+  --accent-color: #388bfd;
+  --accent-light: rgba(56, 139, 253, 0.10);
+  --on-accent: #ffffff;
+  // Status
+  --success-fg: #3fb950;
+  --danger-fg: #f85149;
+  --warning-fg: #d29922;
+  // Shape & type
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+  --font-mono: 'JetBrains Mono', Consolas, monospace;
+}
+
+.theme--light {
+  @include tokens-light;
+}
+
+.theme--dark {
+  @include tokens-dark;
+}
+
+// Base page surface applied by every <Screen>. min-height keeps the themed
+// background covering the whole viewport even when content is short.
+.screen {
+  min-height: 100vh;
+  background-color: var(--bg-page);
+  color: var(--text-main);
+}

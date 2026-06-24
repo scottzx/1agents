@@ -1,3 +1,3 @@
 export default definePageConfig({
-  navigationBarTitleText: '1Agents',
+  navigationBarTitleText: '更多',
 });
