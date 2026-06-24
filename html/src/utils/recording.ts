@@ -6,8 +6,7 @@ import { isTauri } from '../ota/desktopCheck';
 interface TauriCore {
     invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 }
-const core = (): TauriCore | undefined =>
-    (window as unknown as { __TAURI__?: { core: TauriCore } }).__TAURI__?.core;
+const core = (): TauriCore | undefined => (window as unknown as { __TAURI__?: { core: TauriCore } }).__TAURI__?.core;
 
 /** 一期门阀:桌面壳 + macOS 才开放本地推理录音(Windows 一期不开)。 */
 export function canUseSmartRecording(): boolean {
