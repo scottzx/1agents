@@ -22,6 +22,7 @@ import { signal } from '@preact/signals-core';
 import type { Socket } from 'socket.io-client';
 import { getPlatformBridge } from '../platform/bridge';
 import { connect, listMachines, proxyApi, loadCredentials, type RelayMachine } from './relay/relayClient';
+import { activeDevice, deviceById, connectDevice, setActiveDeviceId } from './relay/devices';
 
 export type BackendTarget =
     | { mode: 'probing' }
@@ -75,6 +76,18 @@ export async function initBackend(): Promise<BackendTarget> {
         backendTarget.value = { mode: 'direct' };
         return backendTarget.value;
     }
+    // 多设备模式:优先用「当前激活的设备档案」直连那台机器(只需 token+machineId+machineKey,
+    // 无需账户主密钥)。连不上则继续往下走旧的账户/节点路径,最终落到 none → 门禁页。
+    const dev = activeDevice();
+    if (dev) {
+        try {
+            const { socket, machine } = await connectDevice(dev);
+            backendTarget.value = { mode: 'relay', socket, machine };
+            return backendTarget.value;
+        } catch {
+            /* 落到下面的账户路径 / none */
+        }
+    }
     const creds = loadCredentials();
     if (creds) {
         try {
@@ -101,6 +114,20 @@ export async function initBackend(): Promise<BackendTarget> {
 export function setRelayNode(socket: Socket, machine: RelayMachine): void {
     getPlatformBridge().storage.set(LS_NODE, machine.id);
     backendTarget.value = { mode: 'relay', socket, machine };
+}
+
+/**
+ * 切换/添加设备后由设备面板调用:连上该设备档案并设为当前激活后端。
+ * 切换前会关掉旧 relay socket,避免连接泄漏。
+ */
+export async function switchToDevice(machineId: string): Promise<void> {
+    const dev = deviceById(machineId);
+    if (!dev) throw new Error('设备不存在');
+    const prev = backendTarget.value;
+    const { socket, machine } = await connectDevice(dev);
+    setActiveDeviceId(machineId);
+    backendTarget.value = { mode: 'relay', socket, machine };
+    if (prev.mode === 'relay' && prev.socket !== socket) prev.socket.close();
 }
 
 export function isBackendReady(): boolean {

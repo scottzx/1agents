@@ -5,7 +5,7 @@ import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
 import { ModeSelectOnboarding } from './welcome/ModeSelectOnboarding';
-import { RelayPairingPanel } from './settings/RelayPairingPanel';
+import { RelayDevicePanel } from './settings/RelayDevicePanel';
 import { initBackend } from '../services/apiClient';
 import { ModalHost } from './modal/ModalHost';
 import { fsService } from '../services/fsService';
@@ -456,12 +456,12 @@ export class App extends Component<{}, AppState> {
                     <div class="sys-settings-page sys-settings-page--bare">
                         <div class="sys-settings-content">
                             <div class="sys-settings-section" style="margin-bottom:8px">
-                                <div class="sys-settings-section-title">未检测到本地后端</div>
+                                <div class="sys-settings-section-title">未连接设备</div>
                                 <div class="sys-settings-section-desc">
-                                    当前页面由中转服务器提供,需要先配对/选择一台远程节点才能使用。配对一次后,以后进来会自动连接。
+                                    当前页面由中转服务器提供,需要先扫码绑定一台远程机器才能使用。绑定一次后,以后进来会自动连接;可保存多台并随时切换。
                                 </div>
                             </div>
-                            <RelayPairingPanel onNodeSelected={() => window.location.reload()} />
+                            <RelayDevicePanel embedded onConnected={() => window.location.reload()} />
                         </div>
                     </div>
                 </div>

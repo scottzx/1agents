@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,6 +32,29 @@ type HappyStatusResponse struct {
 	Token      string `json:"token,omitempty"`
 	MachineKey string `json:"machineKey,omitempty"` // base64 AES key for E2EE
 	PublicKey  string `json:"publicKey,omitempty"`  // base64 NaCl public key
+	MachineID  string `json:"machineId,omitempty"`  // relay machine entity id (RPC address)
+	Hostname   string `json:"hostname,omitempty"`   // mDNS / local hostname, seeds the client device name
+}
+
+// deviceHostname returns a human-friendly local device name to seed the client's
+// device label. On macOS this is the mDNS LocalHostName (e.g. "MacBook-Air-8");
+// elsewhere it falls back to the short OS hostname. The client may override it
+// with its own alias.
+func deviceHostname() string {
+	if runtime.GOOS == "darwin" {
+		if out, err := exec.Command("scutil", "--get", "LocalHostName").Output(); err == nil {
+			if name := strings.TrimSpace(string(out)); name != "" {
+				return name
+			}
+		}
+	}
+	if h, err := os.Hostname(); err == nil {
+		if i := strings.IndexByte(h, '.'); i > 0 {
+			return h[:i]
+		}
+		return h
+	}
+	return ""
 }
 
 // HappyStatus handles GET /api/system/happy/status.
@@ -42,7 +66,7 @@ func (h *Handler) HappyStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := HappyStatusResponse{}
+	resp := HappyStatusResponse{Hostname: deviceHostname()}
 
 	// ── daemon state ──────────────────────────────────────────────────────────
 	stateFile := filepath.Join(happyHome(), "daemon.state.json")
@@ -86,9 +110,22 @@ func (h *Handler) HappyStatus(w http.ResponseWriter, r *http.Request) {
 	if data, err := os.ReadFile(settingsFile); err == nil {
 		var settings struct {
 			ServerURL string `json:"serverUrl"`
+			MachineID string `json:"machineId"`
 		}
 		if json.Unmarshal(data, &settings) == nil {
 			resp.ServerURL = settings.ServerURL
+			resp.MachineID = settings.MachineID
+		}
+	}
+
+	// Resolve serverUrl the same way the happy CLI does (configuration.ts):
+	// HAPPY_SERVER_URL env → settings.json → built-in default. Without this the
+	// client QR bundle may lack the relay address and be unconnectable.
+	if resp.ServerURL == "" {
+		if env := os.Getenv("HAPPY_SERVER_URL"); env != "" {
+			resp.ServerURL = env
+		} else {
+			resp.ServerURL = "https://api.cluster-fluster.com"
 		}
 	}
 

@@ -8,6 +8,7 @@
 import { h, Fragment } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
+import QRCode from 'qrcode';
 
 interface HappyStatus {
     running: boolean;
@@ -17,6 +18,48 @@ interface HappyStatus {
     token?: string;
     machineKey?: string;
     publicKey?: string;
+    machineId?: string;
+    hostname?: string;
+}
+
+/**
+ * 把本机凭据编码成二维码,供客户端(H5 / 小程序 / App)扫码导入,免去手动复制多个字段。
+ * 二维码内容 = 面板上展示的同一份凭据(JSON),不含任何额外信息。
+ * 注意:这是机密 —— 黑白固定渲染保证可扫,默认隐藏、点按才显示。
+ */
+function buildCredentialPayload(s: HappyStatus): string {
+    const payload: Record<string, string> = { v: '1', type: '1agents-relay' };
+    if (s.hostname) payload.hostname = s.hostname;
+    if (s.serverUrl) payload.serverUrl = s.serverUrl;
+    if (s.token) payload.token = s.token;
+    if (s.machineId) payload.machineId = s.machineId;
+    if (s.machineKey) payload.machineKey = s.machineKey;
+    if (s.publicKey) payload.publicKey = s.publicKey;
+    return JSON.stringify(payload);
+}
+
+function CredentialQr({ payload }: { payload: string }) {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const err = useSignal('');
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        // 黑白固定(不随主题切换),否则深色模式下对比度不足、扫不出来。
+        QRCode.toCanvas(canvas, payload, {
+            width: 200,
+            margin: 2,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#000000', light: '#ffffff' },
+        }).catch((e: unknown) => (err.value = (e as Error)?.message ?? String(e)));
+    }, [payload]);
+    return (
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:10px">
+            <div style="padding:10px;background:#ffffff;border-radius:8px;border:1px solid var(--border-color)">
+                <canvas ref={canvasRef} style="display:block" />
+            </div>
+            {err.value && <span style="font-size:11px;color:var(--danger-fg)">二维码生成失败: {err.value}</span>}
+        </div>
+    );
 }
 
 function copyToClipboard(text: string, onDone: () => void) {
@@ -162,6 +205,7 @@ export function LocalMachinePanel() {
 
     const s = status.value;
     const hasCredentials = !!(s?.token || s?.machineKey);
+    const showQr = useSignal(false);
 
     return (
         <div class="sys-settings-card">
@@ -269,10 +313,50 @@ export function LocalMachinePanel() {
                         将以下信息填入 H5 / 小程序 / App 的中转配置，使其能连接到本机
                     </div>
 
+                    {s?.hostname && <MonoRow label="设备名称" value={s.hostname} />}
                     {s?.serverUrl && <MonoRow label="中转地址" value={s.serverUrl} />}
+                    {s?.machineId && <MonoRow label="Machine ID" value={s.machineId} />}
                     {s?.token && <MonoRow label="Token" value={s.token} redact />}
                     {s?.machineKey && <MonoRow label="Machine Key" value={s.machineKey} redact />}
                     {s?.publicKey && <MonoRow label="Public Key" value={s.publicKey} redact />}
+
+                    {/* 扫码导入 — 把以上凭据打包成二维码,客户端扫码即可,免去逐个复制 */}
+                    <div style="margin-top:12px">
+                        <button
+                            class="sys-settings-btn ghost"
+                            style="height:28px;padding:0 12px;font-size:11.5px"
+                            onClick={() => (showQr.value = !showQr.value)}
+                        >
+                            <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="margin-right:5px"
+                            >
+                                <rect x="3" y="3" width="7" height="7" rx="1" />
+                                <rect x="14" y="3" width="7" height="7" rx="1" />
+                                <rect x="3" y="14" width="7" height="7" rx="1" />
+                                <line x1="14" y1="14" x2="14" y2="17" />
+                                <line x1="17" y1="14" x2="21" y2="14" />
+                                <line x1="21" y1="17" x2="21" y2="21" />
+                                <line x1="14" y1="21" x2="17" y2="21" />
+                            </svg>
+                            {showQr.value ? '隐藏二维码' : '显示配置二维码'}
+                        </button>
+                        {showQr.value && s && (
+                            <Fragment>
+                                <CredentialQr payload={buildCredentialPayload(s)} />
+                                <div style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:4px">
+                                    含敏感凭据,请勿截图外传
+                                </div>
+                            </Fragment>
+                        )}
+                    </div>
 
                     {s?.running && s?.pid && (
                         <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
