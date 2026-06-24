@@ -6,6 +6,7 @@ export interface GamifiedTask extends Task {
     progress?: number;
 }
 import { workspaceService } from '../../services/workspaceService';
+import { taskService } from '@1agents/core/services/taskService';
 import * as wsStore from '../../stores/workspaceStore';
 import * as stage from '../../stores/stageStore';
 import * as ui from '../../stores/uiStore';
@@ -859,11 +860,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             await Promise.all(
                 list.map(async ws => {
                     try {
-                        const res = await fetch(`/api/agent/tasks?workspace_id=${encodeURIComponent(ws.id)}`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            tasksMap[ws.id] = data || [];
-                        }
+                        tasksMap[ws.id] = await taskService.list(ws.id);
                     } catch (e) {
                         console.error(`Failed to load tasks for workspace ${ws.id}`, e);
                     }

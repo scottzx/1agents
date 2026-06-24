@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
 import { AGENT_OPTIONS, TYPE_ACCEPTANCE_TEMPLATES } from './constants';
+import { taskService } from '@1agents/core/services/taskService';
 import type { Task, TaskPriority, TaskType } from './types';
 
 // Set of all type templates, so switching type can recognise an untouched
@@ -80,34 +81,26 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
                           ...(recurFreq === 'monthly' ? { monthday: recurMonthday } : {}),
                           at: recurAt,
                       };
-            const res = await fetch('/api/agent/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    workspace_id: workspaceId,
-                    title: title.trim(),
-                    type,
-                    description: description.trim(),
-                    acceptanceCriteria: acceptance.trim(),
-                    priority,
-                    assignee,
-                    labels: labelsInput
-                        .split(/[,，]/)
-                        .map(s => s.trim())
-                        .filter(Boolean),
-                    parentId,
-                    recurrence,
-                    scheduleType,
-                    scheduledAt:
-                        scheduleType === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
-                    plannedStart: plannedStart ? new Date(plannedStart).toISOString() : null,
-                    plannedEnd: plannedEnd ? new Date(plannedEnd).toISOString() : null,
-                    dependsOn,
-                }),
+            await taskService.create({
+                workspace_id: workspaceId,
+                title: title.trim(),
+                type,
+                description: description.trim(),
+                acceptanceCriteria: acceptance.trim(),
+                priority,
+                assignee,
+                labels: labelsInput
+                    .split(/[,，]/)
+                    .map(s => s.trim())
+                    .filter(Boolean),
+                parentId,
+                recurrence,
+                scheduleType,
+                scheduledAt: scheduleType === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+                plannedStart: plannedStart ? new Date(plannedStart).toISOString() : null,
+                plannedEnd: plannedEnd ? new Date(plannedEnd).toISOString() : null,
+                dependsOn,
             });
-            if (!res.ok) {
-                throw new Error('Failed to create task');
-            }
             resetForm();
             onCreated();
         } catch (err) {

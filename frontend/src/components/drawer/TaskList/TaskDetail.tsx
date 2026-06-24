@@ -4,6 +4,7 @@ import { useSignal } from '@preact/signals';
 
 import { t } from '../../../i18n';
 import { agentService } from '../../../services/agentService';
+import { taskService } from '@1agents/core/services/taskService';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
 import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
@@ -309,14 +310,10 @@ export function TaskDetail({
 
     const fetchTask = useCallback(async () => {
         try {
-            const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`);
-            if (!res.ok) {
-                throw new Error(`Failed to load task: ${res.statusText}`);
-            }
             // Skip the state update (and the full re-render + markdown re-parse it
             // triggers) when the polled payload is byte-identical to the last one.
             // Go's JSON encoding is deterministic, so unchanged state → same bytes.
-            const text = await res.text();
+            const text = await taskService.getText(taskId);
             setError('');
             if (text === lastRawRef.current) return;
             lastRawRef.current = text;
@@ -340,15 +337,7 @@ export function TaskDetail({
         status?: Task['status'];
         userConfirm?: boolean;
     }) => {
-        const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(patch),
-        });
-        if (!res.ok) {
-            throw new Error(await res.text());
-        }
-        setTask(await res.json());
+        setTask(await taskService.patch(taskId, patch));
     };
 
     const saveDescription = async () => {
@@ -523,14 +512,7 @@ export function TaskDetail({
                 setReplyText('');
                 await openNewSession(text);
             } else {
-                const res = await fetch(`/api/agent/tasks/${encodeURIComponent(taskId)}/replies`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, mode: 'pure_comment' }),
-                });
-                if (!res.ok) {
-                    throw new Error(await res.text());
-                }
+                await taskService.addReply(taskId, text, 'pure_comment');
                 setReplyText('');
             }
             fetchTask();
