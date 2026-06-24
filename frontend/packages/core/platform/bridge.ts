@@ -21,6 +21,16 @@ export interface UploadResult {
     name: string;
 }
 
+/**
+ * Synchronous key-value storage. Web/Tauri back it with localStorage; the
+ * 小程序 host with Taro's synchronous storage. String values only.
+ */
+export interface PlatformStorage {
+    get(key: string): string | null;
+    set(key: string, value: string): void;
+    remove(key: string): void;
+}
+
 export interface PlatformBridge {
     /**
      * Upload an arbitrary file to the backend, which saves it under a
@@ -39,6 +49,15 @@ export interface PlatformBridge {
      * returned socket buffers `send` until open.
      */
     connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket;
+    /**
+     * HTTP request. Web/Tauri use the global `fetch` (so a same-origin relative
+     * URL and any installed fetch wrapper keep working); the 小程序 host wraps
+     * `Taro.request` and returns a minimal `Response`-shaped object exposing the
+     * `ok`/`status`/`json()`/`text()` surface the services use.
+     */
+    httpFetch(url: string, init?: RequestInit): Promise<Response>;
+    /** Synchronous key-value storage (web: localStorage; weapp: Taro storage). */
+    readonly storage: PlatformStorage;
 }
 
 let current: PlatformBridge = new WebPlatformBridge();

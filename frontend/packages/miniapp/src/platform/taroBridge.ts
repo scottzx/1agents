@@ -8,12 +8,50 @@ import type {
   ConnectSocketOptions,
   PlatformBridge,
   PlatformSocket,
+  PlatformStorage,
   SocketCloseInfo,
   SocketReadyState,
   UploadResult,
 } from '@1agents/core/platform/bridge';
 
+/** Taro synchronous storage. getStorageSync returns '' when missing → map to null. */
+const taroStorage: PlatformStorage = {
+  get(key) {
+    const v = Taro.getStorageSync(key);
+    return v === '' || v === undefined || v === null ? null : (v as string);
+  },
+  set(key, value) {
+    Taro.setStorageSync(key, value);
+  },
+  remove(key) {
+    Taro.removeStorageSync(key);
+  },
+};
+
 export class TaroPlatformBridge implements PlatformBridge {
+  readonly storage = taroStorage;
+
+  /**
+   * Wrap Taro.request as a minimal Response. Taro already parses a JSON body
+   * into `data`; we expose ok/status/json()/text() — the surface the core
+   * services use.
+   */
+  async httpFetch(url: string, init?: RequestInit): Promise<Response> {
+    const method = (init?.method || 'GET').toUpperCase() as keyof Taro.request.Method;
+    const header = (init?.headers as Record<string, string>) || undefined;
+    const data = (init?.body as string) ?? undefined;
+    const res = await Taro.request({ url, method, data, header });
+    const status = res.statusCode;
+    const ok = status >= 200 && status < 300;
+    const responseLike = {
+      ok,
+      status,
+      json: async () => (typeof res.data === 'string' ? JSON.parse(res.data) : res.data),
+      text: async () => (typeof res.data === 'string' ? res.data : JSON.stringify(res.data)),
+    };
+    return responseLike as unknown as Response;
+  }
+
   /**
    * weapp has no DOM `File`; uploads go through `Taro.uploadFile` with a local
    * temp path chosen via the media/file pickers. Wiring that up is part of the

@@ -8,7 +8,7 @@
 
 import type { PlatformBridge, UploadResult } from './bridge';
 import type { ConnectSocketOptions, PlatformSocket } from './socket';
-import { BrowserSocket } from './web';
+import { BrowserSocket, webStorage } from './web';
 
 interface TauriCore {
     invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -19,6 +19,8 @@ function tauriCore(): TauriCore | undefined {
 }
 
 export class TauriPlatformBridge implements PlatformBridge {
+    // The desktop shell runs in a webview, so localStorage/fetch are identical to web.
+    readonly storage = webStorage;
     /**
      * Upload through the same backend endpoint as the web host — the desktop
      * shell serves the same 1agents backend, so the multipart POST is identical.
@@ -44,5 +46,10 @@ export class TauriPlatformBridge implements PlatformBridge {
     /** The Tauri webview has a standard `WebSocket`, so reuse the browser impl. */
     connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket {
         return new BrowserSocket(url, opts);
+    }
+
+    /** Same-origin webview fetch — identical to the web host. */
+    httpFetch(url: string, init?: RequestInit): Promise<Response> {
+        return fetch(url, init);
     }
 }

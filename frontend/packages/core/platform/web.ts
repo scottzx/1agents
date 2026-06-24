@@ -1,9 +1,17 @@
 // Web (browser) platform bridge — the default host.
 
-import type { PlatformBridge, UploadResult } from './bridge';
+import type { PlatformBridge, PlatformStorage, UploadResult } from './bridge';
 import type { ConnectSocketOptions, PlatformSocket, SocketCloseInfo, SocketReadyState } from './socket';
 
+/** localStorage-backed PlatformStorage (web/Tauri). */
+const webStorage: PlatformStorage = {
+    get: key => localStorage.getItem(key),
+    set: (key, value) => localStorage.setItem(key, value),
+    remove: key => localStorage.removeItem(key),
+};
+
 export class WebPlatformBridge implements PlatformBridge {
+    readonly storage = webStorage;
     /**
      * Upload via the same multipart POST the workbench has always used.
      * Kept byte-for-byte identical to the original fsService.upload so the
@@ -24,7 +32,15 @@ export class WebPlatformBridge implements PlatformBridge {
     connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket {
         return new BrowserSocket(url, opts);
     }
+
+    /** Global fetch — preserves same-origin relative URLs and any fetch wrapper. */
+    httpFetch(url: string, init?: RequestInit): Promise<Response> {
+        return fetch(url, init);
+    }
 }
+
+// Re-export so the Tauri bridge can share the web storage impl.
+export { webStorage };
 
 /**
  * `PlatformSocket` over the browser `WebSocket`. Buffers `send` until the
