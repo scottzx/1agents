@@ -1,3 +1,4 @@
+mod recording;
 mod updater;
 
 use std::sync::{Arc, Mutex};
@@ -106,6 +107,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_in_external_browser,
             updater::check_desktop_update,
+            recording::transcribe_and_save,
+            recording::list_recordings,
+            recording::get_recording,
+            recording::update_recording_summary,
+            recording::delete_recording,
         ])
         .setup(move |app| {
             if cfg!(debug_assertions) {
