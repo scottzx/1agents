@@ -1,78 +1,82 @@
-import { View, Text } from '@tarojs/components';
+// 系统设置：外观(语言/主题) + 可编辑后端地址 + 账户说明
+import { View, Text, Input, Button } from '@tarojs/components';
+import Taro from '@tarojs/taro';
+import { useState } from 'react';
 
 import { Screen } from '../../components/Screen';
+import { Section } from '../../components/ui/Section';
+import { Segmented } from '../../components/ui/Segmented';
 import { useT, useUI } from '../../hooks/useUI';
 import type { Lang } from '../../i18n';
 import type { Theme } from '../../store/uiStore';
-import { BACKEND_BASE } from '../../config';
+import { BACKEND_BASE, BACKEND_OVERRIDE_KEY, defaultBackend } from '../../config';
 import './index.scss';
 
-// 系统设置 sub-page (reached from 更多). The appearance section is the live
-// control panel for the i18n + theme token system; backend address is shown
-// (editable/persisted is a later step toward real-device / WeChat release).
 export default function Settings() {
   const t = useT();
   const { lang, theme, setLang, setTheme } = useUI();
+  const [draft, setDraft] = useState(BACKEND_BASE);
 
-  const langOptions: Array<{ value: Lang; label: string }> = [
-    { value: 'zh-CN', label: '中文' },
-    { value: 'en-US', label: 'English' },
+  const langOptions = [
+    { value: 'zh-CN' as Lang, label: '中文' },
+    { value: 'en-US' as Lang, label: 'English' },
   ];
-  const themeOptions: Array<{ value: Theme; label: string }> = [
-    { value: 'light', label: t('settings.theme.light') },
-    { value: 'dark', label: t('settings.theme.dark') },
+  const themeOptions = [
+    { value: 'light' as Theme, label: t('settings.theme.light') },
+    { value: 'dark' as Theme, label: t('settings.theme.dark') },
   ];
+
+  const save = () => {
+    const v = draft.trim();
+    if (!/^https?:\/\//.test(v)) {
+      Taro.showToast({ title: t('settings.backend.invalid'), icon: 'none' });
+      return;
+    }
+    Taro.setStorageSync(BACKEND_OVERRIDE_KEY, v);
+    Taro.showToast({ title: t('settings.backend.saved'), icon: 'none' });
+  };
+
+  const reset = () => {
+    Taro.removeStorageSync(BACKEND_OVERRIDE_KEY);
+    setDraft(defaultBackend());
+    Taro.showToast({ title: t('settings.backend.saved'), icon: 'none' });
+  };
 
   return (
     <Screen titleKey="more.settings">
-      <View className="settings">
-        <View className="settings__group">
-          <Text className="settings__group-title">{t('settings.appearance')}</Text>
-
-          <View className="settings__row">
-            <Text className="settings__label">{t('settings.language')}</Text>
-            <View className="seg">
-              {langOptions.map(o => (
-                <View
-                  key={o.value}
-                  className={`seg__item${lang === o.value ? ' seg__item--active' : ''}`}
-                  onClick={() => setLang(o.value)}
-                >
-                  {o.label}
-                </View>
-              ))}
-            </View>
+      <View className="st">
+        <Section title={t('settings.appearance')}>
+          <View className="st-row">
+            <Text className="st-row__label">{t('settings.language')}</Text>
+            <Segmented options={langOptions} value={lang} onChange={setLang} />
           </View>
-
-          <View className="settings__row">
-            <Text className="settings__label">{t('settings.theme')}</Text>
-            <View className="seg">
-              {themeOptions.map(o => (
-                <View
-                  key={o.value}
-                  className={`seg__item${theme === o.value ? ' seg__item--active' : ''}`}
-                  onClick={() => setTheme(o.value)}
-                >
-                  {o.label}
-                </View>
-              ))}
-            </View>
+          <View className="st-row">
+            <Text className="st-row__label">{t('settings.theme')}</Text>
+            <Segmented options={themeOptions} value={theme} onChange={setTheme} />
           </View>
-        </View>
+        </Section>
 
-        <View className="settings__group">
-          <Text className="settings__group-title">{t('settings.connection')}</Text>
-          <View className="settings__row">
-            <Text className="settings__label">{t('settings.backend')}</Text>
-            <Text className="settings__value">{BACKEND_BASE}</Text>
+        <Section title={t('settings.connection')}>
+          <Input
+            className="st-input"
+            value={draft}
+            placeholder={t('settings.backend.placeholder')}
+            onInput={e => setDraft(e.detail.value)}
+          />
+          <View className="st-btns">
+            <Button className="st-btn st-btn--primary" onClick={save}>
+              {t('settings.backend.save')}
+            </Button>
+            <Button className="st-btn" onClick={reset}>
+              {t('settings.backend.reset')}
+            </Button>
           </View>
-          <Text className="settings__note">{t('settings.backend.note')}</Text>
-        </View>
+          <Text className="st-note">{t('settings.backend.note')}</Text>
+        </Section>
 
-        <View className="settings__group">
-          <Text className="settings__group-title">{t('settings.account')}</Text>
-          <Text className="settings__note">{t('settings.account.note')}</Text>
-        </View>
+        <Section title={t('settings.account')}>
+          <Text className="st-note">{t('settings.account.note')}</Text>
+        </Section>
       </View>
     </Screen>
   );

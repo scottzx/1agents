@@ -1,0 +1,11 @@
+.ui-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-sizing: border-box;
+
+  &--interactive:active {
+    opacity: 0.85;
+  }
+}

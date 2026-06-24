@@ -1,0 +1,33 @@
+.ui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120px 48px;
+  text-align: center;
+
+  &__icon {
+    font-size: 80px;
+    margin-bottom: 24px;
+  }
+
+  &__title {
+    font-size: 30px;
+    color: var(--text-main);
+    margin-bottom: 12px;
+  }
+
+  &__desc {
+    font-size: 26px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 32px;
+  }
+
+  &__action {
+    background: var(--accent-color);
+    color: var(--on-accent);
+    font-size: 28px;
+    border-radius: var(--radius);
+  }
+}

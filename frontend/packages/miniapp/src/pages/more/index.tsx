@@ -1,39 +1,38 @@
+// 更多 tab — entry to sub-pages (discovery + settings) via shared Section/Cell.
 import { View, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 
 import { Screen } from '../../components/Screen';
+import { Section } from '../../components/ui/Section';
+import { Cell } from '../../components/ui/Cell';
 import { useT } from '../../hooks/useUI';
 import './index.scss';
-
-// 更多 tab — entry to the sub-pages that don't warrant their own tab slot.
-// Mirrors the web mobile "more" menu (discovery + settings).
-const ENTRIES = [
-  { icon: '🧭', titleKey: 'more.discovery', descKey: 'more.discovery.desc', url: '/pages/discovery/index' },
-  { icon: '⚙️', titleKey: 'more.settings', descKey: 'more.settings.desc', url: '/pages/settings/index' },
-];
 
 export default function More() {
   const t = useT();
   return (
     <Screen titleKey="more.title">
-      <View className="more">
-        <View className="more__header">
-          <Text className="more__title">{t('more.title')}</Text>
-          <Text className="more__subtitle">{t('more.subtitle')}</Text>
-        </View>
-
-        <View className="more__list">
-          {ENTRIES.map(e => (
-            <View key={e.url} className="more__row" onClick={() => Taro.navigateTo({ url: e.url })}>
-              <Text className="more__row-icon">{e.icon}</Text>
-              <View className="more__row-text">
-                <Text className="more__row-title">{t(e.titleKey)}</Text>
-                <Text className="more__row-desc">{t(e.descKey)}</Text>
-              </View>
-              <Text className="more__row-chevron">›</Text>
-            </View>
-          ))}
-        </View>
+      <View className="more-head">
+        <Text className="more-head__title">{t('more.title')}</Text>
+        <Text className="more-head__sub">{t('more.subtitle')}</Text>
+      </View>
+      <View className="more-body">
+        <Section>
+          <Cell
+            icon="🧭"
+            title={t('more.discovery')}
+            desc={t('more.discovery.desc')}
+            arrow
+            onClick={() => Taro.navigateTo({ url: '/pages/discovery/index' })}
+          />
+          <Cell
+            icon="⚙️"
+            title={t('more.settings')}
+            desc={t('more.settings.desc')}
+            arrow
+            onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}
+          />
+        </Section>
       </View>
     </Screen>
   );

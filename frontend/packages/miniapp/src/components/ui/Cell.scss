@@ -1,0 +1,47 @@
+// Cell 列表行样式
+.ui-cell {
+  display: flex;
+  align-items: center;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border-subtle);
+
+  &--tappable:active {
+    opacity: 0.7;
+  }
+
+  &__icon {
+    font-size: 40px;
+    margin-right: 24px;
+  }
+
+  &__main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__title {
+    display: block;
+    font-size: 28px;
+    color: var(--text-main);
+  }
+
+  &__desc {
+    display: block;
+    margin-top: 6px;
+    font-size: 24px;
+    color: var(--text-secondary);
+  }
+
+  &__value {
+    font-size: 24px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    margin-left: 16px;
+  }
+
+  &__arrow {
+    font-size: 40px;
+    color: var(--text-muted);
+    margin-left: 12px;
+  }
+}

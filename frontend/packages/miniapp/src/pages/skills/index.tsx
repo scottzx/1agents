@@ -1,13 +1,19 @@
+// 技能中心 tab — tasteful skeleton, awaiting real data.
+import { View, Text } from '@tarojs/components';
 import { Screen } from '../../components/Screen';
-import { Placeholder } from '../../components/Placeholder';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { useT } from '../../hooks/useUI';
+import './index.scss';
 
-// 技能中心 tab — mirrors the web mobile "skills" view. Skeleton for now.
 export default function Skills() {
   const t = useT();
   return (
     <Screen titleKey="skills.title">
-      <Placeholder title={t('skills.title')} desc={t('skills.desc')} />
+      <View className="sk-head">
+        <Text className="sk-head__title">{t('skills.title')}</Text>
+        <Text className="sk-head__sub">{t('skills.desc')}</Text>
+      </View>
+      <EmptyState icon="🧩" title={t('skills.comingSoon')} />
     </Screen>
   );
 }

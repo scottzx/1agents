@@ -1,64 +1,57 @@
-.settings {
-  min-height: 100vh;
-  padding: 24px 0;
+// 系统设置页样式：外观行 / 后端地址输入 + 按钮 / 说明文本
+.st {
+  padding: 8px 32px 40px;
+}
 
-  &__group {
-    margin-bottom: 32px;
-    padding: 0 32px;
-  }
-
-  &__group-title {
-    display: block;
-    font-size: 24px;
-    color: var(--text-muted);
-    margin: 24px 0 16px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  &__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 24px 0;
-    border-bottom: 1px solid var(--border-subtle);
-  }
+.st-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
 
   &__label {
     font-size: 28px;
     color: var(--text-main);
   }
+}
 
-  &__value {
-    font-size: 24px;
-    color: var(--accent-color);
-    font-family: var(--font-mono);
-  }
+.st-input {
+  margin: 8px 0 16px;
+  height: 80px;
+  padding: 0 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  font-size: 26px;
+}
 
-  &__note {
-    display: block;
-    margin-top: 12px;
-    font-size: 22px;
-    color: var(--text-muted);
+.st-btns {
+  display: flex;
+  gap: 16px;
+}
+
+.st-btn {
+  flex: 1;
+  font-size: 28px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+
+  &--primary {
+    background: var(--accent-color);
+    color: var(--on-accent);
+    border: none;
   }
 }
 
-// Segmented control — language / theme pickers.
-.seg {
-  display: flex;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-
-  &__item {
-    padding: 12px 28px;
-    font-size: 26px;
-    color: var(--text-secondary);
-    background: var(--bg-card);
-
-    &--active {
-      background: var(--accent-color);
-      color: var(--on-accent);
-    }
-  }
+.st-note {
+  display: block;
+  margin-top: 12px;
+  font-size: 22px;
+  color: var(--text-muted);
 }

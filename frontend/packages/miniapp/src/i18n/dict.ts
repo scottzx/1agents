@@ -6,6 +6,12 @@
 export const zhCN: Record<string, string> = {
   // Common
   'common.skeleton': '页面骨架 · 内容建设中',
+  'common.loading': '加载中…',
+  'common.retry': '重试',
+  'common.comingSoon': '即将上线',
+  'common.failed': '加载失败',
+  'common.cancel': '取消',
+  'common.save': '保存',
 
   // Tab bar (also surfaced via Taro.setTabBarItem on language change)
   'tab.workspaces': '工作区',
@@ -18,14 +24,30 @@ export const zhCN: Record<string, string> = {
   'workspaces.subtitle': '会话与项目',
   'workspaces.hint': '会话列表骨架 · 内容建设中',
   'workspaces.newChat': '新建对话',
+  'workspaces.sessions': '会话',
+  'workspaces.loading': '正在加载会话…',
+  'workspaces.empty': '还没有会话,点下方新建',
+  'workspaces.error': '加载会话失败',
+  'workspaces.active': '活跃',
+  'workspaces.archived': '已归档',
+  'workspaces.noWorkspace': '后端没有可用的工作区',
 
   // Providers
   'providers.title': '供应商',
   'providers.desc': 'Claude Code 供应商配置与切换',
+  'providers.loading': '正在检测供应商…',
+  'providers.empty': '未检测到供应商',
+  'providers.error': '检测失败',
+  'providers.installed': '已安装',
+  'providers.notInstalled': '未安装',
+  'providers.integrated': '已接入',
+  'providers.chatReady': '可对话',
+  'providers.refresh': '刷新',
 
   // Skills
   'skills.title': '技能中心',
   'skills.desc': '为协作终端扩展并配置 AI Agent 技能',
+  'skills.comingSoon': '技能中心即将上线',
 
   // More
   'more.title': '更多应用',
@@ -38,6 +60,9 @@ export const zhCN: Record<string, string> = {
   // Discovery
   'discovery.title': '发现',
   'discovery.desc': '分布式协同与应用市场',
+  'discovery.featured': '精选',
+  'discovery.opensource': '开源',
+  'discovery.comingSoon': '内容即将上线',
 
   // Settings
   'settings.appearance': '外观',
@@ -47,7 +72,12 @@ export const zhCN: Record<string, string> = {
   'settings.theme.dark': '深色',
   'settings.connection': '连接',
   'settings.backend': '后端地址',
-  'settings.backend.note': '当前为固定地址,可编辑/持久化能力建设中',
+  'settings.backend.note': '修改后重启小程序生效',
+  'settings.backend.placeholder': '输入后端地址 (https://…)',
+  'settings.backend.save': '保存',
+  'settings.backend.reset': '恢复默认',
+  'settings.backend.saved': '已保存,重启小程序生效',
+  'settings.backend.invalid': '请输入 http(s):// 开头的地址',
   'settings.account': '账号',
   'settings.account.note': '登录与鉴权 · 内容建设中',
 
@@ -70,6 +100,12 @@ export const zhCN: Record<string, string> = {
 
 export const enUS: Record<string, string> = {
   'common.skeleton': 'Page skeleton · under construction',
+  'common.loading': 'Loading…',
+  'common.retry': 'Retry',
+  'common.comingSoon': 'Coming soon',
+  'common.failed': 'Failed to load',
+  'common.cancel': 'Cancel',
+  'common.save': 'Save',
 
   'tab.workspaces': 'Workspaces',
   'tab.providers': 'Providers',
@@ -80,12 +116,28 @@ export const enUS: Record<string, string> = {
   'workspaces.subtitle': 'Sessions & projects',
   'workspaces.hint': 'Session list skeleton · under construction',
   'workspaces.newChat': 'New chat',
+  'workspaces.sessions': 'Sessions',
+  'workspaces.loading': 'Loading sessions…',
+  'workspaces.empty': 'No sessions yet — create one below',
+  'workspaces.error': 'Failed to load sessions',
+  'workspaces.active': 'Active',
+  'workspaces.archived': 'Archived',
+  'workspaces.noWorkspace': 'No workspace available on the backend',
 
   'providers.title': 'Providers',
   'providers.desc': 'Configure and switch Claude Code providers',
+  'providers.loading': 'Detecting providers…',
+  'providers.empty': 'No providers detected',
+  'providers.error': 'Detection failed',
+  'providers.installed': 'Installed',
+  'providers.notInstalled': 'Not installed',
+  'providers.integrated': 'Integrated',
+  'providers.chatReady': 'Chat-ready',
+  'providers.refresh': 'Refresh',
 
   'skills.title': 'Skill center',
   'skills.desc': 'Extend and configure AI agent skills',
+  'skills.comingSoon': 'Skill center coming soon',
 
   'more.title': 'More',
   'more.subtitle': 'Distributed collaboration & system management',
@@ -96,6 +148,9 @@ export const enUS: Record<string, string> = {
 
   'discovery.title': 'Discovery',
   'discovery.desc': 'Distributed collaboration & app market',
+  'discovery.featured': 'Featured',
+  'discovery.opensource': 'Open source',
+  'discovery.comingSoon': 'Content coming soon',
 
   'settings.appearance': 'Appearance',
   'settings.language': 'Language',
@@ -104,7 +159,12 @@ export const enUS: Record<string, string> = {
   'settings.theme.dark': 'Dark',
   'settings.connection': 'Connection',
   'settings.backend': 'Backend',
-  'settings.backend.note': 'Currently fixed; editable/persisted support coming',
+  'settings.backend.note': 'Restart the mini-program to apply changes',
+  'settings.backend.placeholder': 'Enter backend address (https://…)',
+  'settings.backend.save': 'Save',
+  'settings.backend.reset': 'Reset to default',
+  'settings.backend.saved': 'Saved — restart to apply',
+  'settings.backend.invalid': 'Enter an http(s):// address',
   'settings.account': 'Account',
   'settings.account.note': 'Login & auth · under construction',
 

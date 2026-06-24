@@ -1,0 +1,24 @@
+.ui-tag {
+  display: inline-block;
+  font-size: 22px;
+  padding: 4px 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid currentColor;
+  line-height: 1.4;
+
+  &--accent {
+    color: var(--accent-color);
+  }
+  &--success {
+    color: var(--success-fg);
+  }
+  &--danger {
+    color: var(--danger-fg);
+  }
+  &--warning {
+    color: var(--warning-fg);
+  }
+  &--muted {
+    color: var(--text-muted);
+  }
+}

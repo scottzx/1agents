@@ -1,6 +1,6 @@
-// 更多 tab — header + padded Section container.
-.more-head {
-  padding: 40px 32px 8px;
+/* 技能中心页头部样式 */
+.sk-head {
+  padding: 40px 32px 0;
 
   &__title {
     display: block;
@@ -15,8 +15,4 @@
     font-size: 24px;
     color: var(--text-secondary);
   }
-}
-
-.more-body {
-  padding: 0 24px;
 }

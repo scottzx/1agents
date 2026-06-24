@@ -1,12 +1,10 @@
-.ws {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+/* Workspaces home — session list with fixed new-chat footer. */
+.ws-content {
+  padding: 0 24px 180px;
+}
 
-  &__header {
-    padding: 40px 32px 24px;
-    border-bottom: 1px solid var(--border-color);
-  }
+.ws-head {
+  padding: 40px 32px 16px;
 
   &__title {
     display: block;
@@ -15,31 +13,42 @@
     color: var(--text-main);
   }
 
-  &__subtitle {
+  &__sub {
     display: block;
     margin-top: 8px;
     font-size: 24px;
     color: var(--text-secondary);
   }
+}
 
-  &__body {
-    flex: 1;
+.ws-card {
+  margin-bottom: 16px;
+
+  &__name {
+    display: block;
+    font-size: 30px;
+    color: var(--text-main);
+    margin-bottom: 14px;
+  }
+
+  &__tags {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 0 48px;
+    gap: 12px;
+    flex-wrap: wrap;
   }
+}
 
-  &__hint {
-    font-size: 26px;
-    color: var(--text-muted);
-    margin-bottom: 40px;
-  }
+.ws-foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px 32px calc(20px + env(safe-area-inset-bottom));
+  background: var(--bg-page);
+  border-top: 1px solid var(--border-color);
 
-  &__cta {
+  &__btn {
     width: 100%;
-    max-width: 480px;
     background: var(--accent-color);
     color: var(--on-accent);
     font-size: 30px;
