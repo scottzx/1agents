@@ -74,14 +74,14 @@ Remote Agent is a Web-based remote workbench integrating terminal access (xterm.
 
 ### Key Dependency: Yarn 3.6.3 with node-modules Linker
 
-**The frontend (html/) uses Yarn 3 with PnP disabled** (`nodeLinker: node-modules` in `.yarnrc.yml`). This is important:
+**The frontend (frontend/) uses Yarn 3 with PnP disabled** (`nodeLinker: node-modules` in `.yarnrc.yml`). This is important:
 - Use `yarn install` (not npm/pnpm) to install dependencies
 - Yarn 3 is specified via `packageManager: yarn@3.6.3` in package.json
 - Enable Corepack: `corepack enable` if `yarn --version` doesn't show 3.6.3
 
-## Frontend Design Language (html/)
+## Frontend Design Language (frontend/)
 
-All styles live in `html/src/style/index.scss` (global SCSS, no CSS modules). The design system has two pillars — **always use these instead of ad-hoc values**:
+All styles live in `frontend/src/style/index.scss` (global SCSS, no CSS modules). The design system has two pillars — **always use these instead of ad-hoc values**:
 
 ### 1. Semantic Color Tokens
 
@@ -116,7 +116,7 @@ The project features a root `Makefile` that orchestrates compilation and local d
 ```bash
 make help               # Display build target details and active host info
 make all                # Build all components (frontend, ttyd, cc-connect, backend)
-make frontend           # Build frontend assets (html/) & generate src/html.h
+make frontend           # Build frontend assets (frontend/) & generate src/html.h
 make ttyd               # Compile terminal server natively on the current host
 make cc-connect         # Compile cc-connect bridge daemon (incl. web assets)
 make cc-connect-noweb   # Compile cc-connect (WITHOUT rebuilding web assets)
@@ -127,9 +127,9 @@ make clean              # Clean all intermediate and built assets across directo
 
 ### 2. Component Development Builds
 
-#### Frontend (html/)
+#### Frontend (frontend/)
 ```bash
-cd html
+cd frontend
 yarn install        # Install dependencies (Yarn 3.6.3)
 yarn start          # Dev server with hot reload
 yarn build          # Production build with webpack + gulp (generates html.h)
@@ -176,7 +176,7 @@ To ensure that binaries compiled on different environments (such as Mac vs Linux
 │   ├── 1agents# Go agent server binary (compiled)
 │   ├── ttyd         # Native C terminal server binary (compiled)
 │   └── cc-connect   # Go bridge daemon binary (compiled)
-├── html/            # TypeScript/React frontend (xterm.js, preact)
+├── frontend/        # TypeScript/React frontend (xterm.js, preact)
 │   ├── src/         # Components: app.tsx, drawer/, sidebar/, terminal/
 │   ├── dist/        # Built assets (not committed)
 │   └── gulpfile.js  # Generates modules/ttyd/src/html.h via gzip compression

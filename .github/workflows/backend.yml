@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: modules/ttyd/src/html.h
-          key: html-header-${{ runner.os }}-${{ hashFiles('html/package.json', 'html/yarn.lock', 'html/gulpfile.js', 'html/webpack.config.js', 'html/tsconfig.json', 'html/src/**') }}
+          key: html-header-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**') }}
 
       - name: Set up Node.js
         if: steps.cache-html-h.outputs.cache-hit != 'true'
@@ -38,7 +38,7 @@ jobs:
       - name: Build Web Assets
         if: steps.cache-html-h.outputs.cache-hit != 'true'
         run: |
-          cd html
+          cd frontend
           corepack enable
           yarn install
           yarn build

@@ -87,7 +87,7 @@ func main() {
 	flag.StringVar(&cfg.WorkDir, "workdir", cfg.WorkDir,
 		"Root directory exposed by the file-system API")
 	flag.StringVar(&cfg.StaticDir, "static", cfg.StaticDir,
-		"Directory containing compiled frontend assets (html/dist)")
+		"Directory containing compiled frontend assets (frontend/dist)")
 	flag.DurationVar(&cfg.RestartDelay, "restart-delay", cfg.RestartDelay,
 		"How long to wait before restarting ttyd after an unexpected exit")
 	flag.StringVar(&cfg.TmuxSession, "tmux-session", cfg.TmuxSession,

@@ -4,11 +4,11 @@ on:
   push:
     paths:
     - ".github/workflows/frontend.yml"
-    - "html/**"
+    - "frontend/**"
   pull_request:
     paths:
     - ".github/workflows/frontend.yml"
-    - "html/**"
+    - "frontend/**"
 
 jobs:
   build:
@@ -26,9 +26,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            html/.yarn/cache
-            html/.yarn/install-state.gz
-          key: ${{ runner.os }}-yarn-${{ hashFiles('html/yarn.lock') }}
+            frontend/.yarn/cache
+            frontend/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ hashFiles('frontend/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
       - name: Run yarn install, check and build
@@ -38,4 +38,4 @@ jobs:
           yarn install
           yarn run check
           yarn run build
-        working-directory: html
+        working-directory: frontend

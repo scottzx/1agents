@@ -23,7 +23,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "html/**"
+      - "frontend/**"
       - ".github/workflows/frontend-beta.yml"
   workflow_dispatch:
 
@@ -107,15 +107,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            html/.yarn/cache
-            html/.yarn/install-state.gz
-          key: ${{ runner.os }}-yarn-${{ hashFiles('html/yarn.lock') }}
+            frontend/.yarn/cache
+            frontend/.yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ hashFiles('frontend/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
 
       - name: Build frontend (beta version baked in)
         if: steps.gate.outputs.go == 'true'
-        working-directory: html
+        working-directory: frontend
         env:
           # Baked into __APP_VERSION__ via webpack DefinePlugin so the running
           # dev frontend knows its own version and the OTA checker compares right.
@@ -135,7 +135,7 @@ jobs:
           mkdir -p _stage
           # Files at top level so the server updater can swap dist/ directly.
           # Name matches build-manifest.py's find_frontend (frontend-v{version}).
-          tar -czf "_stage/frontend-v${VERSION}.tar.gz" -C html/dist .
+          tar -czf "_stage/frontend-v${VERSION}.tar.gz" -C frontend/dist .
           echo "=== staged ===" && ls -lh _stage
 
           # build-manifest.py emits the standard OTA schema (channel + frontend +

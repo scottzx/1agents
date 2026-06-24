@@ -95,7 +95,7 @@ jobs:
           done
           echo "=== staged ===" && ls -lh _stage
 
-          # Frontend OTA payload: extract html/dist from a backend tarball and
+          # Frontend OTA payload: extract frontend/dist from a backend tarball and
           # repackage as frontend-v${TAG}.tar.gz (files at top level). This fills
           # manifest.components.frontend.{entry,integrity} (build-manifest.py's
           # find_frontend looks for exactly this name), enabling the self-hosted
