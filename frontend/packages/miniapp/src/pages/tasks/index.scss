@@ -1,0 +1,74 @@
+.tasks-content {
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.tasks-head {
+  margin-bottom: 24px;
+
+  &__title {
+    display: block;
+    font-size: 40px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  &__sub {
+    display: block;
+    margin-top: 6px;
+    font-size: 26px;
+    color: var(--text-secondary);
+  }
+}
+
+.task-card {
+  // Card already supplies surface/padding/radius; add a status-toned left edge.
+  border-left: 6px solid var(--text-muted);
+  margin-bottom: 18px;
+
+  &--done {
+    opacity: 0.55;
+  }
+
+  &.tone--accent {
+    border-left-color: var(--accent-color);
+  }
+  &.tone--success {
+    border-left-color: var(--success-fg);
+  }
+  &.tone--danger {
+    border-left-color: var(--danger-fg);
+  }
+  &.tone--warning {
+    border-left-color: var(--warning-fg);
+  }
+  &.tone--muted {
+    border-left-color: var(--text-muted);
+  }
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  &__num {
+    flex-shrink: 0;
+    font-size: 24px;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+  }
+
+  &__title {
+    font-size: 30px;
+    line-height: 1.4;
+    color: var(--text-main);
+  }
+
+  &__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+  }
+}

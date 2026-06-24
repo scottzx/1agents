@@ -19,6 +19,13 @@ export default function More() {
       <View className="more-body">
         <Section>
           <Cell
+            icon="🗂️"
+            title={t('more.tasks')}
+            desc={t('more.tasks.desc')}
+            arrow
+            onClick={() => Taro.navigateTo({ url: '/pages/tasks/index' })}
+          />
+          <Cell
             icon="🧭"
             title={t('more.discovery')}
             desc={t('more.discovery.desc')}
