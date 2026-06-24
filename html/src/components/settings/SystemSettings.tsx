@@ -6,6 +6,7 @@ import type { SettingsCategory } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
 import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
+import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
 import { APP_VERSION, isNewer } from '../../version';
 import { fetchManifest } from '../../ota/checker';
 import type { RootManifest } from '../../ota/checker';
@@ -357,7 +358,14 @@ export function SystemSettings(props: SystemSettingsProps) {
     const renderRelay = () => (
         <div class="sys-settings-section">
             <div class="sys-settings-section-title">{t('settings.nav.relay', language)}</div>
-            <div class="sys-settings-section-desc">{t('settings.relay.desc', language)}</div>
+            <div class="sys-settings-section-desc">
+                {isLocalMachineMode()
+                    ? '本机模式：开启 Relay Daemon 并将凭据分发给客户端'
+                    : t('settings.relay.desc', language)}
+            </div>
+
+            {/* 本机模式：启停 daemon + 展示 machine key */}
+            {isLocalMachineMode() && <LocalMachinePanel />}
 
             {/* 本机密钥 — moved here from the former 安全设置 category */}
             <div class="sys-settings-card">
@@ -465,7 +473,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 </div>
             </div>
 
-            <RelayPairingPanel embedded />
+            {/* 客户端模式：扫码配对远程机器 */}
+            {!isLocalMachineMode() && <RelayPairingPanel embedded />}
         </div>
     );
 

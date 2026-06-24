@@ -456,6 +456,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/update", sysHandler.Update)              // POST — trigger OTA update (non-blocking, returns 202)
 	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus) // GET  — real-time update progress log
 	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)             // GET  — frontend OTA manifest (proxied from GitHub Releases)
+	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)             // GET  — happy daemon status + machine credentials
+	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart)  // POST — start happy daemon
+	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)    // POST — stop happy daemon
 
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
