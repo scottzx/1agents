@@ -6,6 +6,7 @@ import type { SettingsCategory } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
 import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
+import { RelayDevicePanel } from './RelayDevicePanel';
 import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
 import { APP_VERSION, isNewer } from '../../version';
 import { fetchManifest } from '../../ota/checker';
@@ -473,7 +474,10 @@ export function SystemSettings(props: SystemSettingsProps) {
                 </div>
             </div>
 
-            {/* 客户端模式：扫码配对远程机器 */}
+            {/* 客户端模式：扫码绑定 / 切换多台远程机器(主路径) */}
+            {!isLocalMachineMode() && <RelayDevicePanel embedded onConnected={() => window.location.reload()} />}
+
+            {/* 客户端模式：账户配对(进阶,旧路径) */}
             {!isLocalMachineMode() && <RelayPairingPanel embedded />}
         </div>
     );
