@@ -2,14 +2,15 @@
   "miniprogramRoot": "dist/",
   "projectname": "1agents-miniapp",
   "description": "1Agents mini-program",
-  "appid": "touristappid",
+  "appid": "wx2106fb17c3803118",
   "setting": {
     "urlCheck": true,
     "es6": false,
     "enhance": false,
     "compileHotReLoad": false,
     "postcss": false,
-    "minified": false
+    "minified": false,
+    "minifyWXML": true
   },
   "compileType": "miniprogram"
 }

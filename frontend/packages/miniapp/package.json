@@ -31,7 +31,8 @@
     "@tarojs/shared": "3.6.40",
     "@tarojs/taro": "3.6.40",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "tslib": "^2.6.2"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
