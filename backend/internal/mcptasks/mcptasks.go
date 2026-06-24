@@ -18,6 +18,10 @@
 //	                          (executor scope, #50). When set, the tool surface
 //	                          narrows to reading/updating just that task; the
 //	                          PM-only create/milestone tools are withheld.
+//	ONEAGENTS_TASK_ROLE       optional: "executor" (default when task-locked) or
+//	                          "verifier". The verifier scope is hard read-only —
+//	                          update_task is withheld and submit_review is added,
+//	                          so a reviewer can only judge, never edit (#50).
 //	ONEAGENTS_INTERNAL_TOKEN  loopback bearer accepted by authMiddleware
 package mcptasks
 
@@ -53,6 +57,7 @@ func Run() error {
 		},
 		workspaceID: workspaceID,
 		taskID:      os.Getenv("ONEAGENTS_TASK_ID"),
+		taskRole:    os.Getenv("ONEAGENTS_TASK_ROLE"),
 		out:         bufio.NewWriter(os.Stdout),
 	}
 	return s.loop(os.Stdin)
@@ -79,7 +84,12 @@ type server struct {
 	// scope, #50): get/update/list are confined to it and PM-only tools are
 	// withheld. Empty means project-wide PM scope.
 	taskID string
-	out    *bufio.Writer
+	// taskRole selects the task-locked tool surface: "verifier" is hard
+	// read-only (no update_task, plus submit_review); anything else ("executor"
+	// or unset) keeps the read+update_task executor surface. Ignored when
+	// taskID is empty (PM scope).
+	taskRole string
+	out      *bufio.Writer
 }
 
 func (s *server) loop(in io.Reader) error {

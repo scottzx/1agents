@@ -102,6 +102,13 @@ func (s *Scheduler) Tick() {
 	}
 }
 
+// readyTask is a runnable task plus whether this run is a verification pass
+// (pending_review → verifier) rather than a fresh execution.
+type readyTask struct {
+	task     *Task
+	isReview bool
+}
+
 // triggerTime returns when a task becomes eligible to run: explicit
 // schedule first, then plannedStart, else immediately (nil).
 func triggerTime(t *Task) *time.Time {
@@ -159,10 +166,12 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 
 		// 2. Failed tasks with retry budget left go back to pending. The
 		//    failure reason is already on the timeline, so the next run's
-		//    injected background carries it.
+		//    injected background carries it. A task that failed because its
+		//    verification budget is exhausted is terminal (报异常) — the
+		//    execution-retry must not silently re-run it.
 		for i := range cfg.Tasks {
 			t := &cfg.Tasks[i]
-			if t.Status == TaskStatusFailed && t.RetryCount < t.MaxRetries {
+			if t.Status == TaskStatusFailed && t.RetryCount < t.MaxRetries && !reviewExhausted(t) {
 				t.RetryCount++
 				t.Status = TaskStatusPending
 				t.UpdatedAt = now
@@ -278,11 +287,15 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 		}
 
 		// 4. Collect ready tasks: trigger time arrived, dependencies met,
-		//    subtasks (implicit dependencies) all completed, issue open.
-		var ready []*Task
+		//    subtasks (implicit dependencies) all completed, issue open. A task
+		//    in pending_review (executor finished, awaiting verification) is also
+		//    runnable, but routes to the verifier instead of the executor; it has
+		//    already passed trigger/dependency gating, so it skips that re-check.
+		var ready []readyTask
 		for i := range cfg.Tasks {
 			t := &cfg.Tasks[i]
-			if t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
+			isReview := t.Status == TaskStatusPendingReview
+			if !isReview && t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
 				continue
 			}
 			if t.Type == TaskTypeDiscussion {
@@ -291,55 +304,68 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.IssueState == IssueClosed {
 				continue
 			}
-			if trig := triggerTime(t); trig != nil && trig.After(now) {
-				continue
-			}
-			depsMet := true
-			for _, depId := range t.DependsOn {
-				dep, exists := taskMap[depId]
-				if !exists || dep.Status != TaskStatusCompleted {
-					depsMet = false
-					break
+			if !isReview {
+				if trig := triggerTime(t); trig != nil && trig.After(now) {
+					continue
+				}
+				depsMet := true
+				for _, depId := range t.DependsOn {
+					dep, exists := taskMap[depId]
+					if !exists || dep.Status != TaskStatusCompleted {
+						depsMet = false
+						break
+					}
+				}
+				if !depsMet {
+					continue
+				}
+				// 父任务天生将子任务作为依赖项: a parent with unfinished
+				// subtasks is not runnable.
+				if !allChildrenCompleted(t) {
+					continue
+				}
+				if t.Status == TaskStatusPending {
+					t.Status = TaskStatusQueued
+					t.UpdatedAt = now
+					modified = true
 				}
 			}
-			if !depsMet {
-				continue
-			}
-			// 父任务天生将子任务作为依赖项: a parent with unfinished
-			// subtasks is not runnable.
-			if !allChildrenCompleted(t) {
-				continue
-			}
-			if t.Status == TaskStatusPending {
-				t.Status = TaskStatusQueued
-				t.UpdatedAt = now
-				modified = true
-			}
-			ready = append(ready, t)
+			ready = append(ready, readyTask{task: t, isReview: isReview})
 		}
 
 		// 5. Highest priority first; FIFO by creation within a rank.
 		sort.SliceStable(ready, func(i, j int) bool {
-			ri, rj := PriorityRank(ready[i].Priority), PriorityRank(ready[j].Priority)
+			ri, rj := PriorityRank(ready[i].task.Priority), PriorityRank(ready[j].task.Priority)
 			if ri != rj {
 				return ri < rj
 			}
-			return ready[i].CreatedAt.Before(ready[j].CreatedAt)
+			return ready[i].task.CreatedAt.Before(ready[j].task.CreatedAt)
 		})
 
-		if len(ready) > 0 && s.Lock.TryAcquire(ref.Path, ready[0].ID) {
-			task := ready[0]
+		if len(ready) > 0 && s.Lock.TryAcquire(ref.Path, ready[0].task.ID) {
+			rt := ready[0]
+			task := rt.task
 			task.Status = TaskStatusRunning
-			task.StartedAt = &now
+			if !rt.isReview {
+				task.StartedAt = &now // preserve the original start across review cycles
+			}
 			task.UpdatedAt = now
 			modified = true
-			log.Printf("[scheduler] Lock acquired. Task %s (%s, priority %s) starting in %s",
-				task.ID, task.Title, task.Priority, ref.Path)
+			verb := "starting"
+			if rt.isReview {
+				verb = "verifying"
+			}
+			log.Printf("[scheduler] Lock acquired. Task %s (%s, priority %s) %s in %s",
+				task.ID, task.Title, task.Priority, verb, ref.Path)
 
 			if s.runner != nil {
 				// Copy the task before Save below mutates the slice.
 				run := *task
-				go s.runner.Execute(ref.Path, ref.ID, run)
+				if rt.isReview {
+					go s.runner.Verify(ref.Path, ref.ID, run)
+				} else {
+					go s.runner.Execute(ref.Path, ref.ID, run)
+				}
 			} else {
 				// No executor attached (unit tests): release so the lock
 				// doesn't leak.

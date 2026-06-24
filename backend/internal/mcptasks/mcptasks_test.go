@@ -156,7 +156,7 @@ func TestTaskScopedToolsListIsNarrowed(t *testing.T) {
 	}
 	for _, tl := range tools {
 		name, _ := tl.(map[string]any)["name"].(string)
-		if !taskScopedTools[name] {
+		if !executorScopedTools[name] {
 			t.Errorf("unexpected tool advertised in task scope: %q", name)
 		}
 	}
@@ -260,5 +260,83 @@ func TestListMilestones(t *testing.T) {
 	}
 	if payload.Count != 1 || payload.Milestones[0].Name != "M1" || payload.Milestones[0].Completed != 1 {
 		t.Fatalf("milestone passthrough wrong: %s", text)
+	}
+}
+
+// ── verifier scope (hard read-only + submit_review), #50 ────────────────────
+
+// newVerifierScopedServer locks the session to taskID as a verifier.
+func newVerifierScopedServer(t *testing.T, taskID string, h http.HandlerFunc) (*server, *bytes.Buffer, *httptest.Server) {
+	t.Helper()
+	s, buf, api := newTaskScopedServer(t, taskID, h)
+	s.taskRole = "verifier"
+	return s, buf, api
+}
+
+func TestVerifierScopeToolsList(t *testing.T) {
+	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	res, _ := env["result"].(map[string]any)
+	tools, _ := res["tools"].([]any)
+	got := map[string]bool{}
+	for _, tl := range tools {
+		name, _ := tl.(map[string]any)["name"].(string)
+		got[name] = true
+	}
+	if len(got) != 3 || !got["list_tasks"] || !got["get_task"] || !got["submit_review"] {
+		t.Fatalf("verifier scope tools = %v, want {list_tasks, get_task, submit_review}", got)
+	}
+	if got["update_task"] {
+		t.Error("update_task must NOT be advertised to a verifier (hard read-only)")
+	}
+}
+
+func TestVerifierScopeBlocksUpdateTask(t *testing.T) {
+	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("update_task must not hit the API in verifier scope (path %s)", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("expected verifier update_task rejection, got: %s", text)
+	}
+}
+
+func TestVerifierSubmitReviewPostsVerdict(t *testing.T) {
+	var posted bool
+	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks/t1/review" {
+			posted = true
+			w.Write([]byte(`{"id":"t1","status":"completed"}`))
+			return
+		}
+		http.Error(w, "unexpected", 400)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"submit_review","arguments":{"criteria":[{"criterion":"c","pass":true}],"summary":"ok"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("submit_review should succeed, got error: %s", text)
+	}
+	if !posted {
+		t.Fatal("expected POST /api/agent/tasks/t1/review")
+	}
+}
+
+func TestVerifierSubmitReviewRequiresCriteria(t *testing.T) {
+	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("must not hit API with empty criteria (path %s)", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"submit_review","arguments":{"criteria":[]}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("empty criteria should be rejected, got: %s", text)
+	}
+}
+
+func TestExecutorScopeBlocksSubmitReview(t *testing.T) {
+	// Default task-scope is executor: submit_review is not in its surface.
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("submit_review must not hit the API in executor scope (path %s)", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"submit_review","arguments":{"criteria":[{"criterion":"c","pass":true}]}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("executor submit_review should be rejected, got: %s", text)
 	}
 }

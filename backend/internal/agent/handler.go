@@ -343,6 +343,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Type               string       `json:"type"`
 			Recurrence         *Recurrence  `json:"recurrence"`
 			MaxRetries         *int         `json:"maxRetries"`
+			Verifier           string       `json:"verifier"`
+			ReviewMaxAttempts  *int         `json:"reviewMaxAttempts"`
 			ScheduleType       ScheduleType `json:"scheduleType"`
 			ScheduledAt        *time.Time   `json:"scheduledAt"`
 			PlannedStart       *time.Time   `json:"plannedStart"`
@@ -365,6 +367,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
 			return
 		}
+		if body.Verifier != "" && !IsSupportedAgentType(body.Verifier) {
+			http.Error(w, "unknown verifier agent type: "+body.Verifier, http.StatusBadRequest)
+			return
+		}
 		wsPath, err := h.resolveWorkspacePath(body.WorkspaceID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -375,6 +381,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
 			maxRetries = *body.MaxRetries
 		}
+		reviewMaxAttempts := 0
+		if body.ReviewMaxAttempts != nil && *body.ReviewMaxAttempts >= 0 {
+			reviewMaxAttempts = *body.ReviewMaxAttempts
+		}
 		newTask := Task{
 			ID:                 newID(),
 			Title:              body.Title,
@@ -384,6 +394,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Status:             TaskStatusPending,
 			Priority:           Priority(body.Priority),
 			Assignee:           body.Assignee,
+			Verifier:           body.Verifier,
+			ReviewMaxAttempts:  reviewMaxAttempts,
 			Labels:             body.Labels,
 			ParentID:           body.ParentID,
 			Milestone:          body.Milestone,
@@ -513,6 +525,14 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 		h.handleTaskReplyCreate(w, r, id)
 		return
 	}
+	if sub == "review" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.handleTaskReview(w, r, id)
+		return
+	}
 	if sub != "" {
 		http.Error(w, "unsupported sub-path", http.StatusNotFound)
 		return
@@ -593,6 +613,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		Type               *string      `json:"type,omitempty"`
 		Recurrence         **Recurrence `json:"recurrence,omitempty"`
 		MaxRetries         *int         `json:"maxRetries,omitempty"`
+		Verifier           *string      `json:"verifier,omitempty"`
+		ReviewMaxAttempts  *int         `json:"reviewMaxAttempts,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
 		PlannedEnd         *time.Time   `json:"plannedEnd,omitempty"`
 		Links              *[]TaskLink  `json:"links,omitempty"`
@@ -634,6 +656,10 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if body.Assignee != nil && *body.Assignee != "" && !IsSupportedAgentType(*body.Assignee) {
 		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
+		return
+	}
+	if body.Verifier != nil && *body.Verifier != "" && !IsSupportedAgentType(*body.Verifier) {
+		http.Error(w, "unknown verifier agent type: "+*body.Verifier, http.StatusBadRequest)
 		return
 	}
 
@@ -712,6 +738,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
 			target.MaxRetries = *body.MaxRetries
 		}
+		if body.Verifier != nil {
+			target.Verifier = *body.Verifier
+		}
+		if body.ReviewMaxAttempts != nil && *body.ReviewMaxAttempts >= 0 {
+			target.ReviewMaxAttempts = *body.ReviewMaxAttempts
+		}
 		if body.PlannedStart != nil {
 			target.PlannedStart = body.PlannedStart
 		}
@@ -739,6 +771,45 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	}
 	if !ok {
 		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, task)
+}
+
+// handleTaskReview records a verifier's verdict (from the submit_review MCP
+// tool) and drives the task's verification state machine. Internal-token only
+// in practice — the verifier MCP subprocess is the sole caller. The task id is
+// the locked task; the verifier agent type is read from the task itself, not
+// trusted from the request. See applyReviewVerdict (#50).
+func (h *Handler) handleTaskReview(w http.ResponseWriter, r *http.Request, id string) {
+	var body struct {
+		Criteria []CriterionResult `json:"criteria"`
+		Summary  string            `json:"summary"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if len(body.Criteria) == 0 {
+		http.Error(w, "criteria is required", http.StatusBadRequest)
+		return
+	}
+	existing, ok, err := h.tasksStore.GetTask(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	verifier := existing.Verifier
+	if verifier == "" {
+		verifier = SessionRoleVerifier
+	}
+	task, err := applyReviewVerdict(h.tasksStore, existing.WorkspacePath, id, body.Criteria, body.Summary, verifier)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	writeJSON(w, task)

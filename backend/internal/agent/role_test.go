@@ -58,7 +58,7 @@ func TestMcpServersFromRoleMatchesHardcoded(t *testing.T) {
 	h := &Handler{selfBaseURL: "http://127.0.0.1:9999"}
 	const workspaceID = "ws-abc-123"
 
-	gotRaw := h.buildMcpServersFromRole(tpl, workspaceID, "")
+	gotRaw := h.buildMcpServersFromRole(tpl, workspaceID, "", "")
 	wantRaw := h.buildPMMcpServers(workspaceID)
 	if gotRaw == nil || wantRaw == nil {
 		t.Fatalf("nil mcp config: got=%v want=%v", gotRaw, wantRaw)
@@ -92,7 +92,7 @@ func envValue(srv map[string]any, name string) (string, bool) {
 func TestTasksMcpServerTaskLock(t *testing.T) {
 	h := &Handler{selfBaseURL: "http://127.0.0.1:9999"}
 
-	locked := h.buildTasksMcpServer("ws1", "t42")
+	locked := h.buildTasksMcpServer("ws1", "t42", "executor")
 	if v, ok := envValue(locked, "ONEAGENTS_TASK_ID"); !ok || v != "t42" {
 		t.Errorf("locked: ONEAGENTS_TASK_ID = %q (ok=%v), want t42", v, ok)
 	}
@@ -100,7 +100,7 @@ func TestTasksMcpServerTaskLock(t *testing.T) {
 		t.Errorf("locked: ONEAGENTS_WORKSPACE_ID = %q, want ws1", v)
 	}
 
-	unlocked := h.buildTasksMcpServer("ws1", "")
+	unlocked := h.buildTasksMcpServer("ws1", "", "")
 	if _, ok := envValue(unlocked, "ONEAGENTS_TASK_ID"); ok {
 		t.Error("unlocked: ONEAGENTS_TASK_ID should be absent for project-wide PM")
 	}
