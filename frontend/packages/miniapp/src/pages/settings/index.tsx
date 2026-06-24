@@ -10,13 +10,14 @@ import { useT, useUI } from '../../hooks/useUI';
 import type { Lang } from '../../i18n';
 import type { Theme } from '../../store/uiStore';
 import { normalizeOrigin, isHttpOrigin } from '@1agents/core/services/apiClient';
-import { BACKEND_BASE, BACKEND_OVERRIDE_KEY, defaultBackend } from '../../config';
+import { BACKEND_BASE, BACKEND_OVERRIDE_KEY, defaultBackend, ACCESS_TOKEN_KEY, getAccessToken } from '../../config';
 import './index.scss';
 
 export default function Settings() {
   const t = useT();
   const { lang, theme, setLang, setTheme } = useUI();
   const [draft, setDraft] = useState(BACKEND_BASE);
+  const [tokenDraft, setTokenDraft] = useState(getAccessToken());
 
   const langOptions = [
     { value: 'zh-CN' as Lang, label: '中文' },
@@ -39,6 +40,13 @@ export default function Settings() {
   const reset = () => {
     Taro.removeStorageSync(BACKEND_OVERRIDE_KEY);
     setDraft(defaultBackend());
+    Taro.showToast({ title: t('settings.backend.saved'), icon: 'none' });
+  };
+
+  const saveToken = () => {
+    const v = tokenDraft.trim();
+    if (v) Taro.setStorageSync(ACCESS_TOKEN_KEY, v);
+    else Taro.removeStorageSync(ACCESS_TOKEN_KEY);
     Taro.showToast({ title: t('settings.backend.saved'), icon: 'none' });
   };
 
@@ -75,7 +83,19 @@ export default function Settings() {
         </Section>
 
         <Section title={t('settings.account')}>
-          <Text className="st-note">{t('settings.account.note')}</Text>
+          <Input
+            className="st-input"
+            value={tokenDraft}
+            password
+            placeholder={t('settings.token.placeholder')}
+            onInput={e => setTokenDraft(e.detail.value)}
+          />
+          <View className="st-btns">
+            <Button className="st-btn st-btn--primary" onClick={saveToken}>
+              {t('settings.backend.save')}
+            </Button>
+          </View>
+          <Text className="st-note">{t('settings.token.note')}</Text>
         </Section>
       </View>
     </Screen>

@@ -36,3 +36,22 @@ export const BACKEND_BASE = getBackendBase();
 
 /** ws:// or wss:// origin derived from BACKEND_BASE (http→ws, https→wss). */
 export const BACKEND_WS_ORIGIN = BACKEND_BASE.replace(/^http/, 'ws');
+
+/**
+ * Access token (the "wire-Token account" the 1agents backend's authMiddleware
+ * requires for any non-localhost access). The web H5 is same-origin and leans on
+ * the ra_access_token cookie the gate sets; weapp can't rely on that, so we store
+ * the same token here and attach it explicitly (Authorization header on requests,
+ * ?access_token= on the WebSocket and web-view URLs). Set on the settings page.
+ */
+export const ACCESS_TOKEN_KEY = '1agents-access-token';
+
+/** Current access token, '' if none. Read live so a settings change applies on the next request. */
+export function getAccessToken(): string {
+  try {
+    const v = Taro.getStorageSync(ACCESS_TOKEN_KEY);
+    return typeof v === 'string' ? v : '';
+  } catch {
+    return '';
+  }
+}

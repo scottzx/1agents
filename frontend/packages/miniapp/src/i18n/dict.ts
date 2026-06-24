@@ -80,6 +80,8 @@ export const zhCN: Record<string, string> = {
   'settings.backend.invalid': '请输入 http(s):// 开头的地址',
   'settings.account': '账号',
   'settings.account.note': '登录与鉴权 · 内容建设中',
+  'settings.token.placeholder': 'Access Token(连远端后端必填)',
+  'settings.token.note': '即 1agents 的访问令牌。访问互联网/局域网后端需要它;本机调试可留空。',
 
   // Chat
   'chat.title': '对话',
@@ -193,6 +195,8 @@ export const enUS: Record<string, string> = {
   'settings.backend.invalid': 'Enter an http(s):// address',
   'settings.account': 'Account',
   'settings.account.note': 'Login & auth · under construction',
+  'settings.token.placeholder': 'Access token (required for a remote backend)',
+  'settings.token.note': "1agents access token. Required to reach an internet/LAN backend; leave empty for localhost.",
 
   'chat.title': 'Chat',
   'chat.booting': 'Creating session…',
