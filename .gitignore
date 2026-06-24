@@ -81,3 +81,6 @@ tmp_home/
 .isolated_env/
 
 cache/
+
+# Yarn install state cache (never commit)
+.yarn/install-state.gz
