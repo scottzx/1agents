@@ -3362,6 +3362,21 @@ body {
   }
 }
 
+/* Acceptance criteria (parsed from frontmatter) — read-only list on the detail
+   page; edited via the description doc's `acceptance:` key. */
+.acceptance-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.6;
+}
+
+.gh-acceptance-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ── Sessions popup — wide overlay for the 总览 会话 card (the 会话 tab was
    folded into the overview). The narrow form Modal can't host the DataGrid. ── */
 .sessions-modal-overlay {

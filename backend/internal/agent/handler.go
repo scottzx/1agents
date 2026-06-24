@@ -1209,11 +1209,19 @@ func buildIssueBackground(t *Task, wsPath string) string {
 	fmt.Fprintf(&b, "Issue State: %s\n", issueState)
 	fmt.Fprintf(&b, "Workflow Status: %s\n", t.Status)
 	fmt.Fprintf(&b, "Workspace: %s\n", wsPath)
-	if t.Description != "" {
-		fmt.Fprintf(&b, "\nDescription:\n%s\n", t.Description)
+	// Card content is YAML-frontmatter Markdown: inject the prose body and lift
+	// acceptance out of the frontmatter (falling back to the legacy column for
+	// pre-frontmatter rows) so it stays a prominent, separate block.
+	_, body := SplitFrontmatter(t.Description)
+	if body != "" {
+		fmt.Fprintf(&b, "\nDescription:\n%s\n", body)
 	}
-	if t.AcceptanceCriteria != "" {
-		fmt.Fprintf(&b, "\n=== ACCEPTANCE CRITERIA ===\n%s\n", t.AcceptanceCriteria)
+	acceptance := t.AcceptanceCriteria
+	if fm := FrontmatterAcceptance(t.Description); fm != "" {
+		acceptance = fm
+	}
+	if acceptance != "" {
+		fmt.Fprintf(&b, "\n=== ACCEPTANCE CRITERIA ===\n%s\n", acceptance)
 	}
 	if len(t.Replies) > 0 {
 		fmt.Fprintf(&b, "\nReplies (chronological, %d entries):\n---\n", len(t.Replies))

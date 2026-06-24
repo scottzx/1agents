@@ -48,7 +48,10 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		r.scheduler.Tick()
 	}()
 
-	instruction := task.Description
+	// Card content is YAML-frontmatter Markdown: execute against the prose body,
+	// and treat acceptance from the frontmatter (or the legacy column) as the
+	// self-check gate.
+	_, instruction := SplitFrontmatter(task.Description)
 	if instruction == "" {
 		instruction = task.Title
 	}
@@ -56,8 +59,12 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		r.finish(workspacePath, task.ID, "", TaskStatusFailed, "task has no description/title to execute")
 		return
 	}
-	if task.AcceptanceCriteria != "" {
-		instruction += "\n\n完成后请对照验收标准自查；若未达标，请明确说明原因。"
+	acceptance := task.AcceptanceCriteria
+	if fm := FrontmatterAcceptance(task.Description); fm != "" {
+		acceptance = fm
+	}
+	if acceptance != "" {
+		instruction += "\n\n完成后请对照验收标准自查；若未达标，请明确说明原因。\n\n=== 验收标准 ===\n" + acceptance
 	}
 
 	agentType := task.Assignee

@@ -9,6 +9,7 @@ import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constant
 import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
+import { parseFrontmatter } from '../../../utils/frontmatter';
 import { taskPermalink } from '../../../stores/taskNavStore';
 import * as wsStore from '../../../stores/workspaceStore';
 import * as sessionStore from '../../../stores/sessionStore';
@@ -117,12 +118,37 @@ interface TaskDetailProps {
     onSelectSession?: (session: Session) => void;
 }
 
-// Seeded into a bug's description editor when empty: the confirm gate requires
-// 复现/期望/实际 to be present, so the template both guides the author and
-// satisfies the keyword check once filled.
-const BUG_DESC_TEMPLATE = ['## 现象', '', '## 复现步骤', '1. ', '2. ', '', '## 期望结果', '', '## 实际结果', ''].join(
+// Card content is YAML-frontmatter Markdown: the frontmatter holds the
+// machine-recognizable acceptance criteria, the body is free prose. These
+// templates seed an empty editor so the author (or AI) fills the right shape —
+// the bug body's 复现/期望/实际 sections also satisfy the confirm gate's check.
+const REQ_DESC_TEMPLATE = ['---', 'acceptance:', '  - ', '---', '## 背景', '', '## 过程', '', '## 预期结果', ''].join(
     '\n'
 );
+
+const BUG_DESC_TEMPLATE = [
+    '---',
+    'acceptance:',
+    '  - ',
+    '---',
+    '## 现象',
+    '',
+    '## 复现步骤',
+    '1. ',
+    '2. ',
+    '',
+    '## 期望结果',
+    '',
+    '## 实际结果',
+    '',
+].join('\n');
+
+// Pick the seed template for an empty card by type.
+function cardTemplate(type: string | undefined): string {
+    if (type === 'bug') return BUG_DESC_TEMPLATE;
+    if (type === 'requirement') return REQ_DESC_TEMPLATE;
+    return '';
+}
 
 export function TaskDetail({
     workspaceId,
@@ -143,10 +169,6 @@ export function TaskDetail({
     // Description editing
     const editingDesc = useSignal(false);
     const [descDraft, setDescDraft] = useState('');
-
-    // Acceptance criteria editing
-    const editingAccept = useSignal(false);
-    const [acceptDraft, setAcceptDraft] = useState('');
 
     // Reply composer (top-level: pure comment or new session only)
     const [replyText, setReplyText] = useState('');
@@ -324,15 +346,6 @@ export function TaskDetail({
         }
     };
 
-    const saveAcceptance = async () => {
-        try {
-            await patchTask({ acceptanceCriteria: acceptDraft });
-            editingAccept.value = false;
-        } catch (err) {
-            alert((err as Error).message);
-        }
-    };
-
     const toggleIssueState = async () => {
         if (!task) return;
         const next = task.issueState === 'closed' ? 'open' : 'closed';
@@ -454,15 +467,15 @@ export function TaskDetail({
     // a keyword check — the real quality comes from the 与 AI 讨论 pass).
     const confirmBlockers = (): string[] => {
         if (!task) return [];
+        const { acceptance, body } = parseFrontmatter(task.description);
         const miss: string[] = [];
         if (!task.title?.trim()) miss.push('标题');
-        if (!task.description?.trim()) miss.push('描述');
-        if (!task.acceptanceCriteria?.trim()) miss.push('验收标准');
+        if (!body.trim()) miss.push('描述');
+        if (!acceptance.some(a => a.trim())) miss.push('验收标准（frontmatter acceptance）');
         if (task.type === 'bug') {
-            const d = task.description || '';
-            if (!d.includes('复现')) miss.push('复现步骤');
-            if (!d.includes('期望')) miss.push('期望结果');
-            if (!d.includes('实际')) miss.push('实际结果');
+            if (!body.includes('复现')) miss.push('复现步骤');
+            if (!body.includes('期望')) miss.push('期望结果');
+            if (!body.includes('实际')) miss.push('实际结果');
         }
         return miss;
     };
@@ -622,8 +635,14 @@ export function TaskDetail({
     const completedSubtasks = subtasks.filter(s => s.status === 'completed').length;
     const allSubtasksDone = totalSubtasks > 0 && completedSubtasks === totalSubtasks;
 
-    // Acceptance criteria check
-    const hasAcceptance = !!task.acceptanceCriteria;
+    // Card content is YAML-frontmatter Markdown: structured keys (acceptance)
+    // come from the frontmatter, the prose body is what we render/edit-display.
+    const parsed = parseFrontmatter(task.description);
+    const acceptanceLines = parsed.acceptance.filter(a => a.trim());
+
+    // Acceptance criteria check (frontmatter is the source; fall back to the
+    // legacy column for pre-frontmatter rows).
+    const hasAcceptance = acceptanceLines.length > 0 || !!task.acceptanceCriteria;
 
     // Dependencies check
     const pendingDeps = deps.filter(d => d.status !== 'completed').length;
@@ -760,12 +779,10 @@ export function TaskDetail({
                                             <button
                                                 class="task-desc-edit-btn"
                                                 onClick={() => {
-                                                    // Seed the bug template when starting from an
-                                                    // empty bug, so 复现/期望/实际 are ready to fill.
-                                                    setDescDraft(
-                                                        task.description ||
-                                                            (task.type === 'bug' ? BUG_DESC_TEMPLATE : '')
-                                                    );
+                                                    // Seed the frontmatter template for an empty
+                                                    // requirement/bug so acceptance + sections are
+                                                    // ready to fill.
+                                                    setDescDraft(task.description || cardTemplate(task.type));
                                                     editingDesc.value = true;
                                                 }}
                                             >
@@ -791,11 +808,11 @@ export function TaskDetail({
                                                 </button>
                                             </div>
                                         </div>
-                                    ) : task.description ? (
+                                    ) : parsed.body ? (
                                         <div
                                             class="markdown-body task-desc-md"
                                             dangerouslySetInnerHTML={{
-                                                __html: renderMarkdown(task.description, mdCtx),
+                                                __html: renderMarkdown(parsed.body, mdCtx),
                                             }}
                                         />
                                     ) : (
@@ -814,37 +831,17 @@ export function TaskDetail({
                                                 ✅ <strong>{t('task.detail.acceptanceTitle', lang)}</strong>
                                             </span>
                                         </div>
-                                        <div class="gh-comment-actions">
-                                            {!editingAccept.value && (
-                                                <button
-                                                    class="task-desc-edit-btn"
-                                                    onClick={() => {
-                                                        setAcceptDraft(task.acceptanceCriteria || '');
-                                                        editingAccept.value = true;
-                                                    }}
-                                                >
-                                                    {t('common.edit', lang)}
-                                                </button>
-                                            )}
-                                        </div>
+                                        {/* Acceptance lives in the description's YAML frontmatter
+                                            (acceptance:) — edit it via 描述 编辑, not here. */}
+                                        <span class="gh-acceptance-hint">在「描述」的 frontmatter 中编辑</span>
                                     </div>
                                     <div class="gh-comment-body">
-                                        {editingAccept.value ? (
-                                            <div class="task-desc-editor">
-                                                <textarea
-                                                    rows={3}
-                                                    value={acceptDraft}
-                                                    onInput={(e: Event) =>
-                                                        setAcceptDraft((e.target as HTMLTextAreaElement).value)
-                                                    }
-                                                />
-                                                <div class="task-desc-editor-actions">
-                                                    <button onClick={saveAcceptance}>{t('common.save', lang)}</button>
-                                                    <button onClick={() => (editingAccept.value = false)}>
-                                                        {t('common.cancel', lang)}
-                                                    </button>
-                                                </div>
-                                            </div>
+                                        {acceptanceLines.length > 0 ? (
+                                            <ul class="acceptance-list">
+                                                {acceptanceLines.map((a, i) => (
+                                                    <li key={i}>{a}</li>
+                                                ))}
+                                            </ul>
                                         ) : task.acceptanceCriteria ? (
                                             <div
                                                 class="markdown-body task-desc-md"

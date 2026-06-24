@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
 import { PRIORITY_LABELS, TYPE_LABELS } from './constants';
+import { parseFrontmatter } from '../../../utils/frontmatter';
 import type { Task } from './types';
 
 interface RequirementPoolProps {
@@ -64,6 +65,8 @@ export function RequirementPool({ tasks, suggestions, onSelectTask, onAdopt, onD
                         const isSuggestion = task.source === 'agent-suggested';
                         const prio = task.priority || 'medium';
                         const type = task.type && task.type !== 'discussion' ? task.type : 'task';
+                        // Card content is frontmatter Markdown — preview the prose body only.
+                        const descBody = parseFrontmatter(task.description).body;
                         return (
                             <div
                                 key={task.id}
@@ -87,7 +90,7 @@ export function RequirementPool({ tasks, suggestions, onSelectTask, onAdopt, onD
                                     {task.number ? <span class="task-number">#{task.number}</span> : null}
                                     {task.title}
                                 </div>
-                                {task.description && <div class="requirement-card-desc">{task.description}</div>}
+                                {descBody && <div class="requirement-card-desc">{descBody}</div>}
                                 {isSuggestion ? (
                                     <div class="suggestion-actions">
                                         <button

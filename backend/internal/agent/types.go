@@ -81,6 +81,12 @@ type (
 // PriorityRank re-exports the scheduler ordering helper.
 var PriorityRank = meta.PriorityRank
 
+// Frontmatter helpers (card content is YAML-frontmatter Markdown).
+var (
+	SplitFrontmatter      = meta.SplitFrontmatter
+	FrontmatterAcceptance = meta.FrontmatterAcceptance
+)
+
 const (
 	ScheduleTypeImmediate = meta.ScheduleTypeImmediate
 	ScheduleTypeScheduled = meta.ScheduleTypeScheduled
