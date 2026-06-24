@@ -62,33 +62,49 @@ function emit() {
   listeners.forEach(fn => fn());
 }
 
-/** Push translated labels + themed colors onto the native tab bar. No-op off a
- *  tabBar page (the APIs throw there), so every call is guarded. */
+/** The tab-bar pages, in tab order. Order matches app.config.ts `tabBar.list`. */
+const TAB_PAGES = ['pages/workspaces/index', 'pages/providers/index', 'pages/skills/index', 'pages/more/index'];
+const TAB_ITEM_KEYS = ['tab.workspaces', 'tab.providers', 'tab.skills', 'tab.more'];
+
+/** True only when the currently-shown page owns the tab bar. The tab-bar APIs
+ *  report failure via an async `fail` callback (not a throw), so try/catch can't
+ *  suppress their console noise — we must avoid calling them off a tab page. */
+function onTabPage(): boolean {
+  try {
+    const path = Taro.getCurrentInstance()?.router?.path;
+    if (!path) return false;
+    return TAB_PAGES.includes(path.replace(/^\//, '').split('?')[0]);
+  } catch {
+    return false;
+  }
+}
+
+/** Push translated labels + themed colors onto the native tab bar. No-op unless
+ *  the current page is a tab page (avoids "not TabBar page" errors). */
 function syncTabBar() {
-  const items = ['tab.workspaces', 'tab.providers', 'tab.skills', 'tab.more'];
-  items.forEach((key, index) => {
-    try {
-      Taro.setTabBarItem({ index, text: t(key, lang) });
-    } catch {
-      /* not on a tabBar page */
-    }
+  if (!onTabPage()) return;
+  const noop = () => {};
+  TAB_ITEM_KEYS.forEach((key, index) => {
+    Taro.setTabBarItem({ index, text: t(key, lang), success: noop, fail: noop });
   });
   const c = THEME_CHROME[theme];
-  try {
-    Taro.setTabBarStyle({
-      color: '#8d96a0',
-      selectedColor: theme === 'dark' ? '#388bfd' : '#0969da',
-      backgroundColor: c.bg,
-      borderStyle: theme === 'dark' ? 'white' : 'black',
-    });
-  } catch {
-    /* not on a tabBar page */
-  }
+  Taro.setTabBarStyle({
+    color: '#8d96a0',
+    selectedColor: theme === 'dark' ? '#388bfd' : '#0969da',
+    backgroundColor: c.bg,
+    borderStyle: theme === 'dark' ? 'white' : 'black',
+    success: noop,
+    fail: noop,
+  });
 }
 
 export const uiStore = {
   getLang: () => lang,
   getTheme: () => theme,
+  /** Re-apply tab bar labels + colors for the current lang/theme. Safe to call
+   *  from any page (no-ops off a tab page); used by <Screen> on page show so a
+   *  theme/lang change made on a sub-page lands when a tab page reappears. */
+  syncTabBar,
   setLang(next: Lang) {
     if (next === lang) return;
     lang = next;
