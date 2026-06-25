@@ -72,9 +72,7 @@ export function AgendaItemPopover({ item, draft, onClose }: AgendaItemPopoverPro
                 <div class="agenda-pop-readonly">
                     <div class="agenda-pop-title">{item.title}</div>
                     {item.workspaceName && <div class="agenda-pop-meta">项目：{item.workspaceName}</div>}
-                    <div class="agenda-pop-meta">
-                        目标日期：{new Date(item.date).toLocaleDateString(language)}
-                    </div>
+                    <div class="agenda-pop-meta">目标日期：{new Date(item.date).toLocaleDateString(language)}</div>
                 </div>
             </Shell>
         );
