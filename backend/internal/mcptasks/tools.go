@@ -69,20 +69,28 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_task",
-		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue.",
+		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is the executing AI agent type (claudecode/codex) and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
 			"properties": map[string]any{
 				"title":              map[string]any{"type": "string"},
-				"description":        map[string]any{"type": "string", "description": "The work instruction for the executing agent."},
+				"description":        map[string]any{"type": "string", "description": "The work instruction for the executing agent. Maps to GitHub issue.body."},
 				"acceptanceCriteria": map[string]any{"type": "string", "description": "Required for executable tasks: concrete, checkable criteria for the task to be accepted as done. A task without acceptance criteria is held as not_ready and never scheduled."},
-				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
-				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
-				"milestone":          map[string]any{"type": "string"},
-				"assignee":           map[string]any{"type": "string", "description": "Executing agent type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). Set this to run different tasks on different agents. Empty defaults to claudecode."},
+				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}, "description": "Issue discriminator. Maps to GitHub Issue Types / a label."},
+				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority. No native GitHub Issue field — maps to a Projects v2 custom field."},
+				"milestone":          map[string]any{"type": "string", "description": "Maps to GitHub milestone (matched/created by title)."},
+				"assignee":           map[string]any{"type": "string", "description": "Executing AGENT type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). LOCAL ONLY — this is NOT a GitHub user. Empty defaults to claudecode. For GitHub users, use githubAssignees."},
+				"githubAssignees":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (issue.assignees[].login) — human collaborators on the mapped Issue/PR. Distinct from `assignee` (the executing agent). Sync field."},
 				"verifier":           map[string]any{"type": "string", "description": "Optional reviewing agent type. When set (and acceptanceCriteria is non-empty), after the executor finishes a verifier of this type auto-checks the output against the criteria; the task only completes when every criterion passes, otherwise it re-executes. Empty = no verification."},
 				"dependsOn":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
+				"githubRepo":         map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo' of the bound GitHub object. Normally backfilled by sync."},
+				"githubKind":         map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: whether the bound GitHub object is an issue or a pr."},
+				"githubNumber":       map[string]any{"type": "integer", "description": "Sync anchor: the remote #N (per-repo), distinct from the local task number."},
+				"githubNodeId":       map[string]any{"type": "string", "description": "Sync anchor: GraphQL global node id (needed by the Projects v2 API)."},
+				"githubUrl":          map[string]any{"type": "string", "description": "Sync anchor: the object's html_url."},
+				"githubState":        map[string]any{"type": "string", "description": "Sync anchor: remote open/closed state, for conflict detection."},
+				"lastSyncedAt":       map[string]any{"type": "string", "description": "Sync anchor: RFC3339 timestamp of the last successful GitHub sync."},
 			},
 		},
 	},
@@ -100,7 +108,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "update_task",
-		"description": "Update fields of an existing task in the current project. status may only be set to 'completed' or 'cancelled' (runnable states stay scheduler-owned). Only the fields you pass are changed.",
+		"description": "Update fields of an existing task in the current project. status may only be set to 'completed' or 'cancelled' (runnable states stay scheduler-owned). Only the fields you pass are changed. See create_task for the GitHub field mapping and the `assignee` (executing agent, local) vs `githubAssignees` (GitHub logins) distinction. The github* reference fields are the sync anchor and are normally written by the sync pass.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"id"},
@@ -109,11 +117,19 @@ var toolDefs = []map[string]any{
 				"status":             map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}},
 				"description":        map[string]any{"type": "string"},
 				"acceptanceCriteria": map[string]any{"type": "string", "description": "Concrete, checkable acceptance criteria. Fill this in to move an executable task out of the not_ready hold and into the scheduler queue."},
-				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
+				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority (maps to a Projects v2 field, not a native Issue field)."},
 				"milestone":          map[string]any{"type": "string"},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
-				"assignee":           map[string]any{"type": "string", "description": "Executing agent type, e.g. 'claudecode' or 'codex'. Empty defaults to claudecode."},
+				"assignee":           map[string]any{"type": "string", "description": "Executing AGENT type, e.g. 'claudecode' or 'codex' (local only, NOT a GitHub user). Empty defaults to claudecode."},
+				"githubAssignees":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (human collaborators). Distinct from `assignee`. Sync field."},
 				"verifier":           map[string]any{"type": "string", "description": "Reviewing agent type for post-execution verification; empty disables verification. See create_task."},
+				"githubRepo":         map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo'."},
+				"githubKind":         map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: issue or pr."},
+				"githubNumber":       map[string]any{"type": "integer", "description": "Sync anchor: remote #N."},
+				"githubNodeId":       map[string]any{"type": "string", "description": "Sync anchor: GraphQL node id."},
+				"githubUrl":          map[string]any{"type": "string", "description": "Sync anchor: html_url."},
+				"githubState":        map[string]any{"type": "string", "description": "Sync anchor: remote open/closed."},
+				"lastSyncedAt":       map[string]any{"type": "string", "description": "Sync anchor: RFC3339 last-synced timestamp."},
 			},
 		},
 	},
@@ -465,6 +481,16 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		Assignee           string   `json:"assignee"`
 		Verifier           string   `json:"verifier"`
 		DependsOn          []string `json:"dependsOn"`
+		// GitHub Issue/PR mapping (#74). githubAssignees is the human-collaborator
+		// dimension (distinct from assignee); the github* refs are the sync anchor.
+		GithubAssignees []string `json:"githubAssignees"`
+		GithubRepo      string   `json:"githubRepo"`
+		GithubKind      string   `json:"githubKind"`
+		GithubNumber    int      `json:"githubNumber"`
+		GithubNodeId    string   `json:"githubNodeId"`
+		GithubUrl       string   `json:"githubUrl"`
+		GithubState     string   `json:"githubState"`
+		LastSyncedAt    string   `json:"lastSyncedAt"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
 		return toolErr("invalid arguments: " + err.Error())
@@ -483,6 +509,32 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"assignee":           a.Assignee,
 		"verifier":           a.Verifier,
 		"dependsOn":          a.DependsOn,
+	}
+	// Forward GitHub mapping fields only when provided, so a normal create never
+	// writes empty anchors over a row a future sync pass might populate.
+	if len(a.GithubAssignees) > 0 {
+		body["githubAssignees"] = a.GithubAssignees
+	}
+	if a.GithubRepo != "" {
+		body["githubRepo"] = a.GithubRepo
+	}
+	if a.GithubKind != "" {
+		body["githubKind"] = a.GithubKind
+	}
+	if a.GithubNumber != 0 {
+		body["githubNumber"] = a.GithubNumber
+	}
+	if a.GithubNodeId != "" {
+		body["githubNodeId"] = a.GithubNodeId
+	}
+	if a.GithubUrl != "" {
+		body["githubUrl"] = a.GithubUrl
+	}
+	if a.GithubState != "" {
+		body["githubState"] = a.GithubState
+	}
+	if a.LastSyncedAt != "" {
+		body["lastSyncedAt"] = a.LastSyncedAt
 	}
 	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
 	if err != nil {
@@ -611,7 +663,8 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	}
 
 	patch := map[string]json.RawMessage{}
-	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier"} {
+	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier",
+		"githubAssignees", "githubRepo", "githubKind", "githubNumber", "githubNodeId", "githubUrl", "githubState", "lastSyncedAt"} {
 		if v, ok := raw[f]; ok {
 			patch[f] = v
 		}

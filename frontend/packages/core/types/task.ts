@@ -97,6 +97,18 @@ export interface Task {
     userConfirm?: boolean;
     number?: number;
     links?: TaskLink[];
+    // GitHub Issue/PR sync mapping (#74). The github* fields are the sync anchor
+    // to one GitHub object — normally backfilled by the sync pass and shown
+    // read-only. githubAssignees are GitHub login names (human collaborators),
+    // distinct from `assignee` above, which selects the executing agent type.
+    githubRepo?: string;
+    githubKind?: 'issue' | 'pr';
+    githubNumber?: number;
+    githubNodeId?: string;
+    githubUrl?: string;
+    githubState?: string;
+    githubAssignees?: string[];
+    lastSyncedAt?: string;
     acceptanceCriteria?: string;
     recurrence?: TaskRecurrence | null;
     maxRetries?: number;

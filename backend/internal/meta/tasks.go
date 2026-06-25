@@ -78,12 +78,14 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	priority, assignee, labels, created_by, parent_id, milestone,
 	acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
 	sprint, type, number, links,
-	verifier, review_max_attempts, review_count, review, source, user_confirm`
+	verifier, review_max_attempts, review_count, review, source, user_confirm,
+	github_repo, github_kind, github_number, github_node_id, github_url,
+	github_state, github_assignees, last_synced_at`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
-	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt sql.NullString
-	var createdAt, updatedAt, labels, recurrence, links, review string
+	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt, lastSyncedAt sql.NullString
+	var createdAt, updatedAt, labels, recurrence, links, review, githubAssignees string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
@@ -91,7 +93,9 @@ func scanTask(r rowScanner) (Task, error) {
 		&t.AcceptanceCriteria, &recurrence, &t.MaxRetries, &t.RetryCount,
 		&t.TimeoutMinutes, &t.Sprint, &t.Type, &t.Number, &links,
 		&t.Verifier, &t.ReviewMaxAttempts, &t.ReviewCount, &review, &t.Source,
-		&t.UserConfirm); err != nil {
+		&t.UserConfirm,
+		&t.GithubRepo, &t.GithubKind, &t.GithubNumber, &t.GithubNodeId, &t.GithubUrl,
+		&t.GithubState, &githubAssignees, &lastSyncedAt); err != nil {
 		return Task{}, err
 	}
 	t.ScheduledAt = valToTimePtr(scheduledAt)
@@ -99,12 +103,14 @@ func scanTask(r rowScanner) (Task, error) {
 	t.PlannedEnd = valToTimePtr(plannedEnd)
 	t.StartedAt = valToTimePtr(startedAt)
 	t.CompletedAt = valToTimePtr(completedAt)
+	t.LastSyncedAt = valToTimePtr(lastSyncedAt)
 	t.CreatedAt = strToTime(createdAt)
 	t.UpdatedAt = strToTime(updatedAt)
 	t.Labels = jsonToStrings(labels)
 	t.Recurrence = jsonToRecurrence(recurrence)
 	t.Links = jsonToLinks(links)
 	t.Review = jsonToReview(review)
+	t.GithubAssignees = jsonToStrings(githubAssignees)
 	t.DependsOn = []string{}
 	t.Replies = []Reply{}
 	t.Sessions = []SessionMetadata{}
@@ -493,8 +499,10 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes,
 			sprint, type, number, links,
-			verifier, review_max_attempts, review_count, review, source, user_confirm)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			verifier, review_max_attempts, review_count, review, source, user_confirm,
+			github_repo, github_kind, github_number, github_node_id, github_url,
+			github_state, github_assignees, last_synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -529,7 +537,15 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			review_count = excluded.review_count,
 			review = excluded.review,
 			source = excluded.source,
-			user_confirm = excluded.user_confirm`,
+			user_confirm = excluded.user_confirm,
+			github_repo = excluded.github_repo,
+			github_kind = excluded.github_kind,
+			github_number = excluded.github_number,
+			github_node_id = excluded.github_node_id,
+			github_url = excluded.github_url,
+			github_state = excluded.github_state,
+			github_assignees = excluded.github_assignees,
+			last_synced_at = excluded.last_synced_at`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
@@ -538,7 +554,9 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.Milestone, t.AcceptanceCriteria, recurrenceToJSON(t.Recurrence),
 		t.MaxRetries, t.RetryCount, t.TimeoutMinutes, t.Sprint, t.Type,
 		t.Number, linksToJSON(t.Links),
-		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), t.Source, t.UserConfirm)
+		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), t.Source, t.UserConfirm,
+		t.GithubRepo, t.GithubKind, t.GithubNumber, t.GithubNodeId, t.GithubUrl,
+		t.GithubState, stringsToJSON(t.GithubAssignees), timePtrToVal(t.LastSyncedAt))
 	if err != nil {
 		return err
 	}

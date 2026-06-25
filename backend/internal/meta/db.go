@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 11
+const schemaVersion = 12
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -147,13 +147,14 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
 		}
 	}
-	// Schema v9–v11 only add tasks columns, but the v9 branch collision between
+	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
 	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
 	// with user_version bumped to the latest while the other branch's columns
 	// were never added. A version-gated ALTER can't recover that: it re-adds an
 	// existing column ("duplicate column name") or skips a missing one forever.
 	// Run unconditionally (NOT under a version gate) so a DB already at the
 	// latest user_version but missing columns still gets healed — idempotent.
+	// v12 (#74) adds the GitHub Issue/PR mapping columns the same way.
 	if err := db.ensureTasksColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile tasks columns: %w", err)
 	}
@@ -165,7 +166,7 @@ func (db *DB) migrateSchema() error {
 	return nil
 }
 
-// ensureTasksColumns adds any of the schema v9–v11 tasks columns that are
+// ensureTasksColumns adds any of the schema v9–v12 tasks columns that are
 // missing, skipping those already present. Idempotent and independent of
 // user_version, so it recovers DBs left half-migrated by the v9 branch
 // collision (#47 ⇄ #50). DDL must match the original ADD COLUMN definitions.
@@ -182,6 +183,15 @@ func (db *DB) ensureTasksColumns() error {
 		{"review", "ALTER TABLE tasks ADD COLUMN review TEXT NOT NULL DEFAULT ''"},
 		{"source", "ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT ''"},
 		{"user_confirm", "ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0"},
+		// ── GitHub Issue/PR mapping (v12, #74) ──
+		{"github_repo", "ALTER TABLE tasks ADD COLUMN github_repo TEXT NOT NULL DEFAULT ''"},
+		{"github_kind", "ALTER TABLE tasks ADD COLUMN github_kind TEXT NOT NULL DEFAULT ''"},
+		{"github_number", "ALTER TABLE tasks ADD COLUMN github_number INTEGER NOT NULL DEFAULT 0"},
+		{"github_node_id", "ALTER TABLE tasks ADD COLUMN github_node_id TEXT NOT NULL DEFAULT ''"},
+		{"github_url", "ALTER TABLE tasks ADD COLUMN github_url TEXT NOT NULL DEFAULT ''"},
+		{"github_state", "ALTER TABLE tasks ADD COLUMN github_state TEXT NOT NULL DEFAULT ''"},
+		{"github_assignees", "ALTER TABLE tasks ADD COLUMN github_assignees TEXT NOT NULL DEFAULT '[]'"},
+		{"last_synced_at", "ALTER TABLE tasks ADD COLUMN last_synced_at TEXT"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
