@@ -14,12 +14,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
 	ctxt "github.com/scottzx/1Agents/backend/internal/context"
+	"github.com/scottzx/1Agents/backend/internal/digest"
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
@@ -168,6 +170,25 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem) // POST /{id}/cards, /{id}/conclude (#189)
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)              // WebSocket upgrade & bridge
 			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)         // GET — cross-project cockpit aggregate (read-only)
+
+			// Chat-digest: Feishu message sync (sync.db) + value-extraction
+			// templates (meta.db v15) + single-batch analysis tasks (run by the
+			// scheduler above). Self-wires its own stores; seeds presets and
+			// starts a periodic re-sync of every known chat.
+			if digestHandler, dErr := digest.NewHandlerDefault(); dErr != nil {
+				log.Printf("[server] digest init failed: %v", dErr)
+			} else {
+				if err := digestHandler.Seed(); err != nil {
+					log.Printf("[server] digest seed: %v", err)
+				}
+				digestHandler.StartPeriodicSync(context.Background(), 3*time.Hour)
+				mux.HandleFunc("/api/digest/templates", digestHandler.HandleTemplates)     // GET, POST
+				mux.HandleFunc("/api/digest/templates/", digestHandler.HandleTemplateItem) // PATCH, DELETE /{id}
+				mux.HandleFunc("/api/digest/bindings", digestHandler.HandleBindings)       // GET ?session=, POST, DELETE
+				mux.HandleFunc("/api/digest/sync", digestHandler.HandleSync)               // POST {chatId}
+				mux.HandleFunc("/api/digest/analyze", digestHandler.HandleAnalyze)         // POST {chatId, workspace}
+				mux.HandleFunc("/api/digest/messages", digestHandler.HandleMessages)       // GET ?session=
+			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
 			// and the promote-to-project gate. Shares the task store, so the
