@@ -232,7 +232,7 @@ export function TaskList({
 
     const createMilestone = useCallback(
         async (fields: MilestoneFields) => {
-            await taskService.createMilestone(workspaceId, fields);
+            await taskService.createMilestone(workspaceId, fields as unknown as Record<string, unknown>);
             await fetchMilestones();
         },
         [workspaceId, fetchMilestones]
