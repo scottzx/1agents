@@ -56,6 +56,11 @@ export const zhCN: Record<string, string> = {
   'more.discovery.desc': '分布式协同与应用市场',
   'more.settings': '系统设置',
   'more.settings.desc': '外观 · 后端地址 · 账号',
+  'more.ccConnect': 'cc-connect',
+  'more.ccConnect.desc': '渠道接入与消息平台',
+  'ccConnect.loading': '正在打开 cc-connect…',
+  'ccConnect.error': '打开 cc-connect 失败',
+  'ccConnect.noWorkspace': '后端没有可用的工作区',
 
   // Discovery
   'discovery.title': '发现',
@@ -173,6 +178,11 @@ export const enUS: Record<string, string> = {
   'more.discovery.desc': 'Distributed collaboration & app market',
   'more.settings': 'Settings',
   'more.settings.desc': 'Appearance · backend · account',
+  'more.ccConnect': 'cc-connect',
+  'more.ccConnect.desc': 'Channels & messaging platforms',
+  'ccConnect.loading': 'Opening cc-connect…',
+  'ccConnect.error': 'Failed to open cc-connect',
+  'ccConnect.noWorkspace': 'No workspace available on the backend',
 
   'discovery.title': 'Discovery',
   'discovery.desc': 'Distributed collaboration & app market',

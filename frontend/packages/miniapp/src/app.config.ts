@@ -8,6 +8,7 @@ export default defineAppConfig({
     'pages/more/index',
     'pages/chat/index',
     'pages/tasks/index',
+    'pages/cc-connect/index',
     'pages/discovery/index',
     'pages/settings/index',
   ],
