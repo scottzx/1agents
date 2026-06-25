@@ -195,7 +195,7 @@ export function InboxPane() {
                                             {t('inbox.dispatchNoProjects', language)}
                                         </span>
                                     ) : (
-                                        <>
+                                        <Fragment>
                                             <span class="inbox-dispatch-label">
                                                 {t('inbox.dispatchPickProject', language)}
                                             </span>
@@ -208,7 +208,7 @@ export function InboxPane() {
                                                     {tgt.name}
                                                 </button>
                                             ))}
-                                        </>
+                                        </Fragment>
                                     )}
                                     <button class="inbox-action" onClick={() => setDispatchFor(null)}>
                                         {t('inbox.dispatchCancel', language)}
