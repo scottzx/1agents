@@ -35,6 +35,99 @@ func reviewExhausted(t *Task) bool {
 		t.ReviewCount >= effectiveReviewMax(t)
 }
 
+// effectiveVerifierCount is how many independent verifiers judge each cycle.
+// 0/1 = the classic single-verifier flow; >1 is an adversarial panel.
+func effectiveVerifierCount(t *Task) int {
+	if t.VerifierCount > 1 {
+		return t.VerifierCount
+	}
+	return 1
+}
+
+// effectivePassThreshold is how many of the panel's verdicts must pass for the
+// artifact to be accepted. Unset (0) defaults to a simple majority (⌊N/2⌋+1).
+// Clamped to [1, N] so a misconfigured value can't make the gate impossible or
+// trivial.
+func effectivePassThreshold(t *Task) int {
+	n := effectiveVerifierCount(t)
+	thr := t.VerifyPassThreshold
+	if thr <= 0 {
+		thr = n/2 + 1
+	}
+	if thr > n {
+		thr = n
+	}
+	if thr < 1 {
+		thr = 1
+	}
+	return thr
+}
+
+// criteriaPass reports whether a verifier's per-criterion verdict is an overall
+// pass: at least one criterion and every one of them passing.
+func criteriaPass(criteria []CriterionResult) bool {
+	if len(criteria) == 0 {
+		return false
+	}
+	for _, c := range criteria {
+		if !c.Pass {
+			return false
+		}
+	}
+	return true
+}
+
+// aggregatePanel folds the cycle's accumulated per-verifier verdicts into a
+// single panel verdict. Overall Pass is server-computed as "≥ threshold
+// verifiers passed". The merged Criteria union keeps the dissenting verifiers'
+// comments so the re-execution sees what each panelist objected to. See #131.
+func aggregatePanel(pool []ReviewVerdict, threshold, attempt int, now time.Time) ReviewVerdict {
+	// Single-verifier panel = the classic flow: pass through the lone verdict
+	// untouched so its timeline output is identical to pre-#131 behaviour.
+	if len(pool) == 1 {
+		v := pool[0]
+		v.Attempt = attempt
+		v.CreatedAt = now
+		return v
+	}
+	passCount := 0
+	for _, v := range pool {
+		if v.Pass {
+			passCount++
+		}
+	}
+	panelPass := passCount >= threshold
+
+	var merged []CriterionResult
+	var summaries []string
+	for i, v := range pool {
+		label := v.Verifier
+		if label == "" {
+			label = fmt.Sprintf("verifier#%d", i+1)
+		}
+		for _, c := range v.Criteria {
+			cc := c
+			cc.Criterion = fmt.Sprintf("[%s] %s", label, c.Criterion)
+			merged = append(merged, cc)
+		}
+		if strings.TrimSpace(v.Summary) != "" {
+			summaries = append(summaries, fmt.Sprintf("- %s: %s", label, strings.TrimSpace(v.Summary)))
+		}
+	}
+	summary := fmt.Sprintf("对抗式核验:%d/%d 通过(阈值 %d)", passCount, len(pool), threshold)
+	if len(summaries) > 0 {
+		summary += "\n" + strings.Join(summaries, "\n")
+	}
+	return ReviewVerdict{
+		Pass:      panelPass,
+		Criteria:  merged,
+		Summary:   summary,
+		Attempt:   attempt,
+		Verifier:  fmt.Sprintf("panel(%d)", len(pool)),
+		CreatedAt: now,
+	}
+}
+
 // applyReviewVerdict records a verifier's per-criterion verdict on the task
 // under review and drives its state machine (#50):
 //
@@ -49,13 +142,7 @@ func reviewExhausted(t *Task) bool {
 // so a duplicate/late submit can't re-transition. Returns the updated task.
 func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []CriterionResult, summary, verifier string) (*Task, error) {
 	now := time.Now().UTC()
-	pass := len(criteria) > 0
-	for _, c := range criteria {
-		if !c.Pass {
-			pass = false
-			break
-		}
-	}
+	pass := criteriaPass(criteria)
 
 	var result *Task
 	var stateErr error
@@ -77,14 +164,53 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 		}
 
 		cycle := t.ReviewCount + 1
-		verdict := ReviewVerdict{
+		n := effectiveVerifierCount(t)
+
+		// Each verifier in the panel submits independently. Accumulate this
+		// verifier's verdict and wait for the rest before deciding (#131). For the
+		// classic single-verifier flow (n == 1) the panel completes immediately.
+		t.ReviewPool = append(t.ReviewPool, ReviewVerdict{
 			Pass:      pass,
 			Criteria:  criteria,
 			Summary:   summary,
 			Attempt:   cycle,
 			Verifier:  verifier,
 			CreatedAt: now,
+		})
+
+		// In a multi-verifier panel each panelist's individual verdict lands on
+		// the timeline as it arrives. The single-verifier flow keeps its one
+		// aggregate reply (appended at the tail) to stay byte-identical to pre-#131.
+		if n > 1 {
+			t.Replies = append(t.Replies, Reply{
+				Author:    Author{Kind: "agent", Name: verifier},
+				AgentType: verifier,
+				Text:      renderVerdictReply(t.ReviewPool[len(t.ReviewPool)-1]),
+				Mode:      ModePureComment,
+				CreatedAt: now,
+			})
 		}
+
+		if len(t.ReviewPool) < n {
+			// Panel still gathering verdicts: stay under review (running) so the
+			// next verifier's submit is accepted. Record progress and return.
+			t.UpdatedAt = now
+			t.Replies = append(t.Replies, Reply{
+				Author:    Author{Kind: "agent", Name: "panel"},
+				Text:      fmt.Sprintf("对抗式核验进行中:已收 %d/%d 份裁决,阈值 %d", len(t.ReviewPool), n, effectivePassThreshold(t)),
+				Mode:      ModePureComment,
+				CreatedAt: now,
+			})
+			cp := *t
+			result = &cp
+			return true
+		}
+
+		// Panel complete: aggregate the pool into one authoritative verdict,
+		// clear it, and drive the same state machine the single-verifier flow uses.
+		verdict := aggregatePanel(t.ReviewPool, effectivePassThreshold(t), cycle, now)
+		pass = verdict.Pass
+		t.ReviewPool = nil
 
 		// Record the verdict before transitioning so the verify-failed rule can
 		// read the rejection summary off the task (#133).

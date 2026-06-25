@@ -395,6 +395,20 @@ type Task struct {
 	// Review holds the latest verdict (per-criterion results + overall pass).
 	Review *ReviewVerdict `json:"review,omitempty"`
 
+	// ── adversarial multi-verifier fields (schema v14, #131) ──
+	// VerifierCount is how many independent verifiers judge each verification
+	// cycle. >1 turns a single review into an adversarial panel: N verifiers each
+	// submit their own verdict, and the panel decision is by threshold. 0/1 = the
+	// classic single-verifier flow.
+	VerifierCount int `json:"verifierCount,omitempty"`
+	// VerifyPassThreshold is how many of the VerifierCount verdicts must pass for
+	// the panel to accept the artifact. 0 = majority (⌊N/2⌋+1).
+	VerifyPassThreshold int `json:"verifyPassThreshold,omitempty"`
+	// ReviewPool accumulates the running cycle's per-verifier verdicts until the
+	// panel is complete (len == VerifierCount), at which point it is aggregated
+	// into Review and cleared. Empty between cycles.
+	ReviewPool []ReviewVerdict `json:"reviewPool,omitempty"`
+
 	CreatedAt     time.Time         `json:"createdAt"`
 	UpdatedAt     time.Time         `json:"updatedAt"`
 	StartedAt     *time.Time        `json:"startedAt,omitempty"`
