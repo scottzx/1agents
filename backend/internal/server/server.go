@@ -465,6 +465,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// ── Relay client credentials (issue #109) ───────────────────────────────
 	mux.HandleFunc("/api/relay/credentials", sysHandler.RelayCredentialsHandler) // GET/POST/DELETE — persist relay account master key
 
+	// ── Device registry + heartbeat + discovery (issue #110) ─────────────────
+	mux.HandleFunc("/api/devices", sysHandler.DevicesHandler)            // GET/POST/DELETE — list/register/remove devices
+	mux.HandleFunc("/api/devices/heartbeat", sysHandler.DeviceHeartbeat) // POST — refresh a device's lastSeen
+	mux.HandleFunc("/api/devices/refresh", sysHandler.DevicesRefresh)    // POST — Tailscale scan + full refresh
+
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
 	mux.HandleFunc("/api/access/generate", handleAccessGenerate)
