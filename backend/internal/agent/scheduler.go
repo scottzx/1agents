@@ -56,6 +56,11 @@ type Scheduler struct {
 	workspacesFn func() ([]WorkspaceRef, error)
 	runner       *TaskRunner
 	ticker       *time.Ticker
+	// engine is the event-driven orchestration layer (#133). The scheduler
+	// owns state transitions and, at each transition point, emits a TaskEvent
+	// the engine maps to declarative actions (route/notify/requeue). Never nil
+	// after construction.
+	engine *EventEngine
 }
 
 func NewScheduler(tasksStore *TasksStore, workspacesFn func() ([]WorkspaceRef, error)) *Scheduler {
@@ -63,6 +68,7 @@ func NewScheduler(tasksStore *TasksStore, workspacesFn func() ([]WorkspaceRef, e
 		Lock:         NewWorkspaceLock(),
 		tasksStore:   tasksStore,
 		workspacesFn: workspacesFn,
+		engine:       DefaultEventEngine(),
 	}
 }
 
@@ -241,6 +247,30 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			}
 		}
 
+		// 3.4 created → auto-route (#133): a fresh executable task that no one
+		//     has assigned an agent to fires an EventCreated; the rule engine
+		//     routes it to an agent by type/domain. Idempotent — once Assignee
+		//     is set the rule short-circuits, so this fires at most once per
+		//     task. Runs before dependency gating so a task is routed even while
+		//     it waits on a dependency. Non-executable issues (requirement/bug/
+		//     discussion), AI suggestions, and user-owned reminders are skipped:
+		//     they never run, so routing them is meaningless.
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			if t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
+				continue
+			}
+			if t.Assignee != "" {
+				continue
+			}
+			if (t.Type != "" && t.Type != TaskTypeTask) || t.Source == TaskSourceAgent {
+				continue
+			}
+			if s.emit(t, EventCreated, now) {
+				modified = true
+			}
+		}
+
 		// 3.5 Dependency gating (blocked state): a task whose explicit
 		//     dependencies aren't all completed is surfaced as `blocked` so the
 		//     board shows the upstream wait; once they complete it returns to
@@ -276,6 +306,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					t.Status = TaskStatusBlocked
 					t.UpdatedAt = now
 					modified = true
+					// blocked → notify PM (#133). Emitted only on the transition
+					// into blocked so the PM is pinged once, not every tick.
+					s.emit(t, EventBlocked, now)
 				}
 			case TaskStatusBlocked:
 				if needsAcceptanceCriteria(t) {
@@ -431,6 +464,35 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 
 		return modified
 	})
+}
+
+// emit runs the orchestration engine for one lifecycle event against the live
+// task pointer and applies the resulting actions in place. It must be called
+// inside a Mutate transaction (t points into cfg.Tasks). Returns whether the
+// task was modified. Follow-on events the actions produce (e.g. an assign
+// emits EventAssigned) are fanned back through the engine once, non-recursively,
+// so a rule can react to a routing decision without risking a loop.
+func (s *Scheduler) emit(t *Task, kind TaskEventKind, now time.Time) bool {
+	if s.engine == nil {
+		return false
+	}
+	ev := TaskEvent{
+		Kind:          kind,
+		Task:          *t,
+		Signals:       DeriveSignals(*t),
+		WorkspacePath: "",
+		At:            now,
+	}
+	actions := s.engine.Evaluate(ev)
+	modified, followUps := applyEventActions(t, actions, now)
+	for _, fk := range followUps {
+		follow := TaskEvent{Kind: fk, Task: *t, Signals: DeriveSignals(*t), At: now}
+		more, _ := applyEventActions(t, s.engine.Evaluate(follow), now)
+		if more {
+			modified = true
+		}
+	}
+	return modified
 }
 
 // nextOccurrence computes the next trigger after `after` for a simple-enum

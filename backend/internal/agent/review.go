@@ -86,6 +86,10 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 			CreatedAt: now,
 		}
 
+		// Record the verdict before transitioning so the verify-failed rule can
+		// read the rejection summary off the task (#133).
+		t.Review = &verdict
+
 		switch {
 		case pass:
 			t.Status = TaskStatusCompleted
@@ -94,15 +98,17 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 		default:
 			t.ReviewCount = cycle
 			if cycle < effectiveReviewMax(t) {
-				t.Status = TaskStatusPending
-				t.StartedAt = nil
+				// verify-failed → 自动重派执行者(带失败上下文) (#133): the requeue
+				// (status→pending, StartedAt cleared) and the failure-context
+				// note are driven by the declarative engine, not hardwired here.
 				t.Summary = fmt.Sprintf("核验未通过(第 %d 轮),已重排执行", cycle)
+				ev := TaskEvent{Kind: EventVerifyFailed, Task: *t, Signals: DeriveSignals(*t), At: now}
+				applyEventActions(t, DefaultEventEngine().Evaluate(ev), now)
 			} else {
 				t.Status = TaskStatusFailed
 				t.Summary = fmt.Sprintf("核验未通过且复核预算耗尽(%d/%d)", cycle, effectiveReviewMax(t))
 			}
 		}
-		t.Review = &verdict
 		t.UpdatedAt = now
 		t.Replies = append(t.Replies, Reply{
 			Author:    Author{Kind: "agent", Name: verifier},
