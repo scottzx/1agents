@@ -54,8 +54,11 @@ func printJSON(v any) int {
 // ── project ─────────────────────────────────────────────────────────────────
 
 const projectUsage = `usage:
-  1agents project list [--json]
-  1agents project add --name <name> --path <workspace-path> [--id <id>]`
+  1agents project list [--status active|archived|killed] [--json]
+  1agents project add --name <name> --path <workspace-path> [--id <id>]
+  1agents project archive <id|name|path> [--note <text>]   (阶段性完成归档)
+  1agents project close   <id|name|path> [--note <text>]   (竞品出现砍掉)
+  1agents project reopen  <id|name|path>`
 
 func runProject(args []string) int {
 	if len(args) == 0 {
@@ -63,8 +66,15 @@ func runProject(args []string) int {
 		return 1
 	}
 	switch args[0] {
+	case "archive":
+		return projectArchive(args[1:], meta.ProjectStatusArchived, meta.ArchiveReasonCompleted)
+	case "close":
+		return projectArchive(args[1:], meta.ProjectStatusKilled, meta.ArchiveReasonSuperseded)
+	case "reopen":
+		return projectReopen(args[1:])
 	case "list":
 		fs := flag.NewFlagSet("project list", flag.ContinueOnError)
+		status := fs.String("status", "", "filter by status (active|archived|killed)")
 		asJSON := fs.Bool("json", false, "machine-readable output")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 1
@@ -73,7 +83,12 @@ func runProject(args []string) int {
 		if err != nil {
 			return fail("open db: %v", err)
 		}
-		projects, err := db.ListProjects()
+		var projects []meta.Project
+		if *status != "" {
+			projects, err = db.ListProjectsByStatus(meta.ProjectStatus(*status))
+		} else {
+			projects, err = db.ListProjects()
+		}
 		if err != nil {
 			return fail("list projects: %v", err)
 		}
@@ -118,6 +133,52 @@ func runProject(args []string) int {
 		fmt.Println(projectUsage)
 		return 1
 	}
+}
+
+// projectArchive moves a project out of the active view (#141): archive =
+// 阶段性完成归档, close = 竞品出现砍掉. Data is kept; only status/reason change.
+func projectArchive(args []string, status meta.ProjectStatus, reason meta.ArchiveReason) int {
+	key, rest := splitLeadingID(args)
+	fs := flag.NewFlagSet("project archive", flag.ContinueOnError)
+	note := fs.String("note", "", "optional rationale recorded on the project")
+	if err := fs.Parse(rest); err != nil {
+		return 1
+	}
+	if key == "" {
+		return fail("requires exactly one <id|name|path>\n%s", projectUsage)
+	}
+	db, err := openDB()
+	if err != nil {
+		return fail("open db: %v", err)
+	}
+	p, err := resolveProject(db, key)
+	if err != nil {
+		return fail("%v", err)
+	}
+	if err := db.ArchiveProject(p.ID, status, reason, *note); err != nil {
+		return fail("archive project: %v", err)
+	}
+	fmt.Printf("project %s is now %s (%s)\n", p.Name, status, reason)
+	return 0
+}
+
+func projectReopen(args []string) int {
+	if len(args) != 1 {
+		return fail("requires exactly one <id|name|path>\n%s", projectUsage)
+	}
+	db, err := openDB()
+	if err != nil {
+		return fail("open db: %v", err)
+	}
+	p, err := resolveProject(db, args[0])
+	if err != nil {
+		return fail("%v", err)
+	}
+	if err := db.ReopenProject(p.ID); err != nil {
+		return fail("reopen project: %v", err)
+	}
+	fmt.Printf("project %s is now active\n", p.Name)
+	return 0
 }
 
 // ── task ────────────────────────────────────────────────────────────────────

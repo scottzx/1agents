@@ -97,7 +97,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 					log.Printf("[server] legacy metadata migration: %v", migErr)
 				}
 			}
-			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
+			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db))       // GET, POST
+			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db)) // POST {id}/archive|close|reopen
 
 			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
 			inboxStore := meta.NewInboxStore(db)

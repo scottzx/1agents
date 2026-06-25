@@ -3,6 +3,8 @@ package agent
 import (
 	"net/http"
 	"time"
+
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 // calendarItem is a normalized, source-agnostic entry for the personal agenda
@@ -39,7 +41,7 @@ func (h *Handler) HandleAgendaRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []calendarItem{}
 	for _, p := range projects {
-		if p.Status == "archived" {
+		if p.Status != meta.ProjectStatusActive {
 			continue
 		}
 		// Tasks → personal reminders + scheduled/recurring project tasks.
