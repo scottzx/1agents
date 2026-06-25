@@ -7,7 +7,14 @@
 
 /// <reference lib="webworker" />
 
-import { marked } from 'marked';
+import { Marked } from 'marked';
+import { mermaidRenderer } from '../utils/markdown';
+
+// Use a dedicated Marked instance carrying the shared mermaid code renderer, so
+// ```mermaid fences in a .md file become `.mermaid-block` placeholders (drawn by
+// renderMermaidBlocks on the main thread). Plain marked() left them as code.
+const marked = new Marked({ gfm: true, breaks: true });
+marked.use({ renderer: mermaidRenderer });
 
 interface ParseRequest {
     id: number;
