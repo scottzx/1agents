@@ -1,11 +1,18 @@
 import { h } from 'preact';
+import { useState } from 'preact/hooks';
 import { DashboardData, DashboardProject, ProjectHealth } from '@1agents/core/services/dashboardService';
+import { taskService } from '@1agents/core/services/taskService';
+import { AGENT_TYPES, AGENT_TYPE_LABELS, type AgentType } from '../types';
+import * as ui from '../../stores/uiStore';
 
-// Company cockpit (公司驾驶舱) Phase 1 — real-data PMO overview.
+// Company cockpit (公司驾驶舱) Phase 2 — 看→控.
 //
-// Renders the cross-project board on the backend's read-only aggregate. Its
-// first job is 阻塞物理显著性: blocked / stalled projects float to the top
-// (backend sorts them) and pulse / dim so they jump out without reading.
+// Phase 1 rendered the read-only cross-project board. Phase 2 adds a control
+// affordance to each card: dispatch an instruction / 派工 to a project's agent
+// without leaving the big screen. It reuses the existing task-create path
+// (POST /api/agent/tasks via taskService.create) — no new orchestration engine,
+// no new backend semantics. A dispatched instruction is just an immediate task
+// assigned to the chosen agent, which the scheduler picks up like any other.
 
 interface CockpitProps {
     data: DashboardData;
@@ -34,7 +41,85 @@ function lastActiveText(iso?: string): string {
     return `${Math.floor(hrs / 24)} 天前`;
 }
 
-function ProjectCard({ p, onOpen }: { p: DashboardProject; onOpen: () => void }) {
+// DispatchComposer is the per-card 下指令/派工 panel. It is a thin form over
+// taskService.create: instruction → task title, agent → assignee, immediate
+// schedule so the scheduler runs it right away.
+function DispatchComposer({
+    project,
+    onClose,
+    onDispatched,
+}: {
+    project: DashboardProject;
+    onClose: () => void;
+    onDispatched: () => void;
+}) {
+    const defaultAgent = (project.defaultAgent as AgentType) || 'claudecode';
+    const [agent, setAgent] = useState<AgentType>(AGENT_TYPES.includes(defaultAgent) ? defaultAgent : 'claudecode');
+    const [text, setText] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    const submit = async () => {
+        const title = text.trim();
+        if (!title || busy) return;
+        setBusy(true);
+        try {
+            await taskService.create({
+                workspace_id: project.id,
+                title,
+                assignee: agent,
+                scheduleType: 'immediate',
+            });
+            ui.showToast(`已向 [${project.name}] 派工：${AGENT_TYPE_LABELS[agent]} 即将执行`);
+            onDispatched();
+            onClose();
+        } catch (err) {
+            ui.showToast(`派工失败：${err instanceof Error ? err.message : String(err)}`);
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div class="cockpit-dispatch" onClick={e => e.stopPropagation()}>
+            <textarea
+                class="cockpit-dispatch-input"
+                placeholder="给这个项目下一条指令 / 派工…"
+                value={text}
+                disabled={busy}
+                autoFocus
+                onInput={e => setText((e.target as HTMLTextAreaElement).value)}
+                onKeyDown={e => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit();
+                    if (e.key === 'Escape') onClose();
+                }}
+            />
+            <div class="cockpit-dispatch-row">
+                <select
+                    class="cockpit-dispatch-agent"
+                    value={agent}
+                    disabled={busy}
+                    onChange={e => setAgent((e.target as HTMLSelectElement).value as AgentType)}
+                >
+                    {AGENT_TYPES.map(t => (
+                        <option key={t} value={t}>
+                            {AGENT_TYPE_LABELS[t]}
+                        </option>
+                    ))}
+                </select>
+                <div class="cockpit-dispatch-actions">
+                    <button class="cockpit-dispatch-cancel" disabled={busy} onClick={onClose}>
+                        取消
+                    </button>
+                    <button class="cockpit-dispatch-send" disabled={busy || !text.trim()} onClick={submit}>
+                        {busy ? '派工中…' : '派工 ⏎'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ProjectCard({ p, onOpen, onRefresh }: { p: DashboardProject; onOpen: () => void; onRefresh: () => void }) {
+    const [dispatching, setDispatching] = useState(false);
     // blocked / stalled cards get the salience treatment (pulse + halo);
     // stalled additionally dims (降灰) to read as "stuck, no heartbeat".
     const salient = p.health === 'blocked' || p.health === 'stalled';
@@ -77,6 +162,21 @@ function ProjectCard({ p, onOpen }: { p: DashboardProject; onOpen: () => void })
                 </span>
                 <span class="cockpit-card-last">{lastActiveText(p.lastEventAt)}</span>
             </div>
+
+            {dispatching ? (
+                <DispatchComposer project={p} onClose={() => setDispatching(false)} onDispatched={onRefresh} />
+            ) : (
+                <button
+                    class="cockpit-dispatch-btn"
+                    title="给该项目下指令 / 派工"
+                    onClick={e => {
+                        e.stopPropagation();
+                        setDispatching(true);
+                    }}
+                >
+                    ⚡ 派工
+                </button>
+            )}
         </div>
     );
 }
@@ -137,7 +237,7 @@ export function DashboardCockpit({ data, companyName, onOpenProject, onRefresh }
             ) : (
                 <main class="cockpit-board bento-grid">
                     {projects.map(p => (
-                        <ProjectCard key={p.id} p={p} onOpen={() => onOpenProject(p.id)} />
+                        <ProjectCard key={p.id} p={p} onOpen={() => onOpenProject(p.id)} onRefresh={onRefresh} />
                     ))}
                 </main>
             )}
