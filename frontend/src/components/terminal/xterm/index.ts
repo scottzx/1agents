@@ -10,10 +10,27 @@ import { ImageAddon } from '@xterm/addon-image';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { OverlayAddon } from './addons/overlay';
 import { ZmodemAddon } from './addons/zmodem';
-import { backendTarget } from '@1agents/core/services/apiClient';
+import { backendTarget, activeDeviceId } from '@1agents/core/services/apiClient';
 import { RelayTerminalSocket } from '@1agents/core/services/relay/relayTerminalSocket';
 
 import '@xterm/xterm/css/xterm.css';
+
+/**
+ * 多设备(#114):激活远程设备时,把同源终端 WS 地址 `ws://host/<base>/ws?...`
+ * 改写为经宿主机代理路由层的 `ws://host/api/proxy/{deviceId}/ws?...`(#111),
+ * 宿主机剥掉 `/api/proxy/{deviceId}` 前缀后把 `/ws` 隧道透传到目标设备的 ttyd。
+ * deviceId 为空(本机)时原样返回。
+ */
+function proxiedWsUrl(wsUrl: string, deviceId: string | null): string {
+    if (!deviceId) return wsUrl;
+    try {
+        const u = new URL(wsUrl);
+        u.pathname = `/api/proxy/${encodeURIComponent(deviceId)}/ws`;
+        return u.toString();
+    } catch {
+        return wsUrl;
+    }
+}
 
 interface TtydTerminal extends Terminal {
     fit(): void;
@@ -322,7 +339,9 @@ export class Xterm {
                 rows: this.terminal.rows,
             });
         } else {
-            this.socket = new WebSocket(this.options.wsUrl, ['tty']);
+            // 多设备(#114):激活远程设备时,把同源 /ws 改写为经宿主机代理路由层的
+            // /api/proxy/{deviceId}/ws(见 #111),宿主机隧道透传到目标设备的 ttyd。
+            this.socket = new WebSocket(proxiedWsUrl(this.options.wsUrl, activeDeviceId.value), ['tty']);
         }
         const { socket, register } = this;
 

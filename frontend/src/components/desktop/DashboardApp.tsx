@@ -10,6 +10,7 @@ import * as stage from '../../stores/stageStore';
 import * as ui from '../../stores/uiStore';
 import { DashboardWorkshop, MockEmployee } from './DashboardWorkshop';
 import { DashboardCockpit } from './DashboardCockpit';
+import { GlobalTaskBoard } from './GlobalTaskBoard';
 import { dashboardService, DashboardData } from '@1agents/core/services/dashboardService';
 
 class PixelSoundManager {
@@ -122,6 +123,11 @@ class PixelSoundManager {
 
 export const sound = new PixelSoundManager();
 
+// Main-app root URL for big-screen → workbench navigation. The big-screen is a
+// separate document served at /dashboard, so "back to workbench" / drill-down
+// must hit the app root, honoring a subpath mount (__BASE_PATH__, e.g. /tunnels).
+const mainAppRoot = () => window.location.origin + (__BASE_PATH__ || '') + '/';
+
 interface TooltipData {
     workspace: Workspace;
     tasks: Task[];
@@ -192,6 +198,9 @@ interface DashboardAppState {
 
     // ── Real-data company cockpit (Phase 1) ──
     cockpit: DashboardData | null;
+    // Real-mode cockpit sub-view: project rollup (大盘) vs cross-project task
+    // board/calendar (全局看板, issue #91).
+    cockpitView: 'projects' | 'board';
 }
 
 // ── MOCK DATA FOR SIMULATION DEMO ──
@@ -620,6 +629,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             releasedProjectStage: 'rating',
             ratingMultiplier: 1.0,
             cockpit: null,
+            cockpitView: 'projects',
         };
     }
 
@@ -928,8 +938,12 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             await wsStore.selectWorkspace(targetWs);
             stage.enterProject();
 
-            // Reset query param & reload normal SPA
-            window.location.href = window.location.origin + window.location.pathname;
+            // selectWorkspace persisted the active workspace id to localStorage,
+            // so navigating the browser to the main app root makes it restore
+            // that project. The big-screen page lives at /dashboard, so we point
+            // at the app root (honoring a subpath mount) rather than the current
+            // pathname.
+            window.location.href = mainAppRoot();
         }
     };
 
@@ -940,7 +954,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         if (targetWs) {
             await wsStore.selectWorkspace(targetWs);
             stage.enterProject();
-            window.location.href = window.location.origin + window.location.pathname;
+            window.location.href = mainAppRoot();
         }
     };
 
@@ -970,7 +984,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
     handleExit = () => {
         sound.playSelect();
-        window.location.href = window.location.origin + window.location.pathname;
+        window.location.href = mainAppRoot();
     };
 
     getProjectStatus(wsId: string, customTasksMap?: Record<string, Task[]>): string {
@@ -1216,6 +1230,20 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             return (
                 <div class="cockpit-page">
                     <div class="cockpit-topbar">
+                        <div class="cockpit-view-switch">
+                            <button
+                                class={`cockpit-topbar-btn ${this.state.cockpitView === 'projects' ? 'active' : ''}`}
+                                onClick={() => this.setState({ cockpitView: 'projects' })}
+                            >
+                                🗂 项目大盘
+                            </button>
+                            <button
+                                class={`cockpit-topbar-btn ${this.state.cockpitView === 'board' ? 'active' : ''}`}
+                                onClick={() => this.setState({ cockpitView: 'board' })}
+                            >
+                                📋 全局看板
+                            </button>
+                        </div>
                         <button class="cockpit-topbar-btn" onClick={this.toggleMock}>
                             🎮 加载模拟演示
                         </button>
@@ -1223,7 +1251,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                             ↩️ 返回工作台
                         </button>
                     </div>
-                    {this.state.loading ? (
+                    {this.state.cockpitView === 'board' ? (
+                        <GlobalTaskBoard />
+                    ) : this.state.loading ? (
                         <div class="cockpit-empty">正在装载公司大盘...</div>
                     ) : this.state.cockpit ? (
                         <DashboardCockpit

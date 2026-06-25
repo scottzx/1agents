@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 13
+const schemaVersion = 15
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -147,11 +147,21 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
 		}
 	}
-	// v13 (#chat-digest) adds the value-extraction template library + per-chat
-	// bindings. New tables only (CREATE IF NOT EXISTS), so version-gated is fine.
 	if version < 13 {
 		if _, err := db.sql.Exec(schemaV13); err != nil {
 			return fmt.Errorf("meta: apply schema v13: %w", err)
+		}
+	}
+	if version < 14 {
+		if _, err := db.sql.Exec(schemaV14); err != nil {
+			return fmt.Errorf("meta: apply schema v14: %w", err)
+		}
+	}
+	// v15 (#chat-digest) adds the value-extraction template library + per-chat
+	// bindings. New tables only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 15 {
+		if _, err := db.sql.Exec(schemaV15); err != nil {
+			return fmt.Errorf("meta: apply schema v15: %w", err)
 		}
 	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
@@ -165,6 +175,13 @@ func (db *DB) migrateSchema() error {
 	if err := db.ensureTasksColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile tasks columns: %w", err)
 	}
+	// v14 (#141) adds the project archive/close columns. Reconciled
+	// unconditionally (same rationale as ensureTasksColumns): idempotent ADD
+	// COLUMN that heals a DB whose user_version was bumped by a sibling branch
+	// before these columns landed (v13 was taken by #60's Inbox table).
+	if err := db.ensureProjectsColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile projects columns: %w", err)
+	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 			return fmt.Errorf("meta: set user_version: %w", err)
@@ -173,7 +190,7 @@ func (db *DB) migrateSchema() error {
 	return nil
 }
 
-// ensureTasksColumns adds any of the schema v9–v12 tasks columns that are
+// ensureTasksColumns adds any of the schema v9–v14 tasks columns that are
 // missing, skipping those already present. Idempotent and independent of
 // user_version, so it recovers DBs left half-migrated by the v9 branch
 // collision (#47 ⇄ #50). DDL must match the original ADD COLUMN definitions.
@@ -199,6 +216,10 @@ func (db *DB) ensureTasksColumns() error {
 		{"github_state", "ALTER TABLE tasks ADD COLUMN github_state TEXT NOT NULL DEFAULT ''"},
 		{"github_assignees", "ALTER TABLE tasks ADD COLUMN github_assignees TEXT NOT NULL DEFAULT '[]'"},
 		{"last_synced_at", "ALTER TABLE tasks ADD COLUMN last_synced_at TEXT"},
+		// ── adversarial multi-verifier (v14, #131) ──
+		{"verifier_count", "ALTER TABLE tasks ADD COLUMN verifier_count INTEGER NOT NULL DEFAULT 0"},
+		{"verify_pass_threshold", "ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0"},
+		{"review_pool", "ALTER TABLE tasks ADD COLUMN review_pool TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
@@ -211,9 +232,44 @@ func (db *DB) ensureTasksColumns() error {
 	return nil
 }
 
+// ensureProjectsColumns adds the schema v14 project archive/close columns
+// (#141) that are missing, skipping any already present. Idempotent and
+// independent of user_version, mirroring ensureTasksColumns.
+func (db *DB) ensureProjectsColumns() error {
+	have, err := db.tableColumns("projects")
+	if err != nil {
+		return err
+	}
+	type col struct{ name, ddl string }
+	wanted := []col{
+		// archive_reason: '' for active projects; 'completed' (阶段性完成归档) or
+		// 'superseded' (竞品出现砍掉) when archived. Free of any verdict for an
+		// active row.
+		{"archive_reason", "ALTER TABLE projects ADD COLUMN archive_reason TEXT NOT NULL DEFAULT ''"},
+		// archive_note: optional free-text rationale captured at archive/close time.
+		{"archive_note", "ALTER TABLE projects ADD COLUMN archive_note TEXT NOT NULL DEFAULT ''"},
+		// archived_at: timestamp the project left the active view; NULL while active.
+		{"archived_at", "ALTER TABLE projects ADD COLUMN archived_at TEXT"},
+	}
+	for _, c := range wanted {
+		if have[c.name] {
+			continue
+		}
+		if _, err := db.sql.Exec(c.ddl); err != nil {
+			return fmt.Errorf("add projects.%s: %w", c.name, err)
+		}
+	}
+	return nil
+}
+
 // tasksColumns returns the set of column names currently on the tasks table.
 func (db *DB) tasksColumns() (map[string]bool, error) {
-	rows, err := db.sql.Query("PRAGMA table_info(tasks)")
+	return db.tableColumns("tasks")
+}
+
+// tableColumns returns the set of column names currently on the given table.
+func (db *DB) tableColumns(table string) (map[string]bool, error) {
+	rows, err := db.sql.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return nil, err
 	}
@@ -409,13 +465,45 @@ UPDATE milestones SET position = sub.rn FROM (
 // idempotently regardless of user_version — see the note in migrateSchema for
 // why the version-gated form couldn't recover the v9 branch collision.
 
-// schemaV13 adds the chat-digest value-extraction layer. digest_templates is a
+// schemaV13 adds the Inbox 统一信息收口层 table (#60): the most-upstream layer
+// that aggregates external context (manual capture / IM / email / RSS / misc)
+// into one intake list before PMO 分发 (#61) routes it downstream. Items are
+// never deleted — archiving is a status flip so the trail "what did this turn
+// into" survives. PMO-dispatch fields (dispatched_to / linked_requirement) are
+// deliberately out of scope here; #61 owns them.
+const schemaV13 = `
+CREATE TABLE IF NOT EXISTS inbox_items (
+    id         TEXT PRIMARY KEY,
+    source     TEXT NOT NULL DEFAULT 'manual',
+    title      TEXT NOT NULL DEFAULT '',
+    content    TEXT NOT NULL DEFAULT '',
+    url        TEXT NOT NULL DEFAULT '',
+    summary    TEXT NOT NULL DEFAULT '',
+    tags       TEXT NOT NULL DEFAULT '[]',
+    status     TEXT NOT NULL DEFAULT 'unread',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox_items(status, created_at DESC);
+`
+
+// schemaV14 adds the adversarial multi-verifier fields (#131): verifier_count /
+// verify_pass_threshold configure the verification panel, review_pool holds the
+// running cycle's accumulated per-verifier verdicts. DEFAULTs keep every pre-v14
+// task on the classic single-verifier flow (count 0 ⇒ 1 verifier).
+const schemaV14 = `
+ALTER TABLE tasks ADD COLUMN verifier_count        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN review_pool           TEXT    NOT NULL DEFAULT '';
+`
+
+// schemaV15 adds the chat-digest value-extraction layer. digest_templates is a
 // library of reusable Markdown standards ("what counts as valuable" + output
 // schema); is_default marks the global fallback(s). digest_bindings attaches
 // templates to a chat session, many-to-many, so e.g. an investment group can
 // stack 投资 + 产品 templates. Resolution (in the digest package): a chat's
 // bound templates, or the is_default ones when it has no binding.
-const schemaV13 = `
+const schemaV15 = `
 CREATE TABLE IF NOT EXISTS digest_templates (
     id         TEXT PRIMARY KEY,
     name       TEXT    NOT NULL DEFAULT '',

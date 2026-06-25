@@ -56,6 +56,11 @@ type Scheduler struct {
 	workspacesFn func() ([]WorkspaceRef, error)
 	runner       *TaskRunner
 	ticker       *time.Ticker
+	// engine is the event-driven orchestration layer (#133). The scheduler
+	// owns state transitions and, at each transition point, emits a TaskEvent
+	// the engine maps to declarative actions (route/notify/requeue). Never nil
+	// after construction.
+	engine *EventEngine
 }
 
 func NewScheduler(tasksStore *TasksStore, workspacesFn func() ([]WorkspaceRef, error)) *Scheduler {
@@ -63,6 +68,7 @@ func NewScheduler(tasksStore *TasksStore, workspacesFn func() ([]WorkspaceRef, e
 		Lock:         NewWorkspaceLock(),
 		tasksStore:   tasksStore,
 		workspacesFn: workspacesFn,
+		engine:       DefaultEventEngine(),
 	}
 }
 
@@ -127,6 +133,59 @@ func needsAcceptanceCriteria(t *Task) bool {
 		return false // container parent or empty stub — nothing to verify
 	}
 	return strings.TrimSpace(t.AcceptanceCriteria) == ""
+}
+
+// needsSourcing reports whether a project-internal executable task lacks the
+// traceability link required to enter the runnable queue (#68 任务归口原则).
+// Every project task must answer "我为什么存在" by linking to a requirement or
+// bug; a task that doesn't is held as not_ready until someone adds the link.
+//
+// taskMap resolves a link target id to its task so the target's Type can be
+// checked. The scheduler only sweeps the workspace registry, and the personal
+// bucket (__personal__) is deliberately absent from it, so every task reaching
+// this gate already has a real project_id — that is exactly the "有 project_id
+// 强制；无 id 不强制" boundary, enforced structurally rather than re-checked.
+//
+// Exemptions mirror needsAcceptanceCriteria: requirement/bug/discussion items
+// are the sources themselves (and never execute), AI suggestions are held until
+// adopted, and container parents (no Description) auto-complete from subtasks. A
+// subtask inherits its parent's sourcing — once the parent is sourced (or is a
+// container deriving from a requirement/bug), its children need no own link.
+func needsSourcing(t *Task, taskMap map[string]*Task) bool {
+	if t.Type != "" && t.Type != TaskTypeTask {
+		return false
+	}
+	if t.Source == TaskSourceAgent {
+		return false
+	}
+	if strings.TrimSpace(t.Description) == "" {
+		return false // container parent or empty stub
+	}
+	return !hasSourcingLink(t, taskMap, map[string]bool{})
+}
+
+// hasSourcingLink reports whether t (or, by inheritance, an ancestor) carries a
+// link whose target resolves to a requirement or bug in the same project.
+// "closes" and "relates" both count — either expresses derivation from the
+// issue. seen guards against cycles in the parent chain.
+func hasSourcingLink(t *Task, taskMap map[string]*Task, seen map[string]bool) bool {
+	if t == nil || seen[t.ID] {
+		return false
+	}
+	seen[t.ID] = true
+	for _, link := range t.Links {
+		tgt, ok := taskMap[link.Target]
+		if !ok {
+			continue
+		}
+		if tgt.Type == TaskTypeRequirement || tgt.Type == TaskTypeBug {
+			return true
+		}
+	}
+	if t.ParentID != "" {
+		return hasSourcingLink(taskMap[t.ParentID], taskMap, seen)
+	}
+	return false
 }
 
 // triggerTime returns when a task becomes eligible to run: explicit
@@ -241,6 +300,30 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			}
 		}
 
+		// 3.4 created → auto-route (#133): a fresh executable task that no one
+		//     has assigned an agent to fires an EventCreated; the rule engine
+		//     routes it to an agent by type/domain. Idempotent — once Assignee
+		//     is set the rule short-circuits, so this fires at most once per
+		//     task. Runs before dependency gating so a task is routed even while
+		//     it waits on a dependency. Non-executable issues (requirement/bug/
+		//     discussion), AI suggestions, and user-owned reminders are skipped:
+		//     they never run, so routing them is meaningless.
+		for i := range cfg.Tasks {
+			t := &cfg.Tasks[i]
+			if t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
+				continue
+			}
+			if t.Assignee != "" {
+				continue
+			}
+			if (t.Type != "" && t.Type != TaskTypeTask) || t.Source == TaskSourceAgent {
+				continue
+			}
+			if s.emit(t, EventCreated, now) {
+				modified = true
+			}
+		}
+
 		// 3.5 Dependency gating (blocked state): a task whose explicit
 		//     dependencies aren't all completed is surfaced as `blocked` so the
 		//     board shows the upstream wait; once they complete it returns to
@@ -262,13 +345,17 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			// an explicit manual hold — independent of the dependency graph — so
 			// it gates a task into `blocked` just like an unmet dependency would.
 			forceBlocked := DeriveSignals(*t).ForceBlocked
+			// not_ready covers both authoring gaps: missing acceptance criteria
+			// (#135) and missing requirement/bug sourcing (#68). Either holds the
+			// task out of the queue; filling the gap releases it back to pending.
+			notReady := needsAcceptanceCriteria(t) || needsSourcing(t, taskMap)
 			switch t.Status {
 			case TaskStatusPending, TaskStatusQueued:
-				// Readiness gate (#135): an executable task without acceptance
-				// criteria can't be loop-verified, so it is held as not_ready
+				// Readiness gate (#135/#68): an executable task missing acceptance
+				// criteria or its requirement/bug sourcing is held as not_ready
 				// instead of being queued. Checked before dependency gating so an
 				// under-specified task surfaces its authoring gap first.
-				if needsAcceptanceCriteria(t) {
+				if notReady {
 					t.Status = TaskStatusNotReady
 					t.UpdatedAt = now
 					modified = true
@@ -276,9 +363,22 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					t.Status = TaskStatusBlocked
 					t.UpdatedAt = now
 					modified = true
+					// blocked → notify PM (#133). Emitted only on the transition
+					// into blocked so the PM is pinged once, not every tick.
+					s.emit(t, EventBlocked, now)
+					// blocked → push an IM approve/reject card (#129).
+					emitNotify(TaskNotification{
+						Kind:          NotifyBlocked,
+						WorkspacePath: ref.Path,
+						WorkspaceID:   ref.ID,
+						TaskID:        t.ID,
+						Number:        t.Number,
+						Title:         t.Title,
+						Summary:       t.Summary,
+					})
 				}
 			case TaskStatusBlocked:
-				if needsAcceptanceCriteria(t) {
+				if notReady {
 					t.Status = TaskStatusNotReady
 					t.UpdatedAt = now
 					modified = true
@@ -288,9 +388,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					modified = true
 				}
 			case TaskStatusNotReady:
-				// Criteria filled in → return to pending; the dependency/ready
-				// scans below take over from there.
-				if !needsAcceptanceCriteria(t) {
+				// Authoring gap filled (criteria + sourcing) → return to pending;
+				// the dependency/ready scans below take over from there.
+				if !notReady {
 					t.Status = TaskStatusPending
 					t.UpdatedAt = now
 					modified = true
@@ -431,6 +531,35 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 
 		return modified
 	})
+}
+
+// emit runs the orchestration engine for one lifecycle event against the live
+// task pointer and applies the resulting actions in place. It must be called
+// inside a Mutate transaction (t points into cfg.Tasks). Returns whether the
+// task was modified. Follow-on events the actions produce (e.g. an assign
+// emits EventAssigned) are fanned back through the engine once, non-recursively,
+// so a rule can react to a routing decision without risking a loop.
+func (s *Scheduler) emit(t *Task, kind TaskEventKind, now time.Time) bool {
+	if s.engine == nil {
+		return false
+	}
+	ev := TaskEvent{
+		Kind:          kind,
+		Task:          *t,
+		Signals:       DeriveSignals(*t),
+		WorkspacePath: "",
+		At:            now,
+	}
+	actions := s.engine.Evaluate(ev)
+	modified, followUps := applyEventActions(t, actions, now)
+	for _, fk := range followUps {
+		follow := TaskEvent{Kind: fk, Task: *t, Signals: DeriveSignals(*t), At: now}
+		more, _ := applyEventActions(t, s.engine.Evaluate(follow), now)
+		if more {
+			modified = true
+		}
+	}
+	return modified
 }
 
 // nextOccurrence computes the next trigger after `after` for a simple-enum

@@ -194,14 +194,17 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	}
 }
 
-// Verify runs a headless verification pass over a task whose executor finished
+// Verify runs a headless verification cycle over a task whose executor finished
 // (status pending_review). Blocking — the scheduler invokes it in a goroutine
-// after marking the task running and acquiring the workspace lock. The verifier
-// gets a hard read-only tasks MCP (no update_task; submit_review only) locked to
-// this task; its verdict, submitted via submit_review → POST /review, drives the
-// state machine (applyReviewVerdict). If the agent finishes without submitting a
-// verdict, that is treated as a rejection so the loop can't stall. Releases the
-// lock and re-ticks on exit. See #50.
+// after marking the task running and acquiring the workspace lock.
+//
+// Adversarial panel (#131): when the task configures VerifierCount > 1, Verify
+// runs that many independent verifier sessions sequentially. Each verifier gets
+// a hard read-only tasks MCP (no update_task; submit_review only) and submits
+// its own verdict; the server (applyReviewVerdict) pools the verdicts and, once
+// the panel is complete, aggregates them by threshold to drive the state machine
+// (#50). A verifier that ends without submitting counts as a rejecting verdict
+// so the panel can't stall. Releases the lock and re-ticks on exit.
 func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 	defer func() {
 		r.scheduler.Lock.Release(workspacePath)
@@ -219,6 +222,27 @@ func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 		return
 	}
 
+	n := effectiveVerifierCount(&task)
+	log.Printf("[runner] Verifying task %s (%q) in %s with %d verifier(s), threshold %d",
+		task.ID, task.Title, workspacePath, n, effectivePassThreshold(&task))
+
+	for pass := 1; pass <= n; pass++ {
+		// Stop early if a panelist's verdict already drove the task off running
+		// (e.g. an aggregate decision after a no-verdict reject filled the pool).
+		if cur, ok, _ := r.tasksStore.GetTask(task.ID); ok && cur.Status != TaskStatusRunning {
+			return
+		}
+		r.runVerifierPass(workspacePath, workspaceID, task, verifier, pass, n)
+	}
+}
+
+// runVerifierPass drives one independent verifier session: spin up a headless
+// agent with the verifier persona + read-only tasks MCP, prompt it to judge,
+// and wait for it to finish. The verdict reaches the task via submit_review →
+// POST /review → applyReviewVerdict, which pools it. If the session ends without
+// adding a verdict to the pool, a synthetic rejection is recorded so the panel
+// advances. See Verify.
+func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Task, verifier string, pass, total int) {
 	// Verifier persona: role template (verifier.md) with project context. The
 	// hard read-only tool surface is enforced server-side regardless, so a
 	// missing template only loses the persona, not the safety.
@@ -245,13 +269,23 @@ func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 		idleTimeout = time.Duration(task.TimeoutMinutes) * time.Minute
 	}
 
+	// poolBefore lets us tell whether this pass actually added a verdict.
+	poolBefore := 0
+	if cur, ok, _ := r.tasksStore.GetTask(task.ID); ok {
+		poolBefore = len(cur.ReviewPool)
+	}
+
 	// Headless verifier session, hidden from the sidebar like auto-runs.
 	sessionID := newID()
+	name := fmt.Sprintf("%s - 自动核验", task.Title)
+	if total > 1 {
+		name = fmt.Sprintf("%s - 对抗式核验 %d/%d", task.Title, pass, total)
+	}
 	rec := ChatSessionRecord{
 		ID:             sessionID,
 		WorkspaceID:    workspaceID,
 		TaskID:         task.ID,
-		Name:           fmt.Sprintf("%s - 自动核验", task.Title),
+		Name:           name,
 		AgentType:      verifier,
 		Role:           SessionRoleAuto,
 		PermissionMode: "approve-all",
@@ -264,7 +298,7 @@ func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 	serverURL := fmt.Sprintf("ws://127.0.0.1:%d", r.serverPort)
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
-		r.rejectNoVerdict(workspacePath, task.ID, verifier, "bridge unavailable: "+err.Error())
+		r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "bridge unavailable: "+err.Error())
 		return
 	}
 	defer conn.Close()
@@ -279,20 +313,20 @@ func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 		PermissionMode: "approve-all",
 	}
 	if err := conn.WriteJSON(ensure); err != nil {
-		r.rejectNoVerdict(workspacePath, task.ID, verifier, "ensure_session failed: "+err.Error())
+		r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "ensure_session failed: "+err.Error())
 		return
 	}
 
-	instruction := "执行者已提交产出。请逐条对照本任务的验收标准核验执行者的产出,然后调用 submit_review 提交裁决:每条标准报告 pass(是否达标),未达标的写明缺什么。只有全部达标任务才算完成,否则会被打回重做。"
+	instruction := "执行者已提交产出。请独立、默认怀疑地逐条对照本任务的验收标准核验执行者的产出,主动找漏洞与反例,然后调用 submit_review 提交裁决:每条标准报告 pass(是否达标),未达标的写明缺什么。只有全部达标才算这条通过,否则会被打回重做。"
 
-	log.Printf("[runner] Verifying task %s (%q) in %s, session %s", task.ID, task.Title, workspacePath, sessionID)
+	log.Printf("[runner] Verify pass %d/%d task %s, session %s", pass, total, task.ID, sessionID)
 
 	promptSent := false
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(idleTimeout))
 		var msg WsMessage
 		if err := conn.ReadJSON(&msg); err != nil {
-			r.rejectNoVerdict(workspacePath, task.ID, verifier, "bridge read failed: "+err.Error())
+			r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "bridge read failed: "+err.Error())
 			return
 		}
 		switch msg.Event {
@@ -303,34 +337,38 @@ func (r *TaskRunner) Verify(workspacePath, workspaceID string, task Task) {
 			if !promptSent {
 				promptSent = true
 				if err := conn.WriteJSON(WsMessage{Action: "prompt", SessionID: sessionID, Text: instruction}); err != nil {
-					r.rejectNoVerdict(workspacePath, task.ID, verifier, "prompt failed: "+err.Error())
+					r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "prompt failed: "+err.Error())
 					return
 				}
 			}
 		case "done":
-			// The verdict (via submit_review → applyReviewVerdict) already moved
-			// the task off running. If it didn't, the verifier ended without a
-			// verdict — treat that as a rejection so the loop advances.
+			// The verdict (via submit_review → applyReviewVerdict) was pooled. If
+			// this pass added nothing to the pool, the verifier ended without a
+			// verdict — record a synthetic rejection so the panel advances.
 			r.markVerifySessionIdle(workspacePath, task.ID, sessionID)
-			if cur, ok, _ := r.tasksStore.GetTask(task.ID); ok && cur.Status == TaskStatusRunning {
-				r.rejectNoVerdict(workspacePath, task.ID, verifier, "核验者未提交裁决")
-			}
+			r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "核验者未提交裁决")
 			_ = conn.WriteJSON(WsMessage{Action: "close_session", SessionID: sessionID})
 			return
 		case "error":
-			r.rejectNoVerdict(workspacePath, task.ID, verifier, "verifier agent error: "+msg.Message)
+			r.rejectNoVerdict(workspacePath, task.ID, verifier, poolBefore, "verifier agent error: "+msg.Message)
 			return
 		}
 	}
 }
 
-// rejectNoVerdict records a synthetic rejection when a verification pass ends
-// without the verifier submitting a verdict (crash, hang, or a verifier that
-// simply forgot the tool). It reuses applyReviewVerdict so the same budget/loop
-// rules apply. No-op if the task already left running (a verdict landed).
-func (r *TaskRunner) rejectNoVerdict(workspacePath, taskID, verifier, reason string) {
-	if cur, ok, _ := r.tasksStore.GetTask(taskID); !ok || cur.Status != TaskStatusRunning {
+// rejectNoVerdict records a synthetic rejecting verdict when a verification pass
+// ends without the verifier submitting one (crash, hang, or a verifier that
+// simply forgot the tool). It reuses applyReviewVerdict so the same pool/budget/
+// loop rules apply. poolBefore is the pool length when the pass started: if the
+// pool grew, this pass already submitted and we no-op. Also no-ops if the task
+// already left running (the panel's aggregate decision landed).
+func (r *TaskRunner) rejectNoVerdict(workspacePath, taskID, verifier string, poolBefore int, reason string) {
+	cur, ok, _ := r.tasksStore.GetTask(taskID)
+	if !ok || cur.Status != TaskStatusRunning {
 		return
+	}
+	if len(cur.ReviewPool) > poolBefore {
+		return // this pass already submitted a verdict
 	}
 	crit := []CriterionResult{{Criterion: "核验未完成", Pass: false, Comment: reason}}
 	if _, err := applyReviewVerdict(r.tasksStore, workspacePath, taskID, crit, reason, verifier); err != nil {
@@ -382,6 +420,8 @@ func (r *TaskRunner) attachSessionMetadata(workspacePath, taskID, sessionID, age
 // finish persists the terminal state of an automated run.
 func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status TaskStatus, summary string) {
 	now := time.Now().UTC()
+	var title string
+	var number int
 	err := r.tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
@@ -394,6 +434,7 @@ func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status Task
 			if status == TaskStatusCompleted {
 				task.CompletedAt = &now
 			}
+			title, number = task.Title, task.Number
 			for j := range task.Sessions {
 				if task.Sessions[j].ID == sessionID {
 					task.Sessions[j].Status = SessionStatusIdle
@@ -409,4 +450,23 @@ func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status Task
 		return
 	}
 	log.Printf("[runner] Task %s finished: %s (%s)", taskID, status, summary)
+
+	// failed / pending_review → push an IM approve/reject card (#129).
+	var kind TaskNotifyKind
+	switch status {
+	case TaskStatusFailed:
+		kind = NotifyFailed
+	case TaskStatusPendingReview:
+		kind = NotifyPendingReview
+	default:
+		return
+	}
+	emitNotify(TaskNotification{
+		Kind:          kind,
+		WorkspacePath: workspacePath,
+		TaskID:        taskID,
+		Number:        number,
+		Title:         title,
+		Summary:       summary,
+	})
 }

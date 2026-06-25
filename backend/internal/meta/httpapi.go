@@ -2,19 +2,30 @@ package meta
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"strings"
 )
 
 // ProjectsHandler serves the project registry API:
 //
-//	GET  /api/projects → list all projects (most recently updated first)
-//	POST /api/projects → register/refresh a project {id?, name, path}
+//	GET  /api/projects             → list all projects (most recently updated first)
+//	GET  /api/projects?status=...  → filter by status (active|archived|killed)
+//	POST /api/projects             → register/refresh a project {id?, name, path}
 func ProjectsHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			projects, err := db.ListProjects()
+			var (
+				projects []Project
+				err      error
+			)
+			if status := r.URL.Query().Get("status"); status != "" {
+				projects, err = db.ListProjectsByStatus(ProjectStatus(status))
+			} else {
+				projects, err = db.ListProjects()
+			}
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -52,6 +63,92 @@ func ProjectsHandler(db *DB) http.HandlerFunc {
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
+	}
+}
+
+// ProjectArchiveHook is an optional callback invoked once after a project is
+// successfully archived or closed (#144 复盘沉淀触发衔接). It receives the freshly
+// archived project so the caller can汇总任务/决策 → 落 kwiki. It is run
+// best-effort: a hook error is logged, not surfaced to the client, so a
+// retrospective failure never blocks the archive action. Defined here (not in
+// retro) to avoid the lower meta layer depending on retro.
+type ProjectArchiveHook func(p Project) error
+
+// ProjectActionHandler serves the project lifecycle actions (#141):
+//
+//	POST /api/projects/{id}/archive {reason?, note?} → 阶段性完成归档
+//	POST /api/projects/{id}/close   {reason?, note?} → 竞品出现砍掉 (killed)
+//	POST /api/projects/{id}/reopen                   → back to active
+//
+// archive defaults reason to "completed"; close defaults it to "superseded".
+// Both keep all project data — only status/reason/timestamp change. The handler
+// is mounted on the "/api/projects/" prefix.
+//
+// An optional archiveHook fires after a successful archive/close (#144), wired
+// by the server to sink a retrospective into kwiki.
+func ProjectActionHandler(db *DB, archiveHook ...ProjectArchiveHook) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		rest := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+		id, action, ok := strings.Cut(rest, "/")
+		if !ok || id == "" || action == "" {
+			http.Error(w, "expected /api/projects/{id}/{action}", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Reason ArchiveReason `json:"reason"`
+			Note   string        `json:"note"`
+		}
+		// Body is optional; ignore decode errors on an empty body.
+		_ = json.NewDecoder(r.Body).Decode(&body)
+
+		var err error
+		switch action {
+		case "archive":
+			reason := body.Reason
+			if reason == "" {
+				reason = ArchiveReasonCompleted
+			}
+			err = db.ArchiveProject(id, ProjectStatusArchived, reason, body.Note)
+		case "close":
+			reason := body.Reason
+			if reason == "" {
+				reason = ArchiveReasonSuperseded
+			}
+			err = db.ArchiveProject(id, ProjectStatusKilled, reason, body.Note)
+		case "reopen":
+			err = db.ReopenProject(id)
+		default:
+			http.Error(w, "unknown action: "+action, http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			http.Error(w, "project not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		p, _, err := db.GetProject(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// #144: fire the retrospective hook on archive/close (not reopen).
+		// Best-effort — a hook failure must not fail the archive action.
+		if (action == "archive" || action == "close") && len(archiveHook) > 0 && archiveHook[0] != nil {
+			if hookErr := archiveHook[0](p); hookErr != nil {
+				log.Printf("[meta] project archive hook for %s: %v", id, hookErr)
+			}
+		}
+		writeJSON(w, p)
 	}
 }
 

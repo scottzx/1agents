@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/scottzx/1Agents/backend/internal/agent/permission"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -138,7 +139,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, rec)
 	case http.MethodPatch:
-		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" }
+		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" | "auto" }
 		// Used by the Composer's permission-mode toggle. Validates the
 		// enum to keep bad client data out of the JSON store (since the
 		// bridge-server later trusts this string).
@@ -153,7 +154,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		if body.PermissionMode != nil {
 			mode := *body.PermissionMode
 			if !isValidPermissionMode(mode) {
-				http.Error(w, "permission_mode must be approve-reads, approve-all, or deny-all", http.StatusBadRequest)
+				http.Error(w, "permission_mode must be approve-reads, approve-all, deny-all, or auto", http.StatusBadRequest)
 				return
 			}
 			if err := h.store.UpdatePermissionMode(id, mode); err != nil {
@@ -285,13 +286,15 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		SessionKey:  body.SessionKey,
 		Role:        body.Role,
 	}
-	// AI Project Manager sessions default to approve-all: the task tools are
-	// already hard-locked to this project via env injection, so auto-approving
-	// keeps the conversation flowing instead of stalling on a permission prompt
-	// for every create_task/update_task. The user can still switch the mode
-	// manually afterwards (persisted via set_permission_mode).
+	// AI Project Manager sessions default to "auto" (issue #63): the task tools
+	// are already hard-locked to this project via env injection, so "auto"
+	// auto-approves those context-locked mcp__tasks__* calls (keeping the
+	// conversation flowing) while still prompting on genuinely risky writes —
+	// unlike the old approve-all default, which waved everything through. The
+	// user can still switch the mode manually afterwards (persisted via
+	// set_permission_mode).
 	if isProjectManagerRole(rec.Role) {
-		rec.PermissionMode = "approve-all"
+		rec.PermissionMode = string(permission.ModeAuto)
 	}
 	if err := h.store.Add(rec); err != nil {
 		if errors.Is(err, ErrDuplicate) {
@@ -330,29 +333,31 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var body struct {
-			WorkspaceID        string       `json:"workspace_id"`
-			Title              string       `json:"title"`
-			Description        string       `json:"description"`
-			AcceptanceCriteria string       `json:"acceptanceCriteria"`
-			Priority           string       `json:"priority"`
-			Assignee           string       `json:"assignee"`
-			Labels             []string     `json:"labels"`
-			ParentID           string       `json:"parentId"`
-			Milestone          string       `json:"milestone"`
-			Sprint             string       `json:"sprint"`
-			Type               string       `json:"type"`
-			Source             string       `json:"source"`
-			UserConfirm        bool         `json:"userConfirm"`
-			Recurrence         *Recurrence  `json:"recurrence"`
-			MaxRetries         *int         `json:"maxRetries"`
-			Verifier           string       `json:"verifier"`
-			ReviewMaxAttempts  *int         `json:"reviewMaxAttempts"`
-			ScheduleType       ScheduleType `json:"scheduleType"`
-			ScheduledAt        *time.Time   `json:"scheduledAt"`
-			PlannedStart       *time.Time   `json:"plannedStart"`
-			PlannedEnd         *time.Time   `json:"plannedEnd"`
-			DependsOn          []string     `json:"dependsOn"`
-			Links              []TaskLink   `json:"links"`
+			WorkspaceID         string       `json:"workspace_id"`
+			Title               string       `json:"title"`
+			Description         string       `json:"description"`
+			AcceptanceCriteria  string       `json:"acceptanceCriteria"`
+			Priority            string       `json:"priority"`
+			Assignee            string       `json:"assignee"`
+			Labels              []string     `json:"labels"`
+			ParentID            string       `json:"parentId"`
+			Milestone           string       `json:"milestone"`
+			Sprint              string       `json:"sprint"`
+			Type                string       `json:"type"`
+			Source              string       `json:"source"`
+			UserConfirm         bool         `json:"userConfirm"`
+			Recurrence          *Recurrence  `json:"recurrence"`
+			MaxRetries          *int         `json:"maxRetries"`
+			Verifier            string       `json:"verifier"`
+			ReviewMaxAttempts   *int         `json:"reviewMaxAttempts"`
+			VerifierCount       *int         `json:"verifierCount"`
+			VerifyPassThreshold *int         `json:"verifyPassThreshold"`
+			ScheduleType        ScheduleType `json:"scheduleType"`
+			ScheduledAt         *time.Time   `json:"scheduledAt"`
+			PlannedStart        *time.Time   `json:"plannedStart"`
+			PlannedEnd          *time.Time   `json:"plannedEnd"`
+			DependsOn           []string     `json:"dependsOn"`
+			Links               []TaskLink   `json:"links"`
 			// GitHub Issue/PR mapping (#74). Optional sync backfill — normally
 			// written by the future sync pass, not the create form.
 			GithubRepo      string     `json:"githubRepo"`
@@ -410,44 +415,54 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if body.ReviewMaxAttempts != nil && *body.ReviewMaxAttempts >= 0 {
 			reviewMaxAttempts = *body.ReviewMaxAttempts
 		}
+		verifierCount := 0
+		if body.VerifierCount != nil && *body.VerifierCount > 0 {
+			verifierCount = *body.VerifierCount
+		}
+		verifyPassThreshold := 0
+		if body.VerifyPassThreshold != nil && *body.VerifyPassThreshold > 0 {
+			verifyPassThreshold = *body.VerifyPassThreshold
+		}
 		newTask := Task{
-			ID:                 newID(),
-			Title:              body.Title,
-			Description:        body.Description,
-			AcceptanceCriteria: body.AcceptanceCriteria,
-			IssueState:         IssueOpen,
-			Status:             TaskStatusPending,
-			Priority:           Priority(body.Priority),
-			Assignee:           body.Assignee,
-			Verifier:           body.Verifier,
-			ReviewMaxAttempts:  reviewMaxAttempts,
-			Labels:             body.Labels,
-			ParentID:           body.ParentID,
-			Milestone:          body.Milestone,
-			Sprint:             body.Sprint,
-			Type:               TaskType(body.Type),
-			Source:             TaskSource(body.Source),
-			UserConfirm:        body.UserConfirm,
-			Recurrence:         body.Recurrence,
-			MaxRetries:         maxRetries,
-			ScheduleType:       body.ScheduleType,
-			ScheduledAt:        body.ScheduledAt,
-			PlannedStart:       body.PlannedStart,
-			PlannedEnd:         body.PlannedEnd,
-			DependsOn:          body.DependsOn,
-			Links:              body.Links,
-			GithubRepo:         body.GithubRepo,
-			GithubKind:         body.GithubKind,
-			GithubNumber:       body.GithubNumber,
-			GithubNodeId:       body.GithubNodeId,
-			GithubUrl:          body.GithubUrl,
-			GithubState:        body.GithubState,
-			GithubAssignees:    body.GithubAssignees,
-			LastSyncedAt:       body.LastSyncedAt,
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-			Replies:            []Reply{},
-			Sessions:           []SessionMetadata{},
+			ID:                  newID(),
+			Title:               body.Title,
+			Description:         body.Description,
+			AcceptanceCriteria:  body.AcceptanceCriteria,
+			IssueState:          IssueOpen,
+			Status:              TaskStatusPending,
+			Priority:            Priority(body.Priority),
+			Assignee:            body.Assignee,
+			Verifier:            body.Verifier,
+			ReviewMaxAttempts:   reviewMaxAttempts,
+			VerifierCount:       verifierCount,
+			VerifyPassThreshold: verifyPassThreshold,
+			Labels:              body.Labels,
+			ParentID:            body.ParentID,
+			Milestone:           body.Milestone,
+			Sprint:              body.Sprint,
+			Type:                TaskType(body.Type),
+			Source:              TaskSource(body.Source),
+			UserConfirm:         body.UserConfirm,
+			Recurrence:          body.Recurrence,
+			MaxRetries:          maxRetries,
+			ScheduleType:        body.ScheduleType,
+			ScheduledAt:         body.ScheduledAt,
+			PlannedStart:        body.PlannedStart,
+			PlannedEnd:          body.PlannedEnd,
+			DependsOn:           body.DependsOn,
+			Links:               body.Links,
+			GithubRepo:          body.GithubRepo,
+			GithubKind:          body.GithubKind,
+			GithubNumber:        body.GithubNumber,
+			GithubNodeId:        body.GithubNodeId,
+			GithubUrl:           body.GithubUrl,
+			GithubState:         body.GithubState,
+			GithubAssignees:     body.GithubAssignees,
+			LastSyncedAt:        body.LastSyncedAt,
+			CreatedAt:           time.Now().UTC(),
+			UpdatedAt:           time.Now().UTC(),
+			Replies:             []Reply{},
+			Sessions:            []SessionMetadata{},
 		}
 		if newTask.ScheduleType == "" {
 			newTask.ScheduleType = ScheduleTypeImmediate
@@ -465,6 +480,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if newTask.Milestone != "" {
 			_ = h.tasksStore.EnsureMilestone(wsPath, newTask.Milestone)
 		}
+		// Auto cross-reference: turn any `#N` mentions in the new task's
+		// title/description into LinkRelates edges (#136). Best-effort — a
+		// resolution hiccup shouldn't fail task creation.
+		_, _ = h.tasksStore.SyncRefLinks(newTask.ID)
 		// Save assigns the short number (#N) on the stored row, so re-fetch
 		// rather than returning the pre-save copy.
 		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
@@ -539,6 +558,7 @@ func (h *Handler) workspaceIDForPath(path string) string {
 //	PATCH  /api/agent/tasks/{id}          → edit description / toggle issue state
 //	DELETE /api/agent/tasks/{id}          → remove task (legacy, needs workspace_id)
 //	POST   /api/agent/tasks/{id}/replies  → append a user reply to the timeline
+//	GET    /api/agent/tasks/{id}/graph    → cross-reference graph (outgoing + backlinks)
 func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 	const prefix = "/api/agent/tasks/"
 	rest := r.URL.Path[len(prefix):]
@@ -566,6 +586,14 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleTaskReview(w, r, id)
+		return
+	}
+	if sub == "graph" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.handleTaskGraph(w, r, id)
 		return
 	}
 	if sub != "" {
@@ -754,10 +782,24 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			target.IssueState = IssueState(*body.IssueState)
 		}
 		if body.Status != nil {
+			// #132: this PATCH is the human-override lane (the board sets only the
+			// terminal completed/cancelled states; the executor MCP can no longer
+			// self-report completed). Manually retiring a card leaves an
+			// append-only audit note so the override is traceable, never silent.
+			prevStatus := target.Status
 			target.Status = TaskStatus(*body.Status)
 			if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
 				now := time.Now().UTC()
 				target.CompletedAt = &now
+			}
+			if target.Status != prevStatus {
+				now := time.Now().UTC()
+				target.Replies = append(target.Replies, Reply{
+					Author:    Author{Kind: "user", Name: "user"},
+					Text:      fmt.Sprintf("人工将状态从 `%s` 改为 `%s`(手动 override,非工件事件驱动)。", prevStatus, target.Status),
+					Mode:      ModePureComment,
+					CreatedAt: now,
+				})
 			}
 		}
 		if body.AcceptanceCriteria != nil {
@@ -854,6 +896,11 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if body.Milestone != nil && *body.Milestone != "" {
 		_ = h.tasksStore.EnsureMilestone(existing.WorkspacePath, *body.Milestone)
 	}
+	// Re-parse `#N` mentions when the task's text changed, so edited references
+	// keep the cross-reference graph current (#136). Best-effort.
+	if body.Title != nil || body.Description != nil {
+		_, _ = h.tasksStore.SyncRefLinks(id)
+	}
 
 	task, ok, err := h.tasksStore.GetTask(id)
 	if err != nil {
@@ -865,6 +912,24 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		return
 	}
 	writeJSON(w, task)
+}
+
+// handleTaskGraph returns the cross-reference knowledge graph around a task
+// (#136): the tasks it references (outgoing) and the tasks that reference it
+// (incoming backlinks), within the task's own project. The frontend renders this
+// as "引用了 / 被引用"; an agent uses it to walk upstream to "why does this task
+// exist".
+func (h *Handler) handleTaskGraph(w http.ResponseWriter, r *http.Request, id string) {
+	g, ok, err := h.tasksStore.LinkGraphFor(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, g)
 }
 
 // handleTaskReview records a verifier's verdict (from the submit_review MCP
@@ -1417,15 +1482,10 @@ func indexByte(s string, c byte) int {
 }
 
 // isValidPermissionMode mirrors the bridge-server's accepted mode strings.
-// Kept here (not in types.go) because it's only consumed by the PATCH
-// validator above.
+// Delegates to the permission package so the accepted set lives in one place
+// (it also drives the "auto" decision table).
 func isValidPermissionMode(mode string) bool {
-	switch mode {
-	case "approve-reads", "approve-all", "deny-all":
-		return true
-	default:
-		return false
-	}
+	return permission.Mode(mode).IsValid()
 }
 
 func getProjectSlug(path string) string {

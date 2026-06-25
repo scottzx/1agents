@@ -836,6 +836,29 @@ body {
       opacity: 1;
       transform: translateX(0) scale(1);
 
+      // 多设备(#114):远程设备分组。在线/离线状态点 + 离线灰显。
+      &.device-node .device-status-dot {
+        margin-left: auto;
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-muted);
+
+        &.online {
+          background: var(--success-emphasis);
+        }
+      }
+
+      &.device-offline .project-folder {
+        opacity: 0.55;
+
+        .ws-name,
+        .folder-icon {
+          color: var(--text-muted);
+        }
+      }
+
       &.ws-active .project-folder {
         background-color: var(--bg-sidebar-active);
         color: var(--text-main);
@@ -1726,6 +1749,30 @@ body {
         }
       }
 
+      /* 多设备(#114):标题栏远程设备徽标。 */
+      .header-device-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: var(--accent-bg);
+        color: var(--accent-fg);
+
+        .device-status-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: var(--text-muted);
+
+          &.online {
+            background: var(--success-emphasis);
+          }
+        }
+      }
+
       /* Full-page module title (settings / skills / …) reuses .ws-name. */
       .ws-name {
         font-size: 15px;
@@ -2397,6 +2444,548 @@ body {
 /* ── Calendar view (perpetual month grid) ── */
 // Personal reminders / 定时任务 full-page pane (#192): a header above the
 // reusable month calendar.
+// Inbox 统一信息收口层 (#60) — full-page intake list pane.
+.inbox-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+
+  .inbox-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .inbox-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .inbox-unread-pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    color: var(--accent-fg);
+    background: var(--accent-bg);
+  }
+
+  .inbox-archive-toggle {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--accent-fg);
+      background: var(--btn-hover);
+    }
+  }
+
+  .inbox-capture {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .inbox-capture-input {
+    flex: 1;
+    resize: vertical;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-emphasis);
+    }
+  }
+
+  .inbox-capture-btn {
+    flex-shrink: 0;
+    height: 44px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--accent-emphasis);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-active);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .inbox-error {
+    flex-shrink: 0;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+    border-radius: 6px;
+  }
+
+  .inbox-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inbox-empty {
+    padding: 40px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .inbox-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: border-color 0.15s ease;
+
+    &:hover {
+      border-color: var(--accent-emphasis);
+    }
+
+    &.is-unread {
+      border-left: 3px solid var(--accent-emphasis);
+    }
+
+    &.is-archived {
+      opacity: 0.6;
+    }
+  }
+
+  .inbox-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .inbox-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .inbox-source-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+  }
+
+  .inbox-item-time {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .inbox-item-text {
+    font-size: 13px;
+    color: var(--text-main);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .inbox-item-link {
+    color: var(--accent-fg);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .inbox-item-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 6px;
+  }
+
+  .inbox-action {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--accent-fg);
+      background: var(--btn-hover);
+    }
+  }
+
+  // PMO 分发 (#61): inline project picker shown under an item when dispatching.
+  .inbox-dispatch-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .inbox-dispatch-label,
+  .inbox-dispatch-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+}
+
+// ── 个人任务 + 立项 (#67) — mirrors the Inbox pane's layout language ──────
+.personal-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+
+  .personal-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .personal-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .personal-desc {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .personal-capture {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .personal-capture-input {
+    flex: 1;
+    height: 40px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-emphasis);
+    }
+  }
+
+  .personal-capture-btn {
+    flex-shrink: 0;
+    height: 40px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--accent-emphasis);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-active);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .personal-error {
+    flex-shrink: 0;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+    border-radius: 6px;
+  }
+
+  .personal-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .personal-empty {
+    padding: 40px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .personal-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: border-color 0.15s ease;
+
+    &:hover {
+      border-color: var(--accent-emphasis);
+    }
+  }
+
+  .personal-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .personal-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .personal-item-num {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .personal-from-inbox {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 6px;
+    color: var(--accent-fg);
+    background: var(--accent-bg);
+  }
+
+  .personal-item-time {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .personal-item-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    word-break: break-word;
+  }
+
+  .personal-item-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .personal-item-actions {
+    flex-shrink: 0;
+  }
+
+  .personal-incubate-btn {
+    height: 26px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-fg);
+    background: var(--accent-bg);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      border-color: var(--accent-emphasis);
+    }
+  }
+}
+
+// 立项 modal — lightweight overlay form reusing the semantic tokens.
+.personal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.personal-modal {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+
+  .personal-modal-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .personal-modal-from {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-word;
+  }
+
+  .personal-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .personal-modal-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .personal-modal-input {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-main);
+    background: var(--bg-page);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    resize: vertical;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-emphasis);
+    }
+  }
+
+  .personal-modal-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .personal-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .personal-modal-cancel,
+  .personal-modal-submit {
+    height: 34px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .personal-modal-cancel {
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+
+    &:hover:not(:disabled) {
+      background: var(--btn-hover);
+    }
+  }
+
+  .personal-modal-submit {
+    color: var(--on-accent);
+    background: var(--accent-emphasis);
+    border: 1px solid transparent;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-active);
+    }
+  }
+}
+
 .reminders-pane {
   flex: 1;
   min-height: 0;
@@ -8894,6 +9483,17 @@ body {
         box-shadow: 0 0 0 3px var(--badge-glow);
       }
     }
+
+    // Role declaration row (issue #72): role avatar preview + role <select>.
+    .ws-modal-role-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .ws-modal-select {
+        flex: 1;
+      }
+    }
   }
 
   .ws-modal-footer {
@@ -13789,11 +14389,16 @@ body {
   }
 
   // Each mode picks up its own colour so the active state is glanceable
-  // without reading the label: 读取放行 = blue, 全部放行 = green, 全部拒绝 = red.
+  // without reading the label: 读取放行 = blue, 智能放行 = purple, 全部放行 = green, 全部拒绝 = red.
   &[data-mode="approve-reads"] {
     border-color: rgba(var(--accent-color-rgb), 0.5);
     color: var(--accent-color);
     background: rgba(var(--accent-color-rgb), 0.1);
+  }
+  &[data-mode="auto"] {
+    border-color: rgba(var(--purple-rgb), 0.5);
+    color: var(--purple-fg);
+    background: rgba(var(--purple-rgb), 0.1);
   }
   &[data-mode="approve-all"] {
     border-color: rgba(var(--success-rgb), 0.5);
@@ -14274,6 +14879,22 @@ body {
     &.active {
       color: var(--text-sidebar);
       background-color: var(--bg-sidebar-hover);
+    }
+
+    .nav-control-badge {
+      margin-left: auto;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--on-accent);
+      background-color: var(--accent-emphasis);
+      border-radius: 9px;
     }
   }
 }

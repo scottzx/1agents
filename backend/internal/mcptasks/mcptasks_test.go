@@ -75,8 +75,8 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 9 {
-		t.Fatalf("expected 9 tools, got %d", len(tools))
+	if len(tools) != 10 {
+		t.Fatalf("expected 10 tools, got %d", len(tools))
 	}
 }
 
@@ -211,6 +211,33 @@ func TestGetTaskRejectsForeignId(t *testing.T) {
 	}
 }
 
+func TestGetTaskGraphMapsToGraphEndpoint(t *testing.T) {
+	const graphJSON = `{"outgoing":[{"rel":"relates","task":{"id":"t9","number":9}}],"incoming":[]}`
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent/tasks/t1/graph" {
+			t.Errorf("get_task_graph hit wrong path %s", r.URL.Path)
+		}
+		w.Write([]byte(graphJSON))
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_task_graph","arguments":{"id":"t1"}}}`)
+	text, isErr := resultText(t, env)
+	if isErr {
+		t.Fatalf("get_task_graph errored: %s", text)
+	}
+	if text != graphJSON {
+		t.Fatalf("get_task_graph body = %s, want passthrough of graph JSON", text)
+	}
+
+	// A foreign id is rejected before any API call (task-scoped lock).
+	s2, buf2, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("get_task_graph must not hit API for a foreign id (path %s)", r.URL.Path)
+	})
+	env = call(t, s2, buf2, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_task_graph","arguments":{"id":"other"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("expected lock rejection for foreign id, got: %s", text)
+	}
+}
+
 // ── task-scoped (executor) lock, #50 ────────────────────────────────────────
 
 // newTaskScopedServer is newTestServer with the session locked to taskID.
@@ -226,8 +253,8 @@ func TestTaskScopedToolsListIsNarrowed(t *testing.T) {
 	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	res, _ := env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 3 {
-		t.Fatalf("expected 3 task-scoped tools, got %d", len(tools))
+	if len(tools) != 4 {
+		t.Fatalf("expected 4 task-scoped tools, got %d", len(tools))
 	}
 	for _, tl := range tools {
 		name, _ := tl.(map[string]any)["name"].(string)
@@ -292,17 +319,81 @@ func TestTaskScopedAllowsOwnUpdate(t *testing.T) {
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
 			patched = true
-			w.Write([]byte(`{"id":"t1","status":"completed"}`))
+			w.Write([]byte(`{"id":"t1","priority":"high"}`))
 			return
 		}
 		http.Error(w, "unexpected", 400)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	// A non-status edit on the executor's own task is allowed.
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","priority":"high"}}}`)
 	if text, isErr := resultText(t, env); isErr {
 		t.Fatalf("own-task update should succeed, got error: %s", text)
 	}
 	if !patched {
 		t.Fatal("expected PATCH /api/agent/tasks/t1")
+	}
+}
+
+// TestExecutorCannotSelfReportCompleted is the #132 guardrail: an executor
+// (default task scope) may not write status=completed — completion is driven
+// by the artifact/verification path, not by the agent self-reporting done. The
+// PATCH must never reach the API.
+func TestExecutorCannotSelfReportCompleted(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("update_task(status=completed) must not hit the API in executor scope (path %s)", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("executor status=completed should be rejected, got: %s", text)
+	}
+}
+
+// TestExecutorCanCancelOwnTask confirms the guardrail is narrow: an executor may
+// still give up by setting status=cancelled (this is not a false completion).
+func TestExecutorCanCancelOwnTask(t *testing.T) {
+	var patched bool
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
+			patched = true
+			w.Write([]byte(`{"id":"t1","status":"cancelled"}`))
+			return
+		}
+		http.Error(w, "unexpected", 400)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"cancelled"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("executor status=cancelled should succeed, got error: %s", text)
+	}
+	if !patched {
+		t.Fatal("expected PATCH /api/agent/tasks/t1 for cancel")
+	}
+}
+
+// TestExecutorUpdateTaskDoesNotAdvertiseCompleted asserts the executor-scoped
+// update_task schema offers only `cancelled` as a settable status, so the agent
+// is never told to try a completion the server will reject (#132).
+func TestExecutorUpdateTaskDoesNotAdvertiseCompleted(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":9,"method":"tools/list"}`)
+	res, _ := env["result"].(map[string]any)
+	tools, _ := res["tools"].([]any)
+	var found bool
+	for _, tl := range tools {
+		m, _ := tl.(map[string]any)
+		if m["name"] != "update_task" {
+			continue
+		}
+		found = true
+		schema, _ := m["inputSchema"].(map[string]any)
+		props, _ := schema["properties"].(map[string]any)
+		statusProp, _ := props["status"].(map[string]any)
+		enum, _ := statusProp["enum"].([]any) // JSON round-trip → []any
+		if len(enum) != 1 || enum[0] != "cancelled" {
+			t.Fatalf("executor update_task status enum = %v, want [cancelled]", statusProp["enum"])
+		}
+	}
+	if !found {
+		t.Fatal("update_task not advertised in executor scope")
 	}
 }
 
@@ -358,8 +449,8 @@ func TestVerifierScopeToolsList(t *testing.T) {
 		name, _ := tl.(map[string]any)["name"].(string)
 		got[name] = true
 	}
-	if len(got) != 3 || !got["list_tasks"] || !got["get_task"] || !got["submit_review"] {
-		t.Fatalf("verifier scope tools = %v, want {list_tasks, get_task, submit_review}", got)
+	if len(got) != 4 || !got["list_tasks"] || !got["get_task"] || !got["get_task_graph"] || !got["submit_review"] {
+		t.Fatalf("verifier scope tools = %v, want {list_tasks, get_task, get_task_graph, submit_review}", got)
 	}
 	if got["update_task"] {
 		t.Error("update_task must NOT be advertised to a verifier (hard read-only)")
