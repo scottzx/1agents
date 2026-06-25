@@ -170,6 +170,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 			personalStore := meta.NewPersonalStore(tasksStore)
 			mux.HandleFunc("/api/personal-tasks", meta.PersonalTasksHandler(personalStore))     // GET list, POST capture
 			mux.HandleFunc("/api/personal-tasks/", meta.PersonalTaskItemHandler(personalStore)) // POST /{id}/incubate
+
+			// PMO 跨项目对话式需求分发层 (#61): dispatch a clarified requirement into
+			// a target project's pool (and close the originating inbox item). Shares
+			// the task store (#N numbering / write lock) and the inbox store (over
+			// the same cached DB handle) so dispatching marks the source item read.
+			if db, dbErr := meta.OpenDefault(); dbErr == nil {
+				pmoStore := meta.NewPMOStore(tasksStore, meta.NewInboxStore(db))
+				mux.HandleFunc("/api/pmo/dispatch", meta.PMODispatchHandler(pmoStore)) // GET targets, POST dispatch
+			}
 		}
 	}
 

@@ -755,6 +755,12 @@ export const zhCN: Record<string, string> = {
     'inbox.source.email': '邮件',
     'inbox.source.rss': '资讯',
     'inbox.source.misc': '杂项',
+    'inbox.dispatch': '分发到项目',
+    'inbox.dispatchPickProject': '选择目标项目',
+    'inbox.dispatchConfirm': '分发',
+    'inbox.dispatchCancel': '取消',
+    'inbox.dispatchDone': '已分发到需求池',
+    'inbox.dispatchNoProjects': '暂无可分发的项目',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': '切换项目工作空间',
@@ -1757,6 +1763,12 @@ export const enUS: Record<string, string> = {
     'inbox.source.email': 'Email',
     'inbox.source.rss': 'Feed',
     'inbox.source.misc': 'Misc',
+    'inbox.dispatch': 'Dispatch to project',
+    'inbox.dispatchPickProject': 'Pick a target project',
+    'inbox.dispatchConfirm': 'Dispatch',
+    'inbox.dispatchCancel': 'Cancel',
+    'inbox.dispatchDone': 'Dispatched to the requirement pool',
+    'inbox.dispatchNoProjects': 'No projects available to dispatch into',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': 'Switch project workspace',
