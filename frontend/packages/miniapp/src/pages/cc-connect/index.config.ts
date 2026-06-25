@@ -1,3 +1,3 @@
 export default definePageConfig({
-  navigationBarTitleText: 'cc-connect',
+  navigationBarTitleText: '渠道',
 });
