@@ -91,7 +91,9 @@ export function PersonalTasksPane() {
                     <div key={task.id} class="personal-item">
                         <div class="personal-item-main">
                             <div class="personal-item-meta">
-                                {task.number != null && <span class="personal-item-num">#{task.number}</span>}
+                                {typeof task.number === 'number' && (
+                                    <span class="personal-item-num">#{task.number}</span>
+                                )}
                                 {isFromInbox(task) && (
                                     <span class="personal-from-inbox">{t('personal.fromInbox', language)}</span>
                                 )}

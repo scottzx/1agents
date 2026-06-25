@@ -20,7 +20,7 @@ AGENT_LDFLAGS := -s -w \
   -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
   -X main.buildTime=$(BUILD_TIME)
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package clean help install-hooks submodules submodule-cc-connect submodule-cc-switch
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
@@ -36,6 +36,7 @@ help:
 	@echo "  make cc-switch         - Compile cc-switch Rust CLI sidecar"
 	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
+	@echo "  make release-notes     - Generate a self-contained release feature-intro HTML page (FROM/TO/OUT overridable)"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
 	@echo "  make install-hooks     - Install git hooks (auto-push submodules + create PRs on git push)"
 
@@ -126,6 +127,20 @@ package: all
 	cp -r frontend/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
 	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
 	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
+
+# --- Release feature-intro HTML page (issue #145) ---------------------------
+# Generates a self-contained HTML page introducing the features in a release,
+# from squash-merge commit subjects (feat(x): ... (#NNN)). Override the range
+# and output with FROM / TO / OUT, e.g.:
+#   make release-notes FROM=v20260623-1 TO=HEAD OUT=dist/release.html
+# FROM defaults to the previous tag; OUT defaults to dist/release-notes.html.
+FROM ?=
+TO   ?= HEAD
+OUT  ?= dist/release-notes.html
+release-notes:
+	@echo "=== Generating release feature-intro page -> $(OUT)..."
+	@mkdir -p $(dir $(OUT))
+	cd backend && go run ./cmd/release-notes $(if $(FROM),-from $(FROM),) -to $(TO) -o $(abspath $(OUT))
 
 install-hooks:
 	@echo "=== Installing git hooks..."

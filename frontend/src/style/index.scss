@@ -2662,6 +2662,23 @@ body {
       background: var(--btn-hover);
     }
   }
+
+  // PMO 分发 (#61): inline project picker shown under an item when dispatching.
+  .inbox-dispatch-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .inbox-dispatch-label,
+  .inbox-dispatch-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
 }
 
 // ── 个人任务 + 立项 (#67) — mirrors the Inbox pane's layout language ──────
@@ -9464,6 +9481,17 @@ body {
       &:focus {
         border-color: var(--accent-color);
         box-shadow: 0 0 0 3px var(--badge-glow);
+      }
+    }
+
+    // Role declaration row (issue #72): role avatar preview + role <select>.
+    .ws-modal-role-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .ws-modal-select {
+        flex: 1;
       }
     }
   }

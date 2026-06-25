@@ -121,6 +121,9 @@ export const zhCN: Record<string, string> = {
     'newchat.scope.project': '项目',
     'newchat.role.general': '通用',
     'newchat.role.pm': 'PM',
+    'newchat.role.pmo': 'PMO（跨项目）',
+    'newchat.role.executor': '执行者',
+    'newchat.role.verifier': '校验者',
     'newchat.role.pmHint': '选择会话角色（PM = AI 项目经理：聊需求，自动拆解成带依赖的任务）',
     'newchat.noProject': '无项目（跨项目）',
     'header.menu': '菜单',
@@ -757,6 +760,12 @@ export const zhCN: Record<string, string> = {
     'inbox.source.rss': '资讯',
     'inbox.source.misc': '杂项',
     'inbox.toPersonalTask': '转个人任务',
+    'inbox.dispatch': '分发到项目',
+    'inbox.dispatchPickProject': '选择目标项目',
+    'inbox.dispatchConfirm': '分发',
+    'inbox.dispatchCancel': '取消',
+    'inbox.dispatchDone': '已分发到需求池',
+    'inbox.dispatchNoProjects': '暂无可分发的项目',
 
     // ── 个人任务 + 立项 (PersonalTasks/index.tsx) ──────────────────────────
     'personal.title': '个人任务',
@@ -1123,6 +1132,9 @@ export const enUS: Record<string, string> = {
     'newchat.scope.project': 'Project',
     'newchat.role.general': 'General',
     'newchat.role.pm': 'PM',
+    'newchat.role.pmo': 'PMO (cross-project)',
+    'newchat.role.executor': 'Executor',
+    'newchat.role.verifier': 'Verifier',
     'newchat.role.pmHint':
         'Pick a conversation role (PM = AI Project Manager: discuss requirements, auto-split into dependency-aware tasks)',
     'newchat.noProject': 'No project (cross-project)',
@@ -1781,10 +1793,17 @@ export const enUS: Record<string, string> = {
     'inbox.source.rss': 'Feed',
     'inbox.source.misc': 'Misc',
     'inbox.toPersonalTask': 'To personal task',
+    'inbox.dispatch': 'Dispatch to project',
+    'inbox.dispatchPickProject': 'Pick a target project',
+    'inbox.dispatchConfirm': 'Dispatch',
+    'inbox.dispatchCancel': 'Cancel',
+    'inbox.dispatchDone': 'Dispatched to the requirement pool',
+    'inbox.dispatchNoProjects': 'No projects available to dispatch into',
 
     // ── Personal tasks + incubation (PersonalTasks/index.tsx) ────────────
     'personal.title': 'Personal Tasks',
-    'personal.desc': 'Loose to-dos that belong to no project. Park them here; incubate one into a long-term project once it carries enough weight.',
+    'personal.desc':
+        'Loose to-dos that belong to no project. Park them here; incubate one into a long-term project once it carries enough weight.',
     'personal.capturePlaceholder': 'Jot down a to-do…',
     'personal.captureBtn': 'Capture',
     'personal.empty': 'No personal tasks yet. Park the loose to-dos that belong to no project here.',
