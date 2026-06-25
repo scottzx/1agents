@@ -5,11 +5,12 @@ import { Task } from '../drawer/TaskList/types';
 export interface GamifiedTask extends Task {
     progress?: number;
 }
-import { workspaceService } from '../../services/workspaceService';
 import * as wsStore from '../../stores/workspaceStore';
 import * as stage from '../../stores/stageStore';
 import * as ui from '../../stores/uiStore';
 import { DashboardWorkshop, MockEmployee } from './DashboardWorkshop';
+import { DashboardCockpit } from './DashboardCockpit';
+import { dashboardService, DashboardData } from '@1agents/core/services/dashboardService';
 
 class PixelSoundManager {
     private ctx: AudioContext | null = null;
@@ -188,6 +189,9 @@ interface DashboardAppState {
     }>;
     releasedProjectStage: 'rating' | 'settled';
     ratingMultiplier: number;
+
+    // ── Real-data company cockpit (Phase 1) ──
+    cockpit: DashboardData | null;
 }
 
 // ── MOCK DATA FOR SIMULATION DEMO ──
@@ -615,14 +619,17 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             ],
             releasedProjectStage: 'rating',
             ratingMultiplier: 1.0,
+            cockpit: null,
         };
     }
 
     async componentDidMount() {
         await this.loadData();
 
-        // Days counter increments every 10 seconds to simulate time progression
+        // Days counter increments every 10 seconds to simulate time progression.
+        // Real mode shows real data only — no simulated time progression.
         this.dayTimer = setInterval(() => {
+            if (!this.state.useMock) return;
             this.setState(prevState => {
                 const nextDay = prevState.dayCount + 1;
                 localStorage.setItem('1agents-company-day', String(nextDay));
@@ -630,8 +637,11 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             });
         }, 10000);
 
-        // Stamina timer to simulate stamina depletion, recovery and task progress (3-second cycle)
+        // Stamina timer to simulate stamina depletion, recovery and task progress
+        // (3-second cycle). Mock-only: real mode must never fabricate stamina /
+        // task progress / specialists / funds — it shows backend data verbatim.
         this.staminaTimer = setInterval(() => {
+            if (!this.state.useMock) return;
             this.setState(prevState => {
                 const {
                     workspaces,
@@ -845,43 +855,22 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             this.setState({
                 workspaces: MOCK_WORKSPACES,
                 tasksMap: MOCK_TASKS,
+                cockpit: null,
                 loading: false,
             });
             return;
         }
 
+        // Real mode: one read-only cross-project aggregate drives the cockpit.
+        // This sidesteps the old per-workspace fan-out (and the mock-ws-XX key
+        // mismatch) — the backend摊开 every project and ranks blockers on top.
         this.setState({ loading: true });
         try {
-            const list = await workspaceService.list();
-            const tasksMap: Record<string, Task[]> = {};
-
-            // Parallel load task logs from the backend
-            await Promise.all(
-                list.map(async ws => {
-                    try {
-                        const res = await fetch(`/api/agent/tasks?workspace_id=${encodeURIComponent(ws.id)}`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            tasksMap[ws.id] = data || [];
-                        }
-                    } catch (e) {
-                        console.error(`Failed to load tasks for workspace ${ws.id}`, e);
-                    }
-                })
-            );
-
-            this.setState({
-                workspaces: list,
-                tasksMap,
-                loading: false,
-            });
+            const cockpit = await dashboardService.get();
+            this.setState({ cockpit, loading: false });
         } catch (err) {
-            console.error('Failed to load workspaces list:', err);
-            this.setState({
-                workspaces: [],
-                tasksMap: {},
-                loading: false,
-            });
+            console.error('Failed to load company dashboard:', err);
+            this.setState({ cockpit: null, loading: false });
         }
     };
 
@@ -940,6 +929,17 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             stage.enterProject();
 
             // Reset query param & reload normal SPA
+            window.location.href = window.location.origin + window.location.pathname;
+        }
+    };
+
+    // Cockpit drill-down: open the real project's workbench by id.
+    handleOpenProject = async (projectId: string) => {
+        sound.playSelect();
+        const targetWs = wsStore.workspaces.value.find(w => w.id === projectId);
+        if (targetWs) {
+            await wsStore.selectWorkspace(targetWs);
+            stage.enterProject();
             window.location.href = window.location.origin + window.location.pathname;
         }
     };
@@ -1209,6 +1209,41 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
     };
 
     render() {
+        // ── Real-data company cockpit (Phase 1) ──
+        // Mock mode keeps the精美 pixel demo below as the fallback shell; real
+        // mode renders the Bento cockpit on the backend aggregate.
+        if (!this.state.useMock) {
+            return (
+                <div class="cockpit-page">
+                    <div class="cockpit-topbar">
+                        <button class="cockpit-topbar-btn" onClick={this.toggleMock}>
+                            🎮 加载模拟演示
+                        </button>
+                        <button class="cockpit-topbar-btn" onClick={this.handleExit}>
+                            ↩️ 返回工作台
+                        </button>
+                    </div>
+                    {this.state.loading ? (
+                        <div class="cockpit-empty">正在装载公司大盘...</div>
+                    ) : this.state.cockpit ? (
+                        <DashboardCockpit
+                            data={this.state.cockpit}
+                            companyName={this.state.companyName}
+                            onOpenProject={this.handleOpenProject}
+                            onRefresh={this.loadData}
+                        />
+                    ) : (
+                        <div class="cockpit-empty">
+                            无法加载大盘数据。
+                            <button class="cockpit-topbar-btn" onClick={this.loadData}>
+                                重试
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         const {
             workspaces,
             tasksMap,

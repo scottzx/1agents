@@ -149,6 +149,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
 			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)             // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)        // GET — cross-project cockpit aggregate (read-only)
 		}
 	}
 
