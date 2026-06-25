@@ -1,12 +1,14 @@
 export default defineAppConfig({
-  // Launch page is the first tabBar entry (工作区). Sub-pages (chat / discovery
-  // / settings) are reached via Taro.navigateTo, not the tabBar.
+  // Launch page is the first tabBar entry (工作区). Sub-pages (chat / tasks /
+  // discovery / settings) are reached via Taro.navigateTo, not the tabBar.
   pages: [
     'pages/workspaces/index',
     'pages/providers/index',
     'pages/skills/index',
     'pages/more/index',
     'pages/chat/index',
+    'pages/tasks/index',
+    'pages/cc-connect/index',
     'pages/discovery/index',
     'pages/settings/index',
   ],

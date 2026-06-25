@@ -6,6 +6,7 @@ import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
 import * as sessionStore from '../../../stores/sessionStore';
 import { agentService } from '../../../services/agentService';
+import { taskService } from '@1agents/core/services/taskService';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
@@ -71,9 +72,7 @@ export function TaskList({
     const fetchMilestones = useCallback(async () => {
         if (!workspaceId) return;
         try {
-            const res = await fetch(`/api/agent/milestones?workspace_id=${encodeURIComponent(workspaceId)}`);
-            if (!res.ok) return;
-            setMilestones((await res.json()) || []);
+            setMilestones(await taskService.listMilestones(workspaceId));
         } catch {
             // milestones are non-critical; the task list still renders
         }
@@ -84,12 +83,7 @@ export function TaskList({
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`/api/agent/tasks?workspace_id=${encodeURIComponent(workspaceId)}`);
-            if (!res.ok) {
-                throw new Error(`Failed to load tasks: ${res.statusText}`);
-            }
-            const data = await res.json();
-            setTasks(data || []);
+            setTasks(await taskService.list(workspaceId));
         } catch (err) {
             setError((err as Error).message);
         } finally {
@@ -144,12 +138,7 @@ export function TaskList({
     const handleStatusChange = useCallback(
         async (taskId: string, status: 'completed' | 'cancelled') => {
             try {
-                const res = await fetch(`/api/agent/tasks/${taskId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status }),
-                });
-                if (!res.ok) throw new Error(await res.text());
+                await taskService.patch(taskId, { status });
                 fetchTasks();
             } catch (err) {
                 alert((err as Error).message);
@@ -163,13 +152,7 @@ export function TaskList({
     // between the 5s polls). The backend rejects scheduler-owned fields.
     const handlePatchTask = useCallback(
         async (taskId: string, patch: Record<string, unknown>) => {
-            const res = await fetch(`/api/agent/tasks/${taskId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(patch),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            const updated = (await res.json()) as Task;
+            const updated = await taskService.patch(taskId, patch);
             const cur = cachedTasks.value[workspaceId] || [];
             setTasks(cur.map(t => (t.id === taskId ? updated : t)));
         },
@@ -179,12 +162,7 @@ export function TaskList({
     const handleDeleteTask = async (taskId: string) => {
         if (!confirm('确定要删除该任务吗？')) return;
         try {
-            const res = await fetch(`/api/agent/tasks/${taskId}?workspace_id=${encodeURIComponent(workspaceId)}`, {
-                method: 'DELETE',
-            });
-            if (!res.ok) {
-                throw new Error('Failed to delete task');
-            }
+            await taskService.remove(taskId, workspaceId);
             if (selectedTaskId === taskId) setSelectedTaskId(null);
             fetchTasks();
         } catch (err) {
@@ -222,10 +200,7 @@ export function TaskList({
         async (taskId: string) => {
             if (!confirm('忽略这条 AI 建议？将从建议列表中移除。')) return;
             try {
-                const res = await fetch(`/api/agent/tasks/${taskId}?workspace_id=${encodeURIComponent(workspaceId)}`, {
-                    method: 'DELETE',
-                });
-                if (!res.ok) throw new Error('Failed to dismiss suggestion');
+                await taskService.remove(taskId, workspaceId);
                 fetchTasks();
             } catch (err) {
                 alert((err as Error).message);
@@ -257,12 +232,7 @@ export function TaskList({
 
     const createMilestone = useCallback(
         async (fields: MilestoneFields) => {
-            const res = await fetch('/api/agent/milestones', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workspace_id: workspaceId, ...fields }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await taskService.createMilestone(workspaceId, fields as unknown as Record<string, unknown>);
             await fetchMilestones();
         },
         [workspaceId, fetchMilestones]
@@ -270,12 +240,7 @@ export function TaskList({
 
     const patchMilestone = useCallback(
         async (id: string, patch: Record<string, unknown>) => {
-            const res = await fetch(`/api/agent/milestones/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workspace_id: workspaceId, ...patch }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await taskService.patchMilestone(id, workspaceId, patch);
             await Promise.all([fetchMilestones(), fetchTasks()]);
         },
         [workspaceId, fetchMilestones, fetchTasks]
@@ -283,10 +248,7 @@ export function TaskList({
 
     const deleteMilestone = useCallback(
         async (id: string) => {
-            const res = await fetch(`/api/agent/milestones/${id}?workspace_id=${encodeURIComponent(workspaceId)}`, {
-                method: 'DELETE',
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await taskService.removeMilestone(id, workspaceId);
             await Promise.all([fetchMilestones(), fetchTasks()]);
         },
         [workspaceId, fetchMilestones, fetchTasks]
