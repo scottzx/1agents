@@ -11,15 +11,47 @@ package meta
 
 import "time"
 
+// ProjectStatus is a project's lifecycle phase (issue #141). A project leaves
+// the active view via two paths that share one terminal mechanism but carry a
+// distinct reason: 阶段性完成归档 (archived) vs 竞品出现砍掉 (killed). Data is
+// never deleted — archived/killed rows just drop out of the active list and
+// stay visible in the archive view.
+type ProjectStatus string
+
+const (
+	ProjectStatusActive   ProjectStatus = "active"
+	ProjectStatusArchived ProjectStatus = "archived"
+	ProjectStatusKilled   ProjectStatus = "killed"
+)
+
+// ArchiveReason records why a project left the active view. It is orthogonal to
+// status so the UI can show "归档：完成" vs "关闭：竞品出现" without overloading the
+// status enum. Empty while the project is active.
+type ArchiveReason string
+
+const (
+	// ArchiveReasonCompleted — 阶段性完成 → 归档沉淀 (pairs with ProjectStatusArchived).
+	ArchiveReasonCompleted ArchiveReason = "completed"
+	// ArchiveReasonSuperseded — 竞品出现 / 大厂已做 → 判定无必要继续 → 砍掉
+	// (pairs with ProjectStatusKilled).
+	ArchiveReasonSuperseded ArchiveReason = "superseded"
+)
+
 // Project is one managed workspace directory. Project ID equals the
 // workspace ID from the workspace registry, so the two concepts stay 1:1.
 type Project struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	WorkspacePath string    `json:"workspacePath"`
-	Status        string    `json:"status"` // active | archived
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	WorkspacePath string        `json:"workspacePath"`
+	Status        ProjectStatus `json:"status"` // active | archived | killed
+	// ArchiveReason explains why an archived/killed project closed; empty while
+	// active. ArchiveNote is the optional free-text rationale captured at close
+	// time. ArchivedAt is the close timestamp; nil while active.
+	ArchiveReason ArchiveReason `json:"archiveReason,omitempty"`
+	ArchiveNote   string        `json:"archiveNote,omitempty"`
+	ArchivedAt    *time.Time    `json:"archivedAt,omitempty"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	UpdatedAt     time.Time     `json:"updatedAt"`
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.

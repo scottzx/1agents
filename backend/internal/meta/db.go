@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 13
+const schemaVersion = 14
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -163,6 +163,13 @@ func (db *DB) migrateSchema() error {
 	if err := db.ensureTasksColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile tasks columns: %w", err)
 	}
+	// v14 (#141) adds the project archive/close columns. Reconciled
+	// unconditionally (same rationale as ensureTasksColumns): idempotent ADD
+	// COLUMN that heals a DB whose user_version was bumped by a sibling branch
+	// before these columns landed (v13 was taken by #60's Inbox table).
+	if err := db.ensureProjectsColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile projects columns: %w", err)
+	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 			return fmt.Errorf("meta: set user_version: %w", err)
@@ -209,9 +216,44 @@ func (db *DB) ensureTasksColumns() error {
 	return nil
 }
 
+// ensureProjectsColumns adds the schema v14 project archive/close columns
+// (#141) that are missing, skipping any already present. Idempotent and
+// independent of user_version, mirroring ensureTasksColumns.
+func (db *DB) ensureProjectsColumns() error {
+	have, err := db.tableColumns("projects")
+	if err != nil {
+		return err
+	}
+	type col struct{ name, ddl string }
+	wanted := []col{
+		// archive_reason: '' for active projects; 'completed' (阶段性完成归档) or
+		// 'superseded' (竞品出现砍掉) when archived. Free of any verdict for an
+		// active row.
+		{"archive_reason", "ALTER TABLE projects ADD COLUMN archive_reason TEXT NOT NULL DEFAULT ''"},
+		// archive_note: optional free-text rationale captured at archive/close time.
+		{"archive_note", "ALTER TABLE projects ADD COLUMN archive_note TEXT NOT NULL DEFAULT ''"},
+		// archived_at: timestamp the project left the active view; NULL while active.
+		{"archived_at", "ALTER TABLE projects ADD COLUMN archived_at TEXT"},
+	}
+	for _, c := range wanted {
+		if have[c.name] {
+			continue
+		}
+		if _, err := db.sql.Exec(c.ddl); err != nil {
+			return fmt.Errorf("add projects.%s: %w", c.name, err)
+		}
+	}
+	return nil
+}
+
 // tasksColumns returns the set of column names currently on the tasks table.
 func (db *DB) tasksColumns() (map[string]bool, error) {
-	rows, err := db.sql.Query("PRAGMA table_info(tasks)")
+	return db.tableColumns("tasks")
+}
+
+// tableColumns returns the set of column names currently on the given table.
+func (db *DB) tableColumns(table string) (map[string]bool, error) {
+	rows, err := db.sql.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return nil, err
 	}
