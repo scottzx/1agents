@@ -770,10 +770,24 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			target.IssueState = IssueState(*body.IssueState)
 		}
 		if body.Status != nil {
+			// #132: this PATCH is the human-override lane (the board sets only the
+			// terminal completed/cancelled states; the executor MCP can no longer
+			// self-report completed). Manually retiring a card leaves an
+			// append-only audit note so the override is traceable, never silent.
+			prevStatus := target.Status
 			target.Status = TaskStatus(*body.Status)
 			if target.Status == TaskStatusCompleted && target.CompletedAt == nil {
 				now := time.Now().UTC()
 				target.CompletedAt = &now
+			}
+			if target.Status != prevStatus {
+				now := time.Now().UTC()
+				target.Replies = append(target.Replies, Reply{
+					Author:    Author{Kind: "user", Name: "user"},
+					Text:      fmt.Sprintf("人工将状态从 `%s` 改为 `%s`(手动 override,非工件事件驱动)。", prevStatus, target.Status),
+					Mode:      ModePureComment,
+					CreatedAt: now,
+				})
 			}
 		}
 		if body.AcceptanceCriteria != nil {
