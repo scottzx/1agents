@@ -472,6 +472,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/devices/heartbeat", sysHandler.DeviceHeartbeat) // POST — refresh a device's lastSeen
 	mux.HandleFunc("/api/devices/refresh", sysHandler.DevicesRefresh)    // POST — Tailscale scan + full refresh
 
+	// ── Device proxy routing layer (issue #111) ──────────────────────────────
+	// /api/proxy/{deviceId}/... forwards HTTP + WebSocket to a target device
+	// resolved via the #110 registry (direct Tailscale/LAN connection). The
+	// trailing-slash subtree does not collide with the exact "/api/proxy" web
+	// iframe proxy registered below.
+	mux.HandleFunc("/api/proxy/", sysHandler.DeviceProxyHandler)
+
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
 	mux.HandleFunc("/api/access/generate", handleAccessGenerate)
