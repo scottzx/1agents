@@ -23,8 +23,10 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/kwiki"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/retro"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
@@ -97,8 +99,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 					log.Printf("[server] legacy metadata migration: %v", migErr)
 				}
 			}
-			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db))       // GET, POST
-			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db)) // POST {id}/archive|close|reopen
+			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
+			// #144: archiving/closing a project triggers a复盘沉淀 — summarize
+			// its tasks/decisions and ingest a retrospective into kwiki.
+			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db, retrospectiveHook(db))) // POST {id}/archive|close|reopen
 
 			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
 			inboxStore := meta.NewInboxStore(db)
@@ -699,6 +703,38 @@ func acpxBridgePort() int {
 		}
 	}
 	return 38082
+}
+
+// retrospectiveHook builds the #144 project-archive hook: on archive/close it
+// loads the project's tasks, summarizes a retrospective, and ingests it into the
+// shared kwiki knowledge base under ~/.1agents/knowledge. Returns nil-safe
+// errors only — the caller logs them best-effort.
+func retrospectiveHook(db *meta.DB) meta.ProjectArchiveHook {
+	tasks := meta.NewTaskStore(db)
+	return func(p meta.Project) error {
+		store, err := kwiki.Open(knowledgeRoot())
+		if err != nil {
+			return fmt.Errorf("open kwiki: %w", err)
+		}
+		cfg, err := tasks.Load(p.WorkspacePath)
+		if err != nil {
+			return fmt.Errorf("load tasks: %w", err)
+		}
+		_, err = retro.Archive(store, retro.Input{Project: p, Tasks: cfg.Tasks})
+		return err
+	}
+}
+
+// knowledgeRoot is the kwiki knowledge-base directory (~/.1agents/knowledge),
+// honoring ONEAGENTS_HOME like the meta DB.
+func knowledgeRoot() string {
+	home := os.Getenv("ONEAGENTS_HOME")
+	if home == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			home = h
+		}
+	}
+	return filepath.Join(home, ".1agents", "knowledge")
 }
 
 // ── Access Token Handlers ───────────────────────────────────────────────────────
