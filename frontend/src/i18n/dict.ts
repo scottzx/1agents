@@ -737,6 +737,7 @@ export const zhCN: Record<string, string> = {
     'sidebar.navCtrl.history': '对话历史',
     'sidebar.navCtrl.inbox': '收件箱',
     'sidebar.navCtrl.scheduledTasks': '定时任务',
+    'sidebar.navCtrl.personalTasks': '个人任务',
 
     // ── Inbox 统一信息收口层 (Inbox/index.tsx) ─────────────────────────────
     'inbox.title': '收件箱',
@@ -755,6 +756,27 @@ export const zhCN: Record<string, string> = {
     'inbox.source.email': '邮件',
     'inbox.source.rss': '资讯',
     'inbox.source.misc': '杂项',
+    'inbox.toPersonalTask': '转个人任务',
+
+    // ── 个人任务 + 立项 (PersonalTasks/index.tsx) ──────────────────────────
+    'personal.title': '个人任务',
+    'personal.desc': '不属于任何项目的零散待办,先收在这里。够分量时再立项,变成长期项目。',
+    'personal.capturePlaceholder': '记一件待办,先收着…',
+    'personal.captureBtn': '收录',
+    'personal.empty': '还没有个人任务。把不属于任何项目的零散待办先收在这里。',
+    'personal.fromInbox': '来自收件箱',
+    'personal.incubate': '立项',
+    'personal.incubate.title': '立项为长期项目',
+    'personal.incubate.from': '源自个人任务:',
+    'personal.incubate.projectName': '项目名称',
+    'personal.incubate.workspacePath': '工作区路径',
+    'personal.incubate.workspacePathHint': '一个本地目录的绝对路径,将作为新项目的工作区。',
+    'personal.incubate.milestones': '里程碑(每行一个,可选)',
+    'personal.incubate.milestonesPlaceholder': 'MVP\nBeta\n正式发布',
+    'personal.incubate.submit': '立项',
+    'personal.incubate.cancel': '取消',
+    'personal.incubate.success': '已立项:{name}',
+    'personal.incubate.registerFailed': '项目已创建,但注册到工作区列表失败:{err}',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': '切换项目工作空间',
@@ -1739,6 +1761,7 @@ export const enUS: Record<string, string> = {
     'sidebar.navCtrl.history': 'Conversation History',
     'sidebar.navCtrl.inbox': 'Inbox',
     'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
+    'sidebar.navCtrl.personalTasks': 'Personal Tasks',
 
     // ── Inbox unified intake layer (Inbox/index.tsx) ─────────────────────
     'inbox.title': 'Inbox',
@@ -1757,6 +1780,27 @@ export const enUS: Record<string, string> = {
     'inbox.source.email': 'Email',
     'inbox.source.rss': 'Feed',
     'inbox.source.misc': 'Misc',
+    'inbox.toPersonalTask': 'To personal task',
+
+    // ── Personal tasks + incubation (PersonalTasks/index.tsx) ────────────
+    'personal.title': 'Personal Tasks',
+    'personal.desc': 'Loose to-dos that belong to no project. Park them here; incubate one into a long-term project once it carries enough weight.',
+    'personal.capturePlaceholder': 'Jot down a to-do…',
+    'personal.captureBtn': 'Capture',
+    'personal.empty': 'No personal tasks yet. Park the loose to-dos that belong to no project here.',
+    'personal.fromInbox': 'From inbox',
+    'personal.incubate': 'Incubate',
+    'personal.incubate.title': 'Incubate into a long-term project',
+    'personal.incubate.from': 'From personal task:',
+    'personal.incubate.projectName': 'Project name',
+    'personal.incubate.workspacePath': 'Workspace path',
+    'personal.incubate.workspacePathHint': 'Absolute path to a local directory — it becomes the new project workspace.',
+    'personal.incubate.milestones': 'Milestones (one per line, optional)',
+    'personal.incubate.milestonesPlaceholder': 'MVP\nBeta\nRelease',
+    'personal.incubate.submit': 'Incubate',
+    'personal.incubate.cancel': 'Cancel',
+    'personal.incubate.success': 'Incubated: {name}',
+    'personal.incubate.registerFailed': 'Project created, but registering it to the workspace list failed: {err}',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': 'Switch project workspace',

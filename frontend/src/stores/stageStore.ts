@@ -42,6 +42,7 @@ export type ContentView =
     | { kind: 'tasks' }
     | { kind: 'reminders' }
     | { kind: 'inbox' }
+    | { kind: 'personal' }
     | { kind: 'channels' }
     | { kind: 'providers' }
     | { kind: 'skills' }

@@ -433,6 +433,24 @@ export function LeftSidebar({
                         </svg>
                         <span>{t('sidebar.navCtrl.scheduledTasks', language)}</span>
                     </div>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'personal' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('personal')}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M9 11l3 3L22 4" />
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.personalTasks', language)}</span>
+                    </div>
                 </div>
             </div>
 

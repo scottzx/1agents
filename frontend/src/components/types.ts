@@ -63,6 +63,7 @@ export type RightDrawerTab =
     | 'tasks'
     | 'reminders'
     | 'inbox'
+    | 'personal'
     | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
@@ -72,7 +73,8 @@ export function isFullPageTab(tab: RightDrawerTab): boolean {
         tab === 'skills' ||
         tab === 'settings' ||
         tab === 'reminders' ||
-        tab === 'inbox'
+        tab === 'inbox' ||
+        tab === 'personal'
     );
 }
 
