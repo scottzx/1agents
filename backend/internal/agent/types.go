@@ -75,6 +75,8 @@ type (
 	MilestonePatch    = meta.MilestonePatch
 	TaskLink          = meta.TaskLink
 	LinkRel           = meta.LinkRel
+	LinkGraph         = meta.LinkGraph
+	LinkEdge          = meta.LinkEdge
 	Priority          = meta.Priority
 	Recurrence        = meta.Recurrence
 	WorkspaceRef      = meta.WorkspaceRef

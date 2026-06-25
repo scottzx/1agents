@@ -75,8 +75,8 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 9 {
-		t.Fatalf("expected 9 tools, got %d", len(tools))
+	if len(tools) != 10 {
+		t.Fatalf("expected 10 tools, got %d", len(tools))
 	}
 }
 
@@ -211,6 +211,33 @@ func TestGetTaskRejectsForeignId(t *testing.T) {
 	}
 }
 
+func TestGetTaskGraphMapsToGraphEndpoint(t *testing.T) {
+	const graphJSON = `{"outgoing":[{"rel":"relates","task":{"id":"t9","number":9}}],"incoming":[]}`
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent/tasks/t1/graph" {
+			t.Errorf("get_task_graph hit wrong path %s", r.URL.Path)
+		}
+		w.Write([]byte(graphJSON))
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_task_graph","arguments":{"id":"t1"}}}`)
+	text, isErr := resultText(t, env)
+	if isErr {
+		t.Fatalf("get_task_graph errored: %s", text)
+	}
+	if text != graphJSON {
+		t.Fatalf("get_task_graph body = %s, want passthrough of graph JSON", text)
+	}
+
+	// A foreign id is rejected before any API call (task-scoped lock).
+	s2, buf2, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("get_task_graph must not hit API for a foreign id (path %s)", r.URL.Path)
+	})
+	env = call(t, s2, buf2, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_task_graph","arguments":{"id":"other"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("expected lock rejection for foreign id, got: %s", text)
+	}
+}
+
 // ── task-scoped (executor) lock, #50 ────────────────────────────────────────
 
 // newTaskScopedServer is newTestServer with the session locked to taskID.
@@ -226,8 +253,8 @@ func TestTaskScopedToolsListIsNarrowed(t *testing.T) {
 	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	res, _ := env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 3 {
-		t.Fatalf("expected 3 task-scoped tools, got %d", len(tools))
+	if len(tools) != 4 {
+		t.Fatalf("expected 4 task-scoped tools, got %d", len(tools))
 	}
 	for _, tl := range tools {
 		name, _ := tl.(map[string]any)["name"].(string)
@@ -358,8 +385,8 @@ func TestVerifierScopeToolsList(t *testing.T) {
 		name, _ := tl.(map[string]any)["name"].(string)
 		got[name] = true
 	}
-	if len(got) != 3 || !got["list_tasks"] || !got["get_task"] || !got["submit_review"] {
-		t.Fatalf("verifier scope tools = %v, want {list_tasks, get_task, submit_review}", got)
+	if len(got) != 4 || !got["list_tasks"] || !got["get_task"] || !got["get_task_graph"] || !got["submit_review"] {
+		t.Fatalf("verifier scope tools = %v, want {list_tasks, get_task, get_task_graph, submit_review}", got)
 	}
 	if got["update_task"] {
 		t.Error("update_task must NOT be advertised to a verifier (hard read-only)")

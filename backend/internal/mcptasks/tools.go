@@ -34,6 +34,17 @@ var toolDefs = []map[string]any{
 		},
 	},
 	{
+		"name":        "get_task_graph",
+		"description": "Fetch the cross-reference knowledge graph around a task (#136): `outgoing` are the tasks it references (via `#N` mentions or explicit links), `incoming` are the tasks that reference it (backlinks). Walk this to trace why a task exists — e.g. from a task up to the requirement/bug it implements. Each edge carries the relation (relates/closes) and the peer task's id, number, title, type, and status.",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"id"},
+			"properties": map[string]any{
+				"id": map[string]any{"type": "string", "description": "The task id whose references and backlinks to fetch."},
+			},
+		},
+	},
+	{
 		"name":        "list_milestones",
 		"description": "List the project's milestones in roadmap order, each with its target date, position, and task counts (total and completed). Use this to plan and group decomposed work into stages.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
@@ -205,18 +216,20 @@ var reminderScopedTools = map[string]bool{
 // update its own task. The PM-only create_*/milestone tools are withheld so the
 // lock cannot be sidestepped by creating sibling tasks. See #50.
 var executorScopedTools = map[string]bool{
-	"list_tasks":  true,
-	"get_task":    true,
-	"update_task": true,
+	"list_tasks":     true,
+	"get_task":       true,
+	"get_task_graph": true,
+	"update_task":    true,
 }
 
 // verifierScopedTools is the hard read-only review subset: read the task, list
 // (filtered to itself), and submit a verdict. update_task is deliberately
 // absent — a verifier judges, it never edits the task. See #50.
 var verifierScopedTools = map[string]bool{
-	"list_tasks":    true,
-	"get_task":      true,
-	"submit_review": true,
+	"list_tasks":     true,
+	"get_task":       true,
+	"get_task_graph": true,
+	"submit_review":  true,
 }
 
 // scopedTools returns the allowed tool set for the current task-locked role:
@@ -303,6 +316,8 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolListTasks(p.Arguments)
 	case "get_task":
 		return s.toolGetTask(p.Arguments)
+	case "get_task_graph":
+		return s.toolGetTaskGraph(p.Arguments)
 	case "list_milestones":
 		return s.toolListMilestones()
 	case "create_milestone":
@@ -386,6 +401,26 @@ func (s *server) toolGetTask(args json.RawMessage) map[string]any {
 	}
 	if status != 200 {
 		return toolErr(fmt.Sprintf("get task failed (%d): %s", status, strings.TrimSpace(string(body))))
+	}
+	return toolText(string(body))
+}
+
+func (s *server) toolGetTaskGraph(args json.RawMessage) map[string]any {
+	var a struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil || a.ID == "" {
+		return toolErr("id is required")
+	}
+	if !s.idInScope(a.ID) {
+		return toolErr("task not accessible in this session: " + a.ID)
+	}
+	status, body, err := s.api.do("GET", "/api/agent/tasks/"+url.PathEscape(a.ID)+"/graph", nil, nil)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("get task graph failed (%d): %s", status, strings.TrimSpace(string(body))))
 	}
 	return toolText(string(body))
 }

@@ -468,6 +468,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if newTask.Milestone != "" {
 			_ = h.tasksStore.EnsureMilestone(wsPath, newTask.Milestone)
 		}
+		// Auto cross-reference: turn any `#N` mentions in the new task's
+		// title/description into LinkRelates edges (#136). Best-effort — a
+		// resolution hiccup shouldn't fail task creation.
+		_, _ = h.tasksStore.SyncRefLinks(newTask.ID)
 		// Save assigns the short number (#N) on the stored row, so re-fetch
 		// rather than returning the pre-save copy.
 		saved, _, _ := h.tasksStore.GetTask(newTask.ID)
@@ -542,6 +546,7 @@ func (h *Handler) workspaceIDForPath(path string) string {
 //	PATCH  /api/agent/tasks/{id}          → edit description / toggle issue state
 //	DELETE /api/agent/tasks/{id}          → remove task (legacy, needs workspace_id)
 //	POST   /api/agent/tasks/{id}/replies  → append a user reply to the timeline
+//	GET    /api/agent/tasks/{id}/graph    → cross-reference graph (outgoing + backlinks)
 func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 	const prefix = "/api/agent/tasks/"
 	rest := r.URL.Path[len(prefix):]
@@ -569,6 +574,14 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleTaskReview(w, r, id)
+		return
+	}
+	if sub == "graph" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.handleTaskGraph(w, r, id)
 		return
 	}
 	if sub != "" {
@@ -857,6 +870,11 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 	if body.Milestone != nil && *body.Milestone != "" {
 		_ = h.tasksStore.EnsureMilestone(existing.WorkspacePath, *body.Milestone)
 	}
+	// Re-parse `#N` mentions when the task's text changed, so edited references
+	// keep the cross-reference graph current (#136). Best-effort.
+	if body.Title != nil || body.Description != nil {
+		_, _ = h.tasksStore.SyncRefLinks(id)
+	}
 
 	task, ok, err := h.tasksStore.GetTask(id)
 	if err != nil {
@@ -868,6 +886,24 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		return
 	}
 	writeJSON(w, task)
+}
+
+// handleTaskGraph returns the cross-reference knowledge graph around a task
+// (#136): the tasks it references (outgoing) and the tasks that reference it
+// (incoming backlinks), within the task's own project. The frontend renders this
+// as "引用了 / 被引用"; an agent uses it to walk upstream to "why does this task
+// exist".
+func (h *Handler) handleTaskGraph(w http.ResponseWriter, r *http.Request, id string) {
+	g, ok, err := h.tasksStore.LinkGraphFor(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, g)
 }
 
 // handleTaskReview records a verifier's verdict (from the submit_review MCP
