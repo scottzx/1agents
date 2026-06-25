@@ -161,6 +161,41 @@ func TestCreateTaskMapsToPost(t *testing.T) {
 	}
 }
 
+// TestCreateTaskForwardsGithubFields covers the #74 GitHub mapping inputs:
+// githubAssignees and the github* sync anchors must reach the POST body when
+// provided, and assignee (executing agent) must stay a separate field.
+func TestCreateTaskForwardsGithubFields(t *testing.T) {
+	var gotBody map[string]any
+	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks" {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &gotBody)
+			w.Write([]byte(`{"id":"t9","number":9,"title":"New","status":"pending"}`))
+			return
+		}
+		http.Error(w, "unexpected", 400)
+	})
+
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"New","assignee":"codex","githubAssignees":["alice","bob"],"githubRepo":"o/r","githubKind":"issue","githubNumber":74}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("unexpected tool error: %s", text)
+	}
+	if gotBody["assignee"] != "codex" {
+		t.Fatalf("assignee (executing agent) lost: %v", gotBody["assignee"])
+	}
+	ga, _ := gotBody["githubAssignees"].([]any)
+	if len(ga) != 2 || ga[0] != "alice" || ga[1] != "bob" {
+		t.Fatalf("githubAssignees mismatch: %v", gotBody["githubAssignees"])
+	}
+	if gotBody["githubRepo"] != "o/r" || gotBody["githubKind"] != "issue" {
+		t.Fatalf("github ref fields mismatch: %v", gotBody)
+	}
+	// githubNumber is JSON, so a float64 after decode.
+	if n, _ := gotBody["githubNumber"].(float64); n != 74 {
+		t.Fatalf("githubNumber mismatch: %v", gotBody["githubNumber"])
+	}
+}
+
 func TestGetTaskRejectsForeignId(t *testing.T) {
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/agent/tasks" {

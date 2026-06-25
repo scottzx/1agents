@@ -726,3 +726,126 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 		t.Fatalf("post-upgrade sprint round-trip failed: %+v", loaded.Tasks)
 	}
 }
+
+// TestTaskGithubFieldsRoundTrip covers the schema v12 GitHub Issue/PR mapping
+// fields (#74): a task carrying github* anchors + githubAssignees + lastSyncedAt
+// must survive Save→Load, and a task without them must report empty/zero.
+func TestTaskGithubFieldsRoundTrip(t *testing.T) {
+	db := newTestDB(t)
+	s := NewTaskStore(db)
+	ws := t.TempDir()
+	now := time.Now().UTC()
+	synced := now.Add(-time.Hour)
+
+	cfg := &TasksConfig{Tasks: []Task{{
+		ID: "synced", Title: "已绑定", Status: TaskStatusPending,
+		Assignee:        "codex", // executing agent — must stay distinct
+		GithubRepo:      "scottzx/1agents",
+		GithubKind:      "issue",
+		GithubNumber:    74,
+		GithubNodeId:    "I_kwDOabc123",
+		GithubUrl:       "https://github.com/scottzx/1agents/issues/74",
+		GithubState:     "open",
+		GithubAssignees: []string{"alice", "bob"},
+		LastSyncedAt:    &synced,
+		CreatedAt:       now, UpdatedAt: now,
+	}, {
+		ID: "unbound", Title: "未绑定", Status: TaskStatusPending,
+		CreatedAt: now.Add(time.Second), UpdatedAt: now,
+	}}}
+	if err := s.Save(ws, cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := s.Load(ws)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	g := loaded.Tasks[0]
+	if g.GithubRepo != "scottzx/1agents" || g.GithubKind != "issue" || g.GithubNumber != 74 ||
+		g.GithubNodeId != "I_kwDOabc123" || g.GithubState != "open" ||
+		g.GithubUrl != "https://github.com/scottzx/1agents/issues/74" {
+		t.Fatalf("github ref fields lost: %+v", g)
+	}
+	if g.Assignee != "codex" {
+		t.Fatalf("assignee (executing agent) must stay distinct: %q", g.Assignee)
+	}
+	if len(g.GithubAssignees) != 2 || g.GithubAssignees[0] != "alice" || g.GithubAssignees[1] != "bob" {
+		t.Fatalf("githubAssignees lost: %v", g.GithubAssignees)
+	}
+	if g.LastSyncedAt == nil || !g.LastSyncedAt.Equal(synced) {
+		t.Fatalf("lastSyncedAt lost: %v", g.LastSyncedAt)
+	}
+	u := loaded.Tasks[1]
+	if u.GithubRepo != "" || u.GithubNumber != 0 || len(u.GithubAssignees) != 0 || u.LastSyncedAt != nil {
+		t.Fatalf("unbound task should have empty github fields: %+v", u)
+	}
+}
+
+// TestSchemaPreV12ToV12Upgrade builds a DB missing the v12 GitHub columns (a
+// pre-#74 schema pinned at user_version=11) and verifies the ensureTasksColumns
+// reconcile adds them, old rows survive with empty defaults, and user_version
+// advances to the current schemaVersion.
+func TestSchemaPreV12ToV12Upgrade(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meta.db")
+
+	// Build a v11-shaped tasks table: everything up to user_confirm, but none of
+	// the v12 github* columns. ensureTasksColumns must heal it on reopen.
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmts := []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8,
+		"ALTER TABLE tasks ADD COLUMN verifier TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE tasks ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE tasks ADD COLUMN review TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0",
+	}
+	for _, q := range stmts {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatalf("setup stmt %q: %v", q, err)
+		}
+	}
+	if _, err := raw.Exec(`INSERT INTO projects (id, name, workspace_path, created_at, updated_at)
+		VALUES ('ws1', 'P', '/tmp/v11ws', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+		VALUES ('legacy', 'ws1', 'v11 老任务', 'completed', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 11`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open after v11: %v", err)
+	}
+	defer db.Close()
+
+	var ver int
+	if err := db.sql.QueryRow("PRAGMA user_version").Scan(&ver); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	if ver != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", ver, schemaVersion)
+	}
+
+	task, ok, err := NewTaskStore(db).GetTask("legacy")
+	if err != nil || !ok {
+		t.Fatalf("GetTask after upgrade: ok=%v err=%v", ok, err)
+	}
+	if task.Title != "v11 老任务" || task.Status != TaskStatusCompleted {
+		t.Fatalf("v11 data lost: %+v", task)
+	}
+	if task.GithubRepo != "" || task.GithubKind != "" || task.GithubNumber != 0 ||
+		task.GithubNodeId != "" || task.GithubUrl != "" || task.GithubState != "" ||
+		len(task.GithubAssignees) != 0 || task.LastSyncedAt != nil {
+		t.Fatalf("pre-v12 row should default empty github fields: %+v", task)
+	}
+}

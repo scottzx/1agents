@@ -353,6 +353,16 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			PlannedEnd         *time.Time   `json:"plannedEnd"`
 			DependsOn          []string     `json:"dependsOn"`
 			Links              []TaskLink   `json:"links"`
+			// GitHub Issue/PR mapping (#74). Optional sync backfill — normally
+			// written by the future sync pass, not the create form.
+			GithubRepo      string     `json:"githubRepo"`
+			GithubKind      string     `json:"githubKind"`
+			GithubNumber    int        `json:"githubNumber"`
+			GithubNodeId    string     `json:"githubNodeId"`
+			GithubUrl       string     `json:"githubUrl"`
+			GithubState     string     `json:"githubState"`
+			GithubAssignees []string   `json:"githubAssignees"`
+			LastSyncedAt    *time.Time `json:"lastSyncedAt"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -426,6 +436,14 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			PlannedEnd:         body.PlannedEnd,
 			DependsOn:          body.DependsOn,
 			Links:              body.Links,
+			GithubRepo:         body.GithubRepo,
+			GithubKind:         body.GithubKind,
+			GithubNumber:       body.GithubNumber,
+			GithubNodeId:       body.GithubNodeId,
+			GithubUrl:          body.GithubUrl,
+			GithubState:        body.GithubState,
+			GithubAssignees:    body.GithubAssignees,
+			LastSyncedAt:       body.LastSyncedAt,
 			CreatedAt:          time.Now().UTC(),
 			UpdatedAt:          time.Now().UTC(),
 			Replies:            []Reply{},
@@ -639,6 +657,15 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		ScheduledAt        *time.Time   `json:"scheduledAt,omitempty"`
 		ScheduleType       *string      `json:"scheduleType,omitempty"`
 		Links              *[]TaskLink  `json:"links,omitempty"`
+		// GitHub Issue/PR mapping (#74). Optional sync backfill.
+		GithubRepo      *string    `json:"githubRepo,omitempty"`
+		GithubKind      *string    `json:"githubKind,omitempty"`
+		GithubNumber    *int       `json:"githubNumber,omitempty"`
+		GithubNodeId    *string    `json:"githubNodeId,omitempty"`
+		GithubUrl       *string    `json:"githubUrl,omitempty"`
+		GithubState     *string    `json:"githubState,omitempty"`
+		GithubAssignees *[]string  `json:"githubAssignees,omitempty"`
+		LastSyncedAt    *time.Time `json:"lastSyncedAt,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -789,6 +816,30 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.ScheduleType != nil {
 			target.ScheduleType = ScheduleType(*body.ScheduleType)
+		}
+		if body.GithubRepo != nil {
+			target.GithubRepo = *body.GithubRepo
+		}
+		if body.GithubKind != nil {
+			target.GithubKind = *body.GithubKind
+		}
+		if body.GithubNumber != nil {
+			target.GithubNumber = *body.GithubNumber
+		}
+		if body.GithubNodeId != nil {
+			target.GithubNodeId = *body.GithubNodeId
+		}
+		if body.GithubUrl != nil {
+			target.GithubUrl = *body.GithubUrl
+		}
+		if body.GithubState != nil {
+			target.GithubState = *body.GithubState
+		}
+		if body.GithubAssignees != nil {
+			target.GithubAssignees = *body.GithubAssignees
+		}
+		if body.LastSyncedAt != nil {
+			target.LastSyncedAt = body.LastSyncedAt
 		}
 		target.UpdatedAt = time.Now().UTC()
 		return true

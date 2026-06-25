@@ -312,6 +312,33 @@ type Task struct {
 	// never runs them directly, and the PM may only plan the confirmed ones.
 	UserConfirm bool `json:"userConfirm,omitempty"`
 
+	// ── GitHub Issue/PR sync mapping (schema v12, #74) ──
+	// These store the anchor for the one GitHub object a task may be bound to.
+	// This issue ships field/contract alignment only — there is no sync engine
+	// yet, so the fields are populated by a future sync pass and surfaced
+	// read-only. All default to empty/zero for pre-v12 rows.
+	//
+	// GithubRepo is "owner/repo" of the bound object's repository.
+	GithubRepo string `json:"githubRepo,omitempty"`
+	// GithubKind is "issue" or "pr" — which GitHub object this task maps to.
+	GithubKind string `json:"githubKind,omitempty"`
+	// GithubNumber is the remote #N (per-repo), distinct from the local Number.
+	GithubNumber int `json:"githubNumber,omitempty"`
+	// GithubNodeId is the GraphQL global node id, required by the Projects v2 API.
+	GithubNodeId string `json:"githubNodeId,omitempty"`
+	// GithubUrl is the object's html_url.
+	GithubUrl string `json:"githubUrl,omitempty"`
+	// GithubState is the remote open/closed state, kept for conflict detection
+	// against the local IssueState.
+	GithubState string `json:"githubState,omitempty"`
+	// GithubAssignees are GitHub login names (issue.assignees[].login). This is
+	// the human-collaborator dimension and is deliberately separate from
+	// Assignee, which selects the executing agent type (claudecode/codex/…).
+	GithubAssignees []string `json:"githubAssignees,omitempty"`
+	// LastSyncedAt is the timestamp of the last successful sync with GitHub;
+	// nil means never synced.
+	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+
 	// ── automation fields (schema v2) ──
 	AcceptanceCriteria string      `json:"acceptanceCriteria,omitempty"` // injected; agent self-checks before completing
 	Recurrence         *Recurrence `json:"recurrence,omitempty"`         // nil = one-shot
