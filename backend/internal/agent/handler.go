@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/scottzx/1Agents/backend/internal/agent/permission"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -138,7 +139,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, rec)
 	case http.MethodPatch:
-		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" }
+		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" | "auto" }
 		// Used by the Composer's permission-mode toggle. Validates the
 		// enum to keep bad client data out of the JSON store (since the
 		// bridge-server later trusts this string).
@@ -153,7 +154,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		if body.PermissionMode != nil {
 			mode := *body.PermissionMode
 			if !isValidPermissionMode(mode) {
-				http.Error(w, "permission_mode must be approve-reads, approve-all, or deny-all", http.StatusBadRequest)
+				http.Error(w, "permission_mode must be approve-reads, approve-all, deny-all, or auto", http.StatusBadRequest)
 				return
 			}
 			if err := h.store.UpdatePermissionMode(id, mode); err != nil {
@@ -285,13 +286,15 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		SessionKey:  body.SessionKey,
 		Role:        body.Role,
 	}
-	// AI Project Manager sessions default to approve-all: the task tools are
-	// already hard-locked to this project via env injection, so auto-approving
-	// keeps the conversation flowing instead of stalling on a permission prompt
-	// for every create_task/update_task. The user can still switch the mode
-	// manually afterwards (persisted via set_permission_mode).
+	// AI Project Manager sessions default to "auto" (issue #63): the task tools
+	// are already hard-locked to this project via env injection, so "auto"
+	// auto-approves those context-locked mcp__tasks__* calls (keeping the
+	// conversation flowing) while still prompting on genuinely risky writes —
+	// unlike the old approve-all default, which waved everything through. The
+	// user can still switch the mode manually afterwards (persisted via
+	// set_permission_mode).
 	if isProjectManagerRole(rec.Role) {
-		rec.PermissionMode = "approve-all"
+		rec.PermissionMode = string(permission.ModeAuto)
 	}
 	if err := h.store.Add(rec); err != nil {
 		if errors.Is(err, ErrDuplicate) {
@@ -1417,15 +1420,10 @@ func indexByte(s string, c byte) int {
 }
 
 // isValidPermissionMode mirrors the bridge-server's accepted mode strings.
-// Kept here (not in types.go) because it's only consumed by the PATCH
-// validator above.
+// Delegates to the permission package so the accepted set lives in one place
+// (it also drives the "auto" decision table).
 func isValidPermissionMode(mode string) bool {
-	switch mode {
-	case "approve-reads", "approve-all", "deny-all":
-		return true
-	default:
-		return false
-	}
+	return permission.Mode(mode).IsValid()
 }
 
 func getProjectSlug(path string) string {

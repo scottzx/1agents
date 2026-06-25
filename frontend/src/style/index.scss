@@ -13789,11 +13789,16 @@ body {
   }
 
   // Each mode picks up its own colour so the active state is glanceable
-  // without reading the label: 读取放行 = blue, 全部放行 = green, 全部拒绝 = red.
+  // without reading the label: 读取放行 = blue, 智能放行 = purple, 全部放行 = green, 全部拒绝 = red.
   &[data-mode="approve-reads"] {
     border-color: rgba(var(--accent-color-rgb), 0.5);
     color: var(--accent-color);
     background: rgba(var(--accent-color-rgb), 0.1);
+  }
+  &[data-mode="auto"] {
+    border-color: rgba(var(--purple-rgb), 0.5);
+    color: var(--purple-fg);
+    background: rgba(var(--purple-rgb), 0.1);
   }
   &[data-mode="approve-all"] {
     border-color: rgba(var(--success-rgb), 0.5);
