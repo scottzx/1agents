@@ -1165,3 +1165,242 @@
   66%  { width: 1em; }
   100% { width: 1.5em; }
 }
+
+/* ═══ Company Cockpit (公司驾驶舱) Phase 1 — real-data PMO overview ═══════
+ * Lives on semantic tokens + the Bento card system (CLAUDE.md), so it adapts
+ * to light/dark for free. Its first job is 阻塞物理显著性: blocked / stalled
+ * project cards float to the top (backend-sorted) and pulse / dim to jump out.
+ */
+.cockpit-page {
+  width: 100%;
+  height: 100dvh;
+  overflow-y: auto;
+  background-color: var(--bg-page);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+}
+
+.cockpit-topbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+}
+
+.cockpit-topbar-btn {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: var(--bento-radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: var(--bento-transition);
+
+  &:hover {
+    background-color: var(--btn-hover);
+    border-color: var(--accent-color);
+  }
+}
+
+.cockpit-root {
+  padding: 0 20px 32px;
+}
+
+.cockpit-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 50dvh;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+/* ── Company health HUD ── */
+.cockpit-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border-radius: var(--bento-radius-lg);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.cockpit-hud-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.cockpit-company {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.cockpit-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cockpit-hud-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cockpit-hud-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--bento-radius);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+
+  &.tone-danger { color: var(--danger-fg); border-color: var(--danger-bg); }
+  &.tone-success { color: var(--success-fg); }
+  &.tone-accent { color: var(--accent-color); }
+}
+
+.cockpit-hud-icon { font-size: 14px; }
+
+.cockpit-hud-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cockpit-hud-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cockpit-hud-stat.tone-danger.is-pulse {
+  animation: cockpit-hud-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cockpit-hud-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--danger-rgb), 0.35); }
+  50%      { box-shadow: 0 0 0 6px rgba(var(--danger-rgb), 0); }
+}
+
+.cockpit-refresh-btn {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: var(--bento-radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--bento-transition);
+
+  &:hover { color: var(--accent-color); border-color: var(--accent-color); }
+}
+
+/* ── Project board ── */
+.cockpit-board {
+  --bento-min-col: 260px;
+}
+
+.cockpit-project {
+  @extend %bento-card;
+  @extend %bento-card-interactive;
+  border-left: 3px solid var(--border-color);
+
+  &.is-running { border-left-color: var(--success-fg); }
+  &.is-done    { border-left-color: var(--warning-fg); }
+  &.is-blocked { border-left-color: var(--danger-fg); }
+  &.is-stalled { border-left-color: var(--text-muted); }
+}
+
+/* Blocked / stalled float to the top AND announce themselves visually. */
+.cockpit-project.is-salient {
+  grid-row: span 1;
+}
+
+.cockpit-project.is-blocked.is-salient {
+  border-color: var(--danger-fg);
+  box-shadow: 0 0 0 1px var(--danger-fg), var(--shadow-sm);
+  animation: cockpit-card-pulse 1.8s ease-in-out infinite;
+}
+
+.cockpit-project.is-dimmed {
+  opacity: 0.62;
+  filter: grayscale(0.4);
+}
+
+@keyframes cockpit-card-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--danger-fg), 0 0 0 0 rgba(var(--danger-rgb), 0.3); }
+  50%      { box-shadow: 0 0 0 1px var(--danger-fg), 0 0 0 7px rgba(var(--danger-rgb), 0); }
+}
+
+.cockpit-health-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  color: var(--text-secondary);
+  background-color: var(--bg-panel);
+
+  .is-running & { color: var(--success-fg); background-color: var(--success-bg); }
+  .is-done &    { color: var(--warning-fg); background-color: var(--warning-bg); }
+  .is-blocked & { color: var(--danger-fg);  background-color: var(--danger-bg); }
+}
+
+.cockpit-card-progress {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.cockpit-card-name {
+  font-size: 15px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cockpit-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background-color: var(--bg-panel);
+  overflow: hidden;
+}
+
+.cockpit-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background-color: var(--accent-color);
+  transition: width 0.4s ease;
+
+  .is-blocked & { background-color: var(--danger-fg); }
+  .is-done &    { background-color: var(--warning-fg); }
+}
+
+.cockpit-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cockpit-meta-danger { color: var(--danger-fg); font-weight: 600; }
+
+.cockpit-card-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cockpit-card-last { color: var(--text-muted); }
