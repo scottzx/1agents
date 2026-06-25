@@ -366,6 +366,16 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					// blocked → notify PM (#133). Emitted only on the transition
 					// into blocked so the PM is pinged once, not every tick.
 					s.emit(t, EventBlocked, now)
+					// blocked → push an IM approve/reject card (#129).
+					emitNotify(TaskNotification{
+						Kind:          NotifyBlocked,
+						WorkspacePath: ref.Path,
+						WorkspaceID:   ref.ID,
+						TaskID:        t.ID,
+						Number:        t.Number,
+						Title:         t.Title,
+						Summary:       t.Summary,
+					})
 				}
 			case TaskStatusBlocked:
 				if notReady {

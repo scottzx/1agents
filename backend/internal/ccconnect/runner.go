@@ -80,7 +80,18 @@ var (
 	ManagementToken string
 	BridgePort      int
 	BridgeToken     string
+
+	// sharedTasksStore is the task store instance owned by the HTTP server's
+	// scheduler. The IM notifier (#129) must write back through the SAME
+	// instance so its per-workspace Mutate lock serializes against the
+	// scheduler's; a second NewTasksStore() would have independent locks and
+	// risk lost updates. Set by SetTasksStore before/around Start.
+	sharedTasksStore *agent.TasksStore
 )
+
+// SetTasksStore hands the IM notifier the server's shared task store so its
+// approve/reject write-backs serialize with the scheduler. Call before Start.
+func SetTasksStore(store *agent.TasksStore) { sharedTasksStore = store }
 
 const defaultResetOnIdleMins = 0
 
@@ -710,6 +721,13 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 				e.AddPlatform(bp)
 			}
 			bridgeSrv.Start()
+
+			// #129: wire the task-state IM notifier over this bridge so
+			// blocked/failed/pending_review tasks push an approve/reject card
+			// and the user's tap writes back to the task store.
+			if n := newTaskNotifier(bridgeSrv, sharedTasksStore); n != nil {
+				agent.SetTaskNotifier(n)
+			}
 		}
 	}
 
