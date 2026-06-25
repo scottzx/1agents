@@ -460,6 +460,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart)  // POST — start happy daemon
 	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)    // POST — stop happy daemon
 
+	// ── Relay client credentials (issue #109) ───────────────────────────────
+	mux.HandleFunc("/api/relay/credentials", sysHandler.RelayCredentialsHandler) // GET/POST/DELETE — persist relay account master key
+
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
 	mux.HandleFunc("/api/access/generate", handleAccessGenerate)

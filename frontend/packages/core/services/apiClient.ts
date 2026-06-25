@@ -21,7 +21,7 @@
 import { signal } from '@preact/signals-core';
 import type { Socket } from 'socket.io-client';
 import { getPlatformBridge } from '../platform/bridge';
-import { connect, listMachines, proxyApi, loadCredentials, type RelayMachine } from './relay/relayClient';
+import { connect, listMachines, proxyApi, loadCredentialsRemote, type RelayMachine } from './relay/relayClient';
 import { activeDevice, deviceById, connectDevice, setActiveDeviceId } from './relay/devices';
 
 export type BackendTarget =
@@ -88,7 +88,7 @@ export async function initBackend(): Promise<BackendTarget> {
             /* 落到下面的账户路径 / none */
         }
     }
-    const creds = loadCredentials();
+    const creds = await loadCredentialsRemote();
     if (creds) {
         try {
             const socket = await connect(relayUrl(), creds);
