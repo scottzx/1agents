@@ -72,7 +72,7 @@ export interface Task {
     title: string;
     description?: string;
     issueState?: 'open' | 'closed';
-    status: 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'blocked';
+    status: 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'blocked' | 'not_ready';
     scheduleType: 'immediate' | 'scheduled';
     scheduledAt?: string;
     plannedStart?: string;

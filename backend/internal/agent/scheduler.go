@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -107,6 +108,25 @@ func (s *Scheduler) Tick() {
 type readyTask struct {
 	task     *Task
 	isReview bool
+}
+
+// needsAcceptanceCriteria reports whether an executable task is missing the
+// acceptance criteria required to enter the runnable queue (#135). Only real
+// work qualifies: requirement/bug/discussion items are non-executable issues
+// (the ready-scan skips them) and AI suggestions are held out until adopted,
+// so none of those are gated here. Container parents (no Description of their
+// own) auto-complete from their subtasks and never execute, so they are exempt.
+func needsAcceptanceCriteria(t *Task) bool {
+	if t.Type != "" && t.Type != TaskTypeTask {
+		return false
+	}
+	if t.Source == TaskSourceAgent {
+		return false
+	}
+	if strings.TrimSpace(t.Description) == "" {
+		return false // container parent or empty stub — nothing to verify
+	}
+	return strings.TrimSpace(t.AcceptanceCriteria) == ""
 }
 
 // triggerTime returns when a task becomes eligible to run: explicit
@@ -240,13 +260,33 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			t := &cfg.Tasks[i]
 			switch t.Status {
 			case TaskStatusPending, TaskStatusQueued:
-				if len(t.DependsOn) > 0 && !depsAllCompleted(t) {
+				// Readiness gate (#135): an executable task without acceptance
+				// criteria can't be loop-verified, so it is held as not_ready
+				// instead of being queued. Checked before dependency gating so an
+				// under-specified task surfaces its authoring gap first.
+				if needsAcceptanceCriteria(t) {
+					t.Status = TaskStatusNotReady
+					t.UpdatedAt = now
+					modified = true
+				} else if len(t.DependsOn) > 0 && !depsAllCompleted(t) {
 					t.Status = TaskStatusBlocked
 					t.UpdatedAt = now
 					modified = true
 				}
 			case TaskStatusBlocked:
-				if depsAllCompleted(t) {
+				if needsAcceptanceCriteria(t) {
+					t.Status = TaskStatusNotReady
+					t.UpdatedAt = now
+					modified = true
+				} else if depsAllCompleted(t) {
+					t.Status = TaskStatusPending
+					t.UpdatedAt = now
+					modified = true
+				}
+			case TaskStatusNotReady:
+				// Criteria filled in → return to pending; the dependency/ready
+				// scans below take over from there.
+				if !needsAcceptanceCriteria(t) {
 					t.Status = TaskStatusPending
 					t.UpdatedAt = now
 					modified = true

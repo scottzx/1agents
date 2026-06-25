@@ -57,8 +57,8 @@ func TestSchedulerSubtaskGatesParent(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "parent", Title: "P", Description: "父任务自己的活", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
-		{ID: "child", Title: "C", Description: "子任务", ParentID: "parent", Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+		{ID: "parent", Title: "P", Description: "父任务自己的活", AcceptanceCriteria: "done", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "child", Title: "C", Description: "子任务", AcceptanceCriteria: "done", ParentID: "parent", Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
 	})
 
 	s.Tick()
@@ -114,6 +114,35 @@ func TestSchedulerSkipsSuggestion(t *testing.T) {
 	}
 }
 
+func TestSchedulerHoldsTaskWithoutAcceptanceCriteria(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	// An executable task with real work but no acceptance criteria (#135) must be
+	// held as not_ready and never queued/run — the agent has no "怎样算完成".
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "vague", Title: "随便做点啥", Description: "做点事", IssueState: IssueOpen,
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+	})
+
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "vague"); got != TaskStatusNotReady {
+		t.Fatalf("task without criteria = %s, want not_ready", got)
+	}
+	if _, occupied := s.Lock.GetRunning(ref.Path); occupied {
+		t.Fatalf("not_ready task must not acquire the workspace lock")
+	}
+
+	// Filling in acceptance criteria releases the hold: not_ready → pending →
+	// queued/running on the next tick.
+	cfg, _ := store.Load(ref.Path)
+	cfg.Tasks[0].AcceptanceCriteria = "做完且通过自查"
+	saveTasks(t, store, ref.Path, cfg.Tasks)
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "vague"); got != TaskStatusRunning {
+		t.Fatalf("task with criteria = %s, want running after criteria filled", got)
+	}
+}
+
 func TestSchedulerContainerParentAutoCompletes(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
@@ -133,8 +162,8 @@ func TestSchedulerPriorityOrder(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "low", Title: "L", Description: "x", Priority: PriorityLow, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
-		{ID: "urgent", Title: "U", Description: "y", Priority: PriorityUrgent, Status: TaskStatusPending, CreatedAt: now.Add(time.Minute), UpdatedAt: now},
+		{ID: "low", Title: "L", Description: "x", AcceptanceCriteria: "done", Priority: PriorityLow, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "urgent", Title: "U", Description: "y", AcceptanceCriteria: "done", Priority: PriorityUrgent, Status: TaskStatusPending, CreatedAt: now.Add(time.Minute), UpdatedAt: now},
 	})
 
 	s.Tick()
@@ -151,7 +180,7 @@ func TestSchedulerFutureTriggerWaits(t *testing.T) {
 	now := time.Now().UTC()
 	future := now.Add(time.Hour)
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "later", Title: "L", Description: "x", PlannedStart: &future, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "later", Title: "L", Description: "x", AcceptanceCriteria: "done", PlannedStart: &future, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
 	})
 	s.Tick()
 	if got := statusOf(t, store, ref.Path, "later"); got != TaskStatusPending {
@@ -163,7 +192,7 @@ func TestSchedulerRetryRequeue(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "flaky", Title: "F", Description: "x", MaxRetries: 1, Status: TaskStatusFailed, CreatedAt: now, UpdatedAt: now},
+		{ID: "flaky", Title: "F", Description: "x", AcceptanceCriteria: "done", MaxRetries: 1, Status: TaskStatusFailed, CreatedAt: now, UpdatedAt: now},
 	})
 
 	s.Tick() // requeues (retry 1/1) and immediately picks it up
@@ -188,8 +217,8 @@ func TestSchedulerDependencyBlocks(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "dep", Title: "D", Description: "x", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
-		{ID: "waiter", Title: "W", Description: "y", DependsOn: []string{"dep"}, Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+		{ID: "dep", Title: "D", Description: "x", AcceptanceCriteria: "done", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "waiter", Title: "W", Description: "y", AcceptanceCriteria: "done", DependsOn: []string{"dep"}, Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
 	})
 
 	s.Tick()
@@ -264,7 +293,7 @@ func TestSchedulerRecurrenceRespawn(t *testing.T) {
 	now := time.Now().UTC()
 	done := now.Add(-time.Hour)
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "daily", Title: "日报", Description: "写日报", Status: TaskStatusCompleted,
+		{ID: "daily", Title: "日报", Description: "写日报", AcceptanceCriteria: "done", Status: TaskStatusCompleted,
 			CompletedAt: &done, Recurrence: &Recurrence{Freq: "daily", At: "09:00"},
 			CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now},
 	})

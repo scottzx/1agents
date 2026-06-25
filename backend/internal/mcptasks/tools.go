@@ -69,14 +69,14 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_task",
-		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool.",
+		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
 			"properties": map[string]any{
 				"title":              map[string]any{"type": "string"},
 				"description":        map[string]any{"type": "string", "description": "The work instruction for the executing agent."},
-				"acceptanceCriteria": map[string]any{"type": "string", "description": "Concrete, checkable criteria for the task to be accepted as done."},
+				"acceptanceCriteria": map[string]any{"type": "string", "description": "Required for executable tasks: concrete, checkable criteria for the task to be accepted as done. A task without acceptance criteria is held as not_ready and never scheduled."},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
@@ -108,7 +108,7 @@ var toolDefs = []map[string]any{
 				"id":                 map[string]any{"type": "string"},
 				"status":             map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}},
 				"description":        map[string]any{"type": "string"},
-				"acceptanceCriteria": map[string]any{"type": "string"},
+				"acceptanceCriteria": map[string]any{"type": "string", "description": "Concrete, checkable acceptance criteria. Fill this in to move an executable task out of the not_ready hold and into the scheduler queue."},
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},

@@ -1,8 +1,12 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
-import { AGENT_OPTIONS } from './constants';
+import { AGENT_OPTIONS, TYPE_ACCEPTANCE_TEMPLATES } from './constants';
 import type { Task, TaskPriority, TaskType } from './types';
+
+// Set of all type templates, so switching type can recognise an untouched
+// template (and replace it) versus criteria the user actually wrote.
+const ACCEPTANCE_TEMPLATE_VALUES = new Set(Object.values(TYPE_ACCEPTANCE_TEMPLATES).filter(Boolean));
 
 interface CreateTaskFormProps {
     workspaceId: string;
@@ -46,6 +50,16 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
         setScheduleType('immediate');
         setScheduledAt('');
         setDependsOn([]);
+    };
+
+    // Switching type swaps in that type's acceptance template, but only while the
+    // field is empty or still holds an untouched template — never clobber criteria
+    // the user has actually edited.
+    const handleTypeChange = (next: TaskType) => {
+        setType(next);
+        if (acceptance.trim() === '' || ACCEPTANCE_TEMPLATE_VALUES.has(acceptance)) {
+            setAcceptance(TYPE_ACCEPTANCE_TEMPLATES[next] ?? '');
+        }
     };
 
     const handleToggleDependency = (taskId: string) => {
@@ -118,7 +132,7 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
                     <label>类型</label>
                     <select
                         value={type}
-                        onChange={(e: Event) => setType((e.target as HTMLSelectElement).value as TaskType)}
+                        onChange={(e: Event) => handleTypeChange((e.target as HTMLSelectElement).value as TaskType)}
                     >
                         <option value="task">任务</option>
                         <option value="requirement">需求</option>
@@ -138,9 +152,9 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
             </div>
 
             <div class="form-group">
-                <label>验收标准（agent 完成后对照自查）</label>
+                <label>验收标准（必填，agent 完成后对照自查；留空则任务标记为「未就绪」，不进入调度队列）</label>
                 <textarea
-                    rows={2}
+                    rows={3}
                     placeholder="如：hello.txt 存在且内容为 hello；所有测试通过..."
                     value={acceptance}
                     onInput={(e: Event) => setAcceptance((e.target as HTMLTextAreaElement).value)}
