@@ -159,6 +159,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem) // POST /{id}/cards, /{id}/conclude (#189)
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)              // WebSocket upgrade & bridge
 			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)         // GET — cross-project cockpit aggregate (read-only)
+
+			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
+			// and the promote-to-project gate. Shares the task store, so the
+			// reserved personal bucket reuses #N numbering / write locking.
+			personalStore := meta.NewPersonalStore(tasksStore)
+			mux.HandleFunc("/api/personal-tasks", meta.PersonalTasksHandler(personalStore))     // GET list, POST capture
+			mux.HandleFunc("/api/personal-tasks/", meta.PersonalTaskItemHandler(personalStore)) // POST /{id}/incubate
 		}
 	}
 
