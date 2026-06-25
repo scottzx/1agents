@@ -363,9 +363,10 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// assignee selects the executing agent; empty falls back to
-		// DefaultAgentType at run time (runner.go). Reject unknown values so a
-		// typo from the PM tool surfaces instead of silently defaulting.
-		if body.Assignee != "" && !IsSupportedAgentType(body.Assignee) {
+		// DefaultAgentType at run time (runner.go). The "user" sentinel marks a
+		// personal reminder the scheduler never runs (#192). Reject other unknown
+		// values so a typo from the PM tool surfaces instead of silently defaulting.
+		if body.Assignee != "" && body.Assignee != AssigneeUser && !IsSupportedAgentType(body.Assignee) {
 			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
 			return
 		}
@@ -635,6 +636,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		ReviewMaxAttempts  *int         `json:"reviewMaxAttempts,omitempty"`
 		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
 		PlannedEnd         *time.Time   `json:"plannedEnd,omitempty"`
+		ScheduledAt        *time.Time   `json:"scheduledAt,omitempty"`
+		ScheduleType       *string      `json:"scheduleType,omitempty"`
 		Links              *[]TaskLink  `json:"links,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -672,7 +675,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			return
 		}
 	}
-	if body.Assignee != nil && *body.Assignee != "" && !IsSupportedAgentType(*body.Assignee) {
+	if body.Assignee != nil && *body.Assignee != "" && *body.Assignee != AssigneeUser && !IsSupportedAgentType(*body.Assignee) {
 		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
 		return
 	}
@@ -780,6 +783,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.PlannedEnd != nil {
 			target.PlannedEnd = body.PlannedEnd
+		}
+		if body.ScheduledAt != nil {
+			target.ScheduledAt = body.ScheduledAt
+		}
+		if body.ScheduleType != nil {
+			target.ScheduleType = ScheduleType(*body.ScheduleType)
 		}
 		target.UpdatedAt = time.Now().UTC()
 		return true
@@ -1274,7 +1283,15 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		mcpServers = pmMcp
 		log.Printf("[agent] Bridging AI Project Manager WebSocket for session %s (workspace %s)", sessionId, wsID)
 	} else {
-		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task)", sessionId)
+		// General (non-PM) chat session: give it a reminder-scoped tasks MCP so
+		// the user can have it record personal todos/deadlines (#192). New
+		// sessions also get a short hint about the tool; resumed ones already
+		// carry their history.
+		mcpServers = h.buildReminderMcpServers(wsID)
+		if acpSessionID == "" {
+			systemContext = reminderChatHint
+		}
+		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task, reminder tools)", sessionId)
 	}
 
 	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)

@@ -347,6 +347,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.Source == TaskSourceAgent {
 				continue // AI 建议未被采纳前不进入调度
 			}
+			if t.Assignee == AssigneeUser {
+				continue // 执行者=user 的个人提醒/待办，不交给智能体调度执行（#192）
+			}
 			if t.IssueState == IssueClosed {
 				continue
 			}

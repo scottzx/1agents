@@ -75,8 +75,48 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 8 {
-		t.Fatalf("expected 8 tools, got %d", len(tools))
+	if len(tools) != 9 {
+		t.Fatalf("expected 9 tools, got %d", len(tools))
+	}
+}
+
+func TestReminderRoleScopesToolsAndCreatesReminder(t *testing.T) {
+	var gotBody map[string]any
+	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks" {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &gotBody)
+			w.Write([]byte(`{"id":"r1","number":7,"title":"交报告","status":"pending"}`))
+			return
+		}
+		w.Write([]byte(`[]`))
+	})
+	s.taskRole = reminderRole // general chat session, project-wide reminder scope
+
+	// tools/list narrows to create_reminder + list_tasks only.
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	res, _ := env["result"].(map[string]any)
+	tools, _ := res["tools"].([]any)
+	if len(tools) != 2 {
+		t.Fatalf("reminder role should expose 2 tools, got %d", len(tools))
+	}
+
+	// create_task is withheld in reminder scope.
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"sneak"}}}`)
+	if _, isErr := resultText(t, env); !isErr {
+		t.Error("create_task should be rejected in reminder scope")
+	}
+
+	// create_reminder pins assignee=user and maps dueAt → scheduledAt.
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_reminder","arguments":{"title":"交报告","dueAt":"2026-06-25T15:00:00+08:00"}}}`)
+	if _, isErr := resultText(t, env); isErr {
+		t.Fatalf("create_reminder returned error: %v", env)
+	}
+	if gotBody["assignee"] != "user" {
+		t.Errorf("assignee = %v, want user", gotBody["assignee"])
+	}
+	if gotBody["scheduleType"] != "scheduled" || gotBody["scheduledAt"] != "2026-06-25T15:00:00+08:00" {
+		t.Errorf("schedule fields = %v / %v", gotBody["scheduleType"], gotBody["scheduledAt"])
 	}
 }
 

@@ -26,6 +26,7 @@ import { FlatFileBrowser } from '../drawer/FlatFileBrowser';
 import { FileDetailView } from '../drawer/FileDetailView';
 import { GitPanel } from '../drawer/GitPanel';
 import { TaskList } from '../drawer/TaskList';
+import { RemindersPane } from '../drawer/Reminders';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
@@ -110,6 +111,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         workspaceId={wsStore.activeWorkspaceId.value}
                         onSelectSession={s => sess.selectSession(s)}
                     />
+                </div>
+            );
+        case 'reminders':
+            // Personal reminders / 定时任务 — own full-page pane (#192), same
+            // padded scroll frame as the tasks landing.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '12px 16px',
+                        overflow: 'auto',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <RemindersPane />
                 </div>
             );
         case 'channels':

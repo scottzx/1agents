@@ -146,6 +146,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)            // GET, POST
 			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)  // GET ?project=&number= (more specific than the subtree below)
 			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)           // DELETE /{id}
+			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)          // GET (cross-workspace agenda, #192)
 			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
 			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
 			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)             // WebSocket upgrade & bridge
