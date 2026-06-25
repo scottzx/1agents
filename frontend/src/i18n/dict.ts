@@ -758,6 +758,7 @@ export const zhCN: Record<string, string> = {
     'task.status.failed': '失败',
     'task.status.cancelled': '已取消',
     'task.status.blocked': '受阻',
+    'task.status.not_ready': '未就绪',
 
     // ── Task grid — type labels ────────────────────────────────────────────
     'task.type.task': '任务',
@@ -1707,6 +1708,7 @@ export const enUS: Record<string, string> = {
     'task.status.failed': 'Failed',
     'task.status.cancelled': 'Cancelled',
     'task.status.blocked': 'Blocked',
+    'task.status.not_ready': 'Not ready',
 
     // ── Task grid — type labels ────────────────────────────────────────────
     'task.type.task': 'Task',

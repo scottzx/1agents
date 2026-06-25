@@ -127,6 +127,12 @@ const (
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"
 	TaskStatusBlocked   TaskStatus = "blocked"
+	// TaskStatusNotReady marks an executable task that lacks acceptance criteria
+	// (issue #135): a task with no "怎样算完成" cannot be loop-verified by the
+	// agent, so the scheduler holds it out of the runnable queue and surfaces it
+	// as 未就绪 until criteria are filled in. Like TaskStatusBlocked it is a
+	// derived state the scheduler toggles, not a user-set one.
+	TaskStatusNotReady TaskStatus = "not_ready"
 	// TaskStatusPendingReview marks a task whose executor finished but which is
 	// configured for verification (Task.Verifier set): the scheduler picks it up
 	// and runs the verifier headlessly instead of completing it. See #50.

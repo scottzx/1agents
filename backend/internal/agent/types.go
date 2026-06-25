@@ -101,6 +101,7 @@ const (
 	TaskStatusFailed        = meta.TaskStatusFailed
 	TaskStatusCancelled     = meta.TaskStatusCancelled
 	TaskStatusBlocked       = meta.TaskStatusBlocked
+	TaskStatusNotReady      = meta.TaskStatusNotReady
 	TaskStatusPendingReview = meta.TaskStatusPendingReview
 
 	IssueOpen   = meta.IssueOpen

@@ -2316,7 +2316,8 @@ body {
       box-shadow: var(--glow-danger), var(--shadow-md);
     }
   }
-  &.status-blocked {
+  &.status-blocked,
+  &.status-not_ready {
     border-left-color: var(--warning-fg);
     &:hover {
       border-color: rgba(var(--warning-rgb), 0.5);
@@ -2579,7 +2580,8 @@ body {
       &.status-cancelled {
         border-left-color: var(--danger-fg);
       }
-      &.status-blocked {
+      &.status-blocked,
+      &.status-not_ready {
         border-left-color: var(--warning-fg);
       }
     }
@@ -6851,7 +6853,8 @@ body {
             color: var(--danger-fg);
             box-shadow: var(--glow-danger);
           }
-          &.blocked {
+          &.blocked,
+          &.not_ready {
             background-color: var(--warning-bg);
             border-color: rgba(var(--warning-rgb), 0.35);
             color: var(--warning-fg);
