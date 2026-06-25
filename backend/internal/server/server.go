@@ -114,6 +114,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 		if tsErr != nil {
 			log.Printf("[server] tasks store init failed: %v", tsErr)
 		} else {
+			// Share this store instance with the cc-connect IM notifier (#129)
+			// so its approve/reject write-backs serialize with the scheduler's
+			// per-workspace Mutate lock.
+			ccconnect.SetTasksStore(tasksStore)
+
 			acpxPort := acpxBridgePort()
 			acpxClient := agent.NewAcpxClient(acpxPort)
 

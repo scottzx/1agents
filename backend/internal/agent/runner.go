@@ -420,6 +420,8 @@ func (r *TaskRunner) attachSessionMetadata(workspacePath, taskID, sessionID, age
 // finish persists the terminal state of an automated run.
 func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status TaskStatus, summary string) {
 	now := time.Now().UTC()
+	var title string
+	var number int
 	err := r.tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
@@ -432,6 +434,7 @@ func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status Task
 			if status == TaskStatusCompleted {
 				task.CompletedAt = &now
 			}
+			title, number = task.Title, task.Number
 			for j := range task.Sessions {
 				if task.Sessions[j].ID == sessionID {
 					task.Sessions[j].Status = SessionStatusIdle
@@ -447,4 +450,23 @@ func (r *TaskRunner) finish(workspacePath, taskID, sessionID string, status Task
 		return
 	}
 	log.Printf("[runner] Task %s finished: %s (%s)", taskID, status, summary)
+
+	// failed / pending_review → push an IM approve/reject card (#129).
+	var kind TaskNotifyKind
+	switch status {
+	case TaskStatusFailed:
+		kind = NotifyFailed
+	case TaskStatusPendingReview:
+		kind = NotifyPendingReview
+	default:
+		return
+	}
+	emitNotify(TaskNotification{
+		Kind:          kind,
+		WorkspacePath: workspacePath,
+		TaskID:        taskID,
+		Number:        number,
+		Title:         title,
+		Summary:       summary,
+	})
 }
