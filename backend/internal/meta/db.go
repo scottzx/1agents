@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 12
+const schemaVersion = 13
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -145,6 +145,13 @@ func (db *DB) migrateSchema() error {
 	if version < 8 {
 		if _, err := db.sql.Exec(schemaV8); err != nil {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
+		}
+	}
+	// v13 (#chat-digest) adds the value-extraction template library + per-chat
+	// bindings. New tables only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 13 {
+		if _, err := db.sql.Exec(schemaV13); err != nil {
+			return fmt.Errorf("meta: apply schema v13: %w", err)
 		}
 	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
@@ -401,6 +408,33 @@ UPDATE milestones SET position = sub.rn FROM (
 // user_confirm). These ALTERs now live in ensureTasksColumns, which adds them
 // idempotently regardless of user_version — see the note in migrateSchema for
 // why the version-gated form couldn't recover the v9 branch collision.
+
+// schemaV13 adds the chat-digest value-extraction layer. digest_templates is a
+// library of reusable Markdown standards ("what counts as valuable" + output
+// schema); is_default marks the global fallback(s). digest_bindings attaches
+// templates to a chat session, many-to-many, so e.g. an investment group can
+// stack 投资 + 产品 templates. Resolution (in the digest package): a chat's
+// bound templates, or the is_default ones when it has no binding.
+const schemaV13 = `
+CREATE TABLE IF NOT EXISTS digest_templates (
+    id         TEXT PRIMARY KEY,
+    name       TEXT    NOT NULL DEFAULT '',
+    scope      TEXT    NOT NULL DEFAULT 'global',
+    body_md    TEXT    NOT NULL DEFAULT '',
+    builtin    INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS digest_bindings (
+    session_id  TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (session_id, template_id)
+);
+CREATE INDEX IF NOT EXISTS idx_digest_bindings_session ON digest_bindings(session_id);
+`
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 
