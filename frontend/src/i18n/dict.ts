@@ -187,7 +187,8 @@ export const zhCN: Record<string, string> = {
     'chat.permission.mode.approveAll': '全部放行',
     'chat.permission.mode.denyAll': '全部拒绝',
     'chat.permission.mode.tooltip.approveReads': '读类工具自动允许；写/执行类工具弹窗询问',
-    'chat.permission.mode.tooltip.auto': '按工具来源/风险自动决策：受限上下文工具(如任务工具)、纯读、可回滚操作自动放行；删除、推送、改权限、执行 shell 等高风险操作仍弹窗',
+    'chat.permission.mode.tooltip.auto':
+        '按工具来源/风险自动决策：受限上下文工具(如任务工具)、纯读、可回滚操作自动放行；删除、推送、改权限、执行 shell 等高风险操作仍弹窗',
     'chat.permission.mode.tooltip.approveAll': '所有工具自动允许（慎用）',
     'chat.permission.mode.tooltip.denyAll': '所有工具自动拒绝',
     'chat.composer.placeholder': '输入消息，支持 Markdown，Enter 发送，Shift+Enter 换行',
@@ -1119,7 +1120,8 @@ export const enUS: Record<string, string> = {
     'chat.permission.mode.approveAll': 'Allow all',
     'chat.permission.mode.denyAll': 'Deny all',
     'chat.permission.mode.tooltip.approveReads': 'Read tools auto-allowed; write / execute tools prompt',
-    'chat.permission.mode.tooltip.auto': 'Decide by tool source / risk: context-locked tools (e.g. task tools), pure reads and reversible ops auto-allowed; deletes, push, chmod, shell and other high-risk ops still prompt',
+    'chat.permission.mode.tooltip.auto':
+        'Decide by tool source / risk: context-locked tools (e.g. task tools), pure reads and reversible ops auto-allowed; deletes, push, chmod, shell and other high-risk ops still prompt',
     'chat.permission.mode.tooltip.approveAll': 'Every tool auto-allowed (use with care)',
     'chat.permission.mode.tooltip.denyAll': 'Every tool auto-denied',
     'chat.composer.placeholder': 'Type a message. Markdown supported. Enter to send, Shift+Enter for newline.',
