@@ -1,14 +1,16 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 
 import * as ui from '../../../stores/uiStore';
 import { t } from '../../../i18n';
 import { inboxService, type InboxItem, type InboxSource } from '@1agents/core/services/inboxService';
+import { pmoService, type DispatchTarget } from '@1agents/core/services/pmoService';
 
 // Inbox 统一信息收口层 (#60): the most-upstream layer that funnels scattered
 // external context (manual capture today; IM / email / RSS later) into one
 // intake list. Archiving never deletes — it flips status so the trail of
-// "what did this become" survives. PMO 分发 (#61) is downstream and not here.
+// "what did this become" survives. PMO 分发 (#61) is the downstream action
+// surfaced per item: dispatch an item into a project's requirement pool.
 export function InboxPane() {
     const language = ui.language.value;
     const [items, setItems] = useState<InboxItem[]>([]);
@@ -18,6 +20,9 @@ export function InboxPane() {
     const [error, setError] = useState('');
     const [draft, setDraft] = useState('');
     const [capturing, setCapturing] = useState(false);
+    // PMO 分发 (#61): the item currently being dispatched, plus the project menu.
+    const [dispatchFor, setDispatchFor] = useState<string | null>(null);
+    const [targets, setTargets] = useState<DispatchTarget[]>([]);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -57,6 +62,31 @@ export function InboxPane() {
     const act = async (id: string, action: 'archive' | 'read' | 'unread') => {
         try {
             await inboxService.setStatus(id, action);
+            await refresh();
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    };
+
+    // Open the project picker for an item, lazily loading the dispatch targets.
+    const openDispatch = async (id: string) => {
+        setError('');
+        setDispatchFor(id);
+        try {
+            setTargets(await pmoService.targets());
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    };
+
+    // Dispatch an inbox item into a project's requirement pool: title = the item
+    // text, fromInbox = the item id (backlink + marks the item read).
+    const dispatch = async (item: InboxItem, projectId: string) => {
+        const title = (item.title || item.content || item.url || '').trim();
+        if (!title) return;
+        try {
+            await pmoService.dispatch({ projectId, title, fromInbox: item.id });
+            setDispatchFor(null);
             await refresh();
         } catch (err) {
             setError((err as Error).message);
@@ -146,6 +176,11 @@ export function InboxPane() {
                                         {t('inbox.markRead', language)}
                                     </button>
                                 )}
+                                {!archived && (
+                                    <button class="inbox-action" onClick={() => openDispatch(item.id)}>
+                                        {t('inbox.dispatch', language)}
+                                    </button>
+                                )}
                                 <button
                                     class="inbox-action"
                                     onClick={() => act(item.id, archived ? 'unread' : 'archive')}
@@ -153,6 +188,33 @@ export function InboxPane() {
                                     {t(archived ? 'inbox.unarchive' : 'inbox.archive', language)}
                                 </button>
                             </div>
+                            {dispatchFor === item.id && (
+                                <div class="inbox-dispatch-picker">
+                                    {targets.length === 0 ? (
+                                        <span class="inbox-dispatch-empty">
+                                            {t('inbox.dispatchNoProjects', language)}
+                                        </span>
+                                    ) : (
+                                        <Fragment>
+                                            <span class="inbox-dispatch-label">
+                                                {t('inbox.dispatchPickProject', language)}
+                                            </span>
+                                            {targets.map(tgt => (
+                                                <button
+                                                    key={tgt.projectId}
+                                                    class="inbox-action"
+                                                    onClick={() => dispatch(item, tgt.projectId)}
+                                                >
+                                                    {tgt.name}
+                                                </button>
+                                            ))}
+                                        </Fragment>
+                                    )}
+                                    <button class="inbox-action" onClick={() => setDispatchFor(null)}>
+                                        {t('inbox.dispatchCancel', language)}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     );
                 })}
