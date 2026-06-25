@@ -10,6 +10,7 @@ import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
 import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
 import { taskService } from '@1agents/core/services/taskService';
+import { inboxService } from '@1agents/core/services/inboxService';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -100,6 +101,23 @@ export function LeftSidebar({
     // Task id → title map for the optional session task badge (issue
     // model: sessions linked to a task show 📋 <task title>).
     const [taskTitles, setTaskTitles] = useState<Record<string, string>>({});
+    // Inbox unread badge (#60). Refetched on mount and whenever the Inbox tab is
+    // opened/closed, so archiving/reading there keeps the count in sync.
+    const [inboxUnread, setInboxUnread] = useState(0);
+    useEffect(() => {
+        let cancelled = false;
+        inboxService
+            .list(false)
+            .then(res => {
+                if (!cancelled) setInboxUnread(res.unread);
+            })
+            .catch(() => {
+                /* badge is decorative — ignore fetch failures */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [activeDrawerTab]);
 
     const hasTaskLinkedSession = folders.some(f => f.sessions.some(s => isChat(s) && Boolean(s.taskId)));
     const folderIdsKey = folders.map(f => f.id).join(',');
@@ -325,6 +343,25 @@ export function LeftSidebar({
                             <polyline points="12 6 12 12 16 14" />
                         </svg>
                         <span>{t('sidebar.navCtrl.history', language)}</span>
+                    </div>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'inbox' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('inbox')}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                            <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.inbox', language)}</span>
+                        {inboxUnread > 0 && <span class="nav-control-badge">{inboxUnread}</span>}
                     </div>
                     <div
                         class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}

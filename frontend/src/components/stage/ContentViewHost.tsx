@@ -27,6 +27,7 @@ import { FileDetailView } from '../drawer/FileDetailView';
 import { GitPanel } from '../drawer/GitPanel';
 import { TaskList } from '../drawer/TaskList';
 import { RemindersPane } from '../drawer/Reminders';
+import { InboxPane } from '../drawer/Inbox';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
@@ -129,6 +130,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <RemindersPane />
+                </div>
+            );
+        case 'inbox':
+            // Inbox 统一信息收口层 (#60) — own full-page pane, same padded
+            // scroll frame as the reminders/tasks landings.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '12px 16px',
+                        overflow: 'auto',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <InboxPane />
                 </div>
             );
         case 'channels':

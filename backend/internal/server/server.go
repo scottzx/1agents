@@ -98,6 +98,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 				}
 			}
 			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
+
+			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
+			inboxStore := meta.NewInboxStore(db)
+			mux.HandleFunc("/api/inbox", meta.InboxHandler(inboxStore))      // GET (?archived=1), POST capture
+			mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore)) // POST /{id}/archive|read|unread
 		}
 
 		tasksStore, tsErr := agent.NewTasksStore()
@@ -139,20 +144,20 @@ func NewRouter(cfg *config.Config) http.Handler {
 			catalogStore := agent.DefaultCatalog()
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)     // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)       // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)      // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)     // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)            // GET, POST
-			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)  // GET ?project=&number= (more specific than the subtree below)
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)           // DELETE /{id}
-			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)          // GET (cross-workspace agenda, #192)
-			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
-			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)      // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)        // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)       // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)      // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)             // GET, POST
+			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)   // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)            // DELETE /{id}
+			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)           // GET (cross-workspace agenda, #192)
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)   // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)  // PATCH, DELETE /{id}, POST /reorder
 			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot) // POST — create a discussion thread (#189)
 			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem) // POST /{id}/cards, /{id}/conclude (#189)
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)             // WebSocket upgrade & bridge
-			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)        // GET — cross-project cockpit aggregate (read-only)
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)              // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)         // GET — cross-project cockpit aggregate (read-only)
 		}
 	}
 
@@ -456,13 +461,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── System management API (version check + OTA update) ──────────────────
 	sysHandler := system.NewHandler()
-	mux.HandleFunc("/api/system/version", sysHandler.Version)            // GET  — current & latest version, has_update flag
-	mux.HandleFunc("/api/system/update", sysHandler.Update)              // POST — trigger OTA update (non-blocking, returns 202)
-	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus) // GET  — real-time update progress log
-	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)             // GET  — frontend OTA manifest (proxied from GitHub Releases)
-	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)             // GET  — happy daemon status + machine credentials
-	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart)  // POST — start happy daemon
-	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)    // POST — stop happy daemon
+	mux.HandleFunc("/api/system/version", sysHandler.Version)                     // GET  — current & latest version, has_update flag
+	mux.HandleFunc("/api/system/update", sysHandler.Update)                       // POST — trigger OTA update (non-blocking, returns 202)
+	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)          // GET  — real-time update progress log
+	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)                      // GET  — frontend OTA manifest (proxied from GitHub Releases)
+	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)            // GET  — happy daemon status + machine credentials
+	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart) // POST — start happy daemon
+	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
 
 	// ── Relay client credentials (issue #109) ───────────────────────────────
 	mux.HandleFunc("/api/relay/credentials", sysHandler.RelayCredentialsHandler) // GET/POST/DELETE — persist relay account master key
