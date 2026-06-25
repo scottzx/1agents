@@ -135,6 +135,59 @@ func needsAcceptanceCriteria(t *Task) bool {
 	return strings.TrimSpace(t.AcceptanceCriteria) == ""
 }
 
+// needsSourcing reports whether a project-internal executable task lacks the
+// traceability link required to enter the runnable queue (#68 任务归口原则).
+// Every project task must answer "我为什么存在" by linking to a requirement or
+// bug; a task that doesn't is held as not_ready until someone adds the link.
+//
+// taskMap resolves a link target id to its task so the target's Type can be
+// checked. The scheduler only sweeps the workspace registry, and the personal
+// bucket (__personal__) is deliberately absent from it, so every task reaching
+// this gate already has a real project_id — that is exactly the "有 project_id
+// 强制；无 id 不强制" boundary, enforced structurally rather than re-checked.
+//
+// Exemptions mirror needsAcceptanceCriteria: requirement/bug/discussion items
+// are the sources themselves (and never execute), AI suggestions are held until
+// adopted, and container parents (no Description) auto-complete from subtasks. A
+// subtask inherits its parent's sourcing — once the parent is sourced (or is a
+// container deriving from a requirement/bug), its children need no own link.
+func needsSourcing(t *Task, taskMap map[string]*Task) bool {
+	if t.Type != "" && t.Type != TaskTypeTask {
+		return false
+	}
+	if t.Source == TaskSourceAgent {
+		return false
+	}
+	if strings.TrimSpace(t.Description) == "" {
+		return false // container parent or empty stub
+	}
+	return !hasSourcingLink(t, taskMap, map[string]bool{})
+}
+
+// hasSourcingLink reports whether t (or, by inheritance, an ancestor) carries a
+// link whose target resolves to a requirement or bug in the same project.
+// "closes" and "relates" both count — either expresses derivation from the
+// issue. seen guards against cycles in the parent chain.
+func hasSourcingLink(t *Task, taskMap map[string]*Task, seen map[string]bool) bool {
+	if t == nil || seen[t.ID] {
+		return false
+	}
+	seen[t.ID] = true
+	for _, link := range t.Links {
+		tgt, ok := taskMap[link.Target]
+		if !ok {
+			continue
+		}
+		if tgt.Type == TaskTypeRequirement || tgt.Type == TaskTypeBug {
+			return true
+		}
+	}
+	if t.ParentID != "" {
+		return hasSourcingLink(taskMap[t.ParentID], taskMap, seen)
+	}
+	return false
+}
+
 // triggerTime returns when a task becomes eligible to run: explicit
 // schedule first, then plannedStart, else immediately (nil).
 func triggerTime(t *Task) *time.Time {
@@ -292,13 +345,17 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			// an explicit manual hold — independent of the dependency graph — so
 			// it gates a task into `blocked` just like an unmet dependency would.
 			forceBlocked := DeriveSignals(*t).ForceBlocked
+			// not_ready covers both authoring gaps: missing acceptance criteria
+			// (#135) and missing requirement/bug sourcing (#68). Either holds the
+			// task out of the queue; filling the gap releases it back to pending.
+			notReady := needsAcceptanceCriteria(t) || needsSourcing(t, taskMap)
 			switch t.Status {
 			case TaskStatusPending, TaskStatusQueued:
-				// Readiness gate (#135): an executable task without acceptance
-				// criteria can't be loop-verified, so it is held as not_ready
+				// Readiness gate (#135/#68): an executable task missing acceptance
+				// criteria or its requirement/bug sourcing is held as not_ready
 				// instead of being queued. Checked before dependency gating so an
 				// under-specified task surfaces its authoring gap first.
-				if needsAcceptanceCriteria(t) {
+				if notReady {
 					t.Status = TaskStatusNotReady
 					t.UpdatedAt = now
 					modified = true
@@ -311,7 +368,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					s.emit(t, EventBlocked, now)
 				}
 			case TaskStatusBlocked:
-				if needsAcceptanceCriteria(t) {
+				if notReady {
 					t.Status = TaskStatusNotReady
 					t.UpdatedAt = now
 					modified = true
@@ -321,9 +378,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					modified = true
 				}
 			case TaskStatusNotReady:
-				// Criteria filled in → return to pending; the dependency/ready
-				// scans below take over from there.
-				if !needsAcceptanceCriteria(t) {
+				// Authoring gap filled (criteria + sourcing) → return to pending;
+				// the dependency/ready scans below take over from there.
+				if !notReady {
 					t.Status = TaskStatusPending
 					t.UpdatedAt = now
 					modified = true
