@@ -123,6 +123,11 @@ class PixelSoundManager {
 
 export const sound = new PixelSoundManager();
 
+// Main-app root URL for big-screen → workbench navigation. The big-screen is a
+// separate document served at /dashboard, so "back to workbench" / drill-down
+// must hit the app root, honoring a subpath mount (__BASE_PATH__, e.g. /tunnels).
+const mainAppRoot = () => window.location.origin + (__BASE_PATH__ || '') + '/';
+
 interface TooltipData {
     workspace: Workspace;
     tasks: Task[];
@@ -933,8 +938,12 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             await wsStore.selectWorkspace(targetWs);
             stage.enterProject();
 
-            // Reset query param & reload normal SPA
-            window.location.href = window.location.origin + window.location.pathname;
+            // selectWorkspace persisted the active workspace id to localStorage,
+            // so navigating the browser to the main app root makes it restore
+            // that project. The big-screen page lives at /dashboard, so we point
+            // at the app root (honoring a subpath mount) rather than the current
+            // pathname.
+            window.location.href = mainAppRoot();
         }
     };
 
@@ -945,7 +954,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         if (targetWs) {
             await wsStore.selectWorkspace(targetWs);
             stage.enterProject();
-            window.location.href = window.location.origin + window.location.pathname;
+            window.location.href = mainAppRoot();
         }
     };
 
@@ -975,7 +984,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
 
     handleExit = () => {
         sound.playSelect();
-        window.location.href = window.location.origin + window.location.pathname;
+        window.location.href = mainAppRoot();
     };
 
     getProjectStatus(wsId: string, customTasksMap?: Record<string, Task[]>): string {
