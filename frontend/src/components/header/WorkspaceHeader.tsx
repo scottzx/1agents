@@ -8,6 +8,7 @@ import { AgentAvatar } from '../chat/AgentAvatar';
 import * as stage from '../../stores/stageStore';
 import { isBeginnerMode, isMobile } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
+import { activeWorkspaceDeviceId, remoteDevices } from '../../stores/workspaceStore';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -320,6 +321,19 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                                     </span>
                                 </span>
                             )}
+                            {/* 多设备(#114):连接到远程设备时,在标题栏标出设备名。 */}
+                            {activeWorkspaceDeviceId.value &&
+                                (() => {
+                                    const dev = remoteDevices.value.find(d => d.id === activeWorkspaceDeviceId.value);
+                                    return (
+                                        <span class="header-device-badge" title={dev?.name || ''}>
+                                            <span class="device-status-dot online" aria-hidden="true" />
+                                            {t('sidebar.device.connectedBanner', language, {
+                                                name: dev?.name || activeWorkspaceDeviceId.value,
+                                            })}
+                                        </span>
+                                    );
+                                })()}
                         </div>
                     )}
                 </div>

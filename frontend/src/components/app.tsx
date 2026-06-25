@@ -100,6 +100,10 @@ export class App extends Component<{}, AppState> {
         // Wait for both workspaces and terminal sessions to load in parallel
         await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals(), agentCatalog.loadAgentCatalog()]);
 
+        // Multi-device (#114): load registered remote devices so the sidebar can
+        // group their projects. Best-effort — failures degrade to local-only view.
+        void wsStore.loadRemoteDevices();
+
         // Synchronize terminal windows + cached chat sessions into folders
         sess.mergeSessionsIntoFolders(sess.terminalWindows.value, sess.chatSessions.value);
 

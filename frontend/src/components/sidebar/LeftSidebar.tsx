@@ -9,8 +9,58 @@ import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
 import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
+import {
+    remoteDevices,
+    remoteExpanded,
+    remoteLoading,
+    remoteProjects,
+    toggleRemoteDevice,
+    activeWorkspaceId as activeWsIdSignal,
+    activeWorkspaceDeviceId,
+} from '../../stores/workspaceStore';
 import { taskService } from '@1agents/core/services/taskService';
 import { inboxService } from '@1agents/core/services/inboxService';
+
+/** Mac / Linux / Windows OS 图标(currentColor,适配主题)。复用 DevicesPanel 的判定。 */
+function DeviceOsIcon({ os }: { os?: string }) {
+    const kind = (os ?? '').toLowerCase();
+    const common = {
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': '2',
+        'stroke-linecap': 'round' as const,
+        'stroke-linejoin': 'round' as const,
+        class: 'folder-icon',
+    };
+    if (kind.includes('darwin') || kind.includes('mac') || kind.includes('ios')) {
+        return (
+            <svg {...common}>
+                <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z" />
+                <path d="M10 2c1 .5 2 2 2 5" />
+            </svg>
+        );
+    }
+    if (kind.includes('windows')) {
+        return (
+            <svg {...common}>
+                <rect x="3" y="4" width="7" height="7" rx="0.5" />
+                <rect x="14" y="4" width="7" height="7" rx="0.5" />
+                <rect x="3" y="13" width="7" height="7" rx="0.5" />
+                <rect x="14" y="13" width="7" height="7" rx="0.5" />
+            </svg>
+        );
+    }
+    // Linux / 未知 → 服务器箱体
+    return (
+        <svg {...common}>
+            <rect x="2" y="2" width="20" height="8" rx="2" />
+            <rect x="2" y="14" width="20" height="8" rx="2" />
+            <line x1="6" y1="6" x2="6.01" y2="6" />
+            <line x1="6" y1="18" x2="6.01" y2="18" />
+        </svg>
+    );
+}
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -766,6 +816,109 @@ export function LeftSidebar({
                                                 </div>
                                             );
                                         })}
+
+                                {/* ── 远程设备分组(#114)──────────────────────────
+                                    已注册的远程设备:可折叠组,展开时经代理路由拉取该
+                                    设备的项目;离线组灰显并在展开时提示无法连接。 */}
+                                {remoteDevices.value.map(device => {
+                                    const expanded = Boolean(remoteExpanded.value[device.id]);
+                                    const loading = Boolean(remoteLoading.value[device.id]);
+                                    const projects = remoteProjects.value[device.id] ?? [];
+                                    return (
+                                        <div
+                                            key={`dev-${device.id}`}
+                                            class={`project-node device-node${device.active ? '' : ' device-offline'}`}
+                                        >
+                                            <div
+                                                class={`project-folder ${expanded ? 'expanded' : ''}`}
+                                                title={
+                                                    device.active
+                                                        ? device.name
+                                                        : t('sidebar.device.offlineHint', language, {
+                                                              name: device.name,
+                                                          })
+                                                }
+                                                onClick={() => void toggleRemoteDevice(device)}
+                                            >
+                                                <svg
+                                                    class="chevron"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2.5"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <polyline points="9 18 15 12 9 6" />
+                                                </svg>
+                                                <DeviceOsIcon os={device.os} />
+                                                <span class="ws-name">{device.name}</span>
+                                                <span
+                                                    class={`device-status-dot${device.active ? ' online' : ''}`}
+                                                    aria-hidden="true"
+                                                />
+                                            </div>
+                                            {expanded && (
+                                                <div class="project-children">
+                                                    {loading && (
+                                                        <div
+                                                            class="chat-item"
+                                                            style="opacity:0.6;cursor:default;pointer-events:none;"
+                                                        >
+                                                            <div class="chat-item-left">
+                                                                <span class="chat-title">
+                                                                    {t('common.loading', language)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {!loading && device.active && projects.length === 0 && (
+                                                        <div
+                                                            class="chat-item"
+                                                            style="opacity:0.5;cursor:default;pointer-events:none;"
+                                                        >
+                                                            <div class="chat-item-left">
+                                                                <span class="chat-title">
+                                                                    {t('sidebar.empty', language)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {!loading &&
+                                                        projects.map(rws => {
+                                                            const isActiveRemote =
+                                                                activeWsIdSignal.value === rws.id &&
+                                                                activeWorkspaceDeviceId.value === device.id;
+                                                            return (
+                                                                <div
+                                                                    key={`${device.id}-${rws.id}`}
+                                                                    class={`chat-item chat-row-kind-task${
+                                                                        isActiveRemote && isTaskView ? ' active' : ''
+                                                                    }`}
+                                                                    onClick={(e: MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        onSelectWorkspace(rws);
+                                                                    }}
+                                                                >
+                                                                    <div class="chat-item-left">
+                                                                        <span
+                                                                            class="chat-sidebar-avatar chat-task-icon"
+                                                                            aria-hidden="true"
+                                                                        >
+                                                                            {'\u{1F4C1}'}
+                                                                        </span>
+                                                                        <span class="chat-title" title={rws.path}>
+                                                                            {rws.name}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </Fragment>
