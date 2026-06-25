@@ -258,6 +258,10 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 		}
 		for i := range cfg.Tasks {
 			t := &cfg.Tasks[i]
+			// Label/field policy signals (#134): the `blocked` reserved label is
+			// an explicit manual hold — independent of the dependency graph — so
+			// it gates a task into `blocked` just like an unmet dependency would.
+			forceBlocked := DeriveSignals(*t).ForceBlocked
 			switch t.Status {
 			case TaskStatusPending, TaskStatusQueued:
 				// Readiness gate (#135): an executable task without acceptance
@@ -268,7 +272,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					t.Status = TaskStatusNotReady
 					t.UpdatedAt = now
 					modified = true
-				} else if len(t.DependsOn) > 0 && !depsAllCompleted(t) {
+				} else if forceBlocked || (len(t.DependsOn) > 0 && !depsAllCompleted(t)) {
 					t.Status = TaskStatusBlocked
 					t.UpdatedAt = now
 					modified = true
@@ -278,7 +282,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 					t.Status = TaskStatusNotReady
 					t.UpdatedAt = now
 					modified = true
-				} else if depsAllCompleted(t) {
+				} else if !forceBlocked && depsAllCompleted(t) {
 					t.Status = TaskStatusPending
 					t.UpdatedAt = now
 					modified = true
@@ -352,6 +356,9 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			}
 			if t.IssueState == IssueClosed {
 				continue
+			}
+			if !isReview && DeriveSignals(*t).ForceBlocked {
+				continue // `blocked` label is an explicit manual hold (#134)
 			}
 			if !isReview {
 				if trig := triggerTime(t); trig != nil && trig.After(now) {

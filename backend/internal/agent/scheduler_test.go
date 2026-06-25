@@ -143,6 +143,35 @@ func TestSchedulerHoldsTaskWithoutAcceptanceCriteria(t *testing.T) {
 	}
 }
 
+func TestSchedulerBlockedLabelHoldsTask(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	// The `blocked` reserved label (#134) is an explicit manual hold: a fully
+	// runnable task must be gated into `blocked` and never acquire the lock.
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "held", Title: "勿动", Description: "x", AcceptanceCriteria: "done",
+			Labels: []string{"blocked"}, IssueState: IssueOpen,
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+	})
+
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "held"); got != TaskStatusBlocked {
+		t.Fatalf("task with blocked label = %s, want blocked", got)
+	}
+	if _, occupied := s.Lock.GetRunning(ref.Path); occupied {
+		t.Fatalf("blocked-label task must not acquire the workspace lock")
+	}
+
+	// Removing the label releases the hold: blocked → pending → running.
+	cfg, _ := store.Load(ref.Path)
+	cfg.Tasks[0].Labels = nil
+	saveTasks(t, store, ref.Path, cfg.Tasks)
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "held"); got != TaskStatusRunning {
+		t.Fatalf("task after label removed = %s, want running", got)
+	}
+}
+
 func TestSchedulerContainerParentAutoCompletes(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
