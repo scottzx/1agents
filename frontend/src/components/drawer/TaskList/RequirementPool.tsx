@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
+import { taskCardVM } from '@1agents/core/view/taskCard';
 import { PRIORITY_LABELS, TYPE_LABELS } from './constants';
 import { parseFrontmatter } from '../../../utils/frontmatter';
 import type { Task } from './types';
@@ -62,8 +63,9 @@ export function RequirementPool({ tasks, suggestions, onSelectTask, onAdopt, onD
             ) : (
                 <div class="requirement-pool">
                     {visible.map(task => {
-                        const isSuggestion = task.source === 'agent-suggested';
-                        const prio = task.priority || 'medium';
+                        const vm = taskCardVM(task);
+                        const isSuggestion = vm.isSuggestion;
+                        const prio = vm.priority;
                         const type = task.type && task.type !== 'discussion' ? task.type : 'task';
                         // Card content is frontmatter Markdown — preview the prose body only.
                         const descBody = parseFrontmatter(task.description).body;
@@ -87,7 +89,7 @@ export function RequirementPool({ tasks, suggestions, onSelectTask, onAdopt, onD
                                     )}
                                 </div>
                                 <div class="requirement-card-title">
-                                    {task.number ? <span class="task-number">#{task.number}</span> : null}
+                                    {vm.numberLabel ? <span class="task-number">{vm.numberLabel}</span> : null}
                                     {task.title}
                                 </div>
                                 {descBody && <div class="requirement-card-desc">{descBody}</div>}

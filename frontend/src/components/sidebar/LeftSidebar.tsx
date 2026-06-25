@@ -9,6 +9,7 @@ import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
 import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
+import { taskService } from '@1agents/core/services/taskService';
 
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
@@ -110,10 +111,8 @@ export function LeftSidebar({
             for (const folder of folders) {
                 if (!folder.sessions.some(s => isChat(s) && Boolean(s.taskId))) continue;
                 try {
-                    const res = await fetch(`/api/agent/tasks?workspace_id=${encodeURIComponent(folder.id)}`);
-                    if (!res.ok) continue;
-                    const tasks = (await res.json()) as Array<{ id: string; title: string }>;
-                    for (const task of tasks || []) {
+                    const tasks = await taskService.list(folder.id);
+                    for (const task of tasks) {
                         titles[task.id] = task.title;
                     }
                 } catch {
@@ -327,7 +326,10 @@ export function LeftSidebar({
                         </svg>
                         <span>{t('sidebar.navCtrl.history', language)}</span>
                     </div>
-                    <div class="nav-control-item" onClick={() => alert('Scheduled Tasks: Placeholder')}>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('reminders')}
+                    >
                         <svg
                             class="btn-icon"
                             viewBox="0 0 24 24"

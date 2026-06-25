@@ -4,6 +4,7 @@
 // core's setPlatformBridge() at launch.
 
 import Taro from '@tarojs/taro';
+import { getAccessToken } from '../config';
 import type {
   ConnectSocketOptions,
   PlatformBridge,
@@ -38,7 +39,11 @@ export class TaroPlatformBridge implements PlatformBridge {
    */
   async httpFetch(url: string, init?: RequestInit): Promise<Response> {
     const method = (init?.method || 'GET').toUpperCase() as keyof Taro.request.Method;
-    const header = (init?.headers as Record<string, string>) || undefined;
+    const header: Record<string, string> = { ...((init?.headers as Record<string, string>) || {}) };
+    // Attach the access token (authMiddleware mechanism B) — the weapp counterpart
+    // of the H5's ra_access_token cookie. No-op when unset or talking to localhost.
+    const token = getAccessToken();
+    if (token && !header.Authorization) header.Authorization = `Bearer ${token}`;
     const data = (init?.body as string) ?? undefined;
     const res = await Taro.request({ url, method, data, header });
     const status = res.statusCode;
@@ -68,7 +73,12 @@ export class TaroPlatformBridge implements PlatformBridge {
   }
 
   connectSocket(url: string, opts?: ConnectSocketOptions): PlatformSocket {
-    return new TaroSocket(url, opts);
+    // weapp WebSocket can't carry the cookie nor reliably custom headers, so the
+    // access token rides as a query param (authMiddleware mechanism A) on the
+    // upgrade request.
+    const token = getAccessToken();
+    const finalUrl = token ? `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}` : url;
+    return new TaroSocket(finalUrl, opts);
   }
 }
 

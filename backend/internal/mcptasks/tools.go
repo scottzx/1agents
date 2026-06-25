@@ -69,14 +69,14 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_task",
-		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool.",
+		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
 			"properties": map[string]any{
 				"title":              map[string]any{"type": "string"},
 				"description":        map[string]any{"type": "string", "description": "The work instruction for the executing agent."},
-				"acceptanceCriteria": map[string]any{"type": "string", "description": "Concrete, checkable criteria for the task to be accepted as done."},
+				"acceptanceCriteria": map[string]any{"type": "string", "description": "Required for executable tasks: concrete, checkable criteria for the task to be accepted as done. A task without acceptance criteria is held as not_ready and never scheduled."},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
@@ -108,7 +108,7 @@ var toolDefs = []map[string]any{
 				"id":                 map[string]any{"type": "string"},
 				"status":             map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}},
 				"description":        map[string]any{"type": "string"},
-				"acceptanceCriteria": map[string]any{"type": "string"},
+				"acceptanceCriteria": map[string]any{"type": "string", "description": "Concrete, checkable acceptance criteria. Fill this in to move an executable task out of the not_ready hold and into the scheduler queue."},
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
 				"milestone":          map[string]any{"type": "string"},
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
@@ -141,11 +141,48 @@ var toolDefs = []map[string]any{
 			},
 		},
 	},
+	{
+		"name":        "create_reminder",
+		"description": "Record a personal reminder / todo / deadline for the USER in the current project. The executor is the user themselves — it is NEVER dispatched to or run by an agent; it just lives on the user's calendar until they mark it done. Use this (not create_task) when the user explicitly asks you to remember a todo, note a deadline, or remind them of something. Set dueAt for a deadline/scheduled reminder; add recurrence for a repeating one.",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"title"},
+			"properties": map[string]any{
+				"title": map[string]any{"type": "string", "description": "Short reminder text, e.g. 'Submit the quarterly report'."},
+				"note":  map[string]any{"type": "string", "description": "Optional extra detail (Markdown supported)."},
+				"dueAt": map[string]any{"type": "string", "description": "Optional due/trigger time, RFC3339 (e.g. '2026-06-25T15:00:00+08:00'). Omit for an undated todo."},
+				"recurrence": map[string]any{
+					"type":        "object",
+					"description": "Optional repeat rule. Omit for a one-off reminder.",
+					"properties": map[string]any{
+						"freq":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly"}},
+						"weekday":  map[string]any{"type": "integer", "description": "0=Sunday…6=Saturday (for weekly)."},
+						"monthday": map[string]any{"type": "integer", "description": "1–31 (for monthly)."},
+						"at":       map[string]any{"type": "string", "description": "'HH:MM' local time; defaults to midnight."},
+					},
+				},
+			},
+		},
+	},
 }
 
 // reviewVerifier is "verifier" — the ONEAGENTS_TASK_ROLE value selecting the
 // hard read-only review scope.
 const reviewVerifier = "verifier"
+
+// reminderRole is "reminder" — the ONEAGENTS_TASK_ROLE value for a general
+// (non-PM) chat session: project-wide but narrowed to recording personal
+// reminders (#192). Unlike executor/verifier it is not task-locked.
+const reminderRole = "reminder"
+
+// reminderScopedTools is the surface for a reminder-role session: record a
+// personal reminder and read the current list (for dedup/context). All other
+// PM tools are withheld so a general chat agent cannot create project tasks,
+// milestones, or discussions.
+var reminderScopedTools = map[string]bool{
+	"create_reminder": true,
+	"list_tasks":      true,
+}
 
 // executorScopedTools is the tool subset advertised and accepted in a task-
 // locked executor session: read its own task, list (filtered to itself), and
@@ -182,6 +219,14 @@ func (s *server) scopedTools() map[string]bool {
 func (s *server) listedTools() []map[string]any {
 	out := make([]map[string]any, 0, len(toolDefs))
 	if s.taskID == "" {
+		if s.taskRole == reminderRole {
+			for _, d := range toolDefs {
+				if name, _ := d["name"].(string); reminderScopedTools[name] {
+					out = append(out, d)
+				}
+			}
+			return out
+		}
 		for _, d := range toolDefs {
 			if name, _ := d["name"].(string); name == "submit_review" {
 				continue
@@ -234,6 +279,9 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 	if s.taskID != "" && !s.scopedTools()[p.Name] {
 		return toolErr(fmt.Sprintf("tool %q is not available in this task-scoped session", p.Name))
 	}
+	if s.taskID == "" && s.taskRole == reminderRole && !reminderScopedTools[p.Name] {
+		return toolErr(fmt.Sprintf("tool %q is not available in this reminder-scoped session", p.Name))
+	}
 	switch p.Name {
 	case "list_tasks":
 		return s.toolListTasks(p.Arguments)
@@ -247,6 +295,8 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolUpdateMilestone(p.Arguments)
 	case "create_task":
 		return s.toolCreateTask(p.Arguments)
+	case "create_reminder":
+		return s.toolCreateReminder(p.Arguments)
 	case "create_discussion":
 		return s.toolCreateDiscussion(p.Arguments)
 	case "update_task":
@@ -452,6 +502,55 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"title":     created.Title,
 		"status":    created.Status,
 		"dependsOn": created.DependsOn,
+	})
+}
+
+// toolCreateReminder records a personal reminder/todo for the user (#192). It is
+// a task pinned to assignee="user" so the scheduler never runs it; an optional
+// dueAt becomes the scheduled trigger time and recurrence makes it repeat.
+func (s *server) toolCreateReminder(args json.RawMessage) map[string]any {
+	var a struct {
+		Title      string          `json:"title"`
+		Note       string          `json:"note"`
+		DueAt      string          `json:"dueAt"`
+		Recurrence json.RawMessage `json:"recurrence"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolErr("invalid arguments: " + err.Error())
+	}
+	if strings.TrimSpace(a.Title) == "" {
+		return toolErr("title is required")
+	}
+	body := map[string]any{
+		"workspace_id": s.workspaceID,
+		"title":        a.Title,
+		"description":  a.Note,
+		"type":         "task",
+		"assignee":     "user", // executor is the user; scheduler skips it
+	}
+	if strings.TrimSpace(a.DueAt) != "" {
+		body["scheduleType"] = "scheduled"
+		body["scheduledAt"] = a.DueAt
+	}
+	if len(a.Recurrence) > 0 && string(a.Recurrence) != "null" {
+		body["recurrence"] = a.Recurrence
+	}
+	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("create reminder failed (%d): %s", status, strings.TrimSpace(string(resp))))
+	}
+	var created task
+	if err := json.Unmarshal(resp, &created); err != nil {
+		return toolText(string(resp))
+	}
+	return toolJSON(map[string]any{
+		"ok":     true,
+		"id":     created.ID,
+		"number": created.Number,
+		"title":  created.Title,
 	})
 }
 

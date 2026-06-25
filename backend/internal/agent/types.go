@@ -71,6 +71,7 @@ type (
 	Task              = meta.Task
 	TasksConfig       = meta.TasksConfig
 	Milestone         = meta.Milestone
+	Project           = meta.Project
 	MilestonePatch    = meta.MilestonePatch
 	TaskLink          = meta.TaskLink
 	Priority          = meta.Priority
@@ -101,6 +102,7 @@ const (
 	TaskStatusFailed        = meta.TaskStatusFailed
 	TaskStatusCancelled     = meta.TaskStatusCancelled
 	TaskStatusBlocked       = meta.TaskStatusBlocked
+	TaskStatusNotReady      = meta.TaskStatusNotReady
 	TaskStatusPendingReview = meta.TaskStatusPendingReview
 
 	IssueOpen   = meta.IssueOpen
@@ -112,6 +114,8 @@ const (
 	TaskTypeDiscussion  = meta.TaskTypeDiscussion
 
 	TaskSourceAgent = meta.TaskSourceAgent
+
+	AssigneeUser = meta.AssigneeUser
 
 	LinkCloses  = meta.LinkCloses
 	LinkRelates = meta.LinkRelates

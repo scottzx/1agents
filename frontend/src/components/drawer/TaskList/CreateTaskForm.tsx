@@ -1,8 +1,13 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
-import { AGENT_OPTIONS } from './constants';
+import { AGENT_OPTIONS, TYPE_ACCEPTANCE_TEMPLATES } from './constants';
+import { taskService } from '@1agents/core/services/taskService';
 import type { Task, TaskPriority, TaskType } from './types';
+
+// Set of all type templates, so switching type can recognise an untouched
+// template (and replace it) versus criteria the user actually wrote.
+const ACCEPTANCE_TEMPLATE_VALUES = new Set(Object.values(TYPE_ACCEPTANCE_TEMPLATES).filter(Boolean));
 
 interface CreateTaskFormProps {
     workspaceId: string;
@@ -48,6 +53,16 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
         setDependsOn([]);
     };
 
+    // Switching type swaps in that type's acceptance template, but only while the
+    // field is empty or still holds an untouched template — never clobber criteria
+    // the user has actually edited.
+    const handleTypeChange = (next: TaskType) => {
+        setType(next);
+        if (acceptance.trim() === '' || ACCEPTANCE_TEMPLATE_VALUES.has(acceptance)) {
+            setAcceptance(TYPE_ACCEPTANCE_TEMPLATES[next] ?? '');
+        }
+    };
+
     const handleToggleDependency = (taskId: string) => {
         setDependsOn(prev => (prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]));
     };
@@ -66,34 +81,26 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
                           ...(recurFreq === 'monthly' ? { monthday: recurMonthday } : {}),
                           at: recurAt,
                       };
-            const res = await fetch('/api/agent/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    workspace_id: workspaceId,
-                    title: title.trim(),
-                    type,
-                    description: description.trim(),
-                    acceptanceCriteria: acceptance.trim(),
-                    priority,
-                    assignee,
-                    labels: labelsInput
-                        .split(/[,，]/)
-                        .map(s => s.trim())
-                        .filter(Boolean),
-                    parentId,
-                    recurrence,
-                    scheduleType,
-                    scheduledAt:
-                        scheduleType === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
-                    plannedStart: plannedStart ? new Date(plannedStart).toISOString() : null,
-                    plannedEnd: plannedEnd ? new Date(plannedEnd).toISOString() : null,
-                    dependsOn,
-                }),
+            await taskService.create({
+                workspace_id: workspaceId,
+                title: title.trim(),
+                type,
+                description: description.trim(),
+                acceptanceCriteria: acceptance.trim(),
+                priority,
+                assignee,
+                labels: labelsInput
+                    .split(/[,，]/)
+                    .map(s => s.trim())
+                    .filter(Boolean),
+                parentId,
+                recurrence,
+                scheduleType,
+                scheduledAt: scheduleType === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+                plannedStart: plannedStart ? new Date(plannedStart).toISOString() : null,
+                plannedEnd: plannedEnd ? new Date(plannedEnd).toISOString() : null,
+                dependsOn,
             });
-            if (!res.ok) {
-                throw new Error('Failed to create task');
-            }
             resetForm();
             onCreated();
         } catch (err) {
@@ -118,7 +125,7 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
                     <label>类型</label>
                     <select
                         value={type}
-                        onChange={(e: Event) => setType((e.target as HTMLSelectElement).value as TaskType)}
+                        onChange={(e: Event) => handleTypeChange((e.target as HTMLSelectElement).value as TaskType)}
                     >
                         <option value="task">任务</option>
                         <option value="requirement">需求</option>
@@ -138,9 +145,9 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
             </div>
 
             <div class="form-group">
-                <label>验收标准（agent 完成后对照自查）</label>
+                <label>验收标准（必填，agent 完成后对照自查；留空则任务标记为「未就绪」，不进入调度队列）</label>
                 <textarea
-                    rows={2}
+                    rows={3}
                     placeholder="如：hello.txt 存在且内容为 hello；所有测试通过..."
                     value={acceptance}
                     onInput={(e: Event) => setAcceptance((e.target as HTMLTextAreaElement).value)}

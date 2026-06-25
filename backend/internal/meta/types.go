@@ -99,6 +99,12 @@ const (
 	TaskSourceAgent TaskSource = "agent-suggested"
 )
 
+// AssigneeUser is a sentinel Assignee value meaning the executor is the user
+// themselves — a personal reminder / todo / DDL record (issue #192). Unlike a
+// normal assignee (an executing agent type), the scheduler never runs these;
+// they live on the calendar until the user marks them done.
+const AssigneeUser = "user"
+
 // LinkRel is the relation kind of a TaskLink. "closes" auto-closes the target
 // when the source task completes (GitHub-style "fixes #N"); "relates" is a
 // plain cross-reference kept for indexing/navigation only (never automatic).
@@ -127,6 +133,12 @@ const (
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"
 	TaskStatusBlocked   TaskStatus = "blocked"
+	// TaskStatusNotReady marks an executable task that lacks acceptance criteria
+	// (issue #135): a task with no "怎样算完成" cannot be loop-verified by the
+	// agent, so the scheduler holds it out of the runnable queue and surfaces it
+	// as 未就绪 until criteria are filled in. Like TaskStatusBlocked it is a
+	// derived state the scheduler toggles, not a user-set one.
+	TaskStatusNotReady TaskStatus = "not_ready"
 	// TaskStatusPendingReview marks a task whose executor finished but which is
 	// configured for verification (Task.Verifier set): the scheduler picks it up
 	// and runs the verifier headlessly instead of completing it. See #50.

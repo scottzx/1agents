@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
+import { taskCardVM } from '@1agents/core/view/taskCard';
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
 import type { Task } from './types';
 
@@ -108,7 +109,8 @@ interface KanbanCardProps {
 }
 
 function KanbanCard({ task, dragging, onSelect, onDragStart, onDragEnd }: KanbanCardProps) {
-    const prio = task.priority || 'medium';
+    const vm = taskCardVM(task);
+    const prio = vm.priority;
     return (
         <div
             class={`kanban-card status-${task.status}${dragging ? ' dragging' : ''}`}
@@ -128,7 +130,7 @@ function KanbanCard({ task, dragging, onSelect, onDragStart, onDragEnd }: Kanban
                 {task.milestone && <span class="kanban-card-milestone">{task.milestone}</span>}
             </div>
             <div class="kanban-card-title">
-                {task.number ? <span class="task-number">#{task.number}</span> : null}
+                {vm.numberLabel ? <span class="task-number">{vm.numberLabel}</span> : null}
                 {task.title}
             </div>
             <div class="kanban-card-foot">

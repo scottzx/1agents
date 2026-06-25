@@ -40,6 +40,7 @@ export type ContentView =
     | { kind: 'files' }
     | { kind: 'git' }
     | { kind: 'tasks' }
+    | { kind: 'reminders' }
     | { kind: 'channels' }
     | { kind: 'providers' }
     | { kind: 'skills' }
