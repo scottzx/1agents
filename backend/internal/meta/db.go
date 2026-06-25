@@ -152,6 +152,11 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v13: %w", err)
 		}
 	}
+	if version < 14 {
+		if _, err := db.sql.Exec(schemaV14); err != nil {
+			return fmt.Errorf("meta: apply schema v14: %w", err)
+		}
+	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
 	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
 	// with user_version bumped to the latest while the other branch's columns
@@ -178,7 +183,7 @@ func (db *DB) migrateSchema() error {
 	return nil
 }
 
-// ensureTasksColumns adds any of the schema v9–v12 tasks columns that are
+// ensureTasksColumns adds any of the schema v9–v14 tasks columns that are
 // missing, skipping those already present. Idempotent and independent of
 // user_version, so it recovers DBs left half-migrated by the v9 branch
 // collision (#47 ⇄ #50). DDL must match the original ADD COLUMN definitions.
@@ -204,6 +209,10 @@ func (db *DB) ensureTasksColumns() error {
 		{"github_state", "ALTER TABLE tasks ADD COLUMN github_state TEXT NOT NULL DEFAULT ''"},
 		{"github_assignees", "ALTER TABLE tasks ADD COLUMN github_assignees TEXT NOT NULL DEFAULT '[]'"},
 		{"last_synced_at", "ALTER TABLE tasks ADD COLUMN last_synced_at TEXT"},
+		// ── adversarial multi-verifier (v14, #131) ──
+		{"verifier_count", "ALTER TABLE tasks ADD COLUMN verifier_count INTEGER NOT NULL DEFAULT 0"},
+		{"verify_pass_threshold", "ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0"},
+		{"review_pool", "ALTER TABLE tasks ADD COLUMN review_pool TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
@@ -469,6 +478,16 @@ CREATE TABLE IF NOT EXISTS inbox_items (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox_items(status, created_at DESC);
+`
+
+// schemaV14 adds the adversarial multi-verifier fields (#131): verifier_count /
+// verify_pass_threshold configure the verification panel, review_pool holds the
+// running cycle's accumulated per-verifier verdicts. DEFAULTs keep every pre-v14
+// task on the classic single-verifier flow (count 0 ⇒ 1 verifier).
+const schemaV14 = `
+ALTER TABLE tasks ADD COLUMN verifier_count        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN review_pool           TEXT    NOT NULL DEFAULT '';
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

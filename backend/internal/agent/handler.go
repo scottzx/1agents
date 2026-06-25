@@ -333,29 +333,31 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var body struct {
-			WorkspaceID        string       `json:"workspace_id"`
-			Title              string       `json:"title"`
-			Description        string       `json:"description"`
-			AcceptanceCriteria string       `json:"acceptanceCriteria"`
-			Priority           string       `json:"priority"`
-			Assignee           string       `json:"assignee"`
-			Labels             []string     `json:"labels"`
-			ParentID           string       `json:"parentId"`
-			Milestone          string       `json:"milestone"`
-			Sprint             string       `json:"sprint"`
-			Type               string       `json:"type"`
-			Source             string       `json:"source"`
-			UserConfirm        bool         `json:"userConfirm"`
-			Recurrence         *Recurrence  `json:"recurrence"`
-			MaxRetries         *int         `json:"maxRetries"`
-			Verifier           string       `json:"verifier"`
-			ReviewMaxAttempts  *int         `json:"reviewMaxAttempts"`
-			ScheduleType       ScheduleType `json:"scheduleType"`
-			ScheduledAt        *time.Time   `json:"scheduledAt"`
-			PlannedStart       *time.Time   `json:"plannedStart"`
-			PlannedEnd         *time.Time   `json:"plannedEnd"`
-			DependsOn          []string     `json:"dependsOn"`
-			Links              []TaskLink   `json:"links"`
+			WorkspaceID         string       `json:"workspace_id"`
+			Title               string       `json:"title"`
+			Description         string       `json:"description"`
+			AcceptanceCriteria  string       `json:"acceptanceCriteria"`
+			Priority            string       `json:"priority"`
+			Assignee            string       `json:"assignee"`
+			Labels              []string     `json:"labels"`
+			ParentID            string       `json:"parentId"`
+			Milestone           string       `json:"milestone"`
+			Sprint              string       `json:"sprint"`
+			Type                string       `json:"type"`
+			Source              string       `json:"source"`
+			UserConfirm         bool         `json:"userConfirm"`
+			Recurrence          *Recurrence  `json:"recurrence"`
+			MaxRetries          *int         `json:"maxRetries"`
+			Verifier            string       `json:"verifier"`
+			ReviewMaxAttempts   *int         `json:"reviewMaxAttempts"`
+			VerifierCount       *int         `json:"verifierCount"`
+			VerifyPassThreshold *int         `json:"verifyPassThreshold"`
+			ScheduleType        ScheduleType `json:"scheduleType"`
+			ScheduledAt         *time.Time   `json:"scheduledAt"`
+			PlannedStart        *time.Time   `json:"plannedStart"`
+			PlannedEnd          *time.Time   `json:"plannedEnd"`
+			DependsOn           []string     `json:"dependsOn"`
+			Links               []TaskLink   `json:"links"`
 			// GitHub Issue/PR mapping (#74). Optional sync backfill — normally
 			// written by the future sync pass, not the create form.
 			GithubRepo      string     `json:"githubRepo"`
@@ -413,44 +415,54 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if body.ReviewMaxAttempts != nil && *body.ReviewMaxAttempts >= 0 {
 			reviewMaxAttempts = *body.ReviewMaxAttempts
 		}
+		verifierCount := 0
+		if body.VerifierCount != nil && *body.VerifierCount > 0 {
+			verifierCount = *body.VerifierCount
+		}
+		verifyPassThreshold := 0
+		if body.VerifyPassThreshold != nil && *body.VerifyPassThreshold > 0 {
+			verifyPassThreshold = *body.VerifyPassThreshold
+		}
 		newTask := Task{
-			ID:                 newID(),
-			Title:              body.Title,
-			Description:        body.Description,
-			AcceptanceCriteria: body.AcceptanceCriteria,
-			IssueState:         IssueOpen,
-			Status:             TaskStatusPending,
-			Priority:           Priority(body.Priority),
-			Assignee:           body.Assignee,
-			Verifier:           body.Verifier,
-			ReviewMaxAttempts:  reviewMaxAttempts,
-			Labels:             body.Labels,
-			ParentID:           body.ParentID,
-			Milestone:          body.Milestone,
-			Sprint:             body.Sprint,
-			Type:               TaskType(body.Type),
-			Source:             TaskSource(body.Source),
-			UserConfirm:        body.UserConfirm,
-			Recurrence:         body.Recurrence,
-			MaxRetries:         maxRetries,
-			ScheduleType:       body.ScheduleType,
-			ScheduledAt:        body.ScheduledAt,
-			PlannedStart:       body.PlannedStart,
-			PlannedEnd:         body.PlannedEnd,
-			DependsOn:          body.DependsOn,
-			Links:              body.Links,
-			GithubRepo:         body.GithubRepo,
-			GithubKind:         body.GithubKind,
-			GithubNumber:       body.GithubNumber,
-			GithubNodeId:       body.GithubNodeId,
-			GithubUrl:          body.GithubUrl,
-			GithubState:        body.GithubState,
-			GithubAssignees:    body.GithubAssignees,
-			LastSyncedAt:       body.LastSyncedAt,
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-			Replies:            []Reply{},
-			Sessions:           []SessionMetadata{},
+			ID:                  newID(),
+			Title:               body.Title,
+			Description:         body.Description,
+			AcceptanceCriteria:  body.AcceptanceCriteria,
+			IssueState:          IssueOpen,
+			Status:              TaskStatusPending,
+			Priority:            Priority(body.Priority),
+			Assignee:            body.Assignee,
+			Verifier:            body.Verifier,
+			ReviewMaxAttempts:   reviewMaxAttempts,
+			VerifierCount:       verifierCount,
+			VerifyPassThreshold: verifyPassThreshold,
+			Labels:              body.Labels,
+			ParentID:            body.ParentID,
+			Milestone:           body.Milestone,
+			Sprint:              body.Sprint,
+			Type:                TaskType(body.Type),
+			Source:              TaskSource(body.Source),
+			UserConfirm:         body.UserConfirm,
+			Recurrence:          body.Recurrence,
+			MaxRetries:          maxRetries,
+			ScheduleType:        body.ScheduleType,
+			ScheduledAt:         body.ScheduledAt,
+			PlannedStart:        body.PlannedStart,
+			PlannedEnd:          body.PlannedEnd,
+			DependsOn:           body.DependsOn,
+			Links:               body.Links,
+			GithubRepo:          body.GithubRepo,
+			GithubKind:          body.GithubKind,
+			GithubNumber:        body.GithubNumber,
+			GithubNodeId:        body.GithubNodeId,
+			GithubUrl:           body.GithubUrl,
+			GithubState:         body.GithubState,
+			GithubAssignees:     body.GithubAssignees,
+			LastSyncedAt:        body.LastSyncedAt,
+			CreatedAt:           time.Now().UTC(),
+			UpdatedAt:           time.Now().UTC(),
+			Replies:             []Reply{},
+			Sessions:            []SessionMetadata{},
 		}
 		if newTask.ScheduleType == "" {
 			newTask.ScheduleType = ScheduleTypeImmediate

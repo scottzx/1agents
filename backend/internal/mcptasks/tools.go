@@ -85,23 +85,25 @@ var toolDefs = []map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
 			"properties": map[string]any{
-				"title":              map[string]any{"type": "string"},
-				"description":        map[string]any{"type": "string", "description": "The work instruction for the executing agent. Maps to GitHub issue.body."},
-				"acceptanceCriteria": map[string]any{"type": "string", "description": "Required for executable tasks: concrete, checkable criteria for the task to be accepted as done. A task without acceptance criteria is held as not_ready and never scheduled."},
-				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}, "description": "Issue discriminator. Maps to GitHub Issue Types / a label."},
-				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority. No native GitHub Issue field — maps to a Projects v2 custom field."},
-				"milestone":          map[string]any{"type": "string", "description": "Maps to GitHub milestone (matched/created by title)."},
-				"assignee":           map[string]any{"type": "string", "description": "Executing AGENT type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). LOCAL ONLY — this is NOT a GitHub user. Empty defaults to claudecode. For GitHub users, use githubAssignees."},
-				"githubAssignees":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (issue.assignees[].login) — human collaborators on the mapped Issue/PR. Distinct from `assignee` (the executing agent). Sync field."},
-				"verifier":           map[string]any{"type": "string", "description": "Optional reviewing agent type. When set (and acceptanceCriteria is non-empty), after the executor finishes a verifier of this type auto-checks the output against the criteria; the task only completes when every criterion passes, otherwise it re-executes. Empty = no verification."},
-				"dependsOn":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
-				"githubRepo":         map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo' of the bound GitHub object. Normally backfilled by sync."},
-				"githubKind":         map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: whether the bound GitHub object is an issue or a pr."},
-				"githubNumber":       map[string]any{"type": "integer", "description": "Sync anchor: the remote #N (per-repo), distinct from the local task number."},
-				"githubNodeId":       map[string]any{"type": "string", "description": "Sync anchor: GraphQL global node id (needed by the Projects v2 API)."},
-				"githubUrl":          map[string]any{"type": "string", "description": "Sync anchor: the object's html_url."},
-				"githubState":        map[string]any{"type": "string", "description": "Sync anchor: remote open/closed state, for conflict detection."},
-				"lastSyncedAt":       map[string]any{"type": "string", "description": "Sync anchor: RFC3339 timestamp of the last successful GitHub sync."},
+				"title":               map[string]any{"type": "string"},
+				"description":         map[string]any{"type": "string", "description": "The work instruction for the executing agent. Maps to GitHub issue.body."},
+				"acceptanceCriteria":  map[string]any{"type": "string", "description": "Required for executable tasks: concrete, checkable criteria for the task to be accepted as done. A task without acceptance criteria is held as not_ready and never scheduled."},
+				"type":                map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}, "description": "Issue discriminator. Maps to GitHub Issue Types / a label."},
+				"priority":            map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority. No native GitHub Issue field — maps to a Projects v2 custom field."},
+				"milestone":           map[string]any{"type": "string", "description": "Maps to GitHub milestone (matched/created by title)."},
+				"assignee":            map[string]any{"type": "string", "description": "Executing AGENT type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). LOCAL ONLY — this is NOT a GitHub user. Empty defaults to claudecode. For GitHub users, use githubAssignees."},
+				"githubAssignees":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (issue.assignees[].login) — human collaborators on the mapped Issue/PR. Distinct from `assignee` (the executing agent). Sync field."},
+				"verifier":            map[string]any{"type": "string", "description": "Optional reviewing agent type. When set (and acceptanceCriteria is non-empty), after the executor finishes a verifier of this type auto-checks the output against the criteria; the task only completes when every criterion passes, otherwise it re-executes. Empty = no verification."},
+				"verifierCount":       map[string]any{"type": "integer", "description": "Optional. How many independent verifiers form an adversarial review panel (#131). >1 runs that many separate verifier passes that each judge the output; the panel decides by threshold. Default/0/1 = a single verifier."},
+				"verifyPassThreshold": map[string]any{"type": "integer", "description": "Optional. How many of the verifierCount verdicts must pass for the panel to accept the output. 0 = simple majority (⌊N/2⌋+1). Set equal to verifierCount to require unanimity."},
+				"dependsOn":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
+				"githubRepo":          map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo' of the bound GitHub object. Normally backfilled by sync."},
+				"githubKind":          map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: whether the bound GitHub object is an issue or a pr."},
+				"githubNumber":        map[string]any{"type": "integer", "description": "Sync anchor: the remote #N (per-repo), distinct from the local task number."},
+				"githubNodeId":        map[string]any{"type": "string", "description": "Sync anchor: GraphQL global node id (needed by the Projects v2 API)."},
+				"githubUrl":           map[string]any{"type": "string", "description": "Sync anchor: the object's html_url."},
+				"githubState":         map[string]any{"type": "string", "description": "Sync anchor: remote open/closed state, for conflict detection."},
+				"lastSyncedAt":        map[string]any{"type": "string", "description": "Sync anchor: RFC3339 timestamp of the last successful GitHub sync."},
 			},
 		},
 	},
@@ -540,15 +542,17 @@ func (s *server) toolUpdateMilestone(args json.RawMessage) map[string]any {
 
 func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 	var a struct {
-		Title              string   `json:"title"`
-		Description        string   `json:"description"`
-		AcceptanceCriteria string   `json:"acceptanceCriteria"`
-		Type               string   `json:"type"`
-		Priority           string   `json:"priority"`
-		Milestone          string   `json:"milestone"`
-		Assignee           string   `json:"assignee"`
-		Verifier           string   `json:"verifier"`
-		DependsOn          []string `json:"dependsOn"`
+		Title               string   `json:"title"`
+		Description         string   `json:"description"`
+		AcceptanceCriteria  string   `json:"acceptanceCriteria"`
+		Type                string   `json:"type"`
+		Priority            string   `json:"priority"`
+		Milestone           string   `json:"milestone"`
+		Assignee            string   `json:"assignee"`
+		Verifier            string   `json:"verifier"`
+		VerifierCount       int      `json:"verifierCount"`
+		VerifyPassThreshold int      `json:"verifyPassThreshold"`
+		DependsOn           []string `json:"dependsOn"`
 		// GitHub Issue/PR mapping (#74). githubAssignees is the human-collaborator
 		// dimension (distinct from assignee); the github* refs are the sync anchor.
 		GithubAssignees []string `json:"githubAssignees"`
@@ -577,6 +581,12 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"assignee":           a.Assignee,
 		"verifier":           a.Verifier,
 		"dependsOn":          a.DependsOn,
+	}
+	if a.VerifierCount > 0 {
+		body["verifierCount"] = a.VerifierCount
+	}
+	if a.VerifyPassThreshold > 0 {
+		body["verifyPassThreshold"] = a.VerifyPassThreshold
 	}
 	// Forward GitHub mapping fields only when provided, so a normal create never
 	// writes empty anchors over a row a future sync pass might populate.
