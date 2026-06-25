@@ -836,6 +836,29 @@ body {
       opacity: 1;
       transform: translateX(0) scale(1);
 
+      // 多设备(#114):远程设备分组。在线/离线状态点 + 离线灰显。
+      &.device-node .device-status-dot {
+        margin-left: auto;
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-muted);
+
+        &.online {
+          background: var(--success-emphasis);
+        }
+      }
+
+      &.device-offline .project-folder {
+        opacity: 0.55;
+
+        .ws-name,
+        .folder-icon {
+          color: var(--text-muted);
+        }
+      }
+
       &.ws-active .project-folder {
         background-color: var(--bg-sidebar-active);
         color: var(--text-main);
@@ -1723,6 +1746,30 @@ body {
         &:focus-within .header-project-tooltip {
           opacity: 1;
           visibility: visible;
+        }
+      }
+
+      /* 多设备(#114):标题栏远程设备徽标。 */
+      .header-device-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: var(--accent-bg);
+        color: var(--accent-fg);
+
+        .device-status-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: var(--text-muted);
+
+          &.online {
+            background: var(--success-emphasis);
+          }
         }
       }
 

@@ -32,6 +32,11 @@ export interface Workspace {
     chatChannel?: string;
     defaultAgent?: import('../protocol/session').AgentType;
     builtin?: boolean;
+    /**
+     * 所属远程设备 id(多设备项目视图,#114)。client-only:由 workspaceService.list(deviceId)
+     * 在拉取远程设备项目时打标;本机项目此字段为空。点击带 deviceId 的项目时切到代理路由。
+     */
+    deviceId?: string;
 }
 
 /** A tmux window returned by GET /api/terminal/list — unified Session model */
