@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import * as ui from '../../../stores/uiStore';
 import { t } from '../../../i18n';
 import { inboxService, type InboxItem, type InboxSource } from '@1agents/core/services/inboxService';
+import { personalTaskService } from '@1agents/core/services/personalTaskService';
 import { pmoService, type DispatchTarget } from '@1agents/core/services/pmoService';
 
 // Inbox 统一信息收口层 (#60): the most-upstream layer that funnels scattered
@@ -62,6 +63,21 @@ export function InboxPane() {
     const act = async (id: string, action: 'archive' | 'read' | 'unread') => {
         try {
             await inboxService.setStatus(id, action);
+            await refresh();
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    };
+
+    // Inbox → 个人任务 (#60 → #67): turn an item into a personal task (carrying a
+    // captured-from backlink) then archive the item, keeping the "what did this
+    // become" trail. The item leaves the active list; it stays under 已归档.
+    const toPersonalTask = async (item: InboxItem) => {
+        const title = (item.title || item.content || item.url || '').trim();
+        if (!title) return;
+        try {
+            await personalTaskService.capture({ title, fromInbox: item.id });
+            await inboxService.setStatus(item.id, 'archive');
             await refresh();
         } catch (err) {
             setError((err as Error).message);
@@ -171,6 +187,11 @@ export function InboxPane() {
                                 )}
                             </div>
                             <div class="inbox-item-actions">
+                                {!archived && (
+                                    <button class="inbox-action" onClick={() => toPersonalTask(item)}>
+                                        {t('inbox.toPersonalTask', language)}
+                                    </button>
+                                )}
                                 {item.status === 'unread' && (
                                     <button class="inbox-action" onClick={() => act(item.id, 'read')}>
                                         {t('inbox.markRead', language)}

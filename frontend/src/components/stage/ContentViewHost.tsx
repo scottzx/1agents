@@ -28,6 +28,7 @@ import { GitPanel } from '../drawer/GitPanel';
 import { TaskList } from '../drawer/TaskList';
 import { RemindersPane } from '../drawer/Reminders';
 import { InboxPane } from '../drawer/Inbox';
+import { PersonalTasksPane } from '../drawer/PersonalTasks';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
@@ -148,6 +149,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <InboxPane />
+                </div>
+            );
+        case 'personal':
+            // 个人任务 + 立项 (#67) — own full-page pane, same padded scroll frame
+            // as the inbox/reminders/tasks landings.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '12px 16px',
+                        overflow: 'auto',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <PersonalTasksPane />
                 </div>
             );
         case 'channels':
