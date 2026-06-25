@@ -92,15 +92,15 @@ func TestChainCreatedAutoRoutes(t *testing.T) {
 	// so the routing decision is observable (a plain task would route to the
 	// default, indistinguishable from "no routing happened").
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "t1", Title: "调研竞品", Description: "查一下", AcceptanceCriteria: "通过",
+		srcReq(now),
+		withSource(Task{ID: "t1", Title: "调研竞品", Description: "查一下", AcceptanceCriteria: "通过",
 			Labels: []string{"调研"}, Type: TaskTypeTask,
-			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
 	})
 
 	s.Tick()
 
-	cfg, _ := store.Load(ref.Path)
-	got := cfg.Tasks[0]
+	got := loadTask(t, store, ref.Path, "t1")
 	if got.Assignee != AgentTypeGemini {
 		t.Fatalf("created→route: assignee = %q, want %s", got.Assignee, AgentTypeGemini)
 	}
@@ -181,10 +181,11 @@ func TestChainBlockedNotifiesPM(t *testing.T) {
 	now := time.Now().UTC()
 	// t2 depends on incomplete t1 → t2 gets blocked → PM notified once.
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "t1", Title: "前置", Description: "做", AcceptanceCriteria: "ok",
-			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
-		{ID: "t2", Title: "后置", Description: "做", AcceptanceCriteria: "ok", DependsOn: []string{"t1"},
-			Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "t1", Title: "前置", Description: "做", AcceptanceCriteria: "ok",
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
+		withSource(Task{ID: "t2", Title: "后置", Description: "做", AcceptanceCriteria: "ok", DependsOn: []string{"t1"},
+			Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now}),
 	})
 	s.Tick()
 	got := loadTask(t, store, ref.Path, "t2")
