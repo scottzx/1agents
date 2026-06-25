@@ -53,8 +53,9 @@ type ChatSessionRecord struct {
 	// PermissionMode is the per-session permission policy forwarded to the
 	// bridge-server (which gates handlePermissionRequestCallback). One of
 	// "approve-reads" (default; auto-allow reads, prompt otherwise),
-	// "approve-all", "deny-all". Empty value means "use the bridge-server's
-	// global default".
+	// "approve-all", "deny-all", "auto" (decide per request by tool
+	// source/risk; see internal/agent/permission). Empty value means "use the
+	// bridge-server's global default".
 	PermissionMode string `json:"permission_mode,omitempty"`
 	// Role marks a special-purpose session. Empty for an ordinary chat. "pm"
 	// is the in-app AI Project Manager: HandleChatWs injects a PM system

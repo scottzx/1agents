@@ -136,7 +136,7 @@ func (s *SessionStore) UpdateTask(id, taskID string) error {
 // bridge-server reads this on ensure_session (and on subsequent
 // set_permission_mode actions from the client) to gate the permission
 // prompt callback. Mode must be one of "approve-reads", "approve-all",
-// "deny-all"; the caller is expected to validate.
+// "deny-all", "auto"; the caller is expected to validate.
 func (s *SessionStore) UpdatePermissionMode(id, mode string) error {
 	return s.execOne(`UPDATE sessions SET permission_mode = ? WHERE id = ?`, mode, id)
 }
