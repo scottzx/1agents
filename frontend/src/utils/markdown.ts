@@ -154,7 +154,7 @@ const fileRefExtension: TokenizerAndRendererExtension = {
 // is kept inside as a <pre> fallback — that's what shows until a consumer with
 // a live DOM (the chat bubble) lazy-loads mermaid and swaps in the SVG, and
 // what stays put in contexts that never run that step (task descriptions etc.).
-const mermaidRenderer: RendererObject = {
+export const mermaidRenderer: RendererObject = {
     code(token) {
         if ((token.lang || '').trim().split(/\s+/)[0] === 'mermaid') {
             const src = token.text;

@@ -9,6 +9,7 @@ import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constant
 import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
+import { renderMermaidBlocks } from '../../../utils/mermaid';
 import { parseFrontmatter } from '../../../utils/frontmatter';
 import { taskPermalink } from '../../../stores/taskNavStore';
 import * as wsStore from '../../../stores/workspaceStore';
@@ -201,6 +202,9 @@ export function TaskDetail({
     };
 
     const containerRef = useRef<HTMLDivElement>(null);
+    // Main column holding the markdown bodies (description, acceptance, timeline
+    // replies, composer preview); used to draw any ```mermaid placeholders.
+    const mainRef = useRef<HTMLDivElement>(null);
     // Raw bytes of the last task payload, for poll de-duplication (see fetchTask).
     const lastRawRef = useRef('');
 
@@ -257,6 +261,16 @@ export function TaskDetail({
             el.removeEventListener('pointercancel', onUp);
         };
     }, [onBack]);
+
+    // Draw ```mermaid diagrams in any markdown body of the main column once its
+    // HTML is in the DOM. renderMarkdown already emits .mermaid-block
+    // placeholders; this swaps them for SVG (idempotent, re-runs on theme/tab/
+    // content change). Reading the theme signal here re-renders on light/dark
+    // toggle so diagrams repaint with the matching palette.
+    const detailTheme = ui.theme.value;
+    useEffect(() => {
+        void renderMermaidBlocks(mainRef.current, detailTheme);
+    }, [task, detailTheme, activeTab, composerTab, replyText, editingDesc.value]);
 
     const getInitials = (name: string) => {
         if (!name) return '?';
@@ -762,7 +776,7 @@ export function TaskDetail({
             </div>
 
             <div class={`task-detail-scroller${sidebarCollapsed.value ? ' sidebar-collapsed' : ''}`}>
-                <div class="task-detail-main">
+                <div class="task-detail-main" ref={mainRef}>
                     {activeTab === 'conversation' && (
                         <div>
                             {/* Description Card */}

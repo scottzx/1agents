@@ -1,6 +1,8 @@
 import { h, Component } from 'preact';
 import { FsEntry, getFileTag, formatBytes } from '../types';
 import { t, type Lang } from '../i18n';
+import { renderMermaidBlocks } from '../../utils/mermaid';
+import { theme } from '../../stores/uiStore';
 
 interface FileDetailViewProps {
     selectedFsEntry: FsEntry;
@@ -53,6 +55,10 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     private _mdLatestHtml: string = '';
     private _mdLastRenderedPath: string = '';
     private _mdLastRenderedContent: string = '';
+    // The rendered-markdown container, and an unsubscribe for the theme signal
+    // (class component, so we subscribe manually to redraw diagrams on toggle).
+    private mdRenderEl: HTMLDivElement | null = null;
+    private _themeUnsub: (() => void) | null = null;
 
     private handleStartEditing = () => {
         const pos = this.contentEl ? this.contentEl.scrollTop : 0;
@@ -161,6 +167,10 @@ export class FileDetailView extends Component<FileDetailViewProps> {
         // Kick off an initial parse if the mounted file is markdown.
         this.dispatchMarkdownParse();
         this.scrollToTargetIfNeeded();
+
+        // Redraw mermaid diagrams when the theme toggles (no auto re-render in a
+        // class component, so subscribe to the signal directly).
+        this._themeUnsub = theme.subscribe(() => this.drawMermaid());
     }
 
     componentWillUnmount() {
@@ -170,6 +180,15 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             this._mdWorker.terminate();
             this._mdWorker = null;
         }
+        if (this._themeUnsub) {
+            this._themeUnsub();
+            this._themeUnsub = null;
+        }
+    }
+
+    /** Draw any ```mermaid placeholders in the rendered markdown at the current theme. */
+    private drawMermaid() {
+        void renderMermaidBlocks(this.mdRenderEl, theme.value);
     }
 
     componentDidUpdate(prevProps: FileDetailViewProps) {
@@ -214,6 +233,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                 this.contentEl.scrollTop = this.savedScrollTop;
             }
         }
+
+        // The markdown HTML is injected via dangerouslySetInnerHTML, so the
+        // .mermaid-block placeholders only exist after this render committed.
+        // Draw them now (idempotent — already-rendered blocks are skipped).
+        this.drawMermaid();
     }
 
     /**
@@ -675,6 +699,9 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                     ) : isMd ? (
                         <div
                             class="fb-md-render"
+                            ref={el => {
+                                this.mdRenderEl = el;
+                            }}
                             dangerouslySetInnerHTML={{ __html: this._mdLatestHtml || this.escapeHtml(fileContent) }}
                             onClick={this.handleMarkdownClick}
                         />
