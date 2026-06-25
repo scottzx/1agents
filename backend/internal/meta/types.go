@@ -99,6 +99,12 @@ const (
 	TaskSourceAgent TaskSource = "agent-suggested"
 )
 
+// AssigneeUser is a sentinel Assignee value meaning the executor is the user
+// themselves — a personal reminder / todo / DDL record (issue #192). Unlike a
+// normal assignee (an executing agent type), the scheduler never runs these;
+// they live on the calendar until the user marks them done.
+const AssigneeUser = "user"
+
 // LinkRel is the relation kind of a TaskLink. "closes" auto-closes the target
 // when the source task completes (GitHub-style "fixes #N"); "relates" is a
 // plain cross-reference kept for indexing/navigation only (never automatic).

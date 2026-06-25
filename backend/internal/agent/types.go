@@ -71,6 +71,7 @@ type (
 	Task              = meta.Task
 	TasksConfig       = meta.TasksConfig
 	Milestone         = meta.Milestone
+	Project           = meta.Project
 	MilestonePatch    = meta.MilestonePatch
 	TaskLink          = meta.TaskLink
 	Priority          = meta.Priority
@@ -112,6 +113,8 @@ const (
 	TaskTypeDiscussion  = meta.TaskTypeDiscussion
 
 	TaskSourceAgent = meta.TaskSourceAgent
+
+	AssigneeUser = meta.AssigneeUser
 
 	LinkCloses  = meta.LinkCloses
 	LinkRelates = meta.LinkRelates

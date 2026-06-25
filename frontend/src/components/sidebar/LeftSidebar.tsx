@@ -327,7 +327,10 @@ export function LeftSidebar({
                         </svg>
                         <span>{t('sidebar.navCtrl.history', language)}</span>
                     </div>
-                    <div class="nav-control-item" onClick={() => alert('Scheduled Tasks: Placeholder')}>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('reminders')}
+                    >
                         <svg
                             class="btn-icon"
                             viewBox="0 0 24 24"

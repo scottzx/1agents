@@ -30,6 +30,12 @@ func NewTaskStore(db *DB) *TaskStore {
 	return &TaskStore{db: db}
 }
 
+// ListProjects returns every project (workspace) known to the meta DB. Used by
+// the agenda aggregator to sweep tasks/milestones across all workspaces (#192).
+func (s *TaskStore) ListProjects() ([]Project, error) {
+	return s.db.ListProjects()
+}
+
 // wsMutex returns the per-workspace lock used by Mutate, creating it on first use.
 func (s *TaskStore) wsMutex(workspacePath string) *sync.Mutex {
 	s.mutateMu.Lock()

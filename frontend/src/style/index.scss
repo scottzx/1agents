@@ -2394,6 +2394,293 @@ body {
 }
 
 /* ── Calendar view (perpetual month grid) ── */
+// Personal reminders / 定时任务 full-page pane (#192): a header above the
+// reusable month calendar.
+.reminders-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  .reminders-pane-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .reminders-pane-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .reminders-add,
+    .reminders-refresh {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 30px;
+      font-size: 13px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        color: var(--accent-fg);
+        background: var(--btn-hover);
+      }
+    }
+
+    .reminders-add {
+      padding: 0 12px;
+      font-weight: 600;
+      color: var(--on-accent);
+      background: var(--accent-emphasis);
+      border-color: var(--accent-emphasis);
+
+      &:hover {
+        color: var(--on-accent);
+        background: var(--accent-hover);
+      }
+    }
+
+    .reminders-refresh {
+      width: 30px;
+      font-size: 16px;
+    }
+  }
+}
+
+// Agenda calendar: kind-aware event chips + per-day quick-add (#192). Reuses the
+// .task-calendar grid; only the event styling differs.
+.agenda-calendar {
+  .calendar-cell-date {
+    position: relative;
+
+    .calendar-cell-add {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      line-height: 1;
+      font-size: 13px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.12s ease;
+
+      &:hover {
+        color: var(--accent-fg);
+        background: var(--btn-hover);
+      }
+    }
+  }
+
+  .calendar-cell:hover .calendar-cell-add {
+    opacity: 1;
+  }
+
+  .calendar-event {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    border-left: 3px solid var(--border-color);
+
+    .calendar-event-icon {
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .calendar-event-time {
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .calendar-event-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .calendar-event-repeat {
+      margin-left: auto;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    &.kind-reminder {
+      border-left-color: var(--accent-emphasis);
+    }
+    &.kind-task {
+      border-left-color: var(--purple-emphasis);
+    }
+    &.kind-milestone {
+      border-left-color: var(--orange-emphasis);
+    }
+
+    &.is-done {
+      opacity: 0.5;
+      .calendar-event-title {
+        text-decoration: line-through;
+      }
+    }
+  }
+}
+
+// Agenda item popover (#192): lightweight create/edit for reminders, read-only
+// for milestones — avoids the heavy project task detail.
+.agenda-pop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.agenda-pop-card {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--bento-radius, 12px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+
+  .agenda-pop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+
+    .agenda-pop-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 15px;
+
+      &:hover {
+        color: var(--text-main);
+      }
+    }
+  }
+
+  .agenda-pop-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+
+    input,
+    select {
+      padding: 7px 9px;
+      font-size: 13px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-page);
+      color: var(--text-main);
+
+      &:focus {
+        outline: none;
+        border-color: var(--accent-emphasis);
+      }
+    }
+  }
+
+  .agenda-pop-readonly {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    .agenda-pop-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .agenda-pop-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+  }
+
+  .agenda-pop-error {
+    font-size: 12px;
+    color: var(--danger-fg);
+  }
+
+  .agenda-pop-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .agenda-pop-spacer {
+      flex: 1;
+    }
+
+    .agenda-pop-btn {
+      padding: 6px 12px;
+      font-size: 13px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      cursor: pointer;
+
+      &:hover {
+        background: var(--btn-hover);
+        color: var(--text-main);
+      }
+      &:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      &.primary {
+        color: var(--on-accent);
+        background: var(--accent-emphasis);
+        border-color: var(--accent-emphasis);
+        &:hover {
+          background: var(--accent-hover);
+          color: var(--on-accent);
+        }
+      }
+      &.done {
+        color: var(--success-fg);
+        border-color: var(--success-emphasis);
+      }
+      &.danger {
+        color: var(--danger-fg);
+        border-color: var(--danger-emphasis);
+      }
+    }
+  }
+}
+
 .task-calendar {
   flex: 1;
   min-height: 0;
@@ -13977,6 +14264,11 @@ body {
     }
 
     &:hover {
+      color: var(--text-sidebar);
+      background-color: var(--bg-sidebar-hover);
+    }
+
+    &.active {
       color: var(--text-sidebar);
       background-color: var(--bg-sidebar-hover);
     }
