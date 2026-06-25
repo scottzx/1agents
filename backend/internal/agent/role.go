@@ -41,9 +41,11 @@ type RoleTemplate struct {
 	Prompt string `yaml:"-"`
 
 	// Resolution metadata, set by the loader (not from YAML).
-	Source      string `yaml:"-"` // "builtin" | "user" | "project"
-	Available   bool   `yaml:"-"` // engine installed / chat-ready
-	Unavailable string `yaml:"-"` // human-readable reason when !Available
+	Source        string   `yaml:"-"` // "builtin" | "user" | "project"
+	Path          string   `yaml:"-"` // on-disk path ("" for builtin); used by fork/restore
+	Available     bool     `yaml:"-"` // engine installed / chat-ready
+	Unavailable   string   `yaml:"-"` // human-readable reason when !Available
+	MissingSkills []string `yaml:"-"` // skills named in Skills that didn't resolve
 }
 
 // parseRoleMarkdown splits a role template file into YAML frontmatter and a
