@@ -80,6 +80,10 @@ const baseConfig = {
     context: path.resolve(__dirname, 'src'),
     entry: {
         app: './index.tsx',
+        // Big-screen build target (issue #120): a standalone HTML/JS bundle that
+        // boots straight into the company dashboard. Emitted as dashboard.html
+        // and served by the Go backend at /dashboard.
+        dashboard: './dashboard.tsx',
     },
     output: {
         path: path.resolve(__dirname, 'dist'),
@@ -160,6 +164,22 @@ const baseConfig = {
             },
             title: 'ttyd - Terminal',
             template: './template.html',
+            // Only the main app's chunks — keeps index.html (and thus the
+            // gulp-inlined html.h) free of the big-screen bundle.
+            chunks: ['app'],
+        }),
+        // Big-screen build target (issue #120): dist/dashboard.html boots the
+        // dashboard chunk. Not inlined by gulp and not embedded in ttyd.
+        new HtmlWebpackPlugin({
+            inject: false,
+            filename: 'dashboard.html',
+            minify: {
+                removeComments: true,
+                collapseWhitespace: true,
+            },
+            title: '1Agents 大屏',
+            template: './template-dashboard.html',
+            chunks: ['dashboard'],
         }),
     ],
     performance: {

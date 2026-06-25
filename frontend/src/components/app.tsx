@@ -13,7 +13,6 @@ import { accessService } from '../services/accessService';
 import { t } from '../i18n';
 import { DesktopAppLayout } from './desktop/DesktopAppLayout';
 import { MobileAppLayout } from './mobile/MobileAppLayout';
-import { DashboardApp } from './desktop/DashboardApp';
 
 import * as ui from '../stores/uiStore';
 import * as fs from '../stores/fsStore';
@@ -427,11 +426,6 @@ export class App extends Component<{}, AppState> {
     };
 
     render() {
-        const dashboardModeParams = new URLSearchParams(window.location.search);
-        if (dashboardModeParams.get('mode') === 'dashboard') {
-            return <DashboardApp />;
-        }
-
         const { accessGateVisible, backendGateVisible } = this.state;
         const toastMsg = ui.toastMsg.value;
         const language = ui.language.value;

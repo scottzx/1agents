@@ -523,6 +523,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 			http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
 			return
 		}
+		// Big-screen build target (issue #120): the standalone dashboard bundle
+		// is emitted as dashboard.html. Serve it at the clean /dashboard path so
+		// the big screen has a stable URL distinct from the SPA root.
+		if r.Method == http.MethodGet && (r.URL.Path == "/dashboard" || r.URL.Path == "/dashboard/") {
+			http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "dashboard.html"))
+			return
+		}
 		staticFS.ServeHTTP(w, r)
 	})
 
