@@ -11,6 +11,8 @@ interface KanbanBoardProps {
     onSelectTask: (taskId: string) => void;
     /** Drag-to-retire a card. Only terminal states are reachable by drag. */
     onStatusChange: (taskId: string, status: 'completed' | 'cancelled') => void;
+    /** Global board (#91): show each card's owning project tag and disable drag. */
+    showProject?: boolean;
 }
 
 type DropStatus = 'completed' | 'cancelled';
@@ -34,7 +36,7 @@ const COLUMNS: Column[] = [
     { key: 'retired', label: '失败/取消', statuses: ['failed', 'cancelled'], dropStatus: 'cancelled' },
 ];
 
-export function KanbanBoard({ tasks, loading, onSelectTask, onStatusChange }: KanbanBoardProps) {
+export function KanbanBoard({ tasks, loading, onSelectTask, onStatusChange, showProject }: KanbanBoardProps) {
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export function KanbanBoard({ tasks, loading, onSelectTask, onStatusChange }: Ka
                         key={col.key}
                         class={`kanban-column${isTarget ? ' is-drop-target' : ''}`}
                         onDragOver={(e: DragEvent) => {
-                            if (!col.dropStatus) return;
+                            if (showProject || !col.dropStatus) return;
                             e.preventDefault();
                             setDragOverCol(col.key);
                         }}
@@ -83,6 +85,7 @@ export function KanbanBoard({ tasks, loading, onSelectTask, onStatusChange }: Ka
                                     key={task.id}
                                     task={task}
                                     dragging={draggedId === task.id}
+                                    showProject={showProject}
                                     onSelect={() => onSelectTask(task.id)}
                                     onDragStart={() => setDraggedId(task.id)}
                                     onDragEnd={() => {
@@ -103,18 +106,19 @@ export function KanbanBoard({ tasks, loading, onSelectTask, onStatusChange }: Ka
 interface KanbanCardProps {
     task: Task;
     dragging: boolean;
+    showProject?: boolean;
     onSelect: () => void;
     onDragStart: () => void;
     onDragEnd: () => void;
 }
 
-function KanbanCard({ task, dragging, onSelect, onDragStart, onDragEnd }: KanbanCardProps) {
+function KanbanCard({ task, dragging, showProject, onSelect, onDragStart, onDragEnd }: KanbanCardProps) {
     const vm = taskCardVM(task);
     const prio = vm.priority;
     return (
         <div
             class={`kanban-card status-${task.status}${dragging ? ' dragging' : ''}`}
-            draggable
+            draggable={!showProject}
             onClick={onSelect}
             onDragStart={(e: DragEvent) => {
                 if (e.dataTransfer) {
@@ -127,7 +131,13 @@ function KanbanCard({ task, dragging, onSelect, onDragStart, onDragEnd }: Kanban
         >
             <div class="kanban-card-top">
                 <span class={`priority-badge priority-${prio}`}>{PRIORITY_LABELS[prio] || prio}</span>
-                {task.milestone && <span class="kanban-card-milestone">{task.milestone}</span>}
+                {showProject && task.workspaceName ? (
+                    <span class="kanban-card-project" title={task.workspaceName}>
+                        {task.workspaceName}
+                    </span>
+                ) : (
+                    task.milestone && <span class="kanban-card-milestone">{task.milestone}</span>
+                )}
             </div>
             <div class="kanban-card-title">
                 {vm.numberLabel ? <span class="task-number">{vm.numberLabel}</span> : null}

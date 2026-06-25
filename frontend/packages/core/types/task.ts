@@ -120,4 +120,10 @@ export interface Task {
     summary?: string;
     replies?: Reply[];
     sessions: SessionMetadata[];
+    // Client-only annotations, set when tasks are aggregated across projects for
+    // the global board (issue #91). Never sent to the backend; absent on the
+    // single-project list/board/calendar. When present, the board surfaces a
+    // project tag and routes clicks to the owning workspace.
+    workspaceId?: string;
+    workspaceName?: string;
 }

@@ -1182,9 +1182,16 @@
 
 .cockpit-topbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   padding: 12px 20px;
+}
+
+.cockpit-view-switch {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
 }
 
 .cockpit-topbar-btn {
@@ -1201,6 +1208,55 @@
     background-color: var(--btn-hover);
     border-color: var(--accent-color);
   }
+
+  &.active {
+    background-color: var(--accent-emphasis);
+    border-color: var(--accent-emphasis);
+    color: var(--on-accent);
+  }
+}
+
+// Global board (跨项目) — issue #91. Reuses the single-project kanban/calendar
+// surfaces; only the cross-project chrome (project filter row + project tags) is
+// new here.
+.global-board {
+  padding: 0 20px 32px;
+
+  .global-board-projects {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+
+    .global-board-projects-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-right: 2px;
+    }
+  }
+}
+
+.kanban-card-project {
+  font-size: 10px;
+  color: var(--accent-fg);
+  background-color: var(--accent-bg);
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+.calendar-event-project {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .cockpit-root {

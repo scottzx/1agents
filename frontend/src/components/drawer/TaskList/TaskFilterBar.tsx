@@ -63,6 +63,9 @@ interface FilterBarProps {
     assigneeFilter: Signal<string[]>;
     assignees: string[];
     taskView: Signal<TaskView>;
+    /** Which view toggles to show. Defaults to all three; the global board (#91)
+     *  omits 'list' since cross-project inline edit/delete are out of scope. */
+    views?: TaskView[];
 }
 
 const STATUS_KEYS = ['pending', 'queued', 'running', 'completed', 'failed', 'cancelled', 'blocked'];
@@ -81,6 +84,7 @@ export function TaskFilterBar({
     assigneeFilter,
     assignees,
     taskView,
+    views = ['list', 'board', 'calendar'],
 }: FilterBarProps) {
     const showFilters = useSignal(false);
     const activeFilterCount = statusFilter.value.length + priorityFilter.value.length + assigneeFilter.value.length;
@@ -148,36 +152,42 @@ export function TaskFilterBar({
             </div>
 
             <div class="task-view-toggle">
-                <button
-                    class={taskView.value === 'list' ? 'active' : ''}
-                    title="列表"
-                    onClick={() => (taskView.value = 'list')}
-                >
-                    <span class="tvt-icon">
-                        <ListIcon />
-                    </span>
-                    <span class="tvt-label">列表</span>
-                </button>
-                <button
-                    class={taskView.value === 'board' ? 'active' : ''}
-                    title="看板"
-                    onClick={() => (taskView.value = 'board')}
-                >
-                    <span class="tvt-icon">
-                        <BoardIcon />
-                    </span>
-                    <span class="tvt-label">看板</span>
-                </button>
-                <button
-                    class={taskView.value === 'calendar' ? 'active' : ''}
-                    title="日历"
-                    onClick={() => (taskView.value = 'calendar')}
-                >
-                    <span class="tvt-icon">
-                        <CalendarIcon />
-                    </span>
-                    <span class="tvt-label">日历</span>
-                </button>
+                {views.includes('list') && (
+                    <button
+                        class={taskView.value === 'list' ? 'active' : ''}
+                        title="列表"
+                        onClick={() => (taskView.value = 'list')}
+                    >
+                        <span class="tvt-icon">
+                            <ListIcon />
+                        </span>
+                        <span class="tvt-label">列表</span>
+                    </button>
+                )}
+                {views.includes('board') && (
+                    <button
+                        class={taskView.value === 'board' ? 'active' : ''}
+                        title="看板"
+                        onClick={() => (taskView.value = 'board')}
+                    >
+                        <span class="tvt-icon">
+                            <BoardIcon />
+                        </span>
+                        <span class="tvt-label">看板</span>
+                    </button>
+                )}
+                {views.includes('calendar') && (
+                    <button
+                        class={taskView.value === 'calendar' ? 'active' : ''}
+                        title="日历"
+                        onClick={() => (taskView.value = 'calendar')}
+                    >
+                        <span class="tvt-icon">
+                            <CalendarIcon />
+                        </span>
+                        <span class="tvt-label">日历</span>
+                    </button>
+                )}
             </div>
         </div>
     );

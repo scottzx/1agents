@@ -7,6 +7,8 @@ interface CalendarBoardProps {
     tasks: Task[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
+    /** Global board (#91): prefix each event with its owning project tag. */
+    showProject?: boolean;
 }
 
 // Sunday-first, matching the traditional 万年历 layout.
@@ -27,7 +29,7 @@ function dayKey(year: number, month: number, day: number): string {
 
 // A perpetual month calendar (万年历): navigate any year/month, tasks anchored on
 // their date, clicking a task jumps straight to its detail — same as list/board.
-export function CalendarBoard({ tasks, loading, onSelectTask }: CalendarBoardProps) {
+export function CalendarBoard({ tasks, loading, onSelectTask, showProject }: CalendarBoardProps) {
     const today = new Date();
     const cursor = useSignal({ y: today.getFullYear(), m: today.getMonth() });
 
@@ -110,9 +112,15 @@ export function CalendarBoard({ tasks, loading, onSelectTask }: CalendarBoardPro
                                         key={t.id}
                                         class={`calendar-event status-${t.status}`}
                                         onClick={() => onSelectTask(t.id)}
-                                        title={t.title}
+                                        title={
+                                            showProject && t.workspaceName ? `${t.workspaceName} · ${t.title}` : t.title
+                                        }
                                     >
-                                        {t.number ? <span class="calendar-event-num">#{t.number}</span> : null}
+                                        {showProject && t.workspaceName ? (
+                                            <span class="calendar-event-project">{t.workspaceName}</span>
+                                        ) : t.number ? (
+                                            <span class="calendar-event-num">#{t.number}</span>
+                                        ) : null}
                                         <span class="calendar-event-title">{t.title}</span>
                                     </button>
                                 ))}
