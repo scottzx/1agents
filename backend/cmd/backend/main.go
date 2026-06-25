@@ -270,6 +270,11 @@ func main() {
 
 	ccconnect.Start(ctx, isDesktop)
 
+	// ── 2.5. Device registry self-heartbeat (issue #110) ──────────────────────
+	// Registers this host in the local device registry and refreshes its
+	// lastSeen every 30s; deregisters on ctx cancel (shutdown).
+	system.StartSelfHeartbeat(ctx)
+
 	// ── 3. Start HTTP gateway ─────────────────────────────────────────────────
 	router := server.NewRouter(cfg)
 	httpServer := &http.Server{
