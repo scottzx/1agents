@@ -319,17 +319,81 @@ func TestTaskScopedAllowsOwnUpdate(t *testing.T) {
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
 			patched = true
-			w.Write([]byte(`{"id":"t1","status":"completed"}`))
+			w.Write([]byte(`{"id":"t1","priority":"high"}`))
 			return
 		}
 		http.Error(w, "unexpected", 400)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	// A non-status edit on the executor's own task is allowed.
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","priority":"high"}}}`)
 	if text, isErr := resultText(t, env); isErr {
 		t.Fatalf("own-task update should succeed, got error: %s", text)
 	}
 	if !patched {
 		t.Fatal("expected PATCH /api/agent/tasks/t1")
+	}
+}
+
+// TestExecutorCannotSelfReportCompleted is the #132 guardrail: an executor
+// (default task scope) may not write status=completed — completion is driven
+// by the artifact/verification path, not by the agent self-reporting done. The
+// PATCH must never reach the API.
+func TestExecutorCannotSelfReportCompleted(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("update_task(status=completed) must not hit the API in executor scope (path %s)", r.URL.Path)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	if text, isErr := resultText(t, env); !isErr {
+		t.Fatalf("executor status=completed should be rejected, got: %s", text)
+	}
+}
+
+// TestExecutorCanCancelOwnTask confirms the guardrail is narrow: an executor may
+// still give up by setting status=cancelled (this is not a false completion).
+func TestExecutorCanCancelOwnTask(t *testing.T) {
+	var patched bool
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
+			patched = true
+			w.Write([]byte(`{"id":"t1","status":"cancelled"}`))
+			return
+		}
+		http.Error(w, "unexpected", 400)
+	})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"cancelled"}}}`)
+	if text, isErr := resultText(t, env); isErr {
+		t.Fatalf("executor status=cancelled should succeed, got error: %s", text)
+	}
+	if !patched {
+		t.Fatal("expected PATCH /api/agent/tasks/t1 for cancel")
+	}
+}
+
+// TestExecutorUpdateTaskDoesNotAdvertiseCompleted asserts the executor-scoped
+// update_task schema offers only `cancelled` as a settable status, so the agent
+// is never told to try a completion the server will reject (#132).
+func TestExecutorUpdateTaskDoesNotAdvertiseCompleted(t *testing.T) {
+	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {})
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":9,"method":"tools/list"}`)
+	res, _ := env["result"].(map[string]any)
+	tools, _ := res["tools"].([]any)
+	var found bool
+	for _, tl := range tools {
+		m, _ := tl.(map[string]any)
+		if m["name"] != "update_task" {
+			continue
+		}
+		found = true
+		schema, _ := m["inputSchema"].(map[string]any)
+		props, _ := schema["properties"].(map[string]any)
+		statusProp, _ := props["status"].(map[string]any)
+		enum, _ := statusProp["enum"].([]any) // JSON round-trip → []any
+		if len(enum) != 1 || enum[0] != "cancelled" {
+			t.Fatalf("executor update_task status enum = %v, want [cancelled]", statusProp["enum"])
+		}
+	}
+	if !found {
+		t.Fatal("update_task not advertised in executor scope")
 	}
 }
 

@@ -323,3 +323,36 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 		t.Fatalf("bad issueState status %d, want 400", rr.Code)
 	}
 }
+
+// TestManualStatusOverrideLeavesAuditTrail covers #132's "限制为人工 override 并留痕":
+// a manual PATCH to a terminal status (the human-override lane) records an
+// append-only audit note so the override is never silent.
+func TestManualStatusOverrideLeavesAuditTrail(t *testing.T) {
+	h, _ := newTestHandler(t)
+	ws := t.TempDir()
+	seedTask(t, h, ws) // starts pending
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/agent/tasks/task-1",
+		strings.NewReader(`{"status":"completed"}`))
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rr.Code, rr.Body.String())
+	}
+	var patched Task
+	if err := json.NewDecoder(rr.Body).Decode(&patched); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if patched.Status != TaskStatusCompleted || patched.CompletedAt == nil {
+		t.Fatalf("manual override should complete the task: %+v", patched)
+	}
+	var audits int
+	for _, rep := range patched.Replies {
+		if strings.Contains(rep.Text, "手动 override") {
+			audits++
+		}
+	}
+	if audits != 1 {
+		t.Fatalf("expected exactly one audit reply, got %d: %+v", audits, patched.Replies)
+	}
+}

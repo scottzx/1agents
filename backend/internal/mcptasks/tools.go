@@ -266,11 +266,44 @@ func (s *server) listedTools() []map[string]any {
 	}
 	allowed := s.scopedTools()
 	for _, d := range toolDefs {
-		if name, _ := d["name"].(string); allowed[name] {
-			out = append(out, d)
+		name, _ := d["name"].(string)
+		if !allowed[name] {
+			continue
 		}
+		// #132: in executor scope, update_task must not advertise `completed` —
+		// an executor cannot self-report done (the run-finish artifact event does).
+		// Swap in the cancel-only variant so the agent isn't told to try a status
+		// the server will reject.
+		if name == "update_task" && s.taskRole != reviewVerifier {
+			out = append(out, executorUpdateTaskDef)
+			continue
+		}
+		out = append(out, d)
 	}
 	return out
+}
+
+// executorUpdateTaskDef is the executor-scoped advertisement of update_task: the
+// settable status is narrowed to `cancelled` only, since completion is driven by
+// the artifact/verification path, not by the agent (#132).
+var executorUpdateTaskDef = map[string]any{
+	"name":        "update_task",
+	"description": "Update fields of your assigned task. NOTE: you cannot mark it completed — finish your run and the system routes it to verification/completion based on the artifact you produced. status may only be set to 'cancelled' (give up, with a reason). Only the fields you pass are changed.",
+	"inputSchema": map[string]any{
+		"type":     "object",
+		"required": []string{"id"},
+		"properties": map[string]any{
+			"id":                 map[string]any{"type": "string"},
+			"status":             map[string]any{"type": "string", "enum": []string{"cancelled"}, "description": "Only 'cancelled' is settable by an executor; completion is artifact/verification-driven."},
+			"description":        map[string]any{"type": "string"},
+			"acceptanceCriteria": map[string]any{"type": "string"},
+			"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}},
+			"milestone":          map[string]any{"type": "string"},
+			"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
+			"assignee":           map[string]any{"type": "string"},
+			"verifier":           map[string]any{"type": "string"},
+		},
+	},
 }
 
 // idInScope reports whether id is addressable in this session: exactly the
@@ -695,6 +728,22 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	}
 	if !s.idInScope(id) {
 		return toolErr("task not accessible in this session: " + id)
+	}
+
+	// #132: an executor cannot self-report completion. Task completion is driven
+	// by an artifact event (the run finishing → done event → pending_review /
+	// verifier verdict), never by the agent writing status=completed. Finishing
+	// the run *is* the "I'm done" signal; the state machine decides from there.
+	// A task-scoped executor may still set status=cancelled (a genuine give-up),
+	// but completed is reserved for the artifact/verification path.
+	if s.taskID != "" && s.taskRole != reviewVerifier {
+		if v, ok := raw["status"]; ok {
+			var st string
+			_ = json.Unmarshal(v, &st)
+			if st == "completed" {
+				return toolErr("an executor cannot mark its task completed — finish your run and the system routes it to verification/completion based on the artifact. You may only set status=cancelled here.")
+			}
+		}
 	}
 
 	patch := map[string]json.RawMessage{}
