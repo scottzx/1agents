@@ -75,6 +75,12 @@ interface RawMachine {
 function hasLocalStorage(): boolean {
     return typeof localStorage !== 'undefined';
 }
+
+/**
+ * Synchronous read of the locally cached credentials (localStorage). Returns
+ * instantly for UI initialization; the backend-persisted copy (issue #109) is
+ * hydrated separately via loadCredentialsRemote().
+ */
 export function loadCredentials(): RelayCredentials | null {
     if (!hasLocalStorage()) return null;
     try {
@@ -84,9 +90,75 @@ export function loadCredentials(): RelayCredentials | null {
         return null;
     }
 }
+
+/**
+ * Backend-persisted credentials endpoint (issue #109). The relay account master
+ * key now lives on the 1agents host so it survives a localStorage wipe / device
+ * change. Only meaningful when the SPA is same-origin with its backend (local
+ * machine mode); on relay/CDN-hosted or 小程序 contexts the endpoint is absent
+ * and these calls fail silently, falling back to the localStorage cache.
+ */
+const BACKEND_CREDS_PATH = '/api/relay/credentials';
+
+/**
+ * Load credentials preferring the backend (so cleared localStorage / a fresh
+ * device recovers), falling back to the localStorage cache. A backend hit is
+ * mirrored into localStorage for fast synchronous reads next time.
+ */
+export async function loadCredentialsRemote(): Promise<RelayCredentials | null> {
+    if (typeof fetch !== 'undefined') {
+        try {
+            const resp = await fetch(BACKEND_CREDS_PATH, { headers: { 'content-type': 'application/json' } });
+            if (resp.ok) {
+                const text = await resp.text();
+                const data = text ? (JSON.parse(text) as RelayCredentials | null) : null;
+                if (data && data.token && data.secretB64) {
+                    const creds: RelayCredentials = { token: data.token, secretB64: data.secretB64 };
+                    if (hasLocalStorage()) localStorage.setItem(LS_KEY, JSON.stringify(creds));
+                    return creds;
+                }
+            }
+        } catch {
+            /* backend unavailable (relay/CDN/小程序) → fall back to local cache */
+        }
+    }
+    return loadCredentials();
+}
+
+/**
+ * Persist credentials to the localStorage cache and (best-effort) to the
+ * backend so they survive a storage wipe. Backend failure is non-fatal: the
+ * localStorage write already happened, matching the prior behavior.
+ */
 function saveCredentials(c: RelayCredentials): void {
-    if (!hasLocalStorage()) return; // Node(无头测试)下由调用方自行持久化
-    localStorage.setItem(LS_KEY, JSON.stringify(c));
+    if (hasLocalStorage()) localStorage.setItem(LS_KEY, JSON.stringify(c));
+    // Node(无头测试)/小程序 下没有可用的同源后端时,POST 静默失败,由本地缓存兜底。
+    void persistCredentialsBackend(c);
+}
+
+/** POST credentials to the backend (issue #109). Best-effort, errors swallowed. */
+async function persistCredentialsBackend(c: RelayCredentials): Promise<void> {
+    if (typeof fetch === 'undefined') return;
+    try {
+        await fetch(BACKEND_CREDS_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ token: c.token, secretB64: c.secretB64, createdAt: Date.now() }),
+        });
+    } catch {
+        /* best-effort */
+    }
+}
+
+/** Clear credentials from both the backend (issue #109) and localStorage. */
+export async function clearCredentials(): Promise<void> {
+    if (hasLocalStorage()) localStorage.removeItem(LS_KEY);
+    if (typeof fetch === 'undefined') return;
+    try {
+        await fetch(BACKEND_CREDS_PATH, { method: 'DELETE' });
+    } catch {
+        /* best-effort */
+    }
 }
 
 /** 在中转上创建一个新账户;主密钥仅存本地。返回凭据。 */

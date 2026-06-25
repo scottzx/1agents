@@ -18,6 +18,7 @@ import {
     connect,
     proxyApi,
     loadCredentials,
+    loadCredentialsRemote,
     type RelayCredentials,
     type RelayMachine,
 } from '../../services/relay/relayClient';
@@ -64,12 +65,15 @@ export function RelayPairingPanel({
     };
 
     // 进入页面即自动连接 + 拉取节点(“有地址+凭据就自动连上,无需手动”)。
+    // 凭据优先从后端读取(issue #109):清掉 localStorage / 换设备后仍能恢复。
     useEffect(() => {
-        if (!creds.value) return;
         (async () => {
             try {
+                const persisted = await loadCredentialsRemote();
+                if (persisted) creds.value = persisted;
+                if (!creds.value) return;
                 await ensureSocket();
-                machines.value = await listMachines(relayUrl.value, creds.value!);
+                machines.value = await listMachines(relayUrl.value, creds.value);
                 msg.value = `✅ 已自动连接中转,节点 ${machines.value.length} 台`;
             } catch (e) {
                 msg.value = '⚠️ 自动连接失败: ' + ((e as Error)?.message ?? String(e));
