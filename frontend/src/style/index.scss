@@ -9178,6 +9178,17 @@ body {
         box-shadow: 0 0 0 3px var(--badge-glow);
       }
     }
+
+    // Role declaration row (issue #72): role avatar preview + role <select>.
+    .ws-modal-role-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .ws-modal-select {
+        flex: 1;
+      }
+    }
   }
 
   .ws-modal-footer {
