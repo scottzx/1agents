@@ -23,6 +23,7 @@ const STATUS_TONE: Record<Task['status'], Tone> = {
     blocked: 'warning',
     queued: 'muted',
     pending: 'muted',
+    not_ready: 'muted',
 };
 
 // Priority → tone. From `.priority-badge.priority-*`: urgent=danger, high=orange,
