@@ -66,6 +66,14 @@ func ProjectsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// ProjectArchiveHook is an optional callback invoked once after a project is
+// successfully archived or closed (#144 复盘沉淀触发衔接). It receives the freshly
+// archived project so the caller can汇总任务/决策 → 落 kwiki. It is run
+// best-effort: a hook error is logged, not surfaced to the client, so a
+// retrospective failure never blocks the archive action. Defined here (not in
+// retro) to avoid the lower meta layer depending on retro.
+type ProjectArchiveHook func(p Project) error
+
 // ProjectActionHandler serves the project lifecycle actions (#141):
 //
 //	POST /api/projects/{id}/archive {reason?, note?} → 阶段性完成归档
@@ -75,7 +83,10 @@ func ProjectsHandler(db *DB) http.HandlerFunc {
 // archive defaults reason to "completed"; close defaults it to "superseded".
 // Both keep all project data — only status/reason/timestamp change. The handler
 // is mounted on the "/api/projects/" prefix.
-func ProjectActionHandler(db *DB) http.HandlerFunc {
+//
+// An optional archiveHook fires after a successful archive/close (#144), wired
+// by the server to sink a retrospective into kwiki.
+func ProjectActionHandler(db *DB, archiveHook ...ProjectArchiveHook) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -128,6 +139,14 @@ func ProjectActionHandler(db *DB) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		// #144: fire the retrospective hook on archive/close (not reopen).
+		// Best-effort — a hook failure must not fail the archive action.
+		if (action == "archive" || action == "close") && len(archiveHook) > 0 && archiveHook[0] != nil {
+			if hookErr := archiveHook[0](p); hookErr != nil {
+				log.Printf("[meta] project archive hook for %s: %v", id, hookErr)
+			}
 		}
 		writeJSON(w, p)
 	}
