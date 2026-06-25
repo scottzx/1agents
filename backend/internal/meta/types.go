@@ -402,3 +402,38 @@ type Milestone struct {
 	Total     int `json:"total"`
 	Completed int `json:"completed"`
 }
+
+// InboxItem is one piece of captured external context in the Inbox 收口层 (#60):
+// the most-upstream layer that aggregates manual captures, IM forwards, emails,
+// RSS and misc into a single intake list. Items are never deleted — Status
+// flips to "archived" so the trail of what each item became survives. PMO
+// dispatch metadata (#61) is intentionally absent here.
+type InboxItem struct {
+	ID string `json:"id"`
+	// Source is the intake channel: manual / im / email / rss / misc.
+	Source string `json:"source"`
+	// Title / Content / URL hold the raw captured material.
+	Title   string `json:"title"`
+	Content string `json:"content,omitempty"`
+	URL     string `json:"url,omitempty"`
+	// Summary / Tags are optional enrichment (left empty by MVP manual capture).
+	Summary string   `json:"summary,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	// Status is unread / read / archived.
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Inbox item sources and statuses.
+const (
+	InboxSourceManual = "manual"
+	InboxSourceIM     = "im"
+	InboxSourceEmail  = "email"
+	InboxSourceRSS    = "rss"
+	InboxSourceMisc   = "misc"
+
+	InboxStatusUnread   = "unread"
+	InboxStatusRead     = "read"
+	InboxStatusArchived = "archived"
+)

@@ -732,7 +732,26 @@ export const zhCN: Record<string, string> = {
     'sidebar.mode.project': '项目',
     'sidebar.navCtrl.newConversation': '新对话',
     'sidebar.navCtrl.history': '对话历史',
+    'sidebar.navCtrl.inbox': '收件箱',
     'sidebar.navCtrl.scheduledTasks': '定时任务',
+
+    // ── Inbox 统一信息收口层 (Inbox/index.tsx) ─────────────────────────────
+    'inbox.title': '收件箱',
+    'inbox.capturePlaceholder': '粘贴文本、链接或随手记下一个想法…',
+    'inbox.captureBtn': '收录',
+    'inbox.empty': '收件箱是空的。把散落各处、需要看一遍再处理的信息收进来。',
+    'inbox.emptyArchived': '没有已归档的条目。',
+    'inbox.archive': '归档',
+    'inbox.unarchive': '恢复',
+    'inbox.markRead': '标为已读',
+    'inbox.showArchived': '显示已归档',
+    'inbox.hideArchived': '隐藏已归档',
+    'inbox.unreadBadge': '条未读',
+    'inbox.source.manual': '手动',
+    'inbox.source.im': '消息',
+    'inbox.source.email': '邮件',
+    'inbox.source.rss': '资讯',
+    'inbox.source.misc': '杂项',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': '切换项目工作空间',
@@ -1712,7 +1731,26 @@ export const enUS: Record<string, string> = {
     'sidebar.mode.project': 'Project',
     'sidebar.navCtrl.newConversation': 'New Conversation',
     'sidebar.navCtrl.history': 'Conversation History',
+    'sidebar.navCtrl.inbox': 'Inbox',
     'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
+
+    // ── Inbox unified intake layer (Inbox/index.tsx) ─────────────────────
+    'inbox.title': 'Inbox',
+    'inbox.capturePlaceholder': 'Paste text, a link, or jot down an idea…',
+    'inbox.captureBtn': 'Capture',
+    'inbox.empty': 'Inbox is empty. Funnel in the scattered things you need to look at before acting.',
+    'inbox.emptyArchived': 'No archived items.',
+    'inbox.archive': 'Archive',
+    'inbox.unarchive': 'Restore',
+    'inbox.markRead': 'Mark read',
+    'inbox.showArchived': 'Show archived',
+    'inbox.hideArchived': 'Hide archived',
+    'inbox.unreadBadge': 'unread',
+    'inbox.source.manual': 'Manual',
+    'inbox.source.im': 'IM',
+    'inbox.source.email': 'Email',
+    'inbox.source.rss': 'Feed',
+    'inbox.source.misc': 'Misc',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': 'Switch project workspace',

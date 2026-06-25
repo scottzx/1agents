@@ -2397,6 +2397,226 @@ body {
 /* ── Calendar view (perpetual month grid) ── */
 // Personal reminders / 定时任务 full-page pane (#192): a header above the
 // reusable month calendar.
+// Inbox 统一信息收口层 (#60) — full-page intake list pane.
+.inbox-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+
+  .inbox-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .inbox-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .inbox-unread-pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    color: var(--accent-fg);
+    background: var(--accent-bg);
+  }
+
+  .inbox-archive-toggle {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--accent-fg);
+      background: var(--btn-hover);
+    }
+  }
+
+  .inbox-capture {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .inbox-capture-input {
+    flex: 1;
+    resize: vertical;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-emphasis);
+    }
+  }
+
+  .inbox-capture-btn {
+    flex-shrink: 0;
+    height: 44px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--accent-emphasis);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-active);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .inbox-error {
+    flex-shrink: 0;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+    border-radius: 6px;
+  }
+
+  .inbox-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inbox-empty {
+    padding: 40px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .inbox-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: border-color 0.15s ease;
+
+    &:hover {
+      border-color: var(--accent-emphasis);
+    }
+
+    &.is-unread {
+      border-left: 3px solid var(--accent-emphasis);
+    }
+
+    &.is-archived {
+      opacity: 0.6;
+    }
+  }
+
+  .inbox-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .inbox-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .inbox-source-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+  }
+
+  .inbox-item-time {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .inbox-item-text {
+    font-size: 13px;
+    color: var(--text-main);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .inbox-item-link {
+    color: var(--accent-fg);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .inbox-item-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 6px;
+  }
+
+  .inbox-action {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--accent-fg);
+      background: var(--btn-hover);
+    }
+  }
+}
+
 .reminders-pane {
   flex: 1;
   min-height: 0;
@@ -14279,6 +14499,22 @@ body {
     &.active {
       color: var(--text-sidebar);
       background-color: var(--bg-sidebar-hover);
+    }
+
+    .nav-control-badge {
+      margin-left: auto;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--on-accent);
+      background-color: var(--accent-emphasis);
+      border-radius: 9px;
     }
   }
 }

@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 12
+const schemaVersion = 13
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -145,6 +145,11 @@ func (db *DB) migrateSchema() error {
 	if version < 8 {
 		if _, err := db.sql.Exec(schemaV8); err != nil {
 			return fmt.Errorf("meta: apply schema v8: %w", err)
+		}
+	}
+	if version < 13 {
+		if _, err := db.sql.Exec(schemaV13); err != nil {
+			return fmt.Errorf("meta: apply schema v13: %w", err)
 		}
 	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
@@ -401,6 +406,28 @@ UPDATE milestones SET position = sub.rn FROM (
 // user_confirm). These ALTERs now live in ensureTasksColumns, which adds them
 // idempotently regardless of user_version — see the note in migrateSchema for
 // why the version-gated form couldn't recover the v9 branch collision.
+
+// schemaV13 adds the Inbox 统一信息收口层 table (#60): the most-upstream layer
+// that aggregates external context (manual capture / IM / email / RSS / misc)
+// into one intake list before PMO 分发 (#61) routes it downstream. Items are
+// never deleted — archiving is a status flip so the trail "what did this turn
+// into" survives. PMO-dispatch fields (dispatched_to / linked_requirement) are
+// deliberately out of scope here; #61 owns them.
+const schemaV13 = `
+CREATE TABLE IF NOT EXISTS inbox_items (
+    id         TEXT PRIMARY KEY,
+    source     TEXT NOT NULL DEFAULT 'manual',
+    title      TEXT NOT NULL DEFAULT '',
+    content    TEXT NOT NULL DEFAULT '',
+    url        TEXT NOT NULL DEFAULT '',
+    summary    TEXT NOT NULL DEFAULT '',
+    tags       TEXT NOT NULL DEFAULT '[]',
+    status     TEXT NOT NULL DEFAULT 'unread',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox_items(status, created_at DESC);
+`
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 
