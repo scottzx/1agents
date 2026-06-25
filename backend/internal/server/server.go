@@ -111,6 +111,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 			inboxStore := meta.NewInboxStore(db)
 			mux.HandleFunc("/api/inbox", meta.InboxHandler(inboxStore))      // GET (?archived=1), POST capture
 			mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore)) // POST /{id}/archive|read|unread
+
+				// #271: read-only access to the复盘 (#144) pages the archive hook
+				// ingests into the shared kwiki knowledge base.
+				if kw, kwErr := kwiki.Open(knowledgeRoot()); kwErr == nil {
+					mux.HandleFunc("/api/retrospectives", retro.Handler(kw))  // GET list
+					mux.HandleFunc("/api/retrospectives/", retro.Handler(kw)) // GET /{slug}
+				} else {
+					log.Printf("[server] open kwiki for retrospectives: %v", kwErr)
+				}
 		}
 
 		tasksStore, tsErr := agent.NewTasksStore()

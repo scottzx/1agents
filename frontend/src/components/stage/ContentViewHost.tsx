@@ -29,6 +29,7 @@ import { TaskList } from '../drawer/TaskList';
 import { RemindersPane } from '../drawer/Reminders';
 import { InboxPane } from '../drawer/Inbox';
 import { PersonalTasksPane } from '../drawer/PersonalTasks';
+import { RetroPane } from '../drawer/Retro';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
@@ -167,6 +168,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <PersonalTasksPane />
+                </div>
+            );
+        case 'retro':
+            // 复盘归档展示 (#271) — own full-page pane, same padded scroll frame
+            // as the personal/inbox/reminders landings.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '12px 16px',
+                        overflow: 'auto',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <RetroPane />
                 </div>
             );
         case 'channels':
