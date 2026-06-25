@@ -1,0 +1,62 @@
+{
+  "brainstorming": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "b3f0d2f688f40e5ec91805584cd3608b6bbd20b1a47703bdb45265ff51db3713",
+    "kind": "skill"
+  },
+  "cso": {
+    "source": "gstack",
+    "upstream_sha": "9fd03fae9e74f5daa7a138366aca8f86c7367c5c",
+    "content_hash": "39777160b597c56dd05a0120b800992c86872e97d1acbd400fc68ccb118ede3c",
+    "kind": "role"
+  },
+  "design-shotgun": {
+    "source": "gstack",
+    "upstream_sha": "9fd03fae9e74f5daa7a138366aca8f86c7367c5c",
+    "content_hash": "0ce2cb1d235ee959ece7073df8ea364a9910bcf11d1137954b369bed5535d958",
+    "kind": "skill"
+  },
+  "executing-plans": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "d8c442be84c417681023e7a4ea97211f71cbd795b77a33bbcee3314b2a2df063",
+    "kind": "skill"
+  },
+  "receiving-code-review": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "1ae93918bd337156fad768e6f4a77e2ee26e823b25bc949935d8a5619880db1f",
+    "kind": "skill"
+  },
+  "requesting-code-review": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "33a1c877bd81ff7c443d613037abd75aa4adc9c827691490e08d05fd764b3e07",
+    "kind": "skill"
+  },
+  "systematic-debugging": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "94aa5554b27fe1419e0e803ffa51d066ca35aad5d4cc076c05321d31f0eabec5",
+    "kind": "skill"
+  },
+  "test-driven-development": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "935a0becf9b4d5aafc71d9e1da604c58514f6f8e2157f62d0e5d606f5135adf8",
+    "kind": "skill"
+  },
+  "verification-before-completion": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "d389ae6225a960fe80c537f57d57548cae750128738b000ae45550ad815779e7",
+    "kind": "skill"
+  },
+  "writing-plans": {
+    "source": "superpowers",
+    "upstream_sha": "896224c4b1879920ab573417e68fd51d2ccc9072",
+    "content_hash": "df08b2cf5e7ba239b147f09e1b642d438cd30e7c1304c5a83341f08bcc17a1a8",
+    "kind": "skill"
+  }
+}
