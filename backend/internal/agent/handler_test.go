@@ -182,6 +182,50 @@ func seedTask(t *testing.T, h *Handler, ws string) Task {
 	return task
 }
 
+func TestHandlerTaskGraph(t *testing.T) {
+	h, _ := newTestHandler(t)
+	ws := t.TempDir()
+	// req (#1) is the upstream requirement; impl (#2) references it.
+	cfg, err := h.tasksStore.Load(ws)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	cfg.Tasks = append(cfg.Tasks,
+		Task{ID: "req", Title: "登录需求", Status: TaskStatusPending, IssueState: IssueOpen},
+		Task{ID: "impl", Title: "实现登录", Description: "实现 #1", Status: TaskStatusPending, IssueState: IssueOpen,
+			Links: []TaskLink{{Target: "req", Rel: LinkRelates}}},
+	)
+	if err := h.tasksStore.Save(ws, cfg); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// req's graph: no outgoing, one incoming backlink from impl.
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/tasks/req/graph", nil)
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("graph status %d: %s", rr.Code, rr.Body.String())
+	}
+	var g LinkGraph
+	if err := json.NewDecoder(rr.Body).Decode(&g); err != nil {
+		t.Fatalf("decode graph: %v", err)
+	}
+	if len(g.Outgoing) != 0 {
+		t.Fatalf("req outgoing = %+v, want none", g.Outgoing)
+	}
+	if len(g.Incoming) != 1 || g.Incoming[0].Task.ID != "impl" {
+		t.Fatalf("req incoming = %+v, want one backlink from impl", g.Incoming)
+	}
+
+	// Unknown task → 404.
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/agent/tasks/nope/graph", nil)
+	h.HandleTasksItem(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("missing graph status %d, want 404", rr.Code)
+	}
+}
+
 func TestHandlerTaskGetPatchReply(t *testing.T) {
 	h, _ := newTestHandler(t)
 	ws := t.TempDir()
