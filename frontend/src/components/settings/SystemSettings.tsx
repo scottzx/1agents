@@ -8,6 +8,7 @@ import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
 import { RelayDevicePanel } from './RelayDevicePanel';
 import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
+import { DevicesPanel } from './DevicesPanel';
 import { APP_VERSION, isNewer } from '../../version';
 import { fetchManifest } from '../../ota/checker';
 import type { RootManifest } from '../../ota/checker';
@@ -1300,6 +1301,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderAgents();
             case 'relay':
                 return renderRelay();
+            case 'devices':
+                return <DevicesPanel language={language} />;
             case 'updates':
                 return renderUpdates();
             case 'about':
