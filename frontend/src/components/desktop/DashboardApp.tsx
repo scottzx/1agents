@@ -10,6 +10,7 @@ import * as stage from '../../stores/stageStore';
 import * as ui from '../../stores/uiStore';
 import { DashboardWorkshop, MockEmployee } from './DashboardWorkshop';
 import { DashboardCockpit } from './DashboardCockpit';
+import { GlobalTaskBoard } from './GlobalTaskBoard';
 import { dashboardService, DashboardData } from '@1agents/core/services/dashboardService';
 
 class PixelSoundManager {
@@ -192,6 +193,9 @@ interface DashboardAppState {
 
     // ── Real-data company cockpit (Phase 1) ──
     cockpit: DashboardData | null;
+    // Real-mode cockpit sub-view: project rollup (大盘) vs cross-project task
+    // board/calendar (全局看板, issue #91).
+    cockpitView: 'projects' | 'board';
 }
 
 // ── MOCK DATA FOR SIMULATION DEMO ──
@@ -620,6 +624,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             releasedProjectStage: 'rating',
             ratingMultiplier: 1.0,
             cockpit: null,
+            cockpitView: 'projects',
         };
     }
 
@@ -1216,6 +1221,20 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
             return (
                 <div class="cockpit-page">
                     <div class="cockpit-topbar">
+                        <div class="cockpit-view-switch">
+                            <button
+                                class={`cockpit-topbar-btn ${this.state.cockpitView === 'projects' ? 'active' : ''}`}
+                                onClick={() => this.setState({ cockpitView: 'projects' })}
+                            >
+                                🗂 项目大盘
+                            </button>
+                            <button
+                                class={`cockpit-topbar-btn ${this.state.cockpitView === 'board' ? 'active' : ''}`}
+                                onClick={() => this.setState({ cockpitView: 'board' })}
+                            >
+                                📋 全局看板
+                            </button>
+                        </div>
                         <button class="cockpit-topbar-btn" onClick={this.toggleMock}>
                             🎮 加载模拟演示
                         </button>
@@ -1223,7 +1242,9 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                             ↩️ 返回工作台
                         </button>
                     </div>
-                    {this.state.loading ? (
+                    {this.state.cockpitView === 'board' ? (
+                        <GlobalTaskBoard />
+                    ) : this.state.loading ? (
                         <div class="cockpit-empty">正在装载公司大盘...</div>
                     ) : this.state.cockpit ? (
                         <DashboardCockpit

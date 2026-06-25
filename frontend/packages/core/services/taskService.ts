@@ -7,6 +7,7 @@
 // same-origin web/Tauri host.
 
 import { apiFetch } from './apiClient';
+import { workspaceService } from './workspaceService';
 import type { Task, Milestone, Reply, ReplyMode } from '../types/task';
 
 /** Resolve a GitHub-style project#number reference to its task + workspace. */
@@ -29,6 +30,29 @@ export const taskService = {
         const res = await apiFetch(`/agent/tasks?workspace_id=${q(workspaceId)}`);
         if (!res.ok) throw new Error(`Failed to load tasks: ${res.statusText}`);
         return (await res.json()) || [];
+    },
+
+    /**
+     * Cross-project aggregate for the global board (issue #91): fan out
+     * `list(workspaceId)` over every non-builtin workspace and stamp each task
+     * with its owning workspace (client-only `workspaceId` / `workspaceName`).
+     * Reuses the existing per-project endpoint — no new backend surface. A
+     * single project failing to load is skipped, not fatal, so one bad meta
+     * file can't blank the whole board.
+     */
+    async listAll(): Promise<Task[]> {
+        const workspaces = (await workspaceService.list()).filter(ws => !ws.builtin);
+        const perProject = await Promise.all(
+            workspaces.map(async ws => {
+                try {
+                    const tasks = await this.list(ws.id);
+                    return tasks.map(t => ({ ...t, workspaceId: ws.id, workspaceName: ws.name }));
+                } catch {
+                    return [] as Task[];
+                }
+            })
+        );
+        return perProject.flat();
     },
 
     /**
