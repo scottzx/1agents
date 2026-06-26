@@ -54,6 +54,11 @@ export function SystemSettings(props: SystemSettingsProps) {
     } = props;
 
     const confirmReset = useSignal(false);
+    // ── 重置本地数据 (server-side data wipe, preserves relay pairing) ─────────
+    const resetDataModalOpen = useSignal(false);
+    const resetDataAck = useSignal(false); // checkbox: user understands the wipe
+    const resetDataBusy = useSignal(false);
+    const resetDataError = useSignal('');
     // Agent type whose install command was just copied (transient checkmark).
     const copiedAgent = useSignal('');
     const creditsExpanded = useSignal(false);
@@ -141,6 +146,32 @@ export function SystemSettings(props: SystemSettingsProps) {
             /* ignore */
         }
         window.location.reload();
+    };
+
+    // handleResetData wipes all local App data on the server (tasks/projects/
+    // sessions/knowledge/digest), keeping the relay pairing identity, then
+    // reloads to a clean state. Gated behind the modal's acknowledge checkbox.
+    const handleResetData = async () => {
+        if (!resetDataAck.value || resetDataBusy.value) return;
+        resetDataBusy.value = true;
+        resetDataError.value = '';
+        try {
+            const res = await fetch('/api/system/reset', { method: 'POST' });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            // Drop browser-side state too, then reload into the fresh App.
+            try {
+                localStorage.clear();
+            } catch (_) {
+                /* ignore */
+            }
+            window.location.reload();
+        } catch (e) {
+            resetDataError.value = e instanceof Error ? e.message : String(e);
+            resetDataBusy.value = false;
+        }
     };
 
     const copyInstall = (key: string, cmd: string) => {
@@ -1192,6 +1223,115 @@ export function SystemSettings(props: SystemSettingsProps) {
                     )}
                 </div>
             </div>
+
+            <div class="sys-settings-card sys-settings-reset-data-card">
+                <div class="sys-settings-card-header">
+                    <div class="sys-settings-card-icon danger-icon">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="sys-settings-card-title">{t('settings.about.resetData', language)}</div>
+                        <div class="sys-settings-card-subtitle">{t('settings.about.resetDataDesc', language)}</div>
+                    </div>
+                </div>
+                <div class="sys-settings-action-row">
+                    <button
+                        class="sys-settings-btn danger"
+                        onClick={() => {
+                            resetDataAck.value = false;
+                            resetDataError.value = '';
+                            resetDataModalOpen.value = true;
+                        }}
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                        {t('settings.about.resetData', language)}
+                    </button>
+                </div>
+            </div>
+
+            {resetDataModalOpen.value && (
+                <div
+                    class="sys-settings-modal-overlay"
+                    onClick={() => {
+                        if (!resetDataBusy.value) resetDataModalOpen.value = false;
+                    }}
+                >
+                    <div class="sys-settings-modal sys-settings-reset-data-modal" onClick={e => e.stopPropagation()}>
+                        <div class="sys-settings-modal-title">
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="var(--danger-fg)"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                <line x1="12" y1="9" x2="12" y2="13" />
+                                <line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                            {t('settings.about.resetData', language)}
+                        </div>
+                        <p class="sys-settings-modal-warning">{t('settings.about.resetDataModalWarn', language)}</p>
+                        <p class="sys-settings-modal-keep">{t('settings.about.resetDataModalKeep', language)}</p>
+                        <p class="sys-settings-modal-backup">{t('settings.about.resetDataModalBackup', language)}</p>
+                        {resetDataError.value && <p class="sys-settings-modal-error">{resetDataError.value}</p>}
+                        <label class="sys-settings-modal-ack">
+                            <input
+                                type="checkbox"
+                                checked={resetDataAck.value}
+                                disabled={resetDataBusy.value}
+                                onChange={e => (resetDataAck.value = (e.target as HTMLInputElement).checked)}
+                            />
+                            <span>{t('settings.about.resetDataModalAck', language)}</span>
+                        </label>
+                        <div class="sys-settings-modal-actions">
+                            <button
+                                class="sys-settings-btn ghost"
+                                disabled={resetDataBusy.value}
+                                onClick={() => (resetDataModalOpen.value = false)}
+                            >
+                                {t('common.cancel', language)}
+                            </button>
+                            <button
+                                class="sys-settings-btn danger"
+                                disabled={!resetDataAck.value || resetDataBusy.value}
+                                onClick={handleResetData}
+                            >
+                                {resetDataBusy.value
+                                    ? t('settings.about.resetDataModalBusy', language)
+                                    : t('settings.about.resetDataModalConfirm', language)}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div class="sys-settings-sub-title">
                 <svg

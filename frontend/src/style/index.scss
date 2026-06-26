@@ -8588,6 +8588,61 @@ body {
 
     .sys-settings-action-row { display: flex; align-items: center; gap: 10px; }
 
+    /* 重置本地数据 confirmation modal (danger). Uses --danger-* tokens so it
+       adapts to dark mode; structurally mirrors the other settings modals. */
+    .sys-settings-modal-overlay {
+        position: fixed; inset: 0; z-index: 2200;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(6px);
+        animation: fadeIn 0.15s ease;
+        padding: 20px;
+    }
+
+    .sys-settings-reset-data-modal {
+        width: min(440px, 100%);
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--bento-radius);
+        box-shadow: var(--shadow-lg);
+        padding: 22px;
+        display: flex; flex-direction: column; gap: 12px;
+
+        .sys-settings-modal-title {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 15px; font-weight: 700; color: var(--danger-fg);
+        }
+        .sys-settings-modal-warning {
+            margin: 0; font-size: 13px; line-height: 1.6;
+            color: var(--text-main); font-weight: 600;
+        }
+        .sys-settings-modal-keep,
+        .sys-settings-modal-backup {
+            margin: 0; font-size: 12.5px; line-height: 1.6;
+            color: var(--text-secondary);
+        }
+        .sys-settings-modal-error {
+            margin: 0; font-size: 12.5px; line-height: 1.5;
+            color: var(--danger-fg);
+            background: rgba(var(--danger-rgb), 0.1);
+            border: 1px solid var(--danger-fg);
+            border-radius: var(--bento-radius-sm);
+            padding: 8px 10px;
+        }
+        .sys-settings-modal-ack {
+            display: flex; align-items: flex-start; gap: 8px;
+            font-size: 12.5px; line-height: 1.5; color: var(--text-main);
+            cursor: pointer; user-select: none;
+            padding: 10px; border-radius: var(--bento-radius-sm);
+            background: rgba(var(--danger-rgb), 0.06);
+            input { margin-top: 2px; flex-shrink: 0; accent-color: var(--danger-fg); cursor: pointer; }
+        }
+        .sys-settings-modal-actions {
+            display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;
+            .sys-settings-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        }
+    }
+
     .sys-settings-btn {
         display: inline-flex; align-items: center; gap: 7px;
         height: 36px; padding: 0 16px; border-radius: 8px;
