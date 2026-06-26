@@ -92,14 +92,15 @@ func NewRouter(cfg *config.Config) http.Handler {
 		// One-time import of the legacy JSON stores into ~/.1agents/meta.db
 		// (renames the source files to *.migrated; no-op afterwards).
 		if db, dbErr := meta.OpenDefault(); dbErr == nil {
-			if wsCfg, wsErr := wsHandler.LoadWorkspacesConfig(); wsErr == nil {
-				refs := make([]meta.WorkspaceRef, len(wsCfg.Workspaces))
-				for i, ws := range wsCfg.Workspaces {
-					refs[i] = meta.WorkspaceRef{ID: ws.ID, Name: ws.Name, Path: ws.Path}
-				}
-				if migErr := db.MigrateLegacy(refs); migErr != nil {
-					log.Printf("[server] legacy metadata migration: %v", migErr)
-				}
+			// Unify the legacy workspaces_dir.json into the projects table first
+			// (renames the json to *.migrated), then import the remaining legacy
+			// stores (sessions + per-workspace tasks.json), which read the workspace
+			// paths back from the projects table.
+			if migErr := db.ImportLegacyWorkspaces(); migErr != nil {
+				log.Printf("[server] workspace registry migration: %v", migErr)
+			}
+			if migErr := db.MigrateLegacy(); migErr != nil {
+				log.Printf("[server] legacy metadata migration: %v", migErr)
 			}
 			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
 			// #144: archiving/closing a project triggers a复盘沉淀 — summarize
@@ -194,8 +195,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// and the promote-to-project gate. Shares the task store, so the
 			// reserved personal bucket reuses #N numbering / write locking.
 			personalStore := meta.NewPersonalStore(tasksStore)
-			mux.HandleFunc("/api/personal-tasks", meta.PersonalTasksHandler(personalStore))     // GET list, POST capture
-			mux.HandleFunc("/api/personal-tasks/", meta.PersonalTaskItemHandler(personalStore)) // POST /{id}/incubate
+			mux.HandleFunc("/api/personal-tasks", meta.PersonalTasksHandler(personalStore)) // GET list, POST capture
+			// onIncubated: 立项 persists the project AS a workspace (unified registry);
+			// the hook adds the cc-connect bridge + guide files so it works like a
+			// hand-created workspace and shows up in the sidebar/board immediately.
+			mux.HandleFunc("/api/personal-tasks/", meta.PersonalTaskItemHandler(personalStore, wsHandler.RegisterIncubatedProject)) // POST /{id}/incubate
 
 			// PMO 跨项目对话式需求分发层 (#61): dispatch a clarified requirement into
 			// a target project's pool (and close the originating inbox item). Shares

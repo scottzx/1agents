@@ -250,6 +250,13 @@ func (db *DB) ensureProjectsColumns() error {
 		{"archive_note", "ALTER TABLE projects ADD COLUMN archive_note TEXT NOT NULL DEFAULT ''"},
 		// archived_at: timestamp the project left the active view; NULL while active.
 		{"archived_at", "ALTER TABLE projects ADD COLUMN archived_at TEXT"},
+		// v15 — workspace registry fields absorbed from workspaces_dir.json so the
+		// projects table is the single source of truth for the sidebar/workspace API.
+		{"terminal_dir", "ALTER TABLE projects ADD COLUMN terminal_dir TEXT NOT NULL DEFAULT ''"},
+		{"chat_channel", "ALTER TABLE projects ADD COLUMN chat_channel TEXT NOT NULL DEFAULT ''"},
+		{"default_agent", "ALTER TABLE projects ADD COLUMN default_agent TEXT NOT NULL DEFAULT ''"},
+		{"builtin", "ALTER TABLE projects ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0"},
+		{"position", "ALTER TABLE projects ADD COLUMN position INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {

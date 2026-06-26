@@ -5,7 +5,6 @@ import * as ui from '../../../stores/uiStore';
 import * as wsStore from '../../../stores/workspaceStore';
 import { t } from '../../../i18n';
 import { personalTaskService } from '@1agents/core/services/personalTaskService';
-import { workspaceService } from '@1agents/core/services/workspaceService';
 import type { Task } from '@1agents/core/types/task';
 
 // 个人任务 + 立项 (#67): the no-project backlog. Lightweight personal tasks land
@@ -162,15 +161,11 @@ function IncubateModal({ task, onClose, onDone }: IncubateModalProps) {
                 milestones,
             });
 
-            // The server-side incubation has already committed; surface registration
-            // problems via toast but never re-throw (a retry would hit "path exists").
+            // The server-side 立项 already registered the project as a workspace
+            // (unified registry in meta.db + cc-connect bridge via the incubate
+            // hook). Just refresh the sidebar and navigate into the new project;
+            // surface refresh problems via toast but never re-throw.
             try {
-                await workspaceService.create({
-                    id: project.id,
-                    name: project.name,
-                    path: project.workspacePath,
-                    status: 'active',
-                });
                 const list = await wsStore.loadWorkspaces(true);
                 const newWs = list.find(w => w.id === project.id);
                 if (newWs) await wsStore.selectWorkspace(newWs);

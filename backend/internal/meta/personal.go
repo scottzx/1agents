@@ -173,8 +173,17 @@ func (s *PersonalStore) Incubate(personalTaskID, projectName, workspacePath stri
 		return IncubateResult{}, fmt.Errorf("meta: a project already exists at %s", workspacePath)
 	}
 
+	// Create the project AS a workspace (unified registry): it now carries the
+	// sidebar/terminal/chat fields, so 立项 makes it appear in the sidebar and
+	// global task board automatically — no separate workspace registration. The
+	// cc-connect bridge + guide files are wired by the handler's onIncubated hook.
 	projectID := newID()
-	if err := s.tasks.db.EnsureProject(projectID, projectName, workspacePath); err != nil {
+	if err := s.tasks.db.EnsureWorkspaceProject(Project{
+		ID:            projectID,
+		Name:          projectName,
+		WorkspacePath: workspacePath,
+		DefaultAgent:  "claudecode",
+	}); err != nil {
 		return IncubateResult{}, err
 	}
 
