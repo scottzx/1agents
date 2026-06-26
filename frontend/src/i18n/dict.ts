@@ -741,6 +741,13 @@ export const zhCN: Record<string, string> = {
     'sidebar.navCtrl.inbox': '收件箱',
     'sidebar.navCtrl.scheduledTasks': '定时任务',
     'sidebar.navCtrl.personalTasks': '个人任务',
+    'sidebar.navCtrl.retro': '复盘归档',
+
+    // ── 复盘归档展示 (Retro/index.tsx, #271) ──────────────────────────────
+    'retro.title': '复盘归档',
+    'retro.intro': '项目归档/关闭时自动沉淀的复盘记录:任务完成情况、决策记录与经验沉淀。',
+    'retro.empty': '暂无复盘记录。归档或关闭项目后,这里会出现对应的复盘。',
+    'retro.back': '← 返回列表',
 
     // ── Inbox 统一信息收口层 (Inbox/index.tsx) ─────────────────────────────
     'inbox.title': '收件箱',
@@ -1774,6 +1781,14 @@ export const enUS: Record<string, string> = {
     'sidebar.navCtrl.inbox': 'Inbox',
     'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
     'sidebar.navCtrl.personalTasks': 'Personal Tasks',
+    'sidebar.navCtrl.retro': 'Retrospectives',
+
+    // ── Retrospective archive (Retro/index.tsx, #271) ────────────────────
+    'retro.title': 'Retrospectives',
+    'retro.intro':
+        'Retrospectives auto-distilled when a project is archived or closed: task outcomes, decisions, and lessons learned.',
+    'retro.empty': 'No retrospectives yet. Archiving or closing a project will surface one here.',
+    'retro.back': '← Back to list',
 
     // ── Inbox unified intake layer (Inbox/index.tsx) ─────────────────────
     'inbox.title': 'Inbox',

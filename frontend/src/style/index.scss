@@ -2681,6 +2681,113 @@ body {
   }
 }
 
+// ── 复盘归档展示 (#271) — bento-grid list + markdown detail ───────────────
+.retro-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+
+  .retro-header {
+    flex-shrink: 0;
+  }
+
+  .retro-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .retro-intro {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .retro-error {
+    font-size: 13px;
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+    padding: 8px 12px;
+    border-radius: var(--bento-radius-sm);
+  }
+
+  .retro-empty {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 24px 0;
+    text-align: center;
+  }
+
+  .retro-card {
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+
+    .retro-card-icon {
+      background-color: var(--purple-bg);
+      color: var(--purple-fg);
+    }
+
+    .retro-card-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .retro-tag {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--purple-fg);
+      background: var(--purple-bg);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .retro-card-time {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+  }
+
+  .retro-detail-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .retro-back-btn {
+    font-size: 13px;
+    color: var(--accent-fg);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 0;
+
+    &:hover {
+      color: var(--accent-hover);
+    }
+  }
+
+  .retro-detail-time {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .retro-detail-body {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
 // ── 个人任务 + 立项 (#67) — mirrors the Inbox pane's layout language ──────
 .personal-pane {
   flex: 1;
