@@ -50,8 +50,17 @@ type Project struct {
 	ArchiveReason ArchiveReason `json:"archiveReason,omitempty"`
 	ArchiveNote   string        `json:"archiveNote,omitempty"`
 	ArchivedAt    *time.Time    `json:"archivedAt,omitempty"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	UpdatedAt     time.Time     `json:"updatedAt"`
+	// Workspace registry fields (v15) absorbed from workspaces_dir.json. A project
+	// IS a workspace; these carry the sidebar/terminal/chat metadata that used to
+	// live in the json registry. Builtin marks the reserved default workspace;
+	// Position drives sidebar order.
+	TerminalDir  string    `json:"terminalDir,omitempty"`
+	ChatChannel  string    `json:"chatChannel,omitempty"`
+	DefaultAgent string    `json:"defaultAgent,omitempty"`
+	Builtin      bool      `json:"builtin,omitempty"`
+	Position     int       `json:"position,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.

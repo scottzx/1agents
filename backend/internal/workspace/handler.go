@@ -15,9 +15,8 @@ import (
 
 	"github.com/chenhg5/cc-connect/config"
 	"github.com/chenhg5/cc-connect/core"
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
-
-var configDir string
 
 func get1AgentsHome() string {
 	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
@@ -29,12 +28,6 @@ func get1AgentsHome() string {
 	}
 	return home
 }
-
-func init() {
-	configDir = filepath.Join(get1AgentsHome(), ".1agents")
-}
-
-const configFile = "workspaces_dir.json"
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
@@ -48,7 +41,10 @@ type Workspace struct {
 	Builtin      bool   `json:"builtin,omitempty"`
 }
 
-// WorkspacesConfig is the top-level structure stored in workspaces_dir.json.
+// WorkspacesConfig is the top-level workspace registry shape. Its persistence
+// has moved from workspaces_dir.json into meta.db's projects table (a project IS
+// a workspace); the struct is kept for API/JSON compatibility with the many
+// callers of LoadWorkspacesConfig.
 type WorkspacesConfig struct {
 	Workspaces []Workspace `json:"workspaces"`
 }
@@ -65,70 +61,103 @@ func NewHandler(tmuxSession ...string) *Handler {
 	return &Handler{tmuxSession: session}
 }
 
-func (h *Handler) ensureConfigDir() error {
-	return os.MkdirAll(configDir, 0o755)
+// projectToWorkspace maps a meta project row to the workspace registry shape.
+func projectToWorkspace(p meta.Project) Workspace {
+	return Workspace{
+		ID:           p.ID,
+		Name:         p.Name,
+		Path:         p.WorkspacePath,
+		Status:       string(p.Status),
+		TerminalDir:  p.TerminalDir,
+		ChatChannel:  p.ChatChannel,
+		DefaultAgent: p.DefaultAgent,
+		Builtin:      p.Builtin,
+	}
 }
 
-func (h *Handler) getConfigPath() string {
-	return filepath.Join(configDir, configFile)
+// workspaceToProject maps a workspace into a meta project (write side).
+func workspaceToProject(ws Workspace) meta.Project {
+	return meta.Project{
+		ID:            ws.ID,
+		Name:          ws.Name,
+		WorkspacePath: ws.Path,
+		TerminalDir:   ws.TerminalDir,
+		ChatChannel:   ws.ChatChannel,
+		DefaultAgent:  ws.DefaultAgent,
+		Builtin:       ws.Builtin,
+	}
 }
 
+// loadConfig returns every workspace-backed project (any status, excluding the
+// reserved personal bucket) in sidebar order — the faithful replacement for
+// reading workspaces_dir.json. Status filtering (e.g. hiding archived projects
+// from the sidebar) is applied by callers such as the List handler.
 func (h *Handler) loadConfig() (*WorkspacesConfig, error) {
-	path := h.getConfigPath()
-	
-	data, err := os.ReadFile(path)
+	db, err := meta.OpenDefault()
 	if err != nil {
-		if os.IsNotExist(err) {
-			cfg := &WorkspacesConfig{
-				Workspaces: []Workspace{},
-			}
-			return cfg, nil
-		}
 		return nil, err
 	}
-	var cfg WorkspacesConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	projects, err := db.ListWorkspaceProjects()
+	if err != nil {
 		return nil, err
 	}
-	
-	if cfg.Workspaces == nil {
-		cfg.Workspaces = []Workspace{}
+	wss := make([]Workspace, 0, len(projects))
+	for _, p := range projects {
+		wss = append(wss, projectToWorkspace(p))
 	}
-	return &cfg, nil
+	return &WorkspacesConfig{Workspaces: wss}, nil
 }
 
-func (h *Handler) saveConfig(cfg *WorkspacesConfig) error {
-	if err := h.ensureConfigDir(); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(h.getConfigPath(), data, 0o644)
-}
-
-// LoadWorkspacesConfig loads and returns the current WorkspacesConfig.
+// LoadWorkspacesConfig loads the workspace registry from meta.db. Returns all
+// non-personal projects regardless of status (matching the legacy json), so
+// id→path resolution still works for archived projects.
 func (h *Handler) LoadWorkspacesConfig() (*WorkspacesConfig, error) {
 	return h.loadConfig()
 }
 
-// SaveWorkspacesConfig saves the provided WorkspacesConfig.
+// SaveWorkspacesConfig reconciles the projects table to the given registry:
+// upserts each workspace, deletes non-personal projects no longer present, and
+// rewrites positions to match the given order. Kept for API compatibility; the
+// CRUD handlers below write the table directly.
 func (h *Handler) SaveWorkspacesConfig(cfg *WorkspacesConfig) error {
-	return h.saveConfig(cfg)
+	db, err := meta.OpenDefault()
+	if err != nil {
+		return err
+	}
+	keep := make(map[string]bool, len(cfg.Workspaces))
+	ids := make([]string, 0, len(cfg.Workspaces))
+	for _, ws := range cfg.Workspaces {
+		if err := db.EnsureWorkspaceProject(workspaceToProject(ws)); err != nil {
+			return err
+		}
+		keep[ws.ID] = true
+		ids = append(ids, ws.ID)
+	}
+	existing, err := db.ListWorkspaceProjects()
+	if err != nil {
+		return err
+	}
+	for _, p := range existing {
+		if !keep[p.ID] {
+			if err := db.DeleteProject(p.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return db.ReorderProjects(ids)
 }
 
 // EnsureDefaultWorkspace creates the built-in default workspace if it does not
 // already exist. Called once at server startup so new installs skip onboarding.
 func (h *Handler) EnsureDefaultWorkspace() error {
-	cfg, err := h.loadConfig()
+	db, err := meta.OpenDefault()
 	if err != nil {
 		return err
 	}
-	for _, ws := range cfg.Workspaces {
-		if ws.ID == "default" {
-			return nil
-		}
+	if _, ok, err := db.GetProject("default"); err != nil {
+		return err
+	} else if ok {
+		return nil
 	}
 	homeDir := get1AgentsHome()
 	defaultPath := filepath.Join(homeDir, ".1agents", "projects", "default")
@@ -136,17 +165,13 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 		return fmt.Errorf("create default workspace dir: %w", err)
 	}
 	ensureProjectGuideFiles(defaultPath)
-	defaultWs := Workspace{
-		ID:           "default",
-		Name:         "对话",
-		Path:         defaultPath,
-		Status:       "active",
-		DefaultAgent: "claudecode",
-		Builtin:      true,
-	}
-	// Prepend so the default workspace is always first in the list.
-	cfg.Workspaces = append([]Workspace{defaultWs}, cfg.Workspaces...)
-	if err := h.saveConfig(cfg); err != nil {
+	if err := db.EnsureWorkspaceProject(meta.Project{
+		ID:            "default",
+		Name:          "对话",
+		WorkspacePath: defaultPath,
+		DefaultAgent:  "claudecode",
+		Builtin:       true,
+	}); err != nil {
 		return err
 	}
 	log.Printf("[workspace] created built-in default workspace at %s", defaultPath)
@@ -165,7 +190,60 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, cfg.Workspaces)
+	// Sidebar shows only active workspaces — archived/killed projects (#141) drop
+	// out of the registry view while staying queryable by id for the archive board.
+	active := make([]Workspace, 0, len(cfg.Workspaces))
+	for _, ws := range cfg.Workspaces {
+		if ws.Status == "" || ws.Status == string(meta.ProjectStatusActive) {
+			active = append(active, ws)
+		}
+	}
+	writeJSON(w, active)
+}
+
+// RegisterIncubatedProject wires the cc-connect bridge + guide files for a
+// project promoted via 立项 (the project row is already persisted by
+// meta.Incubate as a workspace). Passed as the onIncubated hook to
+// meta.PersonalTaskItemHandler so promotion gets a working bridge without meta
+// importing the workspace package.
+func (h *Handler) RegisterIncubatedProject(p meta.Project) {
+	h.registerWorkspaceProject(projectToWorkspace(p))
+}
+
+// registerWorkspaceProject performs the side-effects of bringing a workspace
+// online: agent guidance files + dynamic CC-Connect bridge registration + hot
+// restart. Shared by Create and the 立项 (Incubate) hook so a promoted project
+// gets a working bridge exactly like a hand-created workspace. Persisting the
+// project row is the caller's job; this only does the non-storage side-effects.
+func (h *Handler) registerWorkspaceProject(ws Workspace) {
+	// Ensure the project has agent guidance files (CLAUDE.md / AGENTS.md).
+	ensureProjectGuideFiles(ws.Path)
+
+	// Dynamically register this workspace as a CC-Connect project.
+	projName := ws.Name
+	if projName == "" {
+		projName = ws.ID
+	}
+	if config.ConfigPath != "" {
+		if err := config.AddPlatformToProject(projName, config.PlatformConfig{
+			Type: "bridge",
+		}, ws.Path, "claudecode"); err != nil {
+			log.Printf("[workspace] ccconnect add project error: %v", err)
+		} else {
+			log.Printf("[workspace] Dynamically registered CC-Connect project %s at path %s", projName, ws.Path)
+
+			// Trigger cc-connect to hot restart itself and reload the configuration!
+			select {
+			case core.RestartCh <- core.RestartRequest{}:
+				log.Println("[workspace] Successfully requested CC-Connect process hot restart for configuration reload")
+			default:
+				log.Println("[workspace] CC-Connect hot restart already pending")
+			}
+
+			// Wait for the hot restart to finish to avoid 502 Bad Gateway race condition on immediate redirect
+			time.Sleep(1000 * time.Millisecond)
+		}
+	}
 }
 
 // Create handles POST /api/workspace/create
@@ -185,9 +263,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if ws.DefaultAgent == "" {
 		ws.DefaultAgent = "claudecode"
 	}
-	cfg, err := h.loadConfig()
+	db, err := meta.OpenDefault()
 	if err != nil {
-		log.Printf("[workspace] load error: %v", err)
+		log.Printf("[workspace] db open error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -198,49 +276,24 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		_ = os.MkdirAll(tempDir, 0755)
 		ws.Path = tempDir
 	}
-	// Check for duplicate ID
-	for _, existing := range cfg.Workspaces {
-		if existing.ID == ws.ID {
-			http.Error(w, "workspace with this ID already exists", http.StatusConflict)
-			return
-		}
+	if ws.ID == "" {
+		ws.ID = meta.NewID()
 	}
-	cfg.Workspaces = append(cfg.Workspaces, ws)
-	if err := h.saveConfig(cfg); err != nil {
+	// Check for duplicate ID
+	if _, ok, err := db.GetProject(ws.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if ok {
+		http.Error(w, "workspace with this ID already exists", http.StatusConflict)
+		return
+	}
+	if err := db.EnsureWorkspaceProject(workspaceToProject(ws)); err != nil {
 		log.Printf("[workspace] save error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Ensure the project has agent guidance files (CLAUDE.md / AGENTS.md).
-	ensureProjectGuideFiles(ws.Path)
-
-	// Dynamically register this workspace as a CC-Connect project
-	projName := ws.Name
-	if projName == "" {
-		projName = ws.ID
-	}
-	if config.ConfigPath != "" {
-		err = config.AddPlatformToProject(projName, config.PlatformConfig{
-			Type: "bridge",
-		}, ws.Path, "claudecode")
-		if err != nil {
-			log.Printf("[workspace] ccconnect add project error: %v", err)
-		} else {
-			log.Printf("[workspace] Dynamically registered CC-Connect project %s at path %s", projName, ws.Path)
-			
-			// Trigger cc-connect to hot restart itself and reload the configuration!
-			select {
-			case core.RestartCh <- core.RestartRequest{}:
-				log.Println("[workspace] Successfully requested CC-Connect process hot restart for configuration reload")
-			default:
-				log.Println("[workspace] CC-Connect hot restart already pending")
-			}
-			
-			// Wait for the hot restart to finish to avoid 502 Bad Gateway race condition on immediate redirect
-			time.Sleep(1000 * time.Millisecond)
-		}
-	}
+	h.registerWorkspaceProject(ws)
 
 	writeJSON(w, map[string]interface{}{"ok": true, "workspace": ws})
 }
@@ -256,29 +309,29 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cfg, err := h.loadConfig()
+	db, err := meta.OpenDefault()
 	if err != nil {
-		log.Printf("[workspace] load error: %v", err)
+		log.Printf("[workspace] db open error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	found := false
-	for i, existing := range cfg.Workspaces {
-		if existing.ID == ws.ID {
-			if existing.Builtin {
-				http.Error(w, "cannot modify built-in workspace", http.StatusForbidden)
-				return
-			}
-			cfg.Workspaces[i] = ws
-			found = true
-			break
-		}
+	existing, ok, err := db.GetProject(ws.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	if !found {
+	if !ok {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	if err := h.saveConfig(cfg); err != nil {
+	if existing.Builtin {
+		http.Error(w, "cannot modify built-in workspace", http.StatusForbidden)
+		return
+	}
+	// builtin can never be set via update — pin it to the stored value.
+	ws.Builtin = existing.Builtin
+	// EnsureWorkspaceProject preserves the row's status and position on conflict.
+	if err := db.EnsureWorkspaceProject(workspaceToProject(ws)); err != nil {
 		log.Printf("[workspace] save error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -301,31 +354,27 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot delete built-in workspace", http.StatusForbidden)
 		return
 	}
-	cfg, err := h.loadConfig()
+	db, err := meta.OpenDefault()
 	if err != nil {
-		log.Printf("[workspace] load error: %v", err)
+		log.Printf("[workspace] db open error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	idx := -1
-	for i, ws := range cfg.Workspaces {
-		if ws.ID == id {
-			if ws.Builtin {
-				http.Error(w, "cannot delete built-in workspace", http.StatusForbidden)
-				return
-			}
-			idx = i
-			break
-		}
+	wsToDelete, ok, err := db.GetProject(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	if idx == -1 {
+	if !ok {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	wsToDelete := cfg.Workspaces[idx]
-	cfg.Workspaces = append(cfg.Workspaces[:idx], cfg.Workspaces[idx+1:]...)
-	if err := h.saveConfig(cfg); err != nil {
-		log.Printf("[workspace] save error: %v", err)
+	if wsToDelete.Builtin {
+		http.Error(w, "cannot delete built-in workspace", http.StatusForbidden)
+		return
+	}
+	if err := db.DeleteProject(id); err != nil {
+		log.Printf("[workspace] delete error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -423,6 +472,12 @@ func (h *Handler) Reorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	db, err := meta.OpenDefault()
+	if err != nil {
+		log.Printf("[workspace] db open error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	cfg, err := h.loadConfig()
 	if err != nil {
 		log.Printf("[workspace] load error: %v", err)
@@ -430,31 +485,29 @@ func (h *Handler) Reorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a lookup map for existing workspaces
-	wsMap := make(map[string]Workspace)
+	// Build the full ordered id list: requested ids first (only those that
+	// exist), then any remaining workspaces in their current order — mirroring
+	// the previous "append unspecified at the end" semantics.
+	exists := make(map[string]bool, len(cfg.Workspaces))
 	for _, ws := range cfg.Workspaces {
-		wsMap[ws.ID] = ws
+		exists[ws.ID] = true
 	}
-
-	var reordered []Workspace
-	// Add workspaces in the requested order
+	ordered := make([]string, 0, len(cfg.Workspaces))
+	seen := make(map[string]bool, len(req.IDs))
 	for _, id := range req.IDs {
-		if ws, exists := wsMap[id]; exists {
-			reordered = append(reordered, ws)
-			delete(wsMap, id) // Mark as handled
+		if exists[id] && !seen[id] {
+			ordered = append(ordered, id)
+			seen[id] = true
 		}
 	}
-
-	// Append any remaining workspaces that weren't specified in the reorder request
 	for _, ws := range cfg.Workspaces {
-		if _, exists := wsMap[ws.ID]; exists {
-			reordered = append(reordered, ws)
+		if !seen[ws.ID] {
+			ordered = append(ordered, ws.ID)
 		}
 	}
 
-	cfg.Workspaces = reordered
-	if err := h.saveConfig(cfg); err != nil {
-		log.Printf("[workspace] save error: %v", err)
+	if err := db.ReorderProjects(ordered); err != nil {
+		log.Printf("[workspace] reorder error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -58,7 +58,14 @@ func PersonalTasksHandler(store *PersonalStore) http.HandlerFunc {
 //
 //	POST /api/personal-tasks/{id}/incubate → 立项: promote to a new long-term
 //	      project {projectName, workspacePath, milestones?}
-func PersonalTaskItemHandler(store *PersonalStore) http.HandlerFunc {
+//
+// onIncubated, when non-nil, is invoked once after a successful 立项 with the
+// freshly-created project. The project row is already a workspace (unified
+// registry); the hook performs the non-storage side-effects — cc-connect bridge
+// registration + agent guide files — that the workspace package owns (kept out
+// of meta to avoid a meta→workspace import cycle). Best-effort: it must not fail
+// the request, so its result is ignored.
+func PersonalTaskItemHandler(store *PersonalStore, onIncubated func(Project)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -94,6 +101,9 @@ func PersonalTaskItemHandler(store *PersonalStore) http.HandlerFunc {
 				// Validation failures (not a personal task / path taken) are 400.
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
+			}
+			if onIncubated != nil {
+				onIncubated(res.Project)
 			}
 			writeJSON(w, res)
 

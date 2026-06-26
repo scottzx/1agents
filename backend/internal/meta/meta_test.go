@@ -483,6 +483,25 @@ func TestMigrateLegacySessions(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+
+	// Workspace registry → projects (unified via ImportLegacyWorkspaces).
+	wsPath := t.TempDir()
+	wsJSON, _ := json.Marshal(map[string]any{"workspaces": []map[string]any{
+		{"id": "ws1", "name": "One", "path": wsPath, "status": "active"},
+	}})
+	if err := os.WriteFile(filepath.Join(dir, "workspaces_dir.json"), wsJSON, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ImportLegacyWorkspaces(); err != nil {
+		t.Fatalf("ImportLegacyWorkspaces: %v", err)
+	}
+	if _, ok, _ := db.GetProject("ws1"); !ok {
+		t.Fatalf("project not created from workspace registry")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "workspaces_dir.json.migrated")); err != nil {
+		t.Fatalf("workspaces json not renamed: %v", err)
+	}
+
 	legacy := map[string]any{"sessions": []ChatSessionRecord{
 		{ID: "s1", WorkspaceID: "ws1", Name: "legacy chat", AgentType: "claudecode",
 			CcSessionID: "cc1", SessionKey: "k1", CreatedAt: time.Now().UTC()},
@@ -492,7 +511,7 @@ func TestMigrateLegacySessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := db.MigrateLegacy([]WorkspaceRef{{ID: "ws1", Name: "One", Path: t.TempDir()}}); err != nil {
+	if err := db.MigrateLegacy(); err != nil {
 		t.Fatalf("MigrateLegacy: %v", err)
 	}
 
@@ -501,15 +520,103 @@ func TestMigrateLegacySessions(t *testing.T) {
 	if err != nil || !ok || rec.Name != "legacy chat" {
 		t.Fatalf("session not migrated: ok=%v err=%v rec=%+v", ok, err, rec)
 	}
-	if _, ok, _ := db.GetProject("ws1"); !ok {
-		t.Fatalf("project not created from workspace ref")
-	}
 	if _, err := os.Stat(filepath.Join(dir, "agent-sessions.json.migrated")); err != nil {
 		t.Fatalf("legacy sessions file not renamed: %v", err)
 	}
-	// Idempotent rerun.
-	if err := db.MigrateLegacy(nil); err != nil {
+	// Idempotent rerun (json already renamed → no-op).
+	if err := db.ImportLegacyWorkspaces(); err != nil {
+		t.Fatalf("ImportLegacyWorkspaces rerun: %v", err)
+	}
+	if err := db.MigrateLegacy(); err != nil {
 		t.Fatalf("MigrateLegacy rerun: %v", err)
+	}
+}
+
+func TestWorkspaceProjectUnification(t *testing.T) {
+	db := newTestDB(t)
+
+	// Field round-trip + position append order.
+	if err := db.EnsureWorkspaceProject(Project{
+		ID: "a", Name: "A", WorkspacePath: "/p/a", DefaultAgent: "claudecode", Builtin: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnsureWorkspaceProject(Project{ID: "b", Name: "B", WorkspacePath: "/p/b"}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := db.ListWorkspaceProjects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ID != "a" || list[1].ID != "b" {
+		t.Fatalf("unexpected order/list: %+v", list)
+	}
+	if !list[0].Builtin || list[0].DefaultAgent != "claudecode" {
+		t.Fatalf("fields not round-tripped: %+v", list[0])
+	}
+
+	// Reorder rewrites positions.
+	if err := db.ReorderProjects([]string{"b", "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = db.ListWorkspaceProjects(); list[0].ID != "b" || list[1].ID != "a" {
+		t.Fatalf("reorder failed: %+v", list)
+	}
+
+	// Personal bucket is never part of the workspace registry.
+	ps := NewPersonalStore(NewTaskStore(db))
+	pt, err := ps.Capture("todo", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ = db.ListWorkspaceProjects()
+	for _, p := range list {
+		if p.ID == PersonalProjectID {
+			t.Fatalf("personal bucket leaked into workspace list")
+		}
+	}
+
+	// Core regression (#67 seam): 立项 makes the new project appear in the
+	// workspace registry automatically — no separate workspace registration.
+	res, err := ps.Incubate(pt.ID, "Promoted", "/p/promoted", nil)
+	if err != nil {
+		t.Fatalf("incubate: %v", err)
+	}
+	list, _ = db.ListWorkspaceProjects()
+	found := false
+	for _, p := range list {
+		if p.ID == res.Project.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("incubated project not in workspace list — seam not closed")
+	}
+
+	// Archiving sets status; the row stays in ListWorkspaceProjects (so id→path
+	// resolution still works) but the List handler's active filter would hide it.
+	if err := db.ArchiveProject("a", ProjectStatusArchived, ArchiveReasonCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+	// A subsequent EnsureWorkspaceProject must NOT resurrect it to active.
+	if err := db.EnsureWorkspaceProject(Project{ID: "a", Name: "A2", WorkspacePath: "/p/a"}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = db.ListWorkspaceProjects()
+	var a *Project
+	for i := range list {
+		if list[i].ID == "a" {
+			a = &list[i]
+		}
+	}
+	if a == nil {
+		t.Fatalf("archived project dropped from registry (would break id→path resolution)")
+	}
+	if a.Status != ProjectStatusArchived {
+		t.Fatalf("archive status not preserved across EnsureWorkspaceProject: %s", a.Status)
+	}
+	if a.Name != "A2" {
+		t.Fatalf("name not refreshed on update: %s", a.Name)
 	}
 }
 

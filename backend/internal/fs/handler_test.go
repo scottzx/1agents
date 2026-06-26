@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 func TestHandler_View(t *testing.T) {
@@ -140,17 +142,17 @@ func TestHandler_View(t *testing.T) {
 			os.Setenv("USERPROFILE", origUserProfile)
 		}()
 
-		// Create the workspaces directory and workspaces_dir.json
-		wsDir := filepath.Join(mockHome, ".1agents")
-		if err := os.MkdirAll(wsDir, 0755); err != nil {
-			t.Fatalf("failed to create mock .1agents dir: %v", err)
+		// Register tempDir as a workspace in meta.db (the unified registry that
+		// checkWorkspaces now consults instead of workspaces_dir.json).
+		t.Setenv("ONEAGENTS_HOME", mockHome)
+		db, err := meta.OpenDefault()
+		if err != nil {
+			t.Fatalf("open meta: %v", err)
 		}
-
-		// Registered workspaces configuration
-		// Let's register tempDir (which is our workspace root)
-		wsCfgContent := `{"workspaces": [{"path": "` + filepath.ToSlash(tempDir) + `"}]}`
-		if err := os.WriteFile(filepath.Join(wsDir, "workspaces_dir.json"), []byte(wsCfgContent), 0644); err != nil {
-			t.Fatalf("failed to write mock workspaces_dir.json: %v", err)
+		if err := db.EnsureWorkspaceProject(meta.Project{
+			ID: "ws-test", Name: "test", WorkspacePath: tempDir,
+		}); err != nil {
+			t.Fatalf("register workspace: %v", err)
 		}
 
 		// Create a test file inside tempDir

@@ -23,6 +23,91 @@ func (db *DB) EnsureProject(id, name, workspacePath string) error {
 	return err
 }
 
+// upsertWorkspaceProject inserts or refreshes a project row with the full
+// workspace registry fields, writing position explicitly. status is set to
+// 'active' on insert and left untouched on update (archiving must not be undone
+// by a later refresh — mirrors EnsureProject). Used by the migration (which pins
+// position to the legacy json order) and EnsureWorkspaceProject.
+func (db *DB) upsertWorkspaceProject(p Project, position int) error {
+	now := timeToStr(time.Now().UTC())
+	builtin := 0
+	if p.Builtin {
+		builtin = 1
+	}
+	_, err := db.sql.Exec(`
+		INSERT INTO projects (id, name, workspace_path, status,
+			terminal_dir, chat_channel, default_agent, builtin, position,
+			created_at, updated_at)
+		VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			workspace_path = excluded.workspace_path,
+			terminal_dir = excluded.terminal_dir,
+			chat_channel = excluded.chat_channel,
+			default_agent = excluded.default_agent,
+			builtin = excluded.builtin,
+			position = excluded.position,
+			updated_at = excluded.updated_at`,
+		p.ID, p.Name, p.WorkspacePath,
+		p.TerminalDir, p.ChatChannel, p.DefaultAgent, builtin, position,
+		now, now)
+	return err
+}
+
+// EnsureWorkspaceProject upserts a workspace-backed project (the unified
+// registry row the sidebar lists). New rows are appended (position = MAX+1);
+// existing rows keep their current position. Write path for the workspace
+// Create/Update handlers and 立项 (Incubate).
+func (db *DB) EnsureWorkspaceProject(p Project) error {
+	var position int
+	err := db.sql.QueryRow(`SELECT position FROM projects WHERE id = ?`, p.ID).Scan(&position)
+	if err == sql.ErrNoRows {
+		if e := db.sql.QueryRow(
+			`SELECT COALESCE(MAX(position), 0) + 1 FROM projects WHERE id != ?`,
+			PersonalProjectID).Scan(&position); e != nil {
+			return e
+		}
+	} else if err != nil {
+		return err
+	}
+	return db.upsertWorkspaceProject(p, position)
+}
+
+// ListWorkspaceProjects returns every workspace-backed project (any status,
+// excluding the reserved personal bucket) in sidebar order. Faithful replacement
+// for reading workspaces_dir.json; callers needing only the active subset (the
+// sidebar) filter by status themselves.
+func (db *DB) ListWorkspaceProjects() ([]Project, error) {
+	return db.queryProjects(
+		`SELECT `+projectColumns+` FROM projects WHERE id != ?
+		 ORDER BY position ASC, created_at ASC`, PersonalProjectID)
+}
+
+// DeleteProject removes a project row by id. Tasks keyed by the gone project_id
+// are left as-is (orphaned), matching pre-unification behavior where a deleted
+// workspace dropped out of the registry but its meta rows remained.
+func (db *DB) DeleteProject(id string) error {
+	res, err := db.sql.Exec(`DELETE FROM projects WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	return affectedOrNotFound(res)
+}
+
+// ReorderProjects rewrites the position column to match the given id order. The
+// single-connection pool serializes this, so no explicit transaction is needed.
+func (db *DB) ReorderProjects(ids []string) error {
+	now := timeToStr(time.Now().UTC())
+	for i, id := range ids {
+		if _, err := db.sql.Exec(
+			`UPDATE projects SET position = ?, updated_at = ? WHERE id = ?`,
+			i, now, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ensureProjectByPath returns the project id for a workspace path, creating
 // a stub row (id = random, name = basename) when none exists. Used by the
 // task store, which is keyed by path.
@@ -57,7 +142,9 @@ func (db *DB) projectIDByPath(workspacePath string) (string, error) {
 // projectColumns is the canonical SELECT column list, kept in sync with
 // scanProject's Scan order.
 const projectColumns = `id, name, workspace_path, status,
-	archive_reason, archive_note, archived_at, created_at, updated_at`
+	archive_reason, archive_note, archived_at,
+	terminal_dir, chat_channel, default_agent, builtin, position,
+	created_at, updated_at`
 
 // GetProject returns a project by id.
 func (db *DB) GetProject(id string) (Project, bool, error) {
@@ -175,15 +262,19 @@ func scanProject(r rowScanner) (Project, error) {
 	var p Project
 	var status, reason, note string
 	var archivedAt sql.NullString
+	var builtin int
 	var createdAt, updatedAt string
 	if err := r.Scan(&p.ID, &p.Name, &p.WorkspacePath, &status,
-		&reason, &note, &archivedAt, &createdAt, &updatedAt); err != nil {
+		&reason, &note, &archivedAt,
+		&p.TerminalDir, &p.ChatChannel, &p.DefaultAgent, &builtin, &p.Position,
+		&createdAt, &updatedAt); err != nil {
 		return Project{}, err
 	}
 	p.Status = ProjectStatus(status)
 	p.ArchiveReason = ArchiveReason(reason)
 	p.ArchiveNote = note
 	p.ArchivedAt = valToTimePtr(archivedAt)
+	p.Builtin = builtin != 0
 	p.CreatedAt = strToTime(createdAt)
 	p.UpdatedAt = strToTime(updatedAt)
 	return p, nil

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/scottzx/1Agents/backend/internal/meta"
 )
 
 // Handler handles all file-system CRUD operations within a sandboxed root
@@ -674,25 +676,21 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) safeAbs(rel string) (string, bool) {
 	cleaned := filepath.Clean(filepath.FromSlash(rel))
 
-	// Helper to check if an absolute path starts with a registered workspace
+	// Helper to check if an absolute path starts with a registered workspace.
+	// Workspaces now live in meta.db's projects table (unified registry); query
+	// it instead of the retired workspaces_dir.json.
 	checkWorkspaces := func(p string) bool {
-		home := get1AgentsHome()
-		configPath := filepath.Join(home, ".1agents", "workspaces_dir.json")
-		data, err := os.ReadFile(configPath)
+		db, err := meta.OpenDefault()
 		if err != nil {
 			return false
 		}
-		var wsCfg struct {
-			Workspaces []struct {
-				Path string `json:"path"`
-			} `json:"workspaces"`
-		}
-		if json.Unmarshal(data, &wsCfg) != nil {
+		projects, err := db.ListWorkspaceProjects()
+		if err != nil {
 			return false
 		}
 		pLower := strings.ToLower(p)
-		for _, ws := range wsCfg.Workspaces {
-			wsPath := filepath.Clean(ws.Path)
+		for _, proj := range projects {
+			wsPath := filepath.Clean(proj.WorkspacePath)
 			wsPathLower := strings.ToLower(wsPath)
 			if pLower == wsPathLower || strings.HasPrefix(pLower, wsPathLower+string(os.PathSeparator)) {
 				return true
@@ -872,16 +870,5 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, results)
-}
-
-func get1AgentsHome() string {
-	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
-		return val
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return home
 }
 
