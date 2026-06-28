@@ -683,8 +683,8 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 	heartbeatSched.Start()
 
 	// Start local Unix socket API server
-	var apiSrv *core.CCConnectCliServer
-	if apiSrvInstance, err := core.NewCCConnectCliServer(cfg.DataDir); err != nil {
+	var apiSrv *core.APIServer
+	if apiSrvInstance, err := core.NewAPIServer(cfg.DataDir); err != nil {
 		slog.Error("failed to create cc-connect Unix socket API server", "error", err)
 	} else {
 		apiSrv = apiSrvInstance
