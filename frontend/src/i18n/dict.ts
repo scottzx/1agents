@@ -657,6 +657,18 @@ export const zhCN: Record<string, string> = {
     'settings.about.resetDesc': '清除所有本地缓存数据并重置应用到初始状态。',
     'settings.about.confirmReset': '确认重置',
     'settings.about.resetBtn': '重置应用数据',
+    // ── 重置本地数据（保留 relay 配对身份）──
+    'settings.about.resetData': '重置数据',
+    'settings.about.resetDataDesc':
+        '清空本地全部 App 数据（任务、项目、会话、知识库），但保留 relay 配对身份，无需重新配对。',
+    'settings.about.resetDataModalWarn':
+        '此操作将永久清空本地的全部任务、项目、会话、收件箱、知识库与摘要数据，且无法恢复。',
+    'settings.about.resetDataModalKeep':
+        '会保留：relay 配对身份与凭据（~/.happy、relay 账户密钥），重置后仍可直接使用，无需重新配对。',
+    'settings.about.resetDataModalBackup': '建议在继续前先备份重要数据。',
+    'settings.about.resetDataModalAck': '我已了解此操作不可恢复，确认清空本地数据。',
+    'settings.about.resetDataModalConfirm': '确认重置数据',
+    'settings.about.resetDataModalBusy': '正在重置…',
 
     // ── 鸣谢 ──
     'settings.credits.title': '鸣谢',
@@ -1692,6 +1704,18 @@ export const enUS: Record<string, string> = {
     'settings.about.resetDesc': 'Clear all local cached data and reset the app to its initial state.',
     'settings.about.confirmReset': 'Confirm Reset',
     'settings.about.resetBtn': 'Reset App Data',
+    // ── Reset local data (relay pairing preserved) ──
+    'settings.about.resetData': 'Reset Data',
+    'settings.about.resetDataDesc':
+        'Clear all local App data (tasks, projects, sessions, knowledge base) while keeping your relay pairing — no need to re-pair.',
+    'settings.about.resetDataModalWarn':
+        'This permanently clears all local tasks, projects, sessions, inbox items, knowledge base, and digests. It cannot be undone.',
+    'settings.about.resetDataModalKeep':
+        'Preserved: your relay pairing identity and credentials (~/.happy, relay account key). You stay paired after the reset.',
+    'settings.about.resetDataModalBackup': 'We recommend backing up anything important before continuing.',
+    'settings.about.resetDataModalAck': 'I understand this is irreversible and want to clear my local data.',
+    'settings.about.resetDataModalConfirm': 'Reset Data',
+    'settings.about.resetDataModalBusy': 'Resetting…',
 
     // ── Acknowledgements ──
     'settings.credits.title': 'Acknowledgements',

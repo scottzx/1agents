@@ -528,6 +528,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)            // GET  — happy daemon status + machine credentials
 	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart) // POST — start happy daemon
 	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
+	// 重置本地数据: wipe App data (meta.db/sync.db tables + knowledge/scratch files +
+	// workspace-backed cc-connect projects), keep relay pairing identity (~/.happy +
+	// relay-creds.json) and provider/model config, re-seed default workspace.
+	mux.HandleFunc("/api/system/reset", sysHandler.ResetHandler(wsHandler.EnsureDefaultWorkspace, ccconnect.PurgeWorkspaceProjects)) // POST — reset local data
 
 	// ── Relay client credentials (issue #109) ───────────────────────────────
 	mux.HandleFunc("/api/relay/credentials", sysHandler.RelayCredentialsHandler) // GET/POST/DELETE — persist relay account master key
