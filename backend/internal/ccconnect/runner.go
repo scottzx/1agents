@@ -246,6 +246,13 @@ insecure = true
 			cfg := &config.Config{}
 			if _, err := toml.DecodeFile(configPath, cfg); err == nil {
 				syncAllProvidersToCCSwitch(cfg.Providers)
+				// #277 Phase 4: one-shot fold of legacy `X__<agent>` projects that
+				// share a work_dir into a single de-suffixed project + per-channel
+				// agent bindings. Idempotent: a no-op once already migrated.
+				if migrated, changed := MigrateLegacyAgentSuffixProjects(cfg.Projects); changed {
+					cfg.Projects = migrated
+					log.Printf("[ccconnect] Migrated legacy __<agent> projects by path → %d project(s)", len(cfg.Projects))
+				}
 			} else {
 				log.Printf("[ccconnect] Error decoding config TOML (%s): %v", configPath, err)
 			}
