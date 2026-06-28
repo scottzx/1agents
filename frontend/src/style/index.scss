@@ -14846,6 +14846,59 @@ body {
 }
 .agent-type-picker:focus { border-color: var(--accent-color); }
 
+// Channel→agent binding section (ChannelAgentPanel.tsx, #277 Phase 3)
+.channel-agent-section {
+  flex: 0 0 auto;
+  padding: 16px 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  max-height: 50%;
+}
+.channel-agent-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.channel-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.channel-agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--bento-pad);
+}
+.channel-agent-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.channel-agent-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.channel-agent-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+}
+.channel-agent-empty {
+  padding: 24px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.channel-agent-error {
+  color: var(--danger-fg);
+}
+
 // Sidebar chat-session row
 .chat-row-kind-chat {
   display: flex;
