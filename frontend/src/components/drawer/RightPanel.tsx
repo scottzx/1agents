@@ -7,11 +7,13 @@ import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
 import { TaskList } from './TaskList';
+import { ChannelAgentPanel } from './ChannelAgentPanel';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
+import * as wsStore from '../../stores/workspaceStore';
 import * as taskNav from '../../stores/taskNavStore';
 
 interface RightPanelProps {
@@ -102,6 +104,8 @@ export function RightPanel({
     const theme = ui.theme.value;
     const viewMode = fs.viewMode.value;
     const selectedFsEntry = fs.selectedFsEntry.value;
+    // cc-connect addresses projects by their name (== workspace display name).
+    const activeWorkspaceName = wsStore.workspaces.value.find(w => w.id === activeWorkspaceId)?.name ?? '';
 
     let isSpinning = false;
     if (activeDrawerTab === 'files') {
@@ -236,6 +240,12 @@ export function RightPanel({
                     activeDrawerTab === 'channels' ? 'flex' : 'none'
                 }; flex-direction: column; height: 100%;`}
             >
+                {/* #277 Phase 3: per-channel agent binding for the active workspace. */}
+                {activeDrawerTab === 'channels' && activeWorkspaceName && (
+                    <div class="channel-agent-section">
+                        <ChannelAgentPanel projectName={activeWorkspaceName} language={language} />
+                    </div>
+                )}
                 {ccConnectUrl && (
                     <cc-connect-panel
                         id="cc-channels-panel"
