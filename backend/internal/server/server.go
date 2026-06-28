@@ -267,7 +267,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 			if nameOrID == "" {
 				nameOrID = foundWS.ID
 			}
-			projName := getCCProjectName(nameOrID, "claudecode")
+			// #277: project name = workspace name (no __<agent> suffix); the
+			// agent type is carried per-channel, not in the project name.
+			projName := ccconnect.CCProjectSlug(nameOrID)
 			redirectPath = "/projects/" + projName
 		}
 
@@ -294,6 +296,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(map[string]string{"url": url})
 	})
+
+	// ── CC-Connect channel↔agent binding API (#277 Phase 2) ──────────────────
+	// GET  ?project=<name>            → list channels + each channel's agent
+	// POST {project,index,agent}      → bind/clear a channel's agent (hot reload)
+	mux.HandleFunc("/api/cc-connect/channels", ccconnect.ChannelsHandler)
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)
@@ -1221,29 +1228,4 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			strings.Join(candidates, ", "),
 		)
 	}
-}
-
-func getCCProjectName(workspaceName string, agentType string) string {
-	var sb strings.Builder
-	inInvalidSeq := false
-	for _, r := range workspaceName {
-		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
-		if isValid {
-			sb.WriteRune(r)
-			inInvalidSeq = false
-		} else {
-			if !inInvalidSeq {
-				sb.WriteRune('_')
-				inInvalidSeq = true
-			}
-		}
-	}
-	slug := sb.String()
-	if len(slug) > 32 {
-		slug = slug[:32]
-	}
-	if slug == "" {
-		slug = "ws"
-	}
-	return fmt.Sprintf("%s__%s", slug, agentType)
 }

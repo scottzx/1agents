@@ -80,7 +80,7 @@ func (n *taskNotifier) resolveProject(wsPath, wsID string) string {
 			if nameOrID == "" {
 				nameOrID = ws.ID
 			}
-			return getCCProjectName(nameOrID, "claudecode")
+			return CCProjectSlug(nameOrID)
 		}
 	}
 	return ""
