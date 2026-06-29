@@ -211,10 +211,17 @@ func (s *Store) SetWatermark(channel, accID, sessionID string, value int64, upda
 // ms), in ascending time order. limit <= 0 means no limit. Used to assemble an
 // analysis batch.
 func (s *Store) ListMessages(channel, sessionID string, since int64, limit int) ([]Message, error) {
+	// With a limit we want the LATEST N messages, not the oldest N — so order
+	// DESC + LIMIT, then reverse to ascending below for chat-timeline display.
+	// Without a limit, ASC returns the whole history in order.
+	order := "ASC"
+	if limit > 0 {
+		order = "DESC"
+	}
 	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
         FROM unified_messages
         WHERE channel = ? AND session_id = ? AND create_time >= ?
-        ORDER BY create_time ASC, message_id ASC`
+        ORDER BY create_time ` + order + `, message_id ` + order
 	args := []any{channel, sessionID, since}
 	if limit > 0 {
 		q += " LIMIT ?"
@@ -233,6 +240,9 @@ func (s *Store) ListMessages(channel, sessionID string, since int64, limit int) 
 			return nil, err
 		}
 		out = append(out, m)
+	}
+	if order == "DESC" {
+		reverseMessages(out)
 	}
 	return out, rows.Err()
 }
@@ -319,10 +329,15 @@ func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int)
 	}
 	placeholders := strings.Repeat("?,", len(senderIDs))
 	placeholders = placeholders[:len(placeholders)-1]
+	// Latest N when limited (DESC + LIMIT, reversed below); full history when not.
+	order := "ASC"
+	if limit > 0 {
+		order = "DESC"
+	}
 	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
         FROM unified_messages
         WHERE channel = ? AND sender_id IN (` + placeholders + `)
-        ORDER BY create_time ASC, message_id ASC`
+        ORDER BY create_time ` + order + `, message_id ` + order
 	args := []any{channel}
 	for _, id := range senderIDs {
 		args = append(args, id)
@@ -345,7 +360,18 @@ func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int)
 		}
 		out = append(out, m)
 	}
+	if order == "DESC" {
+		reverseMessages(out)
+	}
 	return out, rows.Err()
+}
+
+// reverseMessages flips a slice in place — used to turn a DESC (latest-first)
+// query result back into ascending chat-timeline order.
+func reverseMessages(m []Message) {
+	for i, j := 0, len(m)-1; i < j; i, j = i+1, j-1 {
+		m[i], m[j] = m[j], m[i]
+	}
 }
 
 // SessionSummary is one chat session's overview: its id, a display name, the

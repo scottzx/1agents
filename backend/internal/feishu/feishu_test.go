@@ -54,6 +54,38 @@ func TestStore_UpsertDedupAndList(t *testing.T) {
 	}
 }
 
+// A limit must return the LATEST N messages (in ascending display order), not
+// the oldest N — otherwise a chat timeline truncates away its newest messages.
+func TestStore_ListMessages_LimitReturnsLatest(t *testing.T) {
+	s := openTestStore(t)
+	batch := make([]Message, 0, 5)
+	for i := 1; i <= 5; i++ {
+		batch = append(batch, Message{
+			Channel: Channel, ChannelAccID: "a",
+			MessageID:  "om_" + string(rune('0'+i)),
+			SessionID:  "oc_x", SenderID: "ou_1", MsgType: "text",
+			Content:    `{"text":"m"}`,
+			CreateTime: int64(i * 1000),
+		})
+	}
+	if _, err := s.UpsertMessages(batch); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// limit 2 → latest two (4000, 5000), still ascending.
+	got, err := s.ListMessages(Channel, "oc_x", 0, 2)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("limited list: len=%d err=%v", len(got), err)
+	}
+	if got[0].CreateTime != 4000 || got[1].CreateTime != 5000 {
+		t.Fatalf("want latest-2 ascending [4000 5000], got [%d %d]", got[0].CreateTime, got[1].CreateTime)
+	}
+	// MessagesBySenders applies the same latest-N semantics.
+	bys, err := s.MessagesBySenders(Channel, []string{"ou_1"}, 2)
+	if err != nil || len(bys) != 2 || bys[0].CreateTime != 4000 || bys[1].CreateTime != 5000 {
+		t.Fatalf("MessagesBySenders latest-2: %+v err=%v", bys, err)
+	}
+}
+
 func TestStore_Watermark(t *testing.T) {
 	s := openTestStore(t)
 	if _, ok, err := s.GetWatermark(Channel, "a", "oc_x"); err != nil || ok {
