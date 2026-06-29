@@ -33,6 +33,24 @@ export const SETTINGS_CATEGORIES: SettingsNavItem[] = [
     { key: 'about', path: '/about', i18nKey: 'settings.nav.about' },
 ];
 
+/**
+ * Whether the page is being viewed as a remote *client* (non-localhost host)
+ * rather than the local backend's own operator UI. Subscription/account is a
+ * Relay concept that only makes sense on the client: the local backend just
+ * exposes a pairing QR/token under「远程控制」. Decided by hostname so dev
+ * testing via LAN IP behaves as a client even though webpack proxies /api.
+ */
+export function isRelayClientHost(): boolean {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname;
+    return !(h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0.0.0.0');
+}
+
+/** Categories visible for the current host (hides client-only ones locally). */
+export function visibleSettingsCategories(): SettingsNavItem[] {
+    return SETTINGS_CATEGORIES.filter(c => c.key !== 'account' || isRelayClientHost());
+}
+
 export const SETTINGS_DEFAULT_CATEGORY: SettingsCategory = 'general';
 export const SETTINGS_ENTRY_PATH = `/${SETTINGS_DEFAULT_CATEGORY}`;
 
@@ -48,7 +66,7 @@ export const SETTINGS_STATIC_MANIFEST: ModuleManifest = {
     moduleId: SETTINGS_MODULE_ID,
     version: 1,
     entryPath: SETTINGS_ENTRY_PATH,
-    topLinks: SETTINGS_CATEGORIES.map(c => ({
+    topLinks: visibleSettingsCategories().map(c => ({
         key: `settings-${c.key}`,
         to: c.path,
         label: c.i18nKey,
