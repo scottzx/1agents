@@ -6,6 +6,7 @@ import type { SettingsCategory } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
 import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
+import { SubscriptionPanel } from './SubscriptionPanel';
 import { RelayDevicePanel } from './RelayDevicePanel';
 import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
 import { DevicesPanel } from './DevicesPanel';
@@ -1439,6 +1440,8 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderGeneral();
             case 'agents':
                 return renderAgents();
+            case 'account':
+                return <SubscriptionPanel />;
             case 'relay':
                 return renderRelay();
             case 'devices':
