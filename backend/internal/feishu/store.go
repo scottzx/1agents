@@ -8,10 +8,13 @@ package feishu
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -262,4 +265,150 @@ func (s *Store) CountMessages(channel, sessionID string) (int, error) {
 	err := s.sql.QueryRow(`SELECT COUNT(1) FROM unified_messages
         WHERE channel = ? AND session_id = ?`, channel, sessionID).Scan(&n)
 	return n, err
+}
+
+// SenderInfo is one distinct chat participant discovered from synced messages:
+// their open_id, latest display name, the session they were last seen in, and
+// that latest timestamp. Used by the contacts module to auto-discover channel
+// identities (Feishu can't return phones for external group members).
+type SenderInfo struct {
+	SenderID   string
+	SenderName string
+	SessionID  string
+	LastSeen   int64
+}
+
+// DistinctSenders returns one row per distinct sender_id on a channel, carrying
+// the name/session from that sender's most recent message and the max
+// create_time. Senders with an empty open_id (system messages) are excluded.
+func (s *Store) DistinctSenders(channel string) ([]SenderInfo, error) {
+	// For each sender pick the latest message's name + session via a correlated
+	// max(create_time); GROUP BY then collapses to one row per sender.
+	rows, err := s.sql.Query(`SELECT m.sender_id, m.sender_name, m.session_id, m.create_time
+        FROM unified_messages m
+        JOIN (
+            SELECT sender_id, MAX(create_time) AS mt
+            FROM unified_messages
+            WHERE channel = ? AND sender_id != ''
+            GROUP BY sender_id
+        ) latest ON latest.sender_id = m.sender_id AND latest.mt = m.create_time
+        WHERE m.channel = ? AND m.sender_id != ''
+        GROUP BY m.sender_id
+        ORDER BY m.create_time DESC`, channel, channel)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SenderInfo{}
+	for rows.Next() {
+		var si SenderInfo
+		if err := rows.Scan(&si.SenderID, &si.SenderName, &si.SessionID, &si.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
+// MessagesBySenders returns a channel's messages authored by any of senderIDs,
+// in ascending time order. Used to assemble a contact's cross-group messages.
+// limit <= 0 means no limit; an empty senderIDs returns no rows.
+func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int) ([]Message, error) {
+	if len(senderIDs) == 0 {
+		return []Message{}, nil
+	}
+	placeholders := strings.Repeat("?,", len(senderIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
+        FROM unified_messages
+        WHERE channel = ? AND sender_id IN (` + placeholders + `)
+        ORDER BY create_time ASC, message_id ASC`
+	args := []any{channel}
+	for _, id := range senderIDs {
+		args = append(args, id)
+	}
+	if limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := s.sql.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Message{}
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.Channel, &m.ChannelAccID, &m.MessageID, &m.SessionID,
+			&m.SenderID, &m.SenderName, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SessionSummary is one chat session's overview: its id, a display name, the
+// latest message's preview/time, and the total message count. Used by the
+// contacts 消息 tab session list.
+type SessionSummary struct {
+	SessionID   string
+	SessionName string
+	LastPreview string
+	LastTime    int64
+	Count       int
+}
+
+// SessionSummaries returns a summary per session on a channel, built on top of
+// ListSessions: per-session count + latest message time/preview.
+func (s *Store) SessionSummaries(channel string) ([]SessionSummary, error) {
+	sessions, err := s.ListSessions(channel)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionSummary, 0, len(sessions))
+	for _, sid := range sessions {
+		count, err := s.CountMessages(channel, sid)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: sync.db has no session display-name source (chat title is not
+		// persisted), so SessionName falls back to the session id for now.
+		sum := SessionSummary{SessionID: sid, SessionName: sid, Count: count}
+		var name, content, msgType string
+		err = s.sql.QueryRow(`SELECT sender_name, content, msg_type, create_time
+            FROM unified_messages
+            WHERE channel = ? AND session_id = ?
+            ORDER BY create_time DESC, message_id DESC LIMIT 1`,
+			channel, sid).Scan(&name, &content, &msgType, &sum.LastTime)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+		if err == nil {
+			sum.LastPreview = previewText(name, msgType, content)
+		}
+		out = append(out, sum)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastTime > out[j].LastTime })
+	return out, nil
+}
+
+// previewText builds a short, single-line preview for a session's latest
+// message. Best-effort: only text bodies are unwrapped; other types degrade to
+// a "[type]" placeholder. Mirrors the digest renderer's intent without coupling.
+func previewText(senderName, msgType, content string) string {
+	body := "[" + msgType + "]"
+	if msgType == "text" {
+		var t struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal([]byte(content), &t) == nil && t.Text != "" {
+			body = t.Text
+		}
+	}
+	body = strings.ReplaceAll(body, "\n", " ")
+	if senderName != "" {
+		return senderName + ": " + body
+	}
+	return body
 }

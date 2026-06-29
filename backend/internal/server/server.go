@@ -21,6 +21,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
 	ctxt "github.com/scottzx/1Agents/backend/internal/context"
+	"github.com/scottzx/1Agents/backend/internal/contacts"
 	"github.com/scottzx/1Agents/backend/internal/digest"
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
@@ -198,6 +199,21 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/digest/sync", digestHandler.HandleSync)               // POST {chatId}
 				mux.HandleFunc("/api/digest/analyze", digestHandler.HandleAnalyze)         // POST {chatId, workspace}
 				mux.HandleFunc("/api/digest/messages", digestHandler.HandleMessages)       // GET ?session=
+			}
+
+			// 联系人聚合: a user-curated address book (meta.db v16) over channel
+			// identities auto-discovered from synced Feishu messages (sync.db).
+			// Self-wires its own stores from the default databases.
+			if contactsHandler, cErr := contacts.NewHandlerDefault(); cErr != nil {
+				log.Printf("[server] contacts init failed: %v", cErr)
+			} else {
+				mux.HandleFunc("/api/contacts", contactsHandler.HandleContacts)              // GET, POST
+				mux.HandleFunc("/api/contacts/channels", contactsHandler.HandleChannels)     // GET ?contactId=&unlinked=1
+				mux.HandleFunc("/api/contacts/channels/", contactsHandler.HandleChannelAction) // POST /{id}/link|unlink
+				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)     // POST
+				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)     // GET ?contactId=|sessionId=
+				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)     // GET
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)          // PATCH, DELETE /{id}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
