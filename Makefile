@@ -20,7 +20,7 @@ AGENT_LDFLAGS := -s -w \
   -X main.commit=$(COMMIT)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME) \
   -X main.buildTime=$(BUILD_TIME)
 
-.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch
+.PHONY: all frontend ttyd cc-connect cc-connect-noweb cc-switch happy backend agent package release-notes clean help install-hooks submodules submodule-cc-connect submodule-cc-switch submodule-happy-cli
 
 help:
 	@echo "Unified Build and Packaging System for Remote Agents"
@@ -34,13 +34,14 @@ help:
 	@echo "  make cc-connect        - Compile cc-connect Go daemon (with web assets)"
 	@echo "  make cc-connect-noweb  - Compile cc-connect Go daemon (WITHOUT rebuilding web assets)"
 	@echo "  make cc-switch         - Compile cc-switch Rust CLI sidecar"
+	@echo "  make happy             - Build the happy-cli Node submodule + build/happy launcher"
 	@echo "  make backend           - Compile 1agents Go server (backend) with version ldflags"
 	@echo "  make package           - Create a target-distinguished deployable archive in dist/"
 	@echo "  make release-notes     - Generate a self-contained release feature-intro HTML page (FROM/TO/OUT overridable)"
 	@echo "  make clean             - Clean all intermediate and build outputs across components"
 	@echo "  make install-hooks     - Install git hooks (auto-push submodules + create PRs on git push)"
 
-all: frontend ttyd cc-connect cc-switch backend
+all: frontend ttyd cc-connect cc-switch happy backend
 
 # --- Git submodules ---------------------------------------------------------
 # All four submodules are pinned gitlinks. Check them out before building any
@@ -57,6 +58,10 @@ submodule-cc-connect:
 submodule-cc-switch:
 	@echo "=== Ensuring cc-switch-cli submodule is checked out..."
 	git submodule update --init modules/cc-switch-cli
+
+submodule-happy-cli:
+	@echo "=== Ensuring happy-cli submodule is checked out..."
+	git submodule update --init modules/happy-cli
 
 frontend:
 	@echo "=== Building Frontend (frontend/)..."
@@ -105,6 +110,10 @@ cc-switch: submodule-cc-switch
 		codesign --force --deep --sign - build/cc-switch ; \
 	fi
 
+happy: submodule-happy-cli
+	@echo "=== Building happy bundle (modules/happy-cli -> build/happy-cli + build/adapter)..."
+	./scripts/build-happy-bundle.sh
+
 backend:
 	@echo "=== Building 1agents Go server (backend)..."
 	mkdir -p build
@@ -124,6 +133,9 @@ package: all
 	cp build/ttyd dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/cc-connect dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
 	cp build/cc-switch dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp build/happy dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/
+	cp -r build/happy-cli dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/happy-cli
+	cp -r build/adapter dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/bin/adapter
 	cp -r frontend/dist dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)/dist
 	cd dist && tar -czf 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz 1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME)
 	@echo "=== Created package: dist/1agents-$(VERSION)-$(OS_LOWER)-$(ARCH_LOWER)-$(HOSTNAME).tar.gz"
