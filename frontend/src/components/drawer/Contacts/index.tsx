@@ -11,13 +11,14 @@ import {
     type FeishuMessage,
     type SessionSummary,
 } from '@1agents/core/services/contactService';
+import { ChannelsTab } from './ChannelsTab';
 
 // 联系人聚合 (Contacts aggregation): a user-curated address book over channel
 // identities auto-discovered from synced Feishu messages. Two tabs — 联系人 and
 // 消息 — share one responsive master-detail shell (desktop: list + detail side
 // by side; mobile: list, then detail full-screen with a back button).
 
-type Tab = 'contacts' | 'messages';
+type Tab = 'contacts' | 'messages' | 'channels';
 
 function initials(name: string): string {
     const n = name.trim();
@@ -59,6 +60,7 @@ export function ContactsPane() {
                     [
                         ['contacts', t('contacts.tab.contacts', language)],
                         ['messages', t('contacts.tab.messages', language)],
+                        ['channels', t('contacts.tab.channels', language)],
                     ] as Array<[Tab, string]>
                 ).map(([key, label]) => (
                     <button key={key} class={tab.value === key ? 'active' : ''} onClick={() => (tab.value = key)}>
@@ -66,7 +68,9 @@ export function ContactsPane() {
                     </button>
                 ))}
             </div>
-            {tab.value === 'contacts' ? <ContactsTab /> : <MessagesTab />}
+            {tab.value === 'contacts' && <ContactsTab />}
+            {tab.value === 'messages' && <MessagesTab />}
+            {tab.value === 'channels' && <ChannelsTab />}
         </div>
     );
 }

@@ -199,6 +199,14 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/digest/sync", digestHandler.HandleSync)               // POST {chatId}
 				mux.HandleFunc("/api/digest/analyze", digestHandler.HandleAnalyze)         // POST {chatId, workspace}
 				mux.HandleFunc("/api/digest/messages", digestHandler.HandleMessages)       // GET ?session=
+				// 飞书渠道配置 (Phase 2): browse groups, track/untrack, manual + auto
+				// sync (reuses SyncChat watermark + message_id dedup).
+				mux.HandleFunc("/api/digest/chats/available", digestHandler.HandleAvailableChats) // GET
+				mux.HandleFunc("/api/digest/chats/tracked", digestHandler.HandleTrackedChats)     // GET, POST
+				mux.HandleFunc("/api/digest/chats/tracked/", digestHandler.HandleTrackedChatItem) // DELETE, PATCH /{chatId}
+				mux.HandleFunc("/api/digest/sync/all", digestHandler.HandleSyncAll)               // POST
+				mux.HandleFunc("/api/digest/sync/config", digestHandler.HandleSyncConfig)         // GET, PUT
+				mux.HandleFunc("/api/digest/status", digestHandler.HandleStatus)                  // GET
 			}
 
 			// 联系人聚合: a user-curated address book (meta.db v16) over channel

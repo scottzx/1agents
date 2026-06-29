@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 16
+const schemaVersion = 17
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -169,6 +169,13 @@ func (db *DB) migrateSchema() error {
 	if version < 16 {
 		if _, err := db.sql.Exec(schemaV16); err != nil {
 			return fmt.Errorf("meta: apply schema v16: %w", err)
+		}
+	}
+	// v17 (飞书渠道配置) adds the tracked-chats + global sync-config tables. New
+	// tables only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 17 {
+		if _, err := db.sql.Exec(schemaV17); err != nil {
+			return fmt.Errorf("meta: apply schema v17: %w", err)
 		}
 	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
@@ -572,6 +579,30 @@ CREATE TABLE IF NOT EXISTS contact_channels (
     UNIQUE(platform, channel_id)
 );
 CREATE INDEX IF NOT EXISTS idx_contact_channels_contact ON contact_channels(contact_id);
+`
+
+// schemaV17 adds the 飞书渠道配置 layer (Phase 2). feishu_tracked_chats is the
+// user's curated set of groups to keep synced: auto_sync gates each chat in the
+// periodic loop, last_synced_at drives the per-chat cadence. feishu_sync_config
+// is the single-row global toggle + interval (minutes) governing auto-sync.
+// Tracking only records which groups to sync — the fetch loop / cross-run
+// watermark / message_id dedup all stay in sync.db (unified_*), reused as-is.
+const schemaV17 = `
+CREATE TABLE IF NOT EXISTS feishu_tracked_chats (
+    chat_id        TEXT PRIMARY KEY,
+    chat_name      TEXT NOT NULL DEFAULT '',
+    avatar         TEXT NOT NULL DEFAULT '',
+    external       INTEGER NOT NULL DEFAULT 0,
+    auto_sync      INTEGER NOT NULL DEFAULT 1,
+    last_synced_at INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feishu_sync_config (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    interval_minutes INTEGER NOT NULL DEFAULT 180
+);
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

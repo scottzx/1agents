@@ -20,13 +20,15 @@ import (
 // synced message store (sync.db). It wires its own stores from the default
 // databases so server.go stays thin.
 type Handler struct {
-	fs *feishu.Store
-	cs *meta.ContactStore
+	fs  *feishu.Store
+	cs  *meta.ContactStore
+	ccs *meta.FeishuChatStore // tracked-chat names overlay onto session summaries
 }
 
-// NewHandler builds a Handler from explicit stores (used by tests).
-func NewHandler(fs *feishu.Store, cs *meta.ContactStore) *Handler {
-	return &Handler{fs: fs, cs: cs}
+// NewHandler builds a Handler from explicit stores (used by tests). ccs may be
+// nil; session summaries then keep the chat_id fallback for names.
+func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore) *Handler {
+	return &Handler{fs: fs, cs: cs, ccs: ccs}
 }
 
 // NewHandlerDefault wires the handler from the default sync.db + meta.db (the
@@ -41,7 +43,7 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(fs, meta.NewContactStore(db)), nil
+	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db)), nil
 }
 
 // ── HTTP helpers ──
@@ -280,6 +282,18 @@ func (h *Handler) HandleSessions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// Overlay tracked-chat names so the 消息 tab shows human group names instead
+	// of raw chat_ids (the only display-name source; sync.db has none). Missing
+	// names keep the chat_id fallback already set by SessionSummaries.
+	if h.ccs != nil {
+		if names, nerr := h.ccs.TrackedNamesBySession(); nerr == nil {
+			for i := range sums {
+				if n := names[sums[i].SessionID]; n != "" {
+					sums[i].SessionName = n
+				}
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, sums)
 }

@@ -372,8 +372,9 @@ func (s *Store) SessionSummaries(channel string) ([]SessionSummary, error) {
 		if err != nil {
 			return nil, err
 		}
-		// TODO: sync.db has no session display-name source (chat title is not
-		// persisted), so SessionName falls back to the session id for now.
+		// sync.db has no session display-name source (chat title is not
+		// persisted here), so SessionName falls back to the session id. The
+		// contacts handler overlays tracked-chat names (meta.db v17) on top.
 		sum := SessionSummary{SessionID: sid, SessionName: sid, Count: count}
 		var name, content, msgType string
 		err = s.sql.QueryRow(`SELECT sender_name, content, msg_type, create_time

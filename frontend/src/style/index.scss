@@ -2900,6 +2900,160 @@ body {
   margin-top: 4px;
 }
 
+// ── 渠道配置 (ChannelsTab) ────────────────────────────────────────────────
+.contacts-channels {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+
+.contacts-channels-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--bento-radius-sm, 8px);
+  font-size: 13px;
+
+  &.ok {
+    background: var(--success-bg);
+    color: var(--success-fg);
+    .contacts-channels-dot { background: var(--success-fg); }
+  }
+  &.bad {
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+    .contacts-channels-dot { background: var(--danger-fg); }
+  }
+}
+
+.contacts-channels-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.contacts-channels-banner-text {
+  font-weight: 600;
+}
+
+.contacts-channels-banner-err {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.contacts-channels-check {
+  font-size: 12px;
+  color: var(--text-secondary);
+
+  &.fail { color: var(--danger-fg); }
+  &.warn { color: var(--warning-fg); }
+}
+
+.contacts-channels-toast {
+  padding: 6px 10px;
+  border-radius: var(--bento-radius-sm, 8px);
+  background: var(--success-bg);
+  color: var(--success-fg);
+  font-size: 13px;
+}
+
+.contacts-channels-config {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 8px);
+  background: var(--bg-card);
+}
+
+.contacts-channels-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+
+  &.contacts-channels-toggle-sm { font-size: 12px; }
+}
+
+.contacts-channels-interval {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+
+  select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-main);
+    font-size: 13px;
+  }
+}
+
+.contacts-channels-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.contacts-channels-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.contacts-channels-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contacts-channels-name {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contacts-channels-row-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.contacts-channels-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+
+  &.int {
+    background: var(--accent-light);
+    color: var(--accent-color);
+  }
+  &.ext {
+    background: var(--warning-bg);
+    color: var(--warning-fg);
+  }
+}
+
 @media (max-width: 768px) {
   .contacts-list-col {
     flex: 1;
