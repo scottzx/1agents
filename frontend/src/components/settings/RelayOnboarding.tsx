@@ -8,8 +8,11 @@
  * 前两步过了才进配对。订阅是硬门槛:对应 server 的 subscription_required —— 若
  * 自动连接因订阅被拒落到门禁,进入即拉 getSubscription(),非 active 会停在 Step 2。
  *
- * 复用:Step 3 直接渲染 <RelayDevicePanel embedded>(扫码配对那套)。进入 app 后
- * 订阅管理仍走设置里的 SubscriptionPanel(本组件只负责落地门禁)。
+ * 复用:Step 3 直接渲染 <RelayPairingPanel embedded>(账户级配对那套)。配对是
+ * 账户级审批 —— Step 1 创建的是「本端账户 C」,审批机器(daemon)即让该机器加入
+ * 账户 C;于是 C 的 user-scoped 中转连接天然带上 C 的订阅(Model A #1 账户级绑定,
+ * 替代旧 RelayDevicePanel「借机器 token」的设备档案流)。进入 app 后订阅管理仍走
+ * 设置里的 SubscriptionPanel(本组件只负责落地门禁)。
  */
 import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
@@ -27,7 +30,7 @@ import {
 } from '../../services/subscriptionService';
 import { createAccount } from '../../services/relay/relayClient';
 import { getPlatformBridge } from '@1agents/core/platform/bridge';
-import { RelayDevicePanel } from './RelayDevicePanel';
+import { RelayPairingPanel } from './RelayPairingPanel';
 
 const LS_URL = 'oneagents.relay.url';
 
@@ -340,17 +343,20 @@ export function RelayOnboarding({ onReady }: { onReady?: () => void }) {
     };
 
     // ── Step 3 内容 ──
+    // 账户级配对:在机器上跑 `happy auth login` 生成配对码,这里扫码/粘贴审批,
+    // 即把该机器并入 Step 1 创建的本端账户(于是本账户的订阅天然随中转连接生效);
+    // 再「设为后端并进入」即可开始使用。
     const renderStep3 = () => (
         <Fragment>
             <div class="bento-card sub-card">
                 <div class="bento-zone-body">
                     <div class="bento-card-desc">
-                        订阅已就绪。扫机器端「本机 Relay」里的配置二维码绑定一台远程机器;绑定一次后,
-                        以后进来会自动连接,可保存多台并随时切换。
+                        订阅已就绪。在机器端运行 <code>happy auth login</code> 生成配对二维码/链接,这里扫码或
+                        粘贴审批,即把该机器并入你的账户;随后「设为后端并进入」即可开始使用。
                     </div>
                 </div>
             </div>
-            <RelayDevicePanel embedded onConnected={() => onReady?.()} />
+            <RelayPairingPanel embedded onNodeSelected={() => onReady?.()} />
             <div class="onb-nav">
                 <button class="sys-settings-btn ghost" onClick={() => (step.value = 2)}>
                     上一步
