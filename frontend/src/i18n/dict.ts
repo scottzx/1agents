@@ -812,6 +812,7 @@ export const zhCN: Record<string, string> = {
     // ── 渠道配置 (ChannelsTab) ──────────────────────────────────────────────
     'contacts.tab.channels': '渠道',
     'contacts.channels.memberCount': '成员数',
+    'contacts.channels.ingested': '已获取',
     'contacts.channels.connected': '飞书已连接',
     'contacts.channels.disconnected': '飞书未连接',
     'contacts.channels.autoSync': '自动同步',
@@ -1944,6 +1945,7 @@ export const enUS: Record<string, string> = {
     // ── Channel config (ChannelsTab) ────────────────────────────────────
     'contacts.tab.channels': 'Channels',
     'contacts.channels.memberCount': 'Members',
+    'contacts.channels.ingested': 'fetched',
     'contacts.channels.connected': 'Feishu connected',
     'contacts.channels.disconnected': 'Feishu not connected',
     'contacts.channels.autoSync': 'Auto-sync',

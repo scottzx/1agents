@@ -18,6 +18,10 @@ type TrackedChat struct {
 	AutoSync     bool      `json:"autoSync"`
 	LastSyncedAt int64     `json:"lastSyncedAt"`
 	CreatedAt    time.Time `json:"createdAt"`
+	// MemberTotal is the chat's true member count from the API. For very large
+	// groups it exceeds the enumerable roster (which the API caps), so it is the
+	// real group size, distinct from how many members were actually ingested.
+	MemberTotal int `json:"memberTotal"`
 }
 
 // SyncConfig is the global auto-sync toggle + interval (minutes) governing the
@@ -35,19 +39,27 @@ type FeishuChatStore struct {
 // NewFeishuChatStore returns a FeishuChatStore over db.
 func NewFeishuChatStore(db *DB) *FeishuChatStore { return &FeishuChatStore{db: db} }
 
-const trackedChatCols = `chat_id, chat_name, avatar, external, auto_sync, last_synced_at, created_at`
+const trackedChatCols = `chat_id, chat_name, avatar, external, auto_sync, last_synced_at, created_at, member_total`
 
 func scanTrackedChat(r rowScanner) (TrackedChat, error) {
 	var t TrackedChat
 	var external, autoSync int
 	var createdAt string
-	if err := r.Scan(&t.ChatID, &t.ChatName, &t.Avatar, &external, &autoSync, &t.LastSyncedAt, &createdAt); err != nil {
+	if err := r.Scan(&t.ChatID, &t.ChatName, &t.Avatar, &external, &autoSync, &t.LastSyncedAt, &createdAt, &t.MemberTotal); err != nil {
 		return TrackedChat{}, err
 	}
 	t.External = external != 0
 	t.AutoSync = autoSync != 0
 	t.CreatedAt = strToTime(createdAt)
 	return t, nil
+}
+
+// SetTrackedMemberTotal records a chat's true member count (from the members
+// API's member_total) so the tracked list can show real group size even when
+// the enumerable roster is capped. No-op if the chat isn't tracked.
+func (s *FeishuChatStore) SetTrackedMemberTotal(chatID string, total int) error {
+	_, err := s.db.sql.Exec(`UPDATE feishu_tracked_chats SET member_total = ? WHERE chat_id = ?`, total, chatID)
+	return err
 }
 
 // ListTrackedChats returns tracked chats ordered by created_at. When autoOnly is
@@ -96,15 +108,17 @@ func (s *FeishuChatStore) UpsertTrackedChat(t TrackedChat) error {
 	}
 	createdAt := time.Now().UTC()
 	lastSynced := t.LastSyncedAt
+	memberTotal := t.MemberTotal
 	if ok {
 		createdAt = existing.CreatedAt
 		lastSynced = existing.LastSyncedAt
+		memberTotal = existing.MemberTotal // preserve; refreshed via SetTrackedMemberTotal on sync
 	}
 	_, err = s.db.sql.Exec(`INSERT OR REPLACE INTO feishu_tracked_chats
         (`+trackedChatCols+`)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ChatID, t.ChatName, t.Avatar, boolToInt(t.External), boolToInt(t.AutoSync),
-		lastSynced, timeToStr(createdAt))
+		lastSynced, timeToStr(createdAt), memberTotal)
 	return err
 }
 

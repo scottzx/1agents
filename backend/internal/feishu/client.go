@@ -83,6 +83,10 @@ type apiMembersResp struct {
 			Name      string `json:"name"`
 			TenantKey string `json:"tenant_key"`
 		} `json:"items"`
+		// MemberTotal is the chat's true member count. For very large external
+		// groups the API caps enumerable items (e.g. 100, has_more=false) even
+		// though member_total reports the real size (e.g. 5000).
+		MemberTotal int `json:"member_total"`
 	} `json:"data"`
 }
 
@@ -255,31 +259,38 @@ type Member struct {
 	TenantKey string
 }
 
-// FetchMembersDetailed returns the full roster (open_id + name + tenant_key) for
-// a chat, parsing the same chat.members response as FetchMembers. Used by the
-// 二度联系人 ingestion path, which needs the org per member.
-func (c *Client) FetchMembersDetailed(ctx context.Context, chatID string) ([]Member, error) {
+// FetchMembersDetailed returns a chat's enumerable members (open_id + name +
+// tenant_key, parsed from the same chat.members response as FetchMembers) plus
+// total, the chat's true member count. For very large external groups the API
+// caps the enumerable roster (e.g. 100, has_more=false) while total reports the
+// real size (e.g. 5000), so callers can show real size alongside what was
+// actually ingested. Used by the 二度联系人 ingestion path.
+func (c *Client) FetchMembersDetailed(ctx context.Context, chatID string) (members []Member, total int, err error) {
 	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/chats/"+chatID+"/members",
 		"--params", `{"page_size":"100","member_id_type":"open_id"}`, "--as", "user",
 		"--page-all", "--page-limit", "0", "--format", "json")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var resp apiMembersResp
 	if err := json.Unmarshal(out, &resp); err != nil {
-		return nil, fmt.Errorf("feishu: decode members: %w", err)
+		return nil, 0, fmt.Errorf("feishu: decode members: %w", err)
 	}
 	if resp.Code != 0 {
-		return nil, fmt.Errorf("feishu: members api code=%d", resp.Code)
+		return nil, 0, fmt.Errorf("feishu: members api code=%d", resp.Code)
 	}
-	members := make([]Member, 0, len(resp.Data.Items))
+	members = make([]Member, 0, len(resp.Data.Items))
 	for _, it := range resp.Data.Items {
 		if it.MemberID == "" {
 			continue
 		}
 		members = append(members, Member{OpenID: it.MemberID, Name: it.Name, TenantKey: it.TenantKey})
 	}
-	return members, nil
+	total = resp.Data.MemberTotal
+	if total < len(members) {
+		total = len(members) // defensive: never report fewer than we enumerated
+	}
+	return members, total, nil
 }
 
 // extractTitle pulls a human title out of a message body where one exists

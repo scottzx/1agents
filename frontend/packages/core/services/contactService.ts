@@ -104,7 +104,11 @@ export interface TrackedChat {
     autoSync: boolean;
     lastSyncedAt: number;
     createdAt: string;
+    // memberCount = degree-2 roster size actually ingested; memberTotal = the
+    // chat's true size from the API. For large groups the API caps the roster,
+    // so memberTotal can exceed memberCount.
     memberCount?: number;
+    memberTotal?: number;
 }
 
 // meta.SyncConfig — camelCase json tags.

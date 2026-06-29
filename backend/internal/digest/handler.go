@@ -56,7 +56,7 @@ func (h *Handler) ingestMembers(ctx context.Context, chatID string) {
 	if h.cs == nil {
 		return
 	}
-	members, err := h.client().FetchMembersDetailed(ctx, chatID)
+	members, total, err := h.client().FetchMembersDetailed(ctx, chatID)
 	if err != nil {
 		log.Printf("[digest] roster %s: fetch members: %v", chatID, err)
 		return
@@ -67,6 +67,14 @@ func (h *Handler) ingestMembers(ctx context.Context, chatID string) {
 	}
 	if _, err := h.cs.IngestGroupMembers(chatID, gm); err != nil {
 		log.Printf("[digest] roster %s: ingest members: %v", chatID, err)
+	}
+	// Record the chat's true size (member_total). For large groups the API caps
+	// the enumerable roster, so total > len(members); store it so the UI shows
+	// real group size alongside how many were ingested.
+	if h.ccs != nil {
+		if err := h.ccs.SetTrackedMemberTotal(chatID, total); err != nil {
+			log.Printf("[digest] roster %s: set member_total: %v", chatID, err)
+		}
 	}
 }
 

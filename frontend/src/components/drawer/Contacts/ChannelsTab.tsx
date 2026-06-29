@@ -244,7 +244,13 @@ export function ChannelsTab() {
                             <div class="contacts-channels-row-sub">
                                 {t('contacts.channels.lastSynced', language)}: {lastSynced(c.lastSyncedAt)}
                                 {' · '}
-                                {t('contacts.channels.memberCount', language)}: {c.memberCount ?? 0}
+                                {t('contacts.channels.memberCount', language)}: {c.memberTotal || c.memberCount || 0}
+                                {(c.memberTotal ?? 0) > (c.memberCount ?? 0) && (
+                                    <>
+                                        {' '}
+                                        ({t('contacts.channels.ingested', language)} {c.memberCount ?? 0})
+                                    </>
+                                )}
                             </div>
                         </div>
                         <label class="contacts-channels-toggle contacts-channels-toggle-sm">

@@ -320,6 +320,18 @@ func (db *DB) ensureContactsColumns() error {
 			return fmt.Errorf("add contact_channels.tenant_key: %w", err)
 		}
 	}
+	// feishu_tracked_chats.member_total: the chat's true member count (API
+	// member_total), distinct from the enumerable roster the API caps for very
+	// large groups.
+	trackedCols, err := db.tableColumns("feishu_tracked_chats")
+	if err != nil {
+		return err
+	}
+	if len(trackedCols) > 0 && !trackedCols["member_total"] {
+		if _, err := db.sql.Exec(`ALTER TABLE feishu_tracked_chats ADD COLUMN member_total INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add feishu_tracked_chats.member_total: %w", err)
+		}
+	}
 	return nil
 }
 
