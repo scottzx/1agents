@@ -15682,5 +15682,89 @@ body {
   &--danger { color: var(--danger-fg); background-color: var(--danger-bg); }
 }
 
+/* ═══ Relay onboarding (客户端落地引导:账号 → 订阅 → 配对设备) ═════════════ */
+.onb-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.onb-stepper-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+
+  &.is-active { color: var(--accent-fg); }
+  &.is-done { color: var(--success-fg); }
+}
+
+.onb-stepper-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-card);
+
+  .onb-stepper-item.is-active & {
+    border-color: var(--accent-emphasis);
+    background-color: var(--accent-light);
+    color: var(--accent-fg);
+  }
+  .onb-stepper-item.is-done & {
+    border-color: var(--success-emphasis);
+    background-color: var(--success-bg);
+    color: var(--success-fg);
+  }
+}
+
+.onb-stepper-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.onb-stepper-line {
+  flex: 1;
+  height: 2px;
+  min-width: 16px;
+  border-radius: 2px;
+  background-color: var(--border-color);
+
+  &.is-done { background-color: var(--success-emphasis); }
+}
+
+.onb-field {
+  margin-top: 10px;
+}
+
+.onb-field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.onb-input {
+  width: 100%;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.onb-ok-line {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--success-fg);
+}
+
+.onb-nav {
+  margin-top: 4px;
+}
+
 @import './dashboard';
 

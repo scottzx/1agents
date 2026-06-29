@@ -44,6 +44,22 @@ export class TrialAlreadyClaimedError extends Error {
     }
 }
 
+/** 激活码无效(POST /v1/subscription/activate → 400)时抛出。 */
+export class InvalidCodeError extends Error {
+    constructor() {
+        super('激活码无效');
+        this.name = 'InvalidCodeError';
+    }
+}
+
+/** 激活码已被使用(POST /v1/subscription/activate → 409)时抛出。 */
+export class CodeUsedError extends Error {
+    constructor() {
+        super('激活码已被使用');
+        this.name = 'CodeUsedError';
+    }
+}
+
 /** 取中转服务器地址:localStorage 优先,回退当前页面 origin。 */
 function serverUrl(): string {
     const stored = getPlatformBridge().storage.get(LS_URL);
@@ -93,5 +109,24 @@ export async function claimTrial(): Promise<{ ok: true; expiresAt: string }> {
     const text = await resp.text();
     if (resp.status === 409) throw new TrialAlreadyClaimedError();
     if (!resp.ok) throw new Error(`POST /v1/subscription/claim-trial → ${resp.status}: ${text.slice(0, 200)}`);
+    return JSON.parse(text) as { ok: true; expiresAt: string };
+}
+
+/**
+ * 用激活码兑换订阅。
+ *  - 400 → InvalidCodeError(激活码无效)
+ *  - 409 → CodeUsedError(激活码已被使用)
+ */
+export async function activateCode(code: string): Promise<{ ok: true; expiresAt: string }> {
+    const token = requireToken();
+    const resp = await getPlatformBridge().httpFetch(`${serverUrl()}/v1/subscription/activate`, {
+        method: 'POST',
+        headers: headers(token),
+        body: JSON.stringify({ code }),
+    });
+    const text = await resp.text();
+    if (resp.status === 400) throw new InvalidCodeError();
+    if (resp.status === 409) throw new CodeUsedError();
+    if (!resp.ok) throw new Error(`POST /v1/subscription/activate → ${resp.status}: ${text.slice(0, 200)}`);
     return JSON.parse(text) as { ok: true; expiresAt: string };
 }

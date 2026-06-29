@@ -5,7 +5,7 @@ import { FileDetailView } from './drawer/FileDetailView';
 import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
 import { ModeSelectOnboarding } from './welcome/ModeSelectOnboarding';
-import { RelayDevicePanel } from './settings/RelayDevicePanel';
+import { RelayOnboarding } from './settings/RelayOnboarding';
 import { initBackend } from '../services/apiClient';
 import { ModalHost } from './modal/ModalHost';
 import { fsService } from '../services/fsService';
@@ -447,23 +447,10 @@ export class App extends Component<{}, AppState> {
             return <AccessTokenGate onAuthenticated={this.onAccessAuthenticated} language={language} />;
         }
 
-        // 中转模式但未连接到节点 → 显示配对门禁(配对/选节点后会自动进入主界面)。
+        // 中转模式但未连接到节点 → 三步落地引导(账号 → 订阅 → 配对设备),
+        // 前两步过了才进配对;配对成功后 reload 自动进入主界面。
         if (backendGateVisible) {
-            return (
-                <div class="app-container" style="min-height:100vh;background:var(--bg-page);overflow:auto">
-                    <div class="sys-settings-page sys-settings-page--bare">
-                        <div class="sys-settings-content">
-                            <div class="sys-settings-section" style="margin-bottom:8px">
-                                <div class="sys-settings-section-title">未连接设备</div>
-                                <div class="sys-settings-section-desc">
-                                    当前页面由中转服务器提供,需要先扫码绑定一台远程机器才能使用。绑定一次后,以后进来会自动连接;可保存多台并随时切换。
-                                </div>
-                            </div>
-                            <RelayDevicePanel embedded onConnected={() => window.location.reload()} />
-                        </div>
-                    </div>
-                </div>
-            );
+            return <RelayOnboarding onReady={() => window.location.reload()} />;
         }
 
         // If workspaces are empty and loading on initial load, show a loading spinner
