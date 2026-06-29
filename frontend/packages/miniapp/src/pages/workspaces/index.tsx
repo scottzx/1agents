@@ -47,8 +47,12 @@ export default function Workspaces() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openChat = () => {
-    Taro.navigateTo({ url: '/pages/chat/index' });
+  const openChat = (s?: ChatSession) => {
+    if (s) {
+      Taro.navigateTo({ url: `/pages/chat/index?session_id=${s.id}` });
+    } else {
+      Taro.navigateTo({ url: '/pages/chat/index' });
+    }
   };
 
   return (
@@ -66,18 +70,17 @@ export default function Workspaces() {
             icon="⚠️"
             title={t('workspaces.error')}
             desc={error}
-            action={{ label: t('common.retry'), onClick: reload }}
           />
         ) : sessions.length === 0 ? (
           <EmptyState
             icon="💬"
             title={t('workspaces.empty')}
-            action={{ label: t('workspaces.newChat'), onClick: openChat }}
+            action={{ label: t('workspaces.newChat'), onClick: () => openChat() }}
           />
         ) : (
           <Section title={t('workspaces.sessions')}>
             {sessions.map((s) => (
-              <Card key={s.id} onClick={openChat} className="ws-card">
+              <Card key={s.id} onClick={() => openChat(s)} className="ws-card">
                 <Text className="ws-card__name">{s.name}</Text>
                 <View className="ws-card__tags">
                   <Tag text={AGENT_TYPE_LABELS[s.agentType]} tone="accent" />
@@ -93,7 +96,7 @@ export default function Workspaces() {
       </View>
 
       <View className="ws-foot">
-        <Button className="ws-foot__btn" onClick={openChat}>
+        <Button className="ws-foot__btn" onClick={() => openChat()}>
           {t('workspaces.newChat')}
         </Button>
       </View>

@@ -1,3 +1,4 @@
+import './polyfill';
 import {PropsWithChildren} from 'react';
 import {useLaunch} from '@tarojs/taro';
 import {setPlatformBridge} from '@1agents/core/platform/bridge';
