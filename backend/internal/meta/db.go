@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 15
+const schemaVersion = 17
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -162,6 +162,20 @@ func (db *DB) migrateSchema() error {
 	if version < 15 {
 		if _, err := db.sql.Exec(schemaV15); err != nil {
 			return fmt.Errorf("meta: apply schema v15: %w", err)
+		}
+	}
+	// v16 (联系人聚合) adds the contacts + channel-identity tables. New tables
+	// only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 16 {
+		if _, err := db.sql.Exec(schemaV16); err != nil {
+			return fmt.Errorf("meta: apply schema v16: %w", err)
+		}
+	}
+	// v17 (飞书渠道配置) adds the tracked-chats + global sync-config tables. New
+	// tables only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 17 {
+		if _, err := db.sql.Exec(schemaV17); err != nil {
+			return fmt.Errorf("meta: apply schema v17: %w", err)
 		}
 	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
@@ -529,6 +543,66 @@ CREATE TABLE IF NOT EXISTS digest_bindings (
     PRIMARY KEY (session_id, template_id)
 );
 CREATE INDEX IF NOT EXISTS idx_digest_bindings_session ON digest_bindings(session_id);
+`
+
+// schemaV16 adds the 联系人聚合 layer. contacts is the user-curated address book
+// keyed by phone (the unique merge key across channels; Feishu can't return a
+// phone for external group members, so the user creates the contact). Empty
+// phones are allowed (partial-unique index excludes them). contact_channels
+// maps a synced channel identity (platform + channel_id, e.g. a Feishu open_id)
+// to a contact, idempotent on UNIQUE(platform, channel_id) so re-discovery is
+// safe. platform is a discriminator for future WeChat/email; v1 is Feishu-only.
+const schemaV16 = `
+CREATE TABLE IF NOT EXISTS contacts (
+    id         TEXT PRIMARY KEY,
+    phone      TEXT NOT NULL DEFAULT '',
+    name       TEXT NOT NULL DEFAULT '',
+    company    TEXT NOT NULL DEFAULT '',
+    title      TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL DEFAULT '',
+    tags       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_phone ON contacts(phone) WHERE phone != '';
+
+CREATE TABLE IF NOT EXISTS contact_channels (
+    id         TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL DEFAULT '',
+    platform   TEXT NOT NULL DEFAULT 'feishu',
+    channel_id TEXT NOT NULL,
+    nickname   TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    last_seen  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(platform, channel_id)
+);
+CREATE INDEX IF NOT EXISTS idx_contact_channels_contact ON contact_channels(contact_id);
+`
+
+// schemaV17 adds the 飞书渠道配置 layer (Phase 2). feishu_tracked_chats is the
+// user's curated set of groups to keep synced: auto_sync gates each chat in the
+// periodic loop, last_synced_at drives the per-chat cadence. feishu_sync_config
+// is the single-row global toggle + interval (minutes) governing auto-sync.
+// Tracking only records which groups to sync — the fetch loop / cross-run
+// watermark / message_id dedup all stay in sync.db (unified_*), reused as-is.
+const schemaV17 = `
+CREATE TABLE IF NOT EXISTS feishu_tracked_chats (
+    chat_id        TEXT PRIMARY KEY,
+    chat_name      TEXT NOT NULL DEFAULT '',
+    avatar         TEXT NOT NULL DEFAULT '',
+    external       INTEGER NOT NULL DEFAULT 0,
+    auto_sync      INTEGER NOT NULL DEFAULT 1,
+    last_synced_at INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feishu_sync_config (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    interval_minutes INTEGER NOT NULL DEFAULT 180
+);
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

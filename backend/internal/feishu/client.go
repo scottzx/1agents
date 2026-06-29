@@ -85,6 +85,96 @@ type apiMembersResp struct {
 	} `json:"data"`
 }
 
+type apiChatsResp struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Items []struct {
+			ChatID      string `json:"chat_id"`
+			Name        string `json:"name"`
+			Avatar      string `json:"avatar"`
+			Description string `json:"description"`
+			External    bool   `json:"external"`
+			ChatMode    string `json:"chat_mode"`
+			TenantKey   string `json:"tenant_key"`
+		} `json:"items"`
+	} `json:"data"`
+}
+
+// ChatInfo is one Feishu group the logged-in user is a member of, as returned
+// by lark-cli `im/v1/chats`. Name is often empty (Feishu omits it for many
+// groups), so callers must fall back to Description then ChatID for display.
+type ChatInfo struct {
+	ChatID      string `json:"chatId"`
+	Name        string `json:"name"`
+	Avatar      string `json:"avatar"`
+	Description string `json:"description"`
+	ChatMode    string `json:"chatMode"`
+	TenantKey   string `json:"tenantKey"`
+	External    bool   `json:"external"`
+}
+
+// DoctorCheck is one lark-cli health-check line (auth/connectivity). Status is
+// e.g. "pass"/"warn"/"fail".
+type DoctorCheck struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Hint    string `json:"hint"`
+}
+
+// ListChats returns every Feishu group the logged-in user is in. --page-all
+// loops all pages internally, mirroring FetchMessages.
+func (c *Client) ListChats(ctx context.Context) ([]ChatInfo, error) {
+	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/chats",
+		"--params", `{"page_size":"50"}`, "--as", "user",
+		"--page-all", "--page-limit", "0", "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+	var resp apiChatsResp
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("feishu: decode chats: %w", err)
+	}
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("feishu: chats api code=%d msg=%q", resp.Code, resp.Msg)
+	}
+	chats := make([]ChatInfo, 0, len(resp.Data.Items))
+	for _, it := range resp.Data.Items {
+		chats = append(chats, ChatInfo{
+			ChatID:      it.ChatID,
+			Name:        it.Name,
+			Avatar:      it.Avatar,
+			Description: it.Description,
+			ChatMode:    it.ChatMode,
+			TenantKey:   it.TenantKey,
+			External:    it.External,
+		})
+	}
+	return chats, nil
+}
+
+// Doctor runs lark-cli's health check and returns the per-check results.
+// Best-effort: on a hard failure the error is returned so the handler can
+// surface a "未连接" state.
+func (c *Client) Doctor(ctx context.Context) ([]DoctorCheck, error) {
+	out, err := c.run(ctx, "doctor", "--format", "json")
+	if err != nil {
+		// doctor may not support --format on older builds; retry plain.
+		out, err = c.run(ctx, "doctor")
+		if err != nil {
+			return nil, err
+		}
+	}
+	var resp struct {
+		Checks []DoctorCheck `json:"checks"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("feishu: decode doctor: %w", err)
+	}
+	return resp.Checks, nil
+}
+
 // FetchMessages pulls a chat's history via lark-cli, ascending by create time.
 // startSec (epoch seconds) bounds the lower edge; <= 0 fetches from the start.
 // --page-all aggregates every page's items into one response.

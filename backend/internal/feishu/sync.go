@@ -21,6 +21,9 @@ func NewSyncer(store *Store, client *Client) *Syncer {
 	return &Syncer{store: store, client: client, lookback: defaultLookback}
 }
 
+// Client exposes the underlying lark-cli client (for chat listing / doctor).
+func (s *Syncer) Client() *Client { return s.client }
+
 // SyncResult reports one SyncChat run.
 type SyncResult struct {
 	ChatID    string
