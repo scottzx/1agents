@@ -246,10 +246,10 @@ export function ChannelsTab() {
                                 {' · '}
                                 {t('contacts.channels.memberCount', language)}: {c.memberTotal || c.memberCount || 0}
                                 {(c.memberTotal ?? 0) > (c.memberCount ?? 0) && (
-                                    <>
+                                    <span>
                                         {' '}
                                         ({t('contacts.channels.ingested', language)} {c.memberCount ?? 0})
-                                    </>
+                                    </span>
                                 )}
                             </div>
                         </div>
