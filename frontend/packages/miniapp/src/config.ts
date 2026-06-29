@@ -17,6 +17,14 @@ export const BACKEND_OVERRIDE_KEY = '1agents-backend';
 
 /** The compiled-in default for this build target (no override applied). */
 export function defaultBackend(): string {
+  try {
+    const envVersion = Taro.getAccountInfoSync()?.miniProgram?.envVersion;
+    if (envVersion === 'develop') {
+      return DEV_BACKEND;
+    }
+  } catch {
+    // fallback if account info is not available
+  }
   return process.env.NODE_ENV === 'development' ? DEV_BACKEND : PROD_BACKEND;
 }
 

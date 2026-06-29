@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Input, Button, RichText } from '@tarojs/components';
+import { View, Text, ScrollView, Input, Button, RichText, Picker, Textarea } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import type { ChatSession } from '@1agents/core/types';
 import type { ChatItem } from '@1agents/core/protocol/types';
 import { workspaceService } from '@1agents/core/services/workspaceService';
 import { agentService } from '@1agents/core/services/agentService';
+import { nextPermissionMode, type PermissionMode } from '@1agents/core/protocol/permission';
 
 import { Screen } from '../../components/Screen';
+import { Composer } from '../../components/Composer';
 import { useT } from '../../hooks/useUI';
 import { useChat } from '../../hooks/useChat';
 import { renderMarkdown } from '../../utils/markdown';
@@ -196,18 +198,38 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
 
 // Modernized chat interface. Streams agent messages over the
 // shared ChatBridgeManager (native WebSocket via Taro.connectSocket)
+const ROLE_OPTIONS = [
+  { value: 'general', label: '通用' },
+  { value: 'pm', label: '项目经理' },
+];
+
+const AGENT_OPTIONS = [
+  { value: 'claudecode', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'cursor', label: 'Cursor' },
+];
+
+// Modernized chat interface. Streams agent messages over the
+// shared ChatBridgeManager (native WebSocket via Taro.connectSocket)
 // and renders markdown formatted AI responses with rich components.
 export default function Index() {
   const t = useT();
   const [session, setSession] = useState<ChatSession | null>(null);
   const [bootError, setBootError] = useState('');
-  const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Workspaces list & selection
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<any | null>(null);
+  const [scope, setScope] = useState<'assistant' | 'project'>('assistant');
 
   // Creation panel states
   const [agentType, setAgentType] = useState<string>('claudecode');
-  const [sessionName, setSessionName] = useState<string>('');
+  const [role, setRole] = useState<'general' | 'pm'>('general');
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('approve-reads');
+  const [mode, setMode] = useState<'chat' | 'terminal'>('chat');
   const [creating, setCreating] = useState(false);
+  const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,8 +238,14 @@ export default function Index() {
         const router = Taro.getCurrentInstance().router;
         const sessionIdParam = router?.params.session_id;
 
-        const workspaces = await workspaceService.list();
-        const ws = workspaces[0];
+        const wss = await workspaceService.list();
+        if (!cancelled) {
+          setWorkspaces(wss);
+          const defProj = wss.find(w => w.id !== 'default' && !w.builtin) || wss[0];
+          setSelectedWorkspace(defProj);
+        }
+
+        const ws = wss[0];
         if (!ws) {
           setBootError(t('chat.noWorkspace'));
           return;
@@ -257,7 +285,22 @@ export default function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { items, connection, ready, send, respondPermission } = useChat(session);
+  const {
+    items,
+    connection,
+    ready,
+    send,
+    respondPermission,
+    permissionMode: activePermissionMode,
+    setPermissionMode: setActivePermissionMode,
+  } = useChat(session);
+
+  useEffect(() => {
+    if (session && ready && pendingInitialMessage) {
+      send(pendingInitialMessage);
+      setPendingInitialMessage(null);
+    }
+  }, [session, ready, pendingInitialMessage, send]);
 
   const statusText = useMemo(() => {
     if (bootError) return t('chat.bootFailed', { error: bootError });
@@ -265,28 +308,29 @@ export default function Index() {
     return t('chat.connection', { state: connection }) + (ready ? ` · ${t('chat.ready')}` : '');
   }, [bootError, session, connection, ready, t]);
 
-  const onSend = () => {
-    const text = draft.trim();
-    if (!text || !ready) return;
-    send(text);
-    setDraft('');
-  };
-
-  const handleCreate = async () => {
+  const handleCreate = async (text: string) => {
     try {
       setCreating(true);
-      const workspaces = await workspaceService.list();
-      const ws = workspaces[0];
-      if (!ws) {
-        setBootError(t('chat.noWorkspace'));
-        return;
+      let wsId = 'default';
+      if (scope === 'project' && selectedWorkspace) {
+        wsId = selectedWorkspace.id;
+      } else {
+        const defWs = workspaces.find(w => w.id === 'default' || w.builtin) || workspaces[0];
+        if (defWs) {
+          wsId = defWs.id;
+        }
       }
-      const defaultName = sessionName.trim() || `${AGENT_LABELS[agentType] || agentType} 会话`;
+
+      const defaultName = `${AGENT_LABELS[agentType] || agentType} 会话`;
       const s = await agentService.index({
-        workspace_id: ws.id,
+        workspace_id: wsId,
         name: defaultName,
-        agent_type: agentType,
+        agent_type: agentType as any,
+        role: role === 'pm' ? 'pm' : undefined,
+        permission_mode: permissionMode,
       });
+
+      setPendingInitialMessage(text);
       setSession(s);
     } catch (e) {
       Taro.showToast({ title: `创建失败: ${String(e)}`, icon: 'none' });
@@ -318,71 +362,67 @@ export default function Index() {
   }
 
   if (!session) {
+    const activeWorkspaceName = scope === 'project' && selectedWorkspace ? selectedWorkspace.name : '选择项目';
+    const projectList = workspaces.filter(w => w.id !== 'default' && !w.builtin);
+    
     return (
       <Screen titleKey="chat.title">
-        <View className="chat chat--create">
-          <View className="chat-create-card">
-            <Text className="chat-create-card__title">新建 AI 对话</Text>
-            
-            <View className="chat-create-field">
-              <Text className="chat-create-field__label">选择 AI 助手</Text>
-              <View className="chat-create-agents">
-                <View 
-                  className={`chat-create-agent ${agentType === 'claudecode' ? 'is-selected' : ''}`}
-                  onClick={() => setAgentType('claudecode')}
-                >
-                  <View className="chat__avatar chat__avatar--claudecode">
-                    <Text className="chat__avatar-text">CL</Text>
-                  </View>
-                  <Text className="chat-create-agent__name">Claude</Text>
-                </View>
-                
-                <View 
-                  className={`chat-create-agent ${agentType === 'codex' ? 'is-selected' : ''}`}
-                  onClick={() => setAgentType('codex')}
-                >
-                  <View className="chat__avatar chat__avatar--codex">
-                    <Text className="chat__avatar-text">CX</Text>
-                  </View>
-                  <Text className="chat-create-agent__name">Codex</Text>
-                </View>
-
-                <View 
-                  className={`chat-create-agent ${agentType === 'cursor' ? 'is-selected' : ''}`}
-                  onClick={() => setAgentType('cursor')}
-                >
-                  <View className="chat__avatar chat__avatar--cursor">
-                    <Text className="chat__avatar-text">CS</Text>
-                  </View>
-                  <Text className="chat-create-agent__name">Cursor</Text>
-                </View>
-              </View>
-            </View>
-
-            <View className="chat-create-field">
-              <Text className="chat-create-field__label">对话名称 (可选)</Text>
-              <Input
-                className="chat-create-input"
-                placeholder="例如: 协助修复Bug"
-                value={sessionName}
-                onInput={e => setSessionName(e.detail.value)}
-              />
-            </View>
-
-            <Button 
-              className="chat-create-submit" 
-              onClick={handleCreate} 
-              disabled={creating}
+        <View className="chat chat--create-new">
+          {/* Top scope switch */}
+          <View className="new-chat-scope-switch">
+            <View 
+              className={`scope-btn ${scope === 'assistant' ? 'active' : ''}`}
+              onClick={() => setScope('assistant')}
             >
-              {creating ? '创建中...' : '开始新对话'}
-            </Button>
+              会话
+            </View>
+            <View 
+              className={`scope-btn ${scope === 'project' ? 'active' : ''}`}
+              onClick={() => setScope('project')}
+            >
+              项目
+            </View>
           </View>
+
+          {/* Project selector dropdown (visible only in project scope) */}
+          {scope === 'project' && (
+            <View className="project-picker-container">
+              <Picker
+                mode="selector"
+                range={projectList}
+                rangeKey="name"
+                onChange={e => {
+                  const ws = projectList[Number(e.detail.value)];
+                  if (ws) setSelectedWorkspace(ws);
+                }}
+              >
+                <View className="project-picker-trigger">
+                  <Text className="folder-icon">📁</Text>
+                  <Text className="ws-name">{activeWorkspaceName}</Text>
+                  <Text className="chevron">▾</Text>
+                </View>
+              </Picker>
+            </View>
+          )}
+
+          {/* Main composer area */}
+          <Composer
+            isCreation
+            onSend={handleCreate}
+            creating={creating}
+            permissionMode={permissionMode}
+            onPermissionModeChange={setPermissionMode}
+            role={role}
+            onRoleChange={setRole}
+            agentType={agentType}
+            onAgentTypeChange={setAgentType}
+            mode={mode}
+            onModeChange={setMode}
+          />
         </View>
       </Screen>
     );
   }
-
-  const sessionAgentType = session.agentType || 'claudecode';
 
   return (
     <Screen titleKey="chat.title">
@@ -396,39 +436,28 @@ export default function Index() {
           <View className="chat__stream-inner">
             {groupedItems.map((it, i) => (
               <View id={`i${i}`} key={it.id} className="chat__item">
-                {renderItem(it, i === groupedItems.length - 1, sessionAgentType, respondPermission, t)}
+                {renderItem(it, i === groupedItems.length - 1, respondPermission)}
               </View>
             ))}
             {!groupedItems.length && session && <Text className="chat__hint">{t('chat.startHint')}</Text>}
           </View>
         </ScrollView>
 
-        <View className="chat__composer">
-          <Input
-            className="chat__input"
-            value={draft}
-            placeholder={ready ? t('chat.inputPlaceholder') : t('chat.inputDisabled')}
-            confirmType="send"
-            onInput={e => setDraft(e.detail.value)}
-            onConfirm={onSend}
+        <View className="chat__composer-wrapper">
+          <Composer
+            onSend={send}
+            disabled={!ready}
+            permissionMode={activePermissionMode}
+            onPermissionModeChange={setActivePermissionMode}
+            role={session.role as any}
           />
-          <Button className="chat__send" disabled={!ready || !draft.trim()} onClick={onSend}>
-            {t('chat.send')}
-          </Button>
         </View>
       </View>
     </Screen>
   );
 }
 
-function AgentAvatar({ agentType }: { agentType: string }) {
-  const label = agentType.slice(0, 2).toUpperCase();
-  return (
-    <View className={`chat__avatar chat__avatar--${agentType}`}>
-      <Text className="chat__avatar-text">{label}</Text>
-    </View>
-  );
-}
+
 
 function ThinkingBubble({ content, active }: { content: string; active: boolean }) {
   const [expanded, setExpanded] = useState(active);
@@ -466,12 +495,10 @@ function ToolGroupBubble({
   item,
   active,
   respondPermission,
-  t,
 }: {
   item: Extract<GroupedChatItem, { kind: 'tool_group' }>;
   active: boolean;
   respondPermission: (requestId: string, decision: 'allow_once' | 'reject_once') => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const [expanded, setExpanded] = useState(active);
 
@@ -515,7 +542,6 @@ function ToolGroupBubble({
               key={call.id || idx} 
               call={call} 
               respondPermission={respondPermission}
-              t={t}
             />
           ))}
         </View>
@@ -527,11 +553,9 @@ function ToolGroupBubble({
 function GroupedToolCallItem({
   call,
   respondPermission,
-  t,
 }: {
   call: GroupedToolCall;
   respondPermission: (requestId: string, decision: 'allow_once' | 'reject_once') => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const [expanded, setExpanded] = useState(!!call.permission && !call.permission.resolved);
 
@@ -552,6 +576,24 @@ function GroupedToolCallItem({
   const hasOutput = call.output !== undefined;
   const isRunning = !hasOutput && (!call.permission || !call.permission.resolved);
   const isWaitingPermission = !!call.permission && !call.permission.resolved;
+
+  let parsedOutput = call.output;
+  let isExitError = false;
+  if (call.output) {
+    try {
+      const parsed = JSON.parse(call.output);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.formatted_output === 'string') {
+          parsedOutput = parsed.formatted_output;
+        } else if (typeof parsed.output === 'string') {
+          parsedOutput = parsed.output;
+        }
+        if (typeof parsed.exit_code === 'number' && parsed.exit_code !== 0) {
+          isExitError = true;
+        }
+      }
+    } catch (e) {}
+  }
 
   const summaryKeys = ['command', 'file_path', 'path', 'pattern', 'query', 'url'];
   let summary = '';
@@ -626,7 +668,7 @@ function GroupedToolCallItem({
               <Text className="chat-tool-muted">{isRunning ? '正在等待输出...' : '无输出'}</Text>
             ) : (
               <ScrollView className="chat-tool-pre-scroll" scrollX scrollY>
-                <Text className={`chat-tool-pre ${call.isError ? 'has-error' : ''}`} userSelect>{call.output}</Text>
+                <Text className={`chat-tool-pre ${call.isError || isExitError ? 'has-error' : ''}`} userSelect>{parsedOutput}</Text>
               </ScrollView>
             )}
           </View>
@@ -639,9 +681,7 @@ function GroupedToolCallItem({
 function renderItem(
   it: GroupedChatItem,
   isActive: boolean,
-  agentType: string,
-  respondPermission: (requestId: string, decision: 'allow_once' | 'reject_once') => void,
-  t: (key: string, params?: Record<string, string | number>) => string
+  respondPermission: (requestId: string, decision: 'allow_once' | 'reject_once') => void
 ) {
   switch (it.kind) {
     case 'user':
@@ -656,7 +696,6 @@ function renderItem(
       const html = renderMarkdown(it.content);
       return (
         <View className="chat__assistant-row">
-          <AgentAvatar agentType={agentType} />
           <View className="chat__assistant-bubble">
             <RichText className="markdown-body" nodes={html} userSelect />
           </View>
@@ -666,7 +705,6 @@ function renderItem(
     case 'thinking':
       return (
         <View className="chat__assistant-row">
-          <AgentAvatar agentType={agentType} />
           <View className="chat__bubble-wrapper">
             <ThinkingBubble content={it.content} active={isActive} />
           </View>
@@ -675,13 +713,11 @@ function renderItem(
     case 'tool_group':
       return (
         <View className="chat__assistant-row">
-          <AgentAvatar agentType={agentType} />
           <View className="chat__bubble-wrapper">
             <ToolGroupBubble 
               item={it} 
               active={isActive} 
               respondPermission={respondPermission}
-              t={t}
             />
           </View>
         </View>
@@ -689,7 +725,6 @@ function renderItem(
     case 'error':
       return (
         <View className="chat__assistant-row">
-          <AgentAvatar agentType={agentType} />
           <View className="chat__bubble-wrapper">
             <View className="chat__error-card">
               <Text className="chat__error-title">⚠️ 出错了</Text>

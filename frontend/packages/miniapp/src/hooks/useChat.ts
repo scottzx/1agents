@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ChatItem, ConnectionState } from '@1agents/core/protocol/types';
 import type { ChatSession, PermissionDecision } from '@1agents/core/types';
+import { type PermissionMode } from '@1agents/core/protocol/permission';
 import { bridge } from '../services/chat';
 
 export interface UseChat {
@@ -13,6 +14,8 @@ export interface UseChat {
   ready: boolean;
   send: (content: string) => void;
   respondPermission: (requestId: string, decision: PermissionDecision) => void;
+  permissionMode: PermissionMode;
+  setPermissionMode: (mode: PermissionMode) => void;
 }
 
 export function useChat(session: ChatSession | null): UseChat {
@@ -35,6 +38,7 @@ export function useChat(session: ChatSession | null): UseChat {
   const items = state ? [...state.items, ...state.pendingResults, ...state.pendingPermissions] : [];
   const connection: ConnectionState = state ? state.connection : 'idle';
   const ready = state ? state.ready : false;
+  const permissionMode: PermissionMode = state ? state.permissionMode : 'approve-reads';
 
   const send = useCallback(
     (content: string) => {
@@ -50,5 +54,15 @@ export function useChat(session: ChatSession | null): UseChat {
     [session?.id]
   );
 
-  return { items, connection, ready, send, respondPermission };
+  const setPermissionMode = useCallback(
+    (mode: PermissionMode) => {
+      if (session) {
+        bridge.setPermissionMode(session, mode);
+        bump();
+      }
+    },
+    [session?.id, bump]
+  );
+
+  return { items, connection, ready, send, respondPermission, permissionMode, setPermissionMode };
 }
