@@ -221,6 +221,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)     // POST
 				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)     // GET ?contactId=|sessionId=
 				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)     // GET
+				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)  // GET /{sessionId}/members
 				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)          // PATCH, DELETE /{id}
 			}
 

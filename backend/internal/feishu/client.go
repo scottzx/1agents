@@ -79,8 +79,9 @@ type apiMembersResp struct {
 	Code int `json:"code"`
 	Data struct {
 		Items []struct {
-			MemberID string `json:"member_id"`
-			Name     string `json:"name"`
+			MemberID  string `json:"member_id"`
+			Name      string `json:"name"`
+			TenantKey string `json:"tenant_key"`
 		} `json:"items"`
 	} `json:"data"`
 }
@@ -243,6 +244,42 @@ func (c *Client) FetchMembers(ctx context.Context, chatID string) (map[string]st
 		}
 	}
 	return names, nil
+}
+
+// Member is one chat roster entry, carrying the org (tenant_key) alongside the
+// open_id and display name. tenant_key comes free in the same chat.members
+// response FetchMembers reads — no extra per-member lookup.
+type Member struct {
+	OpenID    string
+	Name      string
+	TenantKey string
+}
+
+// FetchMembersDetailed returns the full roster (open_id + name + tenant_key) for
+// a chat, parsing the same chat.members response as FetchMembers. Used by the
+// 二度联系人 ingestion path, which needs the org per member.
+func (c *Client) FetchMembersDetailed(ctx context.Context, chatID string) ([]Member, error) {
+	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/chats/"+chatID+"/members",
+		"--params", `{"page_size":"100","member_id_type":"open_id"}`, "--as", "user",
+		"--page-all", "--page-limit", "0", "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+	var resp apiMembersResp
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("feishu: decode members: %w", err)
+	}
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("feishu: members api code=%d", resp.Code)
+	}
+	members := make([]Member, 0, len(resp.Data.Items))
+	for _, it := range resp.Data.Items {
+		if it.MemberID == "" {
+			continue
+		}
+		members = append(members, Member{OpenID: it.MemberID, Name: it.Name, TenantKey: it.TenantKey})
+	}
+	return members, nil
 }
 
 // extractTitle pulls a human title out of a message body where one exists

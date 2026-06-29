@@ -23,6 +23,11 @@ type Contact struct {
 	Title     string           `json:"title"`
 	Note      string           `json:"note"`
 	Tags      []string         `json:"tags"`
+	// Degree records how the contact entered the book: 1 = first-degree (manual /
+	// 好友, the proper 1st degree lands later), 2 = second-degree (discovered only
+	// from a tracked group's roster — a person in a shared group you don't yet
+	// know directly). Defaults to 1 for manually created contacts.
+	Degree    int              `json:"degree"`
 	CreatedAt time.Time        `json:"createdAt"`
 	UpdatedAt time.Time        `json:"updatedAt"`
 	Channels  []ContactChannel `json:"channels,omitempty"`
@@ -39,6 +44,9 @@ type ContactChannel struct {
 	ChannelID string    `json:"channelId"`
 	Nickname  string    `json:"nickname"`
 	SessionID string    `json:"sessionId"`
+	// TenantKey is the member's Feishu org, captured free from chat.members during
+	// roster ingestion (degree-2). Empty for sender-discovered channels.
+	TenantKey string    `json:"tenantKey"`
 	LastSeen  int64     `json:"lastSeen"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -52,12 +60,12 @@ type ContactStore struct {
 // NewContactStore returns a ContactStore over db.
 func NewContactStore(db *DB) *ContactStore { return &ContactStore{db: db} }
 
-const contactCols = `id, phone, name, company, title, note, tags, created_at, updated_at`
+const contactCols = `id, phone, name, company, title, note, tags, degree, created_at, updated_at`
 
 func scanContact(r rowScanner) (Contact, error) {
 	var c Contact
 	var tags, createdAt, updatedAt string
-	if err := r.Scan(&c.ID, &c.Phone, &c.Name, &c.Company, &c.Title, &c.Note, &tags, &createdAt, &updatedAt); err != nil {
+	if err := r.Scan(&c.ID, &c.Phone, &c.Name, &c.Company, &c.Title, &c.Note, &tags, &c.Degree, &createdAt, &updatedAt); err != nil {
 		return Contact{}, err
 	}
 	c.Tags = splitTags(tags)
@@ -86,13 +94,13 @@ func joinTags(tags []string) string {
 	return strings.Join(cleaned, ",")
 }
 
-const contactChannelCols = `id, contact_id, platform, channel_id, nickname, session_id, last_seen, created_at, updated_at`
+const contactChannelCols = `id, contact_id, platform, channel_id, nickname, session_id, tenant_key, last_seen, created_at, updated_at`
 
 func scanContactChannel(r rowScanner) (ContactChannel, error) {
 	var cc ContactChannel
 	var createdAt, updatedAt string
 	if err := r.Scan(&cc.ID, &cc.ContactID, &cc.Platform, &cc.ChannelID, &cc.Nickname,
-		&cc.SessionID, &cc.LastSeen, &createdAt, &updatedAt); err != nil {
+		&cc.SessionID, &cc.TenantKey, &cc.LastSeen, &createdAt, &updatedAt); err != nil {
 		return ContactChannel{}, err
 	}
 	cc.CreatedAt = strToTime(createdAt)
@@ -107,7 +115,20 @@ func isPhoneConflict(err error) bool {
 
 // ListContacts returns all contacts (no channels attached) ordered by name.
 func (s *ContactStore) ListContacts() ([]Contact, error) {
-	rows, err := s.db.sql.Query(`SELECT ` + contactCols + ` FROM contacts ORDER BY name, created_at`)
+	return s.ListContactsByDegree(0)
+}
+
+// ListContactsByDegree returns contacts ordered by name. When degree is 1 or 2
+// it filters to that degree; 0 (or any other value) returns all degrees.
+func (s *ContactStore) ListContactsByDegree(degree int) ([]Contact, error) {
+	q := `SELECT ` + contactCols + ` FROM contacts`
+	args := []any{}
+	if degree == 1 || degree == 2 {
+		q += ` WHERE degree = ?`
+		args = append(args, degree)
+	}
+	q += ` ORDER BY name, created_at`
+	rows, err := s.db.sql.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +145,15 @@ func (s *ContactStore) ListContacts() ([]Contact, error) {
 }
 
 // ContactsWithChannels returns all contacts with their bound channels attached.
+// When degree is 1 or 2 it filters to that degree; 0 returns all.
 func (s *ContactStore) ContactsWithChannels() ([]Contact, error) {
-	contacts, err := s.ListContacts()
+	return s.ContactsWithChannelsByDegree(0)
+}
+
+// ContactsWithChannelsByDegree returns contacts (optionally degree-filtered)
+// with their bound channels attached.
+func (s *ContactStore) ContactsWithChannelsByDegree(degree int) ([]Contact, error) {
+	contacts, err := s.ListContactsByDegree(degree)
 	if err != nil {
 		return nil, err
 	}
@@ -151,12 +179,13 @@ func (s *ContactStore) CreateContact(phone, name, company, title, note string, t
 		Title:     title,
 		Note:      note,
 		Tags:      tags,
+		Degree:    1, // manual contacts are first-degree-ish (proper 1st degree later)
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	_, err := s.db.sql.Exec(`INSERT INTO contacts (`+contactCols+`)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Phone, c.Name, c.Company, c.Title, c.Note, joinTags(c.Tags),
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, c.Phone, c.Name, c.Company, c.Title, c.Note, joinTags(c.Tags), c.Degree,
 		timeToStr(c.CreatedAt), timeToStr(c.UpdatedAt))
 	if isPhoneConflict(err) {
 		return Contact{}, ErrDuplicatePhone
@@ -254,8 +283,8 @@ func (s *ContactStore) queryChannels(q string, args ...any) ([]ContactChannel, e
 func (s *ContactStore) UpsertChannel(platform, channelID, nickname, sessionID string, lastSeen int64) error {
 	now := timeToStr(time.Now().UTC())
 	_, err := s.db.sql.Exec(`INSERT INTO contact_channels
-        (id, contact_id, platform, channel_id, nickname, session_id, last_seen, created_at, updated_at)
-        VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)
+        (id, contact_id, platform, channel_id, nickname, session_id, tenant_key, last_seen, created_at, updated_at)
+        VALUES (?, '', ?, ?, ?, ?, '', ?, ?, ?)
         ON CONFLICT(platform, channel_id) DO UPDATE SET
             nickname = excluded.nickname,
             session_id = excluded.session_id,
@@ -303,4 +332,169 @@ func (s *ContactStore) GetChannel(id string) (ContactChannel, bool, error) {
 		return ContactChannel{}, false, err
 	}
 	return cc, true, nil
+}
+
+// GroupMember is one chat roster entry for ingestion: open_id + display name +
+// the member's Feishu org (tenant_key). All three come free in one chat.members
+// call; ingestion never does a per-member lookup.
+type GroupMember struct {
+	OpenID    string
+	Name      string
+	TenantKey string
+}
+
+// IngestGroupMembers records a tracked group's full member roster as degree-2
+// contacts, refreshed on each sync. For each member it:
+//  1. upserts the feishu_group_members row (session_id + channel_id=open_id +
+//     nickname + tenant_key);
+//  2. looks up the feishu channel by open_id:
+//     - no channel        → create a degree-2 contact + a channel (with tenant_key)
+//       linked to it;
+//     - unlinked channel  → create a degree-2 contact and link this channel,
+//       refreshing nickname + tenant_key;
+//     - already-linked     → only refresh nickname (+ tenant_key when non-empty);
+//       never relink and never touch the contact's degree (preserves manual /
+//       1st-degree promotion).
+//
+// A non-empty tenant_key is never overwritten with empty. Runs in one
+// transaction and is idempotent: re-ingesting the same roster creates nothing
+// new. Returns the number of new degree-2 contacts created.
+func (s *ContactStore) IngestGroupMembers(sessionID string, members []GroupMember) (int, error) {
+	tx, err := s.db.sql.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	now := timeToStr(time.Now().UTC())
+	lastSeen := time.Now().UnixMilli()
+	created := 0
+
+	for _, m := range members {
+		if m.OpenID == "" {
+			continue
+		}
+		// 1. Upsert the roster row.
+		if _, err := tx.Exec(`INSERT INTO feishu_group_members
+            (session_id, channel_id, nickname, tenant_key, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, channel_id) DO UPDATE SET
+                nickname = excluded.nickname,
+                tenant_key = CASE WHEN excluded.tenant_key != '' THEN excluded.tenant_key ELSE feishu_group_members.tenant_key END,
+                updated_at = excluded.updated_at`,
+			sessionID, m.OpenID, m.Name, m.TenantKey, now); err != nil {
+			return 0, err
+		}
+
+		// 2. Look up the existing feishu channel for this open_id.
+		var chID, contactID string
+		err := tx.QueryRow(`SELECT id, contact_id FROM contact_channels
+            WHERE platform = 'feishu' AND channel_id = ?`, m.OpenID).Scan(&chID, &contactID)
+		switch {
+		case err == sql.ErrNoRows:
+			// No channel yet → create a degree-2 contact + a linked channel.
+			cID := newID()
+			if _, err := tx.Exec(`INSERT INTO contacts (`+contactCols+`)
+                VALUES (?, '', ?, '', '', '', '', 2, ?, ?)`,
+				cID, m.Name, now, now); err != nil {
+				return 0, err
+			}
+			if _, err := tx.Exec(`INSERT INTO contact_channels
+                (id, contact_id, platform, channel_id, nickname, session_id, tenant_key, last_seen, created_at, updated_at)
+                VALUES (?, ?, 'feishu', ?, ?, ?, ?, ?, ?, ?)`,
+				newID(), cID, m.OpenID, m.Name, sessionID, m.TenantKey, lastSeen, now, now); err != nil {
+				return 0, err
+			}
+			created++
+		case err != nil:
+			return 0, err
+		case contactID == "":
+			// Channel exists but is unlinked → create a degree-2 contact, link it,
+			// refresh nickname + tenant_key (don't clobber a non-empty tenant_key).
+			cID := newID()
+			if _, err := tx.Exec(`INSERT INTO contacts (`+contactCols+`)
+                VALUES (?, '', ?, '', '', '', '', 2, ?, ?)`,
+				cID, m.Name, now, now); err != nil {
+				return 0, err
+			}
+			if _, err := tx.Exec(`UPDATE contact_channels SET
+                contact_id = ?, nickname = ?, updated_at = ?,
+                tenant_key = CASE WHEN ? != '' THEN ? ELSE tenant_key END
+                WHERE id = ?`,
+				cID, m.Name, now, m.TenantKey, m.TenantKey, chID); err != nil {
+				return 0, err
+			}
+			created++
+		default:
+			// Already linked to a contact → only refresh nickname (+ tenant_key when
+			// non-empty); never relink and never change the contact's degree.
+			if _, err := tx.Exec(`UPDATE contact_channels SET
+                nickname = ?, updated_at = ?,
+                tenant_key = CASE WHEN ? != '' THEN ? ELSE tenant_key END
+                WHERE id = ?`,
+				m.Name, now, m.TenantKey, m.TenantKey, chID); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return created, nil
+}
+
+// RosterMember is one feishu_group_members row exposed to the API: the member's
+// open_id, cached nickname, and org (tenant_key).
+type RosterMember struct {
+	OpenID    string `json:"openId"`
+	Nickname  string `json:"nickname"`
+	TenantKey string `json:"tenantKey"`
+}
+
+// GroupMembersForSession returns the recorded roster for a tracked group,
+// ordered by nickname.
+func (s *ContactStore) GroupMembersForSession(sessionID string) ([]RosterMember, error) {
+	rows, err := s.db.sql.Query(`SELECT channel_id, nickname, tenant_key
+        FROM feishu_group_members WHERE session_id = ? ORDER BY nickname, channel_id`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RosterMember{}
+	for rows.Next() {
+		var m RosterMember
+		if err := rows.Scan(&m.OpenID, &m.Nickname, &m.TenantKey); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// MemberCountForSession returns the number of roster members recorded for a
+// tracked group (feishu_group_members rows with session_id = sessionID).
+func (s *ContactStore) MemberCountForSession(sessionID string) (int, error) {
+	var n int
+	err := s.db.sql.QueryRow(`SELECT COUNT(*) FROM feishu_group_members WHERE session_id = ?`, sessionID).Scan(&n)
+	return n, err
+}
+
+// GroupsForChannel returns the session_ids (tracked groups) a channel identity
+// (open_id) belongs to, per the recorded rosters.
+func (s *ContactStore) GroupsForChannel(channelID string) ([]string, error) {
+	rows, err := s.db.sql.Query(`SELECT session_id FROM feishu_group_members WHERE channel_id = ? ORDER BY session_id`, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var sid string
+		if err := rows.Scan(&sid); err != nil {
+			return nil, err
+		}
+		out = append(out, sid)
+	}
+	return out, rows.Err()
 }

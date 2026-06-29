@@ -2669,6 +2669,67 @@ body {
   color: var(--purple-fg);
 }
 
+// 二度联系人: degree badge on each contact row. 1st degree (manual/好友) reads as
+// the primary accent; 2nd degree (group roster only) uses the muted purple family
+// to signal "indirect".
+.contacts-degree-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+
+  &.deg-1 {
+    background: var(--accent-light);
+    color: var(--accent-color);
+  }
+
+  &.deg-2 {
+    background: var(--purple-bg);
+    color: var(--purple-fg);
+  }
+}
+
+// Degree filter chips above the contacts list (全部 / 一度 / 二度).
+.contacts-degree-filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 8px;
+}
+
+.contacts-degree-chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--bento-transition);
+
+  &:hover {
+    background: var(--btn-hover);
+  }
+
+  &.active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--on-accent);
+  }
+}
+
+// "所在群" rows in a degree-2 contact's detail.
+.contacts-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.contacts-group-name {
+  font-size: 13px;
+  color: var(--text-main);
+}
+
 .contacts-detail-placeholder {
   height: 100%;
   display: flex;

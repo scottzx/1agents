@@ -69,7 +69,12 @@ type contactBody struct {
 func (h *Handler) HandleContacts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		list, err := h.cs.ContactsWithChannels()
+		// Optional ?degree=1|2 filter; absent/0 returns all degrees.
+		degree := 0
+		if v := r.URL.Query().Get("degree"); v != "" {
+			degree, _ = strconv.Atoi(v)
+		}
+		list, err := h.cs.ContactsWithChannelsByDegree(degree)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -270,6 +275,27 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, msgs)
+}
+
+// HandleGroupMembers: GET /api/contacts/groups/{sessionId}/members → the recorded
+// degree-2 roster (open_id + nickname + tenant_key) of a tracked group.
+func (h *Handler) HandleGroupMembers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/contacts/groups/")
+	sessionID, tail, ok := strings.Cut(rest, "/")
+	if !ok || sessionID == "" || tail != "members" {
+		badRequest(w, "path must be /api/contacts/groups/{sessionId}/members")
+		return
+	}
+	members, err := h.cs.GroupMembersForSession(sessionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, members)
 }
 
 // HandleSessions: GET → session summaries (group list for the 消息 tab).

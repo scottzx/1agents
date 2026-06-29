@@ -20,11 +20,13 @@ type Handler struct {
 	ds     *meta.DigestStore
 	ts     *meta.TaskStore
 	ccs    *meta.FeishuChatStore // tracked chats + global sync config (v17)
+	cs     *meta.ContactStore    // 二度联系人: roster ingestion after each sync (v18)
 	syncer *feishu.Syncer
 }
 
 // NewHandler builds a Handler from explicit stores (used by tests). cs may be
-// nil in tests that don't exercise the channel-config endpoints.
+// nil in tests that don't exercise the channel-config endpoints. The contact
+// store is left nil here (member ingestion is wired only in NewHandlerDefault).
 func NewHandler(fs *feishu.Store, ds *meta.DigestStore, ts *meta.TaskStore, cs *meta.FeishuChatStore, syncer *feishu.Syncer) *Handler {
 	return &Handler{fs: fs, ds: ds, ts: ts, ccs: cs, syncer: syncer}
 }
@@ -40,9 +42,32 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(fs, meta.NewDigestStore(db), meta.NewTaskStore(db),
+	h := NewHandler(fs, meta.NewDigestStore(db), meta.NewTaskStore(db),
 		meta.NewFeishuChatStore(db),
-		feishu.NewSyncer(fs, feishu.NewClient("", "self"))), nil
+		feishu.NewSyncer(fs, feishu.NewClient("", "self")))
+	h.cs = meta.NewContactStore(db) // wire 二度联系人 roster ingestion
+	return h, nil
+}
+
+// ingestMembers fetches a chat's full roster and records it as degree-2 contacts.
+// Best-effort: errors are logged, never propagated, so a roster fetch failure
+// never fails the message sync. No-op when the contact store is unwired (tests).
+func (h *Handler) ingestMembers(ctx context.Context, chatID string) {
+	if h.cs == nil {
+		return
+	}
+	members, err := h.client().FetchMembersDetailed(ctx, chatID)
+	if err != nil {
+		log.Printf("[digest] roster %s: fetch members: %v", chatID, err)
+		return
+	}
+	gm := make([]meta.GroupMember, 0, len(members))
+	for _, m := range members {
+		gm = append(gm, meta.GroupMember{OpenID: m.OpenID, Name: m.Name, TenantKey: m.TenantKey})
+	}
+	if _, err := h.cs.IngestGroupMembers(chatID, gm); err != nil {
+		log.Printf("[digest] roster %s: ingest members: %v", chatID, err)
+	}
 }
 
 // client reaches the lark-cli client through the syncer (chat listing / doctor).
@@ -109,6 +134,7 @@ func (h *Handler) syncDueTracked(ctx context.Context) {
 		if err := h.ccs.UpdateTrackedSynced(c.ChatID, "", time.Now().UnixMilli()); err != nil {
 			log.Printf("[digest] periodic sync %s: update synced: %v", c.ChatID, err)
 		}
+		h.ingestMembers(ctx, c.ChatID) // refresh degree-2 roster after each sync
 		if res.Inserted > 0 {
 			log.Printf("[digest] periodic sync %s: +%d messages", c.ChatID, res.Inserted)
 		}
@@ -268,6 +294,7 @@ func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
 	if h.ccs != nil {
 		_ = h.ccs.UpdateTrackedSynced(body.ChatID, "", time.Now().UnixMilli())
 	}
+	h.ingestMembers(r.Context(), body.ChatID) // refresh degree-2 roster after sync
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -369,7 +396,21 @@ func (h *Handler) HandleTrackedChats(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, list)
+		// Attach the degree-2 roster size per chat (additive: TrackedChat fields
+		// inline + memberCount). Zero when the roster hasn't been ingested yet.
+		type trackedWithMembers struct {
+			meta.TrackedChat
+			MemberCount int `json:"memberCount"`
+		}
+		out := make([]trackedWithMembers, 0, len(list))
+		for _, c := range list {
+			n := 0
+			if h.cs != nil {
+				n, _ = h.cs.MemberCountForSession(c.ChatID)
+			}
+			out = append(out, trackedWithMembers{TrackedChat: c, MemberCount: n})
+		}
+		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
 		var body struct {
 			ChatID   string `json:"chatId"`
@@ -461,6 +502,7 @@ func (h *Handler) HandleSyncAll(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		_ = h.ccs.UpdateTrackedSynced(c.ChatID, "", time.Now().UnixMilli())
+		h.ingestMembers(r.Context(), c.ChatID) // refresh degree-2 roster after each sync
 		results = append(results, chatResult{ChatID: c.ChatID, Inserted: res.Inserted, Fetched: res.Fetched})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})

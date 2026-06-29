@@ -16,6 +16,8 @@ export interface ContactChannel {
     channelId: string;
     nickname: string;
     sessionId: string;
+    /** Feishu org of the member (free from chat.members on degree-2 ingestion). */
+    tenantKey: string;
     lastSeen: number;
     createdAt: string;
     updatedAt: string;
@@ -29,9 +31,18 @@ export interface Contact {
     title: string;
     note: string;
     tags: string[];
+    /** 1 = first-degree (manual/好友), 2 = second-degree (group roster only). */
+    degree: number;
     createdAt: string;
     updatedAt: string;
     channels?: ContactChannel[];
+}
+
+// One feishu_group_members roster entry (degree-2 source).
+export interface GroupMember {
+    openId: string;
+    nickname: string;
+    tenantKey: string;
 }
 
 export interface ContactInput {
@@ -83,7 +94,8 @@ export interface ChatInfo {
     external: boolean;
 }
 
-// meta.TrackedChat — camelCase json tags.
+// meta.TrackedChat — camelCase json tags. memberCount is the degree-2 roster
+// size, attached additively by the tracked-chats endpoint (0 until first sync).
 export interface TrackedChat {
     chatId: string;
     chatName: string;
@@ -92,6 +104,7 @@ export interface TrackedChat {
     autoSync: boolean;
     lastSyncedAt: number;
     createdAt: string;
+    memberCount?: number;
 }
 
 // meta.SyncConfig — camelCase json tags.
@@ -130,11 +143,20 @@ export interface TrackChatInput {
 }
 
 export const contactService = {
-    /** GET /api/contacts — all contacts, each with bound channels. */
-    async listContacts(): Promise<Contact[]> {
-        const res = await apiFetch('/contacts');
+    /** GET /api/contacts?degree= — contacts (each with bound channels); optional
+     * degree filter (1 = first-degree, 2 = second-degree; omit for all). */
+    async listContacts(degree?: number): Promise<Contact[]> {
+        const qs = degree === 1 || degree === 2 ? `?degree=${degree}` : '';
+        const res = await apiFetch(`/contacts${qs}`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as Contact[];
+    },
+
+    /** GET /api/contacts/groups/{sessionId}/members — a tracked group's roster. */
+    async groupMembers(sessionId: string): Promise<GroupMember[]> {
+        const res = await apiFetch(`/contacts/groups/${encodeURIComponent(sessionId)}/members`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as GroupMember[];
     },
 
     /** POST /api/contacts — create a contact (409 on duplicate phone). */

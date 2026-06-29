@@ -803,9 +803,15 @@ export const zhCN: Record<string, string> = {
     'contacts.timelineEmpty': '该会话暂无消息。',
     'contacts.crossGroup': '跨群消息',
     'contacts.platform.feishu': '飞书',
+    'contacts.degree.all': '全部',
+    'contacts.degree.first': '一度',
+    'contacts.degree.second': '二度',
+    'contacts.groups': '所在群',
+    'contacts.groupsEmpty': '暂无所在群信息。同步对应群后会自动入库。',
 
     // ── 渠道配置 (ChannelsTab) ──────────────────────────────────────────────
     'contacts.tab.channels': '渠道',
+    'contacts.channels.memberCount': '成员数',
     'contacts.channels.connected': '飞书已连接',
     'contacts.channels.disconnected': '飞书未连接',
     'contacts.channels.autoSync': '自动同步',
@@ -1929,9 +1935,15 @@ export const enUS: Record<string, string> = {
     'contacts.timelineEmpty': 'No messages in this session.',
     'contacts.crossGroup': 'Cross-group messages',
     'contacts.platform.feishu': 'Feishu',
+    'contacts.degree.all': 'All',
+    'contacts.degree.first': '1st-degree',
+    'contacts.degree.second': '2nd-degree',
+    'contacts.groups': 'Groups',
+    'contacts.groupsEmpty': 'No group membership yet. Synced groups are ingested automatically.',
 
     // ── Channel config (ChannelsTab) ────────────────────────────────────
     'contacts.tab.channels': 'Channels',
+    'contacts.channels.memberCount': 'Members',
     'contacts.channels.connected': 'Feishu connected',
     'contacts.channels.disconnected': 'Feishu not connected',
     'contacts.channels.autoSync': 'Auto-sync',

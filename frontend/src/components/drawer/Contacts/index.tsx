@@ -6,10 +6,12 @@ import * as ui from '../../../stores/uiStore';
 import { t } from '../../../i18n';
 import {
     contactService,
+    channelService,
     type Contact,
     type ContactChannel,
     type FeishuMessage,
     type SessionSummary,
+    type TrackedChat,
 } from '@1agents/core/services/contactService';
 import { ChannelsTab } from './ChannelsTab';
 
@@ -83,6 +85,8 @@ function ContactsTab() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
+    // Degree filter: 0 = all, 1 = first-degree, 2 = second-degree (group roster).
+    const [degree, setDegree] = useState(0);
     const selectedId = useSignal<string | null>(null);
     const [editing, setEditing] = useState<Contact | 'new' | null>(null);
 
@@ -90,13 +94,13 @@ function ContactsTab() {
         setLoading(true);
         setError('');
         try {
-            setContacts(await contactService.listContacts());
+            setContacts(await contactService.listContacts(degree));
         } catch (err) {
             setError((err as Error).message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [degree]);
 
     useEffect(() => {
         refresh();
@@ -156,6 +160,23 @@ function ContactsTab() {
                     </button>
                 </div>
             </div>
+            <div class="contacts-degree-filter">
+                {(
+                    [
+                        [0, t('contacts.degree.all', language)],
+                        [1, t('contacts.degree.first', language)],
+                        [2, t('contacts.degree.second', language)],
+                    ] as Array<[number, string]>
+                ).map(([d, label]) => (
+                    <button
+                        key={d}
+                        class={`contacts-degree-chip${degree === d ? ' active' : ''}`}
+                        onClick={() => setDegree(d)}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
             {error && <div class="contacts-error">{error}</div>}
             <div class="contacts-list">
                 {!loading && filtered.length === 0 && <div class="contacts-empty">{t('contacts.empty', language)}</div>}
@@ -172,6 +193,11 @@ function ContactsTab() {
                                 <div class="contacts-list-item-top">
                                     <span class="contacts-list-name">
                                         {c.name || t('contacts.field.name', language)}
+                                    </span>
+                                    <span class={`contacts-degree-badge deg-${c.degree === 2 ? 2 : 1}`}>
+                                        {c.degree === 2
+                                            ? t('contacts.degree.second', language)
+                                            : t('contacts.degree.first', language)}
                                     </span>
                                     {c.phone && <span class="contacts-list-phone">{c.phone}</span>}
                                     {feishuCount > 0 && (
@@ -315,6 +341,8 @@ function ContactDetail({
 
             {error && <div class="contacts-error">{error}</div>}
 
+            {contact.degree === 2 && <ContactGroups contact={contact} />}
+
             <div class="contacts-section">
                 <div class="contacts-section-head">
                     <span class="contacts-section-title">{t('contacts.channels', language)}</span>
@@ -357,6 +385,59 @@ function ContactDetail({
             <div class="contacts-section">
                 <ContactMessages contactId={contact.id} />
             </div>
+        </div>
+    );
+}
+
+// "所在群" — the tracked groups a degree-2 contact belongs to. Resolved from the
+// contact's feishu channels' sessionIds against the tracked-chat name list (the
+// only client-side display-name source). Groups without a cached name fall back
+// to a shortened id.
+function ContactGroups({ contact }: { contact: Contact }) {
+    const language = ui.language.value;
+    const [names, setNames] = useState<Record<string, TrackedChat>>({});
+
+    useEffect(() => {
+        let active = true;
+        channelService
+            .trackedChats()
+            .then(chats => {
+                if (!active) return;
+                const map: Record<string, TrackedChat> = {};
+                for (const c of chats) map[c.chatId] = c;
+                setNames(map);
+            })
+            .catch(() => {
+                /* best-effort: groups still render with id fallback */
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    // Distinct sessionIds across the contact's feishu channels.
+    const sessionIds = Array.from(
+        new Set((contact.channels || []).filter(ch => ch.platform === 'feishu' && ch.sessionId).map(ch => ch.sessionId))
+    );
+
+    return (
+        <div class="contacts-section">
+            <div class="contacts-section-head">
+                <span class="contacts-section-title">{t('contacts.groups', language)}</span>
+            </div>
+            {sessionIds.length === 0 && <div class="contacts-empty">{t('contacts.groupsEmpty', language)}</div>}
+            {sessionIds.map(sid => {
+                const chat = names[sid];
+                return (
+                    <div key={sid} class="contacts-group-row">
+                        <span class="contacts-avatar">{initials(chat?.chatName || sid)}</span>
+                        <span class="contacts-group-name">{chat?.chatName || shortId(sid)}</span>
+                        {chat?.external && (
+                            <span class="contacts-channels-badge ext">{t('contacts.channels.external', language)}</span>
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }

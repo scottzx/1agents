@@ -141,3 +141,120 @@ func TestContactChannelsUpsertLinkUnlinkAndDeleteUnbinds(t *testing.T) {
 		t.Fatalf("expected ErrNotFound on bad link, got %v", err)
 	}
 }
+
+func TestIngestGroupMembersDegree2(t *testing.T) {
+	db := newTestDB(t)
+	s := NewContactStore(db)
+
+	roster := []GroupMember{
+		{OpenID: "ou_silent1", Name: "沉默甲", TenantKey: "tnt_a"},
+		{OpenID: "ou_silent2", Name: "沉默乙", TenantKey: "tnt_b"},
+	}
+
+	// First ingest creates one degree-2 contact + linked channel per member.
+	created, err := s.IngestGroupMembers("oc_group1", roster)
+	if err != nil {
+		t.Fatalf("ingest 1: %v", err)
+	}
+	if created != 2 {
+		t.Fatalf("expected 2 created, got %d", created)
+	}
+
+	// MemberCountForSession returns the roster size.
+	if n, err := s.MemberCountForSession("oc_group1"); err != nil || n != 2 {
+		t.Fatalf("member count: n=%d err=%v", n, err)
+	}
+
+	// Re-ingesting the same roster is idempotent: nothing new.
+	created, err = s.IngestGroupMembers("oc_group1", roster)
+	if err != nil {
+		t.Fatalf("ingest 2: %v", err)
+	}
+	if created != 0 {
+		t.Fatalf("expected 0 created on re-ingest, got %d", created)
+	}
+	if n, _ := s.MemberCountForSession("oc_group1"); n != 2 {
+		t.Fatalf("member count after re-ingest: %d", n)
+	}
+
+	// degree + tenant_key round-trip through ContactsWithChannels.
+	all, err := s.ContactsWithChannels()
+	if err != nil {
+		t.Fatalf("with channels: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 contacts, got %d", len(all))
+	}
+	for _, c := range all {
+		if c.Degree != 2 {
+			t.Fatalf("contact %q expected degree 2, got %d", c.Name, c.Degree)
+		}
+		if len(c.Channels) != 1 {
+			t.Fatalf("contact %q expected 1 channel, got %d", c.Name, len(c.Channels))
+		}
+		if c.Channels[0].TenantKey == "" {
+			t.Fatalf("contact %q channel tenant_key not stored", c.Name)
+		}
+	}
+
+	// degree filter: ListContactsByDegree(2) returns both; (1) returns none.
+	if d2, _ := s.ListContactsByDegree(2); len(d2) != 2 {
+		t.Fatalf("degree-2 filter: %d", len(d2))
+	}
+	if d1, _ := s.ListContactsByDegree(1); len(d1) != 0 {
+		t.Fatalf("degree-1 filter should be empty: %d", len(d1))
+	}
+
+	// A member whose channel is already linked to an existing (degree-1) contact
+	// is NOT relinked and its contact's degree is unchanged. Create a manual
+	// contact, link ou_silent1's channel to it, then re-ingest.
+	manual, _ := s.CreateContact("13900000001", "真名甲", "", "", "", nil)
+	if manual.Degree != 1 {
+		t.Fatalf("manual contact should be degree 1, got %d", manual.Degree)
+	}
+	// Find ou_silent1's channel id.
+	chans, _ := s.ListChannels("", false)
+	var ou1ChID string
+	for _, ch := range chans {
+		if ch.ChannelID == "ou_silent1" {
+			ou1ChID = ch.ID
+		}
+	}
+	if ou1ChID == "" {
+		t.Fatalf("ou_silent1 channel not found")
+	}
+	if err := s.LinkChannel(ou1ChID, manual.ID); err != nil {
+		t.Fatalf("link to manual: %v", err)
+	}
+
+	// Re-ingest with a refreshed nickname; the already-linked channel must keep
+	// its manual contact, no new contact created for it.
+	created, err = s.IngestGroupMembers("oc_group1", []GroupMember{
+		{OpenID: "ou_silent1", Name: "沉默甲改名", TenantKey: "tnt_a"},
+	})
+	if err != nil {
+		t.Fatalf("ingest 3: %v", err)
+	}
+	if created != 0 {
+		t.Fatalf("already-linked member should create nothing, got %d", created)
+	}
+	// The channel still points at the manual contact; nickname refreshed.
+	chans, _ = s.ListChannelsForContact(manual.ID)
+	if len(chans) != 1 || chans[0].ChannelID != "ou_silent1" {
+		t.Fatalf("manual contact lost its channel: %+v", chans)
+	}
+	if chans[0].Nickname != "沉默甲改名" {
+		t.Fatalf("nickname not refreshed: %q", chans[0].Nickname)
+	}
+	// Manual contact's degree unchanged.
+	reloaded, _ := s.getContact(manual.ID)
+	if reloaded.Degree != 1 {
+		t.Fatalf("manual contact degree changed to %d", reloaded.Degree)
+	}
+
+	// GroupsForChannel: ou_silent1 belongs to oc_group1.
+	groups, err := s.GroupsForChannel("ou_silent1")
+	if err != nil || len(groups) != 1 || groups[0] != "oc_group1" {
+		t.Fatalf("groups for channel: %v err=%v", groups, err)
+	}
+}
