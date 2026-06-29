@@ -74,7 +74,10 @@ export function parseDeviceBundle(raw: string): DeviceProfile | null {
     let obj: Record<string, unknown>;
     try {
         // 容忍复制粘贴时混入的尾随分号(如 `…"machineId":"x";}`);扫码不会有。
-        const cleaned = raw.trim().replace(/;\s*}\s*$/, '}').replace(/}\s*;\s*$/, '}');
+        const cleaned = raw
+            .trim()
+            .replace(/;\s*}\s*$/, '}')
+            .replace(/}\s*;\s*$/, '}');
         obj = JSON.parse(cleaned);
     } catch {
         return null;
