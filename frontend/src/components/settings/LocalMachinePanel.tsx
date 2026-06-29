@@ -34,7 +34,7 @@ function buildCredentialPayload(s: HappyStatus): string {
     if (s.token) payload.token = s.token;
     if (s.machineId) payload.machineId = s.machineId;
     if (s.machineKey) payload.machineKey = s.machineKey;
-    if (s.publicKey) payload.publicKey = s.publicKey;
+    // 客户端配对不需要 publicKey(parseDeviceBundle 不读),省略以减小二维码体积、提升可扫性。
     return JSON.stringify(payload);
 }
 
@@ -46,9 +46,11 @@ function CredentialQr({ payload }: { payload: string }) {
         if (!canvas) return;
         // 黑白固定(不随主题切换),否则深色模式下对比度不足、扫不出来。
         QRCode.toCanvas(canvas, payload, {
-            width: 200,
+            // 较大尺寸 + 低纠错级(L):bundle 数据较多,模块多,放大并减少冗余
+            // 让单个模块更大,手机隔屏扫码更容易成功。
+            width: 300,
             margin: 2,
-            errorCorrectionLevel: 'M',
+            errorCorrectionLevel: 'L',
             color: { dark: '#000000', light: '#ffffff' },
         }).catch((e: unknown) => (err.value = (e as Error)?.message ?? String(e)));
     }, [payload]);
@@ -314,7 +316,8 @@ export function LocalMachinePanel() {
                     </div>
 
                     {s?.hostname && <MonoRow label="设备名称" value={s.hostname} />}
-                    {s?.serverUrl && <MonoRow label="中转地址" value={s.serverUrl} />}
+                    {/* 中转地址不在面板明文展示 —— 避免暴露 relay 域名招致 DoS。
+                        仍随二维码下发(buildCredentialPayload),客户端扫码即可连接。 */}
                     {s?.machineId && <MonoRow label="Machine ID" value={s.machineId} />}
                     {s?.token && <MonoRow label="Token" value={s.token} redact />}
                     {s?.machineKey && <MonoRow label="Machine Key" value={s.machineKey} redact />}
