@@ -26,7 +26,7 @@ func newTestHandler(t *testing.T) (*Handler, *feishu.Store, *meta.DigestStore) {
 	}
 	t.Cleanup(func() { fs.Close() })
 	ds := meta.NewDigestStore(mdb)
-	h := NewHandler(fs, ds, meta.NewTaskStore(mdb), feishu.NewSyncer(fs, feishu.NewClient("", "self")))
+	h := NewHandler(fs, ds, meta.NewTaskStore(mdb), meta.NewFeishuChatStore(mdb), feishu.NewSyncer(fs, feishu.NewClient("", "self")))
 	if err := h.Seed(); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

@@ -8,10 +8,13 @@ package feishu
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -23,16 +26,17 @@ const Channel = "feishu"
 
 // Message is one chat message in the unified, channel-agnostic model.
 type Message struct {
-	Channel      string // 'feishu'
-	ChannelAccID string // local account id, distinguishes multiple accounts on one channel
-	MessageID    string // remote message id (om_xxx); unique within a channel
-	SessionID    string // chat_id (oc_xxx) / conversation id
-	SenderID     string // sender open_id
-	SenderName   string // resolved via chat.members (best-effort)
-	MsgType      string // text | post | image | system | ...
-	Title        string // message/post title (when present)
-	Content      string // raw body.content JSON
-	CreateTime   int64  // creation time, epoch milliseconds
+	Channel         string // 'feishu'
+	ChannelAccID    string // local account id, distinguishes multiple accounts on one channel
+	MessageID       string // remote message id (om_xxx); unique within a channel
+	SessionID       string // chat_id (oc_xxx) / conversation id
+	SenderID        string // sender open_id
+	SenderName      string // resolved via chat.members (best-effort)
+	SenderTenantKey string // sender's Feishu org (from the message sender object)
+	MsgType         string // text | post | image | system | ...
+	Title           string // message/post title (when present)
+	Content         string // raw body.content JSON
+	CreateTime      int64  // creation time, epoch milliseconds
 }
 
 // Store wraps sync.db.
@@ -78,7 +82,42 @@ func Open(path string) (*Store, error) {
 		sqlDB.Close()
 		return nil, fmt.Errorf("feishu: apply schema: %w", err)
 	}
+	if err := s.ensureColumns(); err != nil {
+		sqlDB.Close()
+		return nil, err
+	}
 	return s, nil
+}
+
+// ensureColumns adds any additive columns missing from a pre-existing
+// unified_messages table (the CREATE IF NOT EXISTS above only helps fresh DBs).
+// Idempotent, mirroring meta's ensure*Columns helpers.
+func (s *Store) ensureColumns() error {
+	rows, err := s.sql.Query("PRAGMA table_info(unified_messages)")
+	if err != nil {
+		return fmt.Errorf("feishu: inspect unified_messages: %w", err)
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		cols[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !cols["sender_tenant_key"] {
+		if _, err := s.sql.Exec(`ALTER TABLE unified_messages ADD COLUMN sender_tenant_key TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("feishu: add unified_messages.sender_tenant_key: %w", err)
+		}
+	}
+	return nil
 }
 
 var (
@@ -116,6 +155,7 @@ CREATE TABLE IF NOT EXISTS unified_messages (
     session_id     TEXT    NOT NULL,
     sender_id      TEXT    NOT NULL DEFAULT '',
     sender_name    TEXT    NOT NULL DEFAULT '',
+    sender_tenant_key TEXT NOT NULL DEFAULT '',
     msg_type       TEXT    NOT NULL DEFAULT '',
     title          TEXT    NOT NULL DEFAULT '',
     content        TEXT    NOT NULL DEFAULT '',
@@ -149,8 +189,8 @@ func (s *Store) UpsertMessages(msgs []Message) (int, error) {
 	}
 	defer tx.Rollback()
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO unified_messages
-        (channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        (channel, channel_acc_id, message_id, session_id, sender_id, sender_name, sender_tenant_key, msg_type, title, content, create_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return 0, err
 	}
@@ -158,7 +198,7 @@ func (s *Store) UpsertMessages(msgs []Message) (int, error) {
 	inserted := 0
 	for _, m := range msgs {
 		res, err := stmt.Exec(m.Channel, m.ChannelAccID, m.MessageID, m.SessionID,
-			m.SenderID, m.SenderName, m.MsgType, m.Title, m.Content, m.CreateTime)
+			m.SenderID, m.SenderName, m.SenderTenantKey, m.MsgType, m.Title, m.Content, m.CreateTime)
 		if err != nil {
 			return 0, err
 		}
@@ -208,10 +248,17 @@ func (s *Store) SetWatermark(channel, accID, sessionID string, value int64, upda
 // ms), in ascending time order. limit <= 0 means no limit. Used to assemble an
 // analysis batch.
 func (s *Store) ListMessages(channel, sessionID string, since int64, limit int) ([]Message, error) {
-	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
+	// With a limit we want the LATEST N messages, not the oldest N — so order
+	// DESC + LIMIT, then reverse to ascending below for chat-timeline display.
+	// Without a limit, ASC returns the whole history in order.
+	order := "ASC"
+	if limit > 0 {
+		order = "DESC"
+	}
+	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, sender_tenant_key, msg_type, title, content, create_time
         FROM unified_messages
         WHERE channel = ? AND session_id = ? AND create_time >= ?
-        ORDER BY create_time ASC, message_id ASC`
+        ORDER BY create_time ` + order + `, message_id ` + order
 	args := []any{channel, sessionID, since}
 	if limit > 0 {
 		q += " LIMIT ?"
@@ -226,10 +273,13 @@ func (s *Store) ListMessages(channel, sessionID string, since int64, limit int) 
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.Channel, &m.ChannelAccID, &m.MessageID, &m.SessionID,
-			&m.SenderID, &m.SenderName, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
+			&m.SenderID, &m.SenderName, &m.SenderTenantKey, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
+	}
+	if order == "DESC" {
+		reverseMessages(out)
 	}
 	return out, rows.Err()
 }
@@ -262,4 +312,173 @@ func (s *Store) CountMessages(channel, sessionID string) (int, error) {
 	err := s.sql.QueryRow(`SELECT COUNT(1) FROM unified_messages
         WHERE channel = ? AND session_id = ?`, channel, sessionID).Scan(&n)
 	return n, err
+}
+
+// SenderInfo is one distinct chat participant discovered from synced messages:
+// their open_id, latest display name, the session they were last seen in, and
+// that latest timestamp. Used by the contacts module to auto-discover channel
+// identities (Feishu can't return phones for external group members).
+type SenderInfo struct {
+	SenderID   string
+	SenderName string
+	SessionID  string
+	LastSeen   int64
+}
+
+// DistinctSenders returns one row per distinct sender_id on a channel, carrying
+// the name/session from that sender's most recent message and the max
+// create_time. Senders with an empty open_id (system messages) are excluded.
+func (s *Store) DistinctSenders(channel string) ([]SenderInfo, error) {
+	// For each sender pick the latest message's name + session via a correlated
+	// max(create_time); GROUP BY then collapses to one row per sender.
+	rows, err := s.sql.Query(`SELECT m.sender_id, m.sender_name, m.session_id, m.create_time
+        FROM unified_messages m
+        JOIN (
+            SELECT sender_id, MAX(create_time) AS mt
+            FROM unified_messages
+            WHERE channel = ? AND sender_id != ''
+            GROUP BY sender_id
+        ) latest ON latest.sender_id = m.sender_id AND latest.mt = m.create_time
+        WHERE m.channel = ? AND m.sender_id != ''
+        GROUP BY m.sender_id
+        ORDER BY m.create_time DESC`, channel, channel)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SenderInfo{}
+	for rows.Next() {
+		var si SenderInfo
+		if err := rows.Scan(&si.SenderID, &si.SenderName, &si.SessionID, &si.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
+// MessagesBySenders returns a channel's messages authored by any of senderIDs,
+// in ascending time order. Used to assemble a contact's messages. When sessionID
+// is non-empty the result is restricted to that one group (a contact's messages
+// in a specific chat); "" spans all groups (the merged cross-group view).
+// limit <= 0 means no limit; an empty senderIDs returns no rows.
+func (s *Store) MessagesBySenders(channel string, senderIDs []string, sessionID string, limit int) ([]Message, error) {
+	if len(senderIDs) == 0 {
+		return []Message{}, nil
+	}
+	placeholders := strings.Repeat("?,", len(senderIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	// Latest N when limited (DESC + LIMIT, reversed below); full history when not.
+	order := "ASC"
+	if limit > 0 {
+		order = "DESC"
+	}
+	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, sender_tenant_key, msg_type, title, content, create_time
+        FROM unified_messages
+        WHERE channel = ? AND sender_id IN (` + placeholders + `)`
+	args := []any{channel}
+	for _, id := range senderIDs {
+		args = append(args, id)
+	}
+	if sessionID != "" {
+		q += " AND session_id = ?"
+		args = append(args, sessionID)
+	}
+	q += " ORDER BY create_time " + order + ", message_id " + order
+	if limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := s.sql.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Message{}
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.Channel, &m.ChannelAccID, &m.MessageID, &m.SessionID,
+			&m.SenderID, &m.SenderName, &m.SenderTenantKey, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if order == "DESC" {
+		reverseMessages(out)
+	}
+	return out, rows.Err()
+}
+
+// reverseMessages flips a slice in place — used to turn a DESC (latest-first)
+// query result back into ascending chat-timeline order.
+func reverseMessages(m []Message) {
+	for i, j := 0, len(m)-1; i < j; i, j = i+1, j-1 {
+		m[i], m[j] = m[j], m[i]
+	}
+}
+
+// SessionSummary is one chat session's overview: its id, a display name, the
+// latest message's preview/time, and the total message count. Used by the
+// contacts 消息 tab session list.
+type SessionSummary struct {
+	SessionID   string
+	SessionName string
+	LastPreview string
+	LastTime    int64
+	Count       int
+}
+
+// SessionSummaries returns a summary per session on a channel, built on top of
+// ListSessions: per-session count + latest message time/preview.
+func (s *Store) SessionSummaries(channel string) ([]SessionSummary, error) {
+	sessions, err := s.ListSessions(channel)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionSummary, 0, len(sessions))
+	for _, sid := range sessions {
+		count, err := s.CountMessages(channel, sid)
+		if err != nil {
+			return nil, err
+		}
+		// sync.db has no session display-name source (chat title is not
+		// persisted here), so SessionName falls back to the session id. The
+		// contacts handler overlays tracked-chat names (meta.db v17) on top.
+		sum := SessionSummary{SessionID: sid, SessionName: sid, Count: count}
+		var name, content, msgType string
+		err = s.sql.QueryRow(`SELECT sender_name, content, msg_type, create_time
+            FROM unified_messages
+            WHERE channel = ? AND session_id = ?
+            ORDER BY create_time DESC, message_id DESC LIMIT 1`,
+			channel, sid).Scan(&name, &content, &msgType, &sum.LastTime)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+		if err == nil {
+			sum.LastPreview = previewText(name, msgType, content)
+		}
+		out = append(out, sum)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastTime > out[j].LastTime })
+	return out, nil
+}
+
+// previewText builds a short, single-line preview for a session's latest
+// message. Best-effort: only text bodies are unwrapped; other types degrade to
+// a "[type]" placeholder. Mirrors the digest renderer's intent without coupling.
+func previewText(senderName, msgType, content string) string {
+	body := "[" + msgType + "]"
+	if msgType == "text" {
+		var t struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal([]byte(content), &t) == nil && t.Text != "" {
+			body = t.Text
+		}
+	}
+	body = strings.ReplaceAll(body, "\n", " ")
+	if senderName != "" {
+		return senderName + ": " + body
+	}
+	return body
 }

@@ -310,6 +310,9 @@ jobs:
           tar -xzf "$ARCHIVE" -C temp-skill-manager
           chmod +x temp-skill-manager/skill-manager/skill-manager
 
+      - name: Build happy bundle
+        run: ./scripts/build-happy-bundle.sh
+
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
@@ -318,6 +321,9 @@ jobs:
           cp build/cc-connect release-pkg/bin/
           cp build/cc-switch release-pkg/bin/
           cp build/cloudflared release-pkg/bin/
+          cp build/happy release-pkg/bin/
+          cp -r build/happy-cli release-pkg/bin/happy-cli
+          cp -r build/adapter release-pkg/bin/adapter
           cp -r temp-skill-manager/skill-manager/. release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
@@ -454,6 +460,9 @@ jobs:
           tar -xzf "$ARCHIVE" -C temp-skill-manager
           chmod +x temp-skill-manager/skill-manager/skill-manager
 
+      - name: Build happy bundle
+        run: ./scripts/build-happy-bundle.sh "$PWD/build-ttyd"
+
       - name: Package Release Archive
         run: |
           mkdir -p release-pkg/bin
@@ -462,6 +471,9 @@ jobs:
           cp build-ttyd/cc-connect release-pkg/bin/
           cp build-ttyd/cc-switch release-pkg/bin/
           cp build-ttyd/cloudflared release-pkg/bin/
+          cp build-ttyd/happy release-pkg/bin/
+          cp -r build-ttyd/happy-cli release-pkg/bin/happy-cli
+          cp -r build-ttyd/adapter release-pkg/bin/adapter
           cp -r temp-skill-manager/skill-manager/. release-pkg/bin/
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
@@ -644,6 +656,10 @@ jobs:
           tar -xzf "$ARCHIVE" -C temp-skill-manager
           chmod +x temp-skill-manager/skill-manager/skill-manager
           cp temp-skill-manager/skill-manager/skill-manager build/skill-manager
+
+      - name: Build happy bundle
+        shell: bash
+        run: ./scripts/build-happy-bundle.sh
 
       - name: Setup Tauri resources
         shell: bash

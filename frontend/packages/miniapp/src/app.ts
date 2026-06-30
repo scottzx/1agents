@@ -1,7 +1,8 @@
 import {PropsWithChildren} from 'react';
-import {useLaunch} from '@tarojs/taro';
+import Taro, {useLaunch} from '@tarojs/taro';
 import {setPlatformBridge} from '@1agents/core/platform/bridge';
 import {setDirectBackend} from '@1agents/core/services/apiClient';
+import {isLoggedIn} from '@1agents/core/services/authService';
 
 import {TaroPlatformBridge} from './platform/taroBridge';
 import {BACKEND_BASE} from './config';
@@ -15,7 +16,10 @@ setDirectBackend(BACKEND_BASE);
 
 function App({children}: PropsWithChildren) {
   useLaunch(() => {
-    console.log('App launched.');
+    // 登录闸:未登录则跳登录页(reLaunch 清栈,登录页成功后再 reLaunch 回工作区)。
+    if (!isLoggedIn()) {
+      Taro.reLaunch({url: '/pages/login/index'});
+    }
   });
 
   // children is the page rendered by Taro's router.

@@ -68,6 +68,20 @@ else
     echo "WARNING: build/skill-manager not found. 1skills will run in dev (.venv) mode inside the app."
 fi
 
+# Copy the happy bundle (relay/C2 sidecar + RPC adapter) if built.
+# build-happy-bundle.sh produces build/happy-cli, build/adapter, build/happy.
+# resolveHappy() in the daemon finds <binDir>/happy-cli + <binDir>/adapter and
+# runs it through the bundled node at runtime/node/bin/node.
+if [ -d "build/happy-cli" ]; then
+    echo "=== Copying happy bundle ==="
+    rm -rf "$BIN_DIR/happy-cli" "$BIN_DIR/adapter"
+    cp -r "build/happy-cli" "$BIN_DIR/happy-cli"
+    cp -r "build/adapter" "$BIN_DIR/adapter"
+    if [ -f "build/happy" ]; then cp "build/happy" "$BIN_DIR/happy"; chmod +x "$BIN_DIR/happy"; fi
+else
+    echo "WARNING: build/happy-cli not found. The happy daemon will be unavailable in this bundle."
+fi
+
 # 4.1. Ad-hoc sign binaries on macOS to satisfy Gatekeeper
 if [ "$(uname)" = "Darwin" ]; then
     echo "=== Ad-hoc signing binaries for macOS ==="
