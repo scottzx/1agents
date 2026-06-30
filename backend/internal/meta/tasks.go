@@ -935,6 +935,27 @@ func (s *TaskStore) ListTasksByBusinessRef(ref string) ([]Task, error) {
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	// Hydrate DependsOn so the reverse binding seam (#321) surfaces the
+	// dependency chain to app UIs, not just per-task status. task_deps lives in
+	// a side table the bulk scan above skips; load it per task in array order.
+	for i := range out {
+		depRows, err := s.db.sql.Query(
+			`SELECT depends_on FROM task_deps WHERE task_id = ? ORDER BY seq`, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		for depRows.Next() {
+			var dep string
+			if err := depRows.Scan(&dep); err != nil {
+				depRows.Close()
+				return nil, err
+			}
+			out[i].DependsOn = append(out[i].DependsOn, dep)
+		}
+		if err := depRows.Close(); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 

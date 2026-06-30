@@ -16727,6 +16727,11 @@ body {
 
 @import './dashboard';
 
+/* Installable-app style partials (Epic #317 Wave 3). */
+@import './apps/media';
+@import './apps/crm';
+@import './apps/radio';
+
 /* ═══ Platform Layer — Epic #317 Wave 2b ══════════════════════════════════
  * Styles for: ProjectShell (#326) · SessionTierPicker (#328)
  *             MountPointRenderer (#331) · L1Shell / LensOverlay (#332)

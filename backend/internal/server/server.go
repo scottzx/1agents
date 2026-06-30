@@ -17,7 +17,11 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
+	"github.com/scottzx/1Agents/backend/internal/appkit"
 	"github.com/scottzx/1Agents/backend/internal/appregistry"
+	"github.com/scottzx/1Agents/backend/internal/apps/crm"
+	"github.com/scottzx/1Agents/backend/internal/apps/media"
+	"github.com/scottzx/1Agents/backend/internal/apps/radio"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
@@ -32,6 +36,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/retro"
 	"github.com/scottzx/1Agents/backend/internal/system"
+	"github.com/scottzx/1Agents/backend/internal/taskapi"
 	"github.com/scottzx/1Agents/backend/internal/templateregistry"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
@@ -85,8 +90,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
 
 	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
-	mux.HandleFunc("/api/apps", appregistry.HandleList)     // GET → {apps:[...]}
-	mux.HandleFunc("/api/apps/", appregistryItemHandler)    // POST /{id}/enable|disable
+	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
+	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
 
 	// ── Template registry API (Wave 2a, #329) ───────────────────────────────
 	mux.HandleFunc("/api/templates", templateregistry.HandleList) // GET → {templates:[...]}
@@ -170,6 +175,33 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// Headless executor/verifier: scheduler-triggered tasks run through
 			// the 1acp bridge with no frontend involved (automation-first).
 			scheduler.SetRunner(agent.NewTaskRunner(acpxPort, selfBaseURL, tasksStore, agentStore, scheduler))
+
+			// ── North Task API + executor=function dispatch + installable apps
+			// (Epic #317). tasksStore is *meta.TaskStore (agent.TasksStore alias),
+			// agent.Task == meta.Task, so the bridge is direct. RunInits lets each
+			// imported app register its function handlers, permission allowlist and
+			// completion writeback hook against the live API.
+			taskAPI := taskapi.New(tasksStore)
+			scheduler.SetFunctionRunner(func(task agent.Task, wsPath string) {
+				taskapi.RunFunction(task, wsPath, tasksStore, taskAPI)
+			})
+			appkit.RunInits(taskAPI)
+
+			// App HTTP surfaces (#335-347). Manifest enabled-state governs the
+			// frontend mount visibility; the routes are harmless when an app is off.
+			media.RegisterRoutes(mux) // /api/apps/media/*
+			if appDB, dbErr := meta.OpenDefault(); dbErr == nil {
+				crmH := crm.NewHandler(appDB)
+				mux.HandleFunc("/api/crm/contacts", crmH.HandleContacts)             // GET, POST
+				mux.HandleFunc("/api/crm/contacts/parse-card", crmH.HandleParseCard) // POST
+				mux.HandleFunc("/api/crm/ingest", crmH.HandleIngest)                 // POST
+				mux.HandleFunc("/api/crm/leads", crmH.HandleLeads)                   // GET, POST
+				mux.HandleFunc("/api/crm/leads/", crmH.HandleLeadAction)             // POST /{id}/{score|enrich|follow|drop}
+			} else {
+				log.Printf("[server] crm app db: %v", dbErr)
+			}
+			mux.Handle("/api/radio/", radio.NewHandler()) // episode CRUD + pipeline + range-streamed audio
+
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
@@ -230,12 +262,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/contacts", contactsHandler.HandleContacts)                // GET, POST
 				mux.HandleFunc("/api/contacts/channels", contactsHandler.HandleChannels)       // GET ?contactId=&unlinked=1
 				mux.HandleFunc("/api/contacts/channels/", contactsHandler.HandleChannelAction) // POST /{id}/link|unlink
-				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)      // POST
-				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)      // GET ?contactId=|sessionId=
-				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)      // GET
-				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)    // GET tenant→company map
-				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)   // GET /{sessionId}/members
-				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)           // PATCH, DELETE /{id}
+				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)       // POST
+				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)       // GET ?contactId=|sessionId=
+				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)       // GET
+				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)     // GET tenant→company map
+				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)    // GET /{sessionId}/members
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)            // PATCH, DELETE /{id}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks

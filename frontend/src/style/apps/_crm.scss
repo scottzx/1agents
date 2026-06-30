@@ -1,0 +1,339 @@
+// CRM app styles (#339-343). L1 page: lead funnel + contact library + intake.
+// All colors via semantic tokens (dark mode adapts for free). Card surfaces
+// extend the Bento primitives. Orchestrator adds `@use 'apps/crm';` to index.scss.
+
+.crm-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  height: 100%;
+  overflow-y: auto;
+  color: var(--text-main);
+}
+
+.crm-header {
+  .crm-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+  .crm-subtitle {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+}
+
+.crm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--bento-radius-sm);
+  font-size: 0.85rem;
+
+  &-error {
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+    border: 1px solid rgba(var(--danger-rgb), 0.3);
+  }
+  .crm-banner-close {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.1rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+}
+
+// ── Intake bar ─────────────────────────────────────────────────────────────
+.crm-intake {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+
+  .crm-card-input {
+    flex: 1;
+    min-height: 64px;
+    resize: vertical;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius-sm);
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 0.85rem;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-color);
+    }
+  }
+  .crm-intake-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+  }
+}
+
+// ── Buttons ────────────────────────────────────────────────────────────────
+.crm-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--bento-transition);
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: var(--btn-hover);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.crm-btn-sm {
+    padding: 4px 10px;
+    font-size: 0.72rem;
+  }
+  &.crm-btn-accent {
+    background: var(--accent-color);
+    color: var(--on-accent);
+    border-color: var(--accent-color);
+    &:hover:not(:disabled) { background: var(--accent-hover); }
+  }
+  &.crm-btn-success {
+    color: var(--success-fg);
+    border-color: rgba(var(--success-rgb), 0.4);
+    &:hover:not(:disabled) { background: var(--success-bg); }
+  }
+  &.crm-btn-danger {
+    color: var(--danger-fg);
+    border-color: rgba(var(--danger-rgb), 0.4);
+    &:hover:not(:disabled) { background: var(--danger-bg); }
+  }
+}
+
+// ── Sections ───────────────────────────────────────────────────────────────
+.crm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.crm-section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.crm-hint,
+.crm-empty {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.crm-empty {
+  padding: 24px;
+  text-align: center;
+}
+
+// ── Lead funnel ────────────────────────────────────────────────────────────
+.crm-funnel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.crm-funnel-col {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+
+  .crm-funnel-col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .crm-stage-count {
+    background: var(--accent-light);
+    color: var(--accent-fg);
+    border-radius: 999px;
+    padding: 0 8px;
+    font-size: 0.7rem;
+  }
+  .crm-funnel-col-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .crm-funnel-empty {
+    color: var(--text-muted);
+    text-align: center;
+    font-size: 0.8rem;
+    padding: 8px 0;
+  }
+}
+// stage accent stripes (top border tint)
+.crm-stage-new    { border-top: 3px solid var(--text-muted); }
+.crm-stage-contacted { border-top: 3px solid var(--accent-color); }
+.crm-stage-qualified { border-top: 3px solid var(--purple-fg); }
+.crm-stage-won    { border-top: 3px solid var(--success-emphasis); }
+.crm-stage-lost   { border-top: 3px solid var(--danger-fg); }
+
+// ── Lead card ──────────────────────────────────────────────────────────────
+.crm-lead-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .crm-lead-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .crm-lead-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .crm-lead-company {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+  .crm-lead-notes {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .crm-lead-running {
+    font-size: 0.7rem;
+    color: var(--accent-fg);
+  }
+}
+
+.crm-score {
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+
+  &.crm-score-low  { background: var(--bg-panel); color: var(--text-muted); }
+  &.crm-score-mid  { background: var(--warning-bg); color: var(--warning-fg); }
+  &.crm-score-high { background: var(--success-bg); color: var(--success-fg); }
+}
+
+.crm-lead-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+// inline task state list
+.crm-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.crm-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: var(--bento-radius-sm);
+  background: var(--bg-panel);
+
+  .crm-task-exec {
+    text-transform: uppercase;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .crm-task-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+  }
+  .crm-task-status { flex-shrink: 0; color: var(--text-muted); }
+
+  &.crm-task-running { color: var(--accent-fg); .crm-task-status { color: var(--accent-fg); } }
+  &.crm-task-completed { .crm-task-status { color: var(--success-fg); } }
+  &.crm-task-failed { .crm-task-status { color: var(--danger-fg); } }
+  &.crm-task-awaiting_human { .crm-task-status { color: var(--warning-fg); } }
+}
+
+// ── Contact library ────────────────────────────────────────────────────────
+.crm-contact-grid {
+  --bento-min-col: 220px;
+}
+.crm-contact-card {
+  .crm-contact-line {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .crm-mono { font-family: var(--font-mono); font-size: 0.72rem; }
+}
+.crm-source-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--accent-fg);
+  background: var(--accent-light);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.crm-tag {
+  font-size: 0.72rem;
+  color: var(--success-fg);
+}
+
+// ── Lens (关联线索) ─────────────────────────────────────────────────────────
+.crm-lens {
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background: var(--bg-card);
+  padding: 8px 10px;
+  font-size: 0.78rem;
+
+  &-empty { color: var(--text-muted); }
+  .crm-lens-head {
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .crm-lens-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .crm-lens-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .crm-lens-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crm-lens-stage { color: var(--text-muted); font-size: 0.7rem; }
+  .crm-lens-score { font-family: var(--font-mono); font-weight: 600; }
+  .crm-lens-running { color: var(--accent-fg); font-size: 0.7rem; }
+}
