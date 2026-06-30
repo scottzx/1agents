@@ -9,7 +9,7 @@
  * is unavailable (shows the form with empty defaults).
  */
 
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { getProjectConfig, putProjectConfig, type ProjectConfig } from '../../services/appManifestService';
 import * as ui from '../../stores/uiStore';
@@ -103,7 +103,7 @@ export function ProjectConfigPanel({ workspaceId, onClose }: ProjectConfigPanelP
                             <div class="fb-loading-spinner" />
                         </div>
                     ) : (
-                        <>
+                        <Fragment>
                             {activeTab === 'instructions' && (
                                 <div class="project-config-section">
                                     <label class="project-config-label">
@@ -209,7 +209,7 @@ export function ProjectConfigPanel({ workspaceId, onClose }: ProjectConfigPanelP
                                     />
                                 </div>
                             )}
-                        </>
+                        </Fragment>
                     )}
                 </div>
 

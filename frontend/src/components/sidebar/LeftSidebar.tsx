@@ -990,7 +990,7 @@ export function LeftSidebar({
                             return (
                                 <div class="workspace-section">
                                     <div class="section-header">
-                                        <span>{language === 'zh' ? '应用' : 'Apps'}</span>
+                                        <span>{language === 'zh-CN' ? '应用' : 'Apps'}</span>
                                     </div>
                                     <div class="l1-apps-nav">
                                         {appEntries.map(entry => (
