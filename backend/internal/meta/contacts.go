@@ -28,9 +28,14 @@ type Contact struct {
 	// from a tracked group's roster — a person in a shared group you don't yet
 	// know directly). Defaults to 1 for manually created contacts.
 	Degree    int              `json:"degree"`
-	CreatedAt time.Time        `json:"createdAt"`
-	UpdatedAt time.Time        `json:"updatedAt"`
-	Channels  []ContactChannel `json:"channels,omitempty"`
+	// GroupCount is how many distinct tracked groups this contact appears in,
+	// COUNT(DISTINCT session_id) over feishu_group_members across the contact's
+	// Feishu channels (open_ids). Additive enrichment for the 所在群 grid column;
+	// 0 when the contact has no Feishu channel or no roster rows yet.
+	GroupCount int              `json:"groupCount"`
+	CreatedAt  time.Time        `json:"createdAt"`
+	UpdatedAt  time.Time        `json:"updatedAt"`
+	Channels   []ContactChannel `json:"channels,omitempty"`
 }
 
 // ContactChannel binds a synced channel identity (platform + channelId, e.g. a
@@ -163,8 +168,38 @@ func (s *ContactStore) ContactsWithChannelsByDegree(degree int) ([]Contact, erro
 			return nil, err
 		}
 		contacts[i].Channels = chans
+		gc, err := s.groupCountForChannels(chans)
+		if err != nil {
+			return nil, err
+		}
+		contacts[i].GroupCount = gc
 	}
 	return contacts, nil
+}
+
+// groupCountForChannels returns COUNT(DISTINCT session_id) over feishu_group_members
+// for the contact's Feishu channel open_ids — the number of tracked groups the
+// contact appears in. A person in N groups has one open_id channel but N roster
+// rows, so the count must come from the roster, not the channel rows.
+func (s *ContactStore) groupCountForChannels(chans []ContactChannel) (int, error) {
+	openIDs := make([]string, 0, len(chans))
+	for _, ch := range chans {
+		if ch.Platform == "feishu" && ch.ChannelID != "" {
+			openIDs = append(openIDs, ch.ChannelID)
+		}
+	}
+	if len(openIDs) == 0 {
+		return 0, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(openIDs)), ",")
+	args := make([]any, len(openIDs))
+	for i, id := range openIDs {
+		args[i] = id
+	}
+	var n int
+	err := s.db.sql.QueryRow(`SELECT COUNT(DISTINCT session_id) FROM feishu_group_members
+        WHERE channel_id IN (`+placeholders+`)`, args...).Scan(&n)
+	return n, err
 }
 
 // CreateContact inserts a new contact. Returns ErrDuplicatePhone when phone is

@@ -3016,6 +3016,209 @@ body {
   margin-top: 4px;
 }
 
+// ── 联系人多维表格 (Contacts DataGrid) ──────────────────────────────────────
+// Reuses the .task-grid family for layout/sort/group; these only style the
+// contacts-specific cells. The name cell is a button that opens the detail modal.
+.contact-name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-color);
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.col-contact-phone {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.col-contact-count {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.col-contact-company,
+.col-contact-date {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+// ── 联系人详情弹窗 (ContactDetailModal) ─────────────────────────────────────
+// A modal overlay (NOT the old left-right split). Centered panel on desktop,
+// full-screen on mobile. Backdrop click + × + Esc close it.
+.contacts-detail-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.contacts-detail-modal {
+  @extend %bento-card;
+  position: relative;
+  width: min(640px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
+
+  &.mobile {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+}
+
+.contacts-detail-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: var(--btn-hover);
+    color: var(--text-main);
+  }
+}
+
+// ── 群聊气泡 (GroupChatBubbles) ──────────────────────────────────────────────
+// Multi-sender replay: every bubble is left-aligned (no "me"); consecutive
+// messages from one sender collapse the avatar + name. Visual cue is the
+// .chat-bubble family but this is an independent renderer.
+.contacts-chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.contacts-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contacts-chat-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+
+  &.run-start {
+    margin-top: 8px;
+  }
+}
+
+.contacts-chat-avatar-col {
+  flex-shrink: 0;
+  width: 32px;
+}
+
+.contacts-chat-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--on-accent);
+
+  // Deterministic per-sender palette (senderColorIndex → cN). Semantic-token
+  // families so each sender gets a stable, theme-aware hue.
+  &.c0 {
+    background: var(--accent-color);
+  }
+  &.c1 {
+    background: var(--purple-fg);
+  }
+  &.c2 {
+    background: var(--success-fg);
+  }
+  &.c3 {
+    background: var(--warning-fg);
+  }
+  &.c4 {
+    background: var(--danger-fg);
+  }
+  &.c5 {
+    background: var(--orange-fg);
+  }
+  &.c6 {
+    background: var(--accent-active);
+  }
+  &.c7 {
+    background: var(--purple-emphasis, var(--purple-fg));
+  }
+}
+
+.contacts-chat-avatar-spacer {
+  display: inline-block;
+  width: 32px;
+  height: 1px;
+}
+
+.contacts-chat-bubble-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contacts-chat-sender {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding-left: 2px;
+}
+
+.contacts-chat-bubble {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 7px 11px;
+  border-radius: 12px;
+  border-top-left-radius: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+.contacts-chat-text {
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.contacts-chat-time {
+  align-self: flex-end;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 // ── 渠道配置 (ChannelsTab) ────────────────────────────────────────────────
 .contacts-channels {
   flex: 1;

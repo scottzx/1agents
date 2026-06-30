@@ -33,6 +33,8 @@ export interface Contact {
     tags: string[];
     /** 1 = first-degree (manual/好友), 2 = second-degree (group roster only). */
     degree: number;
+    /** How many distinct tracked groups this contact appears in (所在群 column). */
+    groupCount: number;
     createdAt: string;
     updatedAt: string;
     channels?: ContactChannel[];
@@ -80,6 +82,17 @@ export interface SessionSummary {
 export interface DiscoverResult {
     discovered: number;
     updated: number;
+}
+
+// meta.CompanyTenant — one company_tenants × companies join row: a mapped
+// tenant_key + its company names. The frontend builds a tenantKey→shortName
+// lookup from the list to label a contact's channel org (replaces the old
+// hardcoded 飞书官方 constant; 飞书官方 is now seeded data).
+export interface CompanyTenant {
+    tenantKey: string;
+    companyId: string;
+    fullName: string;
+    shortName: string;
 }
 
 // ── 飞书渠道配置 (Phase 2) ──────────────────────────────────────────────────
@@ -250,6 +263,14 @@ export const contactService = {
         const res = await apiFetch('/contacts/sessions');
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SessionSummary[];
+    },
+
+    /** GET /api/contacts/companies — tenant_key→company-name map rows. The caller
+     * builds a tenantKey→shortName lookup to label a contact's channel org. */
+    async companies(): Promise<CompanyTenant[]> {
+        const res = await apiFetch('/contacts/companies');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as CompanyTenant[];
     },
 };
 

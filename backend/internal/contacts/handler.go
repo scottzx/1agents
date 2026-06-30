@@ -8,6 +8,7 @@ package contacts
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,12 +24,22 @@ type Handler struct {
 	fs  *feishu.Store
 	cs  *meta.ContactStore
 	ccs *meta.FeishuChatStore // tracked-chat names overlay onto session summaries
+	cps *meta.CompanyStore    // tenant_key→org-name map for the contacts grid/modal
 }
 
 // NewHandler builds a Handler from explicit stores (used by tests). ccs may be
-// nil; session summaries then keep the chat_id fallback for names.
-func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore) *Handler {
-	return &Handler{fs: fs, cs: cs, ccs: ccs}
+// nil; session summaries then keep the chat_id fallback for names. cps may be
+// nil; the companies endpoint then returns an empty map.
+func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore, cps *meta.CompanyStore) *Handler {
+	if cps != nil {
+		// Idempotent: ensure 飞书官方 is seeded so the frontend's org labels resolve
+		// without the old hardcoded constant. Log + ignore so a seed failure never
+		// blocks the contacts API.
+		if err := cps.SeedFeishuOfficial(); err != nil {
+			log.Printf("[contacts] seed 飞书官方 failed: %v", err)
+		}
+	}
+	return &Handler{fs: fs, cs: cs, ccs: ccs, cps: cps}
 }
 
 // NewHandlerDefault wires the handler from the default sync.db + meta.db (the
@@ -43,7 +54,7 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db)), nil
+	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db), meta.NewCompanyStore(db)), nil
 }
 
 // ── HTTP helpers ──
@@ -363,4 +374,25 @@ func (h *Handler) HandleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, sums)
+}
+
+// HandleCompanies: GET → the tenant_key→company-name map (company_tenants ×
+// companies). The frontend builds a tenantKey→shortName lookup to label each
+// contact's channel org, replacing the old hardcoded 飞书官方 constant. Returns an
+// empty list when no company store is wired.
+func (h *Handler) HandleCompanies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.cps == nil {
+		writeJSON(w, http.StatusOK, []meta.CompanyTenant{})
+		return
+	}
+	list, err := h.cps.TenantCompanyMap()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }

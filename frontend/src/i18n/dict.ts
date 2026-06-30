@@ -811,6 +811,18 @@ export const zhCN: Record<string, string> = {
     'contacts.allGroups': '全部群聊',
     'contacts.loading': '加载中…',
     'contacts.groupsEmpty': '暂无所在群信息。同步对应群后会自动入库。',
+    // 多维表格列 + 详情弹窗
+    'contacts.col.name': '姓名',
+    'contacts.col.degree': '类型',
+    'contacts.col.phone': '电话',
+    'contacts.col.company': '公司',
+    'contacts.col.feishuCount': '渠道数',
+    'contacts.col.groupCount': '所在群',
+    'contacts.col.createdAt': '创建时间',
+    'contacts.group.none': '不分组',
+    'contacts.emptyFiltered': '没有匹配的联系人。',
+    'contacts.close': '关闭',
+    'contacts.unknownOrg': '未知公司',
 
     // ── 渠道配置 (ChannelsTab) ──────────────────────────────────────────────
     'contacts.tab.channels': '渠道',
@@ -1947,6 +1959,18 @@ export const enUS: Record<string, string> = {
     'contacts.allGroups': 'All groups',
     'contacts.loading': 'Loading…',
     'contacts.groupsEmpty': 'No group membership yet. Synced groups are ingested automatically.',
+    // DataGrid columns + detail modal
+    'contacts.col.name': 'Name',
+    'contacts.col.degree': 'Type',
+    'contacts.col.phone': 'Phone',
+    'contacts.col.company': 'Company',
+    'contacts.col.feishuCount': 'Channels',
+    'contacts.col.groupCount': 'Groups',
+    'contacts.col.createdAt': 'Created',
+    'contacts.group.none': 'No grouping',
+    'contacts.emptyFiltered': 'No matching contacts.',
+    'contacts.close': 'Close',
+    'contacts.unknownOrg': 'Unknown company',
 
     // ── Channel config (ChannelsTab) ────────────────────────────────────
     'contacts.tab.channels': 'Channels',

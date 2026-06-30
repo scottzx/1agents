@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 18
+const schemaVersion = 19
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -184,6 +184,14 @@ func (db *DB) migrateSchema() error {
 	if version < 18 {
 		if _, err := db.sql.Exec(schemaV18); err != nil {
 			return fmt.Errorf("meta: apply schema v18: %w", err)
+		}
+	}
+	// v19 (公司基础信息表) adds the companies + company_tenants tables: the
+	// tenant_key→org-name mapping that replaces the hardcoded 飞书官方 constant. New
+	// tables only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 19 {
+		if _, err := db.sql.Exec(schemaV19); err != nil {
+			return fmt.Errorf("meta: apply schema v19: %w", err)
 		}
 	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
@@ -673,6 +681,31 @@ CREATE TABLE IF NOT EXISTS feishu_group_members (
     PRIMARY KEY (session_id, channel_id)
 );
 CREATE INDEX IF NOT EXISTS idx_fgm_channel ON feishu_group_members(channel_id);
+`
+
+// schemaV19 adds the 公司基础信息表 layer. companies owns the org metadata
+// (full/short name, reserved unified_id business id, note); company_tenants maps
+// each Feishu tenant_key to a company (1:1 on tenant_key, many tenants per
+// company). Together they replace the hardcoded 飞书官方 tenant constant — the org
+// name shown next to a contact's channel now resolves through this map, with
+// 飞书官方 seeded (see CompanyStore.SeedFeishuOfficial).
+const schemaV19 = `
+CREATE TABLE IF NOT EXISTS companies (
+    id         TEXT PRIMARY KEY,
+    full_name  TEXT NOT NULL DEFAULT '',
+    short_name TEXT NOT NULL DEFAULT '',
+    unified_id TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS company_tenants (
+    tenant_key TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_company_tenants_company ON company_tenants(company_id);
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────
