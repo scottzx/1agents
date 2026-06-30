@@ -2,6 +2,7 @@ package system
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,11 @@ import (
 	"syscall"
 )
 
+// defaultRelayURL is the 1agents production relay ("中转") base. It overrides
+// happy-cli's upstream default (api.cluster-fluster.com) — that submodule is a
+// clean upstream blueprint we steer via HAPPY_SERVER_URL, not by patching it.
+const defaultRelayURL = "https://agents.dreammate.work"
+
 // happyHome returns the ~/.happy directory path.
 func happyHome() string {
 	home, err := os.UserHomeDir()
@@ -20,6 +26,104 @@ func happyHome() string {
 		return ".happy"
 	}
 	return filepath.Join(home, ".happy")
+}
+
+// resolveHappy locates the happy CLI and returns the command name plus any
+// leading args needed to invoke it. Resolution order:
+//  1. `happy` on PATH (global install / `npm link`)
+//  2. the bundled happy-cli's Node entrypoint, run via node — the layout that
+//     every release channel ships (build-happy-bundle.sh puts happy-cli/ next
+//     to the daemon binary)
+//  3. the happy-cli submodule's Node entrypoint — the in-repo dev layout where
+//     the daemon runs as build/1agents
+//
+// ok is false when happy cannot be located by any strategy.
+func resolveHappy() (name string, lead []string, ok bool) {
+	if p, err := exec.LookPath("happy"); err == nil {
+		return p, nil, true
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", nil, false
+	}
+	binDir := filepath.Dir(exe)
+
+	// happy.mjs is a thin launcher that re-execs node on dist/index.mjs, so we
+	// run it through an explicit node (covers Tauri, where node is bundled and
+	// not on PATH). Bundled layout first, then the in-repo submodule.
+	for _, mjs := range []string{
+		filepath.Join(binDir, "happy-cli", "bin", "happy.mjs"),                  // release bundle
+		filepath.Join(binDir, "..", "modules", "happy-cli", "bin", "happy.mjs"), // repo dev
+	} {
+		if fileExists(mjs) {
+			if node, ok := resolveNode(binDir); ok {
+				return node, []string{mjs}, true
+			}
+		}
+	}
+	return "", nil, false
+}
+
+// resolveNode finds a node runtime: PATH first, then the runtime bundled by the
+// Tauri desktop build (resources/runtime/node/bin/node, sibling of the bin/ dir).
+func resolveNode(binDir string) (string, bool) {
+	if p, err := exec.LookPath("node"); err == nil {
+		return p, true
+	}
+	bundled := filepath.Join(binDir, "..", "runtime", "node", "bin", "node")
+	if isExecutableFile(bundled) {
+		return bundled, true
+	}
+	return "", false
+}
+
+// happyAdapterEntry returns the path to the 1agents RPC adapter entrypoint that
+// happy loads via HAPPY_RPC_ADAPTER_ENTRY, or "" if it is not bundled. Mirrors
+// the resolution layouts in resolveHappy (release bundle, then repo dev).
+func happyAdapterEntry() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	binDir := filepath.Dir(exe)
+	for _, p := range []string{
+		filepath.Join(binDir, "adapter", "rpc", "index.mjs"),       // release bundle
+		filepath.Join(binDir, "..", "adapter", "rpc", "index.mjs"), // repo dev
+	} {
+		if fileExists(p) {
+			return p
+		}
+	}
+	return ""
+}
+
+// happySettingsServerURL returns the serverUrl pinned in ~/.happy/settings.json,
+// or "" if absent. Used to honor a paired relay before falling back to the
+// 1agents default (matching happy-cli's env → settings.json → default order).
+func happySettingsServerURL() string {
+	data, err := os.ReadFile(filepath.Join(happyHome(), "settings.json"))
+	if err != nil {
+		return ""
+	}
+	var s struct {
+		ServerURL string `json:"serverUrl"`
+	}
+	if json.Unmarshal(data, &s) != nil {
+		return ""
+	}
+	return s.ServerURL
+}
+
+// isExecutableFile reports whether path is a regular file with an executable bit.
+func isExecutableFile(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0
+}
+
+// fileExists reports whether path exists and is a regular file.
+func fileExists(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // HappyStatusResponse is the JSON shape returned by GET /api/system/happy/status.
@@ -125,7 +229,7 @@ func (h *Handler) HappyStatus(w http.ResponseWriter, r *http.Request) {
 		if env := os.Getenv("HAPPY_SERVER_URL"); env != "" {
 			resp.ServerURL = env
 		} else {
-			resp.ServerURL = "https://api.cluster-fluster.com"
+			resp.ServerURL = defaultRelayURL
 		}
 	}
 
@@ -142,23 +246,97 @@ func (h *Handler) HappyDaemonStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bin, err := exec.LookPath("happy")
-	if err != nil {
-		jsonError(w, "happy binary not found in PATH: "+err.Error(), http.StatusNotFound)
+	if err := startHappyDaemon(); err != nil {
+		code := http.StatusInternalServerError
+		if errors.Is(err, errHappyNotFound) {
+			code = http.StatusServiceUnavailable
+		}
+		jsonError(w, err.Error(), code)
 		return
 	}
-
-	cmd := exec.Command(bin, "daemon", "start")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // detach from Go's process group
-	if err := cmd.Start(); err != nil {
-		jsonError(w, "failed to start daemon: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	// We don't Wait() — the child detaches itself and exits the parent quickly.
-	go func() { _ = cmd.Wait() }()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	fmt.Fprintf(w, `{"ok":true}`)
+}
+
+// errHappyNotFound is returned when the happy CLI cannot be located by any
+// resolution strategy (PATH / bundled / repo dev).
+var errHappyNotFound = errors.New("happy CLI not found — build it with `make happy` or install it on PATH")
+
+// startHappyDaemon launches `happy daemon start` with the 1agents RPC adapter
+// and relay pinned. Shared by the HTTP handler and the pairing requester
+// (which restarts the daemon after rewriting credentials). The daemon spawns a
+// detached start-sync child and exits immediately, so we don't block on it.
+func startHappyDaemon() error {
+	name, lead, ok := resolveHappy()
+	if !ok {
+		return errHappyNotFound
+	}
+
+	args := append(append([]string{}, lead...), "daemon", "start")
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // detach from Go's process group
+	// Wire happy to the 1agents RPC glue when it ships alongside, unless the
+	// environment already pins it. happy reads HAPPY_RPC_ADAPTER_ENTRY itself.
+	cmd.Env = os.Environ()
+	if _, set := os.LookupEnv("HAPPY_RPC_ADAPTER_ENTRY"); !set {
+		if adapter := happyAdapterEntry(); adapter != "" {
+			cmd.Env = append(cmd.Env, "HAPPY_RPC_ADAPTER_ENTRY="+adapter)
+		}
+	}
+	// Pin the relay so the daemon connects to the 1agents relay, not happy-cli's
+	// upstream default. Precedence matches happy-cli (env → settings.json →
+	// default): only inject when neither an env nor a paired settings.json set it.
+	if _, set := os.LookupEnv("HAPPY_SERVER_URL"); !set && happySettingsServerURL() == "" {
+		cmd.Env = append(cmd.Env, "HAPPY_SERVER_URL="+defaultRelayURL)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+	// We don't Wait() — the child detaches itself and exits the parent quickly.
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// stopHappyDaemonProcess reads the daemon PID from state and sends SIGTERM.
+// Best-effort sibling of HappyDaemonStop for internal callers (the pairing
+// requester restarts the daemon to pick up rewritten credentials). A missing
+// state file or already-dead process is not an error.
+func stopHappyDaemonProcess() error {
+	data, err := os.ReadFile(filepath.Join(happyHome(), "daemon.state.json"))
+	if err != nil {
+		return nil // not running
+	}
+	var state struct {
+		Pid int `json:"pid"`
+	}
+	if json.Unmarshal(data, &state) != nil || state.Pid <= 0 {
+		return nil
+	}
+	proc, err := os.FindProcess(state.Pid)
+	if err != nil {
+		return nil
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		if strings.Contains(err.Error(), "process already finished") ||
+			strings.Contains(err.Error(), "no such process") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// effectiveRelayURL resolves the relay base the daemon will use, matching
+// happy-cli's precedence: env HAPPY_SERVER_URL → paired settings.json → default.
+func effectiveRelayURL() string {
+	if v := os.Getenv("HAPPY_SERVER_URL"); v != "" {
+		return v
+	}
+	if v := happySettingsServerURL(); v != "" {
+		return v
+	}
+	return defaultRelayURL
 }
 
 // HappyDaemonStop handles POST /api/system/happy/daemon/stop.
