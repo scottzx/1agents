@@ -1,12 +1,10 @@
-# 1Agents 🚀
+# 一万 1agents 🚀
 
-### An Army of One — AI-Native Work Platform (One Person, Infinite Agents)
+### A2A Agent-Collaboration Project Management System · One Person, Infinite Agents
 
-**1Agents** is an open-source, self-hosted **AI-native work platform**. It breaks any work into **tasks** and dispatches them to three kinds of executor — **digital employees (agent)**, **deterministic programs (function)**, and **you (human)** — coordinated on one unified scheduling spine.
+**1agents** is an open-source, self-hosted **A2A (Agent-to-Agent) collaboration project management system**. You break work into **tasks** and hand them to a collaborating digital crew — **agents, deterministic programs (function), and you (human)** — orchestrated, scheduled, and executed on a **three-layer kernel**, with you making the call at key nodes.
 
-More importantly, it is a **crystallization engine**: you use an agent to explore what you "can't do yet" into something you "can do", then settle it into a more rigid, cheaper, and more reliable capability. So apps like **accounting, CRM, self-media, AI radio** can grow on the same agent substrate like plugins — **install or uninstall at will, write only business logic, call AI on demand as tasks, and never rebuild the agent layer**.
-
-One person, commanding a team of AI and deterministic programs — living as an entire army.
+One person, commanding a legion of agents — living as an entire army.
 
 [简体中文](README.md) | **English**
 
@@ -16,75 +14,56 @@ One person, commanding a team of AI and deterministic programs — living as an 
 
 ---
 
-## 🧠 Core Philosophy
+## 🧠 Approach / Architecture
 
-> Full architecture design: **[docs/agentsOS-架构设计.md](docs/agentsOS-架构设计.md)**; implementation tracked in Epic [#317](https://github.com/scottzx/1Agents/issues/317).
-
-### Everything is a task — three executors: rigid / flexible / judgment
-
-The test is simple — **is the "how" of this work already fixed?**
-
-| Executor | Rigid/Flexible | When | Examples | Cost |
-| :--- | :---: | :--- | :--- | :---: |
-| **function** | rigid | inputs and steps are **all fixed** | ffmpeg (given timestamps), polling an API, fetching chat messages, cleaning, scheduled triggers | ~0 tokens |
-| **agent** | flexible | needs **judgment / orchestration / adaptation** | organizing a multi-clip edit, mining leads from data, drafting plans, building | tokens |
-| **human** | judgment | needs **final accountability / a call** | whether to pursue a lead, content selection | human time |
-
-> Principle: **push work down to the cheapest role that can do it** — fixed work to `function`, judgment work to `agent`, accountable work to `human`. Dependencies and scheduling are executor-agnostic; only the "who does it" step branches.
-
-### Layered architecture (grown bottom-up)
+The kernel is **three layers** (bottom-up); apps run on top of them:
 
 ```
-① Business    Apps / professional templates (self-media · CRM · AI radio · dev/bug)
-② Project     Generic project shell: workspace (dir) · activity/plan/tasks/assets · project config
-③ Task        Task engine (the atom): task model · scheduling/deps/verify · north-bound Task API
-④ Execution   agent (ACP/1acp in a dir) · function (deterministic) · human (decision)
+   App layer    Built-in / extended apps (CRM · visual creation · self-media …) = "projects" on the kernel
+  ────────────────────────────────────────────────────────────────────────────
+   ③ Project    Organize a pile of tasks into a project — with goals and cadence
+   ② Task       Orchestrate work into tasks: scheduled / recurring / deps / retry / scheduling
+   ① Execution  Get work actually done: agent · function (deterministic program) · human
 ```
 
-A task is the atom and can run without a project; **the business layer is not designed up front — it grows and settles out of the task/execution layers below.**
+- **A2A collaboration**: multiple agents work around one project, dividing/handing-off/verifying autonomously along **task dependencies**; `function` handles the fixed work (0 tokens, reliable), and `human` makes the call at key nodes.
+- **Three executors — rigid / flexible / judgment**: fixed steps go to `function` (rigid), judgment work to `agent` (flexible), accountable calls to `human` (judgment). Dependencies and scheduling are executor-agnostic; only the "who does it" step branches.
+- **Crystallization (flexible → rigid)**: explored work gradually settles from chat / agent into **skill → scheduled task → function code** — faster, cheaper, and more reliable the more you use it.
 
-### The core loop: crystallization (diverge → converge → settle)
-
-The platform explores with an agent, then **crystallizes** the stable parts into more reliable forms; the deeper the crystallization, the cheaper (tokens) and the more rigidly reliable:
-
-`ad-hoc (do it in chat each time) → tool (skill/script the agent calls faster next time) → scheduled (recurring) → code (pure function, no agent at runtime)`
-
-A real example: explore `lark-cli` parameters in chat to fetch group messages → converge on a "full pagination + incremental fetch" plan → crystallize into a script/code/module. From then on it runs rigidly on its own, no longer bothering the agent.
-
-### Pluggable apps
-
-An app is a module registered into the platform; its `manifest` declares a **mount point**:
-- **In-project tab** (project-scoped, e.g. self-media — inherits the project shell and adds custom views);
-- **Standalone page** (global, e.g. CRM / AI radio);
-- **Project lens** (cross-cutting overlay, e.g. finance cost).
-
-At runtime an app **does not embed an agent** — it only calls back into the platform's Task API. **Building the third app barely touches the kernel** — that is the hard metric for "extensible".
+> Full architecture: **[docs/agentsOS-架构设计.md](docs/agentsOS-架构设计.md)**; progress in Epic [#317](https://github.com/scottzx/1Agents/issues/317).
 
 ---
 
-## 🧭 Status & Roadmap
+## 🎯 Built-in app: CRM (shipped)
 
-**Now (available)**: a zero-config, multi-device, lightweight Web workbench — a zero-latency Web terminal (`ttyd + tmux`), a full-featured file browser, native voice input, fully automatic SSL, and an on-demand public tunnel. It hosts the AI agents you already run locally (Claude Code, Codex CLI, OpenClaw, etc.) and bridges to Feishu/Telegram/Slack and more via [1acp](https://github.com/scottzx/1acp) (an ACP-protocol client).
+The first app built into 1agents — a direct demo of what the kernel can do:
 
-**Building (Phase 1 · Epic [#317](https://github.com/scottzx/1Agents/issues/317))**: converging the above into agentsOS — a **task kernel + project shell + pluggable apps**. The task model gains the `agent/function/human` three-state, a north-bound Task API, and an app mount mechanism; the first apps land: **self-media, CRM** (plus **AI radio** as an extensibility check). Single-user first; no multi-tenancy.
+- **Fetch each Feishu group's people and key info on a schedule** (`function` — accurate, cheap, never drops the ball); not just your contacts but even people you've never added are ingested — instantly weaving a thousands-strong network (**degree-1 / degree-2**, with Feishu + WeChat merged into **one person** by phone number).
+- Let **AI chew tens of thousands of chat words into decision cards** (`agent`): who's looking for what, which line is a lead, whether it's worth pursuing.
+- You read the aggregated card and click **pursue** or **drop** (`human`).
+
+**Fetch = function, analysis = agent, decision = you** — the whole chain is a live demo of the three-layer kernel.
+
+> **Shipped**: Feishu contact aggregation (degree-1/2, cross-channel merge by phone, company table, data grid, group-chat bubbles) + single-batch value-extraction cards (via the task layer + agent).
+> **In progress**: WeChat / DingTalk / email / Mac contacts, contact import-export, auto-spawned market research per lead, the visual-creation compositing canvas.
 
 ---
 
-## 🧱 Foundation Capabilities (today)
+## 🧱 Features (runtime foundation)
 
-- ⚡ **Zero-latency Web terminal (ttyd + tmux)**: `xterm.js` + WebSocket with built-in `tmux` state management; terminal sessions restore in milliseconds after a disconnect/refresh — never dropped.
-- 📂 **Full-featured file browser & editor**: tree + flat views with instant search; built-in text/image preview, **native high-fidelity HTML & PDF rendering with 16:9 fullscreen preview**; zero-config syntax editor.
-- 📁 **Dynamic multi-workspace**: create/switch/delete workspaces, with deep integration of the browser-native **Folder Picker** to import local folders directly; terminal and file context sync in seconds on switch. **A workspace is a directory** — and the working directory (`cwd`) where agents execute tasks.
+- ⚡ **Zero-latency Web terminal (ttyd + tmux)**: `xterm.js` + WebSocket with built-in `tmux` state; sessions restore in milliseconds after a disconnect/refresh.
+- 📂 **Full-featured file browser & editor**: tree + flat views with instant search; text/image preview, **native high-fidelity HTML & PDF rendering + 16:9 fullscreen**; zero-config syntax editor.
+- 📁 **Dynamic multi-workspace**: create/switch/delete workspaces, with the browser-native **Folder Picker** to import local folders. **A workspace is a directory** — the working directory (`cwd`) where agents execute tasks.
 - 🎙️ **Native voice input (Speech-to-Text)**: built-in Web Speech recognition for quick Chinese/English dictation.
-- 🔒 **Fully automatic SSL/TLS**: with `--ssl`, a 10-year ECDSA P-256 self-signed cert is generated when none exists; Tailscale's official Let's Encrypt certs are auto-detected for a cross-device green lock 🔒.
-- 🤖 **CC-Connect multi-channel bridging**: integrates [cc-connect](https://github.com/scottzx/cc-connect) to register workspaces as projects and communicate bidirectionally with Feishu, Telegram, Discord, Slack, and more.
-- 🌐 **On-demand secure public tunnel**: `--tunnel` (or a chat command) spins up a Cloudflare tunnel — no port mapping or public IP; `cloudflared` is auto-downloaded if missing, with a dynamic session token and a terminal QR code to scan and connect.
+- 🔒 **Fully automatic SSL/TLS**: `--ssl` generates a 10-year ECDSA P-256 self-signed cert when none exists; auto-detects Tailscale official certs.
+- 🤖 **CC-Connect multi-channel bridging**: integrates [cc-connect](https://github.com/scottzx/cc-connect) for two-way communication with Feishu, Telegram, Discord, Slack, and more.
+- 🌐 **On-demand secure public tunnel**: `--tunnel` spins up a Cloudflare tunnel — no port mapping or public IP — with a session token and a scannable QR code.
 
 ---
 
 ## ⚙️ Prerequisites
 
-Automatic terminal session persistence (reconnect on drop) depends on **`tmux`**. Since `tmux` is a dynamically linked C program and inconvenient to pre-bundle in NPM, install it first via your system package manager:
+Automatic terminal session persistence (reconnect on drop) depends on **`tmux`** — install it first via your system package manager:
 
 ```bash
 brew install tmux                              # macOS (Homebrew)
@@ -98,7 +77,7 @@ sudo dnf install -y tmux                       # Linux (CentOS/RHEL/Fedora)
 
 ### Option 1: NPM (recommended ⚡)
 
-The prebuilt NPM package auto-detects your architecture and downloads the matching platform binary. To work around GitHub access issues in some regions/servers, **the official `ttyd` and `cloudflared` binaries are bundled directly into `@scottzx/1agents`** — 100% offline, ready out of the box.
+The prebuilt NPM package auto-detects your architecture and downloads the matching binary. **The official `ttyd` and `cloudflared` binaries are bundled directly into `@scottzx/1agents`** — 100% offline, ready out of the box.
 
 ```bash
 npm install -g @scottzx/1agents   # global install (daemon, ttyd, Web frontend, cloudflared)
@@ -128,68 +107,9 @@ make all      # build frontend, ttyd, cc-connect, and backend in one shot (see M
 
 ---
 
-## 🛠️ Usage & CLI Flags
-
-```bash
-1agents                                                       # listen on :8080, workdir ~
-1agents -listen 0.0.0.0:9000 -workdir /Users/scott/Projects   # custom listen + workdir
-```
-
-Open `http://localhost:8080` (or your port) in a browser to enter the workbench.
-
-| Flag | Type | Default | Description |
-| :--- | :---: | :---: | :--- |
-| `-listen` | `string` | `":8080"` | Listen address and port (e.g. `0.0.0.0:8080` / `:9000`) |
-| `-workdir` | `string` | `"~"` | Exposed filesystem root; files outside it are inaccessible |
-| `-tmux-session` | `string` | `"1agents"` | Bound tmux session name, for reconnect and persistence |
-| `-ssl` | `bool` | `false` | Enable HTTPS; auto-generate a 10-year self-signed cert if none |
-| `-ssl-cert` | `string` | `""` | External SSL/TLS certificate path (PEM) |
-| `-ssl-key` | `string` | `""` | External SSL/TLS private key path (PEM) |
-| `-no-ttyd` | `bool` | `false` | Skip auto-launching ttyd (for dev/debug) |
-| `-ttyd-bin` | `string` | `"./ttyd"` | External `ttyd` binary path |
-| `-ttyd-addr` | `string` | `"127.0.0.1:7681"` | Loopback address between ttyd and the daemon |
-| `-restart-delay` | `duration` | `"3s"` | Wait interval before restarting ttyd after a crash |
-| `-max-restarts` | `int` | `5` | Max consecutive restart attempts, to avoid crash lock |
-| `-tunnel` | `bool` | `false` | Enable the Cloudflare on-demand tunnel; prints a public URL and QR code |
-
----
-
-## 💡 Advanced Configuration
-
-### 1. Trusted green lock over HTTPS (Tailscale + Let's Encrypt)
-Browsers require a secure context (`localhost` or HTTPS) for advanced APIs like microphone and clipboard, so LAN access from phones/tablets needs SSL. We recommend pairing with Tailscale for official certs:
-
-```bash
-tailscale cert <your-node.ts.net>   # generates .crt / .key
-```
-
-Put the certs in `~/.1agents/certs/`, then run `1agents --ssl` — the daemon auto-scans and matches, presenting a green lock 🔒 from anywhere. See the [SSL certificate guide](docs/tips/ssl-certificate-guide.md).
-
-### 2. Speech recognition browser compatibility
-- **Desktop: Safari (macOS) recommended** — uses the system's local offline dictation: no network limits, sub-second, accurate Chinese.
-- **Chrome / Edge**: depend on Google's cloud recognition; without a global proxy in some regions you'll hit `Speech recognition error: network`.
-- **Mobile**: HTTPS is mandatory, otherwise the microphone permission can't be requested.
-
-See the [voice recognition & microphone permission guide](docs/tips/voice-recognition.md).
-
-### 3. Zero-config secure public tunnel
-On networks without a public IP / cert (home broadband, office intranet, café Wi-Fi), add `-tunnel` to publish in one shot:
-
-```bash
-1agents -tunnel
-```
-
-- **Smart reuse**: if `cloudflared` is installed (e.g. via `brew`), it's reused in ~0.1s with no download.
-- **One-time auto-download**: when not cached, it downloads securely from the official GitHub source (~30MB) with live progress; subsequent starts are instant.
-- **Dynamic auth**: a single-use session token is generated and a high-contrast QR code rendered in the terminal — scan to connect.
-
-Further, with [cc-connect](https://github.com/scottzx/cc-connect) enabled, just message the agent "open public access" from Feishu/Telegram/Slack/WeChat and it will spin up the tunnel in the background and return a temporary secure URL.
-
----
-
 ## 🔗 Related Projects
 
-**1Hive** (formerly iClaw) — companion hardware that keeps your AI agents running 24/7 so your "army of one" never goes offline: [https://00claw.com/](https://00claw.com/).
+**1Hive** (formerly iClaw) — companion hardware that keeps your AI agents running 24/7: [https://00claw.com/](https://00claw.com/).
 
 ---
 
