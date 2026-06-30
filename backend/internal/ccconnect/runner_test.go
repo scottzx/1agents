@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/chenhg5/cc-connect/config"
+
+	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
 // TestRunEngineSkipsBadProjectAndServesAPI is the issue #24 regression test.
@@ -123,6 +125,86 @@ func TestRunEngineSkipsBadProjectAndServesAPI(t *testing.T) {
 	if !strings.Contains(string(saved), "created__acp") {
 		t.Errorf("created project not persisted to config: %s", saved)
 	}
+}
+
+// TestReconcileProjectsByPath is the #277 sync-by-path regression test: project
+// names lose the __<agent> suffix, projects map to workspaces by path, and an
+// existing channel-bound agent at the same path survives a resync.
+func TestReconcileProjectsByPath(t *testing.T) {
+	codex := config.AgentConfig{Type: "codex", Options: map[string]any{"work_dir": "/repos/app"}}
+
+	existing := []config.ProjectConfig{
+		// Legacy suffixed project at /repos/app already has a codex-bound channel.
+		{
+			Name:  "app__claudecode",
+			Agent: config.AgentConfig{Type: "claudecode", Options: map[string]any{"work_dir": "/repos/app"}},
+			Platforms: []config.PlatformConfig{
+				{Type: "bridge"},
+				{Type: "feishu", Agent: &codex},
+			},
+		},
+		// Orphan: no workspace points here anymore → must be dropped.
+		{
+			Name:  "gone__claudecode",
+			Agent: config.AgentConfig{Type: "claudecode", Options: map[string]any{"work_dir": "/repos/gone"}},
+		},
+		// Placeholder with no work_dir → must be preserved.
+		{
+			Name:      "temp",
+			Agent:     config.AgentConfig{Type: "claudecode"},
+			Platforms: []config.PlatformConfig{{Type: "bridge"}},
+		},
+	}
+	workspaces := []workspace.Workspace{
+		{ID: "app", Name: "app", Path: "/repos/app"},
+		{ID: "newone", Name: "New One", Path: "/repos/new"},
+	}
+
+	out := reconcileProjectsByPath(existing, workspaces)
+
+	byName := make(map[string]config.ProjectConfig)
+	for _, p := range out {
+		byName[p.Name] = p
+	}
+
+	// Existing project at /repos/app is matched by PATH; its codex channel
+	// binding (and project name) survive the resync. Its legacy name is kept
+	// as-is on purpose: renaming would orphan session/state files (the one-time
+	// rename of legacy __<agent> projects is the Phase 4 migrator's job).
+	app, ok := byName["app__claudecode"]
+	if !ok {
+		t.Fatalf("existing project at /repos/app was not preserved by path; got %v", projectNames(out))
+	}
+	foundCodex := false
+	for _, pl := range app.Platforms {
+		if pl.Type == "feishu" && pl.Agent != nil && pl.Agent.Type == "codex" {
+			foundCodex = true
+		}
+	}
+	if !foundCodex {
+		t.Errorf("codex channel binding lost on resync: %+v", app.Platforms)
+	}
+
+	// New workspace → fresh project, name = sanitized workspace name (no suffix).
+	if _, ok := byName["New_One"]; !ok {
+		t.Errorf("new workspace did not produce project %q; got %v", "New_One", projectNames(out))
+	}
+
+	// Orphan dropped, placeholder preserved.
+	if _, ok := byName["gone__claudecode"]; ok {
+		t.Error("orphan project for removed workspace was not dropped")
+	}
+	if _, ok := byName["temp"]; !ok {
+		t.Error("placeholder project (no work_dir) was not preserved")
+	}
+}
+
+func projectNames(ps []config.ProjectConfig) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.Name
+	}
+	return out
 }
 
 func waitForOK(url string, timeout time.Duration) bool {

@@ -20,6 +20,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
+	"github.com/scottzx/1Agents/backend/internal/contacts"
 	ctxt "github.com/scottzx/1Agents/backend/internal/context"
 	"github.com/scottzx/1Agents/backend/internal/digest"
 	"github.com/scottzx/1Agents/backend/internal/fs"
@@ -112,14 +113,14 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/inbox", meta.InboxHandler(inboxStore))      // GET (?archived=1), POST capture
 			mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore)) // POST /{id}/archive|read|unread
 
-				// #271: read-only access to the复盘 (#144) pages the archive hook
-				// ingests into the shared kwiki knowledge base.
-				if kw, kwErr := kwiki.Open(knowledgeRoot()); kwErr == nil {
-					mux.HandleFunc("/api/retrospectives", retro.Handler(kw))  // GET list
-					mux.HandleFunc("/api/retrospectives/", retro.Handler(kw)) // GET /{slug}
-				} else {
-					log.Printf("[server] open kwiki for retrospectives: %v", kwErr)
-				}
+			// #271: read-only access to the复盘 (#144) pages the archive hook
+			// ingests into the shared kwiki knowledge base.
+			if kw, kwErr := kwiki.Open(knowledgeRoot()); kwErr == nil {
+				mux.HandleFunc("/api/retrospectives", retro.Handler(kw))  // GET list
+				mux.HandleFunc("/api/retrospectives/", retro.Handler(kw)) // GET /{slug}
+			} else {
+				log.Printf("[server] open kwiki for retrospectives: %v", kwErr)
+			}
 		}
 
 		tasksStore, tsErr := agent.NewTasksStore()
@@ -198,6 +199,31 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/digest/sync", digestHandler.HandleSync)               // POST {chatId}
 				mux.HandleFunc("/api/digest/analyze", digestHandler.HandleAnalyze)         // POST {chatId, workspace}
 				mux.HandleFunc("/api/digest/messages", digestHandler.HandleMessages)       // GET ?session=
+				// 飞书渠道配置 (Phase 2): browse groups, track/untrack, manual + auto
+				// sync (reuses SyncChat watermark + message_id dedup).
+				mux.HandleFunc("/api/digest/chats/available", digestHandler.HandleAvailableChats) // GET
+				mux.HandleFunc("/api/digest/chats/tracked", digestHandler.HandleTrackedChats)     // GET, POST
+				mux.HandleFunc("/api/digest/chats/tracked/", digestHandler.HandleTrackedChatItem) // DELETE, PATCH /{chatId}
+				mux.HandleFunc("/api/digest/sync/all", digestHandler.HandleSyncAll)               // POST
+				mux.HandleFunc("/api/digest/sync/config", digestHandler.HandleSyncConfig)         // GET, PUT
+				mux.HandleFunc("/api/digest/status", digestHandler.HandleStatus)                  // GET
+			}
+
+			// 联系人聚合: a user-curated address book (meta.db v16) over channel
+			// identities auto-discovered from synced Feishu messages (sync.db).
+			// Self-wires its own stores from the default databases.
+			if contactsHandler, cErr := contacts.NewHandlerDefault(); cErr != nil {
+				log.Printf("[server] contacts init failed: %v", cErr)
+			} else {
+				mux.HandleFunc("/api/contacts", contactsHandler.HandleContacts)                // GET, POST
+				mux.HandleFunc("/api/contacts/channels", contactsHandler.HandleChannels)       // GET ?contactId=&unlinked=1
+				mux.HandleFunc("/api/contacts/channels/", contactsHandler.HandleChannelAction) // POST /{id}/link|unlink
+				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)      // POST
+				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)      // GET ?contactId=|sessionId=
+				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)      // GET
+				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)    // GET tenant→company map
+				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)   // GET /{sessionId}/members
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)           // PATCH, DELETE /{id}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
@@ -267,7 +293,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 			if nameOrID == "" {
 				nameOrID = foundWS.ID
 			}
-			projName := getCCProjectName(nameOrID, "claudecode")
+			// #277: project name = workspace name (no __<agent> suffix); the
+			// agent type is carried per-channel, not in the project name.
+			projName := ccconnect.CCProjectSlug(nameOrID)
 			redirectPath = "/projects/" + projName
 		}
 
@@ -294,6 +322,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(map[string]string{"url": url})
 	})
+
+	// ── CC-Connect channel↔agent binding API (#277 Phase 2) ──────────────────
+	// GET  ?project=<name>            → list channels + each channel's agent
+	// POST {project,index,agent}      → bind/clear a channel's agent (hot reload)
+	mux.HandleFunc("/api/cc-connect/channels", ccconnect.ChannelsHandler)
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)
@@ -528,6 +561,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)            // GET  — happy daemon status + machine credentials
 	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart) // POST — start happy daemon
 	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
+	mux.HandleFunc("/api/system/happy/pair/start", sysHandler.HappyPairStart)     // POST — begin account-level pairing, returns pairing code
+	mux.HandleFunc("/api/system/happy/pair/status", sysHandler.HappyPairStatus)   // GET  — pairing progress (pending/authorized/error)
 	// 重置本地数据: wipe App data (meta.db/sync.db tables + knowledge/scratch files +
 	// workspace-backed cc-connect projects), keep relay pairing identity (~/.happy +
 	// relay-creds.json) and provider/model config, re-seed default workspace.
@@ -1221,29 +1256,4 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			strings.Join(candidates, ", "),
 		)
 	}
-}
-
-func getCCProjectName(workspaceName string, agentType string) string {
-	var sb strings.Builder
-	inInvalidSeq := false
-	for _, r := range workspaceName {
-		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
-		if isValid {
-			sb.WriteRune(r)
-			inInvalidSeq = false
-		} else {
-			if !inInvalidSeq {
-				sb.WriteRune('_')
-				inInvalidSeq = true
-			}
-		}
-	}
-	slug := sb.String()
-	if len(slug) > 32 {
-		slug = slug[:32]
-	}
-	if slug == "" {
-		slug = "ws"
-	}
-	return fmt.Sprintf("%s__%s", slug, agentType)
 }

@@ -2,10 +2,11 @@ import { h, Fragment } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { t, type Lang } from '../../i18n';
-import type { SettingsCategory } from '../../modules/settings-manifest';
+import { type SettingsCategory, isRelayClientHost } from '../../modules/settings-manifest';
 import { agentCatalog, agentCatalogLoading, loadAgentCatalog } from '../../stores/agentCatalogStore';
 import { uiMode, setUiMode } from '../../stores/uiStore';
 import { RelayPairingPanel } from './RelayPairingPanel';
+import { SubscriptionPanel } from './SubscriptionPanel';
 import { RelayDevicePanel } from './RelayDevicePanel';
 import { LocalMachinePanel, isLocalMachineMode } from './LocalMachinePanel';
 import { DevicesPanel } from './DevicesPanel';
@@ -1439,6 +1440,10 @@ export function SystemSettings(props: SystemSettingsProps) {
                 return renderGeneral();
             case 'agents':
                 return renderAgents();
+            case 'account':
+                // Subscription is a Relay/client concept — on the local backend
+                // (localhost) it's hidden from nav; guard deep-links too.
+                return isRelayClientHost() ? <SubscriptionPanel /> : renderGeneral();
             case 'relay':
                 return renderRelay();
             case 'devices':

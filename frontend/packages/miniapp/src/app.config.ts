@@ -11,6 +11,7 @@ export default defineAppConfig({
     'pages/cc-connect/index',
     'pages/discovery/index',
     'pages/settings/index',
+    'pages/login/index',
   ],
   window: {
     backgroundTextStyle: 'light',

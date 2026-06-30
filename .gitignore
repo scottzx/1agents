@@ -61,6 +61,8 @@ dist/
 
 # Generated build artifacts
 modules/ttyd/src/html.h
+# Stray `go build ./cmd/backend` output (real builds go to build/); never commit
+/backend/backend
 
 # Project files
 !init.d
