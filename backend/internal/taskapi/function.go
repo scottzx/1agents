@@ -36,7 +36,7 @@ type Registry struct {
 var globalFunctions = &Registry{handlers: make(map[string]FunctionHandler)}
 
 // RegisterFunction registers handler under the given type key. The key is used
-// in task Labels as "fn:<type>" (e.g. "fn:core.noop", "fn:media.silence_detect").
+// in task Labels as "fn:<type>" (e.g. "fn:core.noop", or an app-registered type).
 // One registration, two consumptions: the function runner picks it up as a
 // standalone task; agent tools call it via the MCP function-call path (Wave 3).
 // Safe for concurrent use; last registration for a key wins.
@@ -150,23 +150,6 @@ func init() {
 		return map[string]string{
 			"status": "ok",
 			"task":   ctx.Task.Title,
-		}, nil
-	})
-
-	// media.silence_detect: stub that returns canned silence segments.
-	// A real Wave 3 handler would shell out to ffmpeg/silero-vad.
-	RegisterFunction("media.silence_detect", func(ctx FunctionContext) (any, error) {
-		type Segment struct {
-			Start float64 `json:"start"`
-			End   float64 `json:"end"`
-		}
-		// Canned output — replace with real ffmpeg integration in Wave 3.
-		return map[string]any{
-			"segments": []Segment{
-				{Start: 1.2, End: 3.5},
-				{Start: 7.0, End: 9.1},
-			},
-			"source": "stub",
 		}, nil
 	})
 }

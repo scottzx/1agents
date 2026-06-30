@@ -4,7 +4,6 @@ if (process.env.NODE_ENV === 'development') {
 import 'whatwg-fetch';
 import { h, render } from 'preact';
 import { App } from './components/app';
-import './apps'; // register installable-app mount-point views (Epic #317)
 import { initPlatformBridge } from '@1agents/core/platform/bridge';
 import { installRelayFetch } from '@1agents/core/services/relay/installRelayFetch';
 import './style/index.scss';

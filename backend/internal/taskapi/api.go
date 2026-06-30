@@ -34,7 +34,7 @@ type DispatchSpec struct {
 	// Executor selects the execution path. Defaults to "agent".
 	Executor meta.TaskExecutor
 	// FunctionType is the registered handler key for executor=function tasks
-	// (e.g. "core.noop", "media.silence_detect"). Ignored for agent/human.
+	// (e.g. "core.noop", or an app-registered type). Ignored for agent/human.
 	FunctionType string
 	// BusinessRef is the opaque binding seam, e.g. "crm:lead:42". Nullable.
 	BusinessRef string
@@ -70,9 +70,9 @@ type CompletionHook func(ev CompletionEvent)
 // itself). Phase 1 single-user: this is an honour-based allowlist, not enforced
 // cryptographically.
 type AppPermissions struct {
-	Namespace     string
-	AllowedTypes  []string // empty = unrestricted
-	AllowedRefs   []string // business_ref prefixes allowed; empty = any
+	Namespace    string
+	AllowedTypes []string // empty = unrestricted
+	AllowedRefs  []string // business_ref prefixes allowed; empty = any
 }
 
 // API is the North Task API service. Construct it with New and wire it into

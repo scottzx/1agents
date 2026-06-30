@@ -5,22 +5,22 @@
  * ## How it works
  *
  * 1. The backend returns an AppManifest with `mountPoints[].view` strings,
- *    e.g. `"MediaMaterialTab"` or `"CrmL1Page"`.
- * 2. Wave 3 app bundles call `registerAppView("MediaMaterialTab", MediaMaterialTab)`
- *    at startup (e.g. in the app's `index.tsx` or a lazy import boundary).
- * 3. `<MountPointRenderer view="MediaMaterialTab" ... />` calls `resolveAppView()`
+ *    e.g. `"MyAppTab"` or `"MyAppL1Page"`.
+ * 2. An app bundle calls `registerAppView("MyAppTab", MyAppTab)` at startup
+ *    (e.g. in the app's `index.tsx` or a lazy import boundary).
+ * 3. `<MountPointRenderer view="MyAppTab" ... />` calls `resolveAppView()`
  *    and either renders the registered component or a graceful placeholder.
  *
- * ## Wave 3 integration point
+ * ## App integration point
  *
  * ```ts
- * // In your Wave 3 app bundle (e.g. apps/media-studio/src/index.tsx):
+ * // In your app bundle's index.tsx:
  * import { registerAppView } from '../../modules/appViewRegistry';
- * import { MediaMaterialTab }  from './MediaMaterialTab';
- * import { MediaStudioL1Page } from './MediaStudioL1Page';
+ * import { MyAppTab }    from './MyAppTab';
+ * import { MyAppL1Page } from './MyAppL1Page';
  *
- * registerAppView('MediaMaterialTab', MediaMaterialTab);
- * registerAppView('MediaStudioL1Page', MediaStudioL1Page);
+ * registerAppView('MyAppTab', MyAppTab);
+ * registerAppView('MyAppL1Page', MyAppL1Page);
  * ```
  *
  * The `view` string must match exactly what is declared in the app's manifest.
@@ -62,7 +62,7 @@ const _registry = new Map<string, AppViewComponent>();
  * @param component - The Preact component to render when that view is active.
  *
  * @example
- * registerAppView('MediaMaterialTab', MediaMaterialTab);
+ * registerAppView('MyAppTab', MyAppTab);
  */
 export function registerAppView(view: string, component: AppViewComponent): void {
     _registry.set(view, component);
