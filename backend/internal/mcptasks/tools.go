@@ -195,6 +195,23 @@ var toolDefs = []map[string]any{
 	},
 }
 
+// complete_human_task tool definition (appended to toolDefs at init time).
+func init() {
+	toolDefs = append(toolDefs, map[string]any{
+		"name":        "complete_human_task",
+		"description": "Mark a human-executor task (executor=human, status=awaiting_human) as completed, optionally recording a decision payload. Calling this tool unlocks all downstream tasks that depend on it. Use this to record human decisions (e.g. 'approved', 'selected option B') and advance the pipeline.",
+		"inputSchema": map[string]any{
+			"type":     "object",
+			"required": []string{"id"},
+			"properties": map[string]any{
+				"id":      map[string]any{"type": "string", "description": "The human task id to complete."},
+				"payload": map[string]any{"type": "string", "description": "Optional JSON payload recording the human decision (e.g. '{\"choice\":\"B\"}')."},
+				"summary": map[string]any{"type": "string", "description": "Optional free-text summary of the decision."},
+			},
+		},
+	})
+}
+
 // reviewVerifier is "verifier" — the ONEAGENTS_TASK_ROLE value selecting the
 // hard read-only review scope.
 const reviewVerifier = "verifier"
@@ -218,10 +235,11 @@ var reminderScopedTools = map[string]bool{
 // update its own task. The PM-only create_*/milestone tools are withheld so the
 // lock cannot be sidestepped by creating sibling tasks. See #50.
 var executorScopedTools = map[string]bool{
-	"list_tasks":     true,
-	"get_task":       true,
-	"get_task_graph": true,
-	"update_task":    true,
+	"list_tasks":           true,
+	"get_task":             true,
+	"get_task_graph":       true,
+	"update_task":          true,
+	"complete_human_task":  true,
 }
 
 // verifierScopedTools is the hard read-only review subset: read the task, list
@@ -369,6 +387,8 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolUpdateTask(p.Arguments)
 	case "submit_review":
 		return s.toolSubmitReview(p.Arguments)
+	case "complete_human_task":
+		return s.toolCompleteHumanTask(p.Arguments)
 	default:
 		return toolErr("unknown tool: " + p.Name)
 	}
@@ -826,4 +846,37 @@ func (s *server) idInWorkspace(id string) bool {
 		}
 	}
 	return false
+}
+
+// toolCompleteHumanTask marks a human-executor task (status=awaiting_human) as
+// completed. The caller may provide an optional JSON payload recording the
+// decision and a free-text summary. On success, the scheduler's next tick
+// releases all downstream tasks that depended on this one (#324).
+func (s *server) toolCompleteHumanTask(args json.RawMessage) map[string]any {
+	var a struct {
+		ID      string `json:"id"`
+		Payload string `json:"payload"`
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil || a.ID == "" {
+		return toolErr("id is required")
+	}
+	if !s.idInWorkspace(a.ID) {
+		return toolErr("task not found in this workspace: " + a.ID)
+	}
+	body := map[string]any{
+		"status":  "completed",
+		"summary": a.Summary,
+	}
+	if a.Payload != "" {
+		body["result"] = a.Payload
+	}
+	status, resp, err := s.api.do("PATCH", "/api/agent/tasks/"+url.PathEscape(a.ID), nil, body)
+	if err != nil {
+		return toolErr(err.Error())
+	}
+	if status != 200 {
+		return toolErr(fmt.Sprintf("complete_human_task failed (%d): %s", status, strings.TrimSpace(string(resp))))
+	}
+	return toolText("human task " + a.ID + " completed")
 }

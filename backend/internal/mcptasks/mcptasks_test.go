@@ -75,8 +75,8 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 10 {
-		t.Fatalf("expected 10 tools, got %d", len(tools))
+	if len(tools) != 11 {
+		t.Fatalf("expected 11 tools, got %d", len(tools))
 	}
 }
 
@@ -253,8 +253,8 @@ func TestTaskScopedToolsListIsNarrowed(t *testing.T) {
 	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	res, _ := env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 4 {
-		t.Fatalf("expected 4 task-scoped tools, got %d", len(tools))
+	if len(tools) != 5 {
+		t.Fatalf("expected 5 task-scoped tools, got %d", len(tools))
 	}
 	for _, tl := range tools {
 		name, _ := tl.(map[string]any)["name"].(string)

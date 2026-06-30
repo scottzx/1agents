@@ -61,6 +61,8 @@ type (
 	TaskStatus        = meta.TaskStatus
 	TaskType          = meta.TaskType
 	TaskSource        = meta.TaskSource
+	TaskExecutor      = meta.TaskExecutor
+	TaskTargetSpec    = meta.TaskTargetSpec
 	IssueState        = meta.IssueState
 	SessionKind       = meta.SessionKind
 	SessionStatus     = meta.SessionStatus
@@ -118,6 +120,11 @@ const (
 	TaskStatusBlocked       = meta.TaskStatusBlocked
 	TaskStatusNotReady      = meta.TaskStatusNotReady
 	TaskStatusPendingReview = meta.TaskStatusPendingReview
+	TaskStatusAwaitingHuman = meta.TaskStatusAwaitingHuman
+
+	TaskExecutorAgent    = meta.TaskExecutorAgent
+	TaskExecutorFunction = meta.TaskExecutorFunction
+	TaskExecutorHuman    = meta.TaskExecutorHuman
 
 	IssueOpen   = meta.IssueOpen
 	IssueClosed = meta.IssueClosed

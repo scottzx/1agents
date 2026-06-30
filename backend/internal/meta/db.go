@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 19
+const schemaVersion = 20
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -194,6 +194,15 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v19: %w", err)
 		}
 	}
+	// v20 (#318) adds task kernel fields: executor tri-state, business_ref
+	// binding seam, task_target dispatch spec, result, and cost_tokens. All are
+	// idempotent ADD COLUMNs handled by ensureTasksColumns below, so the
+	// version gate only bumps the counter (new DBs get the columns from v1).
+	if version < 20 {
+		if _, err := db.sql.Exec(schemaV20); err != nil {
+			return fmt.Errorf("meta: apply schema v20: %w", err)
+		}
+	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
 	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
 	// with user_version bumped to the latest while the other branch's columns
@@ -256,6 +265,12 @@ func (db *DB) ensureTasksColumns() error {
 		{"verifier_count", "ALTER TABLE tasks ADD COLUMN verifier_count INTEGER NOT NULL DEFAULT 0"},
 		{"verify_pass_threshold", "ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0"},
 		{"review_pool", "ALTER TABLE tasks ADD COLUMN review_pool TEXT NOT NULL DEFAULT ''"},
+		// ── task kernel executor tri-state + binding seam (v20, #318) ──
+		{"executor", "ALTER TABLE tasks ADD COLUMN executor TEXT NOT NULL DEFAULT 'agent'"},
+		{"business_ref", "ALTER TABLE tasks ADD COLUMN business_ref TEXT NOT NULL DEFAULT ''"},
+		{"task_target", "ALTER TABLE tasks ADD COLUMN task_target TEXT NOT NULL DEFAULT ''"},
+		{"result", "ALTER TABLE tasks ADD COLUMN result TEXT NOT NULL DEFAULT ''"},
+		{"cost_tokens", "ALTER TABLE tasks ADD COLUMN cost_tokens INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
@@ -717,6 +732,13 @@ CREATE TABLE IF NOT EXISTS company_tenants (
 );
 CREATE INDEX IF NOT EXISTS idx_company_tenants_company ON company_tenants(company_id);
 `
+
+// schemaV20 (#318) adds the task kernel executor tri-state columns. All five
+// are idempotent ADD COLUMNs already handled by ensureTasksColumns; the const
+// body is intentionally empty — the version counter is what matters here.
+// (ensureTasksColumns runs unconditionally so new DBs and existing DBs both get
+// the columns regardless of which version path applies.)
+const schemaV20 = ``
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 

@@ -81,12 +81,14 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	verifier, review_max_attempts, review_count, review, source, user_confirm,
 	github_repo, github_kind, github_number, github_node_id, github_url,
 	github_state, github_assignees, last_synced_at,
-	verifier_count, verify_pass_threshold, review_pool`
+	verifier_count, verify_pass_threshold, review_pool,
+	executor, business_ref, task_target, result, cost_tokens`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt, lastSyncedAt sql.NullString
 	var createdAt, updatedAt, labels, recurrence, links, review, githubAssignees, reviewPool string
+	var executor, taskTarget string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
@@ -97,9 +99,12 @@ func scanTask(r rowScanner) (Task, error) {
 		&t.UserConfirm,
 		&t.GithubRepo, &t.GithubKind, &t.GithubNumber, &t.GithubNodeId, &t.GithubUrl,
 		&t.GithubState, &githubAssignees, &lastSyncedAt,
-		&t.VerifierCount, &t.VerifyPassThreshold, &reviewPool); err != nil {
+		&t.VerifierCount, &t.VerifyPassThreshold, &reviewPool,
+		&executor, &t.BusinessRef, &taskTarget, &t.Result, &t.CostTokens); err != nil {
 		return Task{}, err
 	}
+	t.Executor = taskExecutorFromDB(executor)
+	t.TaskTarget = jsonToTaskTarget(taskTarget)
 	t.ScheduledAt = valToTimePtr(scheduledAt)
 	t.PlannedStart = valToTimePtr(plannedStart)
 	t.PlannedEnd = valToTimePtr(plannedEnd)
@@ -527,8 +532,9 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			verifier, review_max_attempts, review_count, review, source, user_confirm,
 			github_repo, github_kind, github_number, github_node_id, github_url,
 			github_state, github_assignees, last_synced_at,
-			verifier_count, verify_pass_threshold, review_pool)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			verifier_count, verify_pass_threshold, review_pool,
+			executor, business_ref, task_target, result, cost_tokens)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -574,7 +580,12 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			last_synced_at = excluded.last_synced_at,
 			verifier_count = excluded.verifier_count,
 			verify_pass_threshold = excluded.verify_pass_threshold,
-			review_pool = excluded.review_pool`,
+			review_pool = excluded.review_pool,
+			executor = excluded.executor,
+			business_ref = excluded.business_ref,
+			task_target = excluded.task_target,
+			result = excluded.result,
+			cost_tokens = excluded.cost_tokens`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
@@ -586,7 +597,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), t.Source, t.UserConfirm,
 		t.GithubRepo, t.GithubKind, t.GithubNumber, t.GithubNodeId, t.GithubUrl,
 		t.GithubState, stringsToJSON(t.GithubAssignees), timePtrToVal(t.LastSyncedAt),
-		t.VerifierCount, t.VerifyPassThreshold, reviewPoolToJSON(t.ReviewPool))
+		t.VerifierCount, t.VerifyPassThreshold, reviewPoolToJSON(t.ReviewPool),
+		taskExecutorToDB(t.Executor), t.BusinessRef, taskTargetToJSON(t.TaskTarget), t.Result, t.CostTokens)
 	if err != nil {
 		return err
 	}
@@ -842,6 +854,88 @@ func (s *TaskStore) execOne(query string, args ...any) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ── executor + task_target helpers (v20, #318) ─────────────────────────────
+
+// taskExecutorToDB converts TaskExecutor to the DB string, defaulting "agent"
+// for the zero value so existing rows behave identically.
+func taskExecutorToDB(e TaskExecutor) string {
+	if e == "" {
+		return string(TaskExecutorAgent)
+	}
+	return string(e)
+}
+
+// taskExecutorFromDB converts the raw DB string back to TaskExecutor, treating
+// "" or any unrecognised value as TaskExecutorAgent for back-compat.
+func taskExecutorFromDB(s string) TaskExecutor {
+	switch TaskExecutor(s) {
+	case TaskExecutorFunction, TaskExecutorHuman:
+		return TaskExecutor(s)
+	default:
+		return TaskExecutorAgent
+	}
+}
+
+// taskTargetToJSON serialises *TaskTargetSpec to a JSON string for storage.
+// Returns "" for nil (representing "use project defaults").
+func taskTargetToJSON(v *TaskTargetSpec) string {
+	if v == nil {
+		return ""
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// jsonToTaskTarget deserialises the stored JSON string back to *TaskTargetSpec.
+// Returns nil for empty or malformed values.
+func jsonToTaskTarget(s string) *TaskTargetSpec {
+	if s == "" {
+		return nil
+	}
+	var v TaskTargetSpec
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil
+	}
+	return &v
+}
+
+// SetTaskResult writes the terminal result JSON and token cost for a task,
+// then bumps updated_at. Called by the runner and the function runner on finish.
+func (s *TaskStore) SetTaskResult(taskID, resultJSON string, costTokens int64) error {
+	return s.execOne(`UPDATE tasks SET result = ?, cost_tokens = ?, updated_at = ? WHERE id = ?`,
+		resultJSON, costTokens, timeToStr(time.Now().UTC()), taskID)
+}
+
+// ListTasksByBusinessRef returns all tasks whose business_ref matches ref,
+// ordered by created_at. Returns an empty slice (not an error) when ref is empty.
+func (s *TaskStore) ListTasksByBusinessRef(ref string) ([]Task, error) {
+	if ref == "" {
+		return nil, nil
+	}
+	rows, err := s.db.sql.Query(`
+		SELECT `+taskCols+`
+		FROM tasks WHERE business_ref = ? ORDER BY created_at, id`, ref)
+	if err != nil {
+		return nil, err
+	}
+	var out []Task
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ── legacy JSON import ──────────────────────────────────────────────────────

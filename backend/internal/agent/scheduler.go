@@ -55,7 +55,11 @@ type Scheduler struct {
 	tasksStore   *TasksStore
 	workspacesFn func() ([]WorkspaceRef, error)
 	runner       *TaskRunner
-	ticker       *time.Ticker
+	// FunctionRunner is called for executor=function tasks (instead of runner.Execute).
+	// Set via SetFunctionRunner after construction. When nil, function tasks are
+	// left in running state (no-op dispatch, useful in unit tests).
+	FunctionRunner func(task Task, workspacePath string)
+	ticker         *time.Ticker
 	// engine is the event-driven orchestration layer (#133). The scheduler
 	// owns state transitions and, at each transition point, emits a TaskEvent
 	// the engine maps to declarative actions (route/notify/requeue). Never nil
@@ -77,6 +81,12 @@ func NewScheduler(tasksStore *TasksStore, workspacesFn func() ([]WorkspaceRef, e
 // Without a runner the scheduler only performs state transitions, which is
 // what the unit tests exercise.
 func (s *Scheduler) SetRunner(r *TaskRunner) { s.runner = r }
+
+// SetFunctionRunner attaches the function-executor dispatch callback.
+// See FunctionRunner field.
+func (s *Scheduler) SetFunctionRunner(fn func(task Task, workspacePath string)) {
+	s.FunctionRunner = fn
+}
 
 func (s *Scheduler) Start(ctx context.Context) {
 	s.ticker = time.NewTicker(5 * time.Second)
@@ -498,34 +508,68 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			return ready[i].task.CreatedAt.Before(ready[j].task.CreatedAt)
 		})
 
-		if len(ready) > 0 && s.Lock.TryAcquire(ref.Path, ready[0].task.ID) {
+		if len(ready) > 0 {
 			rt := ready[0]
-			task := rt.task
-			task.Status = TaskStatusRunning
-			if !rt.isReview {
-				task.StartedAt = &now // preserve the original start across review cycles
-			}
-			task.UpdatedAt = now
-			modified = true
-			verb := "starting"
-			if rt.isReview {
-				verb = "verifying"
-			}
-			log.Printf("[scheduler] Lock acquired. Task %s (%s, priority %s) %s in %s",
-				task.ID, task.Title, task.Priority, verb, ref.Path)
+			// Human executor: transition to awaiting_human (a decision gate)
+			// without acquiring the workspace lock. The task stays visible in
+			// the queue and downstream deps remain blocked until the user
+			// completes it via complete_human_task (MCP tool) or the API.
+			// The workspace lock is NOT held — a human task doesn't monopolise
+			// the runner slot.
+			if !rt.isReview && rt.task.Executor == TaskExecutorHuman && rt.task.Status != TaskStatusAwaitingHuman {
+				rt.task.Status = TaskStatusAwaitingHuman
+				if rt.task.StartedAt == nil {
+					rt.task.StartedAt = &now
+				}
+				rt.task.UpdatedAt = now
+				modified = true
+				log.Printf("[scheduler] Human task %s (%s) → awaiting_human", rt.task.ID, rt.task.Title)
+				// Don't continue: skip agent-runner dispatch for human tasks.
+			} else if s.Lock.TryAcquire(ref.Path, rt.task.ID) {
+				task := rt.task
+				task.Status = TaskStatusRunning
+				if !rt.isReview {
+					task.StartedAt = &now // preserve the original start across review cycles
+				}
+				task.UpdatedAt = now
+				modified = true
+				verb := "starting"
+				if rt.isReview {
+					verb = "verifying"
+				}
+				log.Printf("[scheduler] Lock acquired. Task %s (%s, priority %s) %s in %s",
+					task.ID, task.Title, task.Priority, verb, ref.Path)
 
-			if s.runner != nil {
 				// Copy the task before Save below mutates the slice.
 				run := *task
-				if rt.isReview {
-					go s.runner.Verify(ref.Path, ref.ID, run)
-				} else {
-					go s.runner.Execute(ref.Path, ref.ID, run)
+				switch {
+				case rt.isReview:
+					if s.runner != nil {
+						go s.runner.Verify(ref.Path, ref.ID, run)
+					} else {
+						s.Lock.Release(ref.Path)
+					}
+				case run.Executor == TaskExecutorFunction:
+					// Dispatch to the function runner (executor=function, token≈0).
+					if s.FunctionRunner != nil {
+						go func() {
+							defer func() {
+								s.Lock.Release(ref.Path)
+								s.Tick()
+							}()
+							s.FunctionRunner(run, ref.Path)
+						}()
+					} else {
+						s.Lock.Release(ref.Path)
+					}
+				default:
+					// executor=agent (default) or empty — existing behaviour.
+					if s.runner != nil {
+						go s.runner.Execute(ref.Path, ref.ID, run)
+					} else {
+						s.Lock.Release(ref.Path)
+					}
 				}
-			} else {
-				// No executor attached (unit tests): release so the lock
-				// doesn't leak.
-				s.Lock.Release(ref.Path)
 			}
 		}
 
