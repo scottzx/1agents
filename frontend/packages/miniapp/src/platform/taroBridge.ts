@@ -82,6 +82,8 @@ export class TaroPlatformBridge implements PlatformBridge {
   }
 }
 
+const activeSockets: TaroSocket[] = [];
+
 /**
  * `PlatformSocket` over `Taro.connectSocket`. `Taro.connectSocket` resolves a
  * SocketTask asynchronously, so this wrapper presents a synchronous socket:
@@ -100,6 +102,16 @@ class TaroSocket implements PlatformSocket {
   };
 
   constructor(url: string, opts?: ConnectSocketOptions) {
+    activeSockets.push(this);
+    
+    // Auto-prune oldest socket connection if we exceed the FIFO threshold
+    while (activeSockets.length > 3) {
+      const oldest = activeSockets.shift();
+      if (oldest && oldest !== this) {
+        oldest.close(1000, 'FIFO limit reached');
+      }
+    }
+
     Taro.connectSocket({ url, protocols: opts?.protocols, header: opts?.headers })
       .then(task => {
         this.task = task;
@@ -115,14 +127,27 @@ class TaroSocket implements PlatformSocket {
         });
         task.onClose(res => {
           this.state = 'closed';
+          this.cleanup();
           this.cbs.close.forEach(cb => cb({ code: res.code, reason: res.reason }));
         });
-        task.onError(err => this.cbs.error.forEach(cb => cb(err)));
+        task.onError(err => {
+          this.state = 'closed';
+          this.cleanup();
+          this.cbs.error.forEach(cb => cb(err));
+        });
       })
       .catch(err => {
         this.state = 'closed';
+        this.cleanup();
         this.cbs.error.forEach(cb => cb(err));
       });
+  }
+
+  private cleanup(): void {
+    const idx = activeSockets.indexOf(this);
+    if (idx !== -1) {
+      activeSockets.splice(idx, 1);
+    }
   }
 
   get readyState(): SocketReadyState {
