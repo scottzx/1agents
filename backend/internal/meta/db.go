@@ -340,6 +340,14 @@ func (db *DB) ensureContactsColumns() error {
 			return fmt.Errorf("add feishu_tracked_chats.member_total: %w", err)
 		}
 	}
+	// feishu_tracked_chats.members_fetched: set once the full chat.members roster
+	// has been fetched + ingested, so later syncs skip the (expensive) roster call
+	// and reuse the cached roster for sender-name enrichment.
+	if len(trackedCols) > 0 && !trackedCols["members_fetched"] {
+		if _, err := db.sql.Exec(`ALTER TABLE feishu_tracked_chats ADD COLUMN members_fetched INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add feishu_tracked_chats.members_fetched: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -667,9 +675,11 @@ CREATE TABLE IF NOT EXISTS feishu_sync_config (
 
 // schemaV18 adds the 二度联系人 layer (Phase 3). feishu_group_members is the full
 // roster of every tracked group: one row per (session_id, channel_id=open_id),
-// refreshed on each sync via FetchMembers — including silent members who never
-// posted. It drives degree-2 contact ingestion (a channel discovered only from
-// the roster, never from a sender) and the "在哪些群" detail. The contacts.degree
+// fetched ONCE on the first sync (gated by feishu_tracked_chats.members_fetched)
+// — including silent members who never posted. Later syncs reuse this cache for
+// sender-name enrichment and incrementally add active speakers. It drives
+// degree-2 contact ingestion (a channel discovered only from the roster, never
+// from a sender) and the "在哪些群" detail. The contacts.degree
 // column is added separately by ensureContactsColumns (unconditional ALTER).
 const schemaV18 = `
 CREATE TABLE IF NOT EXISTS feishu_group_members (

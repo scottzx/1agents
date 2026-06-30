@@ -49,12 +49,22 @@ func NewHandlerDefault() (*Handler, error) {
 	return h, nil
 }
 
-// ingestMembers fetches a chat's full roster and records it as degree-2 contacts.
-// Best-effort: errors are logged, never propagated, so a roster fetch failure
-// never fails the message sync. No-op when the contact store is unwired (tests).
-func (h *Handler) ingestMembers(ctx context.Context, chatID string) {
-	if h.cs == nil {
+// ensureRoster fetches a tracked chat's full chat.members roster exactly ONCE
+// (the first sync), ingests it as degree-2 contacts + the name cache, then sets
+// members_fetched so later syncs make ZERO chat.members calls. Best-effort:
+// errors are logged, never propagated. No-op when stores are unwired (tests) or
+// when the roster was already fetched.
+func (h *Handler) ensureRoster(ctx context.Context, chatID string) {
+	if h.cs == nil || h.ccs == nil {
 		return
+	}
+	tc, ok, err := h.ccs.GetTrackedChat(chatID)
+	if err != nil {
+		log.Printf("[digest] roster %s: lookup tracked: %v", chatID, err)
+		return
+	}
+	if ok && tc.MembersFetched {
+		return // roster already cached — never fetch chat.members again
 	}
 	members, total, err := h.client().FetchMembersDetailed(ctx, chatID)
 	if err != nil {
@@ -67,15 +77,55 @@ func (h *Handler) ingestMembers(ctx context.Context, chatID string) {
 	}
 	if _, err := h.cs.IngestGroupMembers(chatID, gm); err != nil {
 		log.Printf("[digest] roster %s: ingest members: %v", chatID, err)
+		return // don't flag as fetched if ingestion failed — retry next sync
 	}
 	// Record the chat's true size (member_total). For large groups the API caps
 	// the enumerable roster, so total > len(members); store it so the UI shows
 	// real group size alongside how many were ingested.
-	if h.ccs != nil {
-		if err := h.ccs.SetTrackedMemberTotal(chatID, total); err != nil {
-			log.Printf("[digest] roster %s: set member_total: %v", chatID, err)
+	if err := h.ccs.SetTrackedMemberTotal(chatID, total); err != nil {
+		log.Printf("[digest] roster %s: set member_total: %v", chatID, err)
+	}
+	if err := h.ccs.SetMembersFetched(chatID); err != nil {
+		log.Printf("[digest] roster %s: set members_fetched: %v", chatID, err)
+	}
+}
+
+// syncOne runs one full sync for a chat through the optimized pipeline:
+//  1. ensureRoster — fetch chat.members ONCE on the first sync (flag-gated);
+//  2. build the name map from the cached roster (no chat.members API call);
+//  3. SyncChat with that name map (sender-name enrichment, no roster call);
+//  4. incrementally ingest the batch's distinct senders (open_id + tenant_key)
+//     as degree-2 contacts — capturing active speakers beyond the roster cap.
+//
+// The caller owns the last_synced_at bump (UpdateTrackedSynced) since the two
+// HTTP paths and the periodic loop word it differently.
+func (h *Handler) syncOne(ctx context.Context, chatID string) (feishu.SyncResult, error) {
+	h.ensureRoster(ctx, chatID)
+
+	var names map[string]string
+	if h.cs != nil {
+		var err error
+		if names, err = h.cs.RosterNameMap(chatID); err != nil {
+			log.Printf("[digest] roster %s: name map: %v", chatID, err)
 		}
 	}
+
+	res, err := h.syncer.SyncChat(ctx, chatID, names)
+	if err != nil {
+		return res, err
+	}
+
+	// Incrementally capture this batch's active speakers (beyond the roster cap).
+	if h.cs != nil && len(res.Senders) > 0 {
+		senders := make([]meta.SenderRef, 0, len(res.Senders))
+		for _, sr := range res.Senders {
+			senders = append(senders, meta.SenderRef{OpenID: sr.OpenID, TenantKey: sr.TenantKey})
+		}
+		if _, err := h.cs.IngestMessageSenders(chatID, senders); err != nil {
+			log.Printf("[digest] roster %s: ingest senders: %v", chatID, err)
+		}
+	}
+	return res, nil
 }
 
 // client reaches the lark-cli client through the syncer (chat listing / doctor).
@@ -134,7 +184,7 @@ func (h *Handler) syncDueTracked(ctx context.Context) {
 		if c.LastSyncedAt > dueBefore {
 			continue // synced recently enough
 		}
-		res, err := h.syncer.SyncChat(ctx, c.ChatID)
+		res, err := h.syncOne(ctx, c.ChatID)
 		if err != nil {
 			log.Printf("[digest] periodic sync %s: %v", c.ChatID, err)
 			continue
@@ -142,7 +192,6 @@ func (h *Handler) syncDueTracked(ctx context.Context) {
 		if err := h.ccs.UpdateTrackedSynced(c.ChatID, "", time.Now().UnixMilli()); err != nil {
 			log.Printf("[digest] periodic sync %s: update synced: %v", c.ChatID, err)
 		}
-		h.ingestMembers(ctx, c.ChatID) // refresh degree-2 roster after each sync
 		if res.Inserted > 0 {
 			log.Printf("[digest] periodic sync %s: +%d messages", c.ChatID, res.Inserted)
 		}
@@ -293,7 +342,7 @@ func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "chatId required")
 		return
 	}
-	res, err := h.syncer.SyncChat(r.Context(), body.ChatID)
+	res, err := h.syncOne(r.Context(), body.ChatID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -302,7 +351,6 @@ func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
 	if h.ccs != nil {
 		_ = h.ccs.UpdateTrackedSynced(body.ChatID, "", time.Now().UnixMilli())
 	}
-	h.ingestMembers(r.Context(), body.ChatID) // refresh degree-2 roster after sync
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -504,13 +552,12 @@ func (h *Handler) HandleSyncAll(w http.ResponseWriter, r *http.Request) {
 	}
 	results := make([]chatResult, 0, len(chats))
 	for _, c := range chats {
-		res, err := h.syncer.SyncChat(r.Context(), c.ChatID)
+		res, err := h.syncOne(r.Context(), c.ChatID)
 		if err != nil {
 			results = append(results, chatResult{ChatID: c.ChatID, Error: err.Error()})
 			continue
 		}
 		_ = h.ccs.UpdateTrackedSynced(c.ChatID, "", time.Now().UnixMilli())
-		h.ingestMembers(r.Context(), c.ChatID) // refresh degree-2 roster after each sync
 		results = append(results, chatResult{ChatID: c.ChatID, Inserted: res.Inserted, Fetched: res.Fetched})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})

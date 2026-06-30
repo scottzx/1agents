@@ -22,6 +22,10 @@ type TrackedChat struct {
 	// groups it exceeds the enumerable roster (which the API caps), so it is the
 	// real group size, distinct from how many members were actually ingested.
 	MemberTotal int `json:"memberTotal"`
+	// MembersFetched is set once the full chat.members roster has been fetched and
+	// ingested. Once true, later syncs skip the roster API call entirely and reuse
+	// the cached roster for sender-name enrichment.
+	MembersFetched bool `json:"membersFetched"`
 }
 
 // SyncConfig is the global auto-sync toggle + interval (minutes) governing the
@@ -39,17 +43,18 @@ type FeishuChatStore struct {
 // NewFeishuChatStore returns a FeishuChatStore over db.
 func NewFeishuChatStore(db *DB) *FeishuChatStore { return &FeishuChatStore{db: db} }
 
-const trackedChatCols = `chat_id, chat_name, avatar, external, auto_sync, last_synced_at, created_at, member_total`
+const trackedChatCols = `chat_id, chat_name, avatar, external, auto_sync, last_synced_at, created_at, member_total, members_fetched`
 
 func scanTrackedChat(r rowScanner) (TrackedChat, error) {
 	var t TrackedChat
-	var external, autoSync int
+	var external, autoSync, membersFetched int
 	var createdAt string
-	if err := r.Scan(&t.ChatID, &t.ChatName, &t.Avatar, &external, &autoSync, &t.LastSyncedAt, &createdAt, &t.MemberTotal); err != nil {
+	if err := r.Scan(&t.ChatID, &t.ChatName, &t.Avatar, &external, &autoSync, &t.LastSyncedAt, &createdAt, &t.MemberTotal, &membersFetched); err != nil {
 		return TrackedChat{}, err
 	}
 	t.External = external != 0
 	t.AutoSync = autoSync != 0
+	t.MembersFetched = membersFetched != 0
 	t.CreatedAt = strToTime(createdAt)
 	return t, nil
 }
@@ -59,6 +64,14 @@ func scanTrackedChat(r rowScanner) (TrackedChat, error) {
 // the enumerable roster is capped. No-op if the chat isn't tracked.
 func (s *FeishuChatStore) SetTrackedMemberTotal(chatID string, total int) error {
 	_, err := s.db.sql.Exec(`UPDATE feishu_tracked_chats SET member_total = ? WHERE chat_id = ?`, total, chatID)
+	return err
+}
+
+// SetMembersFetched marks a tracked chat's full roster as fetched + ingested, so
+// later syncs skip the chat.members API call and reuse the cached roster. No-op
+// if the chat isn't tracked.
+func (s *FeishuChatStore) SetMembersFetched(chatID string) error {
+	_, err := s.db.sql.Exec(`UPDATE feishu_tracked_chats SET members_fetched = 1 WHERE chat_id = ?`, chatID)
 	return err
 }
 
@@ -109,16 +122,18 @@ func (s *FeishuChatStore) UpsertTrackedChat(t TrackedChat) error {
 	createdAt := time.Now().UTC()
 	lastSynced := t.LastSyncedAt
 	memberTotal := t.MemberTotal
+	membersFetched := t.MembersFetched
 	if ok {
 		createdAt = existing.CreatedAt
 		lastSynced = existing.LastSyncedAt
-		memberTotal = existing.MemberTotal // preserve; refreshed via SetTrackedMemberTotal on sync
+		memberTotal = existing.MemberTotal       // preserve; refreshed via SetTrackedMemberTotal on sync
+		membersFetched = existing.MembersFetched // preserve; set via SetMembersFetched on first sync
 	}
 	_, err = s.db.sql.Exec(`INSERT OR REPLACE INTO feishu_tracked_chats
         (`+trackedChatCols+`)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ChatID, t.ChatName, t.Avatar, boolToInt(t.External), boolToInt(t.AutoSync),
-		lastSynced, timeToStr(createdAt), memberTotal)
+		lastSynced, timeToStr(createdAt), memberTotal, boolToInt(membersFetched))
 	return err
 }
 

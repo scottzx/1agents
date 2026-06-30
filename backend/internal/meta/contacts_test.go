@@ -258,3 +258,98 @@ func TestIngestGroupMembersDegree2(t *testing.T) {
 		t.Fatalf("groups for channel: %v err=%v", groups, err)
 	}
 }
+
+func TestIngestMessageSenders(t *testing.T) {
+	db := newTestDB(t)
+	s := NewContactStore(db)
+
+	// Seed a roster member with a known nickname (the name cache).
+	if _, err := s.IngestGroupMembers("oc_g", []GroupMember{
+		{OpenID: "ou_known", Name: "花名册甲", TenantKey: "tnt_a"},
+	}); err != nil {
+		t.Fatalf("seed roster: %v", err)
+	}
+
+	// RosterNameMap returns the cached open_id → nickname (no chat.members call).
+	names, err := s.RosterNameMap("oc_g")
+	if err != nil {
+		t.Fatalf("name map: %v", err)
+	}
+	if names["ou_known"] != "花名册甲" {
+		t.Fatalf("name map wrong: %+v", names)
+	}
+
+	// A brand-new speaker (not in the roster) is inserted as a degree-2 contact
+	// with an empty nickname (messages carry no name) and its tenant_key captured.
+	created, err := s.IngestMessageSenders("oc_g", []SenderRef{
+		{OpenID: "ou_new", TenantKey: "tnt_x"},
+	})
+	if err != nil || created != 1 {
+		t.Fatalf("ingest new speaker: created=%d err=%v", created, err)
+	}
+	chans, _ := s.ListChannels("", false)
+	var newCh ContactChannel
+	for _, ch := range chans {
+		if ch.ChannelID == "ou_new" {
+			newCh = ch
+		}
+	}
+	if newCh.ChannelID == "" {
+		t.Fatalf("ou_new channel not created")
+	}
+	if newCh.Nickname != "" {
+		t.Fatalf("new speaker nickname should be empty, got %q", newCh.Nickname)
+	}
+	if newCh.TenantKey != "tnt_x" {
+		t.Fatalf("new speaker tenant_key not captured: %q", newCh.TenantKey)
+	}
+
+	// A speaker already in the roster (non-empty nickname) must NOT be clobbered
+	// with empty; tenant_key still refreshes when non-empty.
+	if _, err := s.IngestMessageSenders("oc_g", []SenderRef{
+		{OpenID: "ou_known", TenantKey: "tnt_a2"},
+	}); err != nil {
+		t.Fatalf("ingest known speaker: %v", err)
+	}
+	chans, _ = s.ListChannels("", false)
+	var knownCh ContactChannel
+	for _, ch := range chans {
+		if ch.ChannelID == "ou_known" {
+			knownCh = ch
+		}
+	}
+	if knownCh.Nickname != "花名册甲" {
+		t.Fatalf("non-empty nickname clobbered: %q", knownCh.Nickname)
+	}
+	if knownCh.TenantKey != "tnt_a2" {
+		t.Fatalf("tenant_key not refreshed: %q", knownCh.TenantKey)
+	}
+
+	// Empty tenant_key never overwrites a non-empty one.
+	if _, err := s.IngestMessageSenders("oc_g", []SenderRef{
+		{OpenID: "ou_new", TenantKey: ""},
+	}); err != nil {
+		t.Fatalf("ingest empty tenant: %v", err)
+	}
+	chans, _ = s.ListChannels("", false)
+	for _, ch := range chans {
+		if ch.ChannelID == "ou_new" && ch.TenantKey != "tnt_x" {
+			t.Fatalf("empty tenant_key clobbered non-empty: %q", ch.TenantKey)
+		}
+	}
+
+	// Re-ingesting an existing sender creates nothing new (idempotent).
+	created, err = s.IngestMessageSenders("oc_g", []SenderRef{
+		{OpenID: "ou_new", TenantKey: "tnt_x"},
+		{OpenID: "ou_known", TenantKey: "tnt_a2"},
+	})
+	if err != nil || created != 0 {
+		t.Fatalf("re-ingest should create 0: created=%d err=%v", created, err)
+	}
+
+	// IngestMessageSenders must NOT add a roster row (roster is distinct from
+	// sender discovery): ou_new should not appear in feishu_group_members.
+	if n, _ := s.MemberCountForSession("oc_g"); n != 1 {
+		t.Fatalf("roster size changed by sender ingest: %d (want 1)", n)
+	}
+}

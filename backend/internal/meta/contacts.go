@@ -16,18 +16,18 @@ var ErrDuplicatePhone = fmt.Errorf("meta: duplicate contact phone")
 // merge key across channels (a person reached on Feishu + WeChat is one
 // contact); it may be empty when unknown. tags is stored comma-separated.
 type Contact struct {
-	ID        string           `json:"id"`
-	Phone     string           `json:"phone"`
-	Name      string           `json:"name"`
-	Company   string           `json:"company"`
-	Title     string           `json:"title"`
-	Note      string           `json:"note"`
-	Tags      []string         `json:"tags"`
+	ID      string   `json:"id"`
+	Phone   string   `json:"phone"`
+	Name    string   `json:"name"`
+	Company string   `json:"company"`
+	Title   string   `json:"title"`
+	Note    string   `json:"note"`
+	Tags    []string `json:"tags"`
 	// Degree records how the contact entered the book: 1 = first-degree (manual /
 	// 好友, the proper 1st degree lands later), 2 = second-degree (discovered only
 	// from a tracked group's roster — a person in a shared group you don't yet
 	// know directly). Defaults to 1 for manually created contacts.
-	Degree    int              `json:"degree"`
+	Degree int `json:"degree"`
 	// GroupCount is how many distinct tracked groups this contact appears in,
 	// COUNT(DISTINCT session_id) over feishu_group_members across the contact's
 	// Feishu channels (open_ids). Additive enrichment for the 所在群 grid column;
@@ -43,12 +43,12 @@ type Contact struct {
 // contactId is set when the user links it. sessionId records the last group the
 // identity was seen in (best-effort context).
 type ContactChannel struct {
-	ID        string    `json:"id"`
-	ContactID string    `json:"contactId"`
-	Platform  string    `json:"platform"`
-	ChannelID string    `json:"channelId"`
-	Nickname  string    `json:"nickname"`
-	SessionID string    `json:"sessionId"`
+	ID        string `json:"id"`
+	ContactID string `json:"contactId"`
+	Platform  string `json:"platform"`
+	ChannelID string `json:"channelId"`
+	Nickname  string `json:"nickname"`
+	SessionID string `json:"sessionId"`
 	// TenantKey is the member's Feishu org, captured free from chat.members during
 	// roster ingestion (degree-2). Empty for sender-discovered channels.
 	TenantKey string    `json:"tenantKey"`
@@ -285,7 +285,7 @@ func (s *ContactStore) ListChannelsForContact(contactID string) ([]ContactChanne
 // contactID is set, or all channels when it is empty.
 func (s *ContactStore) ListChannels(contactID string, onlyUnlinked bool) ([]ContactChannel, error) {
 	if onlyUnlinked {
-		return s.queryChannels(`SELECT `+contactChannelCols+` FROM contact_channels
+		return s.queryChannels(`SELECT ` + contactChannelCols + ` FROM contact_channels
             WHERE contact_id = '' ORDER BY last_seen DESC`)
 	}
 	if contactID != "" {
@@ -384,12 +384,12 @@ type GroupMember struct {
 //     nickname + tenant_key);
 //  2. looks up the feishu channel by open_id:
 //     - no channel        → create a degree-2 contact + a channel (with tenant_key)
-//       linked to it;
+//     linked to it;
 //     - unlinked channel  → create a degree-2 contact and link this channel,
-//       refreshing nickname + tenant_key;
+//     refreshing nickname + tenant_key;
 //     - already-linked     → only refresh nickname (+ tenant_key when non-empty);
-//       never relink and never touch the contact's degree (preserves manual /
-//       1st-degree promotion).
+//     never relink and never touch the contact's degree (preserves manual /
+//     1st-degree promotion).
 //
 // A non-empty tenant_key is never overwritten with empty. Runs in one
 // transaction and is idempotent: re-ingesting the same roster creates nothing
@@ -477,6 +477,124 @@ func (s *ContactStore) IngestGroupMembers(sessionID string, members []GroupMembe
 		return 0, err
 	}
 	return created, nil
+}
+
+// SenderRef is one distinct message sender discovered from a sync batch: the
+// open_id and the org (tenant_key) carried by the message sender object. Unlike
+// a roster member it has no nickname (messages don't carry names).
+type SenderRef struct {
+	OpenID    string
+	TenantKey string
+}
+
+// IngestMessageSenders incrementally records active message speakers as degree-2
+// contacts/channels. It captures speakers beyond the roster's 100-member cap and
+// keeps tenant_key/last_seen fresh, WITHOUT a chat.members roster call. For each
+// distinct sender it:
+//   - no channel yet      → create a degree-2 contact + a channel (empty nickname,
+//     since messages carry no name) linked to it;
+//   - unlinked channel     → create a degree-2 contact, link it, refresh tenant_key
+//   - last_seen (never overwrite a non-empty nickname with empty);
+//   - already-linked       → only refresh tenant_key + last_seen; never relink,
+//     never touch degree, never clobber a non-empty nickname.
+//
+// It does NOT touch the feishu_group_members roster (that is the roster cache,
+// distinct from sender discovery). A non-empty tenant_key is never overwritten
+// with empty. Runs in one transaction; idempotent. Returns the number of new
+// degree-2 contacts created.
+func (s *ContactStore) IngestMessageSenders(sessionID string, senders []SenderRef) (int, error) {
+	tx, err := s.db.sql.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	now := timeToStr(time.Now().UTC())
+	lastSeen := time.Now().UnixMilli()
+	created := 0
+
+	for _, sr := range senders {
+		if sr.OpenID == "" {
+			continue
+		}
+		var chID, contactID string
+		err := tx.QueryRow(`SELECT id, contact_id FROM contact_channels
+            WHERE platform = 'feishu' AND channel_id = ?`, sr.OpenID).Scan(&chID, &contactID)
+		switch {
+		case err == sql.ErrNoRows:
+			// No channel yet → create a degree-2 contact + a linked channel. Nickname
+			// is empty (messages carry no name); the roster path fills it in later.
+			cID := newID()
+			if _, err := tx.Exec(`INSERT INTO contacts (`+contactCols+`)
+                VALUES (?, '', '', '', '', '', '', 2, ?, ?)`,
+				cID, now, now); err != nil {
+				return 0, err
+			}
+			if _, err := tx.Exec(`INSERT INTO contact_channels
+                (id, contact_id, platform, channel_id, nickname, session_id, tenant_key, last_seen, created_at, updated_at)
+                VALUES (?, ?, 'feishu', ?, '', ?, ?, ?, ?, ?)`,
+				newID(), cID, sr.OpenID, sessionID, sr.TenantKey, lastSeen, now, now); err != nil {
+				return 0, err
+			}
+			created++
+		case err != nil:
+			return 0, err
+		case contactID == "":
+			// Channel exists but unlinked → create a degree-2 contact, link it, refresh
+			// session/last_seen + tenant_key. Never clobber a non-empty nickname.
+			cID := newID()
+			if _, err := tx.Exec(`INSERT INTO contacts (`+contactCols+`)
+                VALUES (?, '', '', '', '', '', '', 2, ?, ?)`,
+				cID, now, now); err != nil {
+				return 0, err
+			}
+			if _, err := tx.Exec(`UPDATE contact_channels SET
+                contact_id = ?, session_id = ?, last_seen = ?, updated_at = ?,
+                tenant_key = CASE WHEN ? != '' THEN ? ELSE tenant_key END
+                WHERE id = ?`,
+				cID, sessionID, lastSeen, now, sr.TenantKey, sr.TenantKey, chID); err != nil {
+				return 0, err
+			}
+			created++
+		default:
+			// Already linked → only refresh session/last_seen + tenant_key; never relink,
+			// never change degree, never clobber a non-empty nickname.
+			if _, err := tx.Exec(`UPDATE contact_channels SET
+                session_id = ?, last_seen = ?, updated_at = ?,
+                tenant_key = CASE WHEN ? != '' THEN ? ELSE tenant_key END
+                WHERE id = ?`,
+				sessionID, lastSeen, now, sr.TenantKey, sr.TenantKey, chID); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return created, nil
+}
+
+// RosterNameMap returns the open_id → nickname map for a tracked group's cached
+// roster (feishu_group_members), skipping empty nicknames. This is the name
+// cache that replaces a per-sync chat.members call: SyncChat enriches message
+// sender names from it.
+func (s *ContactStore) RosterNameMap(sessionID string) (map[string]string, error) {
+	rows, err := s.db.sql.Query(`SELECT channel_id, nickname FROM feishu_group_members
+        WHERE session_id = ? AND nickname != ''`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	names := map[string]string{}
+	for rows.Next() {
+		var openID, nick string
+		if err := rows.Scan(&openID, &nick); err != nil {
+			return nil, err
+		}
+		names[openID] = nick
+	}
+	return names, rows.Err()
 }
 
 // RosterMember is one feishu_group_members row exposed to the API: the member's

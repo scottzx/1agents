@@ -74,6 +74,39 @@ func TestTrackedChatsCRUD(t *testing.T) {
 	}
 }
 
+func TestMembersFetchedRoundTrip(t *testing.T) {
+	db := newTestDB(t)
+	s := NewFeishuChatStore(db)
+
+	if err := s.UpsertTrackedChat(TrackedChat{ChatID: "oc_a", ChatName: "群", AutoSync: true}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// Defaults to false (first sync hasn't fetched the roster yet).
+	a, ok, _ := s.GetTrackedChat("oc_a")
+	if !ok || a.MembersFetched {
+		t.Fatalf("expected members_fetched false initially, got %v (ok=%v)", a.MembersFetched, ok)
+	}
+
+	// SetMembersFetched flips it on.
+	if err := s.SetMembersFetched("oc_a"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	a, _, _ = s.GetTrackedChat("oc_a")
+	if !a.MembersFetched {
+		t.Fatalf("members_fetched not set")
+	}
+
+	// UpsertTrackedChat (e.g. re-tracking / name refresh) preserves the flag — a
+	// later upsert must not reset the roster-fetched state.
+	if err := s.UpsertTrackedChat(TrackedChat{ChatID: "oc_a", ChatName: "群改名", AutoSync: true}); err != nil {
+		t.Fatalf("re-upsert: %v", err)
+	}
+	a, _, _ = s.GetTrackedChat("oc_a")
+	if !a.MembersFetched {
+		t.Fatalf("members_fetched lost on re-upsert")
+	}
+}
+
 func TestSyncConfigDefaultAndRoundTrip(t *testing.T) {
 	db := newTestDB(t)
 	s := NewFeishuChatStore(db)

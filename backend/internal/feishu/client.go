@@ -66,7 +66,10 @@ type apiMsgResp struct {
 			MsgType    string `json:"msg_type"`
 			CreateTime string `json:"create_time"` // epoch ms, as string
 			Sender     struct {
-				ID string `json:"id"`
+				ID         string `json:"id"`
+				IDType     string `json:"id_type"`
+				SenderType string `json:"sender_type"`
+				TenantKey  string `json:"tenant_key"` // the sender's Feishu org
 			} `json:"sender"`
 			Body struct {
 				Content string `json:"content"`
@@ -211,48 +214,24 @@ func (c *Client) FetchMessages(ctx context.Context, chatID string, startSec int6
 	for _, it := range resp.Data.Items {
 		ct, _ := strconv.ParseInt(it.CreateTime, 10, 64)
 		msgs = append(msgs, Message{
-			Channel:      Channel,
-			ChannelAccID: c.account,
-			MessageID:    it.MessageID,
-			SessionID:    chatID,
-			SenderID:     it.Sender.ID,
-			MsgType:      it.MsgType,
-			Title:        extractTitle(it.MsgType, it.Body.Content),
-			Content:      it.Body.Content,
-			CreateTime:   ct,
+			Channel:         Channel,
+			ChannelAccID:    c.account,
+			MessageID:       it.MessageID,
+			SessionID:       chatID,
+			SenderID:        it.Sender.ID,
+			SenderTenantKey: it.Sender.TenantKey,
+			MsgType:         it.MsgType,
+			Title:           extractTitle(it.MsgType, it.Body.Content),
+			Content:         it.Body.Content,
+			CreateTime:      ct,
 		})
 	}
 	return msgs, nil
 }
 
-// FetchMembers returns an open_id → display name map for a chat. Works for
-// external members too (unlike the contact API), since they are in the chat.
-func (c *Client) FetchMembers(ctx context.Context, chatID string) (map[string]string, error) {
-	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/chats/"+chatID+"/members",
-		"--params", `{"page_size":"100","member_id_type":"open_id"}`, "--as", "user",
-		"--page-all", "--page-limit", "0", "--format", "json")
-	if err != nil {
-		return nil, err
-	}
-	var resp apiMembersResp
-	if err := json.Unmarshal(out, &resp); err != nil {
-		return nil, fmt.Errorf("feishu: decode members: %w", err)
-	}
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("feishu: members api code=%d", resp.Code)
-	}
-	names := make(map[string]string, len(resp.Data.Items))
-	for _, it := range resp.Data.Items {
-		if it.Name != "" {
-			names[it.MemberID] = it.Name
-		}
-	}
-	return names, nil
-}
-
 // Member is one chat roster entry, carrying the org (tenant_key) alongside the
 // open_id and display name. tenant_key comes free in the same chat.members
-// response FetchMembers reads — no extra per-member lookup.
+// response FetchMembersDetailed reads — no extra per-member lookup.
 type Member struct {
 	OpenID    string
 	Name      string
