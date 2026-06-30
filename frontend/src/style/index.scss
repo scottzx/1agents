@@ -3250,6 +3250,11 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 4px;
+
+  // Children keep their natural height instead of being compressed by the column
+  // flexbox — otherwise tall cards (e.g. 飞书) shrink and their overflow:hidden
+  // clips the content, and the container never overflows so it can't scroll.
+  & > * { flex-shrink: 0; }
 }
 
 .contacts-channels-banner {
@@ -3305,6 +3310,147 @@ body {
   font-size: 13px;
 }
 
+// iCloud 通讯录 (CardDAV) credential section — guided one-time setup.
+.contacts-icloud {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .contacts-icloud-connected {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .contacts-icloud-hint {
+    flex: 1;
+    min-width: 160px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .contacts-icloud-setup {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .contacts-icloud-steps {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+
+  .contacts-icloud-link {
+    color: var(--accent-color);
+    font-weight: 500;
+    text-decoration: underline;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--accent-hover);
+    }
+  }
+}
+
+// 渠道页重构:隐私提醒 + 按渠道分组 + 子模块 + 授权门 + 爬取规则
+.contacts-privacy-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  border: 0.5px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.contacts-privacy-icon { font-size: 16px; line-height: 1.4; }
+
+.contacts-channel-group {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.contacts-channel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color);
+
+  .contacts-channel-name { font-weight: 500; font-size: 15px; }
+  .contacts-code-badge {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--accent-color);
+    background: rgba(var(--accent-color-rgb), 0.12);
+    padding: 3px 9px;
+    border-radius: 20px;
+  }
+}
+.contacts-submodule {
+  padding: 12px 14px;
+
+  & + & { border-top: 1px solid var(--border-color); }
+}
+.contacts-submodule-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+
+  .contacts-submodule-title { font-weight: 500; font-size: 14px; }
+  .contacts-submodule-hint { font-size: 11px; color: var(--text-muted); }
+}
+.contacts-consent-gate {
+  background: var(--bg-panel);
+  border: 0.5px dashed var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.contacts-modrules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 8px 0;
+}
+.contacts-modrules-actions { display: flex; justify-content: flex-end; }
+.contacts-channel-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 0.5px dashed var(--border-color);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.contacts-linkbtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+
+  &:hover { color: var(--accent-hover); text-decoration: underline; }
+}
+
 .contacts-channels-config {
   display: flex;
   align-items: center;
@@ -3347,7 +3493,8 @@ body {
 .contacts-channels-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   padding: 8px 4px;
   border-bottom: 1px solid var(--border-color);
 }

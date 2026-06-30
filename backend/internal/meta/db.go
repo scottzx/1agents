@@ -232,6 +232,12 @@ func (db *DB) migrateSchema() error {
 	if err := db.ensureContactsColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile contacts columns: %w", err)
 	}
+	// 渠道子模块同意 + 爬取规则 (channel_modules). New table only, created
+	// unconditionally (CREATE IF NOT EXISTS) to sidestep the meta schema-version
+	// collisions above. Idempotent.
+	if err := db.ensureChannelModules(); err != nil {
+		return fmt.Errorf("meta: ensure channel_modules: %w", err)
+	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 			return fmt.Errorf("meta: set user_version: %w", err)
