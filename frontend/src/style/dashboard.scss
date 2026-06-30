@@ -1182,9 +1182,16 @@
 
 .cockpit-topbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   padding: 12px 20px;
+}
+
+.cockpit-view-switch {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
 }
 
 .cockpit-topbar-btn {
@@ -1201,6 +1208,55 @@
     background-color: var(--btn-hover);
     border-color: var(--accent-color);
   }
+
+  &.active {
+    background-color: var(--accent-emphasis);
+    border-color: var(--accent-emphasis);
+    color: var(--on-accent);
+  }
+}
+
+// Global board (跨项目) — issue #91. Reuses the single-project kanban/calendar
+// surfaces; only the cross-project chrome (project filter row + project tags) is
+// new here.
+.global-board {
+  padding: 0 20px 32px;
+
+  .global-board-projects {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+
+    .global-board-projects-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-right: 2px;
+    }
+  }
+}
+
+.kanban-card-project {
+  font-size: 10px;
+  color: var(--accent-fg);
+  background-color: var(--accent-bg);
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+.calendar-event-project {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .cockpit-root {
@@ -1404,3 +1460,104 @@
 }
 
 .cockpit-card-last { color: var(--text-muted); }
+
+/* ── Phase 2: 看→控 — per-card 下指令/派工 ── */
+.cockpit-dispatch-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-color);
+  background-color: var(--accent-light);
+  border: 1px solid transparent;
+  border-radius: var(--bento-radius-sm);
+  cursor: pointer;
+  transition: var(--bento-transition);
+
+  &:hover {
+    color: var(--on-accent);
+    background-color: var(--accent-color);
+  }
+}
+
+.cockpit-dispatch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px;
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+}
+
+.cockpit-dispatch-input {
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-main);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+}
+
+.cockpit-dispatch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cockpit-dispatch-agent {
+  flex: 0 1 auto;
+  max-width: 45%;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-main);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  cursor: pointer;
+}
+
+.cockpit-dispatch-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cockpit-dispatch-cancel,
+.cockpit-dispatch-send {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--bento-radius-sm);
+  cursor: pointer;
+  transition: var(--bento-transition);
+
+  &:disabled { opacity: 0.55; cursor: not-allowed; }
+}
+
+.cockpit-dispatch-cancel {
+  color: var(--text-secondary);
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+
+  &:hover:not(:disabled) { background-color: var(--btn-hover); }
+}
+
+.cockpit-dispatch-send {
+  color: var(--on-accent);
+  background-color: var(--accent-color);
+  border: 1px solid transparent;
+
+  &:hover:not(:disabled) { background-color: var(--accent-hover); }
+}

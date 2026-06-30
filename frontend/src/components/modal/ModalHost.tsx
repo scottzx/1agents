@@ -66,14 +66,18 @@ export function ModalHost() {
                             workspaceName={ws.name}
                             defaultAgent={ws.defaultAgent || DEFAULT_AGENT_TYPE}
                             onCancel={modal.closeChatCreate}
-                            onSubmit={(name, agentType, permissionMode) => {
+                            onSubmit={(name, agentType, permissionMode, role) => {
                                 modal.closeChatCreate();
+                                // 'pm' in the cross-project (default/builtin) workspace
+                                // becomes 'pmo' — mirrors createPMSession / NewChatHome.
+                                const effectiveRole =
+                                    role === 'pm' && (ws.id === 'default' || ws.builtin) ? 'pmo' : role || undefined;
                                 sess.createChatSession(
                                     chatCreateWsId,
                                     name,
                                     agentType,
                                     undefined,
-                                    undefined,
+                                    effectiveRole,
                                     permissionMode
                                 );
                             }}

@@ -14,17 +14,22 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
+	"github.com/scottzx/1Agents/backend/internal/contacts"
 	ctxt "github.com/scottzx/1Agents/backend/internal/context"
+	"github.com/scottzx/1Agents/backend/internal/digest"
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/kwiki"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/retro"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
@@ -88,22 +93,45 @@ func NewRouter(cfg *config.Config) http.Handler {
 		// One-time import of the legacy JSON stores into ~/.1agents/meta.db
 		// (renames the source files to *.migrated; no-op afterwards).
 		if db, dbErr := meta.OpenDefault(); dbErr == nil {
-			if wsCfg, wsErr := wsHandler.LoadWorkspacesConfig(); wsErr == nil {
-				refs := make([]meta.WorkspaceRef, len(wsCfg.Workspaces))
-				for i, ws := range wsCfg.Workspaces {
-					refs[i] = meta.WorkspaceRef{ID: ws.ID, Name: ws.Name, Path: ws.Path}
-				}
-				if migErr := db.MigrateLegacy(refs); migErr != nil {
-					log.Printf("[server] legacy metadata migration: %v", migErr)
-				}
+			// Unify the legacy workspaces_dir.json into the projects table first
+			// (renames the json to *.migrated), then import the remaining legacy
+			// stores (sessions + per-workspace tasks.json), which read the workspace
+			// paths back from the projects table.
+			if migErr := db.ImportLegacyWorkspaces(); migErr != nil {
+				log.Printf("[server] workspace registry migration: %v", migErr)
+			}
+			if migErr := db.MigrateLegacy(); migErr != nil {
+				log.Printf("[server] legacy metadata migration: %v", migErr)
 			}
 			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
+			// #144: archiving/closing a project triggers a复盘沉淀 — summarize
+			// its tasks/decisions and ingest a retrospective into kwiki.
+			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db, retrospectiveHook(db))) // POST {id}/archive|close|reopen
+
+			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
+			inboxStore := meta.NewInboxStore(db)
+			mux.HandleFunc("/api/inbox", meta.InboxHandler(inboxStore))      // GET (?archived=1), POST capture
+			mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore)) // POST /{id}/archive|read|unread
+
+			// #271: read-only access to the复盘 (#144) pages the archive hook
+			// ingests into the shared kwiki knowledge base.
+			if kw, kwErr := kwiki.Open(knowledgeRoot()); kwErr == nil {
+				mux.HandleFunc("/api/retrospectives", retro.Handler(kw))  // GET list
+				mux.HandleFunc("/api/retrospectives/", retro.Handler(kw)) // GET /{slug}
+			} else {
+				log.Printf("[server] open kwiki for retrospectives: %v", kwErr)
+			}
 		}
 
 		tasksStore, tsErr := agent.NewTasksStore()
 		if tsErr != nil {
 			log.Printf("[server] tasks store init failed: %v", tsErr)
 		} else {
+			// Share this store instance with the cc-connect IM notifier (#129)
+			// so its approve/reject write-backs serialize with the scheduler's
+			// per-workspace Mutate lock.
+			ccconnect.SetTasksStore(tasksStore)
+
 			acpxPort := acpxBridgePort()
 			acpxClient := agent.NewAcpxClient(acpxPort)
 
@@ -139,18 +167,83 @@ func NewRouter(cfg *config.Config) http.Handler {
 			catalogStore := agent.DefaultCatalog()
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)     // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)       // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)      // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)     // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)            // GET, POST
-			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)  // GET ?project=&number= (more specific than the subtree below)
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)           // DELETE /{id}
-			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)          // GET (cross-workspace agenda, #192)
-			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)  // GET, POST
-			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem) // PATCH, DELETE /{id}, POST /reorder
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)             // WebSocket upgrade & bridge
-			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)        // GET — cross-project cockpit aggregate (read-only)
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)      // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)        // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)       // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)      // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)             // GET, POST
+			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)   // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)            // DELETE /{id}
+			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)           // GET (cross-workspace agenda, #192)
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)   // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)  // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot) // POST — create a discussion thread (#189)
+			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem) // POST /{id}/cards, /{id}/conclude (#189)
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)              // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)         // GET — cross-project cockpit aggregate (read-only)
+
+			// Chat-digest: Feishu message sync (sync.db) + value-extraction
+			// templates (meta.db v15) + single-batch analysis tasks (run by the
+			// scheduler above). Self-wires its own stores; seeds presets and
+			// starts a periodic re-sync of every known chat.
+			if digestHandler, dErr := digest.NewHandlerDefault(); dErr != nil {
+				log.Printf("[server] digest init failed: %v", dErr)
+			} else {
+				if err := digestHandler.Seed(); err != nil {
+					log.Printf("[server] digest seed: %v", err)
+				}
+				digestHandler.StartPeriodicSync(context.Background(), 3*time.Hour)
+				mux.HandleFunc("/api/digest/templates", digestHandler.HandleTemplates)     // GET, POST
+				mux.HandleFunc("/api/digest/templates/", digestHandler.HandleTemplateItem) // PATCH, DELETE /{id}
+				mux.HandleFunc("/api/digest/bindings", digestHandler.HandleBindings)       // GET ?session=, POST, DELETE
+				mux.HandleFunc("/api/digest/sync", digestHandler.HandleSync)               // POST {chatId}
+				mux.HandleFunc("/api/digest/analyze", digestHandler.HandleAnalyze)         // POST {chatId, workspace}
+				mux.HandleFunc("/api/digest/messages", digestHandler.HandleMessages)       // GET ?session=
+				// 飞书渠道配置 (Phase 2): browse groups, track/untrack, manual + auto
+				// sync (reuses SyncChat watermark + message_id dedup).
+				mux.HandleFunc("/api/digest/chats/available", digestHandler.HandleAvailableChats) // GET
+				mux.HandleFunc("/api/digest/chats/tracked", digestHandler.HandleTrackedChats)     // GET, POST
+				mux.HandleFunc("/api/digest/chats/tracked/", digestHandler.HandleTrackedChatItem) // DELETE, PATCH /{chatId}
+				mux.HandleFunc("/api/digest/sync/all", digestHandler.HandleSyncAll)               // POST
+				mux.HandleFunc("/api/digest/sync/config", digestHandler.HandleSyncConfig)         // GET, PUT
+				mux.HandleFunc("/api/digest/status", digestHandler.HandleStatus)                  // GET
+			}
+
+			// 联系人聚合: a user-curated address book (meta.db v16) over channel
+			// identities auto-discovered from synced Feishu messages (sync.db).
+			// Self-wires its own stores from the default databases.
+			if contactsHandler, cErr := contacts.NewHandlerDefault(); cErr != nil {
+				log.Printf("[server] contacts init failed: %v", cErr)
+			} else {
+				mux.HandleFunc("/api/contacts", contactsHandler.HandleContacts)                // GET, POST
+				mux.HandleFunc("/api/contacts/channels", contactsHandler.HandleChannels)       // GET ?contactId=&unlinked=1
+				mux.HandleFunc("/api/contacts/channels/", contactsHandler.HandleChannelAction) // POST /{id}/link|unlink
+				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)      // POST
+				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)      // GET ?contactId=|sessionId=
+				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)      // GET
+				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)    // GET tenant→company map
+				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)   // GET /{sessionId}/members
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)           // PATCH, DELETE /{id}
+			}
+
+			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
+			// and the promote-to-project gate. Shares the task store, so the
+			// reserved personal bucket reuses #N numbering / write locking.
+			personalStore := meta.NewPersonalStore(tasksStore)
+			mux.HandleFunc("/api/personal-tasks", meta.PersonalTasksHandler(personalStore)) // GET list, POST capture
+			// onIncubated: 立项 persists the project AS a workspace (unified registry);
+			// the hook adds the cc-connect bridge + guide files so it works like a
+			// hand-created workspace and shows up in the sidebar/board immediately.
+			mux.HandleFunc("/api/personal-tasks/", meta.PersonalTaskItemHandler(personalStore, wsHandler.RegisterIncubatedProject)) // POST /{id}/incubate
+
+			// PMO 跨项目对话式需求分发层 (#61): dispatch a clarified requirement into
+			// a target project's pool (and close the originating inbox item). Shares
+			// the task store (#N numbering / write lock) and the inbox store (over
+			// the same cached DB handle) so dispatching marks the source item read.
+			if db, dbErr := meta.OpenDefault(); dbErr == nil {
+				pmoStore := meta.NewPMOStore(tasksStore, meta.NewInboxStore(db))
+				mux.HandleFunc("/api/pmo/dispatch", meta.PMODispatchHandler(pmoStore)) // GET targets, POST dispatch
+			}
 		}
 	}
 
@@ -200,7 +293,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 			if nameOrID == "" {
 				nameOrID = foundWS.ID
 			}
-			projName := getCCProjectName(nameOrID, "claudecode")
+			// #277: project name = workspace name (no __<agent> suffix); the
+			// agent type is carried per-channel, not in the project name.
+			projName := ccconnect.CCProjectSlug(nameOrID)
 			redirectPath = "/projects/" + projName
 		}
 
@@ -227,6 +322,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(map[string]string{"url": url})
 	})
+
+	// ── CC-Connect channel↔agent binding API (#277 Phase 2) ──────────────────
+	// GET  ?project=<name>            → list channels + each channel's agent
+	// POST {project,index,agent}      → bind/clear a channel's agent (hot reload)
+	mux.HandleFunc("/api/cc-connect/channels", ccconnect.ChannelsHandler)
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)
@@ -454,16 +554,34 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── System management API (version check + OTA update) ──────────────────
 	sysHandler := system.NewHandler()
-	mux.HandleFunc("/api/system/version", sysHandler.Version)            // GET  — current & latest version, has_update flag
-	mux.HandleFunc("/api/system/update", sysHandler.Update)              // POST — trigger OTA update (non-blocking, returns 202)
-	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus) // GET  — real-time update progress log
-	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)             // GET  — frontend OTA manifest (proxied from GitHub Releases)
-	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)             // GET  — happy daemon status + machine credentials
-	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart)  // POST — start happy daemon
-	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)    // POST — stop happy daemon
+	mux.HandleFunc("/api/system/version", sysHandler.Version)                     // GET  — current & latest version, has_update flag
+	mux.HandleFunc("/api/system/update", sysHandler.Update)                       // POST — trigger OTA update (non-blocking, returns 202)
+	mux.HandleFunc("/api/system/update/status", sysHandler.UpdateStatus)          // GET  — real-time update progress log
+	mux.HandleFunc(system.ManifestPath, sysHandler.Manifest)                      // GET  — frontend OTA manifest (proxied from GitHub Releases)
+	mux.HandleFunc("/api/system/happy/status", sysHandler.HappyStatus)            // GET  — happy daemon status + machine credentials
+	mux.HandleFunc("/api/system/happy/daemon/start", sysHandler.HappyDaemonStart) // POST — start happy daemon
+	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
+	mux.HandleFunc("/api/system/happy/pair/start", sysHandler.HappyPairStart)     // POST — begin account-level pairing, returns pairing code
+	mux.HandleFunc("/api/system/happy/pair/status", sysHandler.HappyPairStatus)   // GET  — pairing progress (pending/authorized/error)
+	// 重置本地数据: wipe App data (meta.db/sync.db tables + knowledge/scratch files +
+	// workspace-backed cc-connect projects), keep relay pairing identity (~/.happy +
+	// relay-creds.json) and provider/model config, re-seed default workspace.
+	mux.HandleFunc("/api/system/reset", sysHandler.ResetHandler(wsHandler.EnsureDefaultWorkspace, ccconnect.PurgeWorkspaceProjects)) // POST — reset local data
 
 	// ── Relay client credentials (issue #109) ───────────────────────────────
 	mux.HandleFunc("/api/relay/credentials", sysHandler.RelayCredentialsHandler) // GET/POST/DELETE — persist relay account master key
+
+	// ── Device registry + heartbeat + discovery (issue #110) ─────────────────
+	mux.HandleFunc("/api/devices", sysHandler.DevicesHandler)            // GET/POST/DELETE — list/register/remove devices
+	mux.HandleFunc("/api/devices/heartbeat", sysHandler.DeviceHeartbeat) // POST — refresh a device's lastSeen
+	mux.HandleFunc("/api/devices/refresh", sysHandler.DevicesRefresh)    // POST — Tailscale scan + full refresh
+
+	// ── Device proxy routing layer (issue #111) ──────────────────────────────
+	// /api/proxy/{deviceId}/... forwards HTTP + WebSocket to a target device
+	// resolved via the #110 registry (direct Tailscale/LAN connection). The
+	// trailing-slash subtree does not collide with the exact "/api/proxy" web
+	// iframe proxy registered below.
+	mux.HandleFunc("/api/proxy/", sysHandler.DeviceProxyHandler)
 
 	// ── Access Token API ─────────────────────────────────────────────────────
 	mux.HandleFunc("/api/access/status", handleAccessStatus)
@@ -490,6 +608,13 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && taskPermalinkRe.MatchString(r.URL.Path) {
 			http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
+			return
+		}
+		// Big-screen build target (issue #120): the standalone dashboard bundle
+		// is emitted as dashboard.html. Serve it at the clean /dashboard path so
+		// the big screen has a stable URL distinct from the SPA root.
+		if r.Method == http.MethodGet && (r.URL.Path == "/dashboard" || r.URL.Path == "/dashboard/") {
+			http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "dashboard.html"))
 			return
 		}
 		staticFS.ServeHTTP(w, r)
@@ -672,6 +797,38 @@ func acpxBridgePort() int {
 		}
 	}
 	return 38082
+}
+
+// retrospectiveHook builds the #144 project-archive hook: on archive/close it
+// loads the project's tasks, summarizes a retrospective, and ingests it into the
+// shared kwiki knowledge base under ~/.1agents/knowledge. Returns nil-safe
+// errors only — the caller logs them best-effort.
+func retrospectiveHook(db *meta.DB) meta.ProjectArchiveHook {
+	tasks := meta.NewTaskStore(db)
+	return func(p meta.Project) error {
+		store, err := kwiki.Open(knowledgeRoot())
+		if err != nil {
+			return fmt.Errorf("open kwiki: %w", err)
+		}
+		cfg, err := tasks.Load(p.WorkspacePath)
+		if err != nil {
+			return fmt.Errorf("load tasks: %w", err)
+		}
+		_, err = retro.Archive(store, retro.Input{Project: p, Tasks: cfg.Tasks})
+		return err
+	}
+}
+
+// knowledgeRoot is the kwiki knowledge-base directory (~/.1agents/knowledge),
+// honoring ONEAGENTS_HOME like the meta DB.
+func knowledgeRoot() string {
+	home := os.Getenv("ONEAGENTS_HOME")
+	if home == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			home = h
+		}
+	}
+	return filepath.Join(home, ".1agents", "knowledge")
 }
 
 // ── Access Token Handlers ───────────────────────────────────────────────────────
@@ -1099,29 +1256,4 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			strings.Join(candidates, ", "),
 		)
 	}
-}
-
-func getCCProjectName(workspaceName string, agentType string) string {
-	var sb strings.Builder
-	inInvalidSeq := false
-	for _, r := range workspaceName {
-		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
-		if isValid {
-			sb.WriteRune(r)
-			inInvalidSeq = false
-		} else {
-			if !inInvalidSeq {
-				sb.WriteRune('_')
-				inInvalidSeq = true
-			}
-		}
-	}
-	slug := sb.String()
-	if len(slug) > 32 {
-		slug = slug[:32]
-	}
-	if slug == "" {
-		slug = "ws"
-	}
-	return fmt.Sprintf("%s__%s", slug, agentType)
 }

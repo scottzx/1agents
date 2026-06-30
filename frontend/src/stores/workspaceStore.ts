@@ -2,6 +2,7 @@ import { signal } from '@preact/signals';
 
 import { isFullPageTab, type WorkspaceFolder, type Workspace, type AgentType } from '../components/types';
 import { workspaceService } from '../services/workspaceService';
+import { setActiveDevice } from '@1agents/core/services/apiClient';
 import { DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { t, type Lang } from '../i18n';
 import * as ui from './uiStore';
@@ -26,6 +27,12 @@ export const workspacesLoading = signal(true);
 export const folders = signal<WorkspaceFolder[]>([]);
 export const activeWorkspaceId = signal(localStorage.getItem('1agents-active-workspace') || '');
 /**
+ * 当前激活工作空间所属的远程设备 id(#114),'' = 本机。与 activeWorkspaceId
+ * 配合做切换判定:不同设备上可能存在同 id 的工作空间(如各自的 default),
+ * 单看 id 会误判为"已激活"。
+ */
+export const activeWorkspaceDeviceId = signal('');
+/**
  * One-shot injection of a workspace id into the new-chat picker's selection.
  * Set when a workspace is created from the new-chat landing so it gets
  * pre-selected without navigating away; NewChatHome consumes and clears it.
@@ -39,8 +46,67 @@ export const onboarded = signal(localStorage.getItem('1agents-onboarded') === 't
 export const ccConnectUrl = signal('');
 export const ccProvidersUrl = signal('');
 
+// ── 多设备项目视图(#114)──────────────────────────────────────────────
+/**
+ * 远程设备(已注册、非本机)。复用 #110/#113 的设备注册表 /api/devices,
+ * 字段子集即可:分组标题(name/os/active)+ 拉取该设备项目所需的 id。
+ */
+export interface RemoteDevice {
+    id: string;
+    name: string;
+    os?: string;
+    active: boolean;
+}
+export const remoteDevices = signal<RemoteDevice[]>([]);
+/** 各远程设备已展开/正在加载状态 + 拉到的项目列表(按 deviceId 索引)。 */
+export const remoteExpanded = signal<Record<string, boolean>>({});
+export const remoteLoading = signal<Record<string, boolean>>({});
+export const remoteProjects = signal<Record<string, Workspace[]>>({});
+
 export const toggleFolder = (folderId: string) => {
     folders.value = folders.value.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f));
+};
+
+/** 拉取已注册设备列表,过滤掉本机(self),只留远程节点用于 Sidebar 分组。 */
+export const loadRemoteDevices = async () => {
+    try {
+        const res = await fetch('/api/devices');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const list: Array<{ id: string; name?: string; os?: string; self?: boolean; active?: boolean }> =
+            (await res.json()) ?? [];
+        remoteDevices.value = list
+            .filter(d => !d.self)
+            .map(d => ({ id: d.id, name: d.name || d.id, os: d.os, active: Boolean(d.active) }));
+    } catch (err) {
+        console.error('[workspace] load remote devices error:', err);
+        remoteDevices.value = [];
+    }
+};
+
+/**
+ * 折叠/展开某远程设备组。首次展开时经代理路由拉取该设备的项目列表(拉取式,方案 A)。
+ * 离线设备直接给提示,不发请求。
+ */
+export const toggleRemoteDevice = async (device: RemoteDevice) => {
+    const willExpand = !remoteExpanded.value[device.id];
+    remoteExpanded.value = { ...remoteExpanded.value, [device.id]: willExpand };
+    if (!willExpand) return;
+    if (!device.active) {
+        ui.showToast(t('sidebar.device.offlineHint', ui.language.value, { name: device.name }));
+        return;
+    }
+    // 已加载过就不重复拉取
+    if (remoteProjects.value[device.id]) return;
+    remoteLoading.value = { ...remoteLoading.value, [device.id]: true };
+    try {
+        const list = await workspaceService.list(device.id);
+        remoteProjects.value = { ...remoteProjects.value, [device.id]: list };
+    } catch (err) {
+        console.error('[workspace] load remote projects error:', err);
+        ui.showToast(t('sidebar.device.loadFailed', ui.language.value, { name: device.name }));
+    } finally {
+        remoteLoading.value = { ...remoteLoading.value, [device.id]: false };
+    }
 };
 
 /** Fetch all workspaces from GET /api/workspace/list */
@@ -311,8 +377,13 @@ export const selectWorkspace = async (ws: Workspace) => {
     // is showing). No terminal is auto-created or switched here.
     tabsStore.activeTabId.value = 'tasks';
 
+    // 多设备(#114):切换 API 路由目标。远程项目 → 经 #111 代理路由;本机 → 直连。
+    const targetDeviceId = ws.deviceId ?? '';
+    setActiveDevice(targetDeviceId || null);
+
     const activeId = activeWorkspaceId.value;
-    if (ws.id === activeId) return;
+    if (ws.id === activeId && activeWorkspaceDeviceId.value === targetDeviceId) return;
+    activeWorkspaceDeviceId.value = targetDeviceId;
 
     activeWorkspaceId.value = ws.id;
     loadCcConnectUrl(ws.id);

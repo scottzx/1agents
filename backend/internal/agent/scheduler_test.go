@@ -27,6 +27,28 @@ func saveTasks(t *testing.T, store *TasksStore, path string, tasks []Task) {
 	}
 }
 
+// srcReqID is the id of the seed requirement that other test tasks link to so
+// they satisfy the #68 sourcing gate (every project-internal executable task
+// must trace to a requirement/bug). Tests that only exercise other gates use
+// withSource/srcReq to keep their executable tasks runnable.
+const srcReqID = "src-req"
+
+// srcReq returns a seed requirement to drop into a test's task slice; pair it
+// with withSource-stamped tasks.
+func srcReq(now time.Time) Task {
+	return Task{ID: srcReqID, Title: "来源需求", Type: TaskTypeRequirement, Description: "x",
+		IssueState: IssueOpen, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}
+}
+
+// withSource stamps a relates-link to the seed requirement onto t so it passes
+// the #68 sourcing gate, unless t already carries links.
+func withSource(t Task) Task {
+	if len(t.Links) == 0 {
+		t.Links = []TaskLink{{Target: srcReqID, Rel: LinkRelates}}
+	}
+	return t
+}
+
 func statusOf(t *testing.T, store *TasksStore, path, id string) TaskStatus {
 	t.Helper()
 	cfg, err := store.Load(path)
@@ -57,7 +79,9 @@ func TestSchedulerSubtaskGatesParent(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "parent", Title: "P", Description: "父任务自己的活", AcceptanceCriteria: "done", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "parent", Title: "P", Description: "父任务自己的活", AcceptanceCriteria: "done", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
+		// child inherits the parent's sourcing — no own link needed.
 		{ID: "child", Title: "C", Description: "子任务", AcceptanceCriteria: "done", ParentID: "parent", Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
 	})
 
@@ -120,8 +144,9 @@ func TestSchedulerHoldsTaskWithoutAcceptanceCriteria(t *testing.T) {
 	// An executable task with real work but no acceptance criteria (#135) must be
 	// held as not_ready and never queued/run — the agent has no "怎样算完成".
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "vague", Title: "随便做点啥", Description: "做点事", IssueState: IssueOpen,
-			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "vague", Title: "随便做点啥", Description: "做点事", IssueState: IssueOpen,
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
 	})
 
 	s.Tick()
@@ -135,11 +160,49 @@ func TestSchedulerHoldsTaskWithoutAcceptanceCriteria(t *testing.T) {
 	// Filling in acceptance criteria releases the hold: not_ready → pending →
 	// queued/running on the next tick.
 	cfg, _ := store.Load(ref.Path)
-	cfg.Tasks[0].AcceptanceCriteria = "做完且通过自查"
+	for i := range cfg.Tasks {
+		if cfg.Tasks[i].ID == "vague" {
+			cfg.Tasks[i].AcceptanceCriteria = "做完且通过自查"
+		}
+	}
 	saveTasks(t, store, ref.Path, cfg.Tasks)
 	s.Tick()
 	if got := statusOf(t, store, ref.Path, "vague"); got != TaskStatusRunning {
 		t.Fatalf("task with criteria = %s, want running after criteria filled", got)
+	}
+}
+
+func TestSchedulerBlockedLabelHoldsTask(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	// The `blocked` reserved label (#134) is an explicit manual hold: a fully
+	// runnable task must be gated into `blocked` and never acquire the lock.
+	saveTasks(t, store, ref.Path, []Task{
+		srcReq(now),
+		withSource(Task{ID: "held", Title: "勿动", Description: "x", AcceptanceCriteria: "done",
+			Labels: []string{"blocked"}, IssueState: IssueOpen,
+			Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
+	})
+
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "held"); got != TaskStatusBlocked {
+		t.Fatalf("task with blocked label = %s, want blocked", got)
+	}
+	if _, occupied := s.Lock.GetRunning(ref.Path); occupied {
+		t.Fatalf("blocked-label task must not acquire the workspace lock")
+	}
+
+	// Removing the label releases the hold: blocked → pending → running.
+	cfg, _ := store.Load(ref.Path)
+	for i := range cfg.Tasks {
+		if cfg.Tasks[i].ID == "held" {
+			cfg.Tasks[i].Labels = nil
+		}
+	}
+	saveTasks(t, store, ref.Path, cfg.Tasks)
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "held"); got != TaskStatusRunning {
+		t.Fatalf("task after label removed = %s, want running", got)
 	}
 }
 
@@ -162,8 +225,9 @@ func TestSchedulerPriorityOrder(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "low", Title: "L", Description: "x", AcceptanceCriteria: "done", Priority: PriorityLow, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
-		{ID: "urgent", Title: "U", Description: "y", AcceptanceCriteria: "done", Priority: PriorityUrgent, Status: TaskStatusPending, CreatedAt: now.Add(time.Minute), UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "low", Title: "L", Description: "x", AcceptanceCriteria: "done", Priority: PriorityLow, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
+		withSource(Task{ID: "urgent", Title: "U", Description: "y", AcceptanceCriteria: "done", Priority: PriorityUrgent, Status: TaskStatusPending, CreatedAt: now.Add(time.Minute), UpdatedAt: now}),
 	})
 
 	s.Tick()
@@ -180,7 +244,8 @@ func TestSchedulerFutureTriggerWaits(t *testing.T) {
 	now := time.Now().UTC()
 	future := now.Add(time.Hour)
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "later", Title: "L", Description: "x", AcceptanceCriteria: "done", PlannedStart: &future, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "later", Title: "L", Description: "x", AcceptanceCriteria: "done", PlannedStart: &future, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
 	})
 	s.Tick()
 	if got := statusOf(t, store, ref.Path, "later"); got != TaskStatusPending {
@@ -192,16 +257,23 @@ func TestSchedulerRetryRequeue(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "flaky", Title: "F", Description: "x", AcceptanceCriteria: "done", MaxRetries: 1, Status: TaskStatusFailed, CreatedAt: now, UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "flaky", Title: "F", Description: "x", AcceptanceCriteria: "done", MaxRetries: 1, Status: TaskStatusFailed, CreatedAt: now, UpdatedAt: now}),
 	})
 
 	s.Tick() // requeues (retry 1/1) and immediately picks it up
 	cfg, _ := store.Load(ref.Path)
-	if cfg.Tasks[0].RetryCount != 1 {
-		t.Fatalf("retryCount = %d, want 1", cfg.Tasks[0].RetryCount)
+	var flaky *Task
+	for i := range cfg.Tasks {
+		if cfg.Tasks[i].ID == "flaky" {
+			flaky = &cfg.Tasks[i]
+		}
 	}
-	if cfg.Tasks[0].Status != TaskStatusRunning {
-		t.Fatalf("status = %s, want running (requeued then started)", cfg.Tasks[0].Status)
+	if flaky.RetryCount != 1 {
+		t.Fatalf("retryCount = %d, want 1", flaky.RetryCount)
+	}
+	if flaky.Status != TaskStatusRunning {
+		t.Fatalf("status = %s, want running (requeued then started)", flaky.Status)
 	}
 
 	// Fails again: budget exhausted → stays failed.
@@ -217,8 +289,9 @@ func TestSchedulerDependencyBlocks(t *testing.T) {
 	s, ref, store := newTestScheduler(t)
 	now := time.Now().UTC()
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "dep", Title: "D", Description: "x", AcceptanceCriteria: "done", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
-		{ID: "waiter", Title: "W", Description: "y", AcceptanceCriteria: "done", DependsOn: []string{"dep"}, Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+		srcReq(now),
+		withSource(Task{ID: "dep", Title: "D", Description: "x", AcceptanceCriteria: "done", Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now}),
+		withSource(Task{ID: "waiter", Title: "W", Description: "y", AcceptanceCriteria: "done", DependsOn: []string{"dep"}, Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now}),
 	})
 
 	s.Tick()
@@ -293,21 +366,25 @@ func TestSchedulerRecurrenceRespawn(t *testing.T) {
 	now := time.Now().UTC()
 	done := now.Add(-time.Hour)
 	saveTasks(t, store, ref.Path, []Task{
-		{ID: "daily", Title: "日报", Description: "写日报", AcceptanceCriteria: "done", Status: TaskStatusCompleted,
+		srcReq(now),
+		withSource(Task{ID: "daily", Title: "日报", Description: "写日报", AcceptanceCriteria: "done", Status: TaskStatusCompleted,
 			CompletedAt: &done, Recurrence: &Recurrence{Freq: "daily", At: "09:00"},
-			CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now},
+			CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now}),
 	})
 
 	s.Tick()
 	cfg, _ := store.Load(ref.Path)
-	if len(cfg.Tasks) != 2 {
-		t.Fatalf("tasks = %d, want 2 (original + respawn)", len(cfg.Tasks))
+	if len(cfg.Tasks) != 3 {
+		t.Fatalf("tasks = %d, want 3 (seed requirement + original + respawn)", len(cfg.Tasks))
 	}
 	var original, clone *Task
 	for i := range cfg.Tasks {
-		if cfg.Tasks[i].ID == "daily" {
+		switch cfg.Tasks[i].ID {
+		case "daily":
 			original = &cfg.Tasks[i]
-		} else {
+		case srcReqID:
+			// seed requirement, ignore
+		default:
 			clone = &cfg.Tasks[i]
 		}
 	}
@@ -325,8 +402,102 @@ func TestSchedulerRecurrenceRespawn(t *testing.T) {
 	// Second tick must not respawn again.
 	s.Tick()
 	cfg, _ = store.Load(ref.Path)
-	if len(cfg.Tasks) != 2 {
-		t.Fatalf("tasks = %d after second tick, want 2 (no duplicate respawn)", len(cfg.Tasks))
+	if len(cfg.Tasks) != 3 {
+		t.Fatalf("tasks = %d after second tick, want 3 (no duplicate respawn)", len(cfg.Tasks))
+	}
+}
+
+// TestSchedulerHoldsTaskWithoutSourcing covers the #68 任务归口 gate: a
+// project-internal executable task with full acceptance criteria but no
+// requirement/bug sourcing link is held as not_ready, and adding a relates-link
+// to a requirement releases it.
+func TestSchedulerHoldsTaskWithoutSourcing(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "req", Title: "需求", Type: TaskTypeRequirement, Description: "x",
+			IssueState: IssueOpen, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		// Fully-specified executable task, but it traces to nothing.
+		{ID: "orphan", Title: "裸任务", Description: "做点事", AcceptanceCriteria: "done",
+			IssueState: IssueOpen, Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+	})
+
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "orphan"); got != TaskStatusNotReady {
+		t.Fatalf("un-sourced task = %s, want not_ready", got)
+	}
+	if _, occupied := s.Lock.GetRunning(ref.Path); occupied {
+		t.Fatalf("un-sourced task must not acquire the workspace lock")
+	}
+
+	// Add a relates-link to the requirement → the hold releases.
+	cfg, _ := store.Load(ref.Path)
+	for i := range cfg.Tasks {
+		if cfg.Tasks[i].ID == "orphan" {
+			cfg.Tasks[i].Links = []TaskLink{{Target: "req", Rel: LinkRelates}}
+		}
+	}
+	saveTasks(t, store, ref.Path, cfg.Tasks)
+	s.Tick()
+	if got := statusOf(t, store, ref.Path, "orphan"); got != TaskStatusRunning {
+		t.Fatalf("sourced task = %s, want running after link added", got)
+	}
+}
+
+// TestSchedulerSourcingExemptions confirms the gate's exemptions: a requirement
+// and a bug are sources (never executed anyway), and a task that links to a bug
+// counts as sourced.
+func TestSchedulerSourcingExemptions(t *testing.T) {
+	s, ref, store := newTestScheduler(t)
+	now := time.Now().UTC()
+	saveTasks(t, store, ref.Path, []Task{
+		{ID: "bug", Title: "缺陷", Type: TaskTypeBug, Description: "x", AcceptanceCriteria: "done",
+			IssueState: IssueOpen, Status: TaskStatusPending, CreatedAt: now, UpdatedAt: now},
+		{ID: "fix", Title: "修复", Description: "改 bug", AcceptanceCriteria: "done",
+			Links: []TaskLink{{Target: "bug", Rel: LinkRelates}}, IssueState: IssueOpen,
+			Status: TaskStatusPending, CreatedAt: now.Add(time.Second), UpdatedAt: now},
+	})
+
+	s.Tick()
+	// The bug is a non-executable issue: it is neither gated as not_ready nor run.
+	if got := statusOf(t, store, ref.Path, "bug"); got != TaskStatusPending {
+		t.Fatalf("bug = %s, want pending (issue, never gated/run)", got)
+	}
+	// The fix traces to the bug → sourced → runnable.
+	if got := statusOf(t, store, ref.Path, "fix"); got != TaskStatusRunning {
+		t.Fatalf("bug-sourced fix = %s, want running", got)
+	}
+}
+
+// TestNeedsSourcing unit-tests the gate predicate, including subtask
+// inheritance and the type/source/container exemptions.
+func TestNeedsSourcing(t *testing.T) {
+	req := &Task{ID: "r", Type: TaskTypeRequirement}
+	parent := &Task{ID: "p", Description: "活", Links: []TaskLink{{Target: "r", Rel: LinkRelates}}}
+	taskMap := map[string]*Task{
+		"r": req,
+		"p": parent,
+	}
+	cases := []struct {
+		name string
+		task *Task
+		want bool
+	}{
+		{"orphan executable", &Task{ID: "a", Description: "活"}, true},
+		{"sourced via link", &Task{ID: "b", Description: "活", Links: []TaskLink{{Target: "r", Rel: LinkRelates}}}, false},
+		{"subtask inherits parent sourcing", &Task{ID: "c", Description: "活", ParentID: "p"}, false},
+		{"requirement is a source", &Task{ID: "d", Type: TaskTypeRequirement, Description: "活"}, false},
+		{"bug is a source", &Task{ID: "e", Type: TaskTypeBug, Description: "活"}, false},
+		{"agent suggestion exempt", &Task{ID: "f", Source: TaskSourceAgent, Description: "活"}, false},
+		{"container parent exempt", &Task{ID: "g"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			taskMap[c.task.ID] = c.task
+			if got := needsSourcing(c.task, taskMap); got != c.want {
+				t.Fatalf("needsSourcing(%s) = %v, want %v", c.name, got, c.want)
+			}
+		})
 	}
 }
 

@@ -17,8 +17,8 @@ import {
     listMachines,
     connect,
     proxyApi,
-    loadCredentials,
     loadCredentialsRemote,
+    clearCredentials,
     type RelayCredentials,
     type RelayMachine,
 } from '../../services/relay/relayClient';
@@ -44,7 +44,9 @@ export function RelayPairingPanel({
     // 默认用当前页面同源(部署中前端与中转在同一 HTTPS 源 → /v1 经代理路由到中转);
     // 可手动改成独立的中转地址。
     const relayUrl = useSignal(localStorage.getItem(LS_URL) || window.location.origin);
-    const creds = useSignal<RelayCredentials | null>(loadCredentials());
+    // 凭据不再从 localStorage 同步初始化(issue #112):mount 时从后端拉取(见下方 effect),
+    // 这样清空 localStorage / 换设备后仍能恢复,localStorage 仅作后端命中后的读缓存。
+    const creds = useSignal<RelayCredentials | null>(null);
     const pairInput = useSignal('');
     const machines = useSignal<RelayMachine[]>([]);
     const msg = useSignal('');
@@ -101,6 +103,18 @@ export function RelayPairingPanel({
         run('创建账户', async () => {
             creds.value = await createAccount(relayUrl.value);
             msg.value = '✅ 账户已创建';
+        });
+
+    // 断开账户:清后端 + localStorage 凭据(issue #112),并关闭长连接、清空节点列表。
+    const doDisconnect = () =>
+        run('断开账户', async () => {
+            await clearCredentials();
+            socketRef.current?.close();
+            socketRef.current = null;
+            connected.value = false;
+            creds.value = null;
+            machines.value = [];
+            msg.value = '✅ 已断开账户并清除凭据';
         });
 
     const doPair = (key: string) =>
@@ -210,6 +224,11 @@ export function RelayPairingPanel({
                     <button class="sys-settings-option-btn" disabled={busy.value} onClick={doCreateAccount}>
                         {creds.value ? '重新创建账户' : '创建账户'}
                     </button>
+                    {creds.value && (
+                        <button class="sys-settings-option-btn" disabled={busy.value} onClick={doDisconnect}>
+                            断开账户
+                        </button>
+                    )}
                     <span style="font-size:12px;color:var(--text-muted)">
                         {creds.value ? '账户: ' + creds.value.token.slice(0, 18) + '…' : '未创建账户'}
                     </span>

@@ -107,7 +107,8 @@ func TestInterfaceExecutorScope(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"sneak"}}}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_task","arguments":{"id":"t2"}}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","priority":"high"}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`,
 	}
 	resp := runStdio(t, "t1", reqs)
 	t.Log("───────── Executor scope (ONEAGENTS_TASK_ID=t1) ─────────")
@@ -117,8 +118,8 @@ func TestInterfaceExecutorScope(t *testing.T) {
 			t.Logf("← OUT : %s", resp[i])
 		}
 	}
-	if len(resp) != 4 {
-		t.Fatalf("expected 4 responses, got %d", len(resp))
+	if len(resp) != 5 {
+		t.Fatalf("expected 5 responses, got %d", len(resp))
 	}
 	if strings.Contains(resp[0], `"name":"create_task"`) || strings.Contains(resp[0], `"name":"create_milestone"`) {
 		t.Error("executor tools/list must NOT advertise create_* tools")
@@ -129,7 +130,10 @@ func TestInterfaceExecutorScope(t *testing.T) {
 	if !strings.Contains(resp[2], `"isError":true`) { // foreign get_task rejected
 		t.Error("executor get_task on a foreign id should be rejected")
 	}
-	if strings.Contains(resp[3], `"isError":true`) { // own update_task allowed
-		t.Error("executor update_task on its own task should succeed")
+	if strings.Contains(resp[3], `"isError":true`) { // own non-status update allowed
+		t.Error("executor update_task (non-status) on its own task should succeed")
+	}
+	if !strings.Contains(resp[4], `"isError":true`) { // #132: self-report completed blocked
+		t.Error("executor update_task status=completed must be rejected (#132)")
 	}
 }

@@ -32,6 +32,22 @@ export type BackendTarget =
 
 export const backendTarget = signal<BackendTarget>({ mode: 'probing' });
 
+/**
+ * 当前激活的远程设备 id(多设备项目视图,#114)。
+ *
+ * null = 本机直连;非空 = 经宿主机的代理路由层(#111)透传到目标设备:
+ * 此时 direct 模式下所有 /api 调用自动加 `/api/proxy/{deviceId}` 前缀,
+ * 由宿主机反向代理到目标设备的同名 /api 路由,UI 表现与本地一致。
+ *
+ * 仅在 direct 模式生效:relay 模式本身已是远程节点的隧道,不再二次代理。
+ */
+export const activeDeviceId = signal<string | null>(null);
+
+/** 切换当前 API 路由目标。null = 恢复本机直连。 */
+export function setActiveDevice(deviceId: string | null): void {
+    activeDeviceId.value = deviceId;
+}
+
 const LS_URL = 'oneagents.relay.url';
 const LS_NODE = 'oneagents.relay.node';
 
@@ -153,7 +169,12 @@ export function isBackendReady(): boolean {
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     const t = backendTarget.value;
     if (t.mode === 'direct') {
-        return getPlatformBridge().httpFetch(directBaseUrl + '/api' + path, init);
+        // 多设备:激活了远程设备时,经宿主机代理路由层(#111)透传到目标设备。
+        // /api/proxy/{deviceId} 前缀由宿主机剥离后转发同名 /api 路由。
+        // 调用方已显式写了 /proxy/... 路径(如按设备拉项目列表)时不再叠加,避免二次代理。
+        const dev = activeDeviceId.value;
+        const prefix = dev && !path.startsWith('/proxy/') ? `/api/proxy/${encodeURIComponent(dev)}` : '';
+        return getPlatformBridge().httpFetch(directBaseUrl + prefix + '/api' + path, init);
     }
     if (t.mode === 'relay') {
         const method = (init?.method || 'GET').toUpperCase();

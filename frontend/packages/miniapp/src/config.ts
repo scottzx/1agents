@@ -9,7 +9,7 @@
 // work, enable 详情 → 本地设置 → 「不校验合法域名…」 in WeChat DevTools.
 import Taro from '@tarojs/taro';
 
-const DEV_BACKEND = 'https://agent-dev.dreammate.work';
+const DEV_BACKEND = 'http://localhost:3000';
 const PROD_BACKEND = 'https://agents.dreammate.work';
 
 /** Storage key for a user-set backend address (settings page). */
@@ -17,6 +17,14 @@ export const BACKEND_OVERRIDE_KEY = '1agents-backend';
 
 /** The compiled-in default for this build target (no override applied). */
 export function defaultBackend(): string {
+  try {
+    const envVersion = Taro.getAccountInfoSync()?.miniProgram?.envVersion;
+    if (envVersion === 'develop') {
+      return DEV_BACKEND;
+    }
+  } catch {
+    // fallback if account info is not available
+  }
   return process.env.NODE_ENV === 'development' ? DEV_BACKEND : PROD_BACKEND;
 }
 

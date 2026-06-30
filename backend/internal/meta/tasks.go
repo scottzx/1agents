@@ -80,12 +80,13 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	sprint, type, number, links,
 	verifier, review_max_attempts, review_count, review, source, user_confirm,
 	github_repo, github_kind, github_number, github_node_id, github_url,
-	github_state, github_assignees, last_synced_at`
+	github_state, github_assignees, last_synced_at,
+	verifier_count, verify_pass_threshold, review_pool`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt, lastSyncedAt sql.NullString
-	var createdAt, updatedAt, labels, recurrence, links, review, githubAssignees string
+	var createdAt, updatedAt, labels, recurrence, links, review, githubAssignees, reviewPool string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
@@ -95,7 +96,8 @@ func scanTask(r rowScanner) (Task, error) {
 		&t.Verifier, &t.ReviewMaxAttempts, &t.ReviewCount, &review, &t.Source,
 		&t.UserConfirm,
 		&t.GithubRepo, &t.GithubKind, &t.GithubNumber, &t.GithubNodeId, &t.GithubUrl,
-		&t.GithubState, &githubAssignees, &lastSyncedAt); err != nil {
+		&t.GithubState, &githubAssignees, &lastSyncedAt,
+		&t.VerifierCount, &t.VerifyPassThreshold, &reviewPool); err != nil {
 		return Task{}, err
 	}
 	t.ScheduledAt = valToTimePtr(scheduledAt)
@@ -110,6 +112,7 @@ func scanTask(r rowScanner) (Task, error) {
 	t.Recurrence = jsonToRecurrence(recurrence)
 	t.Links = jsonToLinks(links)
 	t.Review = jsonToReview(review)
+	t.ReviewPool = jsonToReviewPool(reviewPool)
 	t.GithubAssignees = jsonToStrings(githubAssignees)
 	t.DependsOn = []string{}
 	t.Replies = []Reply{}
@@ -203,6 +206,28 @@ func jsonToReview(s string) *ReviewVerdict {
 		return nil
 	}
 	return &v
+}
+
+func reviewPoolToJSON(v []ReviewVerdict) string {
+	if len(v) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func jsonToReviewPool(s string) []ReviewVerdict {
+	if s == "" {
+		return nil
+	}
+	var v []ReviewVerdict
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil
+	}
+	return v
 }
 
 // Load returns all tasks for the workspace at workspacePath, oldest-first
@@ -501,8 +526,9 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			sprint, type, number, links,
 			verifier, review_max_attempts, review_count, review, source, user_confirm,
 			github_repo, github_kind, github_number, github_node_id, github_url,
-			github_state, github_assignees, last_synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			github_state, github_assignees, last_synced_at,
+			verifier_count, verify_pass_threshold, review_pool)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -545,7 +571,10 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			github_url = excluded.github_url,
 			github_state = excluded.github_state,
 			github_assignees = excluded.github_assignees,
-			last_synced_at = excluded.last_synced_at`,
+			last_synced_at = excluded.last_synced_at,
+			verifier_count = excluded.verifier_count,
+			verify_pass_threshold = excluded.verify_pass_threshold,
+			review_pool = excluded.review_pool`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
@@ -556,7 +585,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.Number, linksToJSON(t.Links),
 		t.Verifier, t.ReviewMaxAttempts, t.ReviewCount, reviewToJSON(t.Review), t.Source, t.UserConfirm,
 		t.GithubRepo, t.GithubKind, t.GithubNumber, t.GithubNodeId, t.GithubUrl,
-		t.GithubState, stringsToJSON(t.GithubAssignees), timePtrToVal(t.LastSyncedAt))
+		t.GithubState, stringsToJSON(t.GithubAssignees), timePtrToVal(t.LastSyncedAt),
+		t.VerifierCount, t.VerifyPassThreshold, reviewPoolToJSON(t.ReviewPool))
 	if err != nil {
 		return err
 	}

@@ -74,6 +74,9 @@ type (
 	Project           = meta.Project
 	MilestonePatch    = meta.MilestonePatch
 	TaskLink          = meta.TaskLink
+	LinkRel           = meta.LinkRel
+	LinkGraph         = meta.LinkGraph
+	LinkEdge          = meta.LinkEdge
 	Priority          = meta.Priority
 	Recurrence        = meta.Recurrence
 	WorkspaceRef      = meta.WorkspaceRef
@@ -83,6 +86,17 @@ type (
 
 // PriorityRank re-exports the scheduler ordering helper.
 var PriorityRank = meta.PriorityRank
+
+// Label/field policy-signal layer (#134): scheduler and future orchestration
+// read these instead of re-parsing labels/fields.
+var (
+	DeriveSignals   = meta.DeriveSignals
+	SplitLabels     = meta.SplitLabels
+	IsReservedLabel = meta.IsReservedLabel
+)
+
+// PolicySignals is the normalized triggers/policy view of a task.
+type PolicySignals = meta.PolicySignals
 
 // Frontmatter helpers (card content is YAML-frontmatter Markdown).
 var (

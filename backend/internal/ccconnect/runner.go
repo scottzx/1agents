@@ -80,7 +80,18 @@ var (
 	ManagementToken string
 	BridgePort      int
 	BridgeToken     string
+
+	// sharedTasksStore is the task store instance owned by the HTTP server's
+	// scheduler. The IM notifier (#129) must write back through the SAME
+	// instance so its per-workspace Mutate lock serializes against the
+	// scheduler's; a second NewTasksStore() would have independent locks and
+	// risk lost updates. Set by SetTasksStore before/around Start.
+	sharedTasksStore *agent.TasksStore
 )
+
+// SetTasksStore hands the IM notifier the server's shared task store so its
+// approve/reject write-backs serialize with the scheduler. Call before Start.
+func SetTasksStore(store *agent.TasksStore) { sharedTasksStore = store }
 
 const defaultResetOnIdleMins = 0
 
@@ -235,6 +246,13 @@ insecure = true
 			cfg := &config.Config{}
 			if _, err := toml.DecodeFile(configPath, cfg); err == nil {
 				syncAllProvidersToCCSwitch(cfg.Providers)
+				// #277 Phase 4: one-shot fold of legacy `X__<agent>` projects that
+				// share a work_dir into a single de-suffixed project + per-channel
+				// agent bindings. Idempotent: a no-op once already migrated.
+				if migrated, changed := MigrateLegacyAgentSuffixProjects(cfg.Projects); changed {
+					cfg.Projects = migrated
+					log.Printf("[ccconnect] Migrated legacy __<agent> projects by path → %d project(s)", len(cfg.Projects))
+				}
 			} else {
 				log.Printf("[ccconnect] Error decoding config TOML (%s): %v", configPath, err)
 			}
@@ -271,15 +289,18 @@ insecure = true
 				// If workspaces are completely empty, we are in a clean first boot / onboarding,
 				// so we don't want to import any stale or placeholder projects.
 				if len(wsCfg.Workspaces) > 0 {
-					wsMap := make(map[string]bool)
+					// Match projects to workspaces by work_dir PATH, not name (#277).
+					// The __<agentType> suffix is gone: a project's name now equals the
+					// workspace name, and the agent type lives in the per-channel
+					// [projects.platforms.agent] binding instead of the project name.
+					wsPaths := make(map[string]bool)
 					for _, ws := range wsCfg.Workspaces {
-						wsMap[ws.Path] = true
-						wsMap[ws.ID] = true
+						wsPaths[normalizePath(ws.Path)] = true
 					}
 
 					// Clean up existing workspace names that are raw cc-connect project
 					// names (contain the __<agentType> suffix). This repairs any workspaces
-					// that were imported before the display-name fix was applied.
+					// that were imported before the去后缀 fix was applied.
 					wsModified := false
 					for i := range wsCfg.Workspaces {
 						ws := &wsCfg.Workspaces[i]
@@ -302,10 +323,10 @@ insecure = true
 							continue
 						}
 
-						projID := sanitizeID(proj.Name)
-						if !wsMap[workDir] && !wsMap[projID] {
-							// Strip the __<agentType> suffix added by getCCProjectName so the
-							// display name is clean (e.g. "1agents__claudecode" → "1agents").
+						if !wsPaths[normalizePath(workDir)] {
+							// Strip any legacy __<agentType> suffix so the display name is
+							// clean (e.g. "1agents__claudecode" → "1agents"). New configs
+							// carry no suffix, so this is a no-op for them.
 							displayName := proj.Name
 							if idx := strings.LastIndex(displayName, "__"); idx >= 0 {
 								displayName = strings.Trim(displayName[:idx], "_")
@@ -314,14 +335,13 @@ insecure = true
 								displayName = filepath.Base(workDir)
 							}
 							newWS := workspace.Workspace{
-								ID:     projID,
+								ID:     sanitizeID(displayName),
 								Name:   displayName,
 								Path:   workDir,
 								Status: "active",
 							}
 							wsCfg.Workspaces = append(wsCfg.Workspaces, newWS)
-							wsMap[workDir] = true
-							wsMap[projID] = true
+							wsPaths[normalizePath(workDir)] = true
 							wsModified = true
 							log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", displayName, workDir)
 						}
@@ -334,85 +354,11 @@ insecure = true
 					}
 				}
 
-				// 2. Sync Workspaces to CC-Connect projects
-				existingProjects := make(map[string]*config.ProjectConfig)
-				for i := range cfg.Projects {
-					existingProjects[cfg.Projects[i].Name] = &cfg.Projects[i]
-				}
-
-				var updatedProjects []config.ProjectConfig
-
-				for _, ws := range wsCfg.Workspaces {
-					nameOrID := ws.Name
-					if nameOrID == "" {
-						nameOrID = ws.ID
-					}
-					projName := getCCProjectName(nameOrID, "claudecode")
-
-					if p, ok := existingProjects[projName]; ok {
-						if p.Agent.Options == nil {
-							p.Agent.Options = make(map[string]any)
-						}
-						p.Agent.Options["work_dir"] = ws.Path
-
-						// Ensure bridge platform exists
-						hasBridge := false
-						for _, plat := range p.Platforms {
-							if plat.Type == "bridge" {
-								hasBridge = true
-								break
-							}
-						}
-						if !hasBridge {
-							p.Platforms = append(p.Platforms, config.PlatformConfig{
-								Type: "bridge",
-							})
-						}
-						updatedProjects = append(updatedProjects, *p)
-					} else {
-						newProj := config.ProjectConfig{
-							Name: projName,
-							Agent: config.AgentConfig{
-								Type: "claudecode",
-								Options: map[string]any{
-									"work_dir": ws.Path,
-									"mode":     "default",
-								},
-							},
-							Platforms: []config.PlatformConfig{
-								{
-									Type: "bridge",
-								},
-							},
-						}
-						updatedProjects = append(updatedProjects, newProj)
-					}
-				}
-
-				// Preserve projects the workspace→claudecode sync doesn't own — e.g.
-				// sibling `<slug>__<otherAgent>` projects created from the cc-connect
-				// agent switcher. Stale `<slug>__claudecode` projects whose workspace
-				// was removed are still dropped, preserving the existing delete semantics.
-				ownedClaudecode := make(map[string]bool, len(wsCfg.Workspaces))
-				for _, ws := range wsCfg.Workspaces {
-					nameOrID := ws.Name
-					if nameOrID == "" {
-						nameOrID = ws.ID
-					}
-					ownedClaudecode[getCCProjectName(nameOrID, "claudecode")] = true
-				}
-				for i := range cfg.Projects {
-					p := cfg.Projects[i]
-					if ownedClaudecode[p.Name] {
-						continue // already rebuilt in the workspace loop above
-					}
-					if strings.HasSuffix(p.Name, "__claudecode") {
-						continue // orphaned claudecode project for a removed workspace → drop
-					}
-					updatedProjects = append(updatedProjects, p)
-				}
-
-				cfg.Projects = updatedProjects
+				// 2. Sync Workspaces to CC-Connect projects, matched by work_dir
+				// PATH (#277). One workspace ⇄ one project; the project name equals
+				// the workspace name (no __<agent> suffix). The agent type is carried
+				// per-channel via [projects.platforms.agent], not in the project name.
+				cfg.Projects = reconcileProjectsByPath(cfg.Projects, wsCfg.Workspaces)
 			}
 
 			// 3. Fallback: if project list is empty, inject a default placeholder project to pass CC-Connect's validation.
@@ -544,6 +490,11 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		providerWiring := wireAgentProviders(agent, proj.Agent)
 
 		var platforms []core.Platform
+		// channelAgents maps a platform's Name() to a channel-level agent
+		// override (config.PlatformConfig.Agent, #277). Only populated when a
+		// channel binds a different agent than the project default; left empty
+		// for existing single-agent projects so they behave exactly as before.
+		channelAgents := make(map[string]core.Agent)
 		for _, pc := range proj.Platforms {
 			opts := make(map[string]any, len(pc.Options)+2)
 			for k, v := range pc.Options {
@@ -557,6 +508,22 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 				continue
 			}
 			platforms = append(platforms, p)
+
+			// Channel-level agent binding: when this channel overrides the
+			// project agent with a different type, build a separate agent
+			// instance so the channel can run concurrently alongside the project
+			// default and other channels (same work_dir, different agent).
+			chAgentCfg := config.ResolvePlatformAgent(proj, pc)
+			if pc.Agent == nil || strings.EqualFold(chAgentCfg.Type, proj.Agent.Type) {
+				continue
+			}
+			chAgent, err := core.CreateAgent(chAgentCfg.Type, buildChannelAgentOptions(cfg.DataDir, proj, chAgentCfg))
+			if err != nil {
+				slog.Error("failed to create channel agent", "project", proj.Name, "channel", p.Name(), "agent", chAgentCfg.Type, "error", err)
+				continue
+			}
+			wireAgentProviders(chAgent, chAgentCfg)
+			channelAgents[p.Name()] = chAgent
 		}
 
 		workDir, _ := proj.Agent.Options["work_dir"].(string)
@@ -582,6 +549,10 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		}
 
 		engine := core.NewEngine(proj.Name, agent, platforms, sessionFile, lang)
+		for chName, chAgent := range channelAgents {
+			engine.SetChannelAgent(chName, chAgent)
+			slog.Info("channel-level agent bound", "project", proj.Name, "channel", chName, "agent", chAgent.Name())
+		}
 		_, _, _, _, _, showCtx, showFooter := config.EffectiveDisplay(cfg, &proj)
 		engine.SetShowContextIndicator(showCtx)
 		engine.SetReplyFooterEnabled(showFooter)
@@ -672,8 +643,8 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 	heartbeatSched.Start()
 
 	// Start local Unix socket API server
-	var apiSrv *core.CCConnectCliServer
-	if apiSrvInstance, err := core.NewCCConnectCliServer(cfg.DataDir); err != nil {
+	var apiSrv *core.APIServer
+	if apiSrvInstance, err := core.NewAPIServer(cfg.DataDir); err != nil {
 		slog.Error("failed to create cc-connect Unix socket API server", "error", err)
 	} else {
 		apiSrv = apiSrvInstance
@@ -710,6 +681,13 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 				e.AddPlatform(bp)
 			}
 			bridgeSrv.Start()
+
+			// #129: wire the task-state IM notifier over this bridge so
+			// blocked/failed/pending_review tasks push an approve/reject card
+			// and the user's tap writes back to the task store.
+			if n := newTaskNotifier(bridgeSrv, sharedTasksStore); n != nil {
+				agent.SetTaskNotifier(n)
+			}
 		}
 	}
 
@@ -972,6 +950,35 @@ func buildAgentOptions(dataDir string, proj config.ProjectConfig) map[string]any
 	opts := make(map[string]any, len(proj.Agent.Options)+2)
 	for k, v := range proj.Agent.Options {
 		opts[k] = v
+	}
+	opts["cc_data_dir"] = dataDir
+	opts["cc_project"] = proj.Name
+	return opts
+}
+
+// buildChannelAgentOptions builds the agent options for a channel-level agent
+// override (#277). The channel's own [projects.platforms.agent.options] win, but
+// it inherits the project's work_dir and run_as_* isolation when unset, so a
+// channel agent runs in the same workspace directory as the project default.
+func buildChannelAgentOptions(dataDir string, proj config.ProjectConfig, agentCfg config.AgentConfig) map[string]any {
+	opts := make(map[string]any, len(agentCfg.Options)+4)
+	for k, v := range agentCfg.Options {
+		opts[k] = v
+	}
+	if _, ok := opts["work_dir"]; !ok {
+		if wd, ok := proj.Agent.Options["work_dir"].(string); ok && wd != "" {
+			opts["work_dir"] = wd
+		}
+	}
+	if proj.RunAsUser != "" {
+		if _, ok := opts["run_as_user"]; !ok {
+			opts["run_as_user"] = proj.RunAsUser
+		}
+		if len(proj.RunAsEnv) > 0 {
+			if _, ok := opts["run_as_env"]; !ok {
+				opts["run_as_env"] = proj.RunAsEnv
+			}
+		}
 	}
 	opts["cc_data_dir"] = dataDir
 	opts["cc_project"] = proj.Name
@@ -1754,7 +1761,11 @@ func switchCCSwitchProviderForWeb(appType, providerID string) error {
 	return nil
 }
 
-func getCCProjectName(workspaceName string, agentType string) string {
+// CCProjectSlug turns a workspace name into a cc-connect-safe project name.
+// Since #277 the agent type is no longer encoded as a __<agent> suffix — the
+// project name equals the (sanitized) workspace name and the agent type lives
+// in the per-channel [projects.platforms.agent] binding.
+func CCProjectSlug(workspaceName string) string {
 	var sb strings.Builder
 	inInvalidSeq := false
 	for _, r := range workspaceName {
@@ -1776,5 +1787,92 @@ func getCCProjectName(workspaceName string, agentType string) string {
 	if slug == "" {
 		slug = "ws"
 	}
-	return fmt.Sprintf("%s__%s", slug, agentType)
+	return slug
+}
+
+// reconcileProjectsByPath rebuilds the cc-connect project list from the 1agents
+// workspace registry, matching by work_dir PATH rather than name (#277):
+//
+//   - one workspace ⇄ one project; the project name equals the (sanitized)
+//     workspace name, with no __<agent> suffix;
+//   - an existing project at the same path keeps its agent + channel bindings
+//     (only work_dir is refreshed and a bridge channel ensured), so a channel
+//     bound to e.g. codex survives a resync — its name is left untouched to
+//     avoid orphaning session/state files;
+//   - projects without a work_dir (the temp placeholder, platform-only configs)
+//     are preserved verbatim;
+//   - workspace-backed projects whose path is no longer registered are dropped,
+//     preserving the existing delete-on-workspace-removal semantics.
+func reconcileProjectsByPath(projects []config.ProjectConfig, workspaces []workspace.Workspace) []config.ProjectConfig {
+	projByPath := make(map[string]*config.ProjectConfig, len(projects))
+	for i := range projects {
+		if wd, _ := projects[i].Agent.Options["work_dir"].(string); wd != "" {
+			projByPath[normalizePath(wd)] = &projects[i]
+		}
+	}
+
+	var out []config.ProjectConfig
+	for _, ws := range workspaces {
+		if ws.Path == "" {
+			continue
+		}
+		projName := CCProjectSlug(ws.Name)
+		if projName == "ws" {
+			projName = CCProjectSlug(ws.ID)
+		}
+
+		if p, ok := projByPath[normalizePath(ws.Path)]; ok {
+			if p.Agent.Options == nil {
+				p.Agent.Options = make(map[string]any)
+			}
+			p.Agent.Options["work_dir"] = ws.Path
+
+			hasBridge := false
+			for _, plat := range p.Platforms {
+				if plat.Type == "bridge" {
+					hasBridge = true
+					break
+				}
+			}
+			if !hasBridge {
+				p.Platforms = append(p.Platforms, config.PlatformConfig{Type: "bridge"})
+			}
+			out = append(out, *p)
+		} else {
+			out = append(out, config.ProjectConfig{
+				Name: projName,
+				Agent: config.AgentConfig{
+					Type: "claudecode",
+					Options: map[string]any{
+						"work_dir": ws.Path,
+						"mode":     "default",
+					},
+				},
+				Platforms: []config.PlatformConfig{{Type: "bridge"}},
+			})
+		}
+	}
+
+	// Preserve projects with no work_dir (placeholder / platform-only). Those
+	// with a work_dir were either rebuilt above (path owned) or are orphans for
+	// a removed workspace and are intentionally dropped.
+	for i := range projects {
+		if wd, _ := projects[i].Agent.Options["work_dir"].(string); wd == "" {
+			out = append(out, projects[i])
+		}
+	}
+	return out
+}
+
+// normalizePath canonicalizes a filesystem path for identity comparison between
+// 1agents workspaces and cc-connect project work_dirs (#277 sync-by-path). It
+// resolves to an absolute, cleaned path; an empty input stays empty.
+func normalizePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		return filepath.Clean(abs)
+	}
+	return filepath.Clean(p)
 }

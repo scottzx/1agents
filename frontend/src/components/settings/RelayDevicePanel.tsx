@@ -118,10 +118,12 @@ export function RelayDevicePanel({
             v.srcObject = stream;
             await v.play();
             const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d')!;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
             const tick = () => {
                 if (!scanning.value) return;
-                if (v.readyState === v.HAVE_ENOUGH_DATA) {
+                // 用 videoWidth 判断帧是否就绪——移动端(尤其 iOS Safari)readyState
+                // 常达不到 HAVE_ENOUGH_DATA(4),用它当门槛会导致永不解码。
+                if (v.videoWidth > 0 && v.videoHeight > 0) {
                     canvas.width = v.videoWidth;
                     canvas.height = v.videoHeight;
                     ctx.drawImage(v, 0, 0, canvas.width, canvas.height);

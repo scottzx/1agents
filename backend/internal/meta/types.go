@@ -11,15 +11,56 @@ package meta
 
 import "time"
 
+// ProjectStatus is a project's lifecycle phase (issue #141). A project leaves
+// the active view via two paths that share one terminal mechanism but carry a
+// distinct reason: 阶段性完成归档 (archived) vs 竞品出现砍掉 (killed). Data is
+// never deleted — archived/killed rows just drop out of the active list and
+// stay visible in the archive view.
+type ProjectStatus string
+
+const (
+	ProjectStatusActive   ProjectStatus = "active"
+	ProjectStatusArchived ProjectStatus = "archived"
+	ProjectStatusKilled   ProjectStatus = "killed"
+)
+
+// ArchiveReason records why a project left the active view. It is orthogonal to
+// status so the UI can show "归档：完成" vs "关闭：竞品出现" without overloading the
+// status enum. Empty while the project is active.
+type ArchiveReason string
+
+const (
+	// ArchiveReasonCompleted — 阶段性完成 → 归档沉淀 (pairs with ProjectStatusArchived).
+	ArchiveReasonCompleted ArchiveReason = "completed"
+	// ArchiveReasonSuperseded — 竞品出现 / 大厂已做 → 判定无必要继续 → 砍掉
+	// (pairs with ProjectStatusKilled).
+	ArchiveReasonSuperseded ArchiveReason = "superseded"
+)
+
 // Project is one managed workspace directory. Project ID equals the
 // workspace ID from the workspace registry, so the two concepts stay 1:1.
 type Project struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	WorkspacePath string    `json:"workspacePath"`
-	Status        string    `json:"status"` // active | archived
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	WorkspacePath string        `json:"workspacePath"`
+	Status        ProjectStatus `json:"status"` // active | archived | killed
+	// ArchiveReason explains why an archived/killed project closed; empty while
+	// active. ArchiveNote is the optional free-text rationale captured at close
+	// time. ArchivedAt is the close timestamp; nil while active.
+	ArchiveReason ArchiveReason `json:"archiveReason,omitempty"`
+	ArchiveNote   string        `json:"archiveNote,omitempty"`
+	ArchivedAt    *time.Time    `json:"archivedAt,omitempty"`
+	// Workspace registry fields (v15) absorbed from workspaces_dir.json. A project
+	// IS a workspace; these carry the sidebar/terminal/chat metadata that used to
+	// live in the json registry. Builtin marks the reserved default workspace;
+	// Position drives sidebar order.
+	TerminalDir  string    `json:"terminalDir,omitempty"`
+	ChatChannel  string    `json:"chatChannel,omitempty"`
+	DefaultAgent string    `json:"defaultAgent,omitempty"`
+	Builtin      bool      `json:"builtin,omitempty"`
+	Position     int       `json:"position,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.
@@ -53,8 +94,9 @@ type ChatSessionRecord struct {
 	// PermissionMode is the per-session permission policy forwarded to the
 	// bridge-server (which gates handlePermissionRequestCallback). One of
 	// "approve-reads" (default; auto-allow reads, prompt otherwise),
-	// "approve-all", "deny-all". Empty value means "use the bridge-server's
-	// global default".
+	// "approve-all", "deny-all", "auto" (decide per request by tool
+	// source/risk; see internal/agent/permission). Empty value means "use the
+	// bridge-server's global default".
 	PermissionMode string `json:"permission_mode,omitempty"`
 	// Role marks a special-purpose session. Empty for an ordinary chat. "pm"
 	// is the in-app AI Project Manager: HandleChatWs injects a PM system
@@ -362,6 +404,20 @@ type Task struct {
 	// Review holds the latest verdict (per-criterion results + overall pass).
 	Review *ReviewVerdict `json:"review,omitempty"`
 
+	// ── adversarial multi-verifier fields (schema v14, #131) ──
+	// VerifierCount is how many independent verifiers judge each verification
+	// cycle. >1 turns a single review into an adversarial panel: N verifiers each
+	// submit their own verdict, and the panel decision is by threshold. 0/1 = the
+	// classic single-verifier flow.
+	VerifierCount int `json:"verifierCount,omitempty"`
+	// VerifyPassThreshold is how many of the VerifierCount verdicts must pass for
+	// the panel to accept the artifact. 0 = majority (⌊N/2⌋+1).
+	VerifyPassThreshold int `json:"verifyPassThreshold,omitempty"`
+	// ReviewPool accumulates the running cycle's per-verifier verdicts until the
+	// panel is complete (len == VerifierCount), at which point it is aggregated
+	// into Review and cleared. Empty between cycles.
+	ReviewPool []ReviewVerdict `json:"reviewPool,omitempty"`
+
 	CreatedAt     time.Time         `json:"createdAt"`
 	UpdatedAt     time.Time         `json:"updatedAt"`
 	StartedAt     *time.Time        `json:"startedAt,omitempty"`
@@ -401,3 +457,38 @@ type Milestone struct {
 	Total     int `json:"total"`
 	Completed int `json:"completed"`
 }
+
+// InboxItem is one piece of captured external context in the Inbox 收口层 (#60):
+// the most-upstream layer that aggregates manual captures, IM forwards, emails,
+// RSS and misc into a single intake list. Items are never deleted — Status
+// flips to "archived" so the trail of what each item became survives. PMO
+// dispatch metadata (#61) is intentionally absent here.
+type InboxItem struct {
+	ID string `json:"id"`
+	// Source is the intake channel: manual / im / email / rss / misc.
+	Source string `json:"source"`
+	// Title / Content / URL hold the raw captured material.
+	Title   string `json:"title"`
+	Content string `json:"content,omitempty"`
+	URL     string `json:"url,omitempty"`
+	// Summary / Tags are optional enrichment (left empty by MVP manual capture).
+	Summary string   `json:"summary,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	// Status is unread / read / archived.
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Inbox item sources and statuses.
+const (
+	InboxSourceManual = "manual"
+	InboxSourceIM     = "im"
+	InboxSourceEmail  = "email"
+	InboxSourceRSS    = "rss"
+	InboxSourceMisc   = "misc"
+
+	InboxStatusUnread   = "unread"
+	InboxStatusRead     = "read"
+	InboxStatusArchived = "archived"
+)
