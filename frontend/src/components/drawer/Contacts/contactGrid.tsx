@@ -21,6 +21,15 @@ export function firstFeishuTenant(c: Contact): string {
     return ch?.tenantKey || '';
 }
 
+// contactDisplayName is the name to show: the contact's nickname, or — when it's
+// empty (message-only senders beyond the roster cap have no nickname) — the
+// Feishu open_id, then phone. Never blank so the row is always identifiable.
+export function contactDisplayName(c: Contact): string {
+    if (c.name) return c.name;
+    const ch = (c.channels || []).find(x => x.platform === 'feishu' && x.channelId);
+    return ch?.channelId || c.phone || '';
+}
+
 export function feishuCount(c: Contact): number {
     return (c.channels || []).filter(ch => ch.platform === 'feishu').length;
 }
@@ -59,7 +68,7 @@ const ts = (iso?: string): number => (iso ? new Date(iso).getTime() : 0);
 export function compareContacts(a: Contact, b: Contact, key: string, companyMap: Record<string, string>): number {
     switch (key) {
         case 'name':
-            return (a.name || a.phone).localeCompare(b.name || b.phone);
+            return contactDisplayName(a).localeCompare(contactDisplayName(b));
         case 'degree':
             return a.degree - b.degree;
         case 'phone':
@@ -79,7 +88,7 @@ export function compareContacts(a: Contact, b: Contact, key: string, companyMap:
 
 // Default order: by name (then phone) — mirrors the prior list's ORDER BY name.
 export function contactDefaultCompare(a: Contact, b: Contact): number {
-    return (a.name || a.phone).localeCompare(b.name || b.phone);
+    return contactDisplayName(a).localeCompare(contactDisplayName(b));
 }
 
 export function contactGroupValue(c: Contact, key: string, lang: Lang, companyMap: Record<string, string>): string {
@@ -120,7 +129,7 @@ export function renderContactCell(
                             helpers.openDetail();
                         }}
                     >
-                        {c.name || t('contacts.field.name', lang)}
+                        {contactDisplayName(c) || t('contacts.field.name', lang)}
                     </button>
                 </td>
             );

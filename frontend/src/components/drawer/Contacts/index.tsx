@@ -22,6 +22,7 @@ import {
     contactDefaultCompare,
     contactGroupValue,
     renderContactCell,
+    contactDisplayName,
 } from './contactGrid';
 import { GroupChatBubbles } from './GroupChatBubbles';
 
@@ -337,11 +338,9 @@ function ContactDetailModal({
                 </button>
                 <div class="contacts-detail">
                     <div class="contacts-detail-header">
-                        <span class="contacts-avatar contacts-avatar-lg">
-                            {initials(contact.name || contact.phone)}
-                        </span>
+                        <span class="contacts-avatar contacts-avatar-lg">{initials(contactDisplayName(contact))}</span>
                         <div class="contacts-detail-headinfo">
-                            <h3 class="contacts-detail-name">{contact.name || '—'}</h3>
+                            <h3 class="contacts-detail-name">{contactDisplayName(contact) || '—'}</h3>
                             {contact.phone && <div class="contacts-detail-phone">{contact.phone}</div>}
                             {(contact.company || contact.title) && (
                                 <div class="contacts-detail-org">
