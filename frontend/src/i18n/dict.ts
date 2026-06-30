@@ -806,6 +806,7 @@ export const zhCN: Record<string, string> = {
     'contacts.degree.all': '全部',
     'contacts.degree.first': '一度',
     'contacts.degree.second': '二度',
+    'contacts.org.feishuOfficial': '飞书官方',
     'contacts.groups': '所在群',
     'contacts.groupsEmpty': '暂无所在群信息。同步对应群后会自动入库。',
 
@@ -1939,6 +1940,7 @@ export const enUS: Record<string, string> = {
     'contacts.degree.all': 'All',
     'contacts.degree.first': '1st-degree',
     'contacts.degree.second': '2nd-degree',
+    'contacts.org.feishuOfficial': 'Feishu Official',
     'contacts.groups': 'Groups',
     'contacts.groupsEmpty': 'No group membership yet. Synced groups are ingested automatically.',
 

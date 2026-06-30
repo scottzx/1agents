@@ -103,7 +103,43 @@ func (h *Handler) HandleContacts(w http.ResponseWriter, r *http.Request) {
 
 // HandleContactItem: PATCH update; DELETE remove. Path: /api/contacts/{id}.
 func (h *Handler) HandleContactItem(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/contacts/")
+	rest := strings.TrimPrefix(r.URL.Path, "/api/contacts/")
+	// GET /api/contacts/{id}/groups → the tracked-group sessionIds this contact
+	// belongs to, derived from the roster. A person in N groups has ONE open_id
+	// channel (whose single session_id is just last-seen) but N roster rows, so
+	// membership must come from the roster, not the channel.
+	if cid, ok := strings.CutSuffix(rest, "/groups"); ok {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		chans, err := h.cs.ListChannelsForContact(cid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		seen := map[string]bool{}
+		sessions := []string{}
+		for _, ch := range chans {
+			if ch.Platform != feishu.Channel {
+				continue
+			}
+			groups, err := h.cs.GroupsForChannel(ch.ChannelID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for _, sid := range groups {
+				if !seen[sid] {
+					seen[sid] = true
+					sessions = append(sessions, sid)
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, sessions)
+		return
+	}
+	id := rest
 	if id == "" || strings.Contains(id, "/") {
 		badRequest(w, "contact id required")
 		return

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
 import * as ui from '../../../stores/uiStore';
-import { t } from '../../../i18n';
+import { t, type Lang } from '../../../i18n';
 import {
     contactService,
     channelService,
@@ -37,6 +37,19 @@ function initials(name: string): string {
 
 function shortId(id: string): string {
     return id.length > 10 ? `…${id.slice(-8)}` : id;
+}
+
+// Feishu's official tenant — degree-2 members carrying this tenant_key are
+// Feishu/Lark official operations staff (verified across multiple groups).
+const FEISHU_OFFICIAL_TENANT = '736588c9260f175d';
+
+// orgLabel renders a member's tenant_key as a readable org hint: the known
+// Feishu-official tenant gets a friendly label, others show a short id. Distinct
+// tenant_keys are how two same-named people (e.g. two "但妮") are told apart.
+function orgLabel(tenantKey: string, language: Lang): string {
+    if (!tenantKey) return '';
+    if (tenantKey === FEISHU_OFFICIAL_TENANT) return t('contacts.org.feishuOfficial', language);
+    return shortId(tenantKey);
 }
 
 function msgText(m: FeishuMessage): string {
@@ -181,7 +194,11 @@ function ContactsTab() {
             <div class="contacts-list">
                 {!loading && filtered.length === 0 && <div class="contacts-empty">{t('contacts.empty', language)}</div>}
                 {filtered.map(c => {
-                    const feishuCount = (c.channels || []).filter(ch => ch.platform === 'feishu').length;
+                    const feishuChans = (c.channels || []).filter(ch => ch.platform === 'feishu');
+                    const feishuCount = feishuChans.length;
+                    // org of the first feishu identity — distinguishes same-named
+                    // people (e.g. two "但妮" from different tenants).
+                    const org = feishuChans.find(ch => ch.tenantKey)?.tenantKey;
                     return (
                         <div
                             key={c.id}
@@ -203,6 +220,16 @@ function ContactsTab() {
                                     {feishuCount > 0 && (
                                         <span class="contacts-channel-badge">
                                             {t('contacts.platform.feishu', language)}×{feishuCount}
+                                        </span>
+                                    )}
+                                    {org && (
+                                        <span
+                                            class={`contacts-channel-tenant${
+                                                org === FEISHU_OFFICIAL_TENANT ? ' official' : ''
+                                            }`}
+                                            title={org}
+                                        >
+                                            {orgLabel(org, language)}
                                         </span>
                                     )}
                                 </div>
@@ -357,7 +384,16 @@ function ContactDetail({
                         <div class="contacts-channel-main">
                             <span class="contacts-channel-nick">{ch.nickname || '—'}</span>
                             <span class="contacts-channel-id">{shortId(ch.channelId)}</span>
-                            {ch.sessionId && <span class="contacts-channel-session">{shortId(ch.sessionId)}</span>}
+                            {ch.tenantKey && (
+                                <span
+                                    class={`contacts-channel-tenant${
+                                        ch.tenantKey === FEISHU_OFFICIAL_TENANT ? ' official' : ''
+                                    }`}
+                                    title={ch.tenantKey}
+                                >
+                                    {orgLabel(ch.tenantKey, language)}
+                                </span>
+                            )}
                         </div>
                         <button class="contacts-btn contacts-btn-sm" onClick={() => unlink(ch.id)}>
                             {t('contacts.unbind', language)}
@@ -389,23 +425,26 @@ function ContactDetail({
     );
 }
 
-// "所在群" — the tracked groups a degree-2 contact belongs to. Resolved from the
-// contact's feishu channels' sessionIds against the tracked-chat name list (the
-// only client-side display-name source). Groups without a cached name fall back
-// to a shortened id.
+// "所在群" — the tracked groups a degree-2 contact belongs to. Membership comes
+// from the roster (GET /contacts/{id}/groups): a person in N groups has ONE
+// open_id channel but N roster rows, so deriving from the channel's single
+// session_id would show only the last-seen group. Names are resolved against the
+// tracked-chat list (the only client-side display-name source); groups without a
+// cached name fall back to a shortened id.
 function ContactGroups({ contact }: { contact: Contact }) {
     const language = ui.language.value;
     const [names, setNames] = useState<Record<string, TrackedChat>>({});
+    const [sessionIds, setSessionIds] = useState<string[]>([]);
 
     useEffect(() => {
         let active = true;
-        channelService
-            .trackedChats()
-            .then(chats => {
+        Promise.all([channelService.trackedChats(), contactService.contactGroups(contact.id)])
+            .then(([chats, sids]) => {
                 if (!active) return;
                 const map: Record<string, TrackedChat> = {};
                 for (const c of chats) map[c.chatId] = c;
                 setNames(map);
+                setSessionIds(sids);
             })
             .catch(() => {
                 /* best-effort: groups still render with id fallback */
@@ -413,12 +452,7 @@ function ContactGroups({ contact }: { contact: Contact }) {
         return () => {
             active = false;
         };
-    }, []);
-
-    // Distinct sessionIds across the contact's feishu channels.
-    const sessionIds = Array.from(
-        new Set((contact.channels || []).filter(ch => ch.platform === 'feishu' && ch.sessionId).map(ch => ch.sessionId))
-    );
+    }, [contact.id]);
 
     return (
         <div class="contacts-section">

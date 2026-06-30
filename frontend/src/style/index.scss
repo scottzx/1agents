@@ -2689,6 +2689,24 @@ body {
   }
 }
 
+// Org (tenant_key) hint on a contact card / channel row. Distinct tenant_keys
+// are how same-named people (e.g. two "但妮") are told apart; the known Feishu
+// official tenant gets an emphasized treatment.
+.contacts-channel-tenant {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--btn-hover);
+  color: var(--text-secondary);
+  white-space: nowrap;
+
+  &.official {
+    background: var(--accent-light);
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+}
+
 // Degree filter chips above the contacts list (全部 / 一度 / 二度).
 .contacts-degree-filter {
   display: flex;

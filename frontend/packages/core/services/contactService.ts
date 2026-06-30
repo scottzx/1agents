@@ -156,6 +156,15 @@ export const contactService = {
         return (await res.json()) as Contact[];
     },
 
+    /** GET /api/contacts/{id}/groups — the tracked-group sessionIds a contact
+     * belongs to, from the roster (a person in N groups has 1 channel but N
+     * roster rows, so membership comes from the roster not the channel). */
+    async contactGroups(contactId: string): Promise<string[]> {
+        const res = await apiFetch(`/contacts/${encodeURIComponent(contactId)}/groups`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as string[];
+    },
+
     /** GET /api/contacts/groups/{sessionId}/members — a tracked group's roster. */
     async groupMembers(sessionId: string): Promise<GroupMember[]> {
         const res = await apiFetch(`/contacts/groups/${encodeURIComponent(sessionId)}/members`);
