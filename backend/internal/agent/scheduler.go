@@ -139,6 +139,13 @@ func needsAcceptanceCriteria(t *Task) bool {
 	if t.Source == TaskSourceAgent {
 		return false
 	}
+	// App/kernel-dispatched tasks (North Task API, #320) carry a business_ref and
+	// run under the executor-agnostic ready gate (#319): function/human steps have
+	// no agent self-check, and agent steps are scoped by the app's spec — none are
+	// PM-authored project tasks, so the acceptance-criteria authoring gate is moot.
+	if strings.TrimSpace(t.BusinessRef) != "" || (t.Executor != "" && t.Executor != TaskExecutorAgent) {
+		return false
+	}
 	if strings.TrimSpace(t.Description) == "" {
 		return false // container parent or empty stub — nothing to verify
 	}
@@ -166,6 +173,13 @@ func needsSourcing(t *Task, taskMap map[string]*Task) bool {
 		return false
 	}
 	if t.Source == TaskSourceAgent {
+		return false
+	}
+	// An app task's business_ref IS its "我为什么存在" — it traces to a domain
+	// object (lead/episode/material) instead of a requirement/bug. App/kernel-
+	// dispatched tasks (#320) are therefore sourced by construction; the #68
+	// traceability gate only governs PM-authored project tasks.
+	if strings.TrimSpace(t.BusinessRef) != "" || (t.Executor != "" && t.Executor != TaskExecutorAgent) {
 		return false
 	}
 	if strings.TrimSpace(t.Description) == "" {
