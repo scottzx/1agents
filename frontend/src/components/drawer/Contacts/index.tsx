@@ -58,18 +58,6 @@ function orgLabel(tenantKey: string, companyMap: Record<string, string>): string
     return companyMap[tenantKey] || shortId(tenantKey);
 }
 
-function msgText(m: FeishuMessage): string {
-    if (m.MsgType === 'text') {
-        try {
-            const t = JSON.parse(m.Content) as { text?: string };
-            if (t.text) return t.text.replace(/\n/g, ' ');
-        } catch {
-            /* fall through */
-        }
-    }
-    return `[${m.MsgType}]`;
-}
-
 export function ContactsPane() {
     const language = ui.language.value;
     const tab = useSignal<Tab>('contacts');
@@ -731,13 +719,7 @@ function SessionTimeline({ session, onBack }: { session: SessionSummary; onBack:
                 {!loading && msgs.length === 0 && (
                     <div class="contacts-empty">{t('contacts.timelineEmpty', language)}</div>
                 )}
-                {msgs.map(m => (
-                    <div key={m.MessageID} class="contacts-msg-line">
-                        <span class="contacts-msg-time">{new Date(m.CreateTime).toLocaleString(language)}</span>
-                        <span class="contacts-msg-sender">{m.SenderName || shortId(m.SenderID)}:</span>
-                        <span class="contacts-msg-text">{msgText(m)}</span>
-                    </div>
-                ))}
+                {msgs.length > 0 && <GroupChatBubbles messages={msgs} language={language} />}
             </div>
         </div>
     );
