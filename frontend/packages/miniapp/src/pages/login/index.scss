@@ -1,0 +1,96 @@
+// 登录页 — 居中表单(手机号 + 验证码)。
+.login {
+  padding: 0 32px;
+
+  &__head {
+    padding: 80px 8px 40px;
+  }
+
+  &__title {
+    display: block;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  &__sub {
+    display: block;
+    margin-top: 12px;
+    font-size: 26px;
+    color: var(--text-secondary);
+  }
+
+  &__form {
+    margin-top: 24px;
+  }
+
+  &__field {
+    display: flex;
+    align-items: center;
+    height: 96px;
+    padding: 0 28px;
+    margin-bottom: 24px;
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+
+    &--code {
+      padding-right: 12px;
+    }
+  }
+
+  &__input {
+    flex: 1;
+    height: 96px;
+    font-size: 30px;
+    color: var(--text-main);
+  }
+
+  &__code-btn {
+    margin: 0;
+    padding: 0 16px;
+    font-size: 26px;
+    color: var(--accent-color);
+    background: transparent;
+    line-height: 64px;
+
+    &::after {
+      border: none;
+    }
+  }
+
+  &__error {
+    display: block;
+    margin: 4px 8px 16px;
+    font-size: 26px;
+    color: var(--danger-fg);
+  }
+
+  &__submit {
+    margin-top: 8px;
+    background: var(--accent-color);
+    color: var(--on-accent);
+    border-radius: var(--radius);
+    font-size: 32px;
+  }
+
+  &__divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 40px 0 24px;
+  }
+
+  &__divider-text {
+    font-size: 24px;
+    color: var(--text-muted);
+  }
+
+  &__wx {
+    background: var(--bg-panel);
+    color: var(--text-main);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+    font-size: 30px;
+  }
+}
