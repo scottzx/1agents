@@ -18,6 +18,9 @@ import {
     activeWorkspaceId as activeWsIdSignal,
     activeWorkspaceDeviceId,
 } from '../../stores/workspaceStore';
+import { activeL1PageId } from '../../stores/appManifestStore';
+import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
+import { enterL1App, exitL1App } from '../../stores/stageStore';
 import { taskService } from '@1agents/core/services/taskService';
 import { inboxService } from '@1agents/core/services/inboxService';
 
@@ -977,6 +980,38 @@ export function LeftSidebar({
                                 })}
                             </div>
                         )}
+                        {/* ── 应用 / L1 apps section (#332) ──────────────────────────────────
+                            Only shown when there are enabled L1-page mount points.
+                            Each entry switches the main pane to the app's full-page view. */}
+                        {(() => {
+                            const appEntries = getL1NavEntries();
+                            if (appEntries.length === 0) return null;
+                            const currentL1Id = activeL1PageId.value;
+                            return (
+                                <div class="workspace-section">
+                                    <div class="section-header">
+                                        <span>{language === 'zh' ? '应用' : 'Apps'}</span>
+                                    </div>
+                                    <div class="l1-apps-nav">
+                                        {appEntries.map(entry => (
+                                            <L1NavItem
+                                                key={entry.id}
+                                                entry={entry}
+                                                isActive={currentL1Id === entry.id}
+                                                onClick={() => {
+                                                    if (currentL1Id === entry.id) {
+                                                        // Toggle off — return to previous shell.
+                                                        exitL1App();
+                                                    } else {
+                                                        enterL1App(entry.id);
+                                                    }
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </Fragment>
                 ) : (
                     <ModuleNav

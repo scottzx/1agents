@@ -3,6 +3,7 @@ import { signal, computed } from '@preact/signals';
 import { isFullPageTab, type RightDrawerTab } from '../components/types';
 import * as tabsStore from './tabsStore';
 import * as ui from './uiStore';
+import * as appStore from './appManifestStore';
 
 /**
  * Stage layout model — the unified two-column workbench shell.
@@ -49,7 +50,9 @@ export type ContentView =
     | { kind: 'providers' }
     | { kind: 'skills' }
     | { kind: 'discovery' }
-    | { kind: 'settings' };
+    | { kind: 'settings' }
+    /** L1 app page rendered via MountPointRenderer (#332). */
+    | { kind: 'l1-app'; mountId: string };
 
 export type ContentViewKind = ContentView['kind'];
 
@@ -102,6 +105,10 @@ const setChatRailed = (v: boolean): void => {
 
 // ── Derived content → panes ─────────────────────────────────────────────
 const primaryView = (): ContentView => {
+    // L1 app page takes over the primary pane when active (#332).
+    const l1PageId = appStore.activeL1PageId.value;
+    if (l1PageId) return { kind: 'l1-app', mountId: l1PageId };
+
     const drawer = tabsStore.activeDrawerTab.value;
     if (isFullPageTab(drawer)) return { kind: drawer } as ContentView;
     const tab = tabsStore.activeTab.value;
@@ -182,4 +189,22 @@ export const enterConversation = (): void => {
 export const openConversation = (projectChanged: boolean): void => {
     if (projectChanged) tabsStore.closeContentTab();
     setChatRailed(false);
+};
+
+/**
+ * Enter an L1 app page (#332). The app page takes over the primary pane;
+ * the right artifact column closes so the app gets full width.
+ */
+export const enterL1App = (mountId: string): void => {
+    appStore.setActiveL1Page(mountId);
+    tabsStore.closeContentTab();
+    setChatRailed(true);
+};
+
+/**
+ * Exit the active L1 app page and return to the normal shell.
+ * Restores the chat column and clears L1 page state.
+ */
+export const exitL1App = (): void => {
+    appStore.setActiveL1Page(null);
 };
