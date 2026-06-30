@@ -2748,6 +2748,43 @@ body {
   color: var(--text-main);
 }
 
+// Clickable group chips — pick a group to view this contact's messages in it;
+// the "全部群聊" chip merges across all groups. Active chip reads as the accent.
+.contacts-group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+
+  .contacts-group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: var(--bento-transition);
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+
+    &.active {
+      background: var(--accent-color);
+      border-color: var(--accent-color);
+      color: var(--on-accent);
+    }
+
+    &.all {
+      font-weight: 600;
+    }
+  }
+}
+
 .contacts-detail-placeholder {
   height: 100%;
   display: flex;

@@ -280,8 +280,25 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			limit = l
 		}
 	}
-	if sid := r.URL.Query().Get("sessionId"); sid != "" {
-		msgs, err := h.fs.ListMessages(feishu.Channel, sid, 0, limit)
+	sessionID := r.URL.Query().Get("sessionId")
+	contactID := r.URL.Query().Get("contactId")
+	// contactId present → this contact's messages; sessionId (optional) narrows to
+	// one group. contactId + sessionId = "this person in that group"; contactId
+	// alone = merged cross-group. sessionId alone (no contactId) = the whole
+	// group's messages (used by the 消息 tab's session view).
+	if contactID != "" {
+		chans, err := h.cs.ListChannelsForContact(contactID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		senderIDs := make([]string, 0, len(chans))
+		for _, c := range chans {
+			if c.Platform == feishu.Channel {
+				senderIDs = append(senderIDs, c.ChannelID)
+			}
+		}
+		msgs, err := h.fs.MessagesBySenders(feishu.Channel, senderIDs, sessionID, limit)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -289,28 +306,16 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, msgs)
 		return
 	}
-	contactID := r.URL.Query().Get("contactId")
-	if contactID == "" {
-		badRequest(w, "contactId or sessionId required")
-		return
-	}
-	chans, err := h.cs.ListChannelsForContact(contactID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	senderIDs := make([]string, 0, len(chans))
-	for _, c := range chans {
-		if c.Platform == feishu.Channel {
-			senderIDs = append(senderIDs, c.ChannelID)
+	if sessionID != "" {
+		msgs, err := h.fs.ListMessages(feishu.Channel, sessionID, 0, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-	}
-	msgs, err := h.fs.MessagesBySenders(feishu.Channel, senderIDs, limit)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusOK, msgs)
 		return
 	}
-	writeJSON(w, http.StatusOK, msgs)
+	badRequest(w, "contactId or sessionId required")
 }
 
 // HandleGroupMembers: GET /api/contacts/groups/{sessionId}/members → the recorded

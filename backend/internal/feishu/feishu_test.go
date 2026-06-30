@@ -79,10 +79,19 @@ func TestStore_ListMessages_LimitReturnsLatest(t *testing.T) {
 	if got[0].CreateTime != 4000 || got[1].CreateTime != 5000 {
 		t.Fatalf("want latest-2 ascending [4000 5000], got [%d %d]", got[0].CreateTime, got[1].CreateTime)
 	}
-	// MessagesBySenders applies the same latest-N semantics.
-	bys, err := s.MessagesBySenders(Channel, []string{"ou_1"}, 2)
+	// MessagesBySenders applies the same latest-N semantics (no session filter).
+	bys, err := s.MessagesBySenders(Channel, []string{"ou_1"}, "", 2)
 	if err != nil || len(bys) != 2 || bys[0].CreateTime != 4000 || bys[1].CreateTime != 5000 {
 		t.Fatalf("MessagesBySenders latest-2: %+v err=%v", bys, err)
+	}
+	// A session filter restricts to one group.
+	inSession, err := s.MessagesBySenders(Channel, []string{"ou_1"}, "oc_x", 0)
+	if err != nil || len(inSession) != 5 {
+		t.Fatalf("MessagesBySenders session oc_x: want 5, got %d err=%v", len(inSession), err)
+	}
+	none, err := s.MessagesBySenders(Channel, []string{"ou_1"}, "oc_other", 0)
+	if err != nil || len(none) != 0 {
+		t.Fatalf("MessagesBySenders session oc_other: want 0, got %d err=%v", len(none), err)
 	}
 }
 

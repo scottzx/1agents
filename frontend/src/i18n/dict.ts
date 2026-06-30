@@ -808,6 +808,8 @@ export const zhCN: Record<string, string> = {
     'contacts.degree.second': '二度',
     'contacts.org.feishuOfficial': '飞书官方',
     'contacts.groups': '所在群',
+    'contacts.allGroups': '全部群聊',
+    'contacts.loading': '加载中…',
     'contacts.groupsEmpty': '暂无所在群信息。同步对应群后会自动入库。',
 
     // ── 渠道配置 (ChannelsTab) ──────────────────────────────────────────────
@@ -1942,6 +1944,8 @@ export const enUS: Record<string, string> = {
     'contacts.degree.second': '2nd-degree',
     'contacts.org.feishuOfficial': 'Feishu Official',
     'contacts.groups': 'Groups',
+    'contacts.allGroups': 'All groups',
+    'contacts.loading': 'Loading…',
     'contacts.groupsEmpty': 'No group membership yet. Synced groups are ingested automatically.',
 
     // ── Channel config (ChannelsTab) ────────────────────────────────────

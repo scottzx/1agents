@@ -146,6 +146,7 @@ function ContactsTab() {
 
     const detail = selected ? (
         <ContactDetail
+            key={selected.id}
             contact={selected}
             onBack={() => (selectedId.value = null)}
             onEdit={() => setEditing(selected)}
@@ -368,8 +369,6 @@ function ContactDetail({
 
             {error && <div class="contacts-error">{error}</div>}
 
-            {contact.degree === 2 && <ContactGroups contact={contact} />}
-
             <div class="contacts-section">
                 <div class="contacts-section-head">
                     <span class="contacts-section-title">{t('contacts.channels', language)}</span>
@@ -418,27 +417,27 @@ function ContactDetail({
                 )}
             </div>
 
-            <div class="contacts-section">
-                <ContactMessages contactId={contact.id} />
-            </div>
+            <ContactGroupMessages contactId={contact.id} />
         </div>
     );
 }
 
-// "所在群" — the tracked groups a degree-2 contact belongs to. Membership comes
-// from the roster (GET /contacts/{id}/groups): a person in N groups has ONE
-// open_id channel but N roster rows, so deriving from the channel's single
-// session_id would show only the last-seen group. Names are resolved against the
-// tracked-chat list (the only client-side display-name source); groups without a
-// cached name fall back to a shortened id.
-function ContactGroups({ contact }: { contact: Contact }) {
+// 所在群 + 消息 — the tracked groups a contact belongs to (from the roster, GET
+// /contacts/{id}/groups), each clickable to show THIS contact's messages in THAT
+// group. Messages are per-group by default; the "全部群聊" chip merges across all
+// groups (contactId-only query). Group membership comes from the roster because a
+// person in N groups has ONE open_id channel but N roster rows.
+function ContactGroupMessages({ contactId }: { contactId: string }) {
     const language = ui.language.value;
     const [names, setNames] = useState<Record<string, TrackedChat>>({});
     const [sessionIds, setSessionIds] = useState<string[]>([]);
+    const [sel, setSel] = useState<string | null>(null); // null=none, '*'=all groups, else sessionId
+    const [msgs, setMsgs] = useState<FeishuMessage[]>([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         let active = true;
-        Promise.all([channelService.trackedChats(), contactService.contactGroups(contact.id)])
+        Promise.all([channelService.trackedChats(), contactService.contactGroups(contactId)])
             .then(([chats, sids]) => {
                 if (!active) return;
                 const map: Record<string, TrackedChat> = {};
@@ -452,66 +451,71 @@ function ContactGroups({ contact }: { contact: Contact }) {
         return () => {
             active = false;
         };
-    }, [contact.id]);
+    }, [contactId]);
+
+    const groupName = (sid: string) => names[sid]?.chatName || shortId(sid);
+
+    const select = async (s: string) => {
+        setSel(s);
+        setLoading(true);
+        try {
+            const opts = s === '*' ? { contactId, limit: 300 } : { contactId, sessionId: s, limit: 300 };
+            setMsgs(await contactService.messages(opts));
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div class="contacts-section">
             <div class="contacts-section-head">
                 <span class="contacts-section-title">{t('contacts.groups', language)}</span>
             </div>
-            {sessionIds.length === 0 && <div class="contacts-empty">{t('contacts.groupsEmpty', language)}</div>}
-            {sessionIds.map(sid => {
-                const chat = names[sid];
-                return (
-                    <div key={sid} class="contacts-group-row">
-                        <span class="contacts-avatar">{initials(chat?.chatName || sid)}</span>
-                        <span class="contacts-group-name">{chat?.chatName || shortId(sid)}</span>
-                        {chat?.external && (
-                            <span class="contacts-channels-badge ext">{t('contacts.channels.external', language)}</span>
-                        )}
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-// Inline cross-group messages for a contact (the "查看消息" surface, kept in the
-// contact detail so it works on both desktop and mobile without a tab handoff).
-function ContactMessages({ contactId }: { contactId: string }) {
-    const language = ui.language.value;
-    const [msgs, setMsgs] = useState<FeishuMessage[]>([]);
-    const [open, setOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
-
-    const load = async () => {
-        setOpen(true);
-        setLoading(true);
-        try {
-            setMsgs(await contactService.messages({ contactId, limit: 200 }));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (!open) {
-        return (
-            <button class="contacts-btn" onClick={load}>
-                {t('contacts.viewMessages', language)}
-            </button>
-        );
-    }
-    return (
-        <div class="contacts-timeline">
-            <div class="contacts-section-title">{t('contacts.crossGroup', language)}</div>
-            {!loading && msgs.length === 0 && <div class="contacts-empty">{t('contacts.timelineEmpty', language)}</div>}
-            {msgs.map(m => (
-                <div key={m.MessageID} class="contacts-msg-line">
-                    <span class="contacts-msg-time">{new Date(m.CreateTime).toLocaleString(language)}</span>
-                    <span class="contacts-msg-sender">{m.SenderName || shortId(m.SenderID)}:</span>
-                    <span class="contacts-msg-text">{msgText(m)}</span>
+            {sessionIds.length === 0 ? (
+                <div class="contacts-empty">{t('contacts.groupsEmpty', language)}</div>
+            ) : (
+                <div class="contacts-group-chips">
+                    {sessionIds.map(sid => (
+                        <button
+                            key={sid}
+                            class={`contacts-group-chip${sel === sid ? ' active' : ''}`}
+                            onClick={() => select(sid)}
+                        >
+                            {groupName(sid)}
+                            {names[sid]?.external && (
+                                <span class="contacts-channels-badge ext">
+                                    {t('contacts.channels.external', language)}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                    <button
+                        class={`contacts-group-chip all${sel === '*' ? ' active' : ''}`}
+                        onClick={() => select('*')}
+                    >
+                        {t('contacts.allGroups', language)}
+                    </button>
                 </div>
-            ))}
+            )}
+            {sel && (
+                <div class="contacts-timeline">
+                    <div class="contacts-section-title">
+                        {sel === '*' ? t('contacts.allGroups', language) : groupName(sel)}
+                    </div>
+                    {loading && <div class="contacts-empty">{t('contacts.loading', language)}</div>}
+                    {!loading && msgs.length === 0 && (
+                        <div class="contacts-empty">{t('contacts.timelineEmpty', language)}</div>
+                    )}
+                    {!loading &&
+                        msgs.map(m => (
+                            <div key={m.MessageID} class="contacts-msg-line">
+                                <span class="contacts-msg-time">{new Date(m.CreateTime).toLocaleString(language)}</span>
+                                <span class="contacts-msg-sender">{m.SenderName || shortId(m.SenderID)}:</span>
+                                <span class="contacts-msg-text">{msgText(m)}</span>
+                            </div>
+                        ))}
+                </div>
+            )}
         </div>
     );
 }

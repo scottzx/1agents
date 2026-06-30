@@ -321,9 +321,11 @@ func (s *Store) DistinctSenders(channel string) ([]SenderInfo, error) {
 }
 
 // MessagesBySenders returns a channel's messages authored by any of senderIDs,
-// in ascending time order. Used to assemble a contact's cross-group messages.
+// in ascending time order. Used to assemble a contact's messages. When sessionID
+// is non-empty the result is restricted to that one group (a contact's messages
+// in a specific chat); "" spans all groups (the merged cross-group view).
 // limit <= 0 means no limit; an empty senderIDs returns no rows.
-func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int) ([]Message, error) {
+func (s *Store) MessagesBySenders(channel string, senderIDs []string, sessionID string, limit int) ([]Message, error) {
 	if len(senderIDs) == 0 {
 		return []Message{}, nil
 	}
@@ -336,12 +338,16 @@ func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int)
 	}
 	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
         FROM unified_messages
-        WHERE channel = ? AND sender_id IN (` + placeholders + `)
-        ORDER BY create_time ` + order + `, message_id ` + order
+        WHERE channel = ? AND sender_id IN (` + placeholders + `)`
 	args := []any{channel}
 	for _, id := range senderIDs {
 		args = append(args, id)
 	}
+	if sessionID != "" {
+		q += " AND session_id = ?"
+		args = append(args, sessionID)
+	}
+	q += " ORDER BY create_time " + order + ", message_id " + order
 	if limit > 0 {
 		q += " LIMIT ?"
 		args = append(args, limit)
