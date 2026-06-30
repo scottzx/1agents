@@ -16,6 +16,8 @@ export interface ContactChannel {
     channelId: string;
     nickname: string;
     sessionId: string;
+    /** Feishu org of the member (free from chat.members on degree-2 ingestion). */
+    tenantKey: string;
     lastSeen: number;
     createdAt: string;
     updatedAt: string;
@@ -29,9 +31,20 @@ export interface Contact {
     title: string;
     note: string;
     tags: string[];
+    /** 1 = first-degree (manual/好友), 2 = second-degree (group roster only). */
+    degree: number;
+    /** How many distinct tracked groups this contact appears in (所在群 column). */
+    groupCount: number;
     createdAt: string;
     updatedAt: string;
     channels?: ContactChannel[];
+}
+
+// One feishu_group_members roster entry (degree-2 source).
+export interface GroupMember {
+    openId: string;
+    nickname: string;
+    tenantKey: string;
 }
 
 export interface ContactInput {
@@ -71,6 +84,17 @@ export interface DiscoverResult {
     updated: number;
 }
 
+// meta.CompanyTenant — one company_tenants × companies join row: a mapped
+// tenant_key + its company names. The frontend builds a tenantKey→shortName
+// lookup from the list to label a contact's channel org (replaces the old
+// hardcoded 飞书官方 constant; 飞书官方 is now seeded data).
+export interface CompanyTenant {
+    tenantKey: string;
+    companyId: string;
+    fullName: string;
+    shortName: string;
+}
+
 // ── 飞书渠道配置 (Phase 2) ──────────────────────────────────────────────────
 // feishu.ChatInfo — camelCase json tags.
 export interface ChatInfo {
@@ -83,7 +107,8 @@ export interface ChatInfo {
     external: boolean;
 }
 
-// meta.TrackedChat — camelCase json tags.
+// meta.TrackedChat — camelCase json tags. memberCount is the degree-2 roster
+// size, attached additively by the tracked-chats endpoint (0 until first sync).
 export interface TrackedChat {
     chatId: string;
     chatName: string;
@@ -92,6 +117,11 @@ export interface TrackedChat {
     autoSync: boolean;
     lastSyncedAt: number;
     createdAt: string;
+    // memberCount = degree-2 roster size actually ingested; memberTotal = the
+    // chat's true size from the API. For large groups the API caps the roster,
+    // so memberTotal can exceed memberCount.
+    memberCount?: number;
+    memberTotal?: number;
 }
 
 // meta.SyncConfig — camelCase json tags.
@@ -130,11 +160,29 @@ export interface TrackChatInput {
 }
 
 export const contactService = {
-    /** GET /api/contacts — all contacts, each with bound channels. */
-    async listContacts(): Promise<Contact[]> {
-        const res = await apiFetch('/contacts');
+    /** GET /api/contacts?degree= — contacts (each with bound channels); optional
+     * degree filter (1 = first-degree, 2 = second-degree; omit for all). */
+    async listContacts(degree?: number): Promise<Contact[]> {
+        const qs = degree === 1 || degree === 2 ? `?degree=${degree}` : '';
+        const res = await apiFetch(`/contacts${qs}`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as Contact[];
+    },
+
+    /** GET /api/contacts/{id}/groups — the tracked-group sessionIds a contact
+     * belongs to, from the roster (a person in N groups has 1 channel but N
+     * roster rows, so membership comes from the roster not the channel). */
+    async contactGroups(contactId: string): Promise<string[]> {
+        const res = await apiFetch(`/contacts/${encodeURIComponent(contactId)}/groups`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as string[];
+    },
+
+    /** GET /api/contacts/groups/{sessionId}/members — a tracked group's roster. */
+    async groupMembers(sessionId: string): Promise<GroupMember[]> {
+        const res = await apiFetch(`/contacts/groups/${encodeURIComponent(sessionId)}/members`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as GroupMember[];
     },
 
     /** POST /api/contacts — create a contact (409 on duplicate phone). */
@@ -215,6 +263,14 @@ export const contactService = {
         const res = await apiFetch('/contacts/sessions');
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SessionSummary[];
+    },
+
+    /** GET /api/contacts/companies — tenant_key→company-name map rows. The caller
+     * builds a tenantKey→shortName lookup to label a contact's channel org. */
+    async companies(): Promise<CompanyTenant[]> {
+        const res = await apiFetch('/contacts/companies');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as CompanyTenant[];
     },
 };
 

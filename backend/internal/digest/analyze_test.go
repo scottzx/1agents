@@ -95,7 +95,7 @@ func TestLivePipeline(t *testing.T) {
 		t.Fatalf("feishu open: %v", err)
 	}
 	defer fs.Close()
-	res, err := feishu.NewSyncer(fs, feishu.NewClient("", "self")).SyncChat(context.Background(), chatID)
+	res, err := feishu.NewSyncer(fs, feishu.NewClient("", "self")).SyncChat(context.Background(), chatID, nil)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}

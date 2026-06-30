@@ -26,16 +26,17 @@ const Channel = "feishu"
 
 // Message is one chat message in the unified, channel-agnostic model.
 type Message struct {
-	Channel      string // 'feishu'
-	ChannelAccID string // local account id, distinguishes multiple accounts on one channel
-	MessageID    string // remote message id (om_xxx); unique within a channel
-	SessionID    string // chat_id (oc_xxx) / conversation id
-	SenderID     string // sender open_id
-	SenderName   string // resolved via chat.members (best-effort)
-	MsgType      string // text | post | image | system | ...
-	Title        string // message/post title (when present)
-	Content      string // raw body.content JSON
-	CreateTime   int64  // creation time, epoch milliseconds
+	Channel         string // 'feishu'
+	ChannelAccID    string // local account id, distinguishes multiple accounts on one channel
+	MessageID       string // remote message id (om_xxx); unique within a channel
+	SessionID       string // chat_id (oc_xxx) / conversation id
+	SenderID        string // sender open_id
+	SenderName      string // resolved via chat.members (best-effort)
+	SenderTenantKey string // sender's Feishu org (from the message sender object)
+	MsgType         string // text | post | image | system | ...
+	Title           string // message/post title (when present)
+	Content         string // raw body.content JSON
+	CreateTime      int64  // creation time, epoch milliseconds
 }
 
 // Store wraps sync.db.
@@ -81,7 +82,42 @@ func Open(path string) (*Store, error) {
 		sqlDB.Close()
 		return nil, fmt.Errorf("feishu: apply schema: %w", err)
 	}
+	if err := s.ensureColumns(); err != nil {
+		sqlDB.Close()
+		return nil, err
+	}
 	return s, nil
+}
+
+// ensureColumns adds any additive columns missing from a pre-existing
+// unified_messages table (the CREATE IF NOT EXISTS above only helps fresh DBs).
+// Idempotent, mirroring meta's ensure*Columns helpers.
+func (s *Store) ensureColumns() error {
+	rows, err := s.sql.Query("PRAGMA table_info(unified_messages)")
+	if err != nil {
+		return fmt.Errorf("feishu: inspect unified_messages: %w", err)
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		cols[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !cols["sender_tenant_key"] {
+		if _, err := s.sql.Exec(`ALTER TABLE unified_messages ADD COLUMN sender_tenant_key TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("feishu: add unified_messages.sender_tenant_key: %w", err)
+		}
+	}
+	return nil
 }
 
 var (
@@ -119,6 +155,7 @@ CREATE TABLE IF NOT EXISTS unified_messages (
     session_id     TEXT    NOT NULL,
     sender_id      TEXT    NOT NULL DEFAULT '',
     sender_name    TEXT    NOT NULL DEFAULT '',
+    sender_tenant_key TEXT NOT NULL DEFAULT '',
     msg_type       TEXT    NOT NULL DEFAULT '',
     title          TEXT    NOT NULL DEFAULT '',
     content        TEXT    NOT NULL DEFAULT '',
@@ -152,8 +189,8 @@ func (s *Store) UpsertMessages(msgs []Message) (int, error) {
 	}
 	defer tx.Rollback()
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO unified_messages
-        (channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        (channel, channel_acc_id, message_id, session_id, sender_id, sender_name, sender_tenant_key, msg_type, title, content, create_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return 0, err
 	}
@@ -161,7 +198,7 @@ func (s *Store) UpsertMessages(msgs []Message) (int, error) {
 	inserted := 0
 	for _, m := range msgs {
 		res, err := stmt.Exec(m.Channel, m.ChannelAccID, m.MessageID, m.SessionID,
-			m.SenderID, m.SenderName, m.MsgType, m.Title, m.Content, m.CreateTime)
+			m.SenderID, m.SenderName, m.SenderTenantKey, m.MsgType, m.Title, m.Content, m.CreateTime)
 		if err != nil {
 			return 0, err
 		}
@@ -218,7 +255,7 @@ func (s *Store) ListMessages(channel, sessionID string, since int64, limit int) 
 	if limit > 0 {
 		order = "DESC"
 	}
-	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
+	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, sender_tenant_key, msg_type, title, content, create_time
         FROM unified_messages
         WHERE channel = ? AND session_id = ? AND create_time >= ?
         ORDER BY create_time ` + order + `, message_id ` + order
@@ -236,7 +273,7 @@ func (s *Store) ListMessages(channel, sessionID string, since int64, limit int) 
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.Channel, &m.ChannelAccID, &m.MessageID, &m.SessionID,
-			&m.SenderID, &m.SenderName, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
+			&m.SenderID, &m.SenderName, &m.SenderTenantKey, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -321,9 +358,11 @@ func (s *Store) DistinctSenders(channel string) ([]SenderInfo, error) {
 }
 
 // MessagesBySenders returns a channel's messages authored by any of senderIDs,
-// in ascending time order. Used to assemble a contact's cross-group messages.
+// in ascending time order. Used to assemble a contact's messages. When sessionID
+// is non-empty the result is restricted to that one group (a contact's messages
+// in a specific chat); "" spans all groups (the merged cross-group view).
 // limit <= 0 means no limit; an empty senderIDs returns no rows.
-func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int) ([]Message, error) {
+func (s *Store) MessagesBySenders(channel string, senderIDs []string, sessionID string, limit int) ([]Message, error) {
 	if len(senderIDs) == 0 {
 		return []Message{}, nil
 	}
@@ -334,14 +373,18 @@ func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int)
 	if limit > 0 {
 		order = "DESC"
 	}
-	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, msg_type, title, content, create_time
+	q := `SELECT channel, channel_acc_id, message_id, session_id, sender_id, sender_name, sender_tenant_key, msg_type, title, content, create_time
         FROM unified_messages
-        WHERE channel = ? AND sender_id IN (` + placeholders + `)
-        ORDER BY create_time ` + order + `, message_id ` + order
+        WHERE channel = ? AND sender_id IN (` + placeholders + `)`
 	args := []any{channel}
 	for _, id := range senderIDs {
 		args = append(args, id)
 	}
+	if sessionID != "" {
+		q += " AND session_id = ?"
+		args = append(args, sessionID)
+	}
+	q += " ORDER BY create_time " + order + ", message_id " + order
 	if limit > 0 {
 		q += " LIMIT ?"
 		args = append(args, limit)
@@ -355,7 +398,7 @@ func (s *Store) MessagesBySenders(channel string, senderIDs []string, limit int)
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.Channel, &m.ChannelAccID, &m.MessageID, &m.SessionID,
-			&m.SenderID, &m.SenderName, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
+			&m.SenderID, &m.SenderName, &m.SenderTenantKey, &m.MsgType, &m.Title, &m.Content, &m.CreateTime); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

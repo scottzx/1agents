@@ -2453,6 +2453,9 @@ body {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  // Positioning context so the detail modal overlays only this pane (not the
+  // whole viewport / sidebar).
+  position: relative;
 }
 
 .contacts-view-switcher {
@@ -2589,8 +2592,11 @@ body {
 }
 
 .contacts-list-item {
+  // Needs the base card surface (bg/border/radius/shadow) AND the interactive
+  // hover — without %bento-card the unselected cards render as borderless rows.
+  @extend %bento-card;
   @extend %bento-card-interactive;
-  display: flex;
+  flex-direction: row;
   gap: 10px;
   align-items: flex-start;
   padding: 10px;
@@ -2618,6 +2624,12 @@ body {
   font-weight: 600;
   color: var(--text-main);
   font-size: 14px;
+  // Truncate long names from the END (show the beginning), not the start.
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .contacts-list-phone {
@@ -2667,6 +2679,122 @@ body {
   border-radius: 10px;
   background: var(--purple-bg);
   color: var(--purple-fg);
+}
+
+// 二度联系人: degree badge on each contact row. 1st degree (manual/好友) reads as
+// the primary accent; 2nd degree (group roster only) uses the muted purple family
+// to signal "indirect".
+.contacts-degree-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+
+  &.deg-1 {
+    background: var(--accent-light);
+    color: var(--accent-color);
+  }
+
+  &.deg-2 {
+    background: var(--purple-bg);
+    color: var(--purple-fg);
+  }
+}
+
+// Org (tenant_key) hint on a contact card / channel row. Distinct tenant_keys
+// are how same-named people (e.g. two "但妮") are told apart; the known Feishu
+// official tenant gets an emphasized treatment.
+.contacts-channel-tenant {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--btn-hover);
+  color: var(--text-secondary);
+  white-space: nowrap;
+
+  &.official {
+    background: var(--accent-light);
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+}
+
+// Degree filter chips above the contacts list (全部 / 一度 / 二度).
+.contacts-degree-filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 8px;
+}
+
+.contacts-degree-chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--bento-transition);
+
+  &:hover {
+    background: var(--btn-hover);
+  }
+
+  &.active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--on-accent);
+  }
+}
+
+// "所在群" rows in a degree-2 contact's detail.
+.contacts-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.contacts-group-name {
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+// Clickable group chips — pick a group to view this contact's messages in it;
+// the "全部群聊" chip merges across all groups. Active chip reads as the accent.
+.contacts-group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+
+  .contacts-group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: var(--bento-transition);
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+
+    &.active {
+      background: var(--accent-color);
+      border-color: var(--accent-color);
+      color: var(--on-accent);
+    }
+
+    &.all {
+      font-weight: 600;
+    }
+  }
 }
 
 .contacts-detail-placeholder {
@@ -2898,6 +3026,219 @@ body {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+// ── 联系人多维表格 (Contacts DataGrid) ──────────────────────────────────────
+// Reuses the .task-grid family for layout/sort/group; these only style the
+// contacts-specific cells. The name cell is a button that opens the detail modal.
+.contact-name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-color);
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.col-contact-phone {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.col-contact-count {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.col-contact-company,
+.col-contact-date {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+// ── 联系人详情弹窗 (ContactDetailModal) ─────────────────────────────────────
+// A modal overlay (NOT the old left-right split). Centered panel on desktop,
+// full-screen on mobile. Backdrop click + × + Esc close it.
+.contacts-detail-modal-overlay {
+  // Absolute (not fixed) so the modal overlays only the contacts pane — it must
+  // not cover the left sidebar. Anchored to .contacts-pane (position: relative).
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Above every other layered surface (project max is 9999).
+  z-index: 10000;
+  padding: 24px;
+}
+
+.contacts-detail-modal {
+  @extend %bento-card;
+  position: relative;
+  width: 80%;
+  max-width: 1100px;
+  max-height: 88vh;
+  overflow-y: auto;
+  // Solid opaque surface: override the %bento-card frosted-glass background so
+  // the modal isn't see-through. var(--bg-card) is white in light theme and a
+  // dark surface in dark theme — opaque either way.
+  background: var(--bg-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+
+  &.mobile {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+}
+
+.contacts-detail-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: var(--btn-hover);
+    color: var(--text-main);
+  }
+}
+
+// ── 群聊气泡 (GroupChatBubbles) ──────────────────────────────────────────────
+// Multi-sender replay: every bubble is left-aligned (no "me"); consecutive
+// messages from one sender collapse the avatar + name. Visual cue is the
+// .chat-bubble family but this is an independent renderer.
+.contacts-chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.contacts-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contacts-chat-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+
+  &.run-start {
+    margin-top: 8px;
+  }
+}
+
+.contacts-chat-avatar-col {
+  flex-shrink: 0;
+  width: 32px;
+}
+
+.contacts-chat-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--on-accent);
+
+  // Deterministic per-sender palette (senderColorIndex → cN). Semantic-token
+  // families so each sender gets a stable, theme-aware hue.
+  &.c0 {
+    background: var(--accent-color);
+  }
+  &.c1 {
+    background: var(--purple-fg);
+  }
+  &.c2 {
+    background: var(--success-fg);
+  }
+  &.c3 {
+    background: var(--warning-fg);
+  }
+  &.c4 {
+    background: var(--danger-fg);
+  }
+  &.c5 {
+    background: var(--orange-fg);
+  }
+  &.c6 {
+    background: var(--accent-active);
+  }
+  &.c7 {
+    background: var(--purple-emphasis, var(--purple-fg));
+  }
+}
+
+.contacts-chat-avatar-spacer {
+  display: inline-block;
+  width: 32px;
+  height: 1px;
+}
+
+.contacts-chat-bubble-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contacts-chat-sender {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding-left: 2px;
+}
+
+.contacts-chat-bubble {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 7px 11px;
+  border-radius: 12px;
+  border-top-left-radius: 3px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+.contacts-chat-text {
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.contacts-chat-time {
+  align-self: flex-end;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 // ── 渠道配置 (ChannelsTab) ────────────────────────────────────────────────

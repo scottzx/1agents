@@ -218,10 +218,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/contacts", contactsHandler.HandleContacts)                // GET, POST
 				mux.HandleFunc("/api/contacts/channels", contactsHandler.HandleChannels)       // GET ?contactId=&unlinked=1
 				mux.HandleFunc("/api/contacts/channels/", contactsHandler.HandleChannelAction) // POST /{id}/link|unlink
-				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)       // POST
-				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)       // GET ?contactId=|sessionId=
-				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)       // GET
-				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)            // PATCH, DELETE /{id}
+				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)      // POST
+				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)      // GET ?contactId=|sessionId=
+				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)      // GET
+				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)    // GET tenant→company map
+				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)   // GET /{sessionId}/members
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)           // PATCH, DELETE /{id}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
