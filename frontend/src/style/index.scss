@@ -2592,8 +2592,11 @@ body {
 }
 
 .contacts-list-item {
+  // Needs the base card surface (bg/border/radius/shadow) AND the interactive
+  // hover — without %bento-card the unselected cards render as borderless rows.
+  @extend %bento-card;
   @extend %bento-card-interactive;
-  display: flex;
+  flex-direction: row;
   gap: 10px;
   align-items: flex-start;
   padding: 10px;
