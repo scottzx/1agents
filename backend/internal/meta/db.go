@@ -100,7 +100,7 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
-const schemaVersion = 17
+const schemaVersion = 19
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -178,6 +178,22 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v17: %w", err)
 		}
 	}
+	// v18 (二度联系人) adds the feishu_group_members roster table. New table only
+	// (CREATE IF NOT EXISTS), so version-gated is fine; the contacts.degree column
+	// is added by ensureContactsColumns below (unconditional, idempotent).
+	if version < 18 {
+		if _, err := db.sql.Exec(schemaV18); err != nil {
+			return fmt.Errorf("meta: apply schema v18: %w", err)
+		}
+	}
+	// v19 (公司基础信息表) adds the companies + company_tenants tables: the
+	// tenant_key→org-name mapping that replaces the hardcoded 飞书官方 constant. New
+	// tables only (CREATE IF NOT EXISTS), so version-gated is fine.
+	if version < 19 {
+		if _, err := db.sql.Exec(schemaV19); err != nil {
+			return fmt.Errorf("meta: apply schema v19: %w", err)
+		}
+	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
 	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
 	// with user_version bumped to the latest while the other branch's columns
@@ -195,6 +211,12 @@ func (db *DB) migrateSchema() error {
 	// before these columns landed (v13 was taken by #60's Inbox table).
 	if err := db.ensureProjectsColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile projects columns: %w", err)
+	}
+	// v18 (二度联系人) adds contacts.degree. Reconciled unconditionally (same
+	// rationale as the other ensure* helpers): an idempotent ADD COLUMN that heals
+	// a DB whose user_version was bumped by a sibling branch before this landed.
+	if err := db.ensureContactsColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile contacts columns: %w", err)
 	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
@@ -278,6 +300,52 @@ func (db *DB) ensureProjectsColumns() error {
 		}
 		if _, err := db.sql.Exec(c.ddl); err != nil {
 			return fmt.Errorf("add projects.%s: %w", c.name, err)
+		}
+	}
+	return nil
+}
+
+// ensureContactsColumns adds the schema v18 columns when missing: contacts.degree
+// (1 = first-degree/manual, 2 = second-degree/roster-only) and
+// contact_channels.tenant_key (the member's Feishu org, free in chat.members).
+// Idempotent and independent of user_version, mirroring ensureTasksColumns.
+func (db *DB) ensureContactsColumns() error {
+	contactCols, err := db.tableColumns("contacts")
+	if err != nil {
+		return err
+	}
+	if !contactCols["degree"] {
+		if _, err := db.sql.Exec(`ALTER TABLE contacts ADD COLUMN degree INTEGER NOT NULL DEFAULT 1`); err != nil {
+			return fmt.Errorf("add contacts.degree: %w", err)
+		}
+	}
+	chanCols, err := db.tableColumns("contact_channels")
+	if err != nil {
+		return err
+	}
+	if !chanCols["tenant_key"] {
+		if _, err := db.sql.Exec(`ALTER TABLE contact_channels ADD COLUMN tenant_key TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add contact_channels.tenant_key: %w", err)
+		}
+	}
+	// feishu_tracked_chats.member_total: the chat's true member count (API
+	// member_total), distinct from the enumerable roster the API caps for very
+	// large groups.
+	trackedCols, err := db.tableColumns("feishu_tracked_chats")
+	if err != nil {
+		return err
+	}
+	if len(trackedCols) > 0 && !trackedCols["member_total"] {
+		if _, err := db.sql.Exec(`ALTER TABLE feishu_tracked_chats ADD COLUMN member_total INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add feishu_tracked_chats.member_total: %w", err)
+		}
+	}
+	// feishu_tracked_chats.members_fetched: set once the full chat.members roster
+	// has been fetched + ingested, so later syncs skip the (expensive) roster call
+	// and reuse the cached roster for sender-name enrichment.
+	if len(trackedCols) > 0 && !trackedCols["members_fetched"] {
+		if _, err := db.sql.Exec(`ALTER TABLE feishu_tracked_chats ADD COLUMN members_fetched INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add feishu_tracked_chats.members_fetched: %w", err)
 		}
 	}
 	return nil
@@ -603,6 +671,51 @@ CREATE TABLE IF NOT EXISTS feishu_sync_config (
     enabled          INTEGER NOT NULL DEFAULT 1,
     interval_minutes INTEGER NOT NULL DEFAULT 180
 );
+`
+
+// schemaV18 adds the 二度联系人 layer (Phase 3). feishu_group_members is the full
+// roster of every tracked group: one row per (session_id, channel_id=open_id),
+// fetched ONCE on the first sync (gated by feishu_tracked_chats.members_fetched)
+// — including silent members who never posted. Later syncs reuse this cache for
+// sender-name enrichment and incrementally add active speakers. It drives
+// degree-2 contact ingestion (a channel discovered only from the roster, never
+// from a sender) and the "在哪些群" detail. The contacts.degree
+// column is added separately by ensureContactsColumns (unconditional ALTER).
+const schemaV18 = `
+CREATE TABLE IF NOT EXISTS feishu_group_members (
+    session_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    nickname   TEXT NOT NULL DEFAULT '',
+    tenant_key TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, channel_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fgm_channel ON feishu_group_members(channel_id);
+`
+
+// schemaV19 adds the 公司基础信息表 layer. companies owns the org metadata
+// (full/short name, reserved unified_id business id, note); company_tenants maps
+// each Feishu tenant_key to a company (1:1 on tenant_key, many tenants per
+// company). Together they replace the hardcoded 飞书官方 tenant constant — the org
+// name shown next to a contact's channel now resolves through this map, with
+// 飞书官方 seeded (see CompanyStore.SeedFeishuOfficial).
+const schemaV19 = `
+CREATE TABLE IF NOT EXISTS companies (
+    id         TEXT PRIMARY KEY,
+    full_name  TEXT NOT NULL DEFAULT '',
+    short_name TEXT NOT NULL DEFAULT '',
+    unified_id TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS company_tenants (
+    tenant_key TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_company_tenants_company ON company_tenants(company_id);
 `
 
 // ── shared helpers ──────────────────────────────────────────────────────────

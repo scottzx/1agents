@@ -2,6 +2,7 @@ package system
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -245,10 +246,31 @@ func (h *Handler) HappyDaemonStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := startHappyDaemon(); err != nil {
+		code := http.StatusInternalServerError
+		if errors.Is(err, errHappyNotFound) {
+			code = http.StatusServiceUnavailable
+		}
+		jsonError(w, err.Error(), code)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	fmt.Fprintf(w, `{"ok":true}`)
+}
+
+// errHappyNotFound is returned when the happy CLI cannot be located by any
+// resolution strategy (PATH / bundled / repo dev).
+var errHappyNotFound = errors.New("happy CLI not found — build it with `make happy` or install it on PATH")
+
+// startHappyDaemon launches `happy daemon start` with the 1agents RPC adapter
+// and relay pinned. Shared by the HTTP handler and the pairing requester
+// (which restarts the daemon after rewriting credentials). The daemon spawns a
+// detached start-sync child and exits immediately, so we don't block on it.
+func startHappyDaemon() error {
 	name, lead, ok := resolveHappy()
 	if !ok {
-		jsonError(w, "happy CLI not found — build it with `make happy` or install it on PATH", http.StatusServiceUnavailable)
-		return
+		return errHappyNotFound
 	}
 
 	args := append(append([]string{}, lead...), "daemon", "start")
@@ -269,14 +291,52 @@ func (h *Handler) HappyDaemonStart(w http.ResponseWriter, r *http.Request) {
 		cmd.Env = append(cmd.Env, "HAPPY_SERVER_URL="+defaultRelayURL)
 	}
 	if err := cmd.Start(); err != nil {
-		jsonError(w, "failed to start daemon: "+err.Error(), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 	// We don't Wait() — the child detaches itself and exits the parent quickly.
 	go func() { _ = cmd.Wait() }()
+	return nil
+}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	fmt.Fprintf(w, `{"ok":true}`)
+// stopHappyDaemonProcess reads the daemon PID from state and sends SIGTERM.
+// Best-effort sibling of HappyDaemonStop for internal callers (the pairing
+// requester restarts the daemon to pick up rewritten credentials). A missing
+// state file or already-dead process is not an error.
+func stopHappyDaemonProcess() error {
+	data, err := os.ReadFile(filepath.Join(happyHome(), "daemon.state.json"))
+	if err != nil {
+		return nil // not running
+	}
+	var state struct {
+		Pid int `json:"pid"`
+	}
+	if json.Unmarshal(data, &state) != nil || state.Pid <= 0 {
+		return nil
+	}
+	proc, err := os.FindProcess(state.Pid)
+	if err != nil {
+		return nil
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		if strings.Contains(err.Error(), "process already finished") ||
+			strings.Contains(err.Error(), "no such process") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// effectiveRelayURL resolves the relay base the daemon will use, matching
+// happy-cli's precedence: env HAPPY_SERVER_URL → paired settings.json → default.
+func effectiveRelayURL() string {
+	if v := os.Getenv("HAPPY_SERVER_URL"); v != "" {
+		return v
+	}
+	if v := happySettingsServerURL(); v != "" {
+		return v
+	}
+	return defaultRelayURL
 }
 
 // HappyDaemonStop handles POST /api/system/happy/daemon/stop.

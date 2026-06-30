@@ -8,6 +8,7 @@ package contacts
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,12 +24,22 @@ type Handler struct {
 	fs  *feishu.Store
 	cs  *meta.ContactStore
 	ccs *meta.FeishuChatStore // tracked-chat names overlay onto session summaries
+	cps *meta.CompanyStore    // tenant_key→org-name map for the contacts grid/modal
 }
 
 // NewHandler builds a Handler from explicit stores (used by tests). ccs may be
-// nil; session summaries then keep the chat_id fallback for names.
-func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore) *Handler {
-	return &Handler{fs: fs, cs: cs, ccs: ccs}
+// nil; session summaries then keep the chat_id fallback for names. cps may be
+// nil; the companies endpoint then returns an empty map.
+func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore, cps *meta.CompanyStore) *Handler {
+	if cps != nil {
+		// Idempotent: ensure 飞书官方 is seeded so the frontend's org labels resolve
+		// without the old hardcoded constant. Log + ignore so a seed failure never
+		// blocks the contacts API.
+		if err := cps.SeedFeishuOfficial(); err != nil {
+			log.Printf("[contacts] seed 飞书官方 failed: %v", err)
+		}
+	}
+	return &Handler{fs: fs, cs: cs, ccs: ccs, cps: cps}
 }
 
 // NewHandlerDefault wires the handler from the default sync.db + meta.db (the
@@ -43,7 +54,7 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db)), nil
+	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db), meta.NewCompanyStore(db)), nil
 }
 
 // ── HTTP helpers ──
@@ -69,7 +80,12 @@ type contactBody struct {
 func (h *Handler) HandleContacts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		list, err := h.cs.ContactsWithChannels()
+		// Optional ?degree=1|2 filter; absent/0 returns all degrees.
+		degree := 0
+		if v := r.URL.Query().Get("degree"); v != "" {
+			degree, _ = strconv.Atoi(v)
+		}
+		list, err := h.cs.ContactsWithChannelsByDegree(degree)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -98,7 +114,43 @@ func (h *Handler) HandleContacts(w http.ResponseWriter, r *http.Request) {
 
 // HandleContactItem: PATCH update; DELETE remove. Path: /api/contacts/{id}.
 func (h *Handler) HandleContactItem(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/contacts/")
+	rest := strings.TrimPrefix(r.URL.Path, "/api/contacts/")
+	// GET /api/contacts/{id}/groups → the tracked-group sessionIds this contact
+	// belongs to, derived from the roster. A person in N groups has ONE open_id
+	// channel (whose single session_id is just last-seen) but N roster rows, so
+	// membership must come from the roster, not the channel.
+	if cid, ok := strings.CutSuffix(rest, "/groups"); ok {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		chans, err := h.cs.ListChannelsForContact(cid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		seen := map[string]bool{}
+		sessions := []string{}
+		for _, ch := range chans {
+			if ch.Platform != feishu.Channel {
+				continue
+			}
+			groups, err := h.cs.GroupsForChannel(ch.ChannelID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for _, sid := range groups {
+				if !seen[sid] {
+					seen[sid] = true
+					sessions = append(sessions, sid)
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, sessions)
+		return
+	}
+	id := rest
 	if id == "" || strings.Contains(id, "/") {
 		badRequest(w, "contact id required")
 		return
@@ -239,8 +291,25 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 			limit = l
 		}
 	}
-	if sid := r.URL.Query().Get("sessionId"); sid != "" {
-		msgs, err := h.fs.ListMessages(feishu.Channel, sid, 0, limit)
+	sessionID := r.URL.Query().Get("sessionId")
+	contactID := r.URL.Query().Get("contactId")
+	// contactId present → this contact's messages; sessionId (optional) narrows to
+	// one group. contactId + sessionId = "this person in that group"; contactId
+	// alone = merged cross-group. sessionId alone (no contactId) = the whole
+	// group's messages (used by the 消息 tab's session view).
+	if contactID != "" {
+		chans, err := h.cs.ListChannelsForContact(contactID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		senderIDs := make([]string, 0, len(chans))
+		for _, c := range chans {
+			if c.Platform == feishu.Channel {
+				senderIDs = append(senderIDs, c.ChannelID)
+			}
+		}
+		msgs, err := h.fs.MessagesBySenders(feishu.Channel, senderIDs, sessionID, limit)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -248,28 +317,37 @@ func (h *Handler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, msgs)
 		return
 	}
-	contactID := r.URL.Query().Get("contactId")
-	if contactID == "" {
-		badRequest(w, "contactId or sessionId required")
-		return
-	}
-	chans, err := h.cs.ListChannelsForContact(contactID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	senderIDs := make([]string, 0, len(chans))
-	for _, c := range chans {
-		if c.Platform == feishu.Channel {
-			senderIDs = append(senderIDs, c.ChannelID)
+	if sessionID != "" {
+		msgs, err := h.fs.ListMessages(feishu.Channel, sessionID, 0, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		writeJSON(w, http.StatusOK, msgs)
+		return
 	}
-	msgs, err := h.fs.MessagesBySenders(feishu.Channel, senderIDs, limit)
+	badRequest(w, "contactId or sessionId required")
+}
+
+// HandleGroupMembers: GET /api/contacts/groups/{sessionId}/members → the recorded
+// degree-2 roster (open_id + nickname + tenant_key) of a tracked group.
+func (h *Handler) HandleGroupMembers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/contacts/groups/")
+	sessionID, tail, ok := strings.Cut(rest, "/")
+	if !ok || sessionID == "" || tail != "members" {
+		badRequest(w, "path must be /api/contacts/groups/{sessionId}/members")
+		return
+	}
+	members, err := h.cs.GroupMembersForSession(sessionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, msgs)
+	writeJSON(w, http.StatusOK, members)
 }
 
 // HandleSessions: GET → session summaries (group list for the 消息 tab).
@@ -296,4 +374,25 @@ func (h *Handler) HandleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, sums)
+}
+
+// HandleCompanies: GET → the tenant_key→company-name map (company_tenants ×
+// companies). The frontend builds a tenantKey→shortName lookup to label each
+// contact's channel org, replacing the old hardcoded 飞书官方 constant. Returns an
+// empty list when no company store is wired.
+func (h *Handler) HandleCompanies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.cps == nil {
+		writeJSON(w, http.StatusOK, []meta.CompanyTenant{})
+		return
+	}
+	list, err := h.cps.TenantCompanyMap()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }

@@ -145,6 +145,104 @@ function MonoRow({ label, value, redact = false }: { label: string; value: strin
     );
 }
 
+/**
+ * 账户级配对(Model A)。点「生成账户配对码」让本机后台向中转登记一个临时公钥
+ * 并产出 happy://terminal?<key> 二维码;客户端(已登录账号)扫码批准后,本机
+ * 即绑定到该账号,daemon 自动以新账号重连。取代旧「设备档案」(机器借自身账号)
+ * 与「终端跑 happy auth login」两种方式。
+ */
+function AccountPairing({ onPaired }: { onPaired: () => void }) {
+    const pairUrl = useSignal('');
+    const pairStatus = useSignal<'idle' | 'pending' | 'authorized' | 'error'>('idle');
+    const pairError = useSignal('');
+    const busy = useSignal(false);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const stopPoll = () => {
+        if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+        }
+    };
+    useEffect(() => stopPoll, []); // 卸载时清理轮询
+
+    const poll = async () => {
+        try {
+            const res = await fetch('/api/system/happy/pair/status');
+            if (!res.ok) return;
+            const j = await res.json();
+            pairStatus.value = j.status;
+            if (j.status === 'authorized') {
+                stopPoll();
+                onPaired();
+            } else if (j.status === 'error') {
+                stopPoll();
+                pairError.value = j.error ?? '配对失败';
+            }
+        } catch {
+            /* 轮询瞬时失败,下次再试 */
+        }
+    };
+
+    const start = async () => {
+        busy.value = true;
+        pairError.value = '';
+        try {
+            const res = await fetch('/api/system/happy/pair/start', { method: 'POST' });
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                pairError.value = j.error ?? `启动配对失败 HTTP ${res.status}`;
+                pairStatus.value = 'error';
+                return;
+            }
+            pairUrl.value = j.pairingUrl ?? '';
+            pairStatus.value = 'pending';
+            stopPoll();
+            pollRef.current = setInterval(poll, 2000);
+        } catch (e) {
+            pairError.value = (e as Error).message;
+            pairStatus.value = 'error';
+        } finally {
+            busy.value = false;
+        }
+    };
+
+    return (
+        <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:14px">
+            <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">
+                绑定到账号(账户级配对)
+            </div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">
+                生成配对码,用客户端(已登录账号)扫码批准,即可把本机绑定到你的账号 —— 订阅随账号生效。
+            </div>
+            <button
+                class="sys-settings-btn primary"
+                style="height:30px;padding:0 12px;font-size:12px"
+                disabled={busy.value || pairStatus.value === 'pending'}
+                onClick={start}
+            >
+                {pairStatus.value === 'pending' ? '等待客户端审批…' : '生成账户配对码'}
+            </button>
+            {pairStatus.value === 'pending' && pairUrl.value && (
+                <Fragment>
+                    <CredentialQr payload={pairUrl.value} />
+                    <div style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:4px">
+                        用已登录账号的客户端扫码批准
+                    </div>
+                </Fragment>
+            )}
+            {pairStatus.value === 'authorized' && (
+                <div style="margin-top:10px;font-size:12px;color:var(--success-fg)">
+                    ✓ 已绑定到账号,daemon 正在以新账号重连…
+                </div>
+            )}
+            {pairError.value && (
+                <div style="margin-top:8px;font-size:12px;color:var(--danger-fg)">{pairError.value}</div>
+            )}
+        </div>
+    );
+}
+
 export function LocalMachinePanel() {
     const status = useSignal<HappyStatus | null>(null);
     const error = useSignal('');
@@ -370,14 +468,13 @@ export function LocalMachinePanel() {
                 </div>
             )}
 
+            {/* 账户级配对(Model A)—— 绑定本机到账号,取代终端 happy auth login */}
+            <AccountPairing onPaired={fetchStatus} />
+
             {/* 未登录提示 */}
             {s !== null && !hasCredentials && (
                 <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
-                    未检测到 happy 凭据。请先在终端运行{' '}
-                    <code style="font-family:var(--font-mono);background:var(--bg-panel);padding:1px 5px;border-radius:3px">
-                        happy auth login
-                    </code>{' '}
-                    完成登录后再启动 Daemon。
+                    未检测到 happy 凭据。点上方「生成账户配对码」用客户端扫码绑定本机到你的账号,即可启动 Daemon。
                 </div>
             )}
         </div>
