@@ -59,8 +59,11 @@ type Project struct {
 	DefaultAgent string    `json:"defaultAgent,omitempty"`
 	Builtin      bool      `json:"builtin,omitempty"`
 	Position     int       `json:"position,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	// AvailableAgents is the allowlist of agent types that may run in this
+	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
+	AvailableAgents []string `json:"availableAgents,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.
@@ -128,6 +131,31 @@ const (
 	TaskTypeDiscussion  TaskType = "discussion"
 )
 
+// TaskExecutor is the executor role for a task (schema v20, #318).
+type TaskExecutor string
+
+const (
+	// TaskExecutorAgent is the default: an AI agent runs the task via ACP.
+	TaskExecutorAgent TaskExecutor = "agent"
+	// TaskExecutorFunction routes to the in-process function registry (token≈0).
+	TaskExecutorFunction TaskExecutor = "function"
+	// TaskExecutorHuman holds the task in a decision queue until user action.
+	TaskExecutorHuman TaskExecutor = "human"
+)
+
+// TaskTargetSpec is the dispatch spec embedded in Task.TaskTarget (JSON). It
+// lets a task override the project defaults for which agent to run, in which
+// directory, and with which MCP capabilities.
+type TaskTargetSpec struct {
+	// AgentType overrides Task.Assignee for dispatch (e.g. "claudecode").
+	AgentType string `json:"agent,omitempty"`
+	// Cwd is the absolute working directory the agent should cd into. Defaults
+	// to the project's WorkspacePath when empty.
+	Cwd string `json:"cwd,omitempty"`
+	// Capabilities is the list of MCP server names to inject for this task.
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
 // TaskSource marks how a task entered the pool. The empty default means a
 // normal task (user- or PM-created). "agent-suggested" marks an AI suggestion
 // (issue #47, the spawn_task model): a self-contained work item an executing
@@ -185,6 +213,11 @@ const (
 	// configured for verification (Task.Verifier set): the scheduler picks it up
 	// and runs the verifier headlessly instead of completing it. See #50.
 	TaskStatusPendingReview TaskStatus = "pending_review"
+	// TaskStatusAwaitingHuman marks a task with executor=human that is waiting for
+	// user action (click-done, dialog backfill, or MCP complete_human_task). Once
+	// the user completes it, the scheduler's ready gate releases downstream tasks
+	// that depend on this one — identical to completing any other task.
+	TaskStatusAwaitingHuman TaskStatus = "awaiting_human"
 )
 
 // CriterionResult is the verifier's per-acceptance-criterion judgement.
@@ -343,6 +376,27 @@ type Task struct {
 	// Links are GitHub-style peer cross-references to other tasks. They drive
 	// indexing/navigation; "closes" links also auto-close their target.
 	Links []TaskLink `json:"links,omitempty"`
+	// ── task kernel fields (schema v20, #318) ──
+	// Executor is the role that carries out this task: "agent" (default, AI),
+	// "function" (deterministic in-process handler), or "human" (decision gate).
+	// Empty/missing rows behave identically to "agent" for full back-compat.
+	Executor TaskExecutor `json:"executor,omitempty"`
+	// BusinessRef is the opaque binding to an application domain object, e.g.
+	// "crm:lead:42" or "media:clip:7". Nullable. Used by IssueTasksFromBusiness /
+	// ListTasksForBusiness (binding seam, #321).
+	BusinessRef string `json:"businessRef,omitempty"`
+	// TaskTarget holds the dispatch spec for agent tasks: which agent type to
+	// start, what cwd to run in, and which MCP capabilities to inject. Stored as
+	// JSON; nil means "use project defaults" (workspacePath + Assignee).
+	TaskTarget *TaskTargetSpec `json:"target,omitempty"`
+	// Result is the task's terminal output, written by the runner or function
+	// executor. Stored as JSON so callers can write domain-specific payloads.
+	Result string `json:"result,omitempty"`
+	// CostTokens is the total token expenditure for this task across all
+	// execution + verification cycles. 0 for function/human tasks (near-zero
+	// cost). Set by the runner on finish.
+	CostTokens int64 `json:"costTokens,omitempty"`
+
 	// ── suggestion source (schema v9) ──
 	// Source marks an AI-suggested task (issue #47). Empty = normal task;
 	// "agent-suggested" cards stay out of the board/scheduler until adopted.

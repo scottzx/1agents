@@ -694,6 +694,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		GithubState     *string    `json:"githubState,omitempty"`
 		GithubAssignees *[]string  `json:"githubAssignees,omitempty"`
 		LastSyncedAt    *time.Time `json:"lastSyncedAt,omitempty"`
+		// Task kernel result / summary fields (#318, #324).
+		Result  *string `json:"result,omitempty"`
+		Summary *string `json:"summary,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -714,7 +717,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		// Manual status changes are limited to terminal states the scheduler
 		// skips (completed/cancelled). Runnable states (pending/queued/running)
 		// stay scheduler-owned, so the Kanban board can never arm execution by
-		// drag — only retire a card.
+		// drag — only retire a card. Exception: awaiting_human → completed is
+		// the human-decision-gate completion path (#324).
 		switch TaskStatus(*body.Status) {
 		case TaskStatusCompleted, TaskStatusCancelled:
 		default:
@@ -882,6 +886,12 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.LastSyncedAt != nil {
 			target.LastSyncedAt = body.LastSyncedAt
+		}
+		if body.Result != nil {
+			target.Result = *body.Result
+		}
+		if body.Summary != nil {
+			target.Summary = *body.Summary
 		}
 		target.UpdatedAt = time.Now().UTC()
 		return true

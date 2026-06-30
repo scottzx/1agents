@@ -31,14 +31,17 @@ func get1AgentsHome() string {
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	Status       string `json:"status"`
-	TerminalDir  string `json:"terminalDir,omitempty"`
-	ChatChannel  string `json:"chatChannel,omitempty"`
-	DefaultAgent string `json:"defaultAgent,omitempty"`
-	Builtin      bool   `json:"builtin,omitempty"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Path            string   `json:"path"`
+	Status          string   `json:"status"`
+	TerminalDir     string   `json:"terminalDir,omitempty"`
+	ChatChannel     string   `json:"chatChannel,omitempty"`
+	DefaultAgent    string   `json:"defaultAgent,omitempty"`
+	Builtin         bool     `json:"builtin,omitempty"`
+	// AvailableAgents is the allowlist of agent type slugs that may run in
+	// this workspace (§325). Empty means unrestricted.
+	AvailableAgents []string `json:"availableAgents,omitempty"`
 }
 
 // WorkspacesConfig is the top-level workspace registry shape. Its persistence
@@ -64,27 +67,29 @@ func NewHandler(tmuxSession ...string) *Handler {
 // projectToWorkspace maps a meta project row to the workspace registry shape.
 func projectToWorkspace(p meta.Project) Workspace {
 	return Workspace{
-		ID:           p.ID,
-		Name:         p.Name,
-		Path:         p.WorkspacePath,
-		Status:       string(p.Status),
-		TerminalDir:  p.TerminalDir,
-		ChatChannel:  p.ChatChannel,
-		DefaultAgent: p.DefaultAgent,
-		Builtin:      p.Builtin,
+		ID:              p.ID,
+		Name:            p.Name,
+		Path:            p.WorkspacePath,
+		Status:          string(p.Status),
+		TerminalDir:     p.TerminalDir,
+		ChatChannel:     p.ChatChannel,
+		DefaultAgent:    p.DefaultAgent,
+		Builtin:         p.Builtin,
+		AvailableAgents: p.AvailableAgents,
 	}
 }
 
 // workspaceToProject maps a workspace into a meta project (write side).
 func workspaceToProject(ws Workspace) meta.Project {
 	return meta.Project{
-		ID:            ws.ID,
-		Name:          ws.Name,
-		WorkspacePath: ws.Path,
-		TerminalDir:   ws.TerminalDir,
-		ChatChannel:   ws.ChatChannel,
-		DefaultAgent:  ws.DefaultAgent,
-		Builtin:       ws.Builtin,
+		ID:              ws.ID,
+		Name:            ws.Name,
+		WorkspacePath:   ws.Path,
+		TerminalDir:     ws.TerminalDir,
+		ChatChannel:     ws.ChatChannel,
+		DefaultAgent:    ws.DefaultAgent,
+		Builtin:         ws.Builtin,
+		AvailableAgents: ws.AvailableAgents,
 	}
 }
 
@@ -247,16 +252,24 @@ func (h *Handler) registerWorkspaceProject(ws Workspace) {
 }
 
 // Create handles POST /api/workspace/create
+// Optional body field templateId: when set, Scaffold is called after the
+// project row is persisted (creates artifact subdirs + domain tables + seeds
+// project_config). The workspace is created even when Scaffold fails — the
+// error is logged and returned in a non-fatal "scaffoldError" response field.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var ws Workspace
-	if err := json.NewDecoder(r.Body).Decode(&ws); err != nil {
+	var body struct {
+		Workspace
+		TemplateID string `json:"templateId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	ws := body.Workspace
 	// Backfill default agent if missing — matches the existing
 	// "claudecode" default in handler.go:175 + the agent.DefaultAgentType
 	// constant in internal/agent/types.go.
@@ -295,7 +308,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.registerWorkspaceProject(ws)
 
-	writeJSON(w, map[string]interface{}{"ok": true, "workspace": ws})
+	// Optional template scaffold (#329).
+	resp := map[string]interface{}{"ok": true, "workspace": ws}
+	if body.TemplateID != "" {
+		if _, sErr := scaffoldProject(body.TemplateID, ws.ID, ws.Path); sErr != nil {
+			log.Printf("[workspace] scaffold template %s for project %s: %v", body.TemplateID, ws.ID, sErr)
+			resp["scaffoldError"] = sErr.Error()
+		} else {
+			resp["scaffolded"] = true
+		}
+	}
+	writeJSON(w, resp)
 }
 
 // Update handles POST /api/workspace/update

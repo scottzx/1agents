@@ -26,6 +26,8 @@ import { FlatFileBrowser } from '../drawer/FlatFileBrowser';
 import { FileDetailView } from '../drawer/FileDetailView';
 import { GitPanel } from '../drawer/GitPanel';
 import { TaskList } from '../drawer/TaskList';
+import { ProjectShell } from '../platform/ProjectShell';
+import { L1AppPage } from '../platform/L1Shell';
 import { RemindersPane } from '../drawer/Reminders';
 import { InboxPane } from '../drawer/Inbox';
 import { ContactsPane } from '../drawer/Contacts';
@@ -96,9 +98,28 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     language={language}
                 />
             );
-        case 'tasks':
-            // Padded scroll frame — replaces the old .kanban-background-layer
-            // which provided the project-landing's padding/scroll.
+        case 'tasks': {
+            // Use ProjectShell (#331) when a workspace is active — it adds the
+            // 动态/计划/任务/资产 tab bar plus any enabled project-tab apps.
+            // Fall back to bare TaskList when there is no active workspace.
+            const activeWsId = wsStore.activeWorkspaceId.value;
+            const activeWs = wsStore.workspaces.value.find(w => w.id === activeWsId);
+            if (activeWsId) {
+                return (
+                    <div
+                        style={{
+                            flex: 1,
+                            minHeight: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            backgroundColor: 'var(--bg-panel)',
+                        }}
+                    >
+                        <ProjectShell workspaceId={activeWsId} workspaceName={activeWs?.name} />
+                    </div>
+                );
+            }
             return (
                 <div
                     style={{
@@ -111,10 +132,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
-                    <TaskList
-                        workspaceId={wsStore.activeWorkspaceId.value}
-                        onSelectSession={s => sess.selectSession(s)}
-                    />
+                    <TaskList workspaceId={activeWsId} onSelectSession={s => sess.selectSession(s)} />
+                </div>
+            );
+        }
+        case 'l1-app':
+            // L1 app page (#332) — full-pane app view rendered via MountPointRenderer.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <L1AppPage mountId={view.mountId} />
                 </div>
             );
         case 'reminders':

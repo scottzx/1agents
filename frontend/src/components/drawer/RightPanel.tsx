@@ -7,6 +7,7 @@ import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
 import { TaskList } from './TaskList';
+import { ProjectShell } from '../platform/ProjectShell';
 import { ChannelAgentPanel } from './ChannelAgentPanel';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
@@ -15,6 +16,7 @@ import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as taskNav from '../../stores/taskNavStore';
+import * as appStore from '../../stores/appManifestStore';
 
 interface RightPanelProps {
     activeDrawerTab: RightDrawerTab;
@@ -265,14 +267,21 @@ export function RightPanel({
                     activeDrawerTab === 'tasks' ? 'flex' : 'none'
                 }; flex-direction: column; height: 100%; min-height: 0;`}
             >
-                {activeDrawerTab === 'tasks' && (
-                    <TaskList
-                        workspaceId={activeWorkspaceId}
-                        selectedTaskId={taskSelectedId.value}
-                        onTaskSelect={selectTask}
-                        onSelectSession={onSelectSession}
-                    />
-                )}
+                {activeDrawerTab === 'tasks' &&
+                    // When a workspace is active and enabled apps contribute project
+                    // tabs (#331), host the task list inside ProjectShell so the
+                    // 动态/计划/任务/资产 scaffold + app tabs (素材/阶段追踪 …) show.
+                    // No apps enabled → bare TaskList, identical to before.
+                    (activeWorkspaceId && appStore.projectTabMounts.value.length > 0 ? (
+                        <ProjectShell workspaceId={activeWorkspaceId} workspaceName={activeWorkspaceName} />
+                    ) : (
+                        <TaskList
+                            workspaceId={activeWorkspaceId}
+                            selectedTaskId={taskSelectedId.value}
+                            onTaskSelect={selectTask}
+                            onSelectSession={onSelectSession}
+                        />
+                    ))}
             </div>
 
             {/* Other drawer tab contents (files, git, settings) */}

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
+	"github.com/scottzx/1Agents/backend/internal/appkit"
+	"github.com/scottzx/1Agents/backend/internal/appregistry"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
@@ -31,6 +33,8 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/retro"
 	"github.com/scottzx/1Agents/backend/internal/system"
+	"github.com/scottzx/1Agents/backend/internal/taskapi"
+	"github.com/scottzx/1Agents/backend/internal/templateregistry"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
@@ -81,6 +85,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)     // POST — opens native folder picker
 	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
 	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
+
+	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
+	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
+	mux.HandleFunc("/api/apps/", appregistryItemHandler) // POST /{id}/enable|disable
+
+	// ── Template registry API (Wave 2a, #329) ───────────────────────────────
+	mux.HandleFunc("/api/templates", templateregistry.HandleList) // GET → {templates:[...]}
+
+	// ── Project config API (Wave 2a, #327) ──────────────────────────────────
+	mux.HandleFunc("/api/project/config", projectConfigHandler) // GET ?id=, PUT
 
 	// ── Agent (chat session) index API ─────────────────────────────────────
 	// 1agents-side metadata store. The actual conversation lives in
@@ -158,6 +172,18 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// Headless executor/verifier: scheduler-triggered tasks run through
 			// the 1acp bridge with no frontend involved (automation-first).
 			scheduler.SetRunner(agent.NewTaskRunner(acpxPort, selfBaseURL, tasksStore, agentStore, scheduler))
+
+			// ── North Task API + executor=function dispatch (Epic #317 内核).
+			// tasksStore is *meta.TaskStore (agent.TasksStore alias) and
+			// agent.Task == meta.Task, so the bridge is direct. RunInits runs any
+			// installable app's startup hook against the live API — no apps are
+			// compiled in yet, so it is a no-op until one is registered.
+			taskAPI := taskapi.New(tasksStore)
+			scheduler.SetFunctionRunner(func(task agent.Task, wsPath string) {
+				taskapi.RunFunction(task, wsPath, tasksStore, taskAPI)
+			})
+			appkit.RunInits(taskAPI)
+
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
@@ -218,12 +244,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/contacts", contactsHandler.HandleContacts)                // GET, POST
 				mux.HandleFunc("/api/contacts/channels", contactsHandler.HandleChannels)       // GET ?contactId=&unlinked=1
 				mux.HandleFunc("/api/contacts/channels/", contactsHandler.HandleChannelAction) // POST /{id}/link|unlink
-				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)      // POST
-				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)      // GET ?contactId=|sessionId=
-				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)      // GET
-				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)    // GET tenant→company map
-				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)   // GET /{sessionId}/members
-				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)           // PATCH, DELETE /{id}
+				mux.HandleFunc("/api/contacts/discover", contactsHandler.HandleDiscover)       // POST
+				mux.HandleFunc("/api/contacts/messages", contactsHandler.HandleMessages)       // GET ?contactId=|sessionId=
+				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)       // GET
+				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)     // GET tenant→company map
+				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)    // GET /{sessionId}/members
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)            // PATCH, DELETE /{id}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
@@ -1230,6 +1256,33 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 // silently shadowing the static catch-all would make "iframe doesn't
 // load" look like "module registration failed", which is much harder
 // to diagnose.
+// appregistryItemHandler routes /api/apps/{id}/enable and /api/apps/{id}/disable
+// to the appropriate appregistry handler. The mux prefix route /api/apps/ catches
+// both sub-paths; we dispatch by suffix.
+func appregistryItemHandler(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	switch {
+	case strings.HasSuffix(path, "/enable"):
+		appregistry.HandleEnable(w, r)
+	case strings.HasSuffix(path, "/disable"):
+		appregistry.HandleDisable(w, r)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+}
+
+// projectConfigHandler routes GET /api/project/config and PUT /api/project/config.
+func projectConfigHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		workspace.HandleProjectConfigGet(w, r)
+	case http.MethodPut:
+		workspace.HandleProjectConfigPut(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func serveEmbedScript(candidates []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only allow GET — these are static assets; anything else is a bug.
