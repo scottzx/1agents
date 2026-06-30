@@ -675,7 +675,9 @@ function MessagesTab() {
                     >
                         <div class="contacts-list-item-main">
                             <div class="contacts-list-item-top">
-                                <span class="contacts-list-name">{shortId(s.SessionName)}</span>
+                                <span class="contacts-list-name" title={s.SessionName}>
+                                    {s.SessionName}
+                                </span>
                                 <span class="contacts-channel-badge">{s.Count}</span>
                             </div>
                             {s.LastPreview && <div class="contacts-list-sub">{s.LastPreview}</div>}
@@ -722,7 +724,9 @@ function SessionTimeline({ session, onBack }: { session: SessionSummary; onBack:
                     ← {t('contacts.back', language)}
                 </button>
             )}
-            <h3 class="contacts-detail-name">{shortId(session.SessionName)}</h3>
+            <h3 class="contacts-detail-name" title={session.SessionName}>
+                {session.SessionName}
+            </h3>
             <div class="contacts-timeline">
                 {!loading && msgs.length === 0 && (
                     <div class="contacts-empty">{t('contacts.timelineEmpty', language)}</div>

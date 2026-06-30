@@ -2618,6 +2618,12 @@ body {
   font-weight: 600;
   color: var(--text-main);
   font-size: 14px;
+  // Truncate long names from the END (show the beginning), not the start.
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .contacts-list-phone {
@@ -3067,7 +3073,8 @@ body {
 .contacts-detail-modal {
   @extend %bento-card;
   position: relative;
-  width: min(640px, 94vw);
+  width: 80%;
+  max-width: 1100px;
   max-height: 88vh;
   overflow-y: auto;
 
