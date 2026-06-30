@@ -2,6 +2,7 @@ package meta
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -34,11 +35,12 @@ func (db *DB) upsertWorkspaceProject(p Project, position int) error {
 	if p.Builtin {
 		builtin = 1
 	}
+	agents, _ := json.Marshal(p.AvailableAgents)
 	_, err := db.sql.Exec(`
 		INSERT INTO projects (id, name, workspace_path, status,
 			terminal_dir, chat_channel, default_agent, builtin, position,
-			created_at, updated_at)
-		VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+			available_agents, created_at, updated_at)
+		VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			workspace_path = excluded.workspace_path,
@@ -47,10 +49,11 @@ func (db *DB) upsertWorkspaceProject(p Project, position int) error {
 			default_agent = excluded.default_agent,
 			builtin = excluded.builtin,
 			position = excluded.position,
+			available_agents = excluded.available_agents,
 			updated_at = excluded.updated_at`,
 		p.ID, p.Name, p.WorkspacePath,
 		p.TerminalDir, p.ChatChannel, p.DefaultAgent, builtin, position,
-		now, now)
+		string(agents), now, now)
 	return err
 }
 
@@ -144,6 +147,7 @@ func (db *DB) projectIDByPath(workspacePath string) (string, error) {
 const projectColumns = `id, name, workspace_path, status,
 	archive_reason, archive_note, archived_at,
 	terminal_dir, chat_channel, default_agent, builtin, position,
+	COALESCE(available_agents, '[]'),
 	created_at, updated_at`
 
 // GetProject returns a project by id.
@@ -263,10 +267,12 @@ func scanProject(r rowScanner) (Project, error) {
 	var status, reason, note string
 	var archivedAt sql.NullString
 	var builtin int
+	var availableAgents string
 	var createdAt, updatedAt string
 	if err := r.Scan(&p.ID, &p.Name, &p.WorkspacePath, &status,
 		&reason, &note, &archivedAt,
 		&p.TerminalDir, &p.ChatChannel, &p.DefaultAgent, &builtin, &p.Position,
+		&availableAgents,
 		&createdAt, &updatedAt); err != nil {
 		return Project{}, err
 	}
@@ -277,5 +283,8 @@ func scanProject(r rowScanner) (Project, error) {
 	p.Builtin = builtin != 0
 	p.CreatedAt = strToTime(createdAt)
 	p.UpdatedAt = strToTime(updatedAt)
+	if availableAgents != "" && availableAgents != "[]" {
+		_ = json.Unmarshal([]byte(availableAgents), &p.AvailableAgents)
+	}
 	return p, nil
 }

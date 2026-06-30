@@ -23,6 +23,7 @@ import * as tabsStore from '../stores/tabsStore';
 import * as agentCatalog from '../stores/agentCatalogStore';
 import * as stage from '../stores/stageStore';
 import * as taskNav from '../stores/taskNavStore';
+import * as appManifestStore from '../stores/appManifestStore';
 
 export {
     wsUrl,
@@ -98,6 +99,10 @@ export class App extends Component<{}, AppState> {
 
         // Wait for both workspaces and terminal sessions to load in parallel
         await Promise.all([wsStore.loadWorkspaces(true), sess.loadTerminals(), agentCatalog.loadAgentCatalog()]);
+
+        // Platform layer (#317 Wave 2b): load installed app manifests for mount-point
+        // rendering. Best-effort — graceful degradation when /api/apps unavailable.
+        void appManifestStore.loadApps();
 
         // Multi-device (#114): load registered remote devices so the sidebar can
         // group their projects. Best-effort — failures degrade to local-only view.

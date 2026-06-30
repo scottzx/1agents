@@ -16727,3 +16727,748 @@ body {
 
 @import './dashboard';
 
+/* ═══ Platform Layer — Epic #317 Wave 2b ══════════════════════════════════
+ * Styles for: ProjectShell (#326) · SessionTierPicker (#328)
+ *             MountPointRenderer (#331) · L1Shell / LensOverlay (#332)
+ *             ProjectConfigPanel
+ */
+
+// ── ProjectShell ─────────────────────────────────────────────────────────────
+
+.project-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--bg-panel);
+}
+
+.project-shell-tabbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.project-shell-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+.project-shell-tab {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+
+  &:hover {
+    color: var(--text-main);
+  }
+
+  &.is-active {
+    color: var(--text-main);
+    border-bottom-color: var(--accent-color);
+  }
+}
+
+.project-shell-config-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--bento-transition);
+
+  svg { width: 15px; height: 15px; }
+
+  &:hover {
+    color: var(--text-main);
+    background-color: var(--btn-hover);
+    border-color: var(--accent-color);
+  }
+}
+
+.project-shell-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-shell-tasks-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  overflow: auto;
+}
+
+.project-shell-app-tab {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// ── Builtin tab scaffolds (动态 / 计划 / 资产) ────────────────────────────────
+
+.project-tab-scaffold {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 16px;
+}
+
+.project-tab-scaffold-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-tab-scaffold-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.project-tab-scaffold-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.project-tab-scaffold-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px 20px;
+
+  svg {
+    width: 40px;
+    height: 40px;
+    opacity: 0.4;
+  }
+
+  p {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  span {
+    font-size: 12px;
+    max-width: 280px;
+    line-height: 1.6;
+  }
+}
+
+// ── ProjectConfigPanel ────────────────────────────────────────────────────────
+
+.project-config-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  z-index: 200;
+}
+
+.project-config-panel {
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  max-width: 100%;
+  background-color: var(--bg-card);
+  border-left: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+}
+
+.project-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.project-config-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.project-config-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--bento-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  svg { width: 16px; height: 16px; }
+  &:hover { background-color: var(--btn-hover); color: var(--text-main); }
+}
+
+.project-config-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+  flex-shrink: 0;
+}
+
+.project-config-tab {
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  &:hover { color: var(--text-main); }
+  &.is-active { color: var(--accent-color); border-bottom-color: var(--accent-color); }
+}
+
+.project-config-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.project-config-loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px;
+}
+
+.project-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-config-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.project-config-label-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.project-config-textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--bg-page);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+  &:focus { border-color: var(--accent-color); }
+}
+
+.project-config-textarea-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.project-config-empty-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.project-config-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-config-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--bg-page);
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.project-config-connector-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--success-fg);
+  flex-shrink: 0;
+}
+
+.project-config-expert-role {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  background-color: var(--btn-hover);
+  padding: 2px 6px;
+  border-radius: var(--bento-radius-sm);
+}
+
+.project-config-placeholder-row {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 12px 0;
+  text-align: center;
+}
+
+.project-config-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.project-config-btn-cancel,
+.project-config-btn-save {
+  padding: 7px 16px;
+  border-radius: var(--bento-radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  transition: background-color 0.15s, border-color 0.15s;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.project-config-btn-cancel {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  &:hover:not(:disabled) { background-color: var(--btn-hover); }
+}
+
+.project-config-btn-save {
+  background-color: var(--accent-color);
+  color: var(--on-accent);
+  border-color: var(--accent-color);
+  &:hover:not(:disabled) { background-color: var(--accent-hover); border-color: var(--accent-hover); }
+}
+
+// ── SessionTierPicker ─────────────────────────────────────────────────────────
+
+.session-tier-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 32px 24px;
+  max-width: 560px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.session-tier-picker-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.session-tier-picker-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: -12px 0 0;
+}
+
+.session-tier-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-tier-card {
+  // extends .bento-card from SCSS — class applied inline
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  text-align: left;
+  border: 1px solid var(--border-glass, var(--border-color));
+  border-radius: var(--bento-radius);
+  background-color: var(--bg-card-glass, var(--bg-card));
+  cursor: pointer;
+  transition: var(--bento-transition);
+  position: relative;
+
+  &:hover {
+    border-color: var(--accent-color);
+    box-shadow: var(--shadow-sm);
+  }
+
+  &.is-active {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color), var(--shadow-sm);
+    background-color: var(--accent-light);
+  }
+}
+
+.session-tier-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--btn-hover);
+  color: var(--accent-color);
+  flex-shrink: 0;
+
+  svg { width: 20px; height: 20px; }
+
+  .is-active & {
+    background-color: var(--accent-color);
+    color: var(--on-accent);
+  }
+}
+
+.session-tier-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.session-tier-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.session-tier-card-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.session-tier-card-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: var(--accent-color);
+  color: var(--on-accent);
+  flex-shrink: 0;
+
+  svg { width: 11px; height: 11px; }
+}
+
+.session-tier-config {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  background-color: var(--bg-page);
+}
+
+.session-tier-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-tier-config-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.session-tier-config-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.session-tier-select {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  &:focus { border-color: var(--accent-color); }
+}
+
+.session-tier-btn-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+  svg { width: 14px; height: 14px; }
+  &:hover { background-color: var(--btn-hover); }
+}
+
+.session-tier-no-apps {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.session-tier-app-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.session-tier-app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background-color: var(--bg-card);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--bento-transition);
+
+  &:hover { border-color: var(--accent-color); }
+
+  &.is-selected {
+    border-color: var(--accent-color);
+    background-color: var(--accent-light);
+    box-shadow: 0 0 0 1px var(--accent-color);
+  }
+}
+
+.session-tier-app-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.session-tier-app-version {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.session-tier-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.session-tier-btn-confirm {
+  padding: 10px 24px;
+  border-radius: var(--bento-radius-sm);
+  border: none;
+  background-color: var(--accent-color);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  &:hover:not(:disabled) { background-color: var(--accent-hover); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+// ── MountPointRenderer placeholder ────────────────────────────────────────────
+
+.app-view-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  height: 100%;
+  min-height: 240px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.app-view-placeholder-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--border-color);
+  border-radius: var(--bento-radius);
+  color: var(--text-muted);
+
+  svg { width: 22px; height: 22px; }
+}
+
+.app-view-placeholder-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.app-view-placeholder-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 260px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+// ── L1Shell nav items ─────────────────────────────────────────────────────────
+
+.l1-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--bento-radius-sm);
+  background: none;
+  color: var(--text-sidebar);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s, color 0.15s;
+
+  &:hover {
+    background-color: var(--bg-sidebar-hover);
+    color: var(--text-main);
+  }
+
+  &.is-active {
+    background-color: var(--bg-sidebar-active);
+    color: var(--accent-color);
+  }
+}
+
+.l1-nav-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+
+  svg { width: 16px; height: 16px; }
+}
+
+.l1-nav-item-icon-default {
+  color: var(--text-muted);
+  .is-active & { color: var(--accent-color); }
+}
+
+.l1-nav-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.l1-app-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.l1-app-page-not-found {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+// ── Lens overlay ───────────────────────────────────────────────────────────────
+
+.lens-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.lens-overlay-item {
+  pointer-events: auto;
+}
+
+

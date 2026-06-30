@@ -59,8 +59,11 @@ type Project struct {
 	DefaultAgent string    `json:"defaultAgent,omitempty"`
 	Builtin      bool      `json:"builtin,omitempty"`
 	Position     int       `json:"position,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	// AvailableAgents is the allowlist of agent types that may run in this
+	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
+	AvailableAgents []string `json:"availableAgents,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.

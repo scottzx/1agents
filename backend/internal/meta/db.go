@@ -100,6 +100,11 @@ func OpenDefault() (*DB, error) {
 // mainly for CLI one-shots and tests.
 func (db *DB) Close() error { return db.sql.Close() }
 
+// SQL returns the underlying *sql.DB handle. Used by platform packages
+// (appregistry, domainstore) that run idempotent CREATE TABLE IF NOT EXISTS
+// migrations without touching the global schemaVersion counter.
+func (db *DB) SQL() *sql.DB { return db.sql }
+
 const schemaVersion = 20
 
 func (db *DB) migrateSchema() error {
@@ -308,6 +313,9 @@ func (db *DB) ensureProjectsColumns() error {
 		{"default_agent", "ALTER TABLE projects ADD COLUMN default_agent TEXT NOT NULL DEFAULT ''"},
 		{"builtin", "ALTER TABLE projects ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0"},
 		{"position", "ALTER TABLE projects ADD COLUMN position INTEGER NOT NULL DEFAULT 0"},
+		// available_agents: JSON array of allowed agent type slugs (e.g. ["claudecode"]).
+		// Empty array means unrestricted. Added by Wave 2a platform layer (#325).
+		{"available_agents", "ALTER TABLE projects ADD COLUMN available_agents TEXT NOT NULL DEFAULT '[]'"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {

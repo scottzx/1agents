@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
+	"github.com/scottzx/1Agents/backend/internal/appregistry"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
@@ -31,6 +32,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/retro"
 	"github.com/scottzx/1Agents/backend/internal/system"
+	"github.com/scottzx/1Agents/backend/internal/templateregistry"
 	"github.com/scottzx/1Agents/backend/internal/terminal"
 	"github.com/scottzx/1Agents/backend/internal/tunnel"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
@@ -81,6 +83,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)     // POST — opens native folder picker
 	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
 	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
+
+	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
+	mux.HandleFunc("/api/apps", appregistry.HandleList)     // GET → {apps:[...]}
+	mux.HandleFunc("/api/apps/", appregistryItemHandler)    // POST /{id}/enable|disable
+
+	// ── Template registry API (Wave 2a, #329) ───────────────────────────────
+	mux.HandleFunc("/api/templates", templateregistry.HandleList) // GET → {templates:[...]}
+
+	// ── Project config API (Wave 2a, #327) ──────────────────────────────────
+	mux.HandleFunc("/api/project/config", projectConfigHandler) // GET ?id=, PUT
 
 	// ── Agent (chat session) index API ─────────────────────────────────────
 	// 1agents-side metadata store. The actual conversation lives in
@@ -1230,6 +1242,33 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 // silently shadowing the static catch-all would make "iframe doesn't
 // load" look like "module registration failed", which is much harder
 // to diagnose.
+// appregistryItemHandler routes /api/apps/{id}/enable and /api/apps/{id}/disable
+// to the appropriate appregistry handler. The mux prefix route /api/apps/ catches
+// both sub-paths; we dispatch by suffix.
+func appregistryItemHandler(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	switch {
+	case strings.HasSuffix(path, "/enable"):
+		appregistry.HandleEnable(w, r)
+	case strings.HasSuffix(path, "/disable"):
+		appregistry.HandleDisable(w, r)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+}
+
+// projectConfigHandler routes GET /api/project/config and PUT /api/project/config.
+func projectConfigHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		workspace.HandleProjectConfigGet(w, r)
+	case http.MethodPut:
+		workspace.HandleProjectConfigPut(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func serveEmbedScript(candidates []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only allow GET — these are static assets; anything else is a bug.
