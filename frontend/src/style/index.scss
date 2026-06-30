@@ -2453,6 +2453,9 @@ body {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  // Positioning context so the detail modal overlays only this pane (not the
+  // whole viewport / sidebar).
+  position: relative;
 }
 
 .contacts-view-switcher {
@@ -3060,7 +3063,9 @@ body {
 // A modal overlay (NOT the old left-right split). Centered panel on desktop,
 // full-screen on mobile. Backdrop click + × + Esc close it.
 .contacts-detail-modal-overlay {
-  position: fixed;
+  // Absolute (not fixed) so the modal overlays only the contacts pane — it must
+  // not cover the left sidebar. Anchored to .contacts-pane (position: relative).
+  position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
   display: flex;
@@ -3086,10 +3091,10 @@ body {
   -webkit-backdrop-filter: none;
 
   &.mobile {
-    width: 100vw;
-    max-width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
     border-radius: 0;
   }
 }
