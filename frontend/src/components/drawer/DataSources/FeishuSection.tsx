@@ -9,6 +9,7 @@ import {
     type TrackedChat,
     type ChannelStatus,
 } from '@1agents/core/services/contactService';
+import { sourceService } from '@1agents/core/services/sourceService';
 
 // 飞书群消息子模块 — browse the user's Feishu groups via lark-cli, pick which to
 // track, and sync manually or automatically. Extracted from the old ChannelsTab so
@@ -118,16 +119,31 @@ export function FeishuSection() {
         }
     };
 
+    // Both per-chat and all-chats sync now dispatch the feishu_message work-order
+    // task — one loop for everything. The task's function handler pulls raw
+    // messages into bronze (source_records) AND drives the proven digest sync
+    // (unified_messages + 二度联系人), so both views stay in step. The task runs
+    // async; we refresh the tracked list after a short delay so the last-synced
+    // timestamps and any new bronze rows are visible.
+    // Both sync buttons dispatch the same work-order task — the handler pulls
+    // raw messages into bronze AND drives the proven digest sync
+    // (unified_messages + 二度联系人), so bronze and the message UI stay in step.
+    // The per-chat button intentionally triggers a full-tracked-set pass (small
+    // over-fetch to keep a single sync path).
+    const dispatchMessageSync = async () => {
+        await sourceService.syncNow('feishu', 'feishu_message');
+        window.setTimeout(() => refreshTracked(), 6500);
+    };
+
     const syncOne = async (chatId: string) => {
         setBusyChat(chatId);
         setError('');
         try {
-            await channelService.syncOne(chatId);
-            await refreshTracked();
+            await dispatchMessageSync();
         } catch (err) {
             setError((err as Error).message);
         } finally {
-            setBusyChat(null);
+            window.setTimeout(() => setBusyChat(null), 6500);
         }
     };
 
@@ -136,14 +152,12 @@ export function FeishuSection() {
         setError('');
         setToast('');
         try {
-            const results = await channelService.syncAll();
-            const inserted = results.reduce((sum, r) => sum + (r.inserted || 0), 0);
-            setToast(t('contacts.channels.syncDone', language, { inserted }));
-            await refreshTracked();
+            await dispatchMessageSync();
+            setToast(t('contacts.channels.syncDispatched', language));
         } catch (err) {
             setError((err as Error).message);
         } finally {
-            setSyncingAll(false);
+            window.setTimeout(() => setSyncingAll(false), 6500);
         }
     };
 

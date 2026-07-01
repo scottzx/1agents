@@ -72,14 +72,9 @@ function useCopyHint(): [string, (key: string, text: string) => void] {
     return [copiedKey, copy];
 }
 
-function formatRelTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    if (ms < 60_000) return '刚刚';
-    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} 分钟前`;
-    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)} 小时前`;
-    return `${Math.floor(ms / 86_400_000)} 天前`;
-}
-
+// Absolute local timestamp — no "刚刚 / 即将..." labels. Relative labels lie for
+// near-future timestamps (token expiries) and read as buggy; give the user the
+// actual moment and let them judge.
 function formatAbsTime(iso: string, language: Lang): string {
     return new Date(iso).toLocaleString(language);
 }
@@ -208,9 +203,7 @@ export function CliZone({ language }: CliZoneProps) {
                     {status.authExpiresAt && (
                         <div class="fscard-cli-row">
                             <span class="fscard-cli-row-label">{t('datasource.cli.expiresAt', language)}</span>
-                            <span class="fscard-cli-row-val">
-                                {formatRelTime(status.authExpiresAt)} ({formatAbsTime(status.authExpiresAt, language)})
-                            </span>
+                            <span class="fscard-cli-row-val">{formatAbsTime(status.authExpiresAt, language)}</span>
                         </div>
                     )}
                 </Fragment>
@@ -279,7 +272,7 @@ export function CliZone({ language }: CliZoneProps) {
             {status?.checkedAt && (
                 <div class="fscard-cli-row">
                     <span class="fscard-cli-row-label">{t('datasource.cli.checkedAt', language)}</span>
-                    <span class="fscard-cli-row-val">{formatRelTime(status.checkedAt)}</span>
+                    <span class="fscard-cli-row-val">{formatAbsTime(status.checkedAt, language)}</span>
                 </div>
             )}
         </div>
@@ -519,7 +512,7 @@ export function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
                             </span>
                         )}
                         <span class="fscard-history-time">
-                            {run.completedAt ? formatRelTime(run.completedAt) : formatRelTime(run.createdAt)}
+                            {formatAbsTime(run.completedAt || run.createdAt, language)}
                         </span>
                     </div>
                 );

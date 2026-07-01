@@ -79,12 +79,7 @@ export function DataSourcesPane() {
                 </div>
             ) : detail.value ? (
                 <div class="datasource-tab-body">
-                    <SourceDetail
-                        source={detail.value.source}
-                        kind={detail.value.kind}
-                        title={detail.value.title}
-                        onBack={clearDetail}
-                    />
+                    <SourceDetail source={detail.value.source} kind={detail.value.kind} title={detail.value.title} />
                 </div>
             ) : (
                 <Fragment>
