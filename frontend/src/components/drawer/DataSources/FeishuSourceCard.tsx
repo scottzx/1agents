@@ -318,7 +318,11 @@ export function CollectionsZone({ language, onSyncDispatched, onToast }: Collect
                 incrementalMinutes: next.incrementalMinutes,
                 pageSize: next.pageSize,
             });
-            setCollections(prev => prev.map(c => (c.kind === col.kind ? saved : c)));
+            // MERGE the persisted config back into the existing view — the PUT
+            // response is only the SourceCollectionConfig (no label / domain /
+            // implemented / perChat), so replacing outright would wipe the view
+            // fields and make the row render as an unlabeled "即将上线" stub.
+            setCollections(prev => prev.map(c => (c.kind === col.kind ? { ...c, ...saved } : c)));
         } catch (e) {
             setError((e as Error).message);
             // Rollback
