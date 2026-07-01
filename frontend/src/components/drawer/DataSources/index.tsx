@@ -1,9 +1,11 @@
 import { h } from 'preact';
-import { useSignal } from '@preact/signals';
+import { useEffect } from 'preact/hooks';
+import { useSignal, useSignalEffect } from '@preact/signals';
 
 import * as ui from '../../../stores/uiStore';
+import * as taskNav from '../../../stores/taskNavStore';
 import { t } from '../../../i18n';
-import { ShellNav, type Crumb, type ShellTab } from '../../platform/ShellNav';
+import { ShellNav, type ShellTab } from '../../platform/ShellNav';
 import { SourceList } from './SourceList';
 import { SourceDetail } from './SourceDetail';
 import { ManagePanel } from './ManagePanel';
@@ -27,9 +29,15 @@ export function DataSourcesPane() {
         if (id !== 'data') detail.value = null;
     };
 
-    const crumbs: Crumb[] = detail.value
-        ? [{ label: t('datasource.overview', language), onClick: overview }, { label: detail.value.title }]
-        : [{ label: t('datasource.overview', language) }];
+    // The drill breadcrumb lives in the global WorkspaceHeader now (数据源 /
+    // 数据源 › <record>), not in a second bar here. Publish it on state change,
+    // and clear it on unmount so switching to another full-page module resets.
+    useSignalEffect(() => {
+        taskNav.headerCrumbs.value = detail.value
+            ? [{ label: t('header.title.datasources', language), onClick: overview }, { label: detail.value.title }]
+            : [{ label: t('header.title.datasources', language) }];
+    });
+    useEffect(() => () => void (taskNav.headerCrumbs.value = null), []);
 
     const tabs: ShellTab[] = [
         { id: 'data', label: t('datasource.tab.data', language) },
@@ -39,7 +47,7 @@ export function DataSourcesPane() {
 
     return (
         <div class="datasource-pane">
-            <ShellNav crumbs={crumbs} tabs={tabs} activeTab={tab.value} onSelectTab={setTab} />
+            <ShellNav tabs={tabs} activeTab={tab.value} onSelectTab={setTab} />
 
             <div class="datasource-tab-body">
                 {tab.value === 'data' &&

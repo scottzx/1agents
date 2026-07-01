@@ -37,6 +37,20 @@ export const taskHasSelection = signal(false);
 export const taskBackHandler = signal<(() => void) | null>(null);
 
 /**
+ * Header breadcrumb bridge. A full-page module can publish its own breadcrumb
+ * trail (including the root level) to the global WorkspaceHeader, overriding the
+ * default `FULLPAGE_TITLE_KEYS` title — so its internal drill nav (e.g. 数据源 ›
+ * 联系人) shows in the one global header instead of a second stacked bar. Set on
+ * mount / state-change, clear to null on unmount (mirrors copilotAppContext).
+ * `HeaderCrumb` is structurally the same as ShellNav's `Crumb`.
+ */
+export interface HeaderCrumb {
+    label: string;
+    onClick?: () => void;
+}
+export const headerCrumbs = signal<HeaderCrumb[] | null>(null);
+
+/**
  * Add-action bridge for the panel header. When TaskList runs inside the panel
  * (controlled mode), it publishes the current view's create action here —
  * 新建讨论 / 新建里程碑 — so the panel-tabs-header can render one "+" on the

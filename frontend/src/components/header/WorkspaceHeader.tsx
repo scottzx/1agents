@@ -7,7 +7,7 @@ import type { ConnectionState } from '@1agents/core/protocol/types';
 import { AgentAvatar } from '../chat/AgentAvatar';
 import { CrumbTrail } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
-import { isBeginnerMode, isMobile, sidebarMode } from '../../stores/uiStore';
+import { isBeginnerMode, isMobile } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
 import { activeWorkspaceDeviceId, remoteDevices } from '../../stores/workspaceStore';
 
@@ -53,6 +53,12 @@ interface WorkspaceHeaderProps {
     sessionRole?: string;
     connection?: ConnectionState;
 }
+
+// Focus panes that live under the 助手 context (gated to it in the sidebar) —
+// they show a "助手 › <module>" breadcrumb. Everything else full-page
+// (数据源 / 设置 / 技能 / 发现 / providers) is a first-level module and shows
+// just its own name, no parent.
+const ASSISTANT_FOCUS_TABS: RightDrawerTab[] = ['contacts', 'inbox', 'reminders', 'personal', 'retro'];
 
 const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
     providers: 'header.title.providers',
@@ -290,18 +296,23 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     {isFullPageTab(activeDrawerTab) ? (
                         <div class="header-title-group header-crumb-group">
                             <CrumbTrail
-                                crumbs={[
-                                    {
-                                        label:
-                                            sidebarMode.value === 'project'
-                                                ? t('sidebar.mode.project', language)
-                                                : t('sidebar.mode.assistant', language),
-                                        // Clicking the context crumb closes the full-page module,
-                                        // dropping back to that context's main view.
-                                        onClick: () => toggleDrawerTab(activeDrawerTab),
-                                    },
-                                    { label: t(FULLPAGE_TITLE_KEYS[activeDrawerTab] ?? '', language) },
-                                ]}
+                                crumbs={
+                                    // A full-page module can publish its own drill breadcrumb
+                                    // (e.g. 数据源 › 联系人) — that wins over the default title.
+                                    taskNav.headerCrumbs.value
+                                        ? taskNav.headerCrumbs.value
+                                        : ASSISTANT_FOCUS_TABS.includes(activeDrawerTab)
+                                          ? [
+                                                {
+                                                    label: t('sidebar.mode.assistant', language),
+                                                    // Clicking 助手 closes the focus pane, back to the conversation.
+                                                    onClick: () => toggleDrawerTab(activeDrawerTab),
+                                                },
+                                                { label: t(FULLPAGE_TITLE_KEYS[activeDrawerTab] ?? '', language) },
+                                            ]
+                                          : // First-level module (数据源/设置/…) — its own root, no parent.
+                                            [{ label: t(FULLPAGE_TITLE_KEYS[activeDrawerTab] ?? '', language) }]
+                                }
                             />
                         </div>
                     ) : (
