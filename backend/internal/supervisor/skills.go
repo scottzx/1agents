@@ -109,6 +109,35 @@ func (s *SkillsSupervisor) resolveRuntime(cwd string) (mode launchMode, execPath
 	return launchModeVenv, venvPython, skillsDir
 }
 
+// skillsDataEnv returns the environment overrides that pin 1skills
+// (skill-manager) storage under the shared 1agents home (~/.1agents),
+// keeping its data alongside meta.db/sync.db instead of the platform default
+// (~/Library/Application Support/skill-manager on macOS).
+//
+// skill-manager honors the XDG base-dir vars and appends its own "skill-manager"
+// component, so the effective root becomes ~/.1agents/skill-manager.
+func skillsDataEnv() []string {
+	base := filepath.Join(get1AgentsHome(), ".1agents")
+	return []string{
+		"XDG_CONFIG_HOME=" + base,
+		"XDG_DATA_HOME=" + base,
+		"XDG_STATE_HOME=" + base,
+	}
+}
+
+// get1AgentsHome resolves the parent of the .1agents data directory, honoring
+// ONEAGENTS_HOME (matching internal/meta and the rest of the backend).
+func get1AgentsHome() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return val
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return home
+}
+
 // isExecutable returns true if path exists and is a regular executable file.
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
@@ -241,6 +270,7 @@ func (s *SkillsSupervisor) startProcess(ctx context.Context, mode launchMode, di
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), skillsDataEnv()...)
 
 	s.mu.Lock()
 	s.cmd = cmd
