@@ -11,6 +11,10 @@ type Contact struct {
 	Title  string
 }
 
+// ParseVCards is the exported entry point for governance (internal/govern),
+// which parses bronze vCard payloads without knowing CardDAV internals.
+func ParseVCards(data string) []Contact { return parseVCards(data) }
+
 // parseVCards parses a payload that may contain one or more concatenated vCards
 // (as returned by an addressbook-query REPORT) into Contacts. It is tolerant:
 // unknown properties are ignored, line folding is unwrapped, Apple's

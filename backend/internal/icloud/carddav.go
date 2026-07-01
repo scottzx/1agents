@@ -33,7 +33,14 @@ type Client struct {
 
 // NewClient builds a client for the given Apple ID + app-specific password.
 func NewClient(appleID, password string) *Client {
-	c := &Client{base: rootURL, appleID: appleID, password: password}
+	return NewClientWithBase(rootURL, appleID, password)
+}
+
+// NewClientWithBase is NewClient with an explicit discovery entry point, used by
+// the incremental puller (to drive the .cn fallback itself) and by tests (to
+// point at a fake DAV server).
+func NewClientWithBase(base, appleID, password string) *Client {
+	c := &Client{base: base, appleID: appleID, password: password}
 	c.http = &http.Client{
 		Timeout: 60 * time.Second,
 		// Don't auto-follow: Go downgrades PROPFIND/REPORT → GET and drops the body
@@ -94,15 +101,22 @@ func isDNSFailure(err error) bool {
 
 // multistatus mirrors a WebDAV multistatus body. Struct tags match on local name
 // (namespace-agnostic), which is what we need across DAV: / carddav namespaces.
+// SyncToken is the new collection sync-token returned by a sync-collection REPORT
+// (RFC 6578).
 type multistatus struct {
 	XMLName   xml.Name      `xml:"multistatus"`
 	Responses []davResponse `xml:"response"`
+	SyncToken string        `xml:"sync-token"`
 }
 
 type davResponse struct {
-	Href     string `xml:"href"`
+	Href string `xml:"href"`
+	// Status at the response level flags a removed resource in a sync-collection
+	// report (e.g. "HTTP/1.1 404 Not Found") — the tombstone signal.
+	Status   string `xml:"status"`
 	Propstat []struct {
-		Prop struct {
+		Status string `xml:"status"`
+		Prop   struct {
 			CurrentUserPrincipal struct {
 				Href string `xml:"href"`
 			} `xml:"current-user-principal"`
@@ -113,6 +127,9 @@ type davResponse struct {
 				Addressbook *struct{} `xml:"addressbook"`
 			} `xml:"resourcetype"`
 			AddressData string `xml:"address-data"`
+			GetETag     string `xml:"getetag"`
+			GetCTag     string `xml:"getctag"` // calendarserver: collection version tag
+			DisplayName string `xml:"displayname"`
 		} `xml:"prop"`
 	} `xml:"propstat"`
 }

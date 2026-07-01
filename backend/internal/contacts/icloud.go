@@ -12,15 +12,21 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/scottzx/1Agents/backend/internal/govern"
 	"github.com/scottzx/1Agents/backend/internal/icloud"
-	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/sources"
 )
 
 // errNoICloudCreds is returned when a sync is attempted before credentials are set.
 var errNoICloudCreds = errors.New("icloud credentials not configured")
 
-// SyncICloudContacts pulls the iCloud address book via CardDAV into the contacts
-// table as degree-1 contacts (keyed on the first phone). Returns created/updated.
+// SyncICloudContacts refreshes iCloud contacts in two decoupled steps: pull the
+// address books over CardDAV into the raw bronze store (incremental — unchanged
+// books are skipped by CTag and only changed vCards are fetched, so we stop
+// re-downloading everything and tripping iCloud's throttling), then govern
+// bronze → the gold contacts table (offline, re-runnable). Returns the
+// created/updated gold counts. A ThrottledError from the pull propagates
+// unwrapped so HandleICloudSync can map it to 503 + Retry-After.
 func (h *Handler) SyncICloudContacts() (created, updated int, err error) {
 	if err := h.requireConsent(ModICloudContacts); err != nil {
 		return 0, 0, err
@@ -32,21 +38,14 @@ func (h *Handler) SyncICloudContacts() (created, updated int, err error) {
 	if !ok {
 		return 0, 0, errNoICloudCreds
 	}
-	people, err := icloud.NewClient(appleID, password).FetchContacts()
+	st, err := sources.OpenDefault()
 	if err != nil {
 		return 0, 0, err
 	}
-	imported := make([]meta.ImportedContact, 0, len(people))
-	for _, p := range people {
-		phone := ""
-		if len(p.Phones) > 0 {
-			phone = p.Phones[0]
-		}
-		imported = append(imported, meta.ImportedContact{
-			Phone: phone, Name: p.Name, Company: p.Org, Title: p.Title,
-		})
+	if _, err := st.Sync(sources.NewICloudPuller(appleID, password), "default"); err != nil {
+		return 0, 0, err
 	}
-	return h.cs.IngestContacts(imported)
+	return govern.ICloudContacts(st, h.cs)
 }
 
 // HandleICloudCredentials manages the stored iCloud credential:

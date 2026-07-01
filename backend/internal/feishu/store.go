@@ -145,6 +145,12 @@ func OpenDefault() (*Store, error) {
 // Close closes the underlying connection (CLI one-shots and tests).
 func (s *Store) Close() error { return s.sql.Close() }
 
+// SQL exposes the underlying sync.db handle so the neutral internal/sources
+// bronze layer can share this connection instead of opening a second handle to
+// the same file. (feishu is the historical owner of sync.db; the rename to a
+// generic owner is Epic #359 Phase 5.)
+func (s *Store) SQL() *sql.DB { return s.sql }
+
 // schema is idempotent (CREATE IF NOT EXISTS); the watermark/message tables are
 // append-only and additive, so no version-gated migration is needed yet.
 const schema = `
