@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -116,10 +117,55 @@ type davResponse struct {
 	} `xml:"propstat"`
 }
 
-// do issues a DAV request with Basic auth, following redirects manually so the
-// method + body + Depth + auth survive iCloud's partition-host bounce. Returns the
-// parsed multistatus plus the final URL (for relative-href resolution).
+// ThrottledError signals iCloud back-pressure (HTTP 429 or 503, e.g. "request is
+// back-pressured for ck throttling"). It's transient: the caller should retry
+// later. RetryAfter carries Apple's suggested delay when the response provided one.
+type ThrottledError struct {
+	Method     string
+	URL        string
+	StatusCode int
+	RetryAfter time.Duration
+	Body       string
+}
+
+func (e *ThrottledError) Error() string {
+	return fmt.Sprintf("icloud: %s %s → %d: %s", e.Method, e.URL, e.StatusCode, e.Body)
+}
+
+// Retry/backoff bounds for transient throttling. We ride through brief
+// back-pressure with a few short waits; if Apple keeps throttling we surface the
+// ThrottledError so the caller can back off on a longer horizon.
+const (
+	maxThrottleRetries = 3
+	maxBackoff         = 5 * time.Second
+)
+
+// do issues a DAV request, retrying a bounded number of times on transient iCloud
+// throttling (429/503) with exponential backoff that honors Retry-After. Non-retry
+// errors and the final throttle (after retries) propagate to the caller.
 func (c *Client) do(method, rawURL, depth, body string) (*multistatus, *url.URL, error) {
+	for attempt := 0; ; attempt++ {
+		ms, final, err := c.doOnce(method, rawURL, depth, body)
+		var te *ThrottledError
+		if errors.As(err, &te) && attempt < maxThrottleRetries {
+			delay := te.RetryAfter
+			if delay <= 0 {
+				delay = time.Duration(1<<attempt) * time.Second // 1s, 2s, 4s
+			}
+			if delay > maxBackoff {
+				delay = maxBackoff
+			}
+			time.Sleep(delay)
+			continue
+		}
+		return ms, final, err
+	}
+}
+
+// doOnce issues a single DAV request with Basic auth, following redirects manually
+// so the method + body + Depth + auth survive iCloud's partition-host bounce.
+// Returns the parsed multistatus plus the final URL (for relative-href resolution).
+func (c *Client) doOnce(method, rawURL, depth, body string) (*multistatus, *url.URL, error) {
 	current := rawURL
 	for redirects := 0; redirects < 10; redirects++ {
 		req, err := http.NewRequest(method, current, strings.NewReader(body))
@@ -153,6 +199,12 @@ func (c *Client) do(method, rawURL, depth, body string) (*multistatus, *url.URL,
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, nil, fmt.Errorf("icloud: authentication failed — check the Apple ID and app-specific password")
+		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			return nil, nil, &ThrottledError{
+				Method: method, URL: current, StatusCode: resp.StatusCode,
+				RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After")), Body: snippet(data),
+			}
 		}
 		if resp.StatusCode >= 400 {
 			return nil, nil, fmt.Errorf("icloud: %s %s → %d: %s", method, current, resp.StatusCode, snippet(data))
@@ -240,6 +292,27 @@ func resolve(base *url.URL, href string) string {
 		return href
 	}
 	return base.ResolveReference(ref).String()
+}
+
+// parseRetryAfter reads a Retry-After header value, which is either a count of
+// seconds or an HTTP-date. Returns 0 when absent/unparseable or already in the past.
+func parseRetryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
 }
 
 func snippet(b []byte) string {

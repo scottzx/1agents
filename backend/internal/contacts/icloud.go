@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/scottzx/1Agents/backend/internal/icloud"
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -92,6 +93,16 @@ func (h *Handler) HandleICloudSync(w http.ResponseWriter, r *http.Request) {
 	created, updated, err := h.SyncICloudContacts()
 	if errors.Is(err, errNoICloudCreds) || errors.Is(err, errNotConsented) {
 		http.Error(w, err.Error(), http.StatusPreconditionRequired)
+		return
+	}
+	var throttled *icloud.ThrottledError
+	if errors.As(err, &throttled) {
+		// iCloud is back-pressuring (ck throttling). Tell the client to retry later
+		// rather than reporting it as a gateway failure.
+		if throttled.RetryAfter > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(throttled.RetryAfter.Seconds())))
+		}
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	if err != nil {
