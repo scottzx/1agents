@@ -857,6 +857,47 @@ export const zhCN: Record<string, string> = {
     'contacts.channels.availableEmpty': '没有可同步的群。点击「刷新群列表」加载。',
     'contacts.channels.availableHint': '加载群列表会调用 lark-cli,可能需要几秒。',
 
+    // ── iCloud 通讯录 (CardDAV, ICloudSection.tsx) ──────────────────────────
+    'contacts.icloud.title': 'iCloud 通讯录',
+    'contacts.icloud.connected': '已连接,可随时同步通讯录。',
+    'contacts.icloud.syncNow': '立即同步',
+    'contacts.icloud.syncing': '同步中…',
+    'contacts.icloud.clear': '清除凭据',
+    'contacts.icloud.step1': '在 Apple 账户页生成一个「App 专用密码」:',
+    'contacts.icloud.openApple': '打开 Apple 生成页',
+    'contacts.icloud.step2': '把 Apple ID 和刚生成的密码填到下面(仅需一次,密码只存入本机钥匙串)。',
+    'contacts.icloud.appleId': 'Apple ID',
+    'contacts.icloud.password': 'App 专用密码',
+    'contacts.icloud.saveAndSync': '保存并同步',
+    'contacts.icloud.saving': '处理中…',
+    'contacts.icloud.syncDone': '已同步:新增 {created},更新 {updated}',
+
+    // ── 渠道隐私 + 分组 + iMessage 子模块 (ChannelsTab/IMessageSection) ──────
+    'contacts.privacy.notice':
+        '这些渠道会同步你的通讯录与消息等私密数据。数据全程留在本机、由内置同步器代码拉取,AI 不参与抓取。消息含对话第三方的个人信息,请确保你有权处理。',
+    'contacts.privacy.moduleNotice': '启用前请确认:本模块将读取并同步对应数据到本机库,由确定性代码执行,AI 不参与。',
+    'contacts.privacy.authorize': '我已知晓并授权',
+    'contacts.privacy.revoke': '撤销授权',
+    'contacts.channels.codeBadge': '代码化同步 · AI 不参与',
+    'contacts.channels.group.feishu': '飞书',
+    'contacts.channels.wechatPlaceholder': '微信 · 经中立导入口写入(外部程序),不内置抓取',
+    'contacts.channels.comingSoon': '规划中',
+    'contacts.sub.contacts': '通讯录',
+    'contacts.sub.imessage': 'iMessage',
+    'contacts.sub.feishuGroups': '群消息',
+    'contacts.imsg.fdaHint': '需在 系统设置 ▸ 隐私与安全性 ▸ 完全磁盘访问 中授权本应用后才能读取 iMessage。',
+    'contacts.imsg.timeWindow': '时间范围',
+    'contacts.imsg.window.90': '最近 90 天',
+    'contacts.imsg.window.365': '最近 1 年',
+    'contacts.imsg.window.0': '全部',
+    'contacts.imsg.attachments': '含附件',
+    'contacts.imsg.include': '是',
+    'contacts.imsg.exclude': '否',
+    'contacts.imsg.manual': '手动',
+    'contacts.imsg.syncNow': '立即同步',
+    'contacts.imsg.syncing': '同步中…',
+    'contacts.imsg.syncDone': '已同步:新增 {inserted} 条 / 共 {fetched} 条',
+
     // ── Inbox 统一信息收口层 (Inbox/index.tsx) ─────────────────────────────
     'inbox.title': '收件箱',
     'inbox.capturePlaceholder': '粘贴文本、链接或随手记下一个想法…',
@@ -2005,6 +2046,51 @@ export const enUS: Record<string, string> = {
     'contacts.channels.trackedEmpty': 'No groups tracked yet. Pick groups below to start tracking.',
     'contacts.channels.availableEmpty': 'No groups available. Click "Refresh group list" to load.',
     'contacts.channels.availableHint': 'Loading the group list calls lark-cli and may take a few seconds.',
+
+    // ── iCloud contacts (CardDAV, ICloudSection.tsx) ─────────────────────
+    'contacts.icloud.title': 'iCloud Contacts',
+    'contacts.icloud.connected': 'Connected. Sync your address book anytime.',
+    'contacts.icloud.syncNow': 'Sync now',
+    'contacts.icloud.syncing': 'Syncing…',
+    'contacts.icloud.clear': 'Remove',
+    'contacts.icloud.step1': 'Generate an app-specific password in your Apple account:',
+    'contacts.icloud.openApple': 'Open Apple page',
+    'contacts.icloud.step2':
+        'Paste your Apple ID and the generated password below (one time; the password is stored only in the local Keychain).',
+    'contacts.icloud.appleId': 'Apple ID',
+    'contacts.icloud.password': 'App-specific password',
+    'contacts.icloud.saveAndSync': 'Save & sync',
+    'contacts.icloud.saving': 'Working…',
+    'contacts.icloud.syncDone': 'Synced: {created} added, {updated} updated',
+
+    // ── Channel privacy + grouping + iMessage sub-module ─────────────────
+    'contacts.privacy.notice':
+        'These channels sync private data like your contacts and messages. Data stays on this machine and is pulled by built-in syncer code — AI is not involved in crawling. Messages include third parties’ personal info; make sure you have the right to process it.',
+    'contacts.privacy.moduleNotice':
+        'Before enabling: this module reads and syncs its data to the local store, run by deterministic code — AI is not involved.',
+    'contacts.privacy.authorize': 'I understand and authorize',
+    'contacts.privacy.revoke': 'Revoke',
+    'contacts.channels.codeBadge': 'Code-driven sync · no AI',
+    'contacts.channels.group.feishu': 'Feishu',
+    'contacts.channels.wechatPlaceholder':
+        'WeChat · written via the neutral import path (external), not crawled in-app',
+    'contacts.channels.comingSoon': 'Planned',
+    'contacts.sub.contacts': 'Contacts',
+    'contacts.sub.imessage': 'iMessage',
+    'contacts.sub.feishuGroups': 'Group messages',
+    'contacts.imsg.fdaHint':
+        'Grant this app Full Disk Access in System Settings ▸ Privacy & Security to read iMessage.',
+    'contacts.imsg.timeWindow': 'Time range',
+    'contacts.imsg.window.90': 'Last 90 days',
+    'contacts.imsg.window.365': 'Last year',
+    'contacts.imsg.window.0': 'All',
+    'contacts.imsg.attachments': 'Attachments',
+    'contacts.imsg.include': 'Include',
+    'contacts.imsg.exclude': 'Exclude',
+    'contacts.imsg.manual': 'Manual',
+    'contacts.imsg.syncNow': 'Sync now',
+    'contacts.imsg.syncing': 'Syncing…',
+    'contacts.imsg.syncDone': 'Synced: {inserted} new / {fetched} total',
 
     // ── Inbox unified intake layer (Inbox/index.tsx) ─────────────────────
     'inbox.title': 'Inbox',

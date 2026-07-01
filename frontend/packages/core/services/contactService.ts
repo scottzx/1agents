@@ -363,3 +363,117 @@ export const channelService = {
         return (await res.json()) as SyncConfig;
     },
 };
+
+/** iCloud credential status (never carries the password). */
+export interface ICloudStatus {
+    configured: boolean;
+    appleId: string;
+}
+
+/** Result of an iCloud contacts CardDAV pull. */
+export interface ICloudSyncResult {
+    created: number;
+    updated: number;
+}
+
+// iCloud 通讯录 (CardDAV) — the user provides their Apple ID + an app-specific
+// password (stored locally in the Keychain server-side); contacts are pulled
+// over CardDAV. Mirrors backend/internal/contacts (icloud.go) endpoints.
+export const icloudService = {
+    /** GET /api/contacts/icloud/credentials — {configured, appleId} (no password). */
+    async status(): Promise<ICloudStatus> {
+        const res = await apiFetch('/contacts/icloud/credentials');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ICloudStatus;
+    },
+
+    /** POST /api/contacts/icloud/credentials {appleId, password} — store (password→Keychain). */
+    async setCredentials(appleId: string, password: string): Promise<ICloudStatus> {
+        const res = await apiFetch('/contacts/icloud/credentials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appleId, password }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ICloudStatus;
+    },
+
+    /** DELETE /api/contacts/icloud/credentials — clear the stored credential. */
+    async clearCredentials(): Promise<void> {
+        const res = await apiFetch('/contacts/icloud/credentials', { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    /** POST /api/contacts/icloud/sync — pull the iCloud address book via CardDAV. */
+    async sync(): Promise<ICloudSyncResult> {
+        const res = await apiFetch('/contacts/icloud/sync', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ICloudSyncResult;
+    },
+};
+
+/** Result of an iMessage chat.db pull. */
+export interface IMessageSyncResult {
+    fetched: number;
+    inserted: number;
+    watermark: number;
+}
+
+// iMessage — pull the local chat.db (needs Full Disk Access). Mirrors
+// backend/internal/contacts (mac.go).
+export const imessageService = {
+    /** POST /api/contacts/imessage/sync — pull chat.db into the unified store. */
+    async sync(): Promise<IMessageSyncResult> {
+        const res = await apiFetch('/contacts/imessage/sync', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as IMessageSyncResult;
+    },
+};
+
+/** One channel sub-module's consent + crawl-rule state. rules is module-specific
+ * (e.g. iMessage: {timeWindowDays, includeAttachments}). */
+export interface ChannelModule {
+    id: string;
+    consented: boolean;
+    consentedAt: string;
+    autoSync: boolean;
+    intervalMinutes: number;
+    rules: Record<string, unknown>;
+}
+
+// Per-sub-module privacy consent + deterministic crawl rules. Mirrors
+// backend/internal/contacts (channels.go). Consent is required before any sync.
+export const channelModuleService = {
+    /** GET /api/channels/modules — consent + rules for every known sub-module. */
+    async list(): Promise<ChannelModule[]> {
+        const res = await apiFetch('/channels/modules');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ChannelModule[];
+    },
+
+    /** POST /api/channels/modules/{id}/consent — record explicit authorization. */
+    async consent(id: string): Promise<void> {
+        const res = await apiFetch(`/channels/modules/${id}/consent`, { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    /** DELETE /api/channels/modules/{id}/consent — revoke authorization. */
+    async revoke(id: string): Promise<void> {
+        const res = await apiFetch(`/channels/modules/${id}/consent`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    /** PUT /api/channels/modules/{id}/rules — set crawl rules (frequency + scope). */
+    async setRules(
+        id: string,
+        input: { autoSync: boolean; intervalMinutes: number; rules: Record<string, unknown> }
+    ): Promise<ChannelModule> {
+        const res = await apiFetch(`/channels/modules/${id}/rules`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ChannelModule;
+    },
+};

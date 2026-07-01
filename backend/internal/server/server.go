@@ -249,7 +249,17 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/contacts/sessions", contactsHandler.HandleSessions)       // GET
 				mux.HandleFunc("/api/contacts/companies", contactsHandler.HandleCompanies)     // GET tenant→company map
 				mux.HandleFunc("/api/contacts/groups/", contactsHandler.HandleGroupMembers)    // GET /{sessionId}/members
-				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)            // PATCH, DELETE /{id}
+				// Local macOS / iCloud channels (sibling syncers of Feishu): iCloud
+				// contacts via CardDAV (user's Apple ID + app-specific password, stored
+				// locally); iMessage via the local chat.db (needs Full Disk Access).
+				// Exact paths outrank the /api/contacts/ prefix below.
+				mux.HandleFunc("/api/contacts/icloud/credentials", contactsHandler.HandleICloudCredentials) // GET, POST, DELETE
+				mux.HandleFunc("/api/contacts/icloud/sync", contactsHandler.HandleICloudSync)               // POST
+				mux.HandleFunc("/api/contacts/imessage/sync", contactsHandler.HandleIMessageSync)           // POST
+				// 渠道隐私/同意 + 爬取规则 (per-sub-module consent gate + rules).
+				mux.HandleFunc("/api/channels/modules", contactsHandler.HandleChannelModules)     // GET
+				mux.HandleFunc("/api/channels/modules/", contactsHandler.HandleChannelModuleItem) // POST/DELETE /{id}/consent, PUT /{id}/rules
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem) // PATCH, DELETE /{id}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks

@@ -23,14 +23,15 @@ import (
 type Handler struct {
 	fs  *feishu.Store
 	cs  *meta.ContactStore
-	ccs *meta.FeishuChatStore // tracked-chat names overlay onto session summaries
-	cps *meta.CompanyStore    // tenant_key→org-name map for the contacts grid/modal
+	ccs *meta.FeishuChatStore     // tracked-chat names overlay onto session summaries
+	cps *meta.CompanyStore        // tenant_key→org-name map for the contacts grid/modal
+	cms *meta.ChannelModuleStore  // per-sub-module consent + crawl rules (privacy gate)
 }
 
 // NewHandler builds a Handler from explicit stores (used by tests). ccs may be
 // nil; session summaries then keep the chat_id fallback for names. cps may be
 // nil; the companies endpoint then returns an empty map.
-func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore, cps *meta.CompanyStore) *Handler {
+func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatStore, cps *meta.CompanyStore, cms *meta.ChannelModuleStore) *Handler {
 	if cps != nil {
 		// Idempotent: ensure 飞书官方 is seeded so the frontend's org labels resolve
 		// without the old hardcoded constant. Log + ignore so a seed failure never
@@ -39,7 +40,7 @@ func NewHandler(fs *feishu.Store, cs *meta.ContactStore, ccs *meta.FeishuChatSto
 			log.Printf("[contacts] seed 飞书官方 failed: %v", err)
 		}
 	}
-	return &Handler{fs: fs, cs: cs, ccs: ccs, cps: cps}
+	return &Handler{fs: fs, cs: cs, ccs: ccs, cps: cps, cms: cms}
 }
 
 // NewHandlerDefault wires the handler from the default sync.db + meta.db (the
@@ -54,7 +55,7 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db), meta.NewCompanyStore(db)), nil
+	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db), meta.NewCompanyStore(db), meta.NewChannelModuleStore(db)), nil
 }
 
 // ── HTTP helpers ──
