@@ -1,10 +1,12 @@
 package ingest
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/feishu"
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -96,12 +98,27 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
+	result := map[string]any{
 		"kind":        kind,
 		"collections": stats.Collections,
 		"changed":     stats.Changed,
 		"skipped":     stats.Skipped,
-	}, nil
+	}
+	// Message kind: after archiving raw messages into bronze, also drive the
+	// proven message → unified_messages sync (+ 二度联系人) so the existing
+	// message/digest UI stays fresh. This is what makes the work-order task the
+	// single message-sync driver (the periodic ticker is retired). Best-effort:
+	// a failure here doesn't fail the bronze pull.
+	if d.PerChat && h.messageSync != nil {
+		mctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if e := h.messageSync(mctx); e != nil {
+			result["messageSyncError"] = e.Error()
+		} else {
+			result["messageSync"] = "ok"
+		}
+	}
+	return result, nil
 }
 
 // trackedChatIDs returns the ids of chats flagged for auto-sync — the collection

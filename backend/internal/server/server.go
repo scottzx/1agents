@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/appkit"
@@ -215,13 +214,18 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// templates (meta.db v15) + single-batch analysis tasks (run by the
 			// scheduler above). Self-wires its own stores; seeds presets and
 			// starts a periodic re-sync of every known chat.
-			if digestHandler, dErr := digest.NewHandlerDefault(); dErr != nil {
+			var digestHandler *digest.Handler
+			if dh, dErr := digest.NewHandlerDefault(); dErr != nil {
 				log.Printf("[server] digest init failed: %v", dErr)
 			} else {
+				digestHandler = dh
 				if err := digestHandler.Seed(); err != nil {
 					log.Printf("[server] digest seed: %v", err)
 				}
-				digestHandler.StartPeriodicSync(context.Background(), 3*time.Hour)
+				// NOTE: the standalone 15-min ticker (StartPeriodicSync) is retired.
+				// Feishu message sync now runs through the work-order scheduler via the
+				// ingest feishu_message task (wired below) — a single scheduler, per
+				// the "走工单系统的循环机制" directive.
 				mux.HandleFunc("/api/digest/templates", digestHandler.HandleTemplates)     // GET, POST
 				mux.HandleFunc("/api/digest/templates/", digestHandler.HandleTemplateItem) // PATCH, DELETE /{id}
 				mux.HandleFunc("/api/digest/bindings", digestHandler.HandleBindings)       // GET ?session=, POST, DELETE
@@ -279,22 +283,40 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
 			// function task through the scheduler above — this package never grows
 			// its own ticker (user directive: 走工单系统的循环机制).
-			if ingestHandler, iErr := ingest.NewHandlerDefault(); iErr != nil {
+			var ingestHandler *ingest.Handler
+			if ih, iErr := ingest.NewHandlerDefault(); iErr != nil {
 				log.Printf("[server] ingest init failed: %v", iErr)
 			} else {
+				ingestHandler = ih
 				ingestHandler.RegisterFunctions()
 				if wsPath, pErr := ingestHandler.ProvisionSystemWorkspace(); pErr != nil {
 					log.Printf("[server] ingest system workspace: %v", pErr)
 				} else {
 					ingestHandler.SetDispatcher(ingest.NewDispatcher(taskAPI, tasksStore, wsPath))
-					if rErr := ingestHandler.EnsureRecurringForEnabled(); rErr != nil {
-						log.Printf("[server] ingest re-arm recurring: %v", rErr)
-					}
 				}
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI)          // GET /{tool}/status, POST /{tool}/recheck
 				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections) // GET, PUT
 				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
 				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
+			}
+
+			// Cross-wire ingest ⇄ digest: the feishu_message work-order task drives
+			// the proven message → unified_messages sync (+ 二度联系人) so the existing
+			// message/digest UI stays fresh while bronze holds the raw archive. Then
+			// carry the legacy digest auto-sync setting into the new config and arm
+			// the recurring tasks — done here (after the callback is set) so the first
+			// message-sync run isn't a bronze-only no-op.
+			if ingestHandler != nil && digestHandler != nil {
+				ingestHandler.SetMessageSync(func(ctx context.Context) error {
+					_, _, e := digestHandler.SyncTracked(ctx)
+					return e
+				})
+				if mErr := ingestHandler.MigrateLegacyMessageSync(); mErr != nil {
+					log.Printf("[server] ingest migrate legacy message sync: %v", mErr)
+				}
+				if rErr := ingestHandler.EnsureRecurringForEnabled(); rErr != nil {
+					log.Printf("[server] ingest re-arm recurring: %v", rErr)
+				}
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks

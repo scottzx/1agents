@@ -11,6 +11,8 @@
 package ingest
 
 import (
+	"context"
+
 	"github.com/scottzx/1Agents/backend/internal/feishu"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/sourcecli"
@@ -26,6 +28,11 @@ type Handler struct {
 	cli      *sourcecli.Handler
 	systemWS string     // host workspace path (set by ProvisionSystemWorkspace)
 	disp     Dispatcher // set via SetDispatcher once the task API is available
+	// messageSync drives the existing (proven) Feishu message → unified_messages
+	// sync + 二度联系人 ingestion. Injected from server.go (digest.SyncTracked) so
+	// the feishu_message work-order task also keeps the message/digest UI fresh
+	// while bronze holds the raw archive. nil until wired.
+	messageSync func(context.Context) error
 }
 
 // Dispatcher is the narrow slice of the work-order task API this package needs:
@@ -79,6 +86,35 @@ func NewHandlerDefault() (*Handler, error) {
 // SetDispatcher injects the work-order dispatcher (built in server.go from the
 // task API + scheduler). Until set, sync-now / history degrade gracefully.
 func (h *Handler) SetDispatcher(d Dispatcher) { h.disp = d }
+
+// SetMessageSync injects the Feishu message → unified_messages sync (digest's
+// SyncTracked). The feishu_message work-order task calls it after the bronze
+// pull so the existing message/digest UI stays fresh. See the messageSync field.
+func (h *Handler) SetMessageSync(fn func(context.Context) error) { h.messageSync = fn }
+
+// MigrateLegacyMessageSync carries the old digest auto-sync setting
+// (feishu_sync_config) into the new per-collection config, once, so existing
+// users' message sync keeps running through the work-order path after the
+// periodic ticker is retired. No-op when feishu_message is already configured
+// (respects an explicit user choice) or legacy sync was off.
+func (h *Handler) MigrateLegacyMessageSync() error {
+	if _, ok, err := h.cfg.Get(feishu.Source, "feishu_message"); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+	legacy, err := h.chats.GetSyncConfig()
+	if err != nil {
+		return err
+	}
+	if !legacy.Enabled {
+		return nil
+	}
+	return h.cfg.Upsert(meta.SourceCollectionConfig{
+		Source: feishu.Source, Kind: "feishu_message", Enabled: true,
+		InitialLookbackDays: 7, IncrementalMinutes: legacy.IntervalMinutes, PageSize: 50,
+	})
+}
 
 // EnsureRecurringForEnabled re-arms a periodic work-order task for every enabled
 // Feishu collection. Called once at startup so cadences configured in a prior

@@ -198,6 +198,38 @@ func (h *Handler) syncDueTracked(ctx context.Context) {
 	}
 }
 
+// SyncTracked syncs every auto-sync tracked chat now, ignoring the per-chat due
+// check — the work-order scheduler's interval is the cadence, so this is the
+// entry point the ingest sync task calls in place of the retired periodic
+// ticker (StartPeriodicSync). It reuses the proven syncOne path (roster fetch +
+// message upsert into unified_messages + 二度联系人 sender ingestion) and bumps
+// last_synced_at, so the existing message/digest UI stays fully intact. Returns
+// how many chats were synced and total messages inserted. Best-effort per chat:
+// a single chat's failure is logged and skipped.
+func (h *Handler) SyncTracked(ctx context.Context) (chats int, inserted int, err error) {
+	if h.ccs == nil {
+		return 0, 0, nil
+	}
+	tracked, err := h.ccs.ListTrackedChats(true)
+	if err != nil {
+		return 0, 0, err
+	}
+	now := time.Now().UnixMilli()
+	for _, c := range tracked {
+		res, e := h.syncOne(ctx, c.ChatID)
+		if e != nil {
+			log.Printf("[digest] work-order sync %s: %v", c.ChatID, e)
+			continue
+		}
+		if e := h.ccs.UpdateTrackedSynced(c.ChatID, "", now); e != nil {
+			log.Printf("[digest] work-order sync %s: update synced: %v", c.ChatID, e)
+		}
+		chats++
+		inserted += res.Inserted
+	}
+	return chats, inserted, nil
+}
+
 // ── HTTP helpers ──
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
