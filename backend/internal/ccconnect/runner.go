@@ -682,6 +682,17 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		if bridgeSrv != nil {
 			mgmtSrv.SetBridgeServer(bridgeSrv)
 		}
+		// requestCCReload hot-reloads the cc-connect engines (non-blocking) so a
+		// config write applied via the management API takes effect without the
+		// Web UI asking the user to restart. Mirrors the RestartCh trigger that
+		// SetChannelAgentBinding / workspace CRUD already use. This is what lets
+		// "add channel / scan QR / change channel agent" auto-apply.
+		requestCCReload := func() {
+			select {
+			case core.RestartCh <- core.RestartRequest{}:
+			default:
+			}
+		}
 		mgmtSrv.SetSetupFeishuSave(func(req core.FeishuSetupSaveRequest) error {
 			platType := req.PlatformType
 			if platType == "" {
@@ -696,15 +707,18 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			if err != nil {
 				return fmt.Errorf("ensure project: %w", err)
 			}
-			_, err = config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
+			if _, err = config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
 				ProjectName:       req.ProjectName,
 				PlatformType:      platType,
 				AppID:             req.AppID,
 				AppSecret:         req.AppSecret,
 				OwnerOpenID:       req.OwnerOpenID,
 				SetAllowFromEmpty: true,
-			})
-			return err
+			}); err != nil {
+				return err
+			}
+			requestCCReload()
+			return nil
 		})
 		mgmtSrv.SetSetupWeixinSave(func(req core.WeixinSetupSaveRequest) error {
 			_, err := config.EnsureProjectWithWeixinPlatform(config.EnsureProjectWithWeixinOptions{
@@ -715,15 +729,18 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			if err != nil {
 				return fmt.Errorf("ensure project: %w", err)
 			}
-			_, err = config.SaveWeixinPlatformCredentials(config.WeixinCredentialUpdateOptions{
+			if _, err = config.SaveWeixinPlatformCredentials(config.WeixinCredentialUpdateOptions{
 				ProjectName:       req.ProjectName,
 				Token:             req.Token,
 				BaseURL:           req.BaseURL,
 				AccountID:         req.IlinkBotID,
 				ScannedUserID:     req.IlinkUserID,
 				SetAllowFromEmpty: true,
-			})
-			return err
+			}); err != nil {
+				return err
+			}
+			requestCCReload()
+			return nil
 		})
 		mgmtSrv.SetAddPlatformToProject(func(projectName, platType string, opts map[string]any, workDir, agentType string) error {
 			if opts == nil {
@@ -738,7 +755,11 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 					opts["command"] = detected
 				}
 			}
-			return config.AddPlatformToProject(projectName, config.PlatformConfig{Type: platType, Options: opts}, workDir, agentType)
+			if err := config.AddPlatformToProject(projectName, config.PlatformConfig{Type: platType, Options: opts}, workDir, agentType); err != nil {
+				return err
+			}
+			requestCCReload()
+			return nil
 		})
 		mgmtSrv.SetRemoveProject(config.RemoveProject)
 		// Per-channel agent binding for the cc-connect Web UI: writes the
