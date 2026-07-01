@@ -8,17 +8,18 @@ import { ICloudSection } from './ICloudSection';
 import { IMessageSection } from './IMessageSection';
 import { FeishuSection } from './FeishuSection';
 
-// 渠道 tab — data sources grouped by channel (Apple / 飞书), each with sub-modules.
-// Every sub-module is privacy-gated: it requires explicit user consent before any
-// sync, and all crawling is done by deterministic Go syncers (the "代码化 · AI 不
-// 参与" badge), never by an AI. WeChat-class sources stay outside the binary,
-// writing the same schema via the neutral import path.
+// 管理数据源 (manage data sources) — sources grouped by channel (Apple / 飞书),
+// each with sub-modules. Every sub-module is privacy-gated: it requires explicit
+// user consent before any sync, and all crawling is done by deterministic Go
+// syncers (the "代码化 · AI 不参与" badge), never by an AI. WeChat-class sources
+// stay outside the binary, writing the same schema via the neutral import path.
+// Reached from the 数据源管理 overview's top-right "管理数据源" button.
 
 const MOD_ICLOUD = 'icloud.contacts';
 const MOD_IMESSAGE = 'apple.imessage';
 const MOD_FEISHU = 'feishu.groups';
 
-export function ChannelsTab() {
+export function ManagePanel() {
     const language = ui.language.value;
     const [modules, setModules] = useState<Record<string, ChannelModule>>({});
     const [error, setError] = useState('');

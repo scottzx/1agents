@@ -32,6 +32,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/retro"
+	"github.com/scottzx/1Agents/backend/internal/sources"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/taskapi"
 	"github.com/scottzx/1Agents/backend/internal/templateregistry"
@@ -259,7 +260,17 @@ func NewRouter(cfg *config.Config) http.Handler {
 				// 渠道隐私/同意 + 爬取规则 (per-sub-module consent gate + rules).
 				mux.HandleFunc("/api/channels/modules", contactsHandler.HandleChannelModules)     // GET
 				mux.HandleFunc("/api/channels/modules/", contactsHandler.HandleChannelModuleItem) // POST/DELETE /{id}/consent, PUT /{id}/rules
-				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem) // PATCH, DELETE /{id}
+				mux.HandleFunc("/api/contacts/", contactsHandler.HandleContactItem)               // PATCH, DELETE /{id}
+			}
+
+			// 数据源管理 (data-source management): read-only bronze layer
+			// (source_records) — per-(source,kind) rollup for the overview cards and
+			// a tabular record list for the 多维表格 detail view.
+			if sourcesHandler, sErr := sources.NewHandlerDefault(); sErr != nil {
+				log.Printf("[server] sources init failed: %v", sErr)
+			} else {
+				mux.HandleFunc("/api/sources/summary", sourcesHandler.HandleSummary) // GET
+				mux.HandleFunc("/api/sources/records", sourcesHandler.HandleRecords) // GET ?source=&kind=&limit=
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks

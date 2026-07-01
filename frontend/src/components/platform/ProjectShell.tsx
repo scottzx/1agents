@@ -17,6 +17,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { TaskList } from '../drawer/TaskList';
 import { MountPointRenderer } from './MountPointRenderer';
 import { ProjectConfigPanel } from './ProjectConfigPanel';
+import { ShellNav, type ShellTab } from './ShellNav';
 
 import * as appStore from '../../stores/appManifestStore';
 import * as sess from '../../stores/sessionStore';
@@ -62,53 +63,42 @@ export function ProjectShell({ workspaceId, workspaceName }: ProjectShellProps) 
         };
     }, [workspaceId, workspaceName]);
 
+    const shellTabs: ShellTab[] = [
+        ...BUILTIN_TABS.map(tab => ({ id: tab.id, label: tab.label })),
+        ...projectTabs.map(({ app, mount }) => ({
+            id: mount.id,
+            label: mount.label,
+            title: `${app.name} · ${mount.label}`,
+        })),
+    ];
+
     return (
         <div class="project-shell">
-            {/* Tab bar */}
-            <div class="project-shell-tabbar">
-                <div class="project-shell-tabs">
-                    {BUILTIN_TABS.map(tab => (
-                        <button
-                            key={tab.id}
-                            class={`project-shell-tab${activeTab === tab.id ? ' is-active' : ''}`}
-                            onClick={() => setActiveTab(tab.id)}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                    {/* App-contributed tabs */}
-                    {projectTabs.map(({ app, mount }) => (
-                        <button
-                            key={mount.id}
-                            class={`project-shell-tab${activeTab === mount.id ? ' is-active' : ''}`}
-                            onClick={() => setActiveTab(mount.id)}
-                            title={`${app.name} · ${mount.label}`}
-                        >
-                            {mount.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Project settings gear */}
-                <button
-                    class="project-shell-config-btn"
-                    onClick={() => setConfigOpen(true)}
-                    title="项目配置"
-                    aria-label="项目配置"
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
+            <ShellNav
+                tabs={shellTabs}
+                activeTab={activeTab}
+                onSelectTab={id => setActiveTab(id)}
+                actions={
+                    <button
+                        class="project-shell-config-btn"
+                        onClick={() => setConfigOpen(true)}
+                        title="项目配置"
+                        aria-label="项目配置"
                     >
-                        <circle cx="12" cy="12" r="3" />
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                </button>
-            </div>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                    </button>
+                }
+            />
 
             {/* Tab content */}
             <div class="project-shell-body">

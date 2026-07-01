@@ -13,7 +13,6 @@ import {
     type SessionSummary,
     type TrackedChat,
 } from '@1agents/core/services/contactService';
-import { ChannelsTab } from './ChannelsTab';
 import { DataGrid } from '../TaskList/DataGrid';
 import {
     getContactColumns,
@@ -29,9 +28,9 @@ import { GroupChatBubbles } from './GroupChatBubbles';
 // 联系人聚合 (Contacts aggregation): a user-curated address book over channel
 // identities auto-discovered from synced Feishu messages. The 联系人 tab is a
 // 多维表格 (DataGrid) whose rows open a detail MODAL; the 消息 tab keeps its own
-// master-detail; 渠道 is the channel-config tab.
+// master-detail. Data-source config (渠道) moved to the 数据源管理 section.
 
-type Tab = 'contacts' | 'messages' | 'channels';
+type Tab = 'contacts' | 'messages';
 
 function initials(name: string): string {
     const n = name.trim();
@@ -70,7 +69,6 @@ export function ContactsPane() {
                     [
                         ['contacts', t('contacts.tab.contacts', language)],
                         ['messages', t('contacts.tab.messages', language)],
-                        ['channels', t('contacts.tab.channels', language)],
                     ] as Array<[Tab, string]>
                 ).map(([key, label]) => (
                     <button key={key} class={tab.value === key ? 'active' : ''} onClick={() => (tab.value = key)}>
@@ -80,7 +78,6 @@ export function ContactsPane() {
             </div>
             {tab.value === 'contacts' && <ContactsTab />}
             {tab.value === 'messages' && <MessagesTab />}
-            {tab.value === 'channels' && <ChannelsTab />}
         </div>
     );
 }

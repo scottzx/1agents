@@ -1,6 +1,6 @@
 import { h, Fragment } from 'preact';
 import type { VNode } from 'preact';
-import { useSignal } from '@preact/signals';
+import { useSignal, useSignalEffect } from '@preact/signals';
 
 import { GridToolbar, type ColState, type ToolbarColumn } from './GridToolbar';
 
@@ -22,10 +22,33 @@ export interface GridColumn {
 export interface CellHelpers {
     isChild: boolean;
     editing: boolean;
+    /** 1-based display position of the row in the current view (for a 序号 column). */
+    index: number;
     startEdit: () => void;
     commit: (patch: Record<string, unknown>) => void;
     cancel: () => void;
     openDetail: () => void;
+}
+
+// initColState builds the initial column visibility/order, restoring a persisted
+// selection when persistKey is set. Reconciles with the live columns: keeps the
+// saved order/visibility for keys still present, appends new keys (visible),
+// drops keys that no longer exist — so dynamic schemas stay stable across loads.
+function initColState(persistKey: string | undefined, allColumns: GridColumn[]): ColState[] {
+    const base = allColumns.map(c => ({ key: c.key, visible: true }));
+    if (!persistKey) return base;
+    try {
+        const saved = JSON.parse(localStorage.getItem(persistKey) || 'null') as ColState[] | null;
+        if (!Array.isArray(saved)) return base;
+        const live = new Set(allColumns.map(c => c.key));
+        const savedKeys = new Set(saved.map(s => s.key));
+        const ordered: ColState[] = [];
+        for (const s of saved) if (live.has(s.key)) ordered.push({ key: s.key, visible: s.visible });
+        for (const c of allColumns) if (!savedKeys.has(c.key)) ordered.push({ key: c.key, visible: true });
+        return ordered.length ? ordered : base;
+    } catch {
+        return base;
+    }
 }
 
 interface DataGridProps<T> {
@@ -53,6 +76,9 @@ interface DataGridProps<T> {
     loading?: boolean;
     emptyAll: string;
     emptyFiltered: string;
+    /** When set, the column visibility/order chosen via the toolbar persists to
+     *  localStorage under this key and is restored on mount. */
+    persistKey?: string;
 }
 
 const cellKey = (rowKey: string, colKey: string) => `${rowKey}:${colKey}`;
@@ -79,13 +105,24 @@ export function DataGrid<T>({
     loading,
     emptyAll,
     emptyFiltered,
+    persistKey,
 }: DataGridProps<T>) {
     const editingCell = useSignal<string | null>(null);
     const groupBy = useSignal<string>('none');
     const collapsed = useSignal<string[]>([]);
     const sort = useSignal<{ key: string; dir: 'asc' | 'desc' } | null>(null);
     const showHierarchy = useSignal(true);
-    const columns = useSignal<ColState[]>(allColumns.map(c => ({ key: c.key, visible: true })));
+    const columns = useSignal<ColState[]>(initColState(persistKey, allColumns));
+
+    // Persist the user's column choice (visibility + order) across sessions.
+    useSignalEffect(() => {
+        if (!persistKey) return;
+        try {
+            localStorage.setItem(persistKey, JSON.stringify(columns.value));
+        } catch {
+            /* storage full / disabled — non-fatal */
+        }
+    });
 
     if (loading && totalCount === 0) {
         return <div class="task-loading">正在载入...</div>;
@@ -110,11 +147,12 @@ export function DataGrid<T>({
         }
     };
 
-    const renderCells = (row: T, isChild: boolean) => {
+    const renderCells = (row: T, isChild: boolean, index: number) => {
         const rowKey = getRowKey(row);
         return visibleCols.map(col =>
             renderCell(row, col, {
                 isChild,
+                index,
                 editing: editingCell.value === cellKey(rowKey, col.key),
                 startEdit: () => (editingCell.value = cellKey(rowKey, col.key)),
                 commit: patch => commit(rowKey, patch),
@@ -124,9 +162,9 @@ export function DataGrid<T>({
         );
     };
 
-    const renderRow = (row: T, isChild: boolean) => (
+    const renderRow = (row: T, isChild: boolean, index: number) => (
         <tr key={getRowKey(row)} class={rowClass(row, isChild)}>
-            {renderCells(row, isChild)}
+            {renderCells(row, isChild, index)}
             {renderActions && <td class="col-actions">{renderActions(row)}</td>}
         </tr>
     );
@@ -230,8 +268,8 @@ export function DataGrid<T>({
 
                         {groupBy.value === 'none' &&
                             (hierarchy && showHierarchy.value
-                                ? orderHierarchical(rows).map(({ row, isChild }) => renderRow(row, isChild))
-                                : [...rows].sort(cmp).map(row => renderRow(row, false)))}
+                                ? orderHierarchical(rows).map(({ row, isChild }, i) => renderRow(row, isChild, i))
+                                : [...rows].sort(cmp).map((row, i) => renderRow(row, false, i)))}
 
                         {groupBy.value !== 'none' &&
                             buildGroups().map(([g, members]) => {
@@ -245,7 +283,7 @@ export function DataGrid<T>({
                                                 <span class="group-count">{members.length}</span>
                                             </td>
                                         </tr>
-                                        {!isCollapsed && members.map(row => renderRow(row, false))}
+                                        {!isCollapsed && members.map((row, i) => renderRow(row, false, i))}
                                     </Fragment>
                                 );
                             })}

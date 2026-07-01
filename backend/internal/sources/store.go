@@ -42,15 +42,16 @@ type Cursor struct {
 	Value string
 }
 
-// StoredRecord is a bronze row read back for governance.
+// StoredRecord is a bronze row read back for governance / the data-source viewer.
 type StoredRecord struct {
-	Kind       string
-	Collection string
-	UID        string
-	ETag       string
-	Payload    string
-	Deleted    bool
-	FetchedAt  int64 // epoch ms
+	Kind        string
+	Collection  string
+	UID         string
+	ETag        string
+	ContentType string
+	Payload     string
+	Deleted     bool
+	FetchedAt   int64 // epoch ms
 }
 
 // Store is the bronze/cursor layer over sync.db.
@@ -228,7 +229,7 @@ func (st *Store) SaveGate(source, accountID, kind, collection, gate string) erro
 // process only records changed since it last ran; a full re-govern is always
 // safe (pass since=0) because the gold upsert is idempotent.
 func (st *Store) RecordsSince(source, kind string, since int64) (recs []StoredRecord, maxFetched int64, err error) {
-	rows, err := st.sql.Query(`SELECT kind, collection, uid, etag, payload, deleted, fetched_at
+	rows, err := st.sql.Query(`SELECT kind, collection, uid, etag, content_type, payload, deleted, fetched_at
         FROM source_records
         WHERE source = ? AND kind = ? AND fetched_at > ?
         ORDER BY fetched_at`, source, kind, since)
@@ -240,7 +241,7 @@ func (st *Store) RecordsSince(source, kind string, since int64) (recs []StoredRe
 	for rows.Next() {
 		var r StoredRecord
 		var del int
-		if err := rows.Scan(&r.Kind, &r.Collection, &r.UID, &r.ETag, &r.Payload, &del, &r.FetchedAt); err != nil {
+		if err := rows.Scan(&r.Kind, &r.Collection, &r.UID, &r.ETag, &r.ContentType, &r.Payload, &del, &r.FetchedAt); err != nil {
 			return nil, since, err
 		}
 		r.Deleted = del != 0
@@ -250,6 +251,69 @@ func (st *Store) RecordsSince(source, kind string, since int64) (recs []StoredRe
 		recs = append(recs, r)
 	}
 	return recs, maxFetched, rows.Err()
+}
+
+// SourceSummary is one (source, kind) rollup for the data-source overview:
+// how many live records, across how many collections, and when last fetched.
+type SourceSummary struct {
+	Source        string `json:"source"`
+	Kind          string `json:"kind"`
+	Count         int    `json:"count"`         // non-deleted records
+	Collections   int    `json:"collections"`   // distinct collections
+	LastFetchedAt int64  `json:"lastFetchedAt"` // epoch ms, 0 if empty
+}
+
+// Summaries rolls up source_records by (source, kind) for the overview cards.
+func (st *Store) Summaries() ([]SourceSummary, error) {
+	rows, err := st.sql.Query(`SELECT source, kind,
+        SUM(CASE WHEN deleted = 0 THEN 1 ELSE 0 END) AS cnt,
+        COUNT(DISTINCT collection) AS colls,
+        MAX(fetched_at) AS last
+        FROM source_records
+        GROUP BY source, kind
+        ORDER BY source, kind`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SourceSummary{}
+	for rows.Next() {
+		var s SourceSummary
+		if err := rows.Scan(&s.Source, &s.Kind, &s.Count, &s.Collections, &s.LastFetchedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// ListRecords returns a (source, kind)'s bronze records, most-recently-fetched
+// first, capped at limit (<=0 → a default cap). Tombstones are included so the
+// viewer can show deletions; callers filter as needed.
+func (st *Store) ListRecords(source, kind string, limit int) ([]StoredRecord, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := st.sql.Query(`SELECT kind, collection, uid, etag, content_type, payload, deleted, fetched_at
+        FROM source_records
+        WHERE source = ? AND kind = ?
+        ORDER BY fetched_at DESC, uid
+        LIMIT ?`, source, kind, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []StoredRecord{}
+	for rows.Next() {
+		var r StoredRecord
+		var del int
+		if err := rows.Scan(&r.Kind, &r.Collection, &r.UID, &r.ETag, &r.ContentType, &r.Payload, &del, &r.FetchedAt); err != nil {
+			return nil, err
+		}
+		r.Deleted = del != 0
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // GovernCursor reads the last-governed high-water mark (epoch ms) for a

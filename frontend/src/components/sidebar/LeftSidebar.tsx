@@ -407,21 +407,6 @@ export function LeftSidebar({
                                 </svg>
                                 <span>{t('sidebar.navCtrl.newConversation', language)}</span>
                             </button>
-                            <div class="nav-control-item" onClick={() => alert('Conversation History: Placeholder')}>
-                                <svg
-                                    class="btn-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                                <span>{t('sidebar.navCtrl.history', language)}</span>
-                            </div>
                             <div
                                 class={`nav-control-item${activeDrawerTab === 'contacts' ? ' active' : ''}`}
                                 onClick={() => toggleDrawerTab('contacts')}
@@ -1105,6 +1090,25 @@ export function LeftSidebar({
                         <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
                     </svg>
                     <span>{t('sidebar.discovery', language)}</span>
+                </div>
+                <div
+                    class={`footer-item${activeDrawerTab === 'datasources' ? ' active' : ''}`}
+                    onClick={() => toggleDrawerTab('datasources')}
+                    title={t('sidebar.datasourcesTitle', language)}
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <ellipse cx="12" cy="5" rx="9" ry="3" />
+                        <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+                        <path d="M3 12a9 3 0 0 0 18 0" />
+                    </svg>
+                    <span>{t('sidebar.datasources', language)}</span>
                 </div>
                 <div
                     class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}

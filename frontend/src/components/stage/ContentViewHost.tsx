@@ -31,6 +31,7 @@ import { L1AppPage } from '../platform/L1Shell';
 import { RemindersPane } from '../drawer/Reminders';
 import { InboxPane } from '../drawer/Inbox';
 import { ContactsPane } from '../drawer/Contacts';
+import { DataSourcesPane } from '../drawer/DataSources';
 import { PersonalTasksPane } from '../drawer/PersonalTasks';
 import { RetroPane } from '../drawer/Retro';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
@@ -240,6 +241,24 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <RetroPane />
+                </div>
+            );
+        case 'datasources':
+            // 数据源管理 — full-bleed like the project detail page so the shared
+            // ShellNav (breadcrumb + tab bar) spans edge-to-edge; the pane pads
+            // its own content body.
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <DataSourcesPane />
                 </div>
             );
         case 'channels':

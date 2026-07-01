@@ -15,6 +15,25 @@ type Contact struct {
 // which parses bronze vCard payloads without knowing CardDAV internals.
 func ParseVCards(data string) []Contact { return parseVCards(data) }
 
+// VCardProps returns a vCard's properties as ordered (NAME, value) pairs using
+// native property names (Apple "itemN." group prefix + params stripped, value
+// unescaped). It skips only the structural BEGIN/END/VERSION lines. Repeated
+// properties (e.g. two TELs) appear multiple times, preserving source order.
+// Used by the data-source viewer to show raw records natively — no fixed schema
+// is imposed, so contacts/todos/calendars all render by whatever they carry.
+func VCardProps(data string) [][2]string {
+	var out [][2]string
+	for _, line := range unfold(data) {
+		name, raw := splitProp(line)
+		switch name {
+		case "", "BEGIN", "END", "VERSION":
+			continue
+		}
+		out = append(out, [2]string{name, unescape(raw)})
+	}
+	return out
+}
+
 // parseVCards parses a payload that may contain one or more concatenated vCards
 // (as returned by an addressbook-query REPORT) into Contacts. It is tolerant:
 // unknown properties are ignored, line folding is unwrapped, Apple's

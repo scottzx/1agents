@@ -60,6 +60,7 @@ const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
     discovery: 'header.title.discovery',
     reminders: 'header.title.reminders',
     contacts: 'header.title.contacts',
+    datasources: 'header.title.datasources',
     inbox: 'header.title.inbox',
     personal: 'header.title.personal',
     retro: 'header.title.retro',

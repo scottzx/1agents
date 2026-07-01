@@ -4060,6 +4060,45 @@ body {
   }
 }
 
+// ── Section nav breadcrumb — global so the shared ShellNav (ProjectShell,
+// DataSources, …) renders it identically anywhere, not only in project detail.
+.project-detail-breadcrumb {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+}
+
+.project-crumb-link {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+
+  &:hover {
+    color: var(--accent-color);
+    background: var(--btn-hover);
+  }
+}
+
+.project-crumb-sep {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+
+.project-crumb-current {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
 // ── 项目详情页 breadcrumb shell (ProjectDetailShell.tsx, #redesign) ───────
 .project-detail-shell {
   flex: 1;
@@ -4067,43 +4106,6 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-
-  .project-detail-breadcrumb {
-    flex: none;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 13px;
-  }
-
-  .project-crumb-link {
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 13px;
-    padding: 4px 6px;
-    border-radius: 6px;
-
-    &:hover {
-      color: var(--accent-fg);
-      background: var(--btn-hover);
-    }
-  }
-
-  .project-crumb-sep {
-    width: 14px;
-    height: 14px;
-    color: var(--text-muted);
-  }
-
-  .project-crumb-current {
-    color: var(--text-main);
-    font-weight: 600;
-  }
 
   .project-detail-body {
     flex: 1;
@@ -17962,4 +17964,333 @@ body {
   pointer-events: auto;
 }
 
+/* ── 数据源管理 (Data Source Management) ─────────────────────────────────────
+   Overview cards (grouped by 大类) → 多维表格 detail → 管理数据源 panel. Cards
+   extend the Bento primitives; the detail reuses the generic .task-grid. */
+.datasource-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
 
+// ShellNav (breadcrumb + tab bar) sits flush at the top; the content body below
+// takes the remaining height and scrolls, with its own padding.
+.datasource-tab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.datasource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.datasource-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.datasource-head-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.datasource-head-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: -6px;
+}
+
+.datasource-cat-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.datasource-grid {
+  margin-bottom: 4px;
+}
+
+.datasource-card {
+  @extend %bento-card;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  &.clickable {
+    @extend %bento-card-interactive;
+  }
+
+  &.disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.datasource-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.datasource-card-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.datasource-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+}
+
+.datasource-card-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+
+  &.warn {
+    color: var(--warning-fg);
+    background: var(--warning-bg);
+  }
+  &.muted {
+    color: var(--text-muted);
+    background: var(--btn-hover);
+  }
+}
+
+.datasource-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.datasource-card-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.datasource-card-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Detail + manage sub-header (back button + title + count + search) */
+.datasource-subhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.datasource-back {
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--btn-hover);
+    color: var(--text-main);
+  }
+}
+
+.datasource-subhead-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.datasource-subhead-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.datasource-search {
+  margin-left: auto;
+  min-width: 200px;
+}
+
+.datasource-src-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.datasource-card-badge.ok {
+  color: var(--success-fg);
+  background: var(--success-bg);
+}
+
+.datasource-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  // Anchor the per-record popup so it overlays only the table container (never
+  // the left sidebar), mirroring .contacts-pane / .contacts-detail-modal-overlay.
+  position: relative;
+}
+
+/* Tombstoned bronze records read dim + struck-through. */
+.ds-deleted {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.ds-row-deleted {
+  opacity: 0.55;
+}
+
+.ds-tombstone {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--danger-fg);
+  text-decoration: none;
+}
+
+/* Leftmost 序号 cell → opens the per-record popup. */
+.col-ds-seq {
+  text-align: center;
+  width: 54px;
+}
+
+.ds-seq-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--accent-light);
+    color: var(--accent-color);
+  }
+}
+
+/* Dynamic native-field cells: single-line, truncated (full value on hover / in
+   the popup). */
+.col-ds-field {
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Per-record popup — every native field listed key → value. Absolute (not
+   fixed) + anchored to .datasource-detail so it overlays only the table
+   container, never the left sidebar; z-index at the project top (max is 9999). */
+.ds-record-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 24px;
+}
+
+.ds-record-modal {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  padding: 20px 22px;
+  width: min(640px, 92vw);
+  max-height: 82vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
+.ds-record-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-main);
+  }
+}
+
+.ds-record-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.ds-record-section {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ds-record-fields {
+  display: grid;
+  grid-template-columns: minmax(90px, 200px) 1fr;
+  gap: 4px 14px;
+  align-items: baseline;
+}
+
+.ds-record-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-color);
+  word-break: break-all;
+}
+
+.ds-record-val {
+  font-size: 13px;
+  color: var(--text-main);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.ds-record-raw {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
