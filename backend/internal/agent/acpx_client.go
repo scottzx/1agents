@@ -18,6 +18,15 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+const (
+	// bridgeIdleTimeout is how long a frontend-disconnected bridge may sit
+	// idle before its agent subprocess is reaped. The conversation survives:
+	// the user's next visit reconnects and resumes via the stored acpSessionId.
+	bridgeIdleTimeout = 5 * time.Minute
+	// bridgeReapSweepInterval is how often reapLoop scans for idle bridges.
+	bridgeReapSweepInterval = time.Minute
+)
+
 type ActiveBridge struct {
 	SessionID     string
 	WorkspacePath string
@@ -26,6 +35,13 @@ type ActiveBridge struct {
 	ServerConn    *websocket.Conn
 	MsgChan       chan WsMessage
 	IsDone        bool
+
+	// LastActivityAt is bumped on every client- or server-side message.
+	// The idle reaper (reapLoop) uses it, together with a nil ClientConn,
+	// to tear down agent subprocesses whose frontend has gone away and
+	// stayed quiet — the real process leak, since a dropped ClientConn
+	// leaves the bridge (and its agent) alive to support reconnect.
+	LastActivityAt time.Time
 
 	// Issue-model write-back state (issue-model §8). TaskID/AgentType are
 	// fixed at bridge creation; ReplyID is the timeline reply that
@@ -41,6 +57,13 @@ type ActiveBridge struct {
 	// current turn; reset on each tool call so that at `done` it holds the
 	// final assistant message (text after the last tool call).
 	turnText []string
+}
+
+// touch records that the session saw activity just now, resetting its idle clock.
+func (b *ActiveBridge) touch() {
+	b.mu.Lock()
+	b.LastActivityAt = time.Now()
+	b.mu.Unlock()
 }
 
 // appendTurnText accumulates one streamed output chunk.
@@ -80,10 +103,62 @@ type AcpxClient struct {
 }
 
 func NewAcpxClient(serverPort int) *AcpxClient {
-	return &AcpxClient{
+	c := &AcpxClient{
 		serverPort: serverPort,
 		bridges:    make(map[string]*ActiveBridge),
 	}
+	go c.reapLoop()
+	return c
+}
+
+// reapLoop periodically frees bridges whose frontend has disconnected
+// (ClientConn == nil) and stayed idle past bridgeIdleTimeout. That is the real
+// leak: a dropped ClientConn intentionally leaves the bridge — and its agent
+// subprocess — alive so a reconnect can re-attach, but nothing tears it down if
+// the user never returns. Bridges with a live ClientConn are never reaped: the
+// user is present, and reaping one would just make the frontend auto-reconnect
+// and immediately respawn the agent. A reaped conversation is not lost — the
+// reconnect path re-runs ensure_session with the stored acpSessionId, which the
+// agent resumes from its on-disk history (ACP session/resume).
+func (c *AcpxClient) reapLoop() {
+	ticker := time.NewTicker(bridgeReapSweepInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		c.mu.Lock()
+		snapshot := make([]*ActiveBridge, 0, len(c.bridges))
+		for _, b := range c.bridges {
+			snapshot = append(snapshot, b)
+		}
+		c.mu.Unlock()
+
+		now := time.Now()
+		for _, bridge := range snapshot {
+			bridge.mu.Lock()
+			idle := bridge.ClientConn == nil && !bridge.IsDone &&
+				now.Sub(bridge.LastActivityAt) > bridgeIdleTimeout
+			bridge.mu.Unlock()
+			if idle {
+				c.reapBridge(bridge)
+			}
+		}
+	}
+}
+
+// reapBridge frees one idle, disconnected bridge. It asks the bridge-server to
+// close the session (tearing down the agent subprocess), then closes ServerConn
+// — that unblocks readFromServerLoop, whose defer removes the bridge from the
+// registry and releases the workspace lock.
+func (c *AcpxClient) reapBridge(bridge *ActiveBridge) {
+	bridge.mu.Lock()
+	serverConn := bridge.ServerConn
+	sessionID := bridge.SessionID
+	bridge.mu.Unlock()
+	if serverConn == nil {
+		return
+	}
+	log.Printf("[acpx_client] Reaping idle disconnected session: %s", sessionID)
+	_ = serverConn.WriteJSON(WsMessage{Action: "close_session", SessionID: sessionID})
+	_ = serverConn.Close()
 }
 
 type WsMessage struct {
@@ -156,6 +231,9 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			_ = bridge.ClientConn.Close() // Close old client connection
 		}
 		bridge.ClientConn = clientConn
+		// A reconnect is activity: refresh the idle clock so a bridge that
+		// briefly reconnects then drops again isn't reaped on stale time.
+		bridge.LastActivityAt = time.Now()
 		// A follow-up reply may re-enter an existing bridge: refresh the
 		// reply linkage so the next agent write-back points at it.
 		if replyID != "" {
@@ -214,15 +292,16 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 	}
 
 	bridge = &ActiveBridge{
-		SessionID:     sessionId,
-		WorkspacePath: workspacePath,
-		ClientConn:    clientConn,
-		ServerConn:    serverConn,
-		MsgChan:       make(chan WsMessage, 100),
-		TaskID:        taskId,
-		AgentType:     agentType,
-		ReplyID:       replyID,
-		tasksStore:    tasksStore,
+		SessionID:      sessionId,
+		WorkspacePath:  workspacePath,
+		ClientConn:     clientConn,
+		ServerConn:     serverConn,
+		MsgChan:        make(chan WsMessage, 100),
+		TaskID:         taskId,
+		AgentType:      agentType,
+		ReplyID:        replyID,
+		tasksStore:     tasksStore,
+		LastActivityAt: time.Now(),
 	}
 	c.bridges[sessionId] = bridge
 	c.mu.Unlock()
@@ -291,6 +370,7 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			log.Printf("[acpx_client] Read from server failed for session %s: %v", bridge.SessionID, err)
 			break
 		}
+		bridge.touch()
 
 		// Intercept and update status
 		if msg.Event == "session_ready" && msg.AgentSessionID != "" {
@@ -369,6 +449,7 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 			log.Printf("[acpx_client] Read from client connection failed for session %s: %v", bridge.SessionID, err)
 			break
 		}
+		bridge.touch()
 
 		// A new prompt starts a new turn: clear any leftover text so the
 		// write-back only captures this turn's assistant output, and record
