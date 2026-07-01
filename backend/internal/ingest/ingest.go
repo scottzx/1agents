@@ -1,0 +1,134 @@
+// Package ingest is the composition root for data-source ingestion: it wires the
+// per-collection crawl config (meta.db), the bronze store + Feishu puller
+// (sync.db / internal/sources), the CLI-lifecycle probe (internal/sourcecli),
+// and the work-order task API (internal/taskapi) into one HTTP surface and one
+// scheduler-driven sync path.
+//
+// Design intent (user directive): every pull — 立刻执行 or 定时增量 — is a
+// work-order function task, so the work-order scheduler owns timing and every
+// run is automatically counted. This package registers the "sources.feishu.sync"
+// function handler and dispatches tasks; it never grows its own ticker.
+package ingest
+
+import (
+	"github.com/scottzx/1Agents/backend/internal/feishu"
+	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/sourcecli"
+	"github.com/scottzx/1Agents/backend/internal/sources"
+)
+
+// Handler serves the data-source management API and owns the sync composition.
+type Handler struct {
+	db       *meta.DB
+	cfg      *meta.SourceCollectionStore
+	chats    *meta.FeishuChatStore
+	bronze   *sources.Store
+	cli      *sourcecli.Handler
+	systemWS string     // host workspace path (set by ProvisionSystemWorkspace)
+	disp     Dispatcher // set via SetDispatcher once the task API is available
+}
+
+// Dispatcher is the narrow slice of the work-order task API this package needs:
+// dispatch a function task and query prior runs for the history/statistics view.
+// It is an interface so ingest doesn't import the whole taskapi/agent graph at
+// construction (server.go injects the concrete implementation).
+type Dispatcher interface {
+	// SyncNow dispatches an immediate one-off sync task for (source, kind).
+	// collection is optional (a specific chat id for message kinds). Returns the
+	// new task id.
+	SyncNow(source, kind, collection string) (string, error)
+	// EnsureRecurring makes sure a periodic (interval) sync task exists for
+	// (source, kind) at everyMinutes cadence, creating it if absent.
+	EnsureRecurring(source, kind string, everyMinutes int) error
+	// History returns prior sync runs for a source (newest first), read from the
+	// work-order tasks by business_ref prefix.
+	History(source string) ([]SyncRun, error)
+}
+
+// SyncRun is one work-order sync task surfaced to the history view.
+type SyncRun struct {
+	TaskID      string `json:"taskId"`
+	Kind        string `json:"kind"`
+	Collection  string `json:"collection,omitempty"`
+	Status      string `json:"status"`
+	Result      string `json:"result,omitempty"`
+	CreatedAt   string `json:"createdAt"`
+	CompletedAt string `json:"completedAt,omitempty"`
+}
+
+// NewHandlerDefault wires a Handler over the default meta.db + sync.db bronze
+// store plus a CLI probe.
+func NewHandlerDefault() (*Handler, error) {
+	db, err := meta.OpenDefault()
+	if err != nil {
+		return nil, err
+	}
+	bronze, err := sources.OpenDefault()
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{
+		db:     db,
+		cfg:    meta.NewSourceCollectionStore(db),
+		chats:  meta.NewFeishuChatStore(db),
+		bronze: bronze,
+		cli:    sourcecli.NewHandler(),
+	}, nil
+}
+
+// SetDispatcher injects the work-order dispatcher (built in server.go from the
+// task API + scheduler). Until set, sync-now / history degrade gracefully.
+func (h *Handler) SetDispatcher(d Dispatcher) { h.disp = d }
+
+// EnsureRecurringForEnabled re-arms a periodic work-order task for every enabled
+// Feishu collection. Called once at startup so cadences configured in a prior
+// run resume without the user re-toggling them — this is what replaces the
+// retired digest ticker. Idempotent (EnsureRecurring skips live tasks).
+func (h *Handler) EnsureRecurringForEnabled() error {
+	if h.disp == nil {
+		return nil
+	}
+	enabled, err := h.cfg.ListEnabled(feishu.Source)
+	if err != nil {
+		return err
+	}
+	for _, c := range enabled {
+		if d := feishu.DescriptorFor(c.Kind); d == nil || !d.Implemented {
+			continue
+		}
+		if err := h.disp.EnsureRecurring(feishu.Source, c.Kind, c.IncrementalMinutes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CLIHandler exposes the CLI-lifecycle handler for route registration.
+func (h *Handler) CLIHandler() *sourcecli.Handler { return h.cli }
+
+// EnabledFeishuSpecs reads the enabled Feishu collections from config and turns
+// them into puller specs. chatIDs supplies the tracked-chat set for PerChat
+// kinds (feishu_message); the caller sources it from feishu_tracked_chats.
+func (h *Handler) EnabledFeishuSpecs(chatIDs []string) ([]sources.FeishuSpec, error) {
+	enabled, err := h.cfg.ListEnabled(feishu.Source)
+	if err != nil {
+		return nil, err
+	}
+	specs := make([]sources.FeishuSpec, 0, len(enabled))
+	for _, c := range enabled {
+		d := feishu.DescriptorFor(c.Kind)
+		if d == nil || !d.Implemented {
+			continue
+		}
+		spec := sources.FeishuSpec{
+			Kind:         c.Kind,
+			PageSize:     c.PageSize,
+			LookbackDays: c.InitialLookbackDays,
+		}
+		if d.PerChat {
+			spec.ChatIDs = chatIDs
+		}
+		specs = append(specs, spec)
+	}
+	return specs, nil
+}

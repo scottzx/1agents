@@ -28,6 +28,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
+	"github.com/scottzx/1Agents/backend/internal/ingest"
 	"github.com/scottzx/1Agents/backend/internal/kwiki"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -272,6 +273,28 @@ func NewRouter(cfg *config.Config) http.Handler {
 			} else {
 				mux.HandleFunc("/api/sources/summary", sourcesHandler.HandleSummary) // GET
 				mux.HandleFunc("/api/sources/records", sourcesHandler.HandleRecords) // GET ?source=&kind=&limit=
+			}
+
+			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
+			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
+			// function task through the scheduler above — this package never grows
+			// its own ticker (user directive: 走工单系统的循环机制).
+			if ingestHandler, iErr := ingest.NewHandlerDefault(); iErr != nil {
+				log.Printf("[server] ingest init failed: %v", iErr)
+			} else {
+				ingestHandler.RegisterFunctions()
+				if wsPath, pErr := ingestHandler.ProvisionSystemWorkspace(); pErr != nil {
+					log.Printf("[server] ingest system workspace: %v", pErr)
+				} else {
+					ingestHandler.SetDispatcher(ingest.NewDispatcher(taskAPI, tasksStore, wsPath))
+					if rErr := ingestHandler.EnsureRecurringForEnabled(); rErr != nil {
+						log.Printf("[server] ingest re-arm recurring: %v", rErr)
+					}
+				}
+				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI)          // GET /{tool}/status, POST /{tool}/recheck
+				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections) // GET, PUT
+				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
+				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
 			}
 
 			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks

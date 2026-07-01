@@ -238,6 +238,12 @@ func (db *DB) migrateSchema() error {
 	if err := db.ensureChannelModules(); err != nil {
 		return fmt.Errorf("meta: ensure channel_modules: %w", err)
 	}
+	// 数据源爬取配置 (source_collection_config). New table only, created
+	// unconditionally (CREATE IF NOT EXISTS) to sidestep the meta schema-version
+	// collisions above. Idempotent.
+	if err := db.ensureSourceCollectionConfig(); err != nil {
+		return fmt.Errorf("meta: ensure source_collection_config: %w", err)
+	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 			return fmt.Errorf("meta: set user_version: %w", err)

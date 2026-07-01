@@ -7,6 +7,7 @@ import { channelModuleService, type ChannelModule } from '@1agents/core/services
 import { ICloudSection } from './ICloudSection';
 import { IMessageSection } from './IMessageSection';
 import { FeishuSection } from './FeishuSection';
+import { FeishuSourceCard } from './FeishuSourceCard';
 
 // 管理数据源 (manage data sources) — sources grouped by channel (Apple / 飞书),
 // each with sub-modules. Every sub-module is privacy-gated: it requires explicit
@@ -110,6 +111,10 @@ export function ManagePanel() {
                 <div class="contacts-channel-head">
                     <span class="contacts-channel-name">{t('contacts.channels.group.feishu', language)}</span>
                     <span class="contacts-code-badge">{t('contacts.channels.codeBadge', language)}</span>
+                </div>
+                {/* 数据源配置卡片 — CLI 状态 / 集合参数 / 同步历史，无隐私门控 */}
+                <div class="contacts-submodule">
+                    <FeishuSourceCard />
                 </div>
                 {submodule(MOD_FEISHU, t('contacts.sub.feishuGroups', language), 'lark-cli', () => (
                     <FeishuSection />

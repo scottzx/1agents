@@ -623,6 +623,16 @@ func (s *Scheduler) emit(t *Task, kind TaskEventKind, now time.Time) bool {
 // nextOccurrence computes the next trigger after `after` for a simple-enum
 // recurrence rule. At ("HH:MM", local time) defaults to midnight.
 func nextOccurrence(after time.Time, r *Recurrence) time.Time {
+	// interval: fixed spacing from the previous run, no clock alignment. This is
+	// the machine cadence (e.g. data-source incremental sync every N minutes).
+	if r.Freq == "interval" {
+		every := r.EveryMinutes
+		if every < 1 {
+			every = 1 // guard: a 0/negative interval would busy-loop the scheduler
+		}
+		return after.Add(time.Duration(every) * time.Minute).UTC()
+	}
+
 	hour, minute := 0, 0
 	if len(r.At) == 5 {
 		if t, err := time.Parse("15:04", r.At); err == nil {
