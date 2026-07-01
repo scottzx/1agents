@@ -159,6 +159,14 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 	if err != nil {
 		return err
 	}
+	// Self-heal legacy empty-id project rows (from the "_" slug bug) so the
+	// sidebar never surfaces a workspace with id="" — which the frontend would
+	// turn into GET /api/agent/sessions?workspace_id= → 400.
+	if n, err := db.PruneInvalidProjects(); err != nil {
+		log.Printf("[workspace] prune invalid projects: %v", err)
+	} else if n > 0 {
+		log.Printf("[workspace] pruned %d invalid (empty-id) project row(s)", n)
+	}
 	if _, ok, err := db.GetProject("default"); err != nil {
 		return err
 	} else if ok {
@@ -402,19 +410,30 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Dynamically remove this workspace from CC-Connect projects config
-	nameOrID := wsToDelete.Name
-	if nameOrID == "" {
-		nameOrID = wsToDelete.ID
-	}
-	projName := getCCProjectName(nameOrID, "claudecode")
+	// Dynamically remove this workspace's CC-Connect project(s). Since #277 the
+	// project is keyed by work_dir PATH, not name — names have drifted (plain
+	// slug, legacy __<agent> suffix, or "_" for non-ASCII), so a name-based
+	// removal silently misses and the startup import loop resurrects the
+	// workspace on the next restart. Match by path so deletion actually sticks.
 	if config.ConfigPath != "" {
-		err = config.RemoveProject(projName)
-		if err != nil {
-			log.Printf("[workspace] ccconnect remove project error: %v", err)
-		} else {
-			log.Printf("[workspace] Dynamically removed CC-Connect project %s", projName)
-			
+		removed := removeCCProjectsByPath(wsToDelete.WorkspacePath)
+		if removed == 0 {
+			// Fallback for projects recorded without a work_dir: try the legacy
+			// name-based removal so pre-#277 configs still clean up.
+			nameOrID := wsToDelete.Name
+			if nameOrID == "" {
+				nameOrID = wsToDelete.ID
+			}
+			projName := getCCProjectName(nameOrID, "claudecode")
+			if err := config.RemoveProject(projName); err != nil {
+				log.Printf("[workspace] ccconnect remove project %q: %v", projName, err)
+			} else {
+				removed = 1
+			}
+		}
+		if removed > 0 {
+			log.Printf("[workspace] removed %d CC-Connect project(s) for workspace %s (%s)", removed, id, wsToDelete.WorkspacePath)
+
 			// Trigger cc-connect to hot restart itself and reload the configuration!
 			select {
 			case core.RestartCh <- core.RestartRequest{}:
@@ -422,7 +441,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 			default:
 				log.Println("[workspace] CC-Connect hot restart already pending")
 			}
-			
+
 			// Wait for the hot restart to finish to avoid 502 Bad Gateway race condition on immediate redirect
 			time.Sleep(1000 * time.Millisecond)
 		}
@@ -719,6 +738,49 @@ func expandTilde(path string) string {
 		}
 	}
 	return path
+}
+
+// removeCCProjectsByPath removes every cc-connect project whose agent work_dir
+// resolves to the same filesystem path as wsPath (#277 path identity). Returns
+// the number removed. Project names are unreliable delete keys (slug drift,
+// legacy suffixes, "_"); matching by path is what makes a workspace deletion
+// survive a backend restart — otherwise the import loop re-adds it.
+func removeCCProjectsByPath(wsPath string) int {
+	if wsPath == "" {
+		return 0
+	}
+	cfg, err := config.Load(config.ConfigPath)
+	if err != nil {
+		log.Printf("[workspace] load cc-connect config for path-remove: %v", err)
+		return 0
+	}
+	target := normalizeWorkspacePath(wsPath)
+	var names []string
+	for _, p := range cfg.Projects {
+		wd, _ := p.Agent.Options["work_dir"].(string)
+		if wd != "" && normalizeWorkspacePath(wd) == target {
+			names = append(names, p.Name)
+		}
+	}
+	removed := 0
+	for _, n := range names {
+		if err := config.RemoveProject(n); err != nil {
+			log.Printf("[workspace] ccconnect remove project %q: %v", n, err)
+			continue
+		}
+		removed++
+	}
+	return removed
+}
+
+// normalizeWorkspacePath canonicalizes a path for identity comparison (absolute
+// + cleaned), mirroring ccconnect.normalizePath so delete matches the same key
+// the reconciler uses.
+func normalizeWorkspacePath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return filepath.Clean(abs)
+	}
+	return filepath.Clean(p)
 }
 
 func getCCProjectName(workspaceName string, agentType string) string {

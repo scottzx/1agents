@@ -294,8 +294,10 @@ insecure = true
 					// workspace name, and the agent type lives in the per-channel
 					// [projects.platforms.agent] binding instead of the project name.
 					wsPaths := make(map[string]bool)
+					wsIDs := make(map[string]bool)
 					for _, ws := range wsCfg.Workspaces {
 						wsPaths[normalizePath(ws.Path)] = true
+						wsIDs[ws.ID] = true
 					}
 
 					// Clean up existing workspace names that are raw cc-connect project
@@ -334,14 +336,37 @@ insecure = true
 							if displayName == "" {
 								displayName = filepath.Base(workDir)
 							}
+							// A legacy "_" project name (a non-ASCII workspace such as
+							// the built-in "对话" slugged before the CCProjectSlug fix)
+							// sanitizes to an empty id. Importing that writes a
+							// workspace row with id="" that all such projects collapse
+							// onto, which poisons /api/agent/sessions (workspace_id="").
+							// Skip it rather than mint an empty/degenerate id.
+							id := sanitizeID(displayName)
+							if id == "" {
+								log.Printf("[ccconnect] Skipping import of project %q (%s): name yields no valid workspace id", proj.Name, workDir)
+								continue
+							}
+							// The id already belongs to another workspace at a
+							// different path — this project is an orphan (a dead
+							// work_dir whose basename collides, e.g. a stale
+							// "/tmp/.../temp" vs the real "temp"). Importing it would
+							// upsert-by-id and silently overwrite the live workspace's
+							// path, and it re-imports every boot. Skip so the reconcile
+							// pass below drops the orphan from the config for good.
+							if wsIDs[id] {
+								log.Printf("[ccconnect] Skipping import of project %q (%s): workspace id %q already in use", proj.Name, workDir, id)
+								continue
+							}
 							newWS := workspace.Workspace{
-								ID:     sanitizeID(displayName),
+								ID:     id,
 								Name:   displayName,
 								Path:   workDir,
 								Status: "active",
 							}
 							wsCfg.Workspaces = append(wsCfg.Workspaces, newWS)
 							wsPaths[normalizePath(workDir)] = true
+							wsIDs[id] = true
 							wsModified = true
 							log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", displayName, workDir)
 						}
@@ -1768,11 +1793,16 @@ func switchCCSwitchProviderForWeb(appType, providerID string) error {
 func CCProjectSlug(workspaceName string) string {
 	var sb strings.Builder
 	inInvalidSeq := false
+	hasAlnum := false
 	for _, r := range workspaceName {
-		isValid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-'
+		isAlnum := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+		isValid := isAlnum || r == '_' || r == '-'
 		if isValid {
 			sb.WriteRune(r)
 			inInvalidSeq = false
+			if isAlnum {
+				hasAlnum = true
+			}
 		} else {
 			if !inInvalidSeq {
 				sb.WriteRune('_')
@@ -1784,7 +1814,12 @@ func CCProjectSlug(workspaceName string) string {
 	if len(slug) > 32 {
 		slug = slug[:32]
 	}
-	if slug == "" {
+	// A name with no ASCII-alphanumeric content (e.g. the built-in "对话"
+	// workspace) collapses to just "_"; treat it as empty so callers fall back
+	// to the workspace id instead of minting a "_" project. A "_" project name
+	// round-trips into an empty workspace id on re-import (see the import loop),
+	// which poisons /api/agent/sessions (workspace_id="").
+	if !hasAlnum {
 		slug = "ws"
 	}
 	return slug

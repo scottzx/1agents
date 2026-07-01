@@ -86,6 +86,20 @@ func (db *DB) ListWorkspaceProjects() ([]Project, error) {
 		 ORDER BY position ASC, created_at ASC`, PersonalProjectID)
 }
 
+// PruneInvalidProjects removes project rows whose id is empty or whitespace.
+// Such rows were minted before the CCProjectSlug/import fix, when a non-ASCII
+// workspace name (e.g. the built-in "对话") slugged to "_" and sanitized to an
+// empty id. An empty-id workspace makes the frontend request
+// /api/agent/sessions?workspace_id= → 400, so self-heal on startup. Returns the
+// number of rows removed.
+func (db *DB) PruneInvalidProjects() (int64, error) {
+	res, err := db.sql.Exec(`DELETE FROM projects WHERE TRIM(id) = ''`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // DeleteProject removes a project row by id. Tasks keyed by the gone project_id
 // are left as-is (orphaned), matching pre-unification behavior where a deleted
 // workspace dropped out of the registry but its meta rows remained.

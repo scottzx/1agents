@@ -187,7 +187,11 @@ export const loadAllChatSessions = async () => {
     const wss = wsStore.workspaces.value;
     if (wss.length === 0) return;
     try {
-        const lists = await Promise.all(wss.map(w => agentService.list(w.id).catch(() => [] as ChatSession[])));
+        // Skip any workspace with a blank id — the backend rejects
+        // workspace_id= with 400, and a blank-id row is never a real workspace.
+        const lists = await Promise.all(
+            wss.filter(w => w.id).map(w => agentService.list(w.id).catch(() => [] as ChatSession[]))
+        );
         chatSessions.value = lists.flat();
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {

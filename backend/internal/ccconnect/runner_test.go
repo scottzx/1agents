@@ -199,6 +199,31 @@ func TestReconcileProjectsByPath(t *testing.T) {
 	}
 }
 
+// TestCCProjectSlugNonASCIINoUnderscoreOnly guards the empty-workspace-id
+// regression: a non-ASCII workspace name (like the built-in "对话" default)
+// must not slug to a bare "_" (which re-imports as an empty workspace id and
+// makes /api/agent/sessions?workspace_id= 400). It falls back to "ws" so the
+// caller can substitute the workspace id instead.
+func TestCCProjectSlugNonASCIINoUnderscoreOnly(t *testing.T) {
+	cases := map[string]string{
+		"对话":       "ws",
+		"！！！":      "ws",
+		"app":      "app",
+		"New One":  "New_One",
+		"混合mix":    "_mix",
+		"a_b-c":    "a_b-c",
+	}
+	for in, want := range cases {
+		if got := CCProjectSlug(in); got != want {
+			t.Errorf("CCProjectSlug(%q) = %q; want %q", in, got, want)
+		}
+	}
+	// sanitizeID must never resurrect an empty id from the slug fallback.
+	if got := sanitizeID(CCProjectSlug("对话")); got == "" {
+		t.Errorf("sanitizeID(CCProjectSlug(%q)) = %q; want non-empty", "对话", got)
+	}
+}
+
 func projectNames(ps []config.ProjectConfig) []string {
 	out := make([]string, len(ps))
 	for i, p := range ps {
