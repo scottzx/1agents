@@ -30,6 +30,13 @@ const TAG_KEYS: Record<'all' | 'doc' | 'img' | 'code', string> = {
     code: 'fileBrowser.tagCode',
 };
 
+/** Local access (desktop/localhost) has direct filesystem reach, so the upload shortcut is only useful for remote access. */
+const IS_LOCALHOST =
+    typeof window !== 'undefined' &&
+    !!window.location &&
+    (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1');
+
 /**
  * Sort children at each level: directories first, then files, alphabetically.
  * Implemented as a free function so it can be used inside useMemo without
@@ -281,33 +288,35 @@ export function FlatFileBrowser({
                     </button>
                 ))}
 
-                {/* Upload Button */}
-                <button
-                    class="fb-tag fb-upload-btn"
-                    style="margin-left: auto; display: flex; align-items: center; gap: 4px; border-color: var(--accent-color); color: var(--accent-color);"
-                    onClick={uploadFileAction}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        style="width: 14px; height: 14px;"
+                {/* Upload Button (icon only, hidden on localhost access) */}
+                {!IS_LOCALHOST && (
+                    <button
+                        class="fb-tag fb-upload-btn"
+                        style="margin-left: auto; display: flex; align-items: center; justify-content: center; border-color: var(--accent-color); color: var(--accent-color);"
+                        title={t('fileBrowser.upload', language)}
+                        onClick={uploadFileAction}
                     >
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span>{t('fileBrowser.upload', language)}</span>
-                </button>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            style="width: 14px; height: 14px;"
+                        >
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                    </button>
+                )}
 
                 {/* Open in Finder / Explorer Button (Desktop mode only) */}
                 {IS_DESKTOP && (
                     <button
                         class="fb-tag fb-open-folder-btn"
-                        style="display: flex; align-items: center; gap: 4px; border-color: var(--text-secondary); color: var(--text-secondary);"
+                        style={`display: flex; align-items: center; gap: 4px; border-color: var(--text-secondary); color: var(--text-secondary);${IS_LOCALHOST ? ' margin-left: auto;' : ''}`}
                         onClick={openFolderAction}
                     >
                         <svg
