@@ -34,8 +34,7 @@ const TAG_KEYS: Record<'all' | 'doc' | 'img' | 'code', string> = {
 const IS_LOCALHOST =
     typeof window !== 'undefined' &&
     !!window.location &&
-    (window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1');
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 /**
  * Sort children at each level: directories first, then files, alphabetically.
