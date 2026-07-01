@@ -68,7 +68,7 @@ const (
 var catalog = []CollectionDescriptor{
 	// ── IM / 消息 ─────────────────────────────────────────────────────────
 	{
-		Kind: "feishu_chat", Domain: DomainIM, Label: "群会话",
+		Kind: "feishu_chat", Domain: DomainIM, Label: "群列表",
 		Endpoint: "/open-apis/im/v1/chats", Method: "GET",
 		BaseParams: map[string]string{}, ItemPath: "data.items", UIDField: "chat_id",
 		CursorFlavor: "page_token", Implemented: true,
