@@ -42,9 +42,15 @@ interface DiscoveryPanelProps {
     language: Lang;
     /** When set, smoothly scroll the matching category section into view. */
     scrollToCategory?: string;
+    /**
+     * When set (desktop top-tab layout), render ONLY this category's section and
+     * hide its title (the tab already labels it). Unset = the full scroll page
+     * with all sections (mobile / legacy).
+     */
+    activeCategory?: string;
 }
 
-export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }: DiscoveryPanelProps) {
+export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory, activeCategory }: DiscoveryPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -110,12 +116,12 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory }:
         <div class="discovery-container" ref={containerRef}>
             <div class="discovery-header-desc">{t('discovery.intro', language)}</div>
 
-            {CATEGORIES.map(cat => {
+            {CATEGORIES.filter(cat => !activeCategory || cat.id === activeCategory).map(cat => {
                 const cards = QUICK_LINKS.filter(c => c.category === cat.id);
                 if (cards.length === 0) return null;
                 return (
                     <section class="discovery-section" id={`discovery-section-${cat.id}`} key={cat.id}>
-                        <h2 class="discovery-section-title">{t(cat.titleKey, language)}</h2>
+                        {!activeCategory && <h2 class="discovery-section-title">{t(cat.titleKey, language)}</h2>}
                         <div class="discovery-cards-list bento-grid">{cards.map(renderCard)}</div>
                     </section>
                 );

@@ -5,7 +5,7 @@ import type { ContentView } from '../../stores/stageStore';
 import type { App, AppState } from '../app';
 import { isChat, type ChatSession } from '../types';
 import { AGENT_TYPE_LABELS } from '../types';
-import type { Lang } from '../../i18n';
+import { t, type Lang } from '../../i18n';
 import * as ui from '../../stores/uiStore';
 import * as fs from '../../stores/fsStore';
 import * as sess from '../../stores/sessionStore';
@@ -27,7 +27,9 @@ import { FileDetailView } from '../drawer/FileDetailView';
 import { GitPanel } from '../drawer/GitPanel';
 import { TaskList } from '../drawer/TaskList';
 import { ProjectShell } from '../platform/ProjectShell';
+import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { L1AppPage } from '../platform/L1Shell';
+import { visibleSettingsCategories, type SettingsCategory } from '../../modules/settings-manifest';
 import { RemindersPane } from '../drawer/Reminders';
 import { InboxPane } from '../drawer/Inbox';
 import { ContactsPane } from '../drawer/Contacts';
@@ -279,26 +281,54 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
             ) : null;
         case 'skills':
             return renderSkills(theme, language);
-        case 'discovery':
+        case 'discovery': {
+            // Category nav lives in the top tab bar (ShellNav), not the sidebar.
+            const discoveryTabs: ShellTab[] = [
+                { id: 'featured', label: t('discovery.catFeatured', language) },
+                { id: 'opensource', label: t('discovery.catOpensource', language) },
+            ];
             return (
-                <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    <DiscoveryPanel
-                        onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
-                        language={language}
-                        scrollToCategory={tabsStore.discoveryCategory.value}
+                <div class="project-shell">
+                    <ShellNav
+                        tabs={discoveryTabs}
+                        activeTab={tabsStore.discoveryCategory.value}
+                        onSelectTab={id => tabsStore.selectDiscoveryCategory(id)}
                     />
+                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
+                        <DiscoveryPanel
+                            onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
+                            language={language}
+                            activeCategory={tabsStore.discoveryCategory.value}
+                        />
+                    </div>
                 </div>
             );
-        case 'settings':
+        }
+        case 'settings': {
+            // Category nav lives in the top tab bar (ShellNav), not the sidebar.
+            const settingsTabs: ShellTab[] = visibleSettingsCategories().map(c => ({
+                id: c.key,
+                label: t(c.i18nKey, language),
+            }));
             return (
-                <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                    <SystemSettingsHost
-                        app={app}
-                        state={state}
-                        activeCategory={tabsStore.activeSettingsCategory.value}
+                <div class="project-shell">
+                    <ShellNav
+                        tabs={settingsTabs}
+                        activeTab={tabsStore.activeSettingsCategory.value}
+                        onSelectTab={id => tabsStore.setSettingsCategory(id as SettingsCategory)}
                     />
+                    <div
+                        style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+                    >
+                        <SystemSettingsHost
+                            app={app}
+                            state={state}
+                            activeCategory={tabsStore.activeSettingsCategory.value}
+                        />
+                    </div>
                 </div>
             );
+        }
         default:
             return null;
     }

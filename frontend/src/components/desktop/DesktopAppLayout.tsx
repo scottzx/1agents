@@ -55,6 +55,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         // their own full-width pages; focus / split share the header + body below.
         const mode = stage.layoutMode.value;
         const isFocusOrSplit = mode === 'focus' || mode === 'split';
+        // 设置 / 发现中心 render their category nav as a top tab bar (ShellNav) in
+        // the content pane now, so the sidebar shows the normal tree instead of
+        // a module nav. Mobile keeps its own menu (buildModuleNav still serves it).
+        const sidebarModuleNav =
+            activeDrawerTab === 'settings' || activeDrawerTab === 'discovery' ? undefined : tabsStore.buildModuleNav();
         // The primary (left) pane's content kind. The tmux mouse toggle only
         // makes sense when the xterm terminal is the one showing.
         const primaryView = panes[0].view;
@@ -186,7 +191,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onRenameSession={s => modal.openRenameSessionModal(s)}
                                 onReorderFolders={wsStore.reorderFolders}
                                 language={language}
-                                moduleNav={tabsStore.buildModuleNav()}
+                                moduleNav={sidebarModuleNav}
                                 onChatCreate={modal.openChatCreate}
                                 onChatKill={sess.killChatSession}
                                 onStartNewChat={() => {
@@ -249,7 +254,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onTmuxMouseToggle={sess.toggleTmuxMouse}
                                 isTerminalView={activeTabId === 'terminal' && primaryView.kind === 'terminal'}
                                 language={language}
-                                moduleNav={tabsStore.buildModuleNav()}
+                                moduleNav={sidebarModuleNav}
                                 hasChatSession={folders.some(
                                     f => f.id === activeWorkspaceId && f.sessions.some(isChat)
                                 )}
