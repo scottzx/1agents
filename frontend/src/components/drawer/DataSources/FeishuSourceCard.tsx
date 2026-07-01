@@ -1,8 +1,7 @@
 import { h, Fragment } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 
-import * as ui from '../../../stores/uiStore';
-import { t } from '../../../i18n';
+import { t, type Lang } from '../../../i18n';
 import { sourceCliService, type CLIStatus } from '@1agents/core/services/sourceCliService';
 import { sourceService, type CollectionView, type SyncRun } from '@1agents/core/services/sourceService';
 
@@ -81,7 +80,7 @@ function formatRelTime(iso: string): string {
     return `${Math.floor(ms / 86_400_000)} 天前`;
 }
 
-function formatAbsTime(iso: string, language: string): string {
+function formatAbsTime(iso: string, language: Lang): string {
     return new Date(iso).toLocaleString(language);
 }
 
@@ -116,10 +115,10 @@ function groupByDomain(cols: CollectionView[]): Array<{ domain: string; items: C
 // ── Sub-zone: CLI lifecycle ───────────────────────────────────────────────────
 
 interface CliZoneProps {
-    language: string;
+    language: Lang;
 }
 
-function CliZone({ language }: CliZoneProps) {
+export function CliZone({ language }: CliZoneProps) {
     const [status, setStatus] = useState<CLIStatus | null>(null);
     const [rechecking, setRechecking] = useState(false);
     const [error, setError] = useState('');
@@ -290,12 +289,12 @@ function CliZone({ language }: CliZoneProps) {
 // ── Sub-zone: collection config ───────────────────────────────────────────────
 
 interface CollectionsZoneProps {
-    language: string;
+    language: Lang;
     onSyncDispatched: () => void;
     onToast: (msg: string) => void;
 }
 
-function CollectionsZone({ language, onSyncDispatched, onToast }: CollectionsZoneProps) {
+export function CollectionsZone({ language, onSyncDispatched, onToast }: CollectionsZoneProps) {
     const [collections, setCollections] = useState<CollectionView[]>([]);
     const [error, setError] = useState('');
     const [busyKind, setBusyKind] = useState<string | null>(null);
@@ -466,11 +465,11 @@ function CollectionsZone({ language, onSyncDispatched, onToast }: CollectionsZon
 // ── Sub-zone: sync history ────────────────────────────────────────────────────
 
 interface HistoryZoneProps {
-    language: string;
+    language: Lang;
     refreshTick: number;
 }
 
-function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
+export function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
     const [runs, setRuns] = useState<SyncRun[]>([]);
     const [error, setError] = useState('');
 
@@ -529,30 +528,6 @@ function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
     );
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
-
-export function FeishuSourceCard() {
-    const language = ui.language.value;
-    const [toast, setToast] = useState('');
-    // Incrementing this causes HistoryZone to re-fetch after a syncNow.
-    const [historyTick, setHistoryTick] = useState(0);
-
-    const showToast = (msg: string) => {
-        setToast(msg);
-        window.setTimeout(() => setToast(''), 3000);
-    };
-
-    const onSyncDispatched = () => {
-        // Give the backend a moment to record the run before we re-fetch history.
-        window.setTimeout(() => setHistoryTick(n => n + 1), 800);
-    };
-
-    return (
-        <div class="fscard">
-            {toast && <div class="fscard-toast">{toast}</div>}
-            <CliZone language={language} />
-            <CollectionsZone language={language} onSyncDispatched={onSyncDispatched} onToast={showToast} />
-            <HistoryZone language={language} refreshTick={historyTick} />
-        </div>
-    );
-}
+// The three zones above (CliZone / CollectionsZone / HistoryZone) are composed by
+// FeishuSourcePanel under the source's top-nav tabs — this file exports the zones,
+// not a combined card.

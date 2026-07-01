@@ -1,69 +1,103 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { useSignal, useSignalEffect } from '@preact/signals';
 
 import * as ui from '../../../stores/uiStore';
 import * as taskNav from '../../../stores/taskNavStore';
 import { t } from '../../../i18n';
-import { ShellNav, type ShellTab } from '../../platform/ShellNav';
-import { SourceList } from './SourceList';
+import { ShellNav } from '../../platform/ShellNav';
 import { SourceDetail } from './SourceDetail';
-import { ManagePanel } from './ManagePanel';
+import { SourceHome } from './SourceHome';
+import { FeishuSourcePanel, feishuTabs } from './FeishuSourcePanel';
+import { AppleSourcePanel, appleTabs } from './AppleSourcePanel';
 import { AddSource } from './AddSource';
 
-// 数据源管理 (Data Source Management) — a full-page section (sidebar, above 系统
-// 设置). Uses the shared ShellNav (breadcrumb + tab bar) so it reads like the
-// project detail page: breadcrumb 概览 › <record type>, level-2 tabs 已获取数据 /
-// 配置数据源 / 新增数据源. The section title (数据源) is the workspace-header.
-type Tab = 'data' | 'config' | 'add';
+// 数据源管理 (Data Source Management) — organized **by data source**. The landing
+// page is a grid of source cards (飞书 / Apple / 添加). Picking one drills in: the
+// breadcrumb gains a second level (数据源 › 飞书) and the source's zones — 认证 /
+// 采集配置 / 数据与历史 — show as top-nav tabs. A data card drills one level
+// further into the schema-free 多维表格 (SourceDetail).
+type SourceId = 'feishu' | 'apple' | 'add';
 type Detail = { source: string; kind: string; title: string };
+
+const SOURCE_LABEL: Record<SourceId, string> = { feishu: '飞书', apple: 'Apple', add: '' };
 
 export function DataSourcesPane() {
     const language = ui.language.value;
-    const tab = useSignal<Tab>('data');
+    const source = useSignal<SourceId | null>(null); // null = home
+    const subTab = useSignal<string>('config');
     const detail = useSignal<Detail | null>(null);
 
-    const overview = () => (detail.value = null);
-    const setTab = (id: string) => {
-        tab.value = id as Tab;
-        if (id !== 'data') detail.value = null;
+    const goHome = () => {
+        source.value = null;
+        detail.value = null;
+    };
+    const enterSource = (id: string) => {
+        const sid = id as SourceId;
+        source.value = sid;
+        subTab.value = sid === 'apple' ? 'auth' : 'config';
+        detail.value = null;
+    };
+    const clearDetail = () => (detail.value = null);
+    const openData = (s: string, kind: string, title: string) => {
+        detail.value = { source: s, kind, title };
     };
 
-    // The drill breadcrumb lives in the global WorkspaceHeader now (数据源 /
-    // 数据源 › <record>), not in a second bar here. Publish it on state change,
-    // and clear it on unmount so switching to another full-page module resets.
+    // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
     useSignalEffect(() => {
-        taskNav.headerCrumbs.value = detail.value
-            ? [{ label: t('header.title.datasources', language), onClick: overview }, { label: detail.value.title }]
-            : [{ label: t('header.title.datasources', language) }];
+        const home = { label: t('header.title.datasources', language), onClick: goHome };
+        if (source.value === null) {
+            taskNav.headerCrumbs.value = [{ label: t('header.title.datasources', language) }];
+            return;
+        }
+        const crumbs: { label: string; onClick?: () => void }[] = [home];
+        if (source.value === 'add') {
+            crumbs.push({ label: t('datasource.tab.add', language) });
+        } else {
+            crumbs.push({
+                label: SOURCE_LABEL[source.value],
+                onClick: detail.value ? clearDetail : undefined,
+            });
+            if (detail.value) crumbs.push({ label: detail.value.title });
+        }
+        taskNav.headerCrumbs.value = crumbs;
     });
     useEffect(() => () => void (taskNav.headerCrumbs.value = null), []);
 
-    const tabs: ShellTab[] = [
-        { id: 'data', label: t('datasource.tab.data', language) },
-        { id: 'config', label: t('datasource.tab.config', language) },
-        { id: 'add', label: t('datasource.tab.add', language) },
-    ];
+    const zoneTabs =
+        source.value === 'feishu' ? feishuTabs(language) : source.value === 'apple' ? appleTabs(language) : [];
 
     return (
         <div class="datasource-pane">
-            <ShellNav tabs={tabs} activeTab={tab.value} onSelectTab={setTab} />
-
-            <div class="datasource-tab-body">
-                {tab.value === 'data' &&
-                    (detail.value ? (
-                        <SourceDetail
-                            source={detail.value.source}
-                            kind={detail.value.kind}
-                            title={detail.value.title}
-                            onBack={overview}
-                        />
-                    ) : (
-                        <SourceList onOpen={(source, kind, title) => (detail.value = { source, kind, title })} />
-                    ))}
-                {tab.value === 'config' && <ManagePanel />}
-                {tab.value === 'add' && <AddSource onGoConfig={() => (tab.value = 'config')} />}
-            </div>
+            {source.value === null ? (
+                <div class="datasource-tab-body">
+                    <SourceHome onPick={enterSource} />
+                </div>
+            ) : source.value === 'add' ? (
+                <div class="datasource-tab-body">
+                    <AddSource onGoConfig={() => enterSource('feishu')} />
+                </div>
+            ) : detail.value ? (
+                <div class="datasource-tab-body">
+                    <SourceDetail
+                        source={detail.value.source}
+                        kind={detail.value.kind}
+                        title={detail.value.title}
+                        onBack={clearDetail}
+                    />
+                </div>
+            ) : (
+                <Fragment>
+                    <ShellNav tabs={zoneTabs} activeTab={subTab.value} onSelectTab={id => (subTab.value = id)} />
+                    <div class="datasource-tab-body">
+                        {source.value === 'feishu' ? (
+                            <FeishuSourcePanel tab={subTab.value} onOpenData={openData} />
+                        ) : (
+                            <AppleSourcePanel tab={subTab.value} onOpenData={openData} />
+                        )}
+                    </div>
+                </Fragment>
+            )}
         </div>
     );
 }

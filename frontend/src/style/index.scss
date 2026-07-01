@@ -18562,6 +18562,106 @@ body {
   padding-bottom: 8px;
 }
 
+// Source-centric panel (飞书 / Apple): a vertical stack of zones.
+.source-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 2px 24px;
+}
+
+// 数据源首页 (source landing): a grid of source cards.
+.source-home {
+  padding: 8px 2px 24px;
+
+  .bento-grid {
+    --bento-min-col: 240px;
+  }
+}
+
+.source-home-card {
+  cursor: pointer;
+  text-align: left;
+  min-height: 150px;
+  gap: 14px;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+    box-shadow: var(--shadow-md), 0 0 0 1px var(--accent-color);
+  }
+}
+
+.source-home-icon {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+}
+
+.source-home-add {
+  border-style: dashed;
+
+  .source-home-add-body {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+
+  .source-home-add-plus {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+}
+
+// Generic zone wrapper (auth / groups / data) inside a source panel.
+.fscard-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+// Raw-data browse: a Bento grid of per-kind cards.
+.fscard-data-grid {
+  --bento-min-col: 220px;
+}
+
+.fscard-data-card {
+  cursor: pointer;
+  text-align: left;
+  gap: 14px;
+  border: 1px solid var(--border-color);
+
+  &:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color), var(--shadow-sm);
+  }
+}
+
+.fscard-data-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-color);
+  background-color: var(--accent-light);
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.fscard-data-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.fscard-data-open {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
 .fscard-domain-group {
   display: flex;
   flex-direction: column;
