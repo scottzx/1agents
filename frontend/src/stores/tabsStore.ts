@@ -378,6 +378,10 @@ export const buildModuleNav = ():
     | undefined => {
     const mod = getModuleByTab(activeDrawerTab.value);
     if (!mod) return undefined;
+    // Skills renders its own top-tab navigation inside the panel (project-page
+    // style), so the host suppresses the module sub-nav in the left sidebar —
+    // the sidebar falls back to the workspace tree, matching project pages.
+    if (mod.moduleId === 'skills') return undefined;
     const live = moduleManifests.value[mod.moduleId];
     const manifest = live ?? mod.staticManifest;
     if (mod.moduleId === SETTINGS_MODULE_ID) {
