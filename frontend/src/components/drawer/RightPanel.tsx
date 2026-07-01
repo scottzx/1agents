@@ -8,7 +8,6 @@ import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
 import { TaskList } from './TaskList';
 import { ProjectShell } from '../platform/ProjectShell';
-import { ChannelAgentPanel } from './ChannelAgentPanel';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
 import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
@@ -242,12 +241,9 @@ export function RightPanel({
                     activeDrawerTab === 'channels' ? 'flex' : 'none'
                 }; flex-direction: column; height: 100%;`}
             >
-                {/* #277 Phase 3: per-channel agent binding for the active workspace. */}
-                {activeDrawerTab === 'channels' && activeWorkspaceName && (
-                    <div class="channel-agent-section">
-                        <ChannelAgentPanel projectName={activeWorkspaceName} language={language} />
-                    </div>
-                )}
+                {/* Per-channel agent binding now lives inside the cc-connect
+                    panel below (project detail → each channel's agent picker),
+                    so the standalone 1agents section was removed. */}
                 {ccConnectUrl && (
                     <cc-connect-panel
                         id="cc-channels-panel"

@@ -308,6 +308,21 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace with this ID already exists", http.StatusConflict)
 		return
 	}
+	// Check for duplicate PATH (case-insensitive on macOS/Windows): the same
+	// directory must map to a single workspace, so /Users/x/Coze and …/coze
+	// don't become two projects. Return the existing one instead of creating a dup.
+	if ws.Path != "" {
+		if existing, err := db.ListWorkspaceProjects(); err == nil {
+			target := normalizeWorkspacePath(ws.Path)
+			for _, p := range existing {
+				if normalizeWorkspacePath(p.WorkspacePath) == target {
+					log.Printf("[workspace] create: path %s already registered as %q; returning existing", ws.Path, p.ID)
+					writeJSON(w, map[string]interface{}{"ok": true, "workspace": projectToWorkspace(p), "existing": true})
+					return
+				}
+			}
+		}
+	}
 	if err := db.EnsureWorkspaceProject(workspaceToProject(ws)); err != nil {
 		log.Printf("[workspace] save error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -774,13 +789,18 @@ func removeCCProjectsByPath(wsPath string) int {
 }
 
 // normalizeWorkspacePath canonicalizes a path for identity comparison (absolute
-// + cleaned), mirroring ccconnect.normalizePath so delete matches the same key
-// the reconciler uses.
+// + cleaned, case-folded on case-insensitive filesystems), mirroring
+// ccconnect.normalizePath so create/delete match the same key the reconciler
+// uses — /Users/x/Coze and …/coze are the same dir on macOS/Windows.
 func normalizeWorkspacePath(p string) string {
+	out := filepath.Clean(p)
 	if abs, err := filepath.Abs(p); err == nil {
-		return filepath.Clean(abs)
+		out = filepath.Clean(abs)
 	}
-	return filepath.Clean(p)
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		out = strings.ToLower(out)
+	}
+	return out
 }
 
 func getCCProjectName(workspaceName string, agentType string) string {

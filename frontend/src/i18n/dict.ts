@@ -353,14 +353,6 @@ export const zhCN: Record<string, string> = {
     'drawer.refresh.git': '刷新 Git 状态',
     'drawer.collapse': '收起面板',
 
-    // ── Channel agent binding (ChannelAgentPanel.tsx, #277 Phase 3) ────────
-    'drawer.channelAgent.intro': '为「{project}」的每个渠道选择智能体类型,切换后即时生效。',
-    'drawer.channelAgent.inherited': '继承默认',
-    'drawer.channelAgent.loading': '正在加载渠道…',
-    'drawer.channelAgent.empty': '该项目暂无消息渠道。',
-    'drawer.channelAgent.toast.updated': '渠道智能体已更新 ✓',
-    'drawer.channelAgent.toast.failed': '渠道智能体更新失败',
-
     // ── Theme settings (ThemeSettings.tsx) ────────────────────────────────
     'theme.colorTheme': '色彩主题样式 (Color Theme)',
     'theme.light': '浅色模式',
@@ -1604,14 +1596,6 @@ export const enUS: Record<string, string> = {
     'drawer.refresh.files': 'Refresh files',
     'drawer.refresh.git': 'Refresh Git status',
     'drawer.collapse': 'Collapse panel',
-
-    // ── Channel agent binding (#277 Phase 3) ──────────────────────────────
-    'drawer.channelAgent.intro': 'Pick an agent type for each channel of "{project}". Changes take effect instantly.',
-    'drawer.channelAgent.inherited': 'Inherited',
-    'drawer.channelAgent.loading': 'Loading channels…',
-    'drawer.channelAgent.empty': 'This project has no message channels yet.',
-    'drawer.channelAgent.toast.updated': 'Channel agent updated ✓',
-    'drawer.channelAgent.toast.failed': 'Failed to update channel agent',
 
     // ── Theme settings ───────────────────────────────────────────────────
     'theme.colorTheme': 'Color Theme',

@@ -337,13 +337,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 		} else if foundWS.ChatChannel != "" {
 			redirectPath = "/chat/" + foundWS.ChatChannel
 		} else {
-			nameOrID := foundWS.Name
-			if nameOrID == "" {
-				nameOrID = foundWS.ID
-			}
 			// #277: project name = workspace name (no __<agent> suffix); the
 			// agent type is carried per-channel, not in the project name.
-			projName := ccconnect.CCProjectSlug(nameOrID)
+			// Use the shared slug+id-fallback so a non-ASCII workspace name (the
+			// default "对话" → "ws" → id "default") targets the SAME project
+			// name reconcile created — otherwise the panel 404s on /projects/ws.
+			projName := ccconnect.CCProjectName(foundWS.Name, foundWS.ID)
 			redirectPath = "/projects/" + projName
 		}
 
@@ -375,6 +374,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// GET  ?project=<name>            → list channels + each channel's agent
 	// POST {project,index,agent}      → bind/clear a channel's agent (hot reload)
 	mux.HandleFunc("/api/cc-connect/channels", ccconnect.ChannelsHandler)
+	// Incremental import from an external cc-connect config (default: the shared
+	// ~/.cc-connect/config.toml) into 1agents, matched by work_dir path.
+	mux.HandleFunc("/api/cc-connect/import", ccconnect.ImportHandler)
 
 	// ── Git API ───────────────────────────────────────────────────────────────
 	gitHandler := git.NewHandler(cfg.WorkDir)

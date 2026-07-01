@@ -126,17 +126,32 @@ func Start(ctx context.Context, isDesktop bool) {
 		BridgePort = baseBridgePort
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "."
-	}
-	ccDir := filepath.Join(home, ".cc-connect")
+	// 1agents runs its embedded cc-connect against a PRIVATE config under
+	// ~/.1agents/im_channels — never the shared ~/.cc-connect a globally
+	// installed cc-connect owns. This decouples the two so 1agents' project
+	// sync can no longer clobber a user's standalone cc-connect setup.
+	ccDir := ccConfigDir()
 	if err := os.MkdirAll(ccDir, 0o755); err != nil {
-		log.Printf("[ccconnect] Error creating ~/.cc-connect: %v", err)
+		log.Printf("[ccconnect] Error creating %s: %v", ccDir, err)
 	}
 
-	configPath := filepath.Join(ccDir, "config.toml")
+	configPath := ccConfigPath()
 	config.ConfigPath = configPath
+
+	// One-time migration: if we have no private config yet but a legacy shared
+	// one exists (1agents used ~/.cc-connect before decoupling), copy it over so
+	// the user's existing channels carry across. The legacy file is left intact.
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if legacy := legacyCCConfigPath(); legacy != "" {
+			if data, rerr := os.ReadFile(legacy); rerr == nil {
+				if werr := os.WriteFile(configPath, data, 0o644); werr != nil {
+					log.Printf("[ccconnect] migrate legacy config %s → %s failed: %v", legacy, configPath, werr)
+				} else {
+					log.Printf("[ccconnect] migrated legacy config %s → %s", legacy, configPath)
+				}
+			}
+		}
+	}
 
 	enabledTrue := true
 
@@ -284,106 +299,23 @@ insecure = true
 			if err != nil {
 				log.Printf("[ccconnect] Error loading workspaces config: %v", err)
 			} else {
-				// 1. Two-way sync: CC-Connect projects -> Workspaces
-				// Only perform this import sync if there is already at least one workspace.
-				// If workspaces are completely empty, we are in a clean first boot / onboarding,
-				// so we don't want to import any stale or placeholder projects.
+				// One-way sync only: meta.db workspaces → cc-connect projects,
+				// matched by work_dir PATH (#277). meta.db is the single source of
+				// truth for the project SET; the config owns each project's channels
+				// + per-channel agent bindings.
+				//
+				// The old two-way "watchdog" (importing config projects BACK into the
+				// workspace registry to force the two stores equal) is gone: it kept
+				// resurrecting deleted workspaces and fought manual edits. Now project
+				// creation/deletion flows one way (workspace CRUD → config, delete
+				// removes by path), and cc-connect Web edits to channels/agents are
+				// preserved because reconcileProjectsByPath keeps matched projects'
+				// platforms verbatim (only refreshing work_dir + repairing a
+				// placeholder name). Projects whose path is no longer a registered
+				// workspace are dropped.
 				if len(wsCfg.Workspaces) > 0 {
-					// Match projects to workspaces by work_dir PATH, not name (#277).
-					// The __<agentType> suffix is gone: a project's name now equals the
-					// workspace name, and the agent type lives in the per-channel
-					// [projects.platforms.agent] binding instead of the project name.
-					wsPaths := make(map[string]bool)
-					wsIDs := make(map[string]bool)
-					for _, ws := range wsCfg.Workspaces {
-						wsPaths[normalizePath(ws.Path)] = true
-						wsIDs[ws.ID] = true
-					}
-
-					// Clean up existing workspace names that are raw cc-connect project
-					// names (contain the __<agentType> suffix). This repairs any workspaces
-					// that were imported before the去后缀 fix was applied.
-					wsModified := false
-					for i := range wsCfg.Workspaces {
-						ws := &wsCfg.Workspaces[i]
-						if idx := strings.LastIndex(ws.Name, "__"); idx >= 0 {
-							clean := strings.Trim(ws.Name[:idx], "_")
-							if clean == "" {
-								clean = filepath.Base(ws.Path)
-							}
-							if clean != ws.Name {
-								log.Printf("[ccconnect] Renaming polluted workspace name %q → %q", ws.Name, clean)
-								ws.Name = clean
-								wsModified = true
-							}
-						}
-					}
-
-					for _, proj := range cfg.Projects {
-						workDir, _ := proj.Agent.Options["work_dir"].(string)
-						if workDir == "" {
-							continue
-						}
-
-						if !wsPaths[normalizePath(workDir)] {
-							// Strip any legacy __<agentType> suffix so the display name is
-							// clean (e.g. "1agents__claudecode" → "1agents"). New configs
-							// carry no suffix, so this is a no-op for them.
-							displayName := proj.Name
-							if idx := strings.LastIndex(displayName, "__"); idx >= 0 {
-								displayName = strings.Trim(displayName[:idx], "_")
-							}
-							if displayName == "" {
-								displayName = filepath.Base(workDir)
-							}
-							// A legacy "_" project name (a non-ASCII workspace such as
-							// the built-in "对话" slugged before the CCProjectSlug fix)
-							// sanitizes to an empty id. Importing that writes a
-							// workspace row with id="" that all such projects collapse
-							// onto, which poisons /api/agent/sessions (workspace_id="").
-							// Skip it rather than mint an empty/degenerate id.
-							id := sanitizeID(displayName)
-							if id == "" {
-								log.Printf("[ccconnect] Skipping import of project %q (%s): name yields no valid workspace id", proj.Name, workDir)
-								continue
-							}
-							// The id already belongs to another workspace at a
-							// different path — this project is an orphan (a dead
-							// work_dir whose basename collides, e.g. a stale
-							// "/tmp/.../temp" vs the real "temp"). Importing it would
-							// upsert-by-id and silently overwrite the live workspace's
-							// path, and it re-imports every boot. Skip so the reconcile
-							// pass below drops the orphan from the config for good.
-							if wsIDs[id] {
-								log.Printf("[ccconnect] Skipping import of project %q (%s): workspace id %q already in use", proj.Name, workDir, id)
-								continue
-							}
-							newWS := workspace.Workspace{
-								ID:     id,
-								Name:   displayName,
-								Path:   workDir,
-								Status: "active",
-							}
-							wsCfg.Workspaces = append(wsCfg.Workspaces, newWS)
-							wsPaths[normalizePath(workDir)] = true
-							wsIDs[id] = true
-							wsModified = true
-							log.Printf("[ccconnect] Automatically imported workspace %s (%s) from CC-Connect project config", displayName, workDir)
-						}
-					}
-
-					if wsModified {
-						if err := wsHandler.SaveWorkspacesConfig(wsCfg); err != nil {
-							log.Printf("[ccconnect] Error saving imported workspaces: %v", err)
-						}
-					}
+					cfg.Projects = reconcileProjectsByPath(cfg.Projects, wsCfg.Workspaces)
 				}
-
-				// 2. Sync Workspaces to CC-Connect projects, matched by work_dir
-				// PATH (#277). One workspace ⇄ one project; the project name equals
-				// the workspace name (no __<agent> suffix). The agent type is carried
-				// per-channel via [projects.platforms.agent], not in the project name.
-				cfg.Projects = reconcileProjectsByPath(cfg.Projects, wsCfg.Workspaces)
 			}
 
 			// 3. Fallback: if project list is empty, inject a default placeholder project to pass CC-Connect's validation.
@@ -519,7 +451,7 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		// override (config.PlatformConfig.Agent, #277). Only populated when a
 		// channel binds a different agent than the project default; left empty
 		// for existing single-agent projects so they behave exactly as before.
-		channelAgents := make(map[string]core.Agent)
+		channelAgents := make(map[core.Platform]core.Agent)
 		for _, pc := range proj.Platforms {
 			opts := make(map[string]any, len(pc.Options)+2)
 			for k, v := range pc.Options {
@@ -548,7 +480,7 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 				continue
 			}
 			wireAgentProviders(chAgent, chAgentCfg)
-			channelAgents[p.Name()] = chAgent
+			channelAgents[p] = chAgent
 		}
 
 		workDir, _ := proj.Agent.Options["work_dir"].(string)
@@ -574,9 +506,9 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 		}
 
 		engine := core.NewEngine(proj.Name, agent, platforms, sessionFile, lang)
-		for chName, chAgent := range channelAgents {
-			engine.SetChannelAgent(chName, chAgent)
-			slog.Info("channel-level agent bound", "project", proj.Name, "channel", chName, "agent", chAgent.Name())
+		for p, chAgent := range channelAgents {
+			engine.SetChannelAgent(p, chAgent)
+			slog.Info("channel-level agent bound", "project", proj.Name, "channel", p.Name(), "agent", chAgent.Name())
 		}
 		_, _, _, _, _, showCtx, showFooter := config.EffectiveDisplay(cfg, &proj)
 		engine.SetShowContextIndicator(showCtx)
@@ -809,6 +741,10 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			return config.AddPlatformToProject(projectName, config.PlatformConfig{Type: platType, Options: opts}, workDir, agentType)
 		})
 		mgmtSrv.SetRemoveProject(config.RemoveProject)
+		// Per-channel agent binding for the cc-connect Web UI: writes the
+		// channel's [projects.platforms.agent] override (by index) and hot-reloads
+		// the engine. Reuses the same path the (now-removed) 1agents panel used.
+		mgmtSrv.SetSetChannelAgent(SetChannelAgentBinding)
 		mgmtSrv.SetSaveProjectSettings(func(name string, u core.ProjectSettingsUpdate) error {
 			return config.SaveProjectSettings(name, config.ProjectSettingsUpdate{
 				Language:             u.Language,
@@ -1790,6 +1726,21 @@ func switchCCSwitchProviderForWeb(appType, providerID string) error {
 // Since #277 the agent type is no longer encoded as a __<agent> suffix — the
 // project name equals the (sanitized) workspace name and the agent type lives
 // in the per-channel [projects.platforms.agent] binding.
+// CCProjectName returns the canonical cc-connect project name for a workspace,
+// applying the same slug + id-fallback that reconcileProjectsByPath uses when it
+// creates the project. A non-ASCII workspace name (e.g. the default "对话")
+// slugs to the placeholder "ws", so we fall back to the workspace id. Callers
+// that need to address a workspace's cc-connect project (e.g. the panel route)
+// MUST use this, not CCProjectSlug(name) alone, or they'll target the wrong name
+// (e.g. "ws" instead of "default") and 404.
+func CCProjectName(workspaceName, workspaceID string) string {
+	projName := CCProjectSlug(workspaceName)
+	if projName == "ws" {
+		projName = CCProjectSlug(workspaceID)
+	}
+	return projName
+}
+
 // hasASCIIAlnum reports whether s contains at least one ASCII letter or digit.
 // A name without one (e.g. "_") is a degenerate slug placeholder, not a real
 // project name.
@@ -1863,10 +1814,7 @@ func reconcileProjectsByPath(projects []config.ProjectConfig, workspaces []works
 		if ws.Path == "" {
 			continue
 		}
-		projName := CCProjectSlug(ws.Name)
-		if projName == "ws" {
-			projName = CCProjectSlug(ws.ID)
-		}
+		projName := CCProjectName(ws.Name, ws.ID)
 
 		if p, ok := projByPath[normalizePath(ws.Path)]; ok {
 			if p.Agent.Options == nil {
@@ -1928,8 +1876,17 @@ func normalizePath(p string) string {
 	if p == "" {
 		return ""
 	}
+	out := filepath.Clean(p)
 	if abs, err := filepath.Abs(p); err == nil {
-		return filepath.Clean(abs)
+		out = filepath.Clean(abs)
 	}
-	return filepath.Clean(p)
+	// macOS and Windows filesystems are case-insensitive by default, so paths
+	// differing only in case (e.g. /Users/scott/Coze vs …/coze) are the SAME
+	// directory. Case-fold the comparison KEY on those platforms so they dedup
+	// to one project; Linux stays case-sensitive. Only the key is folded — the
+	// stored ws.Path / work_dir keep their real on-disk case.
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		out = strings.ToLower(out)
+	}
+	return out
 }

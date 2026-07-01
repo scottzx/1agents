@@ -18,8 +18,32 @@ import (
 // workspace defeats. So a reset must also strip the workspace-backed projects
 // from ~/.cc-connect/config.toml, or the wiped projects bounce right back.
 
-// ccConfigPath returns ~/.cc-connect/config.toml (matches runner.go's ccDir).
+// ccConfigDir returns 1agents' OWN cc-connect config directory,
+// ~/.1agents/im_channels. It is deliberately NOT ~/.cc-connect so a globally
+// installed cc-connect (which owns ~/.cc-connect) is never touched — 1agents
+// runs its embedded cc-connect against a private config to avoid two-way
+// interference. Honors ONEAGENTS_HOME for tests/sandboxes.
+func ccConfigDir() string {
+	if val := os.Getenv("ONEAGENTS_HOME"); val != "" {
+		return filepath.Join(val, ".1agents", "im_channels")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".1agents", "im_channels")
+}
+
+// ccConfigPath returns 1agents' private cc-connect config file,
+// ~/.1agents/im_channels/config.toml.
 func ccConfigPath() string {
+	return filepath.Join(ccConfigDir(), "config.toml")
+}
+
+// legacyCCConfigPath returns the old shared location ~/.cc-connect/config.toml
+// that 1agents used before decoupling. Kept only for the one-time migration in
+// Start(); nothing else should read it.
+func legacyCCConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."

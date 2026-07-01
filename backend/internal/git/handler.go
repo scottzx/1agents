@@ -921,13 +921,18 @@ func writeJSON(w http.ResponseWriter, v any) {
 // Ensure time package import is used (used implicitly via CommitEntry).
 var _ = time.Now
 
-// getCCConnectAgentEnv fetches project agent options and environment variables from ~/.cc-connect/config.toml
+// getCCConnectAgentEnv fetches project agent options and environment variables
+// from 1agents' private cc-connect config (config.ConfigPath, set at startup to
+// ~/.1agents/im_channels/config.toml).
 func (h *Handler) getCCConnectAgentEnv() ([]string, string, []string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "claude", nil, err
 	}
-	configPath := filepath.Join(home, ".cc-connect", "config.toml")
+	configPath := config.ConfigPath
+	if configPath == "" {
+		configPath = filepath.Join(home, ".1agents", "im_channels", "config.toml")
+	}
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, "claude", nil, fmt.Errorf("cc-connect config file not found at %s", configPath)
 	}

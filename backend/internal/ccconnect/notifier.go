@@ -76,11 +76,7 @@ func (n *taskNotifier) resolveProject(wsPath, wsID string) string {
 	}
 	for _, ws := range cfg.Workspaces {
 		if ws.Path == wsPath || (wsID != "" && ws.ID == wsID) {
-			nameOrID := ws.Name
-			if nameOrID == "" {
-				nameOrID = ws.ID
-			}
-			return CCProjectSlug(nameOrID)
+			return CCProjectName(ws.Name, ws.ID)
 		}
 	}
 	return ""
