@@ -27,6 +27,19 @@ const (
 	bridgeReapSweepInterval = time.Minute
 )
 
+// nativeSystemPromptAgents are agent types whose ACP adapter honors
+// _meta.systemPrompt (claude-agent-acp natively; codex-acp via our patch), so
+// the role/system context reaches them cleanly through ensure_session. ACP has
+// no portable system-prompt field — session/new carries only cwd + mcpServers,
+// and all prompt content is treated as the user message — so for every other
+// agent the systemContext is instead merged into the first prompt of a fresh
+// session (see readFromClientLoop). Resumed sessions never re-inject: the role
+// is already in the replayed history.
+var nativeSystemPromptAgents = map[string]bool{
+	string(AgentTypeClaudecode): true,
+	string(AgentTypeCodex):      true,
+}
+
 type ActiveBridge struct {
 	SessionID     string
 	WorkspacePath string
@@ -42,6 +55,13 @@ type ActiveBridge struct {
 	// stayed quiet — the real process leak, since a dropped ClientConn
 	// leaves the bridge (and its agent) alive to support reconnect.
 	LastActivityAt time.Time
+
+	// pendingSystemContext holds the role/system context to merge into the
+	// first user prompt, for a fresh session on an agent that does not honor
+	// _meta.systemPrompt. Consumed (cleared) once, on the first prompt. Empty
+	// for native agents (they get it via _meta) and for resumed sessions (the
+	// role is already in replayed history).
+	pendingSystemContext string
 
 	// Issue-model write-back state (issue-model §8). TaskID/AgentType are
 	// fixed at bridge creation; ReplyID is the timeline reply that
@@ -210,6 +230,14 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		return
 	}
 
+	// systemContext reaches native agents via ensure_session's _meta; non-native
+	// agents receive it merged into the first prompt instead (pendingSystemContext),
+	// so don't also ship it as _meta — that would double-inject the role.
+	metaSystemContext := systemContext
+	if !nativeSystemPromptAgents[agentType] {
+		metaSystemContext = ""
+	}
+
 	c.mu.Lock()
 	if c.bridges == nil {
 		c.bridges = make(map[string]*ActiveBridge)
@@ -258,7 +286,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 			AgentType:       agentType,
 			AcpSessionID:    acpSessionID,
 			ResumeSessionID: acpSessionID,
-			SystemContext:   systemContext,
+			SystemContext:   metaSystemContext,
 			McpServers:      mcpServers,
 			PermissionMode:  reconnectMode,
 		}
@@ -303,6 +331,13 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		tasksStore:     tasksStore,
 		LastActivityAt: time.Now(),
 	}
+	// Fresh session on an agent that can't take a system prompt over ACP:
+	// stash the role/system context to merge into the first prompt. Native
+	// agents get it via ensure_session's _meta; resumes (acpSessionID != "")
+	// already carry it in replayed history.
+	if systemContext != "" && acpSessionID == "" && !nativeSystemPromptAgents[agentType] {
+		bridge.pendingSystemContext = systemContext
+	}
 	c.bridges[sessionId] = bridge
 	c.mu.Unlock()
 
@@ -325,7 +360,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		AgentType:       agentType,
 		AcpSessionID:    acpSessionID,
 		ResumeSessionID: acpSessionID,
-		SystemContext:   systemContext,
+		SystemContext:   metaSystemContext,
 		McpServers:      mcpServers,
 		PermissionMode:  initialMode,
 	}
@@ -456,7 +491,18 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 		// the user's prompt to the task timeline (issue-model §8, user side).
 		if msg.Action == "prompt" {
 			bridge.resetTurnText()
+			// Record the user's own text to the timeline BEFORE any merge, so
+			// the role/system preamble never pollutes the user's reply.
 			writeUserReply(bridge, bridge.tasksStore, msg.Text)
+			// First prompt of a fresh session on a non-native agent: prepend the
+			// role/system context so the agent receives it as one combined
+			// message (no separate priming turn). Consumed once.
+			bridge.mu.Lock()
+			if bridge.pendingSystemContext != "" {
+				msg.Text = bridge.pendingSystemContext + "\n\n" + msg.Text
+				bridge.pendingSystemContext = ""
+			}
+			bridge.mu.Unlock()
 		}
 
 		bridge.mu.Lock()
