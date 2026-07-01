@@ -1790,6 +1790,18 @@ func switchCCSwitchProviderForWeb(appType, providerID string) error {
 // Since #277 the agent type is no longer encoded as a __<agent> suffix — the
 // project name equals the (sanitized) workspace name and the agent type lives
 // in the per-channel [projects.platforms.agent] binding.
+// hasASCIIAlnum reports whether s contains at least one ASCII letter or digit.
+// A name without one (e.g. "_") is a degenerate slug placeholder, not a real
+// project name.
+func hasASCIIAlnum(s string) bool {
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return true
+		}
+	}
+	return false
+}
+
 func CCProjectSlug(workspaceName string) string {
 	var sb strings.Builder
 	inInvalidSeq := false
@@ -1871,6 +1883,16 @@ func reconcileProjectsByPath(projects []config.ProjectConfig, workspaces []works
 			}
 			if !hasBridge {
 				p.Platforms = append(p.Platforms, config.PlatformConfig{Type: "bridge"})
+			}
+			// Repair a degenerate placeholder name (e.g. "_", minted before the
+			// CCProjectSlug fix for a non-ASCII workspace such as the default
+			// "对话"): rename it to the canonical slug so the project stays
+			// consistent with its workspace. Names with any alnum char are a real
+			// (possibly user/channel-chosen) name and are left untouched to avoid
+			// orphaning session/state files.
+			if !hasASCIIAlnum(p.Name) && p.Name != projName {
+				log.Printf("[ccconnect] Renaming placeholder project %q → %q (path %s)", p.Name, projName, ws.Path)
+				p.Name = projName
 			}
 			out = append(out, *p)
 		} else {

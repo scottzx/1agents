@@ -148,6 +148,13 @@ func TestReconcileProjectsByPath(t *testing.T) {
 			Name:  "gone__claudecode",
 			Agent: config.AgentConfig{Type: "claudecode", Options: map[string]any{"work_dir": "/repos/gone"}},
 		},
+		// Degenerate placeholder name (the "_" the default "对话" workspace used
+		// to slug to): must be repaired to the canonical id-derived name.
+		{
+			Name:      "_",
+			Agent:     config.AgentConfig{Type: "claudecode", Options: map[string]any{"work_dir": "/repos/default"}},
+			Platforms: []config.PlatformConfig{{Type: "bridge"}},
+		},
 		// Placeholder with no work_dir → must be preserved.
 		{
 			Name:      "temp",
@@ -158,6 +165,9 @@ func TestReconcileProjectsByPath(t *testing.T) {
 	workspaces := []workspace.Workspace{
 		{ID: "app", Name: "app", Path: "/repos/app"},
 		{ID: "newone", Name: "New One", Path: "/repos/new"},
+		// Non-ASCII name (like the built-in default "对话"): slug is "ws" → falls
+		// back to the id, and its existing "_" project must be renamed to it.
+		{ID: "default", Name: "对话", Path: "/repos/default"},
 	}
 
 	out := reconcileProjectsByPath(existing, workspaces)
@@ -196,6 +206,15 @@ func TestReconcileProjectsByPath(t *testing.T) {
 	}
 	if _, ok := byName["temp"]; !ok {
 		t.Error("placeholder project (no work_dir) was not preserved")
+	}
+
+	// Degenerate "_" name repaired to the canonical id-derived name ("default"),
+	// and the old "_" name is gone.
+	if _, ok := byName["_"]; ok {
+		t.Errorf("degenerate placeholder name %q was not repaired; got %v", "_", projectNames(out))
+	}
+	if _, ok := byName["default"]; !ok {
+		t.Errorf("placeholder project was not renamed to %q; got %v", "default", projectNames(out))
 	}
 }
 
