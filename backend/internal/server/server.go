@@ -119,6 +119,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				log.Printf("[server] legacy metadata migration: %v", migErr)
 			}
 			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
+			mux.HandleFunc("/api/search", meta.SearchHandler(db))     // GET ?q=xxx — 对话历史 quick search over tasks + sessions
 			// #144: archiving/closing a project triggers a复盘沉淀 — summarize
 			// its tasks/decisions and ingest a retrospective into kwiki.
 			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db, retrospectiveHook(db))) // POST {id}/archive|close|reopen

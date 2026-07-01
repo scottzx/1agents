@@ -8,6 +8,7 @@ import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { ContentViewHost } from '../stage/ContentViewHost';
 import { ProjectHome } from '../platform/ProjectHome';
 import { ProjectDetailShell } from '../platform/ProjectDetailShell';
+import { GlobalSearch } from '../search/GlobalSearch';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -441,6 +442,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         )}
                     </div>
                 </div>
+                <GlobalSearch />
             </Fragment>
         );
     }

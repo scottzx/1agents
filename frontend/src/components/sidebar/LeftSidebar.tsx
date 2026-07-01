@@ -30,6 +30,7 @@ import {
 } from '../../stores/stageStore';
 import { taskService } from '@1agents/core/services/taskService';
 import { inboxService } from '@1agents/core/services/inboxService';
+import { openSearch } from '../../stores/searchStore';
 
 /** Mac / Linux / Windows OS 图标(currentColor,适配主题)。复用 DevicesPanel 的判定。 */
 function DeviceOsIcon({ os }: { os?: string }) {
@@ -333,17 +334,40 @@ export function LeftSidebar({
                         <img class="brand-logo-img" src="/logo.png" />
                         <span>1agents</span>
                     </div>
-                    <div class="sidebar-close-btn" onClick={toggleLeftSidebar} title={t('sidebar.collapse', language)}>
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
+                    <div class="brand-right">
+                        <div
+                            class="sidebar-search-btn"
+                            onClick={openSearch}
+                            title={t('sidebar.navCtrl.history', language)}
                         >
-                            <polyline points="15 18 9 12 15 6" />
-                        </svg>
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="11" cy="11" r="8" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                        </div>
+                        <div
+                            class="sidebar-close-btn"
+                            onClick={toggleLeftSidebar}
+                            title={t('sidebar.collapse', language)}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <polyline points="15 18 9 12 15 6" />
+                            </svg>
+                        </div>
                     </div>
                 </div>
 
