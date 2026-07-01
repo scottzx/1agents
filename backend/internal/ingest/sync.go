@@ -30,26 +30,42 @@ func SystemWorkspacePath() string {
 	return filepath.Join(filepath.Dir(meta.DefaultPath()), "system", "sources")
 }
 
-// ProvisionSystemWorkspace creates the hidden host workspace (idempotent) and
-// returns its path. It records an archived+builtin project so the scheduler
-// schedules it but the sidebar hides it.
+// ProvisionSystemWorkspace creates the sync-task host workspace (idempotent) and
+// returns its path. The project carries ProjectStatusSystem: sidebar hides it
+// (only "active" appears), scheduler still schedules it (LoadWorkspacesConfig
+// returns every status), and agenda/dashboard filters explicitly opt system in
+// so periodic system work stays visible without cluttering the user's list.
+//
+// Self-heal: older provisionings recorded the project as archived + builtin
+// (that was the first hack to hide it from the sidebar). Detect that shape and
+// migrate to the new status; existing bronze/tasks data is preserved.
 func (h *Handler) ProvisionSystemWorkspace() (string, error) {
 	path := SystemWorkspacePath()
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return "", err
 	}
-	_, ok, err := h.db.GetProject(SystemWorkspaceID)
+	existing, ok, err := h.db.GetProject(SystemWorkspaceID)
 	if err != nil {
 		return "", err
 	}
 	if !ok {
 		if err := h.db.EnsureWorkspaceProject(meta.Project{
-			ID: SystemWorkspaceID, Name: "数据源同步", WorkspacePath: path, Builtin: true,
+			ID: SystemWorkspaceID, Name: "数据源同步", WorkspacePath: path,
 		}); err != nil {
 			return "", err
 		}
-		if err := h.db.ArchiveProject(SystemWorkspaceID, meta.ProjectStatusArchived,
-			meta.ArchiveReasonCompleted, "系统数据源同步宿主（对侧栏隐藏）"); err != nil {
+		if err := h.db.SetProjectStatus(SystemWorkspaceID, meta.ProjectStatusSystem); err != nil {
+			return "", err
+		}
+	} else if existing.Status != meta.ProjectStatusSystem || existing.Builtin {
+		// Migrate an older archived+builtin record into the new system status.
+		// Re-upsert clears the builtin flag; SetProjectStatus writes "system".
+		if err := h.db.EnsureWorkspaceProject(meta.Project{
+			ID: SystemWorkspaceID, Name: "数据源同步", WorkspacePath: path,
+		}); err != nil {
+			return "", err
+		}
+		if err := h.db.SetProjectStatus(SystemWorkspaceID, meta.ProjectStatusSystem); err != nil {
 			return "", err
 		}
 	}

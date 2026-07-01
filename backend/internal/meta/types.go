@@ -22,6 +22,13 @@ const (
 	ProjectStatusActive   ProjectStatus = "active"
 	ProjectStatusArchived ProjectStatus = "archived"
 	ProjectStatusKilled   ProjectStatus = "killed"
+	// ProjectStatusSystem marks a workspace owned by the platform itself, not by
+	// the user (数据源同步宿主 __sources_sync__ is the first — Epic #359 phase 2).
+	// The sidebar/registry still hides it (only "active" appears there), but the
+	// scheduler schedules it and agenda/dashboard/task-bus views surface its
+	// tasks explicitly, so periodic system work is visible without cluttering
+	// the user's project list.
+	ProjectStatusSystem ProjectStatus = "system"
 )
 
 // ArchiveReason records why a project left the active view. It is orthogonal to
