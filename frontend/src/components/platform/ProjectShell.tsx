@@ -17,7 +17,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { TaskList } from '../drawer/TaskList';
 import { MountPointRenderer } from './MountPointRenderer';
 import { ProjectConfigPanel } from './ProjectConfigPanel';
-import { ShellNav, type ShellTab } from './ShellNav';
+import { ShellNav, type ShellTab, type Crumb } from './ShellNav';
 
 import * as appStore from '../../stores/appManifestStore';
 import * as sess from '../../stores/sessionStore';
@@ -30,6 +30,8 @@ type TabId = BuiltinTab | string; // string for app-contributed tabs (mount poin
 interface ProjectShellProps {
     workspaceId: string;
     workspaceName?: string;
+    /** Optional breadcrumb trail rendered above the tab bar (e.g. 项目总览 → this). */
+    crumbs?: Crumb[];
 }
 
 // ── Builtin tab configs ───────────────────────────────────────────────────────
@@ -43,7 +45,7 @@ const BUILTIN_TABS: Array<{ id: BuiltinTab; label: string }> = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ProjectShell({ workspaceId, workspaceName }: ProjectShellProps) {
+export function ProjectShell({ workspaceId, workspaceName, crumbs }: ProjectShellProps) {
     const [activeTab, setActiveTab] = useState<TabId>('tasks');
     const [configOpen, setConfigOpen] = useState(false);
 
@@ -75,6 +77,7 @@ export function ProjectShell({ workspaceId, workspaceName }: ProjectShellProps) 
     return (
         <div class="project-shell">
             <ShellNav
+                crumbs={crumbs}
                 tabs={shellTabs}
                 activeTab={activeTab}
                 onSelectTab={id => setActiveTab(id)}

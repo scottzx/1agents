@@ -5,8 +5,9 @@ import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
 import type { ConnectionState } from '@1agents/core/protocol/types';
 import { AgentAvatar } from '../chat/AgentAvatar';
+import { CrumbTrail } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
-import { isBeginnerMode, isMobile } from '../../stores/uiStore';
+import { isBeginnerMode, isMobile, sidebarMode } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
 import { activeWorkspaceDeviceId, remoteDevices } from '../../stores/workspaceStore';
 
@@ -287,10 +288,21 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                         )
                     )}
                     {isFullPageTab(activeDrawerTab) ? (
-                        <div class="header-title-group">
-                            <span class="ws-name" style="font-weight: 600;">
-                                {t(FULLPAGE_TITLE_KEYS[activeDrawerTab] ?? '', language)}
-                            </span>
+                        <div class="header-title-group header-crumb-group">
+                            <CrumbTrail
+                                crumbs={[
+                                    {
+                                        label:
+                                            sidebarMode.value === 'project'
+                                                ? t('sidebar.mode.project', language)
+                                                : t('sidebar.mode.assistant', language),
+                                        // Clicking the context crumb closes the full-page module,
+                                        // dropping back to that context's main view.
+                                        onClick: () => toggleDrawerTab(activeDrawerTab),
+                                    },
+                                    { label: t(FULLPAGE_TITLE_KEYS[activeDrawerTab] ?? '', language) },
+                                ]}
+                            />
                         </div>
                     ) : (
                         <div class="header-title-group">

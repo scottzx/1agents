@@ -46,23 +46,36 @@ function ChevronSep() {
     );
 }
 
+/**
+ * The breadcrumb trail itself (link › link › current), with no bar wrapper.
+ * Reusable so the WorkspaceHeader can render a breadcrumb inline where it used
+ * to show a bare module title — same trail markup ShellNav wraps in a bar.
+ */
+export function CrumbTrail({ crumbs }: { crumbs: Crumb[] }) {
+    return (
+        <Fragment>
+            {crumbs.map((c, i) => (
+                <Fragment key={i}>
+                    {i > 0 && <ChevronSep />}
+                    {c.onClick ? (
+                        <button class="project-crumb-link" onClick={c.onClick}>
+                            {c.label}
+                        </button>
+                    ) : (
+                        <span class="project-crumb-current">{c.label}</span>
+                    )}
+                </Fragment>
+            ))}
+        </Fragment>
+    );
+}
+
 export function ShellNav({ crumbs, tabs, activeTab, onSelectTab, actions }: ShellNavProps) {
     return (
         <Fragment>
             {crumbs && crumbs.length > 0 && (
                 <div class="project-detail-breadcrumb">
-                    {crumbs.map((c, i) => (
-                        <Fragment key={i}>
-                            {i > 0 && <ChevronSep />}
-                            {c.onClick ? (
-                                <button class="project-crumb-link" onClick={c.onClick}>
-                                    {c.label}
-                                </button>
-                            ) : (
-                                <span class="project-crumb-current">{c.label}</span>
-                            )}
-                        </Fragment>
-                    ))}
+                    <CrumbTrail crumbs={crumbs} />
                 </div>
             )}
             {((tabs && tabs.length > 0) || actions) && (

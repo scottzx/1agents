@@ -4104,23 +4104,13 @@ body {
 .project-crumb-current {
   color: var(--text-main);
   font-weight: 600;
+  font-size: 13px;
 }
 
-// ── 项目详情页 breadcrumb shell (ProjectDetailShell.tsx, #redesign) ───────
-.project-detail-shell {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-
-  .project-detail-body {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+// WorkspaceHeader shows the breadcrumb inline (context › module) where it used
+// to show a bare module title — tighten the trail gap to sit in the header bar.
+.header-crumb-group.header-title-group {
+  gap: 2px;
 }
 
 // ── Focus-mode master-detail frame (#redesign) ──────────────────────────
