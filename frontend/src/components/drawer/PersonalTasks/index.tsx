@@ -6,6 +6,7 @@ import * as wsStore from '../../../stores/workspaceStore';
 import { t } from '../../../i18n';
 import { personalTaskService } from '@1agents/core/services/personalTaskService';
 import type { Task } from '@1agents/core/types/task';
+import { ListDetailShell } from '../../shared/ListDetailShell';
 
 // 个人任务 + 立项 (#67): the no-project backlog. Lightweight personal tasks land
 // here (无 project_id, 不强制归口, scheduler 跳过) — captured straight, or funneled
@@ -20,6 +21,8 @@ export function PersonalTasksPane() {
     const [draft, setDraft] = useState('');
     const [capturing, setCapturing] = useState(false);
     const [incubateTarget, setIncubateTarget] = useState<Task | null>(null);
+    // Focus-mode detail: the task shown in the docked right inspector (#redesign).
+    const [selectedId, setSelectedId] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -61,7 +64,11 @@ export function PersonalTasksPane() {
 
     const isFromInbox = (task: Task) => (task.labels || []).some(l => l.startsWith('captured-from:'));
 
-    return (
+    // Resolve the inspector's task from the id so a refresh keeps it in sync
+    // (and auto-closes it if the task was incubated / removed).
+    const selected = selectedId ? tasks.find(task => task.id === selectedId) ?? null : null;
+
+    const list = (
         <div class="personal-pane">
             <div class="personal-header">
                 <h2 class="personal-title">{t('personal.title', language)}</h2>
@@ -87,7 +94,11 @@ export function PersonalTasksPane() {
             <div class="personal-list">
                 {!loading && tasks.length === 0 && <div class="personal-empty">{t('personal.empty', language)}</div>}
                 {tasks.map(task => (
-                    <div key={task.id} class="personal-item">
+                    <div
+                        key={task.id}
+                        class={`personal-item${selectedId === task.id ? ' active' : ''}`}
+                        onClick={() => setSelectedId(task.id)}
+                    >
                         <div class="personal-item-main">
                             <div class="personal-item-meta">
                                 {typeof task.number === 'number' && (
@@ -104,7 +115,13 @@ export function PersonalTasksPane() {
                             {task.description && <div class="personal-item-desc">{task.description}</div>}
                         </div>
                         <div class="personal-item-actions">
-                            <button class="personal-incubate-btn" onClick={() => setIncubateTarget(task)}>
+                            <button
+                                class="personal-incubate-btn"
+                                onClick={(e: MouseEvent) => {
+                                    e.stopPropagation();
+                                    setIncubateTarget(task);
+                                }}
+                            >
                                 {t('personal.incubate', language)}
                             </button>
                         </div>
@@ -123,6 +140,30 @@ export function PersonalTasksPane() {
                 />
             )}
         </div>
+    );
+
+    const detail = selected && (
+        <div class="personal-detail">
+            <div class="personal-detail-meta">
+                {typeof selected.number === 'number' && <span class="personal-item-num">#{selected.number}</span>}
+                {isFromInbox(selected) && <span class="personal-from-inbox">{t('personal.fromInbox', language)}</span>}
+                <span class="personal-item-time">{new Date(selected.createdAt).toLocaleString(language)}</span>
+            </div>
+            <h3 class="personal-detail-title">{selected.title}</h3>
+            {selected.description && <p class="personal-detail-desc">{selected.description}</p>}
+            <button class="personal-incubate-btn personal-detail-incubate" onClick={() => setIncubateTarget(selected)}>
+                {t('personal.incubate', language)}
+            </button>
+        </div>
+    );
+
+    return (
+        <ListDetailShell
+            list={list}
+            detail={detail || null}
+            detailTitle={t('personal.detailTitle', language)}
+            onCloseDetail={() => setSelectedId(null)}
+        />
     );
 }
 

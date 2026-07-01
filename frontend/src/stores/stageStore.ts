@@ -62,6 +62,61 @@ export interface Pane {
 }
 
 /**
+ * The four desktop layout modes (#redesign). Derived from the top-level
+ * 对话/项目 context (`ui.sidebarMode`), the active full-page/focus tab, and
+ * the project drill stack — see `layoutMode` below.
+ *
+ *   - `focus`            single full-width pane (联系人 / 消息 / 待办 / 日历 /
+ *                        Inbox / 复盘 / 设置 / 发现 / 技能 / L1 app). The pane
+ *                        owns its own master-detail (inline drawer / modal /
+ *                        popover) via <ListDetailShell>.
+ *   - `split`            the two-column conversation workbench (chat + artifact).
+ *   - `project-overview` the 项目总览 card wall (ProjectHome).
+ *   - `project`          a single project's detail page (ProjectShell) reached
+ *                        by drilling into a card; `projectStack` drives the
+ *                        breadcrumb.
+ */
+export type LayoutMode = 'focus' | 'split' | 'project-overview' | 'project';
+
+/** One breadcrumb level of the 项目 drill-down (overview → detail → …). */
+export interface ProjectStackEntry {
+    workspaceId: string;
+    name: string;
+}
+
+/**
+ * The 项目-mode drill stack. Empty ⇒ 项目总览 (card wall); one entry ⇒ that
+ * project's detail page. Persisted so a reload (e.g. the 大屏 → main-app drill,
+ * which navigates via `window.location`) restores the drilled-in project.
+ */
+const PROJECT_STACK_KEY = '1agents-project-stack';
+const loadProjectStack = (): ProjectStackEntry[] => {
+    try {
+        const raw = localStorage.getItem(PROJECT_STACK_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+export const projectStack = signal<ProjectStackEntry[]>(loadProjectStack());
+const setProjectStack = (next: ProjectStackEntry[]): void => {
+    projectStack.value = next;
+    try {
+        localStorage.setItem(PROJECT_STACK_KEY, JSON.stringify(next));
+    } catch {
+        /* non-fatal — drill state just won't survive reload */
+    }
+};
+
+/** Drop any drill entries whose workspace no longer exists (called on boot). */
+export const pruneProjectStack = (validIds: Set<string>): void => {
+    const cur = projectStack.value;
+    const pruned = cur.filter(e => validIds.has(e.workspaceId));
+    if (pruned.length !== cur.length) setProjectStack(pruned);
+};
+
+/**
  * The four single-select content tabs surfaced by the header toolbar, in
  * display order (项目管理 first, before 渠道). These are also the only
  * secondary (right-column) views.
@@ -135,6 +190,26 @@ export const panes = computed<Pane[]>(() => {
 export const hasContent = computed<boolean>(() => panes.value.length > 1);
 
 /**
+ * The active desktop layout mode (see `LayoutMode`). Full-page / focus panes
+ * (incl. the L1 app page) win first — they are single-pane regardless of
+ * context. Otherwise the 对话/项目 context decides: 项目 splits into overview
+ * (empty stack) vs a drilled-in detail page; 对话 is the split workbench.
+ */
+export const layoutMode = computed<LayoutMode>(() => {
+    if (appStore.activeL1PageId.value) return 'focus';
+    if (isFullPageTab(tabsStore.activeDrawerTab.value)) return 'focus';
+    if (ui.sidebarMode.value === 'project') {
+        // Drilling from a project's detail page into a conversation (chat /
+        // new-chat) flips to the split workbench; the project detail page and
+        // the 项目总览 card wall share the rest of 项目 mode.
+        const tab = tabsStore.activeTab.value;
+        if (tab === 'agents' || tab === 'new_chat') return 'split';
+        return projectStack.value.length > 0 ? 'project' : 'project-overview';
+    }
+    return 'split';
+});
+
+/**
  * Tri-state column collapse, honoring the "≥1 column on screen" invariant:
  * with no right content there is nothing to collapse *into*, so the state is
  * always `'content'` (only the chat column shows).
@@ -189,6 +264,59 @@ export const enterConversation = (): void => {
 export const openConversation = (projectChanged: boolean): void => {
     if (projectChanged) tabsStore.closeContentTab();
     setChatRailed(false);
+};
+
+/**
+ * Top-level 助手/项目 context switch (the sidebar mode-tabs). Switching *into*
+ * 项目 clears conversation focus so a stale chat doesn't keep the split
+ * workbench up over the project pages; the drill stack is preserved so 项目
+ * resumes the last-viewed detail (项目总览 goes home).
+ */
+export const showProjectContext = (): void => {
+    ui.sidebarMode.value = 'project';
+    localStorage.setItem('1agents-sidebar-mode', 'project');
+    tabsStore.activeTab.value = 'terminal';
+    // Close any lingering focus/full-page drawer (contacts/inbox/…) so it does
+    // not keep `layoutMode` on 'focus' and hide the project pages.
+    tabsStore.closeContentTab();
+    ui.triggerTerminalFit();
+};
+
+export const showAssistantContext = (): void => {
+    ui.sidebarMode.value = 'assistant';
+    localStorage.setItem('1agents-sidebar-mode', 'assistant');
+    ui.triggerTerminalFit();
+};
+
+/**
+ * 项目总览 — land on the card wall (empty drill stack). Switches the top-level
+ * context to 项目 and clears any drilled-in detail. Desktop only.
+ */
+export const projectOverview = (): void => {
+    ui.sidebarMode.value = 'project';
+    localStorage.setItem('1agents-sidebar-mode', 'project');
+    setProjectStack([]);
+    tabsStore.closeContentTab();
+    // Drop any lingering conversation focus so the card wall (not a stale chat)
+    // shows — see the `agents`/`new_chat` check in `layoutMode`.
+    tabsStore.activeTab.value = 'terminal';
+    ui.triggerTerminalFit();
+};
+
+/**
+ * Drill into a project's detail page (ProjectShell) from the overview card wall
+ * or the sidebar project tree. Switches to 项目 context, pushes one breadcrumb
+ * level, and rails the chat column (the detail page owns the full width).
+ */
+export const enterProjectDetail = (workspaceId: string, name: string): void => {
+    ui.sidebarMode.value = 'project';
+    localStorage.setItem('1agents-sidebar-mode', 'project');
+    setProjectStack([{ workspaceId, name }]);
+    tabsStore.closeContentTab();
+    // Reset conversation focus so the detail page (not a stale chat) shows.
+    tabsStore.activeTab.value = 'terminal';
+    setChatRailed(true);
+    ui.triggerTerminalFit();
 };
 
 /**

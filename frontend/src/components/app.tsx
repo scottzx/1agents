@@ -148,6 +148,11 @@ export class App extends Component<{}, AppState> {
             fs.loadDir('', null);
         }
 
+        // Drop any persisted 项目 drill entry whose workspace no longer exists,
+        // so a stale reload lands on the 项目总览 card wall instead of an empty
+        // detail page.
+        stage.pruneProjectStack(new Set(workspaces.map(w => w.id)));
+
         // Beginner mode leads with the conversation instead of the task kanban:
         // open the most recent chat, or land directly on the new-chat page.
         await this.applyBeginnerLanding();

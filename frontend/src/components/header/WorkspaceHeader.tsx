@@ -58,6 +58,11 @@ const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
     skills: 'header.title.skills',
     settings: 'header.title.settings',
     discovery: 'header.title.discovery',
+    reminders: 'header.title.reminders',
+    contacts: 'header.title.contacts',
+    inbox: 'header.title.inbox',
+    personal: 'header.title.personal',
+    retro: 'header.title.retro',
 };
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {

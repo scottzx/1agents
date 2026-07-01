@@ -3895,6 +3895,344 @@ body {
 }
 
 // ── 个人任务 + 立项 (#67) — mirrors the Inbox pane's layout language ──────
+// ── 项目总览 card wall (ProjectHome.tsx, #redesign) ───────────────────────
+.project-home {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+
+  .project-home-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .project-home-title {
+    margin: 0 0 6px;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .project-home-subtitle {
+    margin: 0 0 18px;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .project-home-hero-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .project-home-new-btn,
+  .project-home-bigscreen-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+
+    svg {
+      width: 17px;
+      height: 17px;
+    }
+  }
+
+  .project-home-new-btn {
+    color: var(--on-accent);
+    background: var(--accent-emphasis);
+    border: 1px solid var(--accent-emphasis);
+
+    &:hover {
+      background: var(--accent-hover);
+    }
+  }
+
+  .project-home-bigscreen-btn {
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+
+    &:hover {
+      border-color: var(--accent-emphasis);
+      color: var(--accent-fg);
+    }
+  }
+
+  .project-home-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+
+  .project-home-section-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .project-home-search {
+    width: 220px;
+    height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-emphasis);
+    }
+  }
+
+  .project-home-empty {
+    padding: 32px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px dashed var(--border-color);
+    border-radius: 12px;
+  }
+
+  .project-home-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+
+    .project-home-card-icon {
+      flex: none;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      color: var(--accent-fg);
+      background: var(--accent-bg);
+
+      svg {
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .project-home-card-body {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .project-home-card-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .project-home-card-desc {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+// ── 项目详情页 breadcrumb shell (ProjectDetailShell.tsx, #redesign) ───────
+.project-detail-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  .project-detail-breadcrumb {
+    flex: none;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+  }
+
+  .project-crumb-link {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 6px;
+
+    &:hover {
+      color: var(--accent-fg);
+      background: var(--btn-hover);
+    }
+  }
+
+  .project-crumb-sep {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+  }
+
+  .project-crumb-current {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  .project-detail-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
+// ── Focus-mode master-detail frame (#redesign) ──────────────────────────
+// A full-width list with a non-modal inspector that slides in from the right.
+// Used by list panes that want a docked detail (待办 today).
+.list-detail-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+
+  .list-detail-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .list-detail-inspector {
+    flex: none;
+    overflow: hidden;
+    transition: width 0.18s ease;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border-color);
+
+    &.open {
+      border-left: 1px solid var(--border-color);
+    }
+    &:not(.open) {
+      border-left: none;
+    }
+  }
+
+  .list-detail-inspector-inner {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+
+  .list-detail-inspector-head {
+    flex: none;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px 0 16px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .list-detail-inspector-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .list-detail-inspector-close {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    background: transparent;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      background: var(--btn-hover);
+      color: var(--text-main);
+    }
+  }
+
+  .list-detail-inspector-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+  }
+}
+
+.personal-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .personal-detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .personal-detail-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .personal-detail-desc {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .personal-detail-incubate {
+    margin-top: 6px;
+    align-self: flex-start;
+  }
+}
+
 .personal-pane {
   flex: 1;
   min-height: 0;
@@ -4006,10 +4344,16 @@ body {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 10px;
+    cursor: pointer;
     transition: border-color 0.15s ease;
 
     &:hover {
       border-color: var(--accent-emphasis);
+    }
+
+    &.active {
+      border-color: var(--accent-emphasis);
+      background: var(--accent-bg);
     }
   }
 

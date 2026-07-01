@@ -98,6 +98,11 @@ export const zhCN: Record<string, string> = {
     'header.title.skills': '技能管理',
     'header.title.settings': '系统设置',
     'header.title.discovery': '发现中心',
+    'header.title.reminders': '定时任务',
+    'header.title.contacts': '联系人',
+    'header.title.inbox': '收件箱',
+    'header.title.personal': '个人任务',
+    'header.title.retro': '复盘归档',
     'header.noWorkspace': '未选择工作空间',
     'header.noSession': '无会话',
     'header.modeToggleTitleScroll': '当前模式：滚轮滑动（点击切换为选择复制）',
@@ -764,6 +769,18 @@ export const zhCN: Record<string, string> = {
     'sidebar.navCtrl.scheduledTasks': '定时任务',
     'sidebar.navCtrl.personalTasks': '个人任务',
     'sidebar.navCtrl.retro': '复盘归档',
+    'sidebar.navCtrl.projectOverview': '项目总览',
+
+    // ── 项目总览 (ProjectHome.tsx, #redesign) ─────────────────────────────
+    'projectHome.title': '项目',
+    'projectHome.subtitle': '多人协同,打造超级团队',
+    'projectHome.newProject': '新建项目',
+    'projectHome.bigScreen': '打开大屏',
+    'projectHome.myProjects': '我的项目',
+    'projectHome.templates': '从模版创建',
+    'projectHome.searchPlaceholder': '搜索项目…',
+    'projectHome.empty': '还没有项目,点"新建项目"开始。',
+    'projectHome.templateLabel': '领域应用模版',
 
     // ── 复盘归档展示 (Retro/index.tsx, #271) ──────────────────────────────
     'retro.title': '复盘归档',
@@ -925,6 +942,7 @@ export const zhCN: Record<string, string> = {
 
     // ── 个人任务 + 立项 (PersonalTasks/index.tsx) ──────────────────────────
     'personal.title': '个人任务',
+    'personal.detailTitle': '任务详情',
     'personal.desc': '不属于任何项目的零散待办,先收在这里。够分量时再立项,变成长期项目。',
     'personal.capturePlaceholder': '记一件待办,先收着…',
     'personal.captureBtn': '收录',
@@ -1265,6 +1283,11 @@ export const enUS: Record<string, string> = {
     'header.title.skills': 'Skill Management',
     'header.title.settings': 'System Settings',
     'header.title.discovery': 'Discovery',
+    'header.title.reminders': 'Scheduled Tasks',
+    'header.title.contacts': 'Contacts',
+    'header.title.inbox': 'Inbox',
+    'header.title.personal': 'Personal Tasks',
+    'header.title.retro': 'Retrospectives',
     'header.noWorkspace': 'No workspace selected',
     'header.noSession': 'No session',
     'header.modeToggleTitleScroll': 'Current: Scroll mode (click to switch to Select-to-copy)',
@@ -1953,6 +1976,16 @@ export const enUS: Record<string, string> = {
     'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
     'sidebar.navCtrl.personalTasks': 'Personal Tasks',
     'sidebar.navCtrl.retro': 'Retrospectives',
+    'sidebar.navCtrl.projectOverview': 'Overview',
+    'projectHome.title': 'Projects',
+    'projectHome.subtitle': 'Collaborate to build a super team',
+    'projectHome.newProject': 'New project',
+    'projectHome.bigScreen': 'Open big screen',
+    'projectHome.myProjects': 'My projects',
+    'projectHome.templates': 'Create from template',
+    'projectHome.searchPlaceholder': 'Search projects…',
+    'projectHome.empty': 'No projects yet — click "New project" to start.',
+    'projectHome.templateLabel': 'Domain app template',
 
     // ── Retrospective archive (Retro/index.tsx, #271) ────────────────────
     'retro.title': 'Retrospectives',
@@ -2119,6 +2152,7 @@ export const enUS: Record<string, string> = {
 
     // ── Personal tasks + incubation (PersonalTasks/index.tsx) ────────────
     'personal.title': 'Personal Tasks',
+    'personal.detailTitle': 'Task detail',
     'personal.desc':
         'Loose to-dos that belong to no project. Park them here; incubate one into a long-term project once it carries enough weight.',
     'personal.capturePlaceholder': 'Jot down a to-do…',

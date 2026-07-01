@@ -6,6 +6,8 @@ import { RightPanelHost } from '../shared/RightPanelHost';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
 import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { ContentViewHost } from '../stage/ContentViewHost';
+import { ProjectHome } from '../platform/ProjectHome';
+import { ProjectDetailShell } from '../platform/ProjectDetailShell';
 import { t } from '../../i18n';
 import type { App, AppState } from '../app';
 import * as ui from '../../stores/uiStore';
@@ -48,6 +50,10 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const panes = stage.panes.value;
         const collapsed = stage.collapsed.value;
         const splitRatio = stage.splitRatio.value;
+        // The desktop layout mode (#redesign): project-overview / project drive
+        // their own full-width pages; focus / split share the header + body below.
+        const mode = stage.layoutMode.value;
+        const isFocusOrSplit = mode === 'focus' || mode === 'split';
         // The primary (left) pane's content kind. The tmux mouse toggle only
         // makes sense when the xterm terminal is the one showing.
         const primaryView = panes[0].view;
@@ -158,9 +164,14 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
                                 onDeleteWorkspace={wsStore.deleteWorkspace}
                                 onSelectWorkspace={ws => {
-                                    // 入口默认态: 项目/看板进 → 右栏=项目管理, chat 收成 rail。
                                     wsStore.selectWorkspace(ws);
-                                    stage.enterProject();
+                                    // 项目模式下点非默认工作区 → 进入项目详情页(下钻);
+                                    // 对话/助手工作区仍走旧的项目管理右栏。
+                                    if (ui.sidebarMode.value === 'project' && ws.id !== 'default') {
+                                        stage.enterProjectDetail(ws.id, ws.name);
+                                    } else {
+                                        stage.enterProject();
+                                    }
                                 }}
                                 onSelectSession={s => {
                                     // 同项目内打开/恢复/切换会话 → chat 领, 右栏保留;
@@ -200,13 +211,19 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
 
                     {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
                     <div class="workspace-main-content">
+                        {/* [项目总览]: the 项目 card wall (empty drill stack). */}
+                        {isShell && mode === 'project-overview' && <ProjectHome />}
+
+                        {/* [项目详情]: a drilled-in project's detail page. */}
+                        {isShell && mode === 'project' && <ProjectDetailShell />}
+
                         {/*
                           [SHELL HEADER]: shown for both 'tasks' (project
                           landing) and 'terminal' (workbench), so the user
                           always has access to theme / language / drawer tabs
                           regardless of which view is on top.
                         */}
-                        {isShell && !isNewChat && (
+                        {isShell && isFocusOrSplit && !isNewChat && (
                             <WorkspaceHeader
                                 leftSidebarOpen={leftSidebarOpen}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
@@ -247,7 +264,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           discovery/settings) take over as a single full-width
                           pane instead.
                         */}
-                        {isShell && (
+                        {isShell && isFocusOrSplit && (
                             <div
                                 class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
                             >

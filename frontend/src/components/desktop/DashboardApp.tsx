@@ -936,7 +936,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         const targetWs = wsStore.workspaces.value.find(w => w.id === ws.id);
         if (targetWs) {
             await wsStore.selectWorkspace(targetWs);
-            stage.enterProject();
+            stage.enterProjectDetail(targetWs.id, targetWs.name);
 
             // selectWorkspace persisted the active workspace id to localStorage,
             // so navigating the browser to the main app root makes it restore
@@ -953,7 +953,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         const targetWs = wsStore.workspaces.value.find(w => w.id === projectId);
         if (targetWs) {
             await wsStore.selectWorkspace(targetWs);
-            stage.enterProject();
+            stage.enterProjectDetail(targetWs.id, targetWs.name);
             window.location.href = mainAppRoot();
         }
     };
