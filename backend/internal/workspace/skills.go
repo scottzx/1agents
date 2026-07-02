@@ -139,7 +139,7 @@ func workspaceSkillDir(workspacePath, skillRef string) (string, error) {
 // source and only rewrites (and bumps the manifest revision) when the content
 // actually differs — Go never touches the store or manifest directly, keeping
 // drift detection correct. Returns whether the store baseline changed.
-func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, created bool, err error) {
+func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, created bool, version int, err error) {
 	if skillsAddr == "" {
 		skillsAddr = defaultSkillsAddr
 	}
@@ -151,7 +151,7 @@ func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, create
 	payload, _ := json.Marshal(map[string]string{"sourcePath": sourcePath})
 	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
 	if err != nil {
-		return false, false, fmt.Errorf("reach skill manager: %w", err)
+		return false, false, 0, fmt.Errorf("reach skill manager: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -163,16 +163,17 @@ func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, create
 		if e.Error == "" {
 			e.Error = strings.TrimSpace(string(body))
 		}
-		return false, false, fmt.Errorf("skill manager: %s", e.Error)
+		return false, false, 0, fmt.Errorf("skill manager: %s", e.Error)
 	}
 	var out struct {
 		Changed bool `json:"changed"`
 		Created bool `json:"created"`
+		Version int  `json:"version"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
-		return false, false, fmt.Errorf("decode skill manager response: %w", err)
+		return false, false, 0, fmt.Errorf("decode skill manager response: %w", err)
 	}
-	return out.Changed, out.Created, nil
+	return out.Changed, out.Created, out.Version, nil
 }
 
 // WorkspaceSkillStatus describes one skill materialized in a workspace's
@@ -186,15 +187,19 @@ type WorkspaceSkillStatus struct {
 	// State: "synced" (in store, identical), "modified" (in store, drifted →
 	// push overwrites), or "local" (not in store → push creates/ingests).
 	State string `json:"state"`
+	// Version is the store package's version counter (bumped on every
+	// content-changing push); 0 when the skill isn't in the store yet.
+	Version int `json:"version"`
 }
 
 // sharedSkillStatus mirrors the 1skills status-from-path response.
 type sharedSkillStatus struct {
-	InStore     bool   `json:"inStore"`
-	Differs     bool   `json:"differs"`
-	Exists      bool   `json:"exists"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	InStore      bool   `json:"inStore"`
+	Differs      bool   `json:"differs"`
+	Exists       bool   `json:"exists"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	StoreVersion int    `json:"storeVersion"`
 }
 
 // listWorkspaceSkills enumerates the skill packages under <ws>/.claude/skills and
@@ -236,6 +241,7 @@ func listWorkspaceSkills(workspacePath, skillsAddr string) ([]WorkspaceSkillStat
 			Name:        name,
 			Description: st.Description,
 			State:       skillState(st),
+			Version:     st.StoreVersion,
 		})
 	}
 	return out, nil

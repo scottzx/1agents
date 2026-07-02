@@ -85,12 +85,14 @@ export function AssistantDetail({ workspaceId }: AssistantDetailProps) {
     const onPush = async (ref: string) => {
         setPushing(ref);
         try {
-            const { changed, created } = await skillService.pushSkill(workspaceId, ref);
-            const msg = created
+            const { changed, created, version } = await skillService.pushSkill(workspaceId, ref);
+            const base = created
                 ? t('assistant.detail.pushedCreated', language)
                 : changed
                   ? t('assistant.detail.pushed', language)
                   : t('assistant.detail.pushNoChange', language);
+            // Surface the new store version whenever the push moved it forward.
+            const msg = changed && version ? `${base} · v${version}` : base;
             setFlash(f => ({ ...f, [ref]: msg }));
             await load();
         } catch {
@@ -190,6 +192,7 @@ export function AssistantDetail({ workspaceId }: AssistantDetailProps) {
                                             <span class={`assistant-skill-badge ${BADGE[s.state].cls}`}>
                                                 {t(BADGE[s.state].key, language)}
                                             </span>
+                                            {s.version > 0 && <span class="assistant-skill-version">v{s.version}</span>}
                                         </div>
                                         {s.description && <p class="assistant-skill-desc">{s.description}</p>}
                                     </div>

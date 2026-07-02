@@ -642,12 +642,12 @@ func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	changed, created, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
+	changed, created, version, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "changed": changed, "created": created})
+	writeJSON(w, map[string]any{"ok": true, "changed": changed, "created": created, "version": version})
 }
 
 // WorkspaceAgents handles GET /api/workspace/agents?id=<wsId>: lists the agents

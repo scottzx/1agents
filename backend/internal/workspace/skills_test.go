@@ -161,17 +161,20 @@ func TestPushSkillToShared(t *testing.T) {
 		_ = json.Unmarshal(data, &body)
 		gotSource = body.SourcePath
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"changed":true,"created":true}`))
+		_, _ = w.Write([]byte(`{"ok":true,"changed":true,"created":true,"version":3}`))
 	}))
 	defer srv.Close()
 	addr := strings.TrimPrefix(srv.URL, "http://")
 
-	changed, created, err := pushSkillToShared(addr, "shared:alpha", "/ws/.claude/skills/alpha")
+	changed, created, version, err := pushSkillToShared(addr, "shared:alpha", "/ws/.claude/skills/alpha")
 	if err != nil {
 		t.Fatalf("pushSkillToShared: %v", err)
 	}
 	if !changed || !created {
 		t.Errorf("expected changed=true created=true, got %v/%v", changed, created)
+	}
+	if version != 3 {
+		t.Errorf("expected version=3, got %d", version)
 	}
 	if gotPath != "/api/skills/shared:alpha/push-from-path" {
 		t.Errorf("forwarded path = %q", gotPath)
@@ -186,7 +189,7 @@ func TestSkillStatusAgainstShared(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"inStore":true,"differs":true,"exists":true,"name":"Alpha","description":"d"}`))
+		_, _ = w.Write([]byte(`{"inStore":true,"differs":true,"exists":true,"name":"Alpha","description":"d","storeVersion":2}`))
 	}))
 	defer srv.Close()
 	addr := strings.TrimPrefix(srv.URL, "http://")
@@ -198,7 +201,7 @@ func TestSkillStatusAgainstShared(t *testing.T) {
 	if gotPath != "/api/skills/shared:alpha/status-from-path" {
 		t.Errorf("forwarded path = %q", gotPath)
 	}
-	if !st.InStore || !st.Differs || st.Name != "Alpha" {
+	if !st.InStore || !st.Differs || st.Name != "Alpha" || st.StoreVersion != 2 {
 		t.Errorf("unexpected status: %+v", st)
 	}
 	if skillState(st) != "modified" {
@@ -220,7 +223,7 @@ func TestPushSkillToSharedError(t *testing.T) {
 	defer srv.Close()
 	addr := strings.TrimPrefix(srv.URL, "http://")
 
-	if _, _, err := pushSkillToShared(addr, "shared:alpha", "/nope"); err == nil {
+	if _, _, _, err := pushSkillToShared(addr, "shared:alpha", "/nope"); err == nil {
 		t.Fatal("expected error from 400 response")
 	} else if !strings.Contains(err.Error(), "SKILL.md") {
 		t.Errorf("error should surface the manager message, got %v", err)
