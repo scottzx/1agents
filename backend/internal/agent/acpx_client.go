@@ -198,6 +198,10 @@ type WsMessage struct {
 	IsError         bool            `json:"isError,omitempty"`
 	Arguments       json.RawMessage `json:"arguments,omitempty"`
 	Summary         string          `json:"summary,omitempty"`
+	// Stopped marks a `done` event that ended because the user hit "停止"
+	// (cancel_turn), not a natural finish. The turn's partial reply is still
+	// recorded, but handleTaskSessionDone must NOT flip the task to Completed.
+	Stopped bool `json:"stopped,omitempty"`
 	Items           json.RawMessage `json:"items,omitempty"`
 	Messages        json.RawMessage `json:"messages,omitempty"`
 	Code            string          `json:"code,omitempty"`
@@ -429,9 +433,11 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			// decision A: full last assistant message).
 			bridge.resetTurnText()
 		} else if msg.Event == "done" {
-			log.Printf("[acpx_client] Turn done for session %s. Intercepted summary: %s", bridge.SessionID, msg.Summary)
+			log.Printf("[acpx_client] Turn done for session %s (stopped=%v). Intercepted summary: %s", bridge.SessionID, msg.Stopped, msg.Summary)
 			writeAgentReply(bridge, tasksStore, chatStore)
-			c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, msg.Summary, tasksStore)
+			// A user "停止" ends the turn without completing the task: record
+			// the partial reply and free the lock, but leave task status as-is.
+			c.handleTaskSessionDone(bridge.WorkspacePath, taskId, bridge.SessionID, msg.Summary, msg.Stopped, tasksStore)
 			scheduler.Lock.Release(bridge.WorkspacePath)
 		} else if msg.Event == "error" {
 			log.Printf("[acpx_client] Intercepted turn error for session %s: %s", bridge.SessionID, msg.Message)
@@ -595,16 +601,18 @@ func (c *AcpxClient) cleanupBridge(sessionId string) {
 	}
 }
 
-func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, summary string, tasksStore *TasksStore) {
+func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, summary string, stopped bool, tasksStore *TasksStore) {
 	now := time.Now().UTC()
 	_ = tasksStore.Mutate(workspacePath, func(cfg *TasksConfig) bool {
 		for i := range cfg.Tasks {
 			task := &cfg.Tasks[i]
 			if task.ID == taskId {
 				// A discussion is a PM conversation, never an executable task:
-				// its turns must not flip it to completed. The agent's reply was
-				// already recorded to the timeline by writeAgentReply.
-				if task.Type != TaskTypeDiscussion {
+				// its turns must not flip it to completed. A user "停止"
+				// (stopped) likewise ends the turn without completing the task.
+				// Either way the agent's reply was already recorded by
+				// writeAgentReply; here we only mark the session idle below.
+				if task.Type != TaskTypeDiscussion && !stopped {
 					task.Status = TaskStatusCompleted
 					task.CompletedAt = &now
 					task.Summary = summary

@@ -33,7 +33,7 @@ import {
 import {
     getHistoryAction,
     promptAction,
-    closeSessionAction,
+    cancelTurnAction,
     cancelQueuedAction,
     respondPermissionAction,
     setPermissionModeAction,
@@ -450,12 +450,14 @@ export class ChatBridgeManager {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
         if (!state.ready) return;
-        // `cancel` on the wire is mapped to terminate-session: the only
-        // user-facing stop semantics are "终止对话" (cancels the active
-        // turn, drops the queue, closes the session). Stopping the
-        // current turn while letting the queue keep running isn't
-        // exposed in the UI.
-        state.ws.send(JSON.stringify(closeSessionAction(session.id)));
+        // The composer "停止" button stops generating: it cancels the active
+        // turn and drops any queued prompts but KEEPS the session alive, so
+        // the user can immediately continue chatting. (Fully terminating the
+        // session — close_session — is reached only via the sidebar's archive
+        // action in bridgeManager.destroy.) The bridge answers a cancelled
+        // turn with a normal `done`; we optimistically clear the running flags
+        // here so the composer flips back to Send without waiting for it.
+        state.ws.send(JSON.stringify(cancelTurnAction(session.id)));
         state.typing = false;
         state.turnStarted = false;
         this.notify(state);

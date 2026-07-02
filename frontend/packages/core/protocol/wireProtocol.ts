@@ -58,6 +58,14 @@ export function promptAction(sessionId: string, text: string) {
     return { action: 'prompt', sessionId, text };
 }
 
+// Stop the active turn (and drop any queued prompts) WITHOUT tearing the
+// session down — the user can immediately keep chatting in the same session.
+// Distinct from close_session, which fully terminates the session and is only
+// reached via the sidebar's archive action (bridgeManager.destroy).
+export function cancelTurnAction(sessionId: string) {
+    return { action: 'cancel_turn', sessionId };
+}
+
 export function closeSessionAction(sessionId: string) {
     return { action: 'close_session', sessionId };
 }
