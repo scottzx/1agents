@@ -62,6 +62,7 @@ export type RightDrawerTab =
     | 'skills'
     | 'tasks'
     | 'reminders'
+    | 'assistants'
     | 'contacts'
     | 'datasources'
     | 'inbox'
@@ -76,6 +77,7 @@ export function isFullPageTab(tab: RightDrawerTab): boolean {
         tab === 'skills' ||
         tab === 'settings' ||
         tab === 'reminders' ||
+        tab === 'assistants' ||
         tab === 'contacts' ||
         tab === 'datasources' ||
         tab === 'inbox' ||

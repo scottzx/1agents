@@ -31,6 +31,7 @@ import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { L1AppPage } from '../platform/L1Shell';
 import { visibleSettingsCategories, type SettingsCategory } from '../../modules/settings-manifest';
 import { RemindersPane } from '../drawer/Reminders';
+import { AssistantsPage } from '../pages/AssistantsPage';
 import { InboxPane } from '../drawer/Inbox';
 import { ContactsPane } from '../drawer/Contacts';
 import { DataSourcesPane } from '../drawer/DataSources';
@@ -171,6 +172,22 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     }}
                 >
                     <RemindersPane />
+                </div>
+            );
+        case 'assistants':
+            return (
+                <div
+                    style={{
+                        flex: 1,
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '12px 16px',
+                        overflow: 'auto',
+                        backgroundColor: 'var(--bg-panel)',
+                    }}
+                >
+                    <AssistantsPage />
                 </div>
             );
         case 'contacts':

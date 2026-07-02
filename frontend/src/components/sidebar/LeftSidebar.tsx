@@ -9,6 +9,7 @@ import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
 import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
+import { openCreateAssistantModal } from '../../stores/modalStore';
 import {
     remoteDevices,
     remoteExpanded,
@@ -432,6 +433,24 @@ export function LeftSidebar({
                                 <span>{t('sidebar.navCtrl.newConversation', language)}</span>
                             </button>
                             <div
+                                class={`nav-control-item${activeDrawerTab === 'assistants' ? ' active' : ''}`}
+                                onClick={() => toggleDrawerTab('assistants')}
+                            >
+                                <svg
+                                    class="btn-icon"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="8" r="4" />
+                                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                                </svg>
+                                <span>{t('sidebar.assistants', language)}</span>
+                            </div>
+                            <div
                                 class={`nav-control-item${activeDrawerTab === 'contacts' ? ' active' : ''}`}
                                 onClick={() => toggleDrawerTab('contacts')}
                             >
@@ -534,98 +553,157 @@ export function LeftSidebar({
             <div class="sidebar-scroll">
                 {!moduleNav ? (
                     <Fragment>
-                        {/* ── 对话 section: default / builtin workspace ─────────── */}
-                        {(() => {
-                            if (sidebarMode.value !== 'assistant') return null;
-                            const defaultFolder = folders.find(f => f.id === 'default');
-                            const defaultWs = defaultFolder ? workspaces.find(w => w.id === 'default') : undefined;
-                            if (!defaultFolder || !defaultWs) return null;
-                            const isActive = activeWorkspaceId === 'default';
-                            const chatSessions = defaultFolder.sessions.filter(isChat);
-                            const termSessions = defaultFolder.sessions.filter(s => !isChat(s));
-                            return (
-                                <div class="workspace-section">
-                                    <div
-                                        class={`project-node${isActive ? ' ws-active' : ''}`}
-                                        onMouseEnter={() => setHoveredId('default')}
-                                        onMouseLeave={() => setHoveredId(null)}
+                        {/* ── 助理 section: 唯一的对话列表, default 置顶 ── */}
+                        {sidebarMode.value === 'assistant' && (
+                            <div class="workspace-section">
+                                <div class="section-header">
+                                    <span>{t('sidebar.assistants', language)}</span>
+                                    <button
+                                        class="section-search-btn"
+                                        title={t('sidebar.addAssistant', language)}
+                                        onClick={openCreateAssistantModal}
                                     >
-                                        <div
-                                            class={`project-folder ${defaultFolder.expanded ? 'expanded' : ''}`}
-                                            onClick={() => {
-                                                toggleFolder('default');
-                                                onSelectWorkspace(defaultWs);
-                                            }}
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
                                         >
-                                            <svg
-                                                class="chevron"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
+                                            <line x1="12" y1="5" x2="12" y2="19" />
+                                            <line x1="5" y1="12" x2="19" y2="12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                {(() => {
+                                    // 助理 = kind==='assistant' 的本地工作区。default 是内置助理,
+                                    // 永远置顶;其余按 position 排序。远程设备项目归 project 模式管。
+                                    // 兼容旧数据:kind 为空视作 project(不入助理列表)。
+                                    const assistantWss = workspaces
+                                        .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
+                                        .sort((a, b) => {
+                                            if (a.id === 'default') return -1;
+                                            if (b.id === 'default') return 1;
+                                            return 0;
+                                        });
+                                    if (assistantWss.length === 0) {
+                                        return (
+                                            <div class="ws-empty">
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="1.5"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <circle cx="12" cy="8" r="4" />
+                                                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                                                </svg>
+                                                <span>{t('sidebar.noAssistants', language)}</span>
+                                                <button class="ws-empty-add" onClick={openCreateAssistantModal}>
+                                                    {t('sidebar.addAssistant', language)}
+                                                </button>
+                                            </div>
+                                        );
+                                    }
+                                    return assistantWss.map(ws => {
+                                        const folder = folders.find(f => f.id === ws.id);
+                                        if (!folder) return null;
+                                        const isActive = activeWorkspaceId === ws.id;
+                                        const chatSessions = folder.sessions.filter(isChat);
+                                        const termSessions = folder.sessions.filter(s => !isChat(s));
+                                        return (
+                                            <div
+                                                key={ws.id}
+                                                class={`project-node${isActive ? ' ws-active' : ''}`}
+                                                onMouseEnter={() => setHoveredId(ws.id)}
+                                                onMouseLeave={() => setHoveredId(null)}
                                             >
-                                                <polyline points="9 18 15 12 9 6" />
-                                            </svg>
-                                            <svg
-                                                class="folder-icon"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                                            </svg>
-                                            <span class="ws-name">{t('sidebar.conversations', language)}</span>
-                                        </div>
-                                        {defaultFolder.expanded && (
-                                            <div class="project-children">
-                                                {!isBeginnerMode.value && (
-                                                    <div
-                                                        class={`chat-item chat-row-kind-task${
-                                                            isTaskView && isActive ? ' active' : ''
-                                                        }`}
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            onSelectWorkspace(defaultWs);
-                                                        }}
+                                                <div
+                                                    class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
+                                                    onClick={() => {
+                                                        toggleFolder(ws.id);
+                                                        onSelectWorkspace(ws);
+                                                    }}
+                                                >
+                                                    <svg
+                                                        class="chevron"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="2.5"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
                                                     >
-                                                        <div class="chat-item-left">
-                                                            <span
-                                                                class="chat-sidebar-avatar chat-task-icon"
-                                                                aria-hidden="true"
+                                                        <polyline points="9 18 15 12 9 6" />
+                                                    </svg>
+                                                    {ws.avatar && ws.avatar.startsWith('/') ? (
+                                                        <img class="folder-avatar" src={ws.avatar} alt="" />
+                                                    ) : (
+                                                        <svg
+                                                            class="folder-icon"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <circle cx="12" cy="8" r="4" />
+                                                            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                                                        </svg>
+                                                    )}
+                                                    <span class="ws-name">{ws.name}</span>
+                                                </div>
+                                                {folder.expanded && (
+                                                    <div class="project-children">
+                                                        {ws.id === 'default' && !isBeginnerMode.value && (
+                                                            <div
+                                                                class={`chat-item chat-row-kind-task${
+                                                                    isTaskView && isActive ? ' active' : ''
+                                                                }`}
+                                                                onClick={(e: MouseEvent) => {
+                                                                    e.stopPropagation();
+                                                                    onSelectWorkspace(ws);
+                                                                }}
                                                             >
-                                                                {'\u{1F4CB}'}
-                                                            </span>
-                                                            <span class="chat-title">
-                                                                {t('sidebar.subpage.tasks', language) || '任务'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                {chatSessions.map(renderSession)}
-                                                {termSessions.map(renderSession)}
-                                                {chatSessions.length === 0 && termSessions.length === 0 && (
-                                                    <div
-                                                        class="chat-item"
-                                                        style="opacity:0.5;cursor:default;pointer-events:none;"
-                                                    >
-                                                        <div class="chat-item-left">
-                                                            <span class="chat-title">
-                                                                {t('sidebar.noChats', language)}
-                                                            </span>
-                                                        </div>
+                                                                <div class="chat-item-left">
+                                                                    <span
+                                                                        class="chat-sidebar-avatar chat-task-icon"
+                                                                        aria-hidden="true"
+                                                                    >
+                                                                        {'\u{1F4CB}'}
+                                                                    </span>
+                                                                    <span class="chat-title">
+                                                                        {t('sidebar.subpage.tasks', language) || '任务'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {chatSessions.map(renderSession)}
+                                                        {termSessions.map(renderSession)}
+                                                        {chatSessions.length === 0 && termSessions.length === 0 && (
+                                                            <div
+                                                                class="chat-item"
+                                                                style="opacity:0.5;cursor:default;pointer-events:none;"
+                                                            >
+                                                                <div class="chat-item-left">
+                                                                    <span class="chat-title">
+                                                                        {t('sidebar.noChats', language)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })()}
+                                        );
+                                    });
+                                })()}
+                            </div>
+                        )}
 
                         {!isBeginnerMode.value && sidebarMode.value === 'project' && (
                             <div class="workspace-section">
@@ -687,29 +765,36 @@ export function LeftSidebar({
                                     </div>
                                 )}
 
-                                {/* Empty state (only non-builtin workspaces count) */}
-                                {!workspacesLoading && folders.filter(f => f.id !== 'default').length === 0 && (
-                                    <div class="ws-empty">
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="1.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                        </svg>
-                                        <span>{t('sidebar.empty', language)}</span>
-                                        <button class="ws-empty-add" onClick={onCreateWorkspace}>
-                                            {t('common.new', language)}
-                                        </button>
-                                    </div>
-                                )}
+                                {/* Empty state — folders whose ws is a project (i.e. not an assistant). */}
+                                {!workspacesLoading &&
+                                    folders.filter(f => {
+                                        const w = workspaces.find(x => x.id === f.id);
+                                        return (w?.kind ?? 'project') !== 'assistant';
+                                    }).length === 0 && (
+                                        <div class="ws-empty">
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="1.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                            </svg>
+                                            <span>{t('sidebar.empty', language)}</span>
+                                            <button class="ws-empty-add" onClick={onCreateWorkspace}>
+                                                {t('common.new', language)}
+                                            </button>
+                                        </div>
+                                    )}
 
                                 {!workspacesLoading &&
                                     folders
-                                        .filter(f => f.id !== 'default')
+                                        .filter(f => {
+                                            const w = workspaces.find(x => x.id === f.id);
+                                            return (w?.kind ?? 'project') !== 'assistant';
+                                        })
                                         .filter(f => {
                                             if (!projectSearch) return true;
                                             const ws = workspaces.find(w => w.id === f.id);

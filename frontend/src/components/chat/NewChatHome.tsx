@@ -154,19 +154,42 @@ export function NewChatHome({
     // useSignal (not useState) for the mode toggle — plain useState toggles
     // can fail to re-render under @preact/signals.
     const mode = useSignal<'chat' | 'terminal'>('chat');
-    // Per-mode workspace selection: assistant mode always targets 'default';
-    // project mode tracks the user's picker choice separately.
+    // Per-mode workspace selection — the picker now shows in BOTH modes with
+    // assistants and projects mixed (rows tagged 助理/项目). Assistant mode
+    // starts on the built-in default assistant, project mode on the first real
+    // project; each mode remembers its own pick so toggling keeps both contexts.
     const [projectWsId, setProjectWsId] = useState(
         activeWorkspaceId !== 'default'
             ? activeWorkspaceId
-            : workspaces.find(w => w.id !== 'default' && !w.builtin)?.id || activeWorkspaceId
+            : workspaces.find(w => (w.kind ?? 'project') === 'project' && !w.builtin)?.id || activeWorkspaceId
     );
-    const selectedWorkspaceId = sidebarMode.value === 'assistant' ? 'default' : projectWsId;
-    const setSelectedWorkspaceId = (id: string) => setProjectWsId(id);
+    const [assistantWsId, setAssistantWsId] = useState(
+        workspaces.some(w => w.id === activeWorkspaceId && (w.kind ?? 'project') === 'assistant')
+            ? activeWorkspaceId
+            : 'default'
+    );
+    const selectedWorkspaceId = sidebarMode.value === 'assistant' ? assistantWsId : projectWsId;
+    const setSelectedWorkspaceId = (id: string) =>
+        sidebarMode.value === 'assistant' ? setAssistantWsId(id) : setProjectWsId(id);
     const wsDropdownOpen = useSignal(false);
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
+    const isAssistantWs = (w: Workspace) => (w.kind ?? 'project') === 'assistant';
+
+    // Picker rows: assistants first (default pinned on top), then projects —
+    // one searchable list across both kinds.
+    const pickerWorkspaces = workspaces
+        .filter(ws => !ws.deviceId)
+        .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase()))
+        .sort((a, b) => {
+            const ka = isAssistantWs(a) ? 0 : 1;
+            const kb = isAssistantWs(b) ? 0 : 1;
+            if (ka !== kb) return ka - kb;
+            if (a.id === 'default') return -1;
+            if (b.id === 'default') return 1;
+            return 0;
+        });
 
     // System speech-to-text for the prompt box. Reuses the terminal's
     // voice-input logic via a shared hook; appends to whatever is typed.
@@ -265,10 +288,9 @@ export function NewChatHome({
 
     return (
         <div class="new-chat-home">
-            {/* Top Workspace Picker Dropdown — only in project mode. The 会话/项目
-                scope toggle that drives this lives in the mobile New Conversation
-                header (outside this component). */}
-            {activeWorkspace && sidebarMode.value === 'project' && (
+            {/* Top Workspace Picker Dropdown — shown in both modes; assistants
+                and projects share one searchable list, rows tagged 助理/项目. */}
+            {activeWorkspace && (
                 <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
                     <button
                         class="new-chat-ws-picker-trigger"
@@ -286,10 +308,13 @@ export function NewChatHome({
                         >
                             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                         </svg>
-                        <span class="ws-name">
-                            {activeWorkspace.id === 'default' || activeWorkspace.builtin
-                                ? t('newchat.noProject', language)
-                                : activeWorkspace.name}
+                        <span class="ws-name">{activeWorkspace.name}</span>
+                        <span
+                            class={`dropdown-kind-tag ${isAssistantWs(activeWorkspace) ? 'is-assistant' : 'is-project'}`}
+                        >
+                            {isAssistantWs(activeWorkspace)
+                                ? t('newchat.kind.assistant', language)
+                                : t('newchat.kind.project', language)}
                         </span>
                         <svg
                             class={`chevron ${wsDropdownOpen.value ? 'open' : ''}`}
@@ -319,7 +344,7 @@ export function NewChatHome({
                                 <input
                                     class="dropdown-search-input"
                                     type="text"
-                                    placeholder="搜索项目…"
+                                    placeholder={t('newchat.searchWs', language)}
                                     value={wsSearch}
                                     onInput={(e: Event) => setWsSearch((e.target as HTMLInputElement).value)}
                                     autoFocus
@@ -331,19 +356,28 @@ export function NewChatHome({
                                 )}
                             </div>
                             <div class="dropdown-list">
-                                {workspaces
-                                    .filter(ws => ws.id !== 'default' && !ws.builtin)
-                                    .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase()))
-                                    .map(ws => (
-                                        <button
-                                            key={ws.id}
-                                            class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
-                                            onClick={() => {
-                                                setSelectedWorkspaceId(ws.id);
-                                                wsDropdownOpen.value = false;
-                                                setWsSearch('');
-                                            }}
-                                        >
+                                {pickerWorkspaces.map(ws => (
+                                    <button
+                                        key={ws.id}
+                                        class={`dropdown-item ${ws.id === selectedWorkspaceId ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setSelectedWorkspaceId(ws.id);
+                                            wsDropdownOpen.value = false;
+                                            setWsSearch('');
+                                        }}
+                                    >
+                                        {isAssistantWs(ws) ? (
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                style="width: 14px; height: 14px; opacity: 0.7;"
+                                            >
+                                                <circle cx="12" cy="8" r="4" />
+                                                <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                                            </svg>
+                                        ) : (
                                             <svg
                                                 viewBox="0 0 24 24"
                                                 fill="none"
@@ -353,14 +387,23 @@ export function NewChatHome({
                                             >
                                                 <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
                                             </svg>
-                                            <span class="item-name">{ws.name}</span>
-                                            {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
-                                        </button>
-                                    ))}
-                                {workspaces
-                                    .filter(ws => ws.id !== 'default' && !ws.builtin)
-                                    .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase())).length ===
-                                    0 && <div class="dropdown-empty">无匹配项目</div>}
+                                        )}
+                                        <span class="item-name">{ws.name}</span>
+                                        <span
+                                            class={`dropdown-kind-tag ${
+                                                isAssistantWs(ws) ? 'is-assistant' : 'is-project'
+                                            }`}
+                                        >
+                                            {isAssistantWs(ws)
+                                                ? t('newchat.kind.assistant', language)
+                                                : t('newchat.kind.project', language)}
+                                        </span>
+                                        {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
+                                    </button>
+                                ))}
+                                {pickerWorkspaces.length === 0 && (
+                                    <div class="dropdown-empty">{t('newchat.noWsMatch', language)}</div>
+                                )}
                             </div>
                             <button
                                 class="dropdown-item open-folder"

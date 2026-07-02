@@ -288,6 +288,41 @@ export const createWorkspace = async (
     }
 };
 
+/**
+ * Create an assistant — the "对话" concept, extended to N. Sends name + kind +
+ * optional avatar + selected skill refs so the backend mints a badge folder
+ * under ~/.1agents/projects/<YYYYMMDD-NNNN>/ and weak-copies skills into
+ * <ws>/.claude/skills (#360). No client-side directory pick.
+ *
+ * Returns true on success. A 409 (duplicate name) surfaces the backend message
+ * as a toast; the modal stays open by not throwing further.
+ */
+export const createAssistant = async (name: string, skills: string[], avatar?: string): Promise<boolean> => {
+    try {
+        await workspaceService.create({ name, status: 'active', kind: 'assistant', avatar }, skills);
+        localStorage.setItem('1agents-onboarded', 'true');
+        onboarded.value = true;
+        const list = await loadWorkspaces(true);
+        const newWs = [...list].reverse().find(w => w.name === name);
+        if (newWs) await selectWorkspace(newWs);
+        ui.showToast(t('app.toast.workspaceCreated', ui.language.value, { name }));
+        return true;
+    } catch (err) {
+        // The backend 409 body is JSON: {error:"name_taken", message:"..."}.
+        // Surface the message verbatim so the user knows to rename.
+        const raw = String(err);
+        let msg = raw;
+        try {
+            const parsed = JSON.parse(raw.replace(/^Error: /, '')) as { message?: string };
+            if (parsed?.message) msg = parsed.message;
+        } catch {
+            /* fall through */
+        }
+        ui.showToast(msg);
+        return false;
+    }
+};
+
 /** Update an existing workspace via POST /api/workspace/update */
 export const updateWorkspace = async (ws: Workspace) => {
     try {

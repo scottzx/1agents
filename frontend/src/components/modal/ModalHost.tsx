@@ -1,6 +1,7 @@
 import { h, Fragment } from 'preact';
 
 import { WorkspaceModal } from './WorkspaceModal';
+import { AssistantModal } from './AssistantModal';
 import { DirPickerModal } from './DirPickerModal';
 import { AccessTokenModal } from './AccessTokenModal';
 import { SessionRenameModal } from './SessionRenameModal';
@@ -50,6 +51,28 @@ export function ModalHost() {
                     onClose={modal.closeWsModal}
                     onBrowse={modal.openDirPickerForModal}
                     onSubmit={wsStore.submitWsModal}
+                    language={language}
+                />
+            )}
+
+            {/* Assistant create modal — the slim "对话" create path (name + skills) */}
+            {modal.assistantModalOpen.value && (
+                <AssistantModal
+                    name={modal.assistantModalName.value}
+                    skills={modal.assistantModalSkills.value}
+                    onNameChange={val => (modal.assistantModalName.value = val)}
+                    onSkillsChange={val => (modal.assistantModalSkills.value = val)}
+                    onClose={modal.closeAssistantModal}
+                    onSubmit={avatar => {
+                        const name = modal.assistantModalName.value.trim();
+                        if (!name) return;
+                        const skills = modal.assistantModalSkills.value;
+                        // Fire-and-forget: the store shows a toast on failure
+                        // and the loadWorkspaces refresh on success is what
+                        // ultimately closes the picker experience.
+                        modal.closeAssistantModal();
+                        wsStore.createAssistant(name, skills, avatar || undefined);
+                    }}
                     language={language}
                 />
             )}

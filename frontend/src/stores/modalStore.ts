@@ -21,6 +21,27 @@ export const wsModalTerminalDir = signal('');
 export const wsModalChatChannel = signal('');
 export const wsModalDefaultAgent = signal<AgentType>(DEFAULT_AGENT_TYPE);
 
+// ── Assistant create modal ─────────────────────────────────────────────────
+// Assistants ARE workspaces (the "对话" concept, extended to N of them). Their
+// create flow is intentionally slimmer than WorkspaceModal: no directory pick
+// (the backend mints ~/.1agents/projects/<badge>/), just a name + skill picker
+// that weak-copies selected skills into <ws>/.claude/skills on create (#360).
+export const assistantModalOpen = signal(false);
+export const assistantModalName = signal('');
+export const assistantModalSkills = signal<string[]>([]);
+
+export const openCreateAssistantModal = () => {
+    assistantModalOpen.value = true;
+    assistantModalName.value = '';
+    assistantModalSkills.value = [];
+};
+
+export const closeAssistantModal = () => {
+    assistantModalOpen.value = false;
+    assistantModalName.value = '';
+    assistantModalSkills.value = [];
+};
+
 // ── Chat session creation modal ──
 export const chatCreateOpen = signal(false);
 export const chatCreateWsId = signal('');

@@ -1747,16 +1747,19 @@ func switchCCSwitchProviderForWeb(appType, providerID string) error {
 // Since #277 the agent type is no longer encoded as a __<agent> suffix — the
 // project name equals the (sanitized) workspace name and the agent type lives
 // in the per-channel [projects.platforms.agent] binding.
-// CCProjectName returns the canonical cc-connect project name for a workspace,
-// applying the same slug + id-fallback that reconcileProjectsByPath uses when it
-// creates the project. A non-ASCII workspace name (e.g. the default "对话")
-// slugs to the placeholder "ws", so we fall back to the workspace id. Callers
-// that need to address a workspace's cc-connect project (e.g. the panel route)
-// MUST use this, not CCProjectSlug(name) alone, or they'll target the wrong name
-// (e.g. "ws" instead of "default") and 404.
+// CCProjectName returns the canonical cc-connect project name for a workspace.
+// A name that slugs losslessly (already ascii-safe, e.g. "Coze") is used as-is;
+// ANY lossy slug falls back to the workspace id. The old rule only caught fully
+// non-ASCII names (slug == "ws"), so a mixed name like "办公2" produced the
+// degenerate "_2" and the panel 404'd on /projects/_2. Workspace ids are ascii
+// (assistant badge / hex / "default") and badge folders are named by id, so the
+// id fallback lines up with both the register path (workspace.
+// registerWorkspaceProject) and the reconciler's dir-name slug — all three
+// address the same project name. Callers addressing a workspace's cc-connect
+// project (e.g. the panel route) MUST use this, not CCProjectSlug(name) alone.
 func CCProjectName(workspaceName, workspaceID string) string {
 	projName := CCProjectSlug(workspaceName)
-	if projName == "ws" {
+	if projName != workspaceName {
 		projName = CCProjectSlug(workspaceID)
 	}
 	return projName

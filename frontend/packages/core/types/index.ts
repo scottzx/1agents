@@ -22,7 +22,7 @@ export interface FsEntry {
     expanded?: boolean;
 }
 
-/** Mirrors the backend Workspace struct stored in workspaces_dir.json */
+/** Mirrors the backend Workspace struct stored in meta.db projects table. */
 export interface Workspace {
     id: string;
     name: string;
@@ -32,6 +32,13 @@ export interface Workspace {
     chatChannel?: string;
     defaultAgent?: import('../protocol/session').AgentType;
     builtin?: boolean;
+    /**
+     * "assistant" | "project" — splits the sidebar into 助理 vs 项目 lists. Empty
+     * value from a legacy row is treated as "project".
+     */
+    kind?: 'assistant' | 'project';
+    /** Avatar URL served by GET /avatars/ (preset or uploaded image). */
+    avatar?: string;
     /**
      * 所属远程设备 id(多设备项目视图,#114)。client-only:由 workspaceService.list(deviceId)
      * 在拉取远程设备项目时打标;本机项目此字段为空。点击带 deviceId 的项目时切到代理路由。

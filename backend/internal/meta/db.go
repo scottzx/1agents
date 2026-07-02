@@ -322,6 +322,12 @@ func (db *DB) ensureProjectsColumns() error {
 		// available_agents: JSON array of allowed agent type slugs (e.g. ["claudecode"]).
 		// Empty array means unrestricted. Added by Wave 2a platform layer (#325).
 		{"available_agents", "ALTER TABLE projects ADD COLUMN available_agents TEXT NOT NULL DEFAULT '[]'"},
+		// kind: 'assistant' | 'project'. Legacy rows default to 'project';
+		// EnsureDefaultWorkspace bumps the reserved default row to 'assistant'.
+		{"kind", "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'"},
+		// avatar: image ref for the assistant/project card. Either a URL served
+		// by GET /avatars/... or a "emoji:X" string; empty when unset.
+		{"avatar", "ALTER TABLE projects ADD COLUMN avatar TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {

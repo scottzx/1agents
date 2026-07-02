@@ -31,17 +31,21 @@ func get1AgentsHome() string {
 
 // Workspace represents a single workspace entry.
 type Workspace struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Path            string   `json:"path"`
-	Status          string   `json:"status"`
-	TerminalDir     string   `json:"terminalDir,omitempty"`
-	ChatChannel     string   `json:"chatChannel,omitempty"`
-	DefaultAgent    string   `json:"defaultAgent,omitempty"`
-	Builtin         bool     `json:"builtin,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	Status       string `json:"status"`
+	TerminalDir  string `json:"terminalDir,omitempty"`
+	ChatChannel  string `json:"chatChannel,omitempty"`
+	DefaultAgent string `json:"defaultAgent,omitempty"`
+	Builtin      bool   `json:"builtin,omitempty"`
 	// AvailableAgents is the allowlist of agent type slugs that may run in
 	// this workspace (§325). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
+	// Kind: "assistant" | "project" — see meta.Project.Kind.
+	Kind string `json:"kind,omitempty"`
+	// Avatar: image URL under /avatars/ (preset or upload); empty means unset.
+	Avatar string `json:"avatar,omitempty"`
 }
 
 // WorkspacesConfig is the top-level workspace registry shape. Its persistence
@@ -76,6 +80,8 @@ func projectToWorkspace(p meta.Project) Workspace {
 		DefaultAgent:    p.DefaultAgent,
 		Builtin:         p.Builtin,
 		AvailableAgents: p.AvailableAgents,
+		Kind:            p.Kind,
+		Avatar:          p.Avatar,
 	}
 }
 
@@ -90,6 +96,8 @@ func workspaceToProject(ws Workspace) meta.Project {
 		DefaultAgent:    ws.DefaultAgent,
 		Builtin:         ws.Builtin,
 		AvailableAgents: ws.AvailableAgents,
+		Kind:            ws.Kind,
+		Avatar:          ws.Avatar,
 	}
 }
 
@@ -152,6 +160,10 @@ func (h *Handler) SaveWorkspacesConfig(cfg *WorkspacesConfig) error {
 	return db.ReorderProjects(ids)
 }
 
+// defaultAssistantAvatar is the built-in default assistant's avatar — the robot
+// from the embedded preset set (workspace/avatar.go).
+const defaultAssistantAvatar = "/avatars/presets/preset-8.png"
+
 // EnsureDefaultWorkspace creates the built-in default workspace if it does not
 // already exist. Called once at server startup so new installs skip onboarding.
 func (h *Handler) EnsureDefaultWorkspace() error {
@@ -167,9 +179,31 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 	} else if n > 0 {
 		log.Printf("[workspace] pruned %d invalid (empty-id) project row(s)", n)
 	}
-	if _, ok, err := db.GetProject("default"); err != nil {
+	existing, ok, err := db.GetProject("default")
+	if err != nil {
 		return err
-	} else if ok {
+	}
+	if ok {
+		// Migrate the legacy default row into the assistant family. Older installs
+		// created it with name "对话" and no kind; the sidebar now shows this row as
+		// the always-first assistant, so it needs kind='assistant' and a friendlier
+		// display name. Users can rename it later.
+		needs := existing.Kind != "assistant" || existing.Name == "对话" || existing.Name == "" ||
+			existing.Avatar == ""
+		if needs {
+			existing.Kind = "assistant"
+			if existing.Name == "对话" || existing.Name == "" {
+				existing.Name = "助理"
+			}
+			if existing.Avatar == "" {
+				existing.Avatar = defaultAssistantAvatar
+			}
+			if err := db.EnsureWorkspaceProject(existing); err != nil {
+				log.Printf("[workspace] migrate default row: %v", err)
+			} else {
+				log.Printf("[workspace] migrated default row → kind=assistant, name=%q", existing.Name)
+			}
+		}
 		return nil
 	}
 	homeDir := get1AgentsHome()
@@ -180,15 +214,41 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 	ensureProjectGuideFiles(defaultPath)
 	if err := db.EnsureWorkspaceProject(meta.Project{
 		ID:            "default",
-		Name:          "对话",
+		Name:          "助理",
 		WorkspacePath: defaultPath,
 		DefaultAgent:  "claudecode",
 		Builtin:       true,
+		Kind:          "assistant",
+		Avatar:        defaultAssistantAvatar,
 	}); err != nil {
 		return err
 	}
 	log.Printf("[workspace] created built-in default workspace at %s", defaultPath)
 	return nil
+}
+
+// isNameTaken returns the existing workspace whose display name matches (case-
+// insensitive, whitespace-trimmed), excluding the given id (so an update keeps
+// its own name). Empty match returns ok=false. Names must be globally unique
+// across assistants + projects — the user's ask.
+func (h *Handler) isNameTaken(name, excludeID string) (Workspace, bool, error) {
+	target := strings.ToLower(strings.TrimSpace(name))
+	if target == "" {
+		return Workspace{}, false, nil
+	}
+	cfg, err := h.loadConfig()
+	if err != nil {
+		return Workspace{}, false, err
+	}
+	for _, w := range cfg.Workspaces {
+		if w.ID == excludeID {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(w.Name)) == target {
+			return w, true, nil
+		}
+	}
+	return Workspace{}, false, nil
 }
 
 // List handles GET /api/workspace/list
@@ -232,11 +292,13 @@ func (h *Handler) registerWorkspaceProject(ws Workspace) {
 	// Ensure the project has agent guidance files (CLAUDE.md / AGENTS.md).
 	ensureProjectGuideFiles(ws.Path)
 
-	// Dynamically register this workspace as a CC-Connect project.
-	projName := ws.Name
-	if projName == "" {
-		projName = ws.ID
-	}
+	// Dynamically register this workspace as a CC-Connect project. The project
+	// name must match what the panel route addresses (ccconnect.CCProjectName):
+	// the raw name only when it is already slug-safe ascii; otherwise the
+	// workspace id (badge / hex — always ascii). Registering the raw "办公2"
+	// here while the panel asked for its slug "_2" is exactly the mismatch that
+	// 404'd every /api/v1/projects/... call for Chinese-named assistants.
+	projName := ccSafeProjectName(ws)
 	if config.ConfigPath != "" {
 		if err := config.AddPlatformToProject(projName, config.PlatformConfig{
 			Type: "bridge",
@@ -272,6 +334,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Workspace
 		TemplateID string `json:"templateId"`
+		// Skills is an optional list of shared-store skill package dirs to weak-copy
+		// into <ws>/.claude/skills on creation (#360). Used by the create-assistant
+		// flow's skill picker; empty for a plain workspace.
+		Skills []string `json:"skills"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -283,6 +349,22 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// constant in internal/agent/types.go.
 	if ws.DefaultAgent == "" {
 		ws.DefaultAgent = "claudecode"
+	}
+	// Default kind: 'project' unless the caller (assistant flow) says otherwise.
+	if ws.Kind == "" {
+		ws.Kind = "project"
+	}
+	// Name uniqueness across assistants + projects.
+	if taken, ok, err := h.isNameTaken(ws.Name, ws.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if ok {
+		writeJSONStatus(w, http.StatusConflict, map[string]interface{}{
+			"error":    "name_taken",
+			"message":  fmt.Sprintf("名称已被%s使用,请改一个", nameKindLabel(taken.Kind)),
+			"conflict": taken,
+		})
+		return
 	}
 	db, err := meta.OpenDefault()
 	if err != nil {
@@ -296,6 +378,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		tempDir := filepath.Join(homeDir, "temp")
 		_ = os.MkdirAll(tempDir, 0755)
 		ws.Path = tempDir
+	}
+	// Assistant creation: the client picked no directory, so the backend mints an
+	// identity badge (YYYYMMDD-NNNN — the assistant's "工牌") and owns a fresh
+	// folder under ~/.1agents/projects/<badge>. The directory itself is created by
+	// registerWorkspaceProject → ensureProjectGuideFiles below.
+	if ws.Path == "" && ws.ID != "temp" {
+		badge := newAssistantBadge()
+		if ws.ID == "" {
+			ws.ID = badge
+		}
+		ws.Path = filepath.Join(get1AgentsHome(), ".1agents", "projects", badge)
 	}
 	if ws.ID == "" {
 		ws.ID = meta.NewID()
@@ -341,6 +434,18 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			resp["scaffolded"] = true
 		}
 	}
+
+	// Optional skill weak-copy into <ws>/.claude/skills (#360) — the assistant
+	// create flow's skill picker. Non-fatal: a copy failure is surfaced but the
+	// workspace still exists.
+	if len(body.Skills) > 0 {
+		if copied, sErr := syncSkillsToWorkspace(ws.Path, body.Skills); sErr != nil {
+			log.Printf("[workspace] sync skills for project %s: %v", ws.ID, sErr)
+			resp["skillsError"] = sErr.Error()
+		} else {
+			resp["skills"] = copied
+		}
+	}
 	writeJSON(w, resp)
 }
 
@@ -370,12 +475,27 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
+	// Built-in workspace is allowed rename/avatar edits (default assistant), but
+	// its kind and path are pinned to the stored values — clients cannot demote
+	// the built-in default via update.
 	if existing.Builtin {
-		http.Error(w, "cannot modify built-in workspace", http.StatusForbidden)
-		return
+		ws.Kind = existing.Kind
+		ws.Path = existing.WorkspacePath
 	}
 	// builtin can never be set via update — pin it to the stored value.
 	ws.Builtin = existing.Builtin
+	// Name uniqueness across assistants + projects (excluding self).
+	if taken, ok, err := h.isNameTaken(ws.Name, ws.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if ok {
+		writeJSONStatus(w, http.StatusConflict, map[string]interface{}{
+			"error":    "name_taken",
+			"message":  fmt.Sprintf("名称已被%s使用,请改一个", nameKindLabel(taken.Kind)),
+			"conflict": taken,
+		})
+		return
+	}
 	// EnsureWorkspaceProject preserves the row's status and position on conflict.
 	if err := db.EnsureWorkspaceProject(workspaceToProject(ws)); err != nil {
 		log.Printf("[workspace] save error: %v", err)
@@ -484,24 +604,24 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 					if err1 != nil {
 						continue
 					}
-					
+
 					// Parse workspace ID from name: "{workspaceId}_{n}" or "{workspaceId}"
 					wsID := name
 					if lastUnderscore := strings.LastIndex(name, "_"); lastUnderscore > 0 {
 						wsID = name[:lastUnderscore]
 					}
-					
+
 					if wsID == id {
 						windowsToKill = append(windowsToKill, idx)
 					}
 				}
-				
+
 				if len(windowsToKill) > 0 {
 					// If we are about to kill all windows, create a placeholder "p" first to keep session alive
 					if len(windowsToKill) >= totalWindows {
 						_ = exec.Command("tmux", "new-window", "-t", h.tmuxSession, "-n", "p").Run()
 					}
-					
+
 					// Kill target windows
 					for _, idx := range windowsToKill {
 						log.Printf("[workspace] Killing tmux window %d for deleted workspace %s", idx, id)
@@ -571,7 +691,6 @@ func (h *Handler) Reorder(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, map[string]interface{}{"ok": true})
 }
-
 
 // PickDirectory handles POST /api/workspace/pick-directory.
 // It opens a native OS folder picker dialog and returns the selected path.
@@ -652,6 +771,26 @@ func writeJSON(w http.ResponseWriter, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("[workspace] json encode error: %v", err)
 	}
+}
+
+// writeJSONStatus writes an explicit HTTP status code with a JSON body. Used by
+// Create/Update to return structured 409 name-conflict payloads the frontend
+// can distinguish from generic errors.
+func writeJSONStatus(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("[workspace] json encode error: %v", err)
+	}
+}
+
+// nameKindLabel returns a Chinese label ("助理" / "项目") for a conflicting
+// workspace's kind — used in the 409 message shown to the user.
+func nameKindLabel(kind string) string {
+	if kind == "assistant" {
+		return "助理"
+	}
+	return "项目"
 }
 
 // ListDirectories handles GET /api/workspace/list-directories
@@ -803,6 +942,27 @@ func normalizeWorkspacePath(p string) string {
 	return out
 }
 
+// ccSafeProjectName mirrors ccconnect.CCProjectName without importing the
+// package (ccconnect already imports workspace): use the workspace name only
+// when every rune is cc-connect-safe ([a-zA-Z0-9_-], ≤32 chars); otherwise use
+// the workspace id, which is always ascii (assistant badge / hex / "default").
+// Keeping register + panel + reconciler on one naming rule is what makes the
+// embed panel's /api/v1/projects/<name> lookups hit the registered project.
+func ccSafeProjectName(ws Workspace) string {
+	name := ws.Name
+	if name == "" || len(name) > 32 {
+		return ws.ID
+	}
+	for _, r := range name {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '_' || r == '-'
+		if !ok {
+			return ws.ID
+		}
+	}
+	return name
+}
+
 func getCCProjectName(workspaceName string, agentType string) string {
 	var sb strings.Builder
 	inInvalidSeq := false
@@ -888,4 +1048,3 @@ func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 		"path": targetPath,
 	})
 }
-

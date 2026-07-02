@@ -36,11 +36,15 @@ func (db *DB) upsertWorkspaceProject(p Project, position int) error {
 		builtin = 1
 	}
 	agents, _ := json.Marshal(p.AvailableAgents)
+	kind := p.Kind
+	if kind == "" {
+		kind = "project"
+	}
 	_, err := db.sql.Exec(`
 		INSERT INTO projects (id, name, workspace_path, status,
 			terminal_dir, chat_channel, default_agent, builtin, position,
-			available_agents, created_at, updated_at)
-		VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
+			available_agents, kind, avatar, created_at, updated_at)
+		VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			workspace_path = excluded.workspace_path,
@@ -50,10 +54,12 @@ func (db *DB) upsertWorkspaceProject(p Project, position int) error {
 			builtin = excluded.builtin,
 			position = excluded.position,
 			available_agents = excluded.available_agents,
+			kind = excluded.kind,
+			avatar = excluded.avatar,
 			updated_at = excluded.updated_at`,
 		p.ID, p.Name, p.WorkspacePath,
 		p.TerminalDir, p.ChatChannel, p.DefaultAgent, builtin, position,
-		string(agents), now, now)
+		string(agents), kind, p.Avatar, now, now)
 	return err
 }
 
@@ -162,6 +168,7 @@ const projectColumns = `id, name, workspace_path, status,
 	archive_reason, archive_note, archived_at,
 	terminal_dir, chat_channel, default_agent, builtin, position,
 	COALESCE(available_agents, '[]'),
+	COALESCE(kind, 'project'), COALESCE(avatar, ''),
 	created_at, updated_at`
 
 // GetProject returns a project by id.
@@ -287,6 +294,7 @@ func scanProject(r rowScanner) (Project, error) {
 		&reason, &note, &archivedAt,
 		&p.TerminalDir, &p.ChatChannel, &p.DefaultAgent, &builtin, &p.Position,
 		&availableAgents,
+		&p.Kind, &p.Avatar,
 		&createdAt, &updatedAt); err != nil {
 		return Project{}, err
 	}

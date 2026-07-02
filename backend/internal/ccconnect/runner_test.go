@@ -195,9 +195,11 @@ func TestReconcileProjectsByPath(t *testing.T) {
 		t.Errorf("codex channel binding lost on resync: %+v", app.Platforms)
 	}
 
-	// New workspace → fresh project, name = sanitized workspace name (no suffix).
-	if _, ok := byName["New_One"]; !ok {
-		t.Errorf("new workspace did not produce project %q; got %v", "New_One", projectNames(out))
+	// New workspace → fresh project. "New One" slugs lossily (space → "_"), so
+	// CCProjectName falls back to the workspace id — one naming rule with the
+	// register path and the panel route (the "_2" regression fix).
+	if _, ok := byName["newone"]; !ok {
+		t.Errorf("new workspace did not produce project %q; got %v", "newone", projectNames(out))
 	}
 
 	// Orphan dropped, placeholder preserved.
@@ -225,12 +227,12 @@ func TestReconcileProjectsByPath(t *testing.T) {
 // caller can substitute the workspace id instead.
 func TestCCProjectSlugNonASCIINoUnderscoreOnly(t *testing.T) {
 	cases := map[string]string{
-		"对话":       "ws",
-		"！！！":      "ws",
-		"app":      "app",
-		"New One":  "New_One",
-		"混合mix":    "_mix",
-		"a_b-c":    "a_b-c",
+		"对话":      "ws",
+		"！！！":     "ws",
+		"app":     "app",
+		"New One": "New_One",
+		"混合mix":   "_mix",
+		"a_b-c":   "a_b-c",
 	}
 	for in, want := range cases {
 		if got := CCProjectSlug(in); got != want {
@@ -240,6 +242,25 @@ func TestCCProjectSlugNonASCIINoUnderscoreOnly(t *testing.T) {
 	// sanitizeID must never resurrect an empty id from the slug fallback.
 	if got := sanitizeID(CCProjectSlug("对话")); got == "" {
 		t.Errorf("sanitizeID(CCProjectSlug(%q)) = %q; want non-empty", "对话", got)
+	}
+}
+
+// TestCCProjectNameLossySlugFallsBackToID guards the "_2" regression: any name
+// whose slug is lossy (mixed CJK+digit like "办公2", spaces, over-long) must
+// address the project by workspace id, matching what registerWorkspaceProject
+// registers and what the reconciler derives from the badge dir name.
+func TestCCProjectNameLossySlugFallsBackToID(t *testing.T) {
+	cases := []struct{ name, id, want string }{
+		{"Coze", "coze", "Coze"}, // lossless → raw name
+		{"1agents_app", "1agentsapp", "1agents_app"},
+		{"办公2", "20260702-0001", "20260702-0001"}, // mixed → id (was "_2")
+		{"助理", "default", "default"},              // fully non-ASCII → id
+		{"My App", "abc123", "abc123"},            // space is lossy → id
+	}
+	for _, c := range cases {
+		if got := CCProjectName(c.name, c.id); got != c.want {
+			t.Errorf("CCProjectName(%q, %q) = %q; want %q", c.name, c.id, got, c.want)
+		}
 	}
 }
 

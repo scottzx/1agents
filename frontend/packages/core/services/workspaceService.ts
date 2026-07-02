@@ -17,11 +17,19 @@ export const workspaceService = {
         return deviceId ? list.map(ws => ({ ...ws, deviceId })) : list;
     },
 
-    async create(ws: Workspace): Promise<void> {
+    /**
+     * Create a workspace. The optional `skills` list carries shared-store skill
+     * refs to weak-copy into `<ws>/.claude/skills` (assistant create flow, #360)
+     * — the backend ignores it for plain workspace creates. `path` and `id` can
+     * be omitted for assistants; the backend mints a badge folder in that case.
+     */
+    async create(ws: Partial<Workspace> & { name: string }, skills?: string[]): Promise<void> {
+        const body: Record<string, unknown> = { ...ws };
+        if (skills && skills.length > 0) body.skills = skills;
         const res = await apiFetch('/workspace/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(ws),
+            body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error(await res.text());
     },
@@ -59,6 +67,19 @@ export const workspaceService = {
         const res = await apiFetch(`/workspace/list-directories?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error(await res.text());
         return res.json();
+    },
+
+    /** Upload a user-picked image file as an avatar. Returns the served URL. */
+    async uploadAvatar(file: File): Promise<string> {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await apiFetch('/workspace/upload-avatar', {
+            method: 'POST',
+            body: form,
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as { url: string };
+        return data.url;
     },
 
     async createDirectory(parentPath: string, name: string): Promise<string> {

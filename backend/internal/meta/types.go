@@ -62,8 +62,16 @@ type Project struct {
 	// AvailableAgents is the allowlist of agent types that may run in this
 	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	// Kind splits workspaces into two families with different UX:
+	//   "assistant" — the "对话" concept, N of them; short-lived tasks & chat.
+	//   "project"   — a full project with dependency graph / kanban (default).
+	// Empty on legacy rows is treated as "project".
+	Kind string `json:"kind,omitempty"`
+	// Avatar is an optional image URL ("/avatars/presets/x.png" or an upload
+	// under "/avatars/"). Rendered on the assistant card and sidebar folder icon.
+	Avatar    string    `json:"avatar,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.
