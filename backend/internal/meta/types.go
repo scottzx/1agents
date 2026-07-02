@@ -22,6 +22,13 @@ const (
 	ProjectStatusActive   ProjectStatus = "active"
 	ProjectStatusArchived ProjectStatus = "archived"
 	ProjectStatusKilled   ProjectStatus = "killed"
+	// ProjectStatusSystem marks a workspace owned by the platform itself, not by
+	// the user (数据源同步宿主 __sources_sync__ is the first — Epic #359 phase 2).
+	// The sidebar/registry still hides it (only "active" appears there), but the
+	// scheduler schedules it and agenda/dashboard/task-bus views surface its
+	// tasks explicitly, so periodic system work is visible without cluttering
+	// the user's project list.
+	ProjectStatusSystem ProjectStatus = "system"
 )
 
 // ArchiveReason records why a project left the active view. It is orthogonal to
@@ -54,11 +61,11 @@ type Project struct {
 	// IS a workspace; these carry the sidebar/terminal/chat metadata that used to
 	// live in the json registry. Builtin marks the reserved default workspace;
 	// Position drives sidebar order.
-	TerminalDir  string    `json:"terminalDir,omitempty"`
-	ChatChannel  string    `json:"chatChannel,omitempty"`
-	DefaultAgent string    `json:"defaultAgent,omitempty"`
-	Builtin      bool      `json:"builtin,omitempty"`
-	Position     int       `json:"position,omitempty"`
+	TerminalDir  string `json:"terminalDir,omitempty"`
+	ChatChannel  string `json:"chatChannel,omitempty"`
+	DefaultAgent string `json:"defaultAgent,omitempty"`
+	Builtin      bool   `json:"builtin,omitempty"`
+	Position     int    `json:"position,omitempty"`
 	// AvailableAgents is the allowlist of agent types that may run in this
 	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
@@ -277,11 +284,18 @@ func PriorityRank(p Priority) int {
 // Recurrence is the simple-enum repeat rule (confirmed decision: no cron).
 // Freq selects which extra field applies: weekly→Weekday (0=Sunday…6),
 // monthly→Monthday (1–31, clamped to month length). At is "HH:MM" local.
+//
+// interval is the exception to the clock-time rule: it repeats every
+// EveryMinutes after the previous run, ignoring At/Weekday/Monthday. It exists
+// for machine-driven cadences — data-source incremental sync fires "every N
+// minutes", not "daily at HH:MM" — so the work-order scheduler can own periodic
+// ingestion instead of each syncer growing its own ticker.
 type Recurrence struct {
-	Freq     string `json:"freq"` // daily | weekly | monthly
-	Weekday  int    `json:"weekday,omitempty"`
-	Monthday int    `json:"monthday,omitempty"`
-	At       string `json:"at,omitempty"`
+	Freq         string `json:"freq"` // daily | weekly | monthly | interval
+	Weekday      int    `json:"weekday,omitempty"`
+	Monthday     int    `json:"monthday,omitempty"`
+	At           string `json:"at,omitempty"`
+	EveryMinutes int    `json:"everyMinutes,omitempty"` // interval only: minutes between runs
 }
 
 // IssueState is the open/closed dimension layered on top of the workflow

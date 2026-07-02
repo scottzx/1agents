@@ -21,17 +21,7 @@ import {
 // carry; the toolbar (show/hide/reorder columns, group, sort) + search are the
 // generic bitable controls, and the column choice persists per (source, kind).
 // The leftmost 序号 opens a per-record popup listing every native field.
-export function SourceDetail({
-    source,
-    kind,
-    title,
-    onBack,
-}: {
-    source: string;
-    kind: string;
-    title: string;
-    onBack: () => void;
-}) {
+export function SourceDetail({ source, kind, title }: { source: string; kind: string; title: string }) {
     const language = ui.language.value;
     const [rows, setRows] = useState<SourceRecordRow[]>([]);
     const [loading, setLoading] = useState(false);
@@ -67,9 +57,7 @@ export function SourceDetail({
     return (
         <div class="datasource-detail">
             <div class="datasource-subhead">
-                <button class="datasource-back" onClick={onBack}>
-                    ← {t('datasource.back', language)}
-                </button>
+                {/* Breadcrumb 数据源 › 飞书 › <title> handles back-navigation — no button here. */}
                 <span class="datasource-subhead-title">{title}</span>
                 <span class="datasource-subhead-count">{t('datasource.records', language, { n: rows.length })}</span>
                 <input

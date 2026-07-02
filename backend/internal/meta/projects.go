@@ -256,6 +256,20 @@ func (db *DB) ArchiveProject(id string, status ProjectStatus, reason ArchiveReas
 	return affectedOrNotFound(res)
 }
 
+// SetProjectStatus is the neutral status setter used by system-owned workspaces
+// (ProjectStatusSystem). Unlike ArchiveProject it takes no ArchiveReason and
+// leaves archive_note/archived_at alone — a "system" workspace isn't archived,
+// it's platform-owned. Returns ErrNotFound for an unknown id.
+func (db *DB) SetProjectStatus(id string, status ProjectStatus) error {
+	res, err := db.sql.Exec(
+		`UPDATE projects SET status = ?, updated_at = ? WHERE id = ?`,
+		string(status), timeToStr(time.Now().UTC()), id)
+	if err != nil {
+		return err
+	}
+	return affectedOrNotFound(res)
+}
+
 // ReopenProject returns an archived/killed project to active, clearing the
 // archive reason/note/timestamp (#141). Returns ErrNotFound for an unknown id.
 func (db *DB) ReopenProject(id string) error {
