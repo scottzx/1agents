@@ -70,6 +70,15 @@ const SKILLS_STATIC_MANIFEST: ModuleManifest = {
             ],
         },
         {
+            key: 'agents',
+            label: 'module.skills.group.agents',
+            iconKey: 'agents',
+            links: [
+                { key: 'agents-use', to: '/agents/use', label: 'module.skills.link.inUse' },
+                { key: 'agents-review', to: '/agents/review', label: 'module.skills.link.review', badge: 'review' },
+            ],
+        },
+        {
             key: 'slash-commands',
             label: 'module.skills.group.slashCommands',
             iconKey: 'slash-commands',
