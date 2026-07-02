@@ -23,7 +23,7 @@ type BottomTab = 'skills' | 'prompt' | 'mcp' | 'channel';
 // Built-in avatar set: generated offline with agy, embedded in the backend
 // binary and served under /avatars/presets/ (see workspace/avatar.go). Keep in
 // sync with backend/internal/workspace/presets/.
-const AVATAR_PRESETS = Array.from({ length: 8 }, (_, i) => `/avatars/presets/preset-${i + 1}.png`);
+const AVATAR_PRESETS = Array.from({ length: 46 }, (_, i) => `/avatars/presets/preset-${i + 1}.png`);
 
 /**
  * AssistantModal — the create-assistant surface.

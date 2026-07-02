@@ -16333,6 +16333,9 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
+  // 46 presets would run 12 rows tall — cap and scroll to keep the modal compact.
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .assistant-avatar-preset-btn {
