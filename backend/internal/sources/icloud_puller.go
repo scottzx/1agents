@@ -18,9 +18,16 @@ type icloudPuller struct {
 }
 
 // NewICloudPuller builds an iCloud CardDAV puller from an Apple ID +
-// app-specific password.
+// app-specific password (国际 discovery root; .cn fallback still applies).
 func NewICloudPuller(appleID, password string) Puller {
 	return &icloudPuller{client: icloud.NewClient(appleID, password)}
+}
+
+// NewICloudPullerRegion builds an iCloud puller whose discovery root is pinned
+// by the account's region ("cn" → 大陆 root). Used by the multi-account data-
+// source sync path where region is an explicit account property.
+func NewICloudPullerRegion(region, appleID, password string) Puller {
+	return &icloudPuller{client: icloud.NewClientRegion(region, appleID, password)}
 }
 
 // newICloudPullerWithBase points the puller at an explicit DAV base (tests).

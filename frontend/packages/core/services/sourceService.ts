@@ -72,7 +72,68 @@ export interface SyncRun {
     completedAt?: string;
 }
 
+// 数据源厂家能力 (vendor capability) — drives the 添加数据源 flow: which regions a
+// vendor offers (国际/大陆), whether multiple accounts are allowed (飞书 is
+// single-account), and how the account authenticates. Mirrors sources.VendorSpec.
+export interface VendorSpec {
+    vendor: string;
+    label: string;
+    multiAccount: boolean;
+    regions: string[]; // 'intl' | 'cn'
+    authKind: string; // 'credentials' | 'cli' | 'oauth'
+}
+
+// 数据源账号 (source account) — 厂家 + 账号 = 一个源. Mirrors meta.SourceAccount.
+export interface SourceAccount {
+    id: string;
+    vendor: string;
+    region: string; // 'intl' | 'cn'
+    label: string;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateAccountInput {
+    vendor: string;
+    region: string;
+    label?: string;
+    appleId?: string; // iCloud only
+    password?: string; // iCloud only (stored in Keychain server-side)
+}
+
 export const sourceService = {
+    /** GET /api/sources/vendors — vendor capability table for the add-source flow. */
+    async vendors(): Promise<VendorSpec[]> {
+        const res = await apiFetch('/sources/vendors');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as VendorSpec[];
+    },
+
+    /** GET /api/sources/accounts — every registered (厂家+账号) source. */
+    async accounts(): Promise<SourceAccount[]> {
+        const res = await apiFetch('/sources/accounts');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SourceAccount[];
+    },
+
+    /** POST /api/sources/accounts — register a new account (a new source). */
+    async createAccount(input: CreateAccountInput): Promise<SourceAccount> {
+        const res = await apiFetch('/sources/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SourceAccount;
+    },
+
+    /** DELETE /api/sources/accounts/{id} — remove an account. */
+    async deleteAccount(id: string): Promise<void> {
+        const res = await apiFetch(`/sources/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok && res.status !== 204) throw new Error(await res.text());
+    },
+
     /** GET /api/sources/summary — per-(source,kind) rollup for the overview cards. */
     async summary(): Promise<SourceSummary[]> {
         const res = await apiFetch('/sources/summary');

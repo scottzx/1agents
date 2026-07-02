@@ -244,6 +244,11 @@ func (db *DB) migrateSchema() error {
 	if err := db.ensureSourceCollectionConfig(); err != nil {
 		return fmt.Errorf("meta: ensure source_collection_config: %w", err)
 	}
+	// 数据源账号注册表 (source_accounts). 厂家 + 账号 = 一个源; created
+	// unconditionally (CREATE IF NOT EXISTS), same rationale as above. Idempotent.
+	if err := db.ensureSourceAccounts(); err != nil {
+		return fmt.Errorf("meta: ensure source_accounts: %w", err)
+	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 			return fmt.Errorf("meta: set user_version: %w", err)

@@ -62,6 +62,51 @@ func SaveCredentials(appleID, password string) error {
 	return nil
 }
 
+// SaveKeychainPassword stores an app-specific password in the macOS Keychain
+// keyed by Apple ID. Because the Keychain item's account is the Apple ID, this
+// is naturally multi-account — the data-source account model (source_accounts)
+// stores the Apple ID + region and calls this to persist the secret, without
+// touching the legacy single-account icloud.json path. macOS only.
+func SaveKeychainPassword(appleID, password string) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("icloud: credential storage currently supports macOS only")
+	}
+	appleID = strings.TrimSpace(appleID)
+	if appleID == "" || strings.TrimSpace(password) == "" {
+		return fmt.Errorf("icloud: appleID and password are required")
+	}
+	cmd := exec.Command("security", "add-generic-password",
+		"-U", "-s", keychainService, "-a", appleID, "-w", password,
+		"-T", "/usr/bin/security")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("icloud: keychain store failed: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// LoadKeychainPassword returns the app-specific password for an Apple ID. ok is
+// false when no Keychain item exists.
+func LoadKeychainPassword(appleID string) (password string, ok bool, err error) {
+	if runtime.GOOS != "darwin" {
+		return "", false, nil
+	}
+	out, cerr := exec.Command("security", "find-generic-password",
+		"-s", keychainService, "-a", appleID, "-w").Output()
+	if cerr != nil {
+		return "", false, nil
+	}
+	return strings.TrimRight(string(out), "\n"), true, nil
+}
+
+// DeleteKeychainPassword removes the Keychain item for an Apple ID (best-effort).
+func DeleteKeychainPassword(appleID string) error {
+	if runtime.GOOS != "darwin" || strings.TrimSpace(appleID) == "" {
+		return nil
+	}
+	return exec.Command("security", "delete-generic-password",
+		"-s", keychainService, "-a", appleID).Run()
+}
+
 // LoadCredentials returns the stored Apple ID + app-specific password. ok is
 // false when no credential is configured.
 func LoadCredentials() (appleID, password string, ok bool, err error) {

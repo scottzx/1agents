@@ -83,11 +83,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
 	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder)                  // POST
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)                    // DELETE ?id=xxx
-	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)         // POST — opens native folder picker
-	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories)     // GET ?path=...
-	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory)     // POST
-	mux.HandleFunc("/api/workspace/upload-avatar", wsHandler.UploadAvatar)           // POST multipart file → {url}
-	mux.Handle("/avatars/", workspace.ServeAvatars())                                // GET avatar files (embedded presets + uploads)
+	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)     // POST — opens native folder picker
+	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
+	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
+	mux.HandleFunc("/api/workspace/upload-avatar", wsHandler.UploadAvatar)       // POST multipart file → {url}
+	mux.Handle("/avatars/", workspace.ServeAvatars())                            // GET avatar files (embedded presets + uploads)
 
 	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
@@ -296,11 +296,26 @@ func NewRouter(cfg *config.Config) http.Handler {
 				} else {
 					ingestHandler.SetDispatcher(ingest.NewDispatcher(taskAPI, tasksStore, wsPath))
 				}
-				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI)          // GET /{tool}/status, POST /{tool}/recheck
+				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
+				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.
+				mux.HandleFunc("/api/sources/vendors", ingestHandler.HandleVendors)       // GET — vendor capability table
+				mux.HandleFunc("/api/sources/accounts", ingestHandler.HandleAccounts)     // GET list, POST create
+				mux.HandleFunc("/api/sources/accounts/", ingestHandler.HandleAccountItem) // DELETE /{id}
+				// Per-source collection config / sync / history — the handlers parse the
+				// {source} from the path (feishu / microsoft / google).
 				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections) // GET, PUT
 				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
 				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
 				mux.HandleFunc("/api/sources/feishu/chats", ingestHandler.HandleChats)             // GET — cached 群列表 (bronze) + tracked join
+				mux.HandleFunc("/api/sources/microsoft/collections", ingestHandler.HandleCollections)
+				mux.HandleFunc("/api/sources/microsoft/sync", ingestHandler.HandleSync)
+				mux.HandleFunc("/api/sources/microsoft/history", ingestHandler.HandleHistory)
+				mux.HandleFunc("/api/sources/google/collections", ingestHandler.HandleCollections)
+				mux.HandleFunc("/api/sources/google/sync", ingestHandler.HandleSync)
+				mux.HandleFunc("/api/sources/google/history", ingestHandler.HandleHistory)
+				if err := ingestHandler.SeedLegacyAccounts(); err != nil {
+					log.Printf("[server] ingest seed legacy accounts: %v", err)
+				}
 			}
 
 			// Cross-wire ingest ⇄ digest: the feishu_message work-order task drives

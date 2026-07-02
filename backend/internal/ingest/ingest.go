@@ -23,6 +23,7 @@ import (
 type Handler struct {
 	db       *meta.DB
 	cfg      *meta.SourceCollectionStore
+	accounts *meta.SourceAccountStore
 	chats    *meta.FeishuChatStore
 	bronze   *sources.Store
 	cli      *sourcecli.Handler
@@ -75,11 +76,12 @@ func NewHandlerDefault() (*Handler, error) {
 		return nil, err
 	}
 	return &Handler{
-		db:     db,
-		cfg:    meta.NewSourceCollectionStore(db),
-		chats:  meta.NewFeishuChatStore(db),
-		bronze: bronze,
-		cli:    sourcecli.NewHandler(),
+		db:       db,
+		cfg:      meta.NewSourceCollectionStore(db),
+		accounts: meta.NewSourceAccountStore(db),
+		chats:    meta.NewFeishuChatStore(db),
+		bronze:   bronze,
+		cli:      sourcecli.NewHandler(),
 	}, nil
 }
 
