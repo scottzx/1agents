@@ -84,9 +84,14 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         // the shell; the column contents themselves are driven by the stage.
         const isShell = activeTabId === 'tasks' || activeTabId === 'terminal';
         const isDynamicTab = activeTabObj?.type === 'preview' || activeTabObj?.type === 'browser';
-        // The new-chat landing is a focused full-bleed page, so hide the
-        // workspace header (it has no active session/workspace context yet).
-        const isNewChat = tabsStore.activeTab.value === 'new_chat' && !isFullPageTab(activeDrawerTab);
+        // The general new-chat landing is a focused full-bleed page, so hide the
+        // workspace header (it has no active session/workspace context yet). But
+        // when launched from an assistant (locked), keep the header so its
+        // breadcrumb shows 助理 › <name> › 新建对话.
+        const isNewChat =
+            tabsStore.activeTab.value === 'new_chat' &&
+            !isFullPageTab(activeDrawerTab) &&
+            !sess.lockedNewChatWorkspaceId.value;
 
         return (
             <Fragment>

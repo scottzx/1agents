@@ -82,10 +82,13 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
         };
     }, [activeTab, workspaceId]);
 
-    // Start a fresh conversation scoped to this assistant.
+    // Start a fresh conversation scoped to this assistant: open the new-chat
+    // landing, then lock it to this workspace (picker hidden; breadcrumb shows
+    // 助理 › <name> › 新建对话). Set after onStartNewChat, which clears the lock.
     const onNewChat = async () => {
         if (ws) await wsStore.selectWorkspace(ws);
         sessStore.onStartNewChat();
+        sessStore.lockedNewChatWorkspaceId.value = workspaceId;
     };
 
     if (!ws) {

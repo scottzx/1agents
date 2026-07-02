@@ -436,6 +436,7 @@ function renderNewChat(language: Lang) {
                 sess.createTerminal(wsId, cwd, initialCommand);
             }}
             onOpenFolder={modal.openCreateWorkspacePicker}
+            lockedWorkspaceId={sess.lockedNewChatWorkspaceId.value || undefined}
             language={language}
         />
     );

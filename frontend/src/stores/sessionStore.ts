@@ -43,6 +43,15 @@ export const activeSession = signal<Session | null>(null);
 export const pendingInitialMessage = signal<string | null>(null);
 
 /**
+ * When the new-chat landing is opened from a specific assistant (助理 详情 的
+ * 「新建对话」), it is locked to that assistant's workspace — NewChatHome hides
+ * its workspace picker and the header breadcrumb shows 助理 › <name> › 新建对话.
+ * null = the general cross-project new-chat (picker shown). Set by
+ * AssistantDetail after onStartNewChat; cleared by every general onStartNewChat.
+ */
+export const lockedNewChatWorkspaceId = signal<string | null>(null);
+
+/**
  * Live, runtime-only status overrides keyed by session id. The persisted
  * `ChatSession.status` (from the list API) is a stale snapshot; the chat
  * bridge (globalBridgeManager) pushes the *current* transient state here as
@@ -278,6 +287,8 @@ export const onStartNewChat = () => {
         tabsStore.activeDrawerTab.value = 'none';
     }
     activeSession.value = null;
+    // General entry → not scoped to any assistant, so the picker shows.
+    lockedNewChatWorkspaceId.value = null;
     // Move the primary pane onto the new-chat landing, leaving the project
     // landing ('tasks') so the new-chat home actually renders on top.
     tabsStore.activeTabId.value = 'terminal';

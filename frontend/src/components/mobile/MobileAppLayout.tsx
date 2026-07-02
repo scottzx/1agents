@@ -488,6 +488,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                 });
                                             }}
                                             onOpenFolder={modal.openCreateWorkspacePicker}
+                                            lockedWorkspaceId={sess.lockedNewChatWorkspaceId.value || undefined}
                                             language={language}
                                         />
                                     </div>

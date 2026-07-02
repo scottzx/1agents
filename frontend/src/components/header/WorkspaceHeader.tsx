@@ -80,6 +80,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         toggleLeftSidebar,
         activeDrawerTab,
         toggleDrawerTab,
+        activeTab,
         workspaceName,
         workspacePath,
         sessionName,
@@ -227,11 +228,14 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         tabsStore.assistantDetailId.value = activeWs.id;
         tabsStore.activeDrawerTab.value = 'assistants';
     };
+    // L3 crumb: the new-chat landing shows 新建对话 until the session starts,
+    // then the session title takes its place.
+    const assistantLeaf = activeTab === 'new_chat' ? t('assistant.detail.newChat', language) : sessionName;
     const assistantCrumbs = activeWs
         ? [
               { label: t('sidebar.assistants', language), onClick: openAssistantsOverview },
-              ...(sessionName
-                  ? [{ label: activeWs.name, onClick: openAssistantDetail }, { label: sessionName }]
+              ...(assistantLeaf
+                  ? [{ label: activeWs.name, onClick: openAssistantDetail }, { label: assistantLeaf }]
                   : [{ label: activeWs.name }]),
           ]
         : [];
