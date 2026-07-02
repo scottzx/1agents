@@ -5,18 +5,17 @@ import * as ui from '../../../stores/uiStore';
 import { t, type Lang } from '../../../i18n';
 import type { ShellTab } from '../../platform/ShellNav';
 import { CliZone, CollectionsZone, HistoryZone } from './FeishuSourceCard';
-import { FeishuSection } from './FeishuSection';
-import { useChannelModules, ConsentSubmodule } from './ConsentGate';
 import { SourceDataZone } from './SourceDataZone';
 
 // FeishuSourcePanel — the 飞书 source, one zone per top-nav tab:
 //   认证 → CLI 生命周期 (CliZone)
-//   采集配置 → CollectionsZone + 群选择 (consent-gated FeishuSection)
+//   采集配置 → CollectionsZone. The 群 pieces live in ChatScopeModal, opened
+//   from the rows: 群列表 browses the bronze cache (refresh is explicit), and
+//   群消息 picks its scope from the same cache — one pull serves both, no
+//   duplicate lark-cli fetching, one unified cadence at the kind level.
 //   数据与历史 → SourceDataZone (raw records) + HistoryZone (work-order runs)
 // The panel keeps its own state (toast / history refresh) so switching tabs
 // doesn't lose it — index.tsx keeps this one instance mounted and just flips `tab`.
-
-const MOD_FEISHU = 'feishu.groups';
 
 // feishuTabs are the top-nav tabs for the 飞书 source.
 export function feishuTabs(language: Lang): ShellTab[] {
@@ -37,7 +36,6 @@ export function FeishuSourcePanel({
     const language = ui.language.value;
     const [toast, setToast] = useState('');
     const [historyTick, setHistoryTick] = useState(0);
-    const consent = useChannelModules();
 
     const showToast = (msg: string) => {
         setToast(msg);
@@ -55,20 +53,7 @@ export function FeishuSourcePanel({
             {tab === 'auth' && <CliZone language={language} />}
 
             {tab === 'config' && (
-                <Fragment>
-                    <CollectionsZone language={language} onSyncDispatched={onSyncDispatched} onToast={showToast} />
-                    <div class="fscard-zone">
-                        <div class="fscard-zone-title">{t('datasource.zone.groups', language)}</div>
-                        {consent.error && <div class="contacts-error">{consent.error}</div>}
-                        <ConsentSubmodule
-                            id={MOD_FEISHU}
-                            title={t('contacts.sub.feishuGroups', language)}
-                            hint="lark-cli"
-                            consent={consent}
-                            render={() => <FeishuSection />}
-                        />
-                    </div>
-                </Fragment>
+                <CollectionsZone language={language} onSyncDispatched={onSyncDispatched} onToast={showToast} />
             )}
 
             {tab === 'data' && (

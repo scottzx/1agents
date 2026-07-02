@@ -123,4 +123,30 @@ export const sourceService = {
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SyncRun[];
     },
+
+    /** GET /api/sources/feishu/chats — the CACHED group list (bronze feishu_chat
+     * rows joined with tracked state). Never shells out to lark-cli; refresh by
+     * dispatching a feishu_chat sync and re-fetching. */
+    async feishuChats(): Promise<CachedChatsResponse> {
+        const res = await apiFetch('/sources/feishu/chats');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as CachedChatsResponse;
+    },
 };
+
+/** One Feishu group from the bronze cache, with its message-scope tracked flag. */
+export interface CachedChat {
+    chatId: string;
+    name: string;
+    avatar: string;
+    description: string;
+    external: boolean;
+    tenantKey: string;
+    tracked: boolean;
+}
+
+export interface CachedChatsResponse {
+    chats: CachedChat[];
+    /** Epoch ms of the newest bronze row; 0 = 群列表 never synced. */
+    cachedAt: number;
+}

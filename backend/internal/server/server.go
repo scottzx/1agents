@@ -298,6 +298,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections) // GET, PUT
 				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
 				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
+				mux.HandleFunc("/api/sources/feishu/chats", ingestHandler.HandleChats)             // GET — cached 群列表 (bronze) + tracked join
 			}
 
 			// Cross-wire ingest ⇄ digest: the feishu_message work-order task drives
