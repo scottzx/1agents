@@ -80,11 +80,12 @@ func (h *Handler) HandleRecords(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "source and kind required", http.StatusBadRequest)
 		return
 	}
+	account := q.Get("account") // optional: scope to one account_id (源为中心)
 	limit := 0
 	if v := q.Get("limit"); v != "" {
 		limit, _ = strconv.Atoi(v)
 	}
-	recs, err := h.store.ListRecords(source, kind, limit)
+	recs, err := h.store.ListRecords(source, account, kind, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

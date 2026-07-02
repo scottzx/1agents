@@ -21,7 +21,17 @@ import {
 // carry; the toolbar (show/hide/reorder columns, group, sort) + search are the
 // generic bitable controls, and the column choice persists per (source, kind).
 // The leftmost 序号 opens a per-record popup listing every native field.
-export function SourceDetail({ source, kind, title }: { source: string; kind: string; title: string }) {
+export function SourceDetail({
+    source,
+    kind,
+    title,
+    account,
+}: {
+    source: string;
+    kind: string;
+    title: string;
+    account?: string;
+}) {
     const language = ui.language.value;
     const [rows, setRows] = useState<SourceRecordRow[]>([]);
     const [loading, setLoading] = useState(false);
@@ -33,13 +43,13 @@ export function SourceDetail({ source, kind, title }: { source: string; kind: st
         setLoading(true);
         setError('');
         try {
-            setRows(await sourceService.records(source, kind));
+            setRows(await sourceService.records(source, kind, 1000, account));
         } catch (err) {
             setError((err as Error).message);
         } finally {
             setLoading(false);
         }
-    }, [source, kind]);
+    }, [source, kind, account]);
 
     useEffect(() => {
         refresh();

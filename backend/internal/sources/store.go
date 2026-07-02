@@ -253,25 +253,29 @@ func (st *Store) RecordsSince(source, kind string, since int64) (recs []StoredRe
 	return recs, maxFetched, rows.Err()
 }
 
-// SourceSummary is one (source, kind) rollup for the data-source overview:
-// how many live records, across how many collections, and when last fetched.
+// SourceSummary is one (source, account, kind) rollup for the data-source
+// overview: how many live records, across how many collections, and when last
+// fetched. AccountID lets the 源为中心 UI show each account's own totals (谷歌+A
+// vs 谷歌+B) instead of merging a vendor's accounts.
 type SourceSummary struct {
 	Source        string `json:"source"`
+	AccountID     string `json:"accountId"`
 	Kind          string `json:"kind"`
 	Count         int    `json:"count"`         // non-deleted records
 	Collections   int    `json:"collections"`   // distinct collections
 	LastFetchedAt int64  `json:"lastFetchedAt"` // epoch ms, 0 if empty
 }
 
-// Summaries rolls up source_records by (source, kind) for the overview cards.
+// Summaries rolls up source_records by (source, account_id, kind) for the
+// overview cards.
 func (st *Store) Summaries() ([]SourceSummary, error) {
-	rows, err := st.sql.Query(`SELECT source, kind,
+	rows, err := st.sql.Query(`SELECT source, account_id, kind,
         SUM(CASE WHEN deleted = 0 THEN 1 ELSE 0 END) AS cnt,
         COUNT(DISTINCT collection) AS colls,
         MAX(fetched_at) AS last
         FROM source_records
-        GROUP BY source, kind
-        ORDER BY source, kind`)
+        GROUP BY source, account_id, kind
+        ORDER BY source, account_id, kind`)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +283,7 @@ func (st *Store) Summaries() ([]SourceSummary, error) {
 	out := []SourceSummary{}
 	for rows.Next() {
 		var s SourceSummary
-		if err := rows.Scan(&s.Source, &s.Kind, &s.Count, &s.Collections, &s.LastFetchedAt); err != nil {
+		if err := rows.Scan(&s.Source, &s.AccountID, &s.Kind, &s.Count, &s.Collections, &s.LastFetchedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -288,17 +292,24 @@ func (st *Store) Summaries() ([]SourceSummary, error) {
 }
 
 // ListRecords returns a (source, kind)'s bronze records, most-recently-fetched
-// first, capped at limit (<=0 → a default cap). Tombstones are included so the
-// viewer can show deletions; callers filter as needed.
-func (st *Store) ListRecords(source, kind string, limit int) ([]StoredRecord, error) {
+// first, capped at limit (<=0 → a default cap). account scopes to one account_id
+// when non-empty (源为中心 per-account browse); "" spans all of the source's
+// accounts. Tombstones are included so the viewer can show deletions.
+func (st *Store) ListRecords(source, account, kind string, limit int) ([]StoredRecord, error) {
 	if limit <= 0 {
 		limit = 1000
 	}
-	rows, err := st.sql.Query(`SELECT kind, collection, uid, etag, content_type, payload, deleted, fetched_at
+	q := `SELECT kind, collection, uid, etag, content_type, payload, deleted, fetched_at
         FROM source_records
-        WHERE source = ? AND kind = ?
-        ORDER BY fetched_at DESC, uid
-        LIMIT ?`, source, kind, limit)
+        WHERE source = ? AND kind = ?`
+	args := []any{source, kind}
+	if account != "" {
+		q += ` AND account_id = ?`
+		args = append(args, account)
+	}
+	q += ` ORDER BY fetched_at DESC, uid LIMIT ?`
+	args = append(args, limit)
+	rows, err := st.sql.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -314,6 +325,30 @@ func (st *Store) ListRecords(source, kind string, limit int) ([]StoredRecord, er
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// ReassignAccount re-keys a source's bronze rows and cursors from oldID to newID.
+// Used once at seed time to migrate pre-account-model "default" data onto the
+// account registry id so per-account views (Summaries/ListRecords) line up.
+// Idempotent in effect (a no-op when no oldID rows remain).
+func (st *Store) ReassignAccount(source, oldID, newID string) error {
+	if oldID == newID {
+		return nil
+	}
+	tx, err := st.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`UPDATE OR REPLACE source_records SET account_id = ? WHERE source = ? AND account_id = ?`,
+		newID, source, oldID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE OR REPLACE sync_cursors SET account_id = ? WHERE source = ? AND account_id = ?`,
+		newID, source, oldID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // GovernCursor reads the last-governed high-water mark (epoch ms) for a

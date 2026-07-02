@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/feishu"
+	"github.com/scottzx/1Agents/backend/internal/icloud"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/sources"
 	"github.com/scottzx/1Agents/backend/internal/taskapi"
@@ -21,9 +22,14 @@ import (
 // workspace lock also isolates long syncs from real project work.
 const SystemWorkspaceID = "__sources_sync__"
 
-// FeishuSyncFunction is the registered function-handler key; a work-order task
-// with executor=function and this fn: label runs one Feishu kind's sync.
-const FeishuSyncFunction = "sources.feishu.sync"
+// Sync function-handler keys; a work-order task with executor=function and one
+// of these fn: labels runs one (vendor, kind) sync. Feishu is single-account;
+// microsoft/google fan out over the vendor's accounts.
+const (
+	FeishuSyncFunction    = "sources.feishu.sync"
+	MicrosoftSyncFunction = "sources.microsoft.sync"
+	GoogleSyncFunction    = "sources.google.sync"
+)
 
 // SystemWorkspacePath returns the on-disk host directory (~/.1agents/system/sources).
 func SystemWorkspacePath() string {
@@ -77,6 +83,58 @@ func (h *Handler) ProvisionSystemWorkspace() (string, error) {
 // work-order function registry. Call once at startup after NewHandlerDefault.
 func (h *Handler) RegisterFunctions() {
 	taskapi.RegisterFunction(FeishuSyncFunction, h.runFeishuSync)
+	taskapi.RegisterFunction(MicrosoftSyncFunction, h.runMicrosoftSync)
+	taskapi.RegisterFunction(GoogleSyncFunction, h.runGoogleSync)
+}
+
+// SeedLegacyAccounts migrates the pre-account-model singletons into the
+// source_accounts registry so existing installs surface as managed sources.
+// Best-effort and idempotent (guarded by CountByVendor==0): an iCloud account
+// is seeded from the stored Keychain credential; a Feishu account is seeded when
+// legacy Feishu crawl config exists. Fresh installs seed nothing — the user adds
+// sources through 添加数据源. Existing "default"-keyed bronze rows are left as-is
+// (they re-sync under the new account id on the next run — a dev-acceptable
+// re-crawl rather than a risky in-place re-key).
+func (h *Handler) SeedLegacyAccounts() error {
+	if h.accounts == nil {
+		return nil
+	}
+	// iCloud: a configured Keychain credential ⇒ one intl account (labeled by
+	// Apple ID). Region defaults to intl; the user can add a 大陆 account too.
+	if n, err := h.accounts.CountByVendor(meta.VendorICloud); err == nil && n == 0 {
+		if appleID, ok := icloud.Status(); ok {
+			if a, e := h.accounts.Create(meta.SourceAccount{
+				Vendor: meta.VendorICloud, Region: sources.RegionIntl, Label: appleID,
+			}, false); e == nil {
+				_ = h.bronze.ReassignAccount(meta.VendorICloud, "default", a.ID)
+			}
+		}
+	}
+	// Feishu: single-account. Seed when legacy crawl config exists.
+	if n, err := h.accounts.CountByVendor(meta.VendorFeishu); err == nil && n == 0 {
+		if cfgs, cerr := h.cfg.List(feishu.Source); cerr == nil && len(cfgs) > 0 {
+			if a, e := h.accounts.Create(meta.SourceAccount{
+				Vendor: meta.VendorFeishu, Region: sources.RegionCN, Label: "飞书",
+			}, true); e == nil {
+				_ = h.bronze.ReassignAccount(feishu.Source, "default", a.ID)
+			}
+		}
+	}
+	return nil
+}
+
+// feishuAccountID returns the single Feishu account's id (源为中心: bronze is keyed
+// by it so the per-account data view lines up), falling back to "default" when no
+// account is registered yet — pre-seed / fresh install.
+func (h *Handler) feishuAccountID() string {
+	if h.accounts == nil {
+		return "default"
+	}
+	accts, err := h.accounts.ListByVendor(meta.VendorFeishu)
+	if err != nil || len(accts) == 0 {
+		return "default"
+	}
+	return accts[0].ID
 }
 
 // runFeishuSync is the function-executor body for one Feishu kind. The task's
@@ -108,9 +166,14 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 		}
 	}
 
+	// Feishu is single-account; bronze is keyed by its registry account id so the
+	// per-account 数据 view lines up (SeedLegacyAccounts re-keyed legacy "default"
+	// rows onto it). Digest/chats read bronze account-agnostically, so this does
+	// not disturb the message/digest flow.
+	accountID := h.feishuAccountID()
 	client := feishu.NewClient("", "default")
 	puller := sources.NewFeishuPuller(client, []sources.FeishuSpec{spec})
-	stats, err := h.bronze.Sync(puller, "default")
+	stats, err := h.bronze.Sync(puller, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +198,69 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 		}
 	}
 	return result, nil
+}
+
+// runMicrosoftSync / runGoogleSync are the function-executor bodies for the
+// Microsoft (Graph) and Google sources. They fan out over the vendor's accounts
+// (each with its own region-pinned puller) and run Store.Sync per account. The
+// pullers are framework skeletons (Pull is a no-op empty page), so a run wires
+// the whole account→config→scheduler→bronze path end-to-end while honestly
+// reporting 0 changes until the real API pulls land.
+func (h *Handler) runMicrosoftSync(ctx taskapi.FunctionContext) (any, error) {
+	return h.runVendorSync(meta.VendorMicrosoft, ctx.Task.BusinessRef, func(a meta.SourceAccount, kinds []string) sources.Puller {
+		return sources.NewMicrosoftPuller(a.Region, kinds)
+	})
+}
+
+func (h *Handler) runGoogleSync(ctx taskapi.FunctionContext) (any, error) {
+	return h.runVendorSync(meta.VendorGoogle, ctx.Task.BusinessRef, func(a meta.SourceAccount, kinds []string) sources.Puller {
+		return sources.NewGooglePuller(kinds)
+	})
+}
+
+// runVendorSync is the shared body for multi-account skeleton sources. It reads
+// the kind from business_ref, checks the (source, kind) crawl config is enabled
+// and the catalog kind is implemented (gracefully skipping otherwise), then runs
+// one Store.Sync per registered account. build() constructs the account's puller.
+func (h *Handler) runVendorSync(source, ref string, build func(meta.SourceAccount, []string) sources.Puller) (any, error) {
+	kind := kindFromRef(ref)
+	if kind == "" {
+		return nil, fmt.Errorf("ingest: bad business_ref %q", ref)
+	}
+	cfg, _, err := h.cfg.Get(source, kind)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled {
+		return map[string]any{"kind": kind, "skipped": "disabled"}, nil
+	}
+	if d := sources.CatalogItemFor(source, kind); d == nil || !d.Implemented {
+		return map[string]any{"kind": kind, "skipped": "not implemented yet"}, nil
+	}
+	accts, err := h.accounts.ListByVendor(source)
+	if err != nil {
+		return nil, err
+	}
+	if len(accts) == 0 {
+		return map[string]any{"kind": kind, "skipped": "no accounts"}, nil
+	}
+	total := sources.SyncStats{}
+	for _, a := range accts {
+		stats, serr := h.bronze.Sync(build(a, []string{kind}), a.ID)
+		if serr != nil {
+			return nil, fmt.Errorf("ingest: %s account %s: %w", source, a.ID, serr)
+		}
+		total.Collections += stats.Collections
+		total.Changed += stats.Changed
+		total.Skipped += stats.Skipped
+	}
+	return map[string]any{
+		"kind":        kind,
+		"accounts":    len(accts),
+		"collections": total.Collections,
+		"changed":     total.Changed,
+		"skipped":     total.Skipped,
+	}, nil
 }
 
 // trackedChatIDs returns the ids of chats flagged for auto-sync — the collection
@@ -168,13 +294,21 @@ func kindFromRef(ref string) string {
 
 // knownKinds lists the crawlable kinds for a source (used to aggregate history).
 func knownKinds(source string) []string {
-	if source != feishu.Source {
+	if source == feishu.Source {
+		cat := feishu.Catalog()
+		ks := make([]string, 0, len(cat))
+		for _, d := range cat {
+			ks = append(ks, d.Kind)
+		}
+		return ks
+	}
+	cat := sources.CatalogFor(source)
+	if cat == nil {
 		return nil
 	}
-	cat := feishu.Catalog()
 	ks := make([]string, 0, len(cat))
-	for _, d := range cat {
-		ks = append(ks, d.Kind)
+	for _, it := range cat {
+		ks = append(ks, it.Kind)
 	}
 	return ks
 }

@@ -27,10 +27,16 @@ function fmtTime(ms: number, language: Lang): string {
 
 export function SourceDataZone({
     sources,
+    account,
+    sharedSources = [],
     onOpen,
 }: {
     sources: string[];
-    onOpen: (source: string, kind: string, title: string) => void;
+    /** when set, scope `sources` rollup to one bronze account_id (源为中心). */
+    account?: string;
+    /** machine-level sources shown unscoped by account (e.g. iMessage chat.db). */
+    sharedSources?: string[];
+    onOpen: (source: string, kind: string, title: string, account?: string) => void;
 }) {
     const language = ui.language.value;
     // null = still loading — renders nothing instead of flashing the empty hint.
@@ -42,13 +48,20 @@ export function SourceDataZone({
         sourceService
             .summary()
             .then(all => {
-                if (active) setRows(all.filter(s => sources.includes(s.source)));
+                if (active)
+                    setRows(
+                        all.filter(
+                            s =>
+                                (sources.includes(s.source) && (!account || s.accountId === account)) ||
+                                sharedSources.includes(s.source)
+                        )
+                    );
             })
             .catch(e => active && setError((e as Error).message));
         return () => {
             active = false;
         };
-    }, [sources.join(',')]);
+    }, [sources.join(','), account, sharedSources.join(',')]);
 
     return (
         <div class="fscard-zone">
@@ -65,7 +78,14 @@ export function SourceDataZone({
                             <button
                                 key={`${r.source}:${r.kind}`}
                                 class="bento-card fscard-data-card"
-                                onClick={() => onOpen(r.source, r.kind, title)}
+                                onClick={() =>
+                                    onOpen(
+                                        r.source,
+                                        r.kind,
+                                        title,
+                                        sharedSources.includes(r.source) ? undefined : account
+                                    )
+                                }
                             >
                                 <div class="bento-zone-header">
                                     <span class="bento-card-title">{title}</span>

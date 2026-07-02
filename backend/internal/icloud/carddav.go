@@ -36,6 +36,22 @@ func NewClient(appleID, password string) *Client {
 	return NewClientWithBase(rootURL, appleID, password)
 }
 
+// rootURLCN is the 大陆 (云上贵州) CardDAV discovery entry point. China-region
+// Apple IDs' data lives here; pinning it up front (from the account's declared
+// region) avoids the DNS-failure round-trip the intl root would otherwise take.
+const rootURLCN = "https://contacts.icloud.com.cn"
+
+// NewClientRegion builds a client whose discovery entry point is chosen by the
+// account's region ("cn" → 大陆 root, else 国际 root). The FetchContacts .cn
+// fallback still applies as a safety net for a mis-declared region.
+func NewClientRegion(region, appleID, password string) *Client {
+	base := rootURL
+	if region == "cn" {
+		base = rootURLCN
+	}
+	return NewClientWithBase(base, appleID, password)
+}
+
 // NewClientWithBase is NewClient with an explicit discovery entry point, used by
 // the incremental puller (to drive the .cn fallback itself) and by tests (to
 // point at a fake DAV server).

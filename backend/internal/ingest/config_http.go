@@ -7,6 +7,7 @@ import (
 
 	"github.com/scottzx/1Agents/backend/internal/feishu"
 	"github.com/scottzx/1Agents/backend/internal/meta"
+	"github.com/scottzx/1Agents/backend/internal/sources"
 )
 
 // CollectionView is one crawlable kind for the config UI: the stored crawl
@@ -42,9 +43,29 @@ func (h *Handler) HandleCollections(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getCollections(w http.ResponseWriter, source string) {
-	// Only Feishu has a catalog today; other sources return their stored config
-	// verbatim (no roadmap overlay).
+	// Feishu has a rich catalog in its own package; microsoft/google have the
+	// lighter roadmap catalog in internal/sources. Any other source returns its
+	// stored config verbatim (no roadmap overlay).
 	if source != feishu.Source {
+		if cat := sources.CatalogFor(source); cat != nil {
+			views := make([]CollectionView, 0, len(cat))
+			for _, it := range cat {
+				cfg, ok, err := h.cfg.Get(source, it.Kind)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				views = append(views, CollectionView{
+					SourceCollectionConfig: cfg,
+					Domain:                 it.Domain,
+					Label:                  it.Label,
+					Implemented:            it.Implemented,
+					Configured:             ok,
+				})
+			}
+			writeJSON(w, http.StatusOK, views)
+			return
+		}
 		list, err := h.cfg.List(source)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -89,10 +110,17 @@ func (h *Handler) putCollection(w http.ResponseWriter, r *http.Request, source s
 		return
 	}
 	// Guard against enabling a not-yet-wired kind (catalog Implemented=false).
-	if source == feishu.Source && body.Enabled {
-		if d := feishu.DescriptorFor(body.Kind); d == nil || !d.Implemented {
-			http.Error(w, "kind not available for crawling yet", http.StatusBadRequest)
-			return
+	if body.Enabled {
+		if source == feishu.Source {
+			if d := feishu.DescriptorFor(body.Kind); d == nil || !d.Implemented {
+				http.Error(w, "kind not available for crawling yet", http.StatusBadRequest)
+				return
+			}
+		} else if cat := sources.CatalogFor(source); cat != nil {
+			if d := sources.CatalogItemFor(source, body.Kind); d == nil || !d.Implemented {
+				http.Error(w, "kind not available for crawling yet", http.StatusBadRequest)
+				return
+			}
 		}
 	}
 	if err := h.cfg.Upsert(body); err != nil {
