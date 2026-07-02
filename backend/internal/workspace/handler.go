@@ -58,6 +58,7 @@ type WorkspacesConfig struct {
 
 type Handler struct {
 	tmuxSession string
+	skillsAddr  string // 1skills FastAPI addr for skill push-back; empty → defaultSkillsAddr
 }
 
 func NewHandler(tmuxSession ...string) *Handler {
@@ -66,6 +67,15 @@ func NewHandler(tmuxSession ...string) *Handler {
 		session = tmuxSession[0]
 	}
 	return &Handler{tmuxSession: session}
+}
+
+// SetSkillsAddr pins the 1skills service address used by PushSkill (defaults to
+// defaultSkillsAddr when unset). Called once at server startup with the resolved
+// config so the push-back forwards to the same instance the supervisor launched.
+func (h *Handler) SetSkillsAddr(addr string) {
+	if addr != "" {
+		h.skillsAddr = addr
+	}
 }
 
 // projectToWorkspace maps a meta project row to the workspace registry shape.
@@ -338,6 +348,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		// into <ws>/.claude/skills on creation (#360). Used by the create-assistant
 		// flow's skill picker; empty for a plain workspace.
 		Skills []string `json:"skills"`
+		// Soul is an optional curated persona preset ref (see presets/souls). When
+		// set, its markdown is seeded into <ws>/SOUL.md as the assistant's system
+		// prompt. Empty = 空人设 (no persona file, no injection).
+		Soul string `json:"soul"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -446,7 +460,179 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			resp["skills"] = copied
 		}
 	}
+
+	// Optional persona seed into <ws>/SOUL.md — the assistant create flow's 人设
+	// picker. Non-fatal: a seed failure is surfaced but the workspace still exists.
+	if body.Soul != "" {
+		if sErr := seedSoulToWorkspace(ws.Path, body.Soul); sErr != nil {
+			log.Printf("[workspace] seed soul %q for project %s: %v", body.Soul, ws.ID, sErr)
+			resp["soulError"] = sErr.Error()
+		} else {
+			resp["soul"] = body.Soul
+		}
+	}
 	writeJSON(w, resp)
+}
+
+// ListSouls handles GET /api/assistant/souls?lang=zh: the curated persona presets
+// for the create picker. Content is included for in-modal preview.
+func (h *Handler) ListSouls(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	souls, err := listCuratedSouls(r.URL.Query().Get("lang"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"souls": souls})
+}
+
+// resolveWorkspacePath returns the on-disk path for a workspace id, or "" (with
+// ok=false) when unknown. Shared by the soul GET/POST handlers.
+func (h *Handler) resolveWorkspacePath(id string) (string, bool) {
+	cfg, err := h.loadConfig()
+	if err != nil {
+		return "", false
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == id {
+			return ws.Path, true
+		}
+	}
+	return "", false
+}
+
+// WorkspaceSoul handles the assistant persona file:
+//
+//	GET  /api/workspace/soul?id=<wsId>       → {content}
+//	POST /api/workspace/soul {id, content}   → writes <ws>/SOUL.md (empty clears it)
+func (h *Handler) WorkspaceSoul(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		wsPath, ok := h.resolveWorkspacePath(r.URL.Query().Get("id"))
+		if !ok {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		content, err := ReadWorkspaceSoul(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"content": content})
+	case http.MethodPost:
+		var body struct {
+			ID      string `json:"id"`
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		wsPath, ok := h.resolveWorkspacePath(body.ID)
+		if !ok {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		if err := writeWorkspaceSoul(wsPath, body.Content); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// WorkspaceSkills handles GET /api/workspace/skills?id=<wsId>: lists the skills
+// materialized in the workspace's .claude/skills, each flagged with whether the
+// local copy has drifted from the 母体 baseline (so the detail page can light up
+// a "推送到母体" affordance only where there's something to push).
+func (h *Handler) WorkspaceSkills(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	cfg, err := h.loadConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var wsPath string
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == id {
+			wsPath = ws.Path
+			break
+		}
+	}
+	if wsPath == "" {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	skills, err := listWorkspaceSkills(wsPath, h.skillsAddr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"skills": skills})
+}
+
+// PushSkill handles POST /api/workspace/push-skill {id, skillRef}: the reverse of
+// the create-time weak-copy. It resolves the workspace's own edited copy
+// (<ws>/.claude/skills/<dir>) and pushes it back to the 1skills shared store
+// (母体) as the new baseline. The store no-ops when the copy is unchanged, so the
+// response's `changed` tells the caller whether the baseline actually moved.
+func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		SkillRef string `json:"skillRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.SkillRef == "" {
+		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
+		return
+	}
+	cfg, err := h.loadConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var wsPath string
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == body.ID {
+			wsPath = ws.Path
+			break
+		}
+	}
+	if wsPath == "" {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	src, err := workspaceSkillDir(wsPath, body.SkillRef)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	changed, created, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "changed": changed, "created": created})
 }
 
 // Update handles POST /api/workspace/update

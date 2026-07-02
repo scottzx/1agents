@@ -75,19 +75,24 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
+	wsHandler.SetSkillsAddr(cfg.SkillsAddr)
 	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
 		log.Printf("[server] ensure default workspace: %v", err)
 	}
 	mux.HandleFunc("/api/workspace/list", wsHandler.List)                        // GET
 	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                    // POST
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
+	mux.HandleFunc("/api/workspace/skills", wsHandler.WorkspaceSkills)           // GET ?id= — synced skills + drift status
+	mux.HandleFunc("/api/workspace/push-skill", wsHandler.PushSkill)             // POST {id, skillRef} — push edited copy back to 母体
+	mux.HandleFunc("/api/workspace/soul", wsHandler.WorkspaceSoul)               // GET ?id= / POST {id, content} — assistant persona SOUL.md
+	mux.HandleFunc("/api/assistant/souls", wsHandler.ListSouls)                  // GET ?lang= — curated persona presets
 	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder)                  // POST
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)                    // DELETE ?id=xxx
-	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)         // POST — opens native folder picker
-	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories)     // GET ?path=...
-	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory)     // POST
-	mux.HandleFunc("/api/workspace/upload-avatar", wsHandler.UploadAvatar)           // POST multipart file → {url}
-	mux.Handle("/avatars/", workspace.ServeAvatars())                                // GET avatar files (embedded presets + uploads)
+	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)     // POST — opens native folder picker
+	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
+	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
+	mux.HandleFunc("/api/workspace/upload-avatar", wsHandler.UploadAvatar)       // POST multipart file → {url}
+	mux.Handle("/avatars/", workspace.ServeAvatars())                            // GET avatar files (embedded presets + uploads)
 
 	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
