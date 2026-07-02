@@ -16527,6 +16527,11 @@ body {
   max-width: 960px;
   margin: 0 auto;
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;             // L1 scrolls itself (host no longer pads/scrolls)
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .assistants-toolbar {
@@ -16636,26 +16641,32 @@ body {
   transition: transform 0.15s ease, color 0.15s ease;
 }
 
-// L2 detail ──────────────────────────────────────────────────────────────────
+// L2 detail — full-height: hero + secondary tab bar + tab body ────────────────
 .assistant-detail {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
-  max-width: 960px;
-  margin: 0 auto;
   width: 100%;
+
+  // The reused ShellNav tab bar sits directly under the hero; keep it flush.
+  .project-shell-tabbar {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }
 
 .assistant-hero {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding-bottom: 24px;
+  padding: 16px 20px 14px;
+  flex-shrink: 0;
 }
 
 .assistant-hero-avatar {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
   object-fit: cover;
   flex-shrink: 0;
@@ -16664,7 +16675,7 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 34px;
+    font-size: 30px;
     background: var(--bg-page);
     border: 1px solid var(--border-color);
   }
@@ -16679,7 +16690,7 @@ body {
 }
 
 .assistant-hero-name {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-main);
@@ -16689,31 +16700,43 @@ body {
   white-space: nowrap;
 }
 
-.assistant-section {
+// Tab body — one active pane fills the remaining height.
+.assistant-tab-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 24px 0;
-  border-top: 1px solid var(--border-color);   // hairline zoning, not boxed
-
-  h2 {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-main);
-    margin: 0;
-  }
+  overflow: hidden;
 }
 
-.assistant-section-head {
+// App-like panes (会话 / 任务 / 渠道 / 文件) manage their own scroll.
+.assistant-pane-fill {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// Content panes (人设 / 技能 / MCP) — centered readable column that scrolls.
+.assistant-pane-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .assistant-section-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -16733,53 +16756,6 @@ body {
 .assistant-flash {
   font-size: 11px;
   color: var(--text-secondary);
-}
-
-// L3 session list (inside detail) ────────────────────────────────────────────
-.assistant-session-list {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.assistant-session-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  padding: 12px 4px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-main);
-  font: inherit;
-  cursor: pointer;
-  transition: padding 0.15s ease;
-
-  &:hover {
-    padding-left: 10px;
-    .assistant-card-chevron { transform: translateX(2px); color: var(--text-secondary); }
-  }
-}
-
-.assistant-session-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.assistant-session-agent {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  flex-shrink: 0;
 }
 
 // Persona editor ──────────────────────────────────────────────────────────────

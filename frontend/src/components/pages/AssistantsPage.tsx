@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useEffect } from 'preact/hooks';
 import { useSignalEffect } from '@preact/signals';
+import type { App } from '../app';
 import { t } from '../i18n';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
@@ -21,7 +22,7 @@ import { AssistantDetail } from './AssistantDetail';
  * Visual language: codex-minimal — flat surfaces, hairline dividers, typography
  * carries the hierarchy, near-zero color. Interactive elements are pill-shaped.
  */
-export function AssistantsPage() {
+export function AssistantsPage({ app }: { app: App }) {
     const language = ui.language.value;
     const workspaces = wsStore.workspaces.value;
     const folders = wsStore.folders.value;
@@ -46,7 +47,7 @@ export function AssistantsPage() {
     useEffect(() => () => void (taskNav.headerCrumbs.value = null), []);
 
     if (showDetail) {
-        return <AssistantDetail workspaceId={detailId!} />;
+        return <AssistantDetail workspaceId={detailId!} app={app} />;
     }
 
     const assistants = workspaces

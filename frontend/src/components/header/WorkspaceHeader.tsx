@@ -142,19 +142,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <path d="M9 10h.01M12 10h.01M15 10h.01" />
         </svg>
     );
-    // AI Chat channels icon
-    const IconChannels = (
-        <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-    );
     // Chat-column collapse toggle icon (panel on the left)
     const IconChatColumn = (
         <svg
@@ -458,16 +445,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )}
                         <button
-                            id="hdr-btn-channels"
-                            class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                            onClick={() => toggleDrawerTab('channels')}
-                            title={t('header.col.channels', language)}
-                            aria-label={t('header.col.channels', language)}
-                            aria-pressed={activeDrawerTab === 'channels'}
-                        >
-                            {IconChannels}
-                        </button>
-                        <button
                             id="hdr-btn-files"
                             class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('files')}
@@ -555,18 +532,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconGit}</span>
                     <span class="mob-menu-label">{t('header.mobile.git', language)}</span>
                     {activeDrawerTab === 'git' && (
-                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
-                    )}
-                </button>
-
-                <button
-                    id="mob-menu-channels"
-                    class={`mobile-menu-item ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                    onClick={() => handleDrawerToggle('channels')}
-                >
-                    <span class="mob-menu-icon">{IconChannels}</span>
-                    <span class="mob-menu-label">{t('header.mobile.channels', language)}</span>
-                    {activeDrawerTab === 'channels' && (
                         <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>
