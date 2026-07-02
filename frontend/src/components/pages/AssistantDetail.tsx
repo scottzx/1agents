@@ -3,19 +3,25 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { t } from '../i18n';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
+import * as sessStore from '../../stores/sessionStore';
 import * as tabs from '../../stores/tabsStore';
+import type { Session } from '../types';
 import { skillService, type WorkspaceSkillStatus } from '@1agents/core/services/skillService';
 import { soulService } from '@1agents/core/services/soulService';
 
 /**
- * AssistantDetail — the L1 助理 detail view (reached by clicking a card on
- * AssistantsPage).
+ * AssistantDetail — breadcrumb level 2 (助理 › <name>), reached by picking a
+ * card on AssistantsPage. The trail + back-navigation live in the global
+ * WorkspaceHeader (published by AssistantsPage), so this view has no bar of its
+ * own — it opens with an identity hero, then stacks the assistant's 会话 /
+ * 人设 / 技能 as hairline-separated sections.
  *
- * Today it surfaces the assistant's synced skills and the push-back link (#360
- * reverse-sync): each skill copied into <ws>/.claude/skills shows whether it has
- * drifted from the shared store (母体), and a "推送到母体" button that overwrites
- * the store baseline with the local copy. Prompt / MCP / channel sections will
- * grow here later.
+ * 会话 (L3): the assistant's conversations. Clicking one drops into the session
+ * view (where the header shows the full 助理 › <name> › <session> trail); 新建
+ * 会话 opens the new-chat landing scoped to this assistant.
+ *
+ * 技能 (#360 reverse-sync): each skill copied into <ws>/.claude/skills shows
+ * whether it has drifted from the shared store (母体), with a 推送到母体 action.
  */
 interface AssistantDetailProps {
     workspaceId: string;
@@ -51,6 +57,15 @@ export function AssistantDetail({ workspaceId }: AssistantDetailProps) {
             cancelled = true;
         };
     }, [workspaceId]);
+
+    // 会话 (L3) — this assistant's chat sessions. Load them even when the
+    // assistant isn't the active workspace, so the list is live in the detail.
+    useEffect(() => {
+        void sessStore.loadChatSessions(workspaceId);
+    }, [workspaceId]);
+    const sessions = sessStore.chatSessions.value
+        .filter(s => s.workspaceId === workspaceId && !s.archived)
+        .sort((a, b) => (b.lastEventAt || b.createdAt || '').localeCompare(a.lastEventAt || a.createdAt || ''));
 
     const onSaveSoul = async () => {
         setSoulSaving(true);
@@ -100,15 +115,21 @@ export function AssistantDetail({ workspaceId }: AssistantDetailProps) {
         }
     };
 
-    // Badge + push-button config per store state.
+    // Open one of this assistant's sessions in the workbench (drops the L1
+    // full-page tab, lands in the session view + its L3 breadcrumb).
+    const onOpenSession = (s: Session) => void sessStore.selectSession(s);
+
+    // Start a fresh conversation scoped to this assistant.
+    const onNewSession = async () => {
+        if (ws) await wsStore.selectWorkspace(ws);
+        sessStore.onStartNewChat();
+    };
+
+    // Badge config per store state.
     const BADGE: Record<WorkspaceSkillStatus['state'], { cls: string; key: string }> = {
         synced: { cls: 'is-synced', key: 'assistant.detail.synced' },
         modified: { cls: 'is-modified', key: 'assistant.detail.modified' },
         local: { cls: 'is-local', key: 'assistant.detail.local' },
-    };
-
-    const goBack = () => {
-        tabs.assistantDetailId.value = null;
     };
 
     if (!ws) {
@@ -119,60 +140,98 @@ export function AssistantDetail({ workspaceId }: AssistantDetailProps) {
 
     return (
         <div class="assistant-detail">
-            <header class="assistant-detail-header">
-                <button class="assistant-detail-back" onClick={goBack}>
-                    <span aria-hidden="true">←</span> {t('assistant.detail.back', language)}
-                </button>
-                <div class="assistant-detail-ident">
-                    {ws.avatar && ws.avatar.startsWith('/') ? (
-                        <img class="assistant-detail-avatar" src={ws.avatar} alt="" />
-                    ) : (
-                        <span class="assistant-detail-emoji" aria-hidden="true">
-                            {'\u{1F464}'}
-                        </span>
-                    )}
-                    <h1 class="assistant-detail-name">{ws.name}</h1>
+            <div class="assistant-hero">
+                {ws.avatar && ws.avatar.startsWith('/') ? (
+                    <img class="assistant-hero-avatar" src={ws.avatar} alt="" />
+                ) : (
+                    <span class="assistant-hero-avatar is-emoji" aria-hidden="true">
+                        {'\u{1F464}'}
+                    </span>
+                )}
+                <div class="assistant-hero-ident">
+                    <h1 class="assistant-hero-name">{ws.name}</h1>
+                    {ws.id === 'default' && <span class="assistant-tag">{t('assistant.card.default', language)}</span>}
                 </div>
-                <button class="assistant-detail-openchat" onClick={() => void wsStore.selectWorkspace(ws)}>
+                <button class="assistant-btn assistant-btn-primary" onClick={() => void wsStore.selectWorkspace(ws)}>
                     {t('assistant.detail.openChat', language)}
                 </button>
-            </header>
+            </div>
 
-            <section class="assistant-detail-soul">
-                <h2>{t('assistant.detail.soulTitle', language)}</h2>
-                <p class="assistant-detail-hint">{t('assistant.detail.soulHint', language)}</p>
+            <section class="assistant-section">
+                <div class="assistant-section-head">
+                    <h2>{t('assistant.detail.sessionsTitle', language)}</h2>
+                    <button class="assistant-btn assistant-btn-ghost" onClick={() => void onNewSession()}>
+                        {t('assistant.detail.newSession', language)}
+                    </button>
+                </div>
+                <p class="assistant-hint">{t('assistant.detail.sessionsHint', language)}</p>
+                {sessions.length === 0 ? (
+                    <div class="assistant-empty-row">{t('assistant.detail.sessionsEmpty', language)}</div>
+                ) : (
+                    <ul class="assistant-session-list">
+                        {sessions.map(s => (
+                            <li key={s.id}>
+                                <button class="assistant-session-row" onClick={() => onOpenSession(s)}>
+                                    <span class="assistant-session-name">
+                                        {s.name || t('assistant.detail.sessionsTitle', language)}
+                                    </span>
+                                    <span class="assistant-session-agent">{s.agentType}</span>
+                                    <svg
+                                        class="assistant-card-chevron"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline points="9 6 15 12 9 18" />
+                                    </svg>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            <section class="assistant-section">
+                <div class="assistant-section-head">
+                    <h2>{t('assistant.detail.soulTitle', language)}</h2>
+                    <div class="assistant-section-actions">
+                        {soulFlash && <span class="assistant-flash">{soulFlash}</span>}
+                        <button
+                            class="assistant-btn assistant-btn-ghost"
+                            disabled={soul === soulSaved || soulSaving}
+                            onClick={() => void onSaveSoul()}
+                        >
+                            {soulSaving
+                                ? t('assistant.detail.soulSaving', language)
+                                : t('assistant.detail.soulSave', language)}
+                        </button>
+                    </div>
+                </div>
+                <p class="assistant-hint">{t('assistant.detail.soulHint', language)}</p>
                 <textarea
                     class="assistant-soul-editor"
                     value={soul}
                     placeholder={t('assistant.detail.soulPlaceholder', language)}
                     onInput={(e: Event) => setSoul((e.target as HTMLTextAreaElement).value)}
                 />
-                <div class="assistant-soul-actions">
-                    {soulFlash && <span class="assistant-skill-flash">{soulFlash}</span>}
-                    <button
-                        class="assistant-skill-push"
-                        disabled={soul === soulSaved || soulSaving}
-                        onClick={() => void onSaveSoul()}
-                    >
-                        {soulSaving
-                            ? t('assistant.detail.soulSaving', language)
-                            : t('assistant.detail.soulSave', language)}
-                    </button>
-                </div>
             </section>
 
-            <section class="assistant-detail-skills">
+            <section class="assistant-section">
                 <h2>{t('assistant.detail.skillsTitle', language)}</h2>
-                <p class="assistant-detail-hint">{t('assistant.detail.skillsHint', language)}</p>
+                <p class="assistant-hint">{t('assistant.detail.skillsHint', language)}</p>
 
-                {loading && <div class="assistant-detail-empty">…</div>}
+                {loading && <div class="assistant-empty-row">…</div>}
                 {!loading && error && (
-                    <div class="assistant-detail-empty">
+                    <div class="assistant-empty-row">
                         {t('assistant.detail.skillsLoadFailed', language)}: {error}
                     </div>
                 )}
                 {!loading && !error && skills.length === 0 && (
-                    <div class="assistant-detail-empty">{t('assistant.detail.skillsEmpty', language)}</div>
+                    <div class="assistant-empty-row">{t('assistant.detail.skillsEmpty', language)}</div>
                 )}
                 {!loading && !error && skills.length > 0 && (
                     <ul class="assistant-skill-list">
@@ -194,12 +253,10 @@ export function AssistantDetail({ workspaceId }: AssistantDetailProps) {
                                         {s.description && <p class="assistant-skill-desc">{s.description}</p>}
                                     </div>
                                     <div class="assistant-skill-actions">
-                                        {flash[s.skillRef] && (
-                                            <span class="assistant-skill-flash">{flash[s.skillRef]}</span>
-                                        )}
+                                        {flash[s.skillRef] && <span class="assistant-flash">{flash[s.skillRef]}</span>}
                                         {canPush && (
                                             <button
-                                                class="assistant-skill-push"
+                                                class="assistant-btn assistant-btn-ghost"
                                                 disabled={pushing === s.skillRef}
                                                 onClick={() => void onPush(s.skillRef)}
                                             >

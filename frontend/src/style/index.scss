@@ -16458,140 +16458,219 @@ body {
   overflow: hidden;
 }
 
-// AssistantsPage — L1 landing (卡片网格)
-.assistants-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Assistant module — codex-minimal (flat surfaces, hairline dividers, typography
+// carries the hierarchy, near-zero color; pill-shaped controls). Built on the
+// existing semantic tokens so light/dark both adapt. No shadows / glows /
+// gradients in this module — that flatness IS the design.
+// ═══════════════════════════════════════════════════════════════════════════
 
-.assistants-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  h1 {
-    margin: 0;
-    font-size: 20px;
-    color: var(--text-main);
-  }
-}
-
-.assistants-page-new-btn {
+// Shared pill buttons ───────────────────────────────────────────────────────
+.assistant-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent-emphasis);
-  color: var(--on-accent);
+  padding: 7px 15px;
+  border-radius: 999px;               // pill geometry
   font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 
   svg { width: 14px; height: 14px; }
-  &:hover { filter: brightness(1.05); }
+
+  &:disabled { cursor: default; }
 }
 
-.assistants-page-empty {
+// Primary = the single solid "ink" fill (codex: black is the only fill). Uses
+// --text-main so it inverts correctly in dark mode (light pill / dark label).
+.assistant-btn-primary {
+  background: var(--text-main);
+  color: var(--bg-card);
+
+  &:hover:not(:disabled) { opacity: 0.85; }
+  &:disabled { opacity: 0.4; }
+}
+
+// Ghost = hairline outline, no fill until hover.
+.assistant-btn-ghost {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-main);
+
+  &:hover:not(:disabled) { border-color: var(--text-main); }
+  &:disabled { color: var(--text-muted); border-color: var(--border-color); opacity: 0.6; }
+}
+
+// Minimal outline tag (default badge, kind chip) ─────────────────────────────
+.assistant-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+// L1 overview ────────────────────────────────────────────────────────────────
+.assistants-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.assistants-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 32px;
+}
+
+.assistants-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.assistants-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 60px 20px;
+  gap: 14px;
+  padding: 72px 20px;
   border: 1px dashed var(--border-color);
-  border-radius: 12px;
+  border-radius: var(--bento-radius);
   color: var(--text-muted);
+  font-size: 14px;
 }
 
 .assistants-grid {
-  --bento-min-col: 220px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
 }
 
 .assistant-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   text-align: left;
   cursor: pointer;
+  width: 100%;
+  padding: 16px;
   border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
   background: var(--bg-card);
   color: var(--text-main);
+  font: inherit;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--text-main);      // ink ring on hover, no lift/shadow
+    .assistant-card-chevron { transform: translateX(2px); color: var(--text-secondary); }
+  }
 }
 
 .assistant-card-avatar {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
+  border-radius: 999px;                   // round avatar
   object-fit: cover;
   flex-shrink: 0;
+
+  &.is-emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    background: var(--bg-page);
+    border: 1px solid var(--border-color);
+  }
 }
 
-.assistant-card-emoji {
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  background: var(--bg-panel);
-  border-radius: 12px;
-  flex-shrink: 0;
+.assistant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .assistant-card-title {
-  font-size: 15px;
-  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
-.assistant-card-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--accent-light);
-  color: var(--accent-fg);
-  font-weight: 500;
+.assistant-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assistant-card-meta {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
-// ── Assistant detail view (card → detail) ─────────────────────────────────
+.assistant-card-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+// L2 detail ──────────────────────────────────────────────────────────────────
 .assistant-detail {
   display: flex;
   flex-direction: column;
-  gap: 20px;
   min-height: 0;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.assistant-detail-header {
+.assistant-hero {
   display: flex;
   align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 24px;
 }
 
-.assistant-detail-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--bento-radius-sm);
+.assistant-hero-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
 
-  &:hover {
-    background: var(--btn-hover);
-    color: var(--text-main);
+  &.is-emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    background: var(--bg-page);
+    border: 1px solid var(--border-color);
   }
 }
 
-.assistant-detail-ident {
+.assistant-hero-ident {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -16599,23 +16678,10 @@ body {
   min-width: 0;
 }
 
-.assistant-detail-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.assistant-detail-emoji {
-  font-size: 32px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.assistant-detail-name {
-  font-size: 20px;
-  font-weight: 600;
+.assistant-hero-name {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-main);
   margin: 0;
   overflow: hidden;
@@ -16623,36 +16689,100 @@ body {
   white-space: nowrap;
 }
 
-.assistant-detail-openchat {
-  padding: 7px 14px;
-  border-radius: var(--bento-radius-sm);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-main);
-  font-size: 13px;
-  cursor: pointer;
-  flex-shrink: 0;
-
-  &:hover {
-    background: var(--btn-hover);
-    border-color: var(--accent-color);
-  }
-}
-
-.assistant-detail-skills,
-.assistant-detail-soul {
+.assistant-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  padding: 24px 0;
+  border-top: 1px solid var(--border-color);   // hairline zoning, not boxed
 
   h2 {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text-main);
     margin: 0;
   }
 }
 
+.assistant-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.assistant-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assistant-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.assistant-empty-row {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.assistant-flash {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+// L3 session list (inside detail) ────────────────────────────────────────────
+.assistant-session-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.assistant-session-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+  font: inherit;
+  cursor: pointer;
+  transition: padding 0.15s ease;
+
+  &:hover {
+    padding-left: 10px;
+    .assistant-card-chevron { transform: translateX(2px); color: var(--text-secondary); }
+  }
+}
+
+.assistant-session-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-session-agent {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+// Persona editor ──────────────────────────────────────────────────────────────
 .assistant-soul-editor {
   width: 100%;
   min-height: 200px;
@@ -16669,36 +16799,17 @@ body {
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--text-main);
   }
 }
 
-.assistant-soul-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.assistant-detail-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0 0 6px;
-}
-
-.assistant-detail-empty {
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 16px 0;
-}
-
+// Skills list ──────────────────────────────────────────────────────────────────
 .assistant-skill-list {
   list-style: none;
-  margin: 0;
+  margin: 4px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 .assistant-skill-row {
@@ -16706,10 +16817,8 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--bento-radius-sm);
-  background: var(--bg-card);
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .assistant-skill-info {
@@ -16727,7 +16836,7 @@ body {
 }
 
 .assistant-skill-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-main);
   overflow: hidden;
@@ -16749,21 +16858,22 @@ body {
 
 .assistant-skill-badge {
   font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
   flex-shrink: 0;
+  border: 1px solid transparent;
 
   &.is-modified {
-    background: var(--warning-bg);
     color: var(--warning-fg);
+    border-color: var(--warning-fg);
   }
   &.is-synced {
-    background: var(--success-bg);
     color: var(--success-fg);
+    border-color: var(--success-fg);
   }
   &.is-local {
-    background: var(--accent-light);
-    color: var(--accent-fg);
+    color: var(--text-secondary);
+    border-color: var(--border-color);
   }
 }
 
@@ -16772,32 +16882,6 @@ body {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-}
-
-.assistant-skill-flash {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.assistant-skill-push {
-  padding: 5px 12px;
-  border-radius: var(--bento-radius-sm);
-  border: 1px solid var(--accent-color);
-  background: var(--accent-color);
-  color: var(--on-accent);
-  font-size: 12px;
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-
-  &:disabled {
-    background: var(--bg-card);
-    color: var(--text-muted);
-    border-color: var(--border-color);
-    cursor: default;
-  }
 }
 
 // NewChatHome workspace picker — 助理/项目 kind tag on trigger + dropdown rows.

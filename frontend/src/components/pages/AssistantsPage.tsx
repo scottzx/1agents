@@ -1,32 +1,52 @@
 import { h } from 'preact';
+import { useEffect } from 'preact/hooks';
+import { useSignalEffect } from '@preact/signals';
 import { t } from '../i18n';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as modal from '../../stores/modalStore';
 import * as tabs from '../../stores/tabsStore';
+import * as taskNav from '../../stores/taskNavStore';
 import { AssistantDetail } from './AssistantDetail';
 
 /**
- * AssistantsPage — the L1 "助理" landing.
+ * AssistantsPage — the 助理 landing (breadcrumb level 1: 助理 概览).
  *
- * Bento card grid of every assistant (kind='assistant', excluding remote-device
- * projects). The built-in default is pinned first. Clicking a card opens that
- * assistant's detail view (skills / push-back etc.); the detail's "打开对话"
- * button is what actually drops the sidebar into its conversations.
+ * Renders the flat grid of every assistant (kind='assistant', excluding
+ * remote-device projects), or — when a card is picked — drills into that
+ * assistant's detail view (L2). The L1/L2 breadcrumb is published to the one
+ * global WorkspaceHeader (助理 › <name>) rather than a second in-page bar; L3
+ * (会话) shows once you're inside a session (see WorkspaceHeader).
  *
- * Cards intentionally carry just avatar / name / a lightweight state hint for
- * now — richer status (skill count, channel indicators, pending tasks) will
- * light up as the per-assistant config surface grows.
+ * Visual language: codex-minimal — flat surfaces, hairline dividers, typography
+ * carries the hierarchy, near-zero color. Interactive elements are pill-shaped.
  */
 export function AssistantsPage() {
     const language = ui.language.value;
     const workspaces = wsStore.workspaces.value;
     const folders = wsStore.folders.value;
 
-    // A selected assistant opens its detail view in place of the grid.
     const detailId = tabs.assistantDetailId.value;
-    if (detailId && workspaces.some(w => w.id === detailId)) {
-        return <AssistantDetail workspaceId={detailId} />;
+    const showDetail = !!detailId && workspaces.some(w => w.id === detailId);
+
+    // Own the global header breadcrumb for both levels: 助理 (grid) and
+    // 助理 › <name> (detail). Clicking 助理 drops back to the grid. Cleared on
+    // unmount (leaving the assistants tab).
+    useSignalEffect(() => {
+        const lang = ui.language.value;
+        const id = tabs.assistantDetailId.value;
+        const ws = id ? wsStore.workspaces.value.find(w => w.id === id) : null;
+        taskNav.headerCrumbs.value = ws
+            ? [
+                  { label: t('sidebar.assistants', lang), onClick: () => (tabs.assistantDetailId.value = null) },
+                  { label: ws.name },
+              ]
+            : [{ label: t('sidebar.assistants', lang) }];
+    });
+    useEffect(() => () => void (taskNav.headerCrumbs.value = null), []);
+
+    if (showDetail) {
+        return <AssistantDetail workspaceId={detailId!} />;
     }
 
     const assistants = workspaces
@@ -39,8 +59,7 @@ export function AssistantsPage() {
 
     const chatCountFor = (wsId: string): number => {
         const folder = folders.find(f => f.id === wsId);
-        if (!folder) return 0;
-        return folder.sessions.length;
+        return folder ? folder.sessions.length : 0;
     };
 
     const onCardClick = (wsId: string) => {
@@ -49,9 +68,13 @@ export function AssistantsPage() {
 
     return (
         <div class="assistants-page">
-            <header class="assistants-page-header">
-                <h1>{t('sidebar.assistants', language)}</h1>
-                <button class="assistants-page-new-btn" onClick={modal.openCreateAssistantModal}>
+            <div class="assistants-toolbar">
+                <p class="assistants-subtitle">
+                    {assistants.length > 0
+                        ? t('assistant.overview.count', language, { count: String(assistants.length) })
+                        : t('assistant.overview.subtitle', language)}
+                </p>
+                <button class="assistant-btn assistant-btn-primary" onClick={modal.openCreateAssistantModal}>
                     <svg
                         viewBox="0 0 24 24"
                         fill="none"
@@ -65,41 +88,49 @@ export function AssistantsPage() {
                     </svg>
                     <span>{t('sidebar.addAssistant', language)}</span>
                 </button>
-            </header>
+            </div>
 
             {assistants.length === 0 ? (
-                <div class="assistants-page-empty">
+                <div class="assistants-empty">
                     <span>{t('sidebar.noAssistants', language)}</span>
-                    <button class="ws-empty-add" onClick={modal.openCreateAssistantModal}>
+                    <button class="assistant-btn assistant-btn-ghost" onClick={modal.openCreateAssistantModal}>
                         {t('sidebar.addAssistant', language)}
                     </button>
                 </div>
             ) : (
-                <div class="bento-grid assistants-grid">
+                <div class="assistants-grid">
                     {assistants.map(ws => (
-                        <button key={ws.id} class="bento-card assistant-card" onClick={() => onCardClick(ws.id)}>
-                            <div class="bento-zone-header">
-                                {ws.avatar && ws.avatar.startsWith('/') ? (
-                                    <img class="assistant-card-avatar" src={ws.avatar} alt="" />
-                                ) : (
-                                    <span class="assistant-card-emoji" aria-hidden="true">
-                                        {'\u{1F464}'}
-                                    </span>
-                                )}
+                        <button key={ws.id} class="assistant-card" onClick={() => onCardClick(ws.id)}>
+                            {ws.avatar && ws.avatar.startsWith('/') ? (
+                                <img class="assistant-card-avatar" src={ws.avatar} alt="" />
+                            ) : (
+                                <span class="assistant-card-avatar is-emoji" aria-hidden="true">
+                                    {'\u{1F464}'}
+                                </span>
+                            )}
+                            <div class="assistant-card-body">
                                 <div class="assistant-card-title">
-                                    {ws.name}
+                                    <span class="assistant-card-name">{ws.name}</span>
                                     {ws.id === 'default' && (
-                                        <span class="assistant-card-badge">
-                                            {t('assistant.card.default', language)}
-                                        </span>
+                                        <span class="assistant-tag">{t('assistant.card.default', language)}</span>
                                     )}
                                 </div>
-                            </div>
-                            <div class="bento-zone-footer assistant-card-meta">
-                                <span>
-                                    {t('assistant.card.sessions', language)}: {chatCountFor(ws.id)}
+                                <span class="assistant-card-meta">
+                                    {t('assistant.card.sessions', language)} · {chatCountFor(ws.id)}
                                 </span>
                             </div>
+                            <svg
+                                class="assistant-card-chevron"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <polyline points="9 6 15 12 9 18" />
+                            </svg>
                         </button>
                     ))}
                 </div>

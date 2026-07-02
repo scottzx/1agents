@@ -7,9 +7,10 @@ import type { ConnectionState } from '@1agents/core/protocol/types';
 import { AgentAvatar } from '../chat/AgentAvatar';
 import { CrumbTrail } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
+import * as tabsStore from '../../stores/tabsStore';
 import { isBeginnerMode, isMobile } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
-import { activeWorkspaceDeviceId, remoteDevices } from '../../stores/workspaceStore';
+import { activeWorkspaceDeviceId, activeWorkspaceId, remoteDevices, workspaces } from '../../stores/workspaceStore';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -224,6 +225,30 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     // session's workbench (chat or terminal) is showing.
     const sessionActive = activeDrawerTab === 'none';
 
+    // Assistant context (breadcrumb L3): when the active workspace is an
+    // assistant, the session view's header shows the full 助理 › <name> ›
+    // <session> trail instead of a bare session name — clicking a crumb pops
+    // back to the assistants overview / that assistant's detail (L1 / L2).
+    const activeWs = workspaces.value.find(w => w.id === activeWorkspaceId.value);
+    const isAssistantCtx = (activeWs?.kind ?? 'project') === 'assistant';
+    const openAssistantsOverview = () => {
+        tabsStore.assistantDetailId.value = null;
+        tabsStore.activeDrawerTab.value = 'assistants';
+    };
+    const openAssistantDetail = () => {
+        if (!activeWs) return;
+        tabsStore.assistantDetailId.value = activeWs.id;
+        tabsStore.activeDrawerTab.value = 'assistants';
+    };
+    const assistantCrumbs = activeWs
+        ? [
+              { label: t('sidebar.assistants', language), onClick: openAssistantsOverview },
+              ...(sessionName
+                  ? [{ label: activeWs.name, onClick: openAssistantDetail }, { label: sessionName }]
+                  : [{ label: activeWs.name }]),
+          ]
+        : [];
+
     // Show the current session: close any open artifact drawer (keeps the
     // session's own chat/terminal tab as-is).
     const handleShowSession = () => {
@@ -316,11 +341,15 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             />
                         </div>
                     ) : (
-                        <div class="header-title-group">
+                        <div class={`header-title-group${isAssistantCtx ? ' header-crumb-group' : ''}`}>
                             {agentType && (
                                 <AgentAvatar agentType={agentType} role={sessionRole} class="header-agent-avatar" />
                             )}
-                            <span class="session-name">{sessionName || t('header.noSession', language)}</span>
+                            {isAssistantCtx ? (
+                                <CrumbTrail crumbs={assistantCrumbs} />
+                            ) : (
+                                <span class="session-name">{sessionName || t('header.noSession', language)}</span>
+                            )}
                             {connection && (
                                 <span class={`header-conn header-conn-${connection}`}>
                                     {connectionLabel(connection)}
