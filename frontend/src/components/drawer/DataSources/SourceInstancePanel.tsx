@@ -4,15 +4,20 @@ import { useState, useEffect } from 'preact/hooks';
 import * as ui from '../../../stores/uiStore';
 import { t, type Lang } from '../../../i18n';
 import type { ShellTab } from '../../platform/ShellNav';
-import { sourceService, type CollectionView, type SourceAccount } from '@1agents/core/services/sourceService';
+import {
+    sourceService,
+    type CollectionView,
+    type SourceAccount,
+    type MSOAuthStatus,
+} from '@1agents/core/services/sourceService';
 import { SourceDataZone } from './SourceDataZone';
 
 // SourceInstancePanel — the generic panel for OAuth-style multi-account sources
-// (microsoft / google) whose real pulls are not wired yet. One zone per tab:
-//   认证 → OAuth 占位 (the account is already registered; connect flow ships later)
-//   采集配置 → the roadmap of crawlable kinds (all not-yet-implemented)
+// (microsoft / google). One zone per tab:
+//   认证 → Microsoft: the real OAuth (PKCE) connect flow; Google: 占位 until wired
+//   采集配置 → the roadmap of crawlable kinds (per-kind implemented flag)
 //   数据 → SourceDataZone over the vendor's bronze
-// Apple/飞书 keep their bespoke panels; this covers the framework skeletons.
+// Apple/飞书 keep their bespoke panels; this covers the Graph/Google sources.
 
 export function instanceTabs(language: Lang): ShellTab[] {
     return [
@@ -48,14 +53,17 @@ export function SourceInstancePanel({
 
     return (
         <div class="source-panel">
-            {tab === 'auth' && (
-                <div class="contacts-privacy-banner">
-                    <span class="contacts-privacy-icon" aria-hidden="true">
-                        🔐
-                    </span>
-                    <span>{t('datasource.instance.authStub', language)}</span>
-                </div>
-            )}
+            {tab === 'auth' &&
+                (vendor === 'microsoft' ? (
+                    <MicrosoftAuthZone account={account} language={language} />
+                ) : (
+                    <div class="contacts-privacy-banner">
+                        <span class="contacts-privacy-icon" aria-hidden="true">
+                            🔐
+                        </span>
+                        <span>{t('datasource.instance.authStub', language)}</span>
+                    </div>
+                ))}
 
             {tab === 'config' && (
                 <div class="source-instance-config">
@@ -85,6 +93,140 @@ export function SourceInstancePanel({
                     <SourceDataZone sources={[vendor]} account={account.id} onOpen={onOpenData} />
                 </Fragment>
             )}
+        </div>
+    );
+}
+
+// MicrosoftAuthZone drives the real Microsoft Graph OAuth (PKCE) connect for one
+// account. It reads the per-account status, opens the region-correct sign-in
+// (大陆/21Vianet vs 国际) in a popup, and polls until the callback stores a token.
+function MicrosoftAuthZone({ account, language }: { account: SourceAccount; language: Lang }) {
+    const [status, setStatus] = useState<MSOAuthStatus | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const refresh = () =>
+        sourceService
+            .msOAuthStatus(account.id)
+            .then(setStatus)
+            .catch(e => setError((e as Error).message));
+
+    useEffect(() => {
+        let active = true;
+        sourceService
+            .msOAuthStatus(account.id)
+            .then(s => active && setStatus(s))
+            .catch(e => active && setError((e as Error).message));
+        return () => {
+            active = false;
+        };
+    }, [account.id]);
+
+    const connect = async () => {
+        setBusy(true);
+        setError('');
+        try {
+            const { authUrl } = await sourceService.msOAuthStart(account.id);
+            const popup = window.open(authUrl, 'ms-oauth', 'width=520,height=680');
+            if (!popup) {
+                setError(t('datasource.ms.popupBlocked', language));
+                setBusy(false);
+                return;
+            }
+            // Poll status until the callback attaches a token (or we give up).
+            let tries = 0;
+            const timer = window.setInterval(async () => {
+                tries += 1;
+                try {
+                    const s = await sourceService.msOAuthStatus(account.id);
+                    setStatus(s);
+                    if (s.connected || tries > 60) {
+                        window.clearInterval(timer);
+                        setBusy(false);
+                    }
+                } catch {
+                    /* keep polling */
+                }
+            }, 2000);
+        } catch (e) {
+            setError((e as Error).message);
+            setBusy(false);
+        }
+    };
+
+    const disconnect = async () => {
+        setBusy(true);
+        try {
+            await sourceService.msOAuthDisconnect(account.id);
+            await refresh();
+        } catch (e) {
+            setError((e as Error).message);
+        }
+        setBusy(false);
+    };
+
+    const regionLabel =
+        account.region === 'cn' ? t('datasource.ms.regionCN', language) : t('datasource.ms.regionIntl', language);
+
+    if (status === null) {
+        return <div class="datasource-head-hint">…</div>;
+    }
+
+    return (
+        <div class="source-instance-auth">
+            {!status.configured && (
+                <div class="contacts-privacy-banner">
+                    <span class="contacts-privacy-icon" aria-hidden="true">
+                        ⚙️
+                    </span>
+                    <span>{t('datasource.ms.notConfigured', language)}</span>
+                </div>
+            )}
+
+            <div class="bento-card sys-settings-card">
+                <div class="bento-zone-body">
+                    <h3 class="bento-card-title">Microsoft · {regionLabel}</h3>
+                    {status.connected ? (
+                        <Fragment>
+                            <span class="datasource-card-badge">{t('datasource.ms.connected', language)}</span>
+                            <p class="bento-card-desc">
+                                {account.label}
+                                {status.expiresAt > 0 && (
+                                    <Fragment>
+                                        {' · '}
+                                        {t('datasource.ms.expires', language)}{' '}
+                                        {new Date(status.expiresAt * 1000).toLocaleString()}
+                                    </Fragment>
+                                )}
+                            </p>
+                            <div class="datasource-region-choices">
+                                <button
+                                    class="contacts-btn contacts-btn-sm"
+                                    disabled={busy || !status.configured}
+                                    onClick={connect}
+                                >
+                                    {t('datasource.ms.reconnect', language)}
+                                </button>
+                                <button class="contacts-btn contacts-btn-sm" disabled={busy} onClick={disconnect}>
+                                    {t('datasource.ms.disconnect', language)}
+                                </button>
+                            </div>
+                        </Fragment>
+                    ) : (
+                        <Fragment>
+                            <p class="bento-card-desc">{t('datasource.ms.connectHint', language)}</p>
+                            <button
+                                class="contacts-btn contacts-btn-primary"
+                                disabled={busy || !status.configured}
+                                onClick={connect}
+                            >
+                                {busy ? t('datasource.ms.connecting', language) : t('datasource.ms.connect', language)}
+                            </button>
+                        </Fragment>
+                    )}
+                    {error && <div class="contacts-error">{error}</div>}
+                </div>
+            </div>
         </div>
     );
 }

@@ -26,6 +26,7 @@ type Handler struct {
 	accounts *meta.SourceAccountStore
 	chats    *meta.FeishuChatStore
 	bronze   *sources.Store
+	msAuth   *sources.MSAuth // Microsoft Graph OAuth (PKCE) — connect flow + token store
 	cli      *sourcecli.Handler
 	systemWS string     // host workspace path (set by ProvisionSystemWorkspace)
 	disp     Dispatcher // set via SetDispatcher once the task API is available
@@ -75,12 +76,19 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A missing microsoft_oauth.json is not fatal — the connect flow reports
+	// "not configured" until the config is dropped in.
+	msAuth, err := sources.NewMSAuth()
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		db:       db,
 		cfg:      meta.NewSourceCollectionStore(db),
 		accounts: meta.NewSourceAccountStore(db),
 		chats:    meta.NewFeishuChatStore(db),
 		bronze:   bronze,
+		msAuth:   msAuth,
 		cli:      sourcecli.NewHandler(),
 	}, nil
 }

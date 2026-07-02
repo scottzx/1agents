@@ -104,6 +104,16 @@ export interface CreateAccountInput {
     password?: string; // iCloud only (stored in Keychain server-side)
 }
 
+// Microsoft Graph OAuth connect state for one account. `configured` is false
+// until the per-region app registration (microsoft_oauth.json) is present.
+export interface MSOAuthStatus {
+    configured: boolean;
+    connected: boolean;
+    expiresAt: number; // epoch seconds; 0 when not connected
+    scope: string;
+    region: string; // 'intl' | 'cn'
+}
+
 export const sourceService = {
     /** GET /api/sources/vendors — vendor capability table for the add-source flow. */
     async vendors(): Promise<VendorSpec[]> {
@@ -187,6 +197,36 @@ export const sourceService = {
         const res = await apiFetch(`/sources/${encodeURIComponent(source)}/history`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SyncRun[];
+    },
+
+    /** POST /api/sources/oauth/microsoft/start — begin the Microsoft Graph connect
+     * (OAuth authorization-code + PKCE). Returns the authorization URL to open;
+     * the region (大陆/国际) is taken from the account. */
+    async msOAuthStart(accountId: string): Promise<{ authUrl: string }> {
+        const res = await apiFetch('/sources/oauth/microsoft/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { authUrl: string };
+    },
+
+    /** GET /api/sources/oauth/microsoft/status — connect state for one account. */
+    async msOAuthStatus(accountId: string): Promise<MSOAuthStatus> {
+        const res = await apiFetch(`/sources/oauth/microsoft/status?accountId=${encodeURIComponent(accountId)}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as MSOAuthStatus;
+    },
+
+    /** POST /api/sources/oauth/microsoft/disconnect — drop an account's token. */
+    async msOAuthDisconnect(accountId: string): Promise<void> {
+        const res = await apiFetch('/sources/oauth/microsoft/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId }),
+        });
+        if (!res.ok && res.status !== 204) throw new Error(await res.text());
     },
 
     /** GET /api/sources/feishu/chats — the CACHED group list (bronze feishu_chat

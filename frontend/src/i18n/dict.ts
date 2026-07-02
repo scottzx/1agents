@@ -337,6 +337,19 @@ export const zhCN: Record<string, string> = {
     'datasource.instance.authStub': '该数据源的授权(OAuth)即将上线。账号已登记,采集项开放后即可启用。',
     'datasource.instance.roadmap': '采集项(路线图,即将支持)',
     'datasource.config.notImplemented': '尚未实现',
+    'datasource.add.oauthMicrosoft': '先登记账号,添加后在「认证」中一键连接 Microsoft(读取联系人/邮件)。',
+    'datasource.ms.connect': '连接 Microsoft',
+    'datasource.ms.connecting': '等待授权完成…',
+    'datasource.ms.connected': '已连接',
+    'datasource.ms.reconnect': '重新连接',
+    'datasource.ms.disconnect': '断开连接',
+    'datasource.ms.connectHint': '将打开 Microsoft 登录页完成授权(读取联系人 / 邮件)。',
+    'datasource.ms.expires': '令牌有效期至',
+    'datasource.ms.popupBlocked': '弹窗被拦截,请允许弹窗后重试。',
+    'datasource.ms.regionCN': '大陆(世纪互联 21Vianet)',
+    'datasource.ms.regionIntl': '国际',
+    'datasource.ms.notConfigured':
+        'Microsoft OAuth 尚未配置。请在 ~/.1agents/sources/microsoft_oauth.json 填写该区域的 clientId / tenant / redirectUri 后重试。',
 
     // ── 飞书源卡片 — CLI 生命周期 ─────────────────────────────────────────────
     'datasource.cli.installed': '已安装',
@@ -1749,6 +1762,20 @@ export const enUS: Record<string, string> = {
         'OAuth authorization is coming soon. The account is registered; enable collections once they ship.',
     'datasource.instance.roadmap': 'Collections (roadmap — coming soon)',
     'datasource.config.notImplemented': 'not implemented yet',
+    'datasource.add.oauthMicrosoft':
+        'Register the account first; after adding, connect Microsoft in one click under “Authentication” (reads contacts / mail).',
+    'datasource.ms.connect': 'Connect Microsoft',
+    'datasource.ms.connecting': 'Waiting for authorization…',
+    'datasource.ms.connected': 'Connected',
+    'datasource.ms.reconnect': 'Reconnect',
+    'datasource.ms.disconnect': 'Disconnect',
+    'datasource.ms.connectHint': 'Opens the Microsoft sign-in page to authorize (reads contacts / mail).',
+    'datasource.ms.expires': 'Token valid until',
+    'datasource.ms.popupBlocked': 'Popup blocked — allow popups and retry.',
+    'datasource.ms.regionCN': 'Mainland (21Vianet)',
+    'datasource.ms.regionIntl': 'Global',
+    'datasource.ms.notConfigured':
+        'Microsoft OAuth is not configured. Fill in this region’s clientId / tenant / redirectUri in ~/.1agents/sources/microsoft_oauth.json and retry.',
 
     // ── Feishu source card — CLI lifecycle ───────────────────────────────────
     'datasource.cli.installed': 'Installed',

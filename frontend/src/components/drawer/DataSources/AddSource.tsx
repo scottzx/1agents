@@ -181,7 +181,11 @@ function VendorForm({
 
             {vendor.authKind === 'oauth' && (
                 <Fragment>
-                    <div class="datasource-head-hint">{t('datasource.add.oauthStub', language)}</div>
+                    <div class="datasource-head-hint">
+                        {vendor.vendor === 'microsoft'
+                            ? t('datasource.add.oauthMicrosoft', language)
+                            : t('datasource.add.oauthStub', language)}
+                    </div>
                     <label class="contacts-field">
                         <span>{t('datasource.add.accountLabel', language)}</span>
                         <input
