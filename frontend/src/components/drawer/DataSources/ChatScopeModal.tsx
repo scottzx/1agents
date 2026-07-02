@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { createPortal } from 'preact/compat';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 
 import * as ui from '../../../stores/uiStore';
@@ -106,8 +107,12 @@ export function ChatScopeModal({ mode, onClose }: { mode: 'view' | 'pick'; onClo
     const title =
         mode === 'pick' ? t('datasource.chats.pickTitle', language) : t('datasource.chats.viewTitle', language);
 
-    return (
-        <div class="ds-record-overlay" onClick={onClose}>
+    // Portal to document.body: several ancestors (Bento cards) carry
+    // backdrop-filter, which hijacks position:fixed's containing block — the
+    // overlay would center inside the tall config card instead of the viewport
+    // and get clipped. From <body> nothing interferes.
+    return createPortal(
+        <div class="ds-chats-overlay" onClick={onClose}>
             <div
                 class="ds-record-modal ds-chats-modal"
                 role="dialog"
@@ -180,6 +185,7 @@ export function ChatScopeModal({ mode, onClose }: { mode: 'view' | 'pick'; onClo
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

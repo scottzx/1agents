@@ -18240,11 +18240,30 @@ body {
 }
 
 // 群弹窗 (ChatScopeModal): cached group list browse / message-scope picking.
+// The overlay is position:fixed (app-wide modal convention — contacts/ws/
+// sessions/dp all do this): an absolute overlay inside the scrolling
+// datasource-tab-body would scroll away with the content and truncate the
+// dialog; fixed keeps it fully centered in the viewport regardless of scroll.
+.ds-chats-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 24px;
+}
+
 .ds-chats-modal {
   width: min(560px, 92vw);
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  // Base .ds-record-modal scrolls the whole card; here the head row stays
+  // pinned and only the group list (.ds-chats-list) scrolls.
+  overflow: hidden;
 }
 
 .ds-chats-head {
@@ -18295,6 +18314,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .ds-chat-row {
