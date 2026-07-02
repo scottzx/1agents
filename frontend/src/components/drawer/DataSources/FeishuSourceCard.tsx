@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { t, type Lang } from '../../../i18n';
 import { sourceCliService, type CLIStatus } from '@1agents/core/services/sourceCliService';
 import { sourceService, type CollectionView, type SyncRun } from '@1agents/core/services/sourceService';
+import { ChatScopeModal } from './ChatScopeModal';
 
 // 飞书数据源卡片 — shows three zones for the feishu source:
 //   1. CLI lifecycle: lark-cli install/version/auth state, hints with copy buttons
@@ -13,7 +14,7 @@ import { sourceService, type CollectionView, type SyncRun } from '@1agents/core/
 const TOOL = 'lark-cli';
 const SOURCE = 'feishu';
 
-// Minutes available as incremental frequency options (matches FeishuSection).
+// Minutes available as incremental frequency options.
 const INTERVAL_OPTS = [15, 30, 60, 180, 360, 720, 1440];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -291,6 +292,8 @@ export function CollectionsZone({ language, onSyncDispatched, onToast }: Collect
     const [collections, setCollections] = useState<CollectionView[]>([]);
     const [error, setError] = useState('');
     const [busyKind, setBusyKind] = useState<string | null>(null);
+    // Which chat modal is open: 'view' (群列表缓存) or 'pick' (群消息范围勾选).
+    const [modal, setModal] = useState<'view' | 'pick' | null>(null);
 
     const load = useCallback(async () => {
         setError('');
@@ -383,62 +386,63 @@ export function CollectionsZone({ language, onSyncDispatched, onToast }: Collect
 
                             {col.enabled && col.implemented && (
                                 <div class="fscard-collection-controls">
-                                    {col.perChat ? (
-                                        <span class="fscard-perchat-hint">
-                                            {t('datasource.collection.perChatHint', language)}
-                                        </span>
-                                    ) : (
-                                        <Fragment>
-                                            <div class="fscard-field">
-                                                <label>{t('datasource.collection.lookbackDays', language)}</label>
-                                                <input
-                                                    type="number"
-                                                    min={1}
-                                                    max={3650}
-                                                    value={col.initialLookbackDays}
-                                                    onBlur={(e: Event) =>
-                                                        save(col, {
-                                                            initialLookbackDays: Number(
-                                                                (e.target as HTMLInputElement).value
-                                                            ),
-                                                        })
-                                                    }
-                                                />
-                                            </div>
-                                            <div class="fscard-field">
-                                                <label>{t('datasource.collection.interval', language)}</label>
-                                                <select
-                                                    value={String(col.incrementalMinutes)}
-                                                    onChange={(e: Event) =>
-                                                        save(col, {
-                                                            incrementalMinutes: Number(
-                                                                (e.target as HTMLSelectElement).value
-                                                            ),
-                                                        })
-                                                    }
-                                                >
-                                                    {INTERVAL_OPTS.map(m => (
-                                                        <option key={m} value={String(m)}>
-                                                            {t(`contacts.channels.interval.${m}`, language)}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div class="fscard-field">
-                                                <label>{t('datasource.collection.pageSize', language)}</label>
-                                                <input
-                                                    type="number"
-                                                    min={10}
-                                                    max={1000}
-                                                    value={col.pageSize}
-                                                    onBlur={(e: Event) =>
-                                                        save(col, {
-                                                            pageSize: Number((e.target as HTMLInputElement).value),
-                                                        })
-                                                    }
-                                                />
-                                            </div>
-                                        </Fragment>
+                                    <div class="fscard-field">
+                                        <label>{t('datasource.collection.lookbackDays', language)}</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={3650}
+                                            value={col.initialLookbackDays}
+                                            onBlur={(e: Event) =>
+                                                save(col, {
+                                                    initialLookbackDays: Number((e.target as HTMLInputElement).value),
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div class="fscard-field">
+                                        <label>{t('datasource.collection.interval', language)}</label>
+                                        <select
+                                            value={String(col.incrementalMinutes)}
+                                            onChange={(e: Event) =>
+                                                save(col, {
+                                                    incrementalMinutes: Number((e.target as HTMLSelectElement).value),
+                                                })
+                                            }
+                                        >
+                                            {INTERVAL_OPTS.map(m => (
+                                                <option key={m} value={String(m)}>
+                                                    {t(`contacts.channels.interval.${m}`, language)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div class="fscard-field">
+                                        <label>{t('datasource.collection.pageSize', language)}</label>
+                                        <input
+                                            type="number"
+                                            min={10}
+                                            max={1000}
+                                            value={col.pageSize}
+                                            onBlur={(e: Event) =>
+                                                save(col, {
+                                                    pageSize: Number((e.target as HTMLInputElement).value),
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    {/* 群列表 browses the cache; perChat kinds (群消息) pick
+                                        their scope from the same cache — one lark-cli pull
+                                        serves both, no duplicate fetching. */}
+                                    {col.kind === 'feishu_chat' && (
+                                        <button class="fscard-sync-btn" onClick={() => setModal('view')}>
+                                            {t('datasource.chats.viewBtn', language)}
+                                        </button>
+                                    )}
+                                    {col.perChat && (
+                                        <button class="fscard-sync-btn" onClick={() => setModal('pick')}>
+                                            {t('datasource.chats.pickBtn', language)}
+                                        </button>
                                     )}
                                     <button
                                         class="fscard-sync-btn"
@@ -455,6 +459,8 @@ export function CollectionsZone({ language, onSyncDispatched, onToast }: Collect
                     ))}
                 </div>
             ))}
+
+            {modal && <ChatScopeModal mode={modal} onClose={() => setModal(null)} />}
         </div>
     );
 }
