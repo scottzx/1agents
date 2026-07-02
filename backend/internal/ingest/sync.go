@@ -103,20 +103,38 @@ func (h *Handler) SeedLegacyAccounts() error {
 	// Apple ID). Region defaults to intl; the user can add a 大陆 account too.
 	if n, err := h.accounts.CountByVendor(meta.VendorICloud); err == nil && n == 0 {
 		if appleID, ok := icloud.Status(); ok {
-			_, _ = h.accounts.Create(meta.SourceAccount{
+			if a, e := h.accounts.Create(meta.SourceAccount{
 				Vendor: meta.VendorICloud, Region: sources.RegionIntl, Label: appleID,
-			}, false)
+			}, false); e == nil {
+				_ = h.bronze.ReassignAccount(meta.VendorICloud, "default", a.ID)
+			}
 		}
 	}
 	// Feishu: single-account. Seed when legacy crawl config exists.
 	if n, err := h.accounts.CountByVendor(meta.VendorFeishu); err == nil && n == 0 {
 		if cfgs, cerr := h.cfg.List(feishu.Source); cerr == nil && len(cfgs) > 0 {
-			_, _ = h.accounts.Create(meta.SourceAccount{
+			if a, e := h.accounts.Create(meta.SourceAccount{
 				Vendor: meta.VendorFeishu, Region: sources.RegionCN, Label: "飞书",
-			}, true)
+			}, true); e == nil {
+				_ = h.bronze.ReassignAccount(feishu.Source, "default", a.ID)
+			}
 		}
 	}
 	return nil
+}
+
+// feishuAccountID returns the single Feishu account's id (源为中心: bronze is keyed
+// by it so the per-account data view lines up), falling back to "default" when no
+// account is registered yet — pre-seed / fresh install.
+func (h *Handler) feishuAccountID() string {
+	if h.accounts == nil {
+		return "default"
+	}
+	accts, err := h.accounts.ListByVendor(meta.VendorFeishu)
+	if err != nil || len(accts) == 0 {
+		return "default"
+	}
+	return accts[0].ID
 }
 
 // runFeishuSync is the function-executor body for one Feishu kind. The task's
@@ -148,13 +166,14 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 		}
 	}
 
-	// Feishu is single-account; its bronze/chats/digest pipeline is keyed to the
-	// stable "default" account. The source_accounts row is a UI/management entry
-	// (源为中心 listing) and does not re-key bronze — keeping "default" avoids
-	// disturbing the existing chats/message/digest flow.
+	// Feishu is single-account; bronze is keyed by its registry account id so the
+	// per-account 数据 view lines up (SeedLegacyAccounts re-keyed legacy "default"
+	// rows onto it). Digest/chats read bronze account-agnostically, so this does
+	// not disturb the message/digest flow.
+	accountID := h.feishuAccountID()
 	client := feishu.NewClient("", "default")
 	puller := sources.NewFeishuPuller(client, []sources.FeishuSpec{spec})
-	stats, err := h.bronze.Sync(puller, "default")
+	stats, err := h.bronze.Sync(puller, accountID)
 	if err != nil {
 		return nil, err
 	}

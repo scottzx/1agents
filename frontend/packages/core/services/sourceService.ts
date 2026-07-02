@@ -7,6 +7,8 @@ import { apiFetch } from './apiClient';
 
 export interface SourceSummary {
     source: string;
+    /** bronze account_id this rollup belongs to (源为中心 per-account totals). */
+    accountId: string;
     kind: string;
     /** Non-deleted record count. */
     count: number;
@@ -141,9 +143,11 @@ export const sourceService = {
         return (await res.json()) as SourceSummary[];
     },
 
-    /** GET /api/sources/records?source=&kind=&limit= — raw records as grid rows. */
-    async records(source: string, kind: string, limit = 1000): Promise<SourceRecordRow[]> {
+    /** GET /api/sources/records?source=&kind=&account=&limit= — raw records as grid
+     * rows. account (optional) scopes to one bronze account_id (源为中心). */
+    async records(source: string, kind: string, limit = 1000, account = ''): Promise<SourceRecordRow[]> {
         const qs = new URLSearchParams({ source, kind, limit: String(limit) });
+        if (account) qs.set('account', account);
         const res = await apiFetch(`/sources/records?${qs.toString()}`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SourceRecordRow[];

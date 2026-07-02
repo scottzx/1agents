@@ -4,7 +4,7 @@ import { useState, useEffect } from 'preact/hooks';
 import * as ui from '../../../stores/uiStore';
 import { t, type Lang } from '../../../i18n';
 import type { ShellTab } from '../../platform/ShellNav';
-import { sourceService, type CollectionView } from '@1agents/core/services/sourceService';
+import { sourceService, type CollectionView, type SourceAccount } from '@1agents/core/services/sourceService';
 import { SourceDataZone } from './SourceDataZone';
 
 // SourceInstancePanel — the generic panel for OAuth-style multi-account sources
@@ -23,15 +23,16 @@ export function instanceTabs(language: Lang): ShellTab[] {
 }
 
 export function SourceInstancePanel({
-    vendor,
+    account,
     tab,
     onOpenData,
 }: {
-    vendor: string;
+    account: SourceAccount;
     tab: string;
-    onOpenData: (source: string, kind: string, title: string) => void;
+    onOpenData: (source: string, kind: string, title: string, account?: string) => void;
 }) {
     const language = ui.language.value;
+    const vendor = account.vendor;
     const [collections, setCollections] = useState<CollectionView[] | null>(null);
 
     useEffect(() => {
@@ -81,7 +82,7 @@ export function SourceInstancePanel({
 
             {tab === 'data' && (
                 <Fragment>
-                    <SourceDataZone sources={[vendor]} onOpen={onOpenData} />
+                    <SourceDataZone sources={[vendor]} account={account.id} onOpen={onOpenData} />
                 </Fragment>
             )}
         </div>

@@ -10,18 +10,18 @@ import { sourceService, type SourceSummary, type SourceAccount } from '@1agents/
 // separate cards, plus an "添加数据源" card. Each card rolls up its vendor's bronze
 // (record total + last fetch). Picking a card drills into that source.
 
-const VENDOR_UI: Record<string, { icon: string; color: string; descKey: string; bronzeIds: string[] }> = {
-    icloud: { icon: '🍎', color: '#555', descKey: 'datasource.home.appleDesc', bronzeIds: ['icloud', 'apple'] },
-    feishu: { icon: '💬', color: '#3370ff', descKey: 'datasource.home.feishuDesc', bronzeIds: ['feishu'] },
-    microsoft: { icon: '🪟', color: '#2f6feb', descKey: 'datasource.src.microsoftDesc', bronzeIds: ['microsoft'] },
-    google: { icon: '🔎', color: '#ea4335', descKey: 'datasource.src.googleDesc', bronzeIds: ['google'] },
+const VENDOR_UI: Record<string, { icon: string; color: string; descKey: string }> = {
+    icloud: { icon: '🍎', color: '#555', descKey: 'datasource.home.appleDesc' },
+    feishu: { icon: '💬', color: '#3370ff', descKey: 'datasource.home.feishuDesc' },
+    microsoft: { icon: '🪟', color: '#2f6feb', descKey: 'datasource.src.microsoftDesc' },
+    google: { icon: '🔎', color: '#ea4335', descKey: 'datasource.src.googleDesc' },
 };
 
-function rollup(summaries: SourceSummary[], bronzeIds: string[]): { count: number; lastFetchedAt: number } {
+function rollup(summaries: SourceSummary[], accountId: string): { count: number; lastFetchedAt: number } {
     let count = 0;
     let lastFetchedAt = 0;
     for (const s of summaries) {
-        if (!bronzeIds.includes(s.source)) continue;
+        if (s.accountId !== accountId) continue;
         count += s.count;
         if (s.lastFetchedAt > lastFetchedAt) lastFetchedAt = s.lastFetchedAt;
     }
@@ -58,10 +58,9 @@ export function SourceHome({
         };
     }, []);
 
-    const stats = (vendor: string) => {
+    const stats = (accountId: string) => {
         if (summaries === null) return null;
-        const meta = VENDOR_UI[vendor];
-        const { count, lastFetchedAt } = rollup(summaries, meta ? meta.bronzeIds : [vendor]);
+        const { count, lastFetchedAt } = rollup(summaries, accountId);
         if (count === 0) return <span class="source-home-stats muted">{t('datasource.never', language)}</span>;
         return (
             <span class="source-home-stats">
@@ -76,12 +75,7 @@ export function SourceHome({
         <div class="source-home">
             <div class="bento-grid">
                 {accounts.map(a => {
-                    const meta = VENDOR_UI[a.vendor] ?? {
-                        icon: '🔌',
-                        color: '#888',
-                        descKey: '',
-                        bronzeIds: [a.vendor],
-                    };
+                    const meta = VENDOR_UI[a.vendor] ?? { icon: '🔌', color: '#888', descKey: '' };
                     return (
                         <button key={a.id} class="bento-card source-home-card" onClick={() => onPick(a)}>
                             <div class="bento-zone-header">
@@ -112,7 +106,7 @@ export function SourceHome({
                                     </span>{' '}
                                     {meta.descKey ? t(meta.descKey, language) : ''}
                                 </p>
-                                {stats(a.vendor)}
+                                {stats(a.id)}
                             </div>
                             <div class="bento-zone-footer">
                                 <span class="card-action-text">{t('datasource.home.manage', language)} →</span>

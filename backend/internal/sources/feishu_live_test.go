@@ -28,7 +28,7 @@ func TestFeishuPullerLive(t *testing.T) {
 	}
 	t.Logf("live sync stats: collections=%d changed=%d skipped=%d", stats.Collections, stats.Changed, stats.Skipped)
 
-	recs, err := st.ListRecords(feishu.Source, "feishu_chat", 0)
+	recs, err := st.ListRecords(feishu.Source, "", "feishu_chat", 0)
 	if err != nil {
 		t.Fatalf("list records: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestFeishuMessagePullLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("message sync: %v", err)
 	}
-	recs, _ := st.ListRecords(feishu.Source, "feishu_message", 0)
+	recs, _ := st.ListRecords(feishu.Source, "", "feishu_message", 0)
 	t.Logf("chat=%s message sync: changed=%d bronze feishu_message records=%d", chats[0].ChatID, stats.Changed, len(recs))
 	if len(recs) > 0 {
 		if recs[0].UID == "" || recs[0].ContentType != "application/json" {
@@ -91,7 +91,7 @@ func TestFeishuCalendarPullLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("calendar sync: %v", err)
 	}
-	recs, _ := st.ListRecords(feishu.Source, "feishu_calendar", 0)
+	recs, _ := st.ListRecords(feishu.Source, "", "feishu_calendar", 0)
 	t.Logf("calendar sync: changed=%d bronze feishu_calendar records=%d", stats.Changed, len(recs))
 	if len(recs) > 0 && (recs[0].UID == "" || recs[0].ContentType != "application/json") {
 		t.Fatalf("malformed calendar record: %+v", recs[0])

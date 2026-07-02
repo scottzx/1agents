@@ -410,6 +410,38 @@ export const icloudService = {
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as ICloudSyncResult;
     },
+
+    // ── 源为中心: account-scoped variants (数据源 Apple 面板 per-account) ──
+
+    /** GET /api/contacts/icloud/credentials?accountId= — status for one account. */
+    async statusFor(accountId: string): Promise<ICloudStatus> {
+        const res = await apiFetch(`/contacts/icloud/credentials?accountId=${encodeURIComponent(accountId)}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ICloudStatus;
+    },
+
+    /** POST /api/contacts/icloud/credentials {accountId, password} — re-enter the
+     * password for an existing account (Apple ID comes from the account). */
+    async setPasswordFor(accountId: string, password: string): Promise<ICloudStatus> {
+        const res = await apiFetch('/contacts/icloud/credentials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId, password }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ICloudStatus;
+    },
+
+    /** POST /api/contacts/icloud/sync {accountId} — pull one account's contacts. */
+    async syncFor(accountId: string): Promise<ICloudSyncResult> {
+        const res = await apiFetch('/contacts/icloud/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ICloudSyncResult;
+    },
 };
 
 /** Result of an iMessage chat.db pull. */

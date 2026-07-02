@@ -19,7 +19,7 @@ import { AddSource } from './AddSource';
 // (breadcrumb gains a second level, the source's zones show as top-nav tabs);
 // a data card drills further into the schema-free 多维表格 (SourceDetail). "添加
 // 数据源" opens the vendor → region → account flow.
-type Detail = { source: string; kind: string; title: string };
+type Detail = { source: string; kind: string; title: string; account?: string };
 type View = { kind: 'home' } | { kind: 'add' } | { kind: 'account'; account: SourceAccount };
 
 function defaultTab(vendor: string): string {
@@ -64,8 +64,8 @@ export function DataSourcesPane() {
         sourceService.deleteAccount(a.id).then(loadAccounts).catch(loadAccounts);
     };
     const clearDetail = () => (detail.value = null);
-    const openData = (s: string, kind: string, title: string) => {
-        detail.value = { source: s, kind, title };
+    const openData = (s: string, kind: string, title: string, account?: string) => {
+        detail.value = { source: s, kind, title, account };
     };
 
     // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
@@ -112,7 +112,12 @@ export function DataSourcesPane() {
                 </div>
             ) : detail.value ? (
                 <div class="datasource-tab-body">
-                    <SourceDetail source={detail.value.source} kind={detail.value.kind} title={detail.value.title} />
+                    <SourceDetail
+                        source={detail.value.source}
+                        kind={detail.value.kind}
+                        title={detail.value.title}
+                        account={detail.value.account}
+                    />
                 </div>
             ) : (
                 <Fragment>
@@ -121,9 +126,9 @@ export function DataSourcesPane() {
                         {v.account.vendor === 'feishu' ? (
                             <FeishuSourcePanel tab={subTab.value} onOpenData={openData} />
                         ) : v.account.vendor === 'icloud' ? (
-                            <AppleSourcePanel tab={subTab.value} onOpenData={openData} />
+                            <AppleSourcePanel account={v.account} tab={subTab.value} onOpenData={openData} />
                         ) : (
-                            <SourceInstancePanel vendor={v.account.vendor} tab={subTab.value} onOpenData={openData} />
+                            <SourceInstancePanel account={v.account} tab={subTab.value} onOpenData={openData} />
                         )}
                     </div>
                 </Fragment>

@@ -36,7 +36,7 @@ func (h *Handler) HandleChats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	recs, err := h.bronze.ListRecords(feishu.Source, "feishu_chat", 0)
+	recs, err := h.bronze.ListRecords(feishu.Source, "", "feishu_chat", 0)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
