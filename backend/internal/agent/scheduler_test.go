@@ -524,4 +524,14 @@ func TestNextOccurrence(t *testing.T) {
 	if c.Month() != time.June || c.Day() != 30 {
 		t.Fatalf("monthly clamp: got %v", c)
 	}
+	// Interval: fixed spacing from the previous run, ignoring clock time.
+	iv := nextOccurrence(base, &Recurrence{Freq: "interval", EveryMinutes: 30})
+	if want := base.Add(30 * time.Minute).UTC(); !iv.Equal(want) {
+		t.Fatalf("interval: got %v, want %v", iv, want)
+	}
+	// Interval guards a zero/negative EveryMinutes to at least 1 minute (no busy loop).
+	iz := nextOccurrence(base, &Recurrence{Freq: "interval", EveryMinutes: 0})
+	if want := base.Add(time.Minute).UTC(); !iz.Equal(want) {
+		t.Fatalf("interval zero-guard: got %v, want %v", iz, want)
+	}
 }

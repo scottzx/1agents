@@ -37,6 +37,41 @@ export interface SourceRecordRow {
     preview: string;
 }
 
+// 集合(表)配置 — per-source collection crawl settings.
+export interface CollectionView {
+    source: string;
+    kind: string;
+    enabled: boolean;
+    initialLookbackDays: number;
+    incrementalMinutes: number;
+    pageSize: number;
+    updatedAt: string;
+    domain: string;
+    label: string;
+    implemented: boolean;
+    perChat: boolean;
+    configured: boolean;
+}
+
+export interface CollectionUpdateInput {
+    kind: string;
+    enabled: boolean;
+    initialLookbackDays: number;
+    incrementalMinutes: number;
+    pageSize: number;
+}
+
+// 同步历史 — each completed or in-progress work-order sync run.
+export interface SyncRun {
+    taskId: string;
+    kind: string;
+    collection?: string;
+    status: string;
+    result?: string;
+    createdAt: string;
+    completedAt?: string;
+}
+
 export const sourceService = {
     /** GET /api/sources/summary — per-(source,kind) rollup for the overview cards. */
     async summary(): Promise<SourceSummary[]> {
@@ -51,5 +86,41 @@ export const sourceService = {
         const res = await apiFetch(`/sources/records?${qs.toString()}`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SourceRecordRow[];
+    },
+
+    /** GET /api/sources/{source}/collections — crawl config for every collection kind. */
+    async collections(source: string): Promise<CollectionView[]> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/collections`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as CollectionView[];
+    },
+
+    /** PUT /api/sources/{source}/collections — save one collection's crawl config. */
+    async setCollection(source: string, cfg: CollectionUpdateInput): Promise<CollectionView> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/collections`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as CollectionView;
+    },
+
+    /** POST /api/sources/{source}/sync — dispatch an immediate work-order sync for a kind. */
+    async syncNow(source: string, kind: string): Promise<{ taskId: string }> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { taskId: string };
+    },
+
+    /** GET /api/sources/{source}/history — sync run history, newest first. */
+    async syncHistory(source: string): Promise<SyncRun[]> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/history`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SyncRun[];
     },
 };
