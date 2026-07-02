@@ -29,17 +29,21 @@ export const wsModalDefaultAgent = signal<AgentType>(DEFAULT_AGENT_TYPE);
 export const assistantModalOpen = signal(false);
 export const assistantModalName = signal('');
 export const assistantModalSkills = signal<string[]>([]);
+// Selected persona preset ref (see presets/souls); '' = 空人设 (no SOUL.md).
+export const assistantModalSoul = signal('');
 
 export const openCreateAssistantModal = () => {
     assistantModalOpen.value = true;
     assistantModalName.value = '';
     assistantModalSkills.value = [];
+    assistantModalSoul.value = '';
 };
 
 export const closeAssistantModal = () => {
     assistantModalOpen.value = false;
     assistantModalName.value = '';
     assistantModalSkills.value = [];
+    assistantModalSoul.value = '';
 };
 
 // ── Chat session creation modal ──

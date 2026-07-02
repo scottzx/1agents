@@ -297,9 +297,14 @@ export const createWorkspace = async (
  * Returns true on success. A 409 (duplicate name) surfaces the backend message
  * as a toast; the modal stays open by not throwing further.
  */
-export const createAssistant = async (name: string, skills: string[], avatar?: string): Promise<boolean> => {
+export const createAssistant = async (
+    name: string,
+    skills: string[],
+    avatar?: string,
+    soul?: string
+): Promise<boolean> => {
     try {
-        await workspaceService.create({ name, status: 'active', kind: 'assistant', avatar }, skills);
+        await workspaceService.create({ name, status: 'active', kind: 'assistant', avatar }, skills, soul);
         localStorage.setItem('1agents-onboarded', 'true');
         onboarded.value = true;
         const list = await loadWorkspaces(true);

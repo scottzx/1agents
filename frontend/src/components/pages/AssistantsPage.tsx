@@ -3,13 +3,16 @@ import { t } from '../i18n';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as modal from '../../stores/modalStore';
+import * as tabs from '../../stores/tabsStore';
+import { AssistantDetail } from './AssistantDetail';
 
 /**
  * AssistantsPage — the L1 "助理" landing.
  *
  * Bento card grid of every assistant (kind='assistant', excluding remote-device
- * projects). The built-in default is pinned first. Clicking a card selects that
- * assistant as the active workspace so the sidebar drops into its conversations.
+ * projects). The built-in default is pinned first. Clicking a card opens that
+ * assistant's detail view (skills / push-back etc.); the detail's "打开对话"
+ * button is what actually drops the sidebar into its conversations.
  *
  * Cards intentionally carry just avatar / name / a lightweight state hint for
  * now — richer status (skill count, channel indicators, pending tasks) will
@@ -19,6 +22,12 @@ export function AssistantsPage() {
     const language = ui.language.value;
     const workspaces = wsStore.workspaces.value;
     const folders = wsStore.folders.value;
+
+    // A selected assistant opens its detail view in place of the grid.
+    const detailId = tabs.assistantDetailId.value;
+    if (detailId && workspaces.some(w => w.id === detailId)) {
+        return <AssistantDetail workspaceId={detailId} />;
+    }
 
     const assistants = workspaces
         .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
@@ -35,9 +44,7 @@ export function AssistantsPage() {
     };
 
     const onCardClick = (wsId: string) => {
-        const ws = workspaces.find(w => w.id === wsId);
-        if (!ws) return;
-        wsStore.selectWorkspace(ws);
+        tabs.assistantDetailId.value = wsId;
     };
 
     return (

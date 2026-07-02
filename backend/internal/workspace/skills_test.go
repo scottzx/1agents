@@ -1,8 +1,13 @@
 package workspace
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -114,6 +119,111 @@ func TestSyncSkillsReplacesStaleLink(t *testing.T) {
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
 		t.Errorf(".agents/skills should have been replaced by a symlink")
+	}
+}
+
+func TestWorkspaceSkillDir(t *testing.T) {
+	ws := t.TempDir()
+	pkg := filepath.Join(ws, ".claude", "skills", "alpha")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "SKILL.md"), []byte("# alpha"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Scoped ref resolves to the same on-disk package.
+	got, err := workspaceSkillDir(ws, "shared:alpha")
+	if err != nil {
+		t.Fatalf("workspaceSkillDir: %v", err)
+	}
+	if got != pkg {
+		t.Errorf("got %q, want %q", got, pkg)
+	}
+
+	// Missing package and traversal refs are rejected.
+	if _, err := workspaceSkillDir(ws, "missing"); err == nil {
+		t.Error("expected error for missing skill package")
+	}
+	if _, err := workspaceSkillDir(ws, ".."); err == nil {
+		t.Error("expected error for traversal ref")
+	}
+}
+
+func TestPushSkillToShared(t *testing.T) {
+	var gotPath, gotSource string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var body struct {
+			SourcePath string `json:"sourcePath"`
+		}
+		data, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(data, &body)
+		gotSource = body.SourcePath
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"changed":true,"created":true}`))
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	changed, created, err := pushSkillToShared(addr, "shared:alpha", "/ws/.claude/skills/alpha")
+	if err != nil {
+		t.Fatalf("pushSkillToShared: %v", err)
+	}
+	if !changed || !created {
+		t.Errorf("expected changed=true created=true, got %v/%v", changed, created)
+	}
+	if gotPath != "/api/skills/shared:alpha/push-from-path" {
+		t.Errorf("forwarded path = %q", gotPath)
+	}
+	if gotSource != "/ws/.claude/skills/alpha" {
+		t.Errorf("forwarded sourcePath = %q", gotSource)
+	}
+}
+
+func TestSkillStatusAgainstShared(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"inStore":true,"differs":true,"exists":true,"name":"Alpha","description":"d"}`))
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	st, err := skillStatusAgainstShared(addr, "shared:alpha", "/ws/.claude/skills/alpha")
+	if err != nil {
+		t.Fatalf("skillStatusAgainstShared: %v", err)
+	}
+	if gotPath != "/api/skills/shared:alpha/status-from-path" {
+		t.Errorf("forwarded path = %q", gotPath)
+	}
+	if !st.InStore || !st.Differs || st.Name != "Alpha" {
+		t.Errorf("unexpected status: %+v", st)
+	}
+	if skillState(st) != "modified" {
+		t.Errorf("skillState = %q, want modified", skillState(st))
+	}
+	if skillState(sharedSkillStatus{InStore: false}) != "local" {
+		t.Error("not-in-store should map to local")
+	}
+	if skillState(sharedSkillStatus{InStore: true, Differs: false}) != "synced" {
+		t.Error("in-store identical should map to synced")
+	}
+}
+
+func TestPushSkillToSharedError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"no skill package (missing SKILL.md)"}`))
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	if _, _, err := pushSkillToShared(addr, "shared:alpha", "/nope"); err == nil {
+		t.Fatal("expected error from 400 response")
+	} else if !strings.Contains(err.Error(), "SKILL.md") {
+		t.Errorf("error should surface the manager message, got %v", err)
 	}
 }
 

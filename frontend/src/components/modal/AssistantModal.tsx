@@ -2,14 +2,17 @@ import { h, Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { t, type Lang } from '../i18n';
 import { skillService, type SkillRow } from '@1agents/core/services/skillService';
+import { soulService, type SoulPreset } from '@1agents/core/services/soulService';
 import { workspaceService } from '@1agents/core/services/workspaceService';
 import * as wsStore from '../../stores/workspaceStore';
 
 interface AssistantModalProps {
     name: string;
     skills: string[];
+    soul: string;
     onNameChange: (val: string) => void;
     onSkillsChange: (val: string[]) => void;
+    onSoulChange: (val: string) => void;
     onClose: () => void;
     onSubmit: (avatar: string) => void;
     language: Lang;
@@ -42,9 +45,37 @@ const AVATAR_PRESETS = Array.from({ length: 8 }, (_, i) => `/avatars/presets/pre
  * via toast; the modal stays open when submit is refused.
  */
 export function AssistantModal(props: AssistantModalProps) {
-    const { name, skills, onNameChange, onSkillsChange, onClose, onSubmit, language } = props;
+    const { name, skills, soul, onNameChange, onSkillsChange, onSoulChange, onClose, onSubmit, language } = props;
     const [avatar, setAvatar] = useState<string>(AVATAR_PRESETS[0]); // always a served URL
     const [tab, setTab] = useState<BottomTab>('skills');
+
+    // Persona presets (人设) — loaded once on mount.
+    const [souls, setSouls] = useState<SoulPreset[]>([]);
+    const [soulsLoading, setSoulsLoading] = useState(true);
+    const [soulSearch, setSoulSearch] = useState('');
+    useEffect(() => {
+        let cancelled = false;
+        soulService
+            .listSouls(language)
+            .then(list => {
+                if (!cancelled) {
+                    setSouls(list);
+                    setSoulsLoading(false);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setSoulsLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [language]);
+
+    const filteredSouls = useMemo(() => {
+        const q = soulSearch.trim().toLowerCase();
+        if (!q) return souls;
+        return souls.filter(s => s.title.toLowerCase().includes(q) || s.summary.toLowerCase().includes(q));
+    }, [souls, soulSearch]);
 
     // Skills list — loaded once on mount.
     const [rows, setRows] = useState<SkillRow[]>([]);
@@ -222,7 +253,47 @@ export function AssistantModal(props: AssistantModalProps) {
                             </div>
                         </Fragment>
                     )}
-                    {(tab === 'prompt' || tab === 'mcp' || tab === 'channel') && (
+                    {tab === 'prompt' && (
+                        <Fragment>
+                            <p class="ws-modal-hint">{t('modal.assistant.soulHint', language)}</p>
+                            <input
+                                class="ws-modal-input assistant-soul-search"
+                                placeholder={t('modal.assistant.soulSearch', language)}
+                                value={soulSearch}
+                                onInput={(e: Event) => setSoulSearch((e.target as HTMLInputElement).value)}
+                            />
+                            <div class="assistant-modal-skill-grid">
+                                {/* 空人设 — always first, selected when no ref chosen. */}
+                                <button
+                                    type="button"
+                                    class={`assistant-skill-card${soul === '' ? ' checked' : ''}`}
+                                    onClick={() => onSoulChange('')}
+                                >
+                                    <div class="assistant-skill-card-title">
+                                        {t('modal.assistant.soulBlank', language)}
+                                    </div>
+                                    <div class="assistant-skill-card-desc">
+                                        {t('modal.assistant.soulBlankDesc', language)}
+                                    </div>
+                                </button>
+                                {soulsLoading && <div class="assistant-modal-skills-empty">…</div>}
+                                {!soulsLoading &&
+                                    filteredSouls.map(s => (
+                                        <button
+                                            key={s.ref}
+                                            type="button"
+                                            class={`assistant-skill-card${soul === s.ref ? ' checked' : ''}`}
+                                            onClick={() => onSoulChange(s.ref)}
+                                            title={s.content.slice(0, 400)}
+                                        >
+                                            <div class="assistant-skill-card-title">{s.title}</div>
+                                            {s.summary && <div class="assistant-skill-card-desc">{s.summary}</div>}
+                                        </button>
+                                    ))}
+                            </div>
+                        </Fragment>
+                    )}
+                    {(tab === 'mcp' || tab === 'channel') && (
                         <div class="assistant-modal-tab-placeholder">{t('assistant.tab.comingSoon', language)}</div>
                     )}
                 </div>

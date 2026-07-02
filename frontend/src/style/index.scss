@@ -16555,6 +16555,248 @@ body {
   color: var(--text-secondary);
 }
 
+// ── Assistant detail view (card → detail) ─────────────────────────────────
+.assistant-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
+.assistant-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.assistant-detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--bento-radius-sm);
+
+  &:hover {
+    background: var(--btn-hover);
+    color: var(--text-main);
+  }
+}
+
+.assistant-detail-ident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant-detail-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.assistant-detail-emoji {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.assistant-detail-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-detail-openchat {
+  padding: 7px 14px;
+  border-radius: var(--bento-radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--btn-hover);
+    border-color: var(--accent-color);
+  }
+}
+
+.assistant-detail-skills,
+.assistant-detail-soul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  h2 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin: 0;
+  }
+}
+
+.assistant-soul-editor {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+}
+
+.assistant-soul-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.assistant-detail-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.assistant-detail-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 16px 0;
+}
+
+.assistant-skill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assistant-skill-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background: var(--bg-card);
+}
+
+.assistant-skill-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.assistant-skill-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.assistant-skill-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-skill-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  // Clamp long frontmatter descriptions to a few lines.
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.assistant-skill-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+
+  &.is-modified {
+    background: var(--warning-bg);
+    color: var(--warning-fg);
+  }
+  &.is-synced {
+    background: var(--success-bg);
+    color: var(--success-fg);
+  }
+  &.is-local {
+    background: var(--accent-light);
+    color: var(--accent-fg);
+  }
+}
+
+.assistant-skill-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.assistant-skill-flash {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.assistant-skill-push {
+  padding: 5px 12px;
+  border-radius: var(--bento-radius-sm);
+  border: 1px solid var(--accent-color);
+  background: var(--accent-color);
+  color: var(--on-accent);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  &:disabled {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border-color: var(--border-color);
+    cursor: default;
+  }
+}
+
 // NewChatHome workspace picker — 助理/项目 kind tag on trigger + dropdown rows.
 .dropdown-kind-tag {
   font-size: 10px;

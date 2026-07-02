@@ -88,6 +88,13 @@ export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
 export const discoveryCategory = signal('featured');
 
 /**
+ * Assistant currently opened in the 助理 detail view (workspace id), or null for
+ * the card grid. Set when a card on AssistantsPage is clicked; cleared by the
+ * detail's back button. Kept here alongside the other L1 sub-view state.
+ */
+export const assistantDetailId = signal<string | null>(null);
+
+/**
  * Deep-link intent parsed from `?ws=<id>&view=<tab>` on boot (app.tsx
  * `checkUrlDeepLink`). The 小程序 native shell loads main-H5 modules
  * (tasks/files/git/discovery/settings) in a web-view with these params so the

@@ -1415,7 +1415,14 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// carry their history.
 		mcpServers = h.buildReminderMcpServers(wsID)
 		if acpSessionID == "" {
+			// Assistant persona (人设): if the workspace carries a SOUL.md, inject
+			// it ahead of the reminder hint as the session's system prompt. Empty
+			// SOUL.md (blank persona) leaves just the hint. New sessions only —
+			// resumed ones already have the persona in replayed history.
 			systemContext = reminderChatHint
+			if soul, err := workspace.ReadWorkspaceSoul(wsPath); err == nil && strings.TrimSpace(soul) != "" {
+				systemContext = strings.TrimSpace(soul) + "\n\n" + reminderChatHint
+			}
 		}
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task, reminder tools)", sessionId)
 	}

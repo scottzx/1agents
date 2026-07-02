@@ -1,15 +1,24 @@
 package workspace
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// defaultSkillsAddr is the local address the 1skills FastAPI server listens on
+// (mirrors config.Config default). The push-back handler POSTs to it directly;
+// the workspace Handler can override via SetSkillsAddr with the resolved config.
+const defaultSkillsAddr = "127.0.0.1:38085"
 
 // newAssistantBadge mints an assistant's identity badge (工牌): today's date plus
 // a 4-digit sequence that increments per day, e.g. 20260702-0001. The sequence is
@@ -107,6 +116,170 @@ func syncSkillsToWorkspace(workspacePath string, refs []string) ([]string, error
 		log.Printf("[workspace] link .agents/skills: %v", err)
 	}
 	return synced, nil
+}
+
+// workspaceSkillDir resolves a workspace's own copy of a skill package
+// (<ws>/.claude/skills/<dir>) from a skill ref, validating it is a real skill
+// package (has SKILL.md). dir is derived via normalizeSkillRef, which strips any
+// scope prefix and guards against path traversal.
+func workspaceSkillDir(workspacePath, skillRef string) (string, error) {
+	dir := normalizeSkillRef(skillRef)
+	if dir == "" || dir == "." || dir == ".." {
+		return "", fmt.Errorf("invalid skill ref %q", skillRef)
+	}
+	pkg := filepath.Join(workspacePath, ".claude", "skills", dir)
+	if info, err := os.Stat(filepath.Join(pkg, "SKILL.md")); err != nil || info.IsDir() {
+		return "", fmt.Errorf("no skill package at %s", pkg)
+	}
+	return pkg, nil
+}
+
+// pushSkillToShared forwards a workspace's edited skill copy back to the 1skills
+// (母体) shared store via its push-from-path endpoint. The store fingerprints the
+// source and only rewrites (and bumps the manifest revision) when the content
+// actually differs — Go never touches the store or manifest directly, keeping
+// drift detection correct. Returns whether the store baseline changed.
+func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, created bool, err error) {
+	if skillsAddr == "" {
+		skillsAddr = defaultSkillsAddr
+	}
+	target := &url.URL{
+		Scheme: "http",
+		Host:   skillsAddr,
+		Path:   "/api/skills/" + skillRef + "/push-from-path",
+	}
+	payload, _ := json.Marshal(map[string]string{"sourcePath": sourcePath})
+	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return false, false, fmt.Errorf("reach skill manager: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(body, &e)
+		if e.Error == "" {
+			e.Error = strings.TrimSpace(string(body))
+		}
+		return false, false, fmt.Errorf("skill manager: %s", e.Error)
+	}
+	var out struct {
+		Changed bool `json:"changed"`
+		Created bool `json:"created"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return false, false, fmt.Errorf("decode skill manager response: %w", err)
+	}
+	return out.Changed, out.Created, nil
+}
+
+// WorkspaceSkillStatus describes one skill materialized in a workspace's
+// .claude/skills: its parsed frontmatter (for the card) plus its relationship to
+// the shared store (母体) as one of three states.
+type WorkspaceSkillStatus struct {
+	SkillRef    string `json:"skillRef"`    // "shared:<dir>" — the store ref
+	Dir         string `json:"dir"`         // package directory name
+	Name        string `json:"name"`        // declared name from SKILL.md frontmatter
+	Description string `json:"description"` // description from SKILL.md frontmatter
+	// State: "synced" (in store, identical), "modified" (in store, drifted →
+	// push overwrites), or "local" (not in store → push creates/ingests).
+	State string `json:"state"`
+}
+
+// sharedSkillStatus mirrors the 1skills status-from-path response.
+type sharedSkillStatus struct {
+	InStore     bool   `json:"inStore"`
+	Differs     bool   `json:"differs"`
+	Exists      bool   `json:"exists"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// listWorkspaceSkills enumerates the skill packages under <ws>/.claude/skills and
+// asks the 1skills store for each one's status (in-store + drift + frontmatter).
+// A skill whose status check fails is reported as "local" rather than dropped, so
+// the detail page still lists it.
+func listWorkspaceSkills(workspacePath, skillsAddr string) ([]WorkspaceSkillStatus, error) {
+	root := filepath.Join(workspacePath, ".claude", "skills")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []WorkspaceSkillStatus{}, nil
+		}
+		return nil, err
+	}
+	out := make([]WorkspaceSkillStatus, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		pkg := filepath.Join(root, e.Name())
+		if _, err := os.Stat(filepath.Join(pkg, "SKILL.md")); err != nil {
+			continue // not a skill package
+		}
+		ref := "shared:" + e.Name()
+		st, err := skillStatusAgainstShared(skillsAddr, ref, pkg)
+		if err != nil {
+			log.Printf("[workspace] status skill %q: %v", e.Name(), err)
+			out = append(out, WorkspaceSkillStatus{SkillRef: ref, Dir: e.Name(), Name: e.Name(), State: "local"})
+			continue
+		}
+		name := st.Name
+		if name == "" {
+			name = e.Name()
+		}
+		out = append(out, WorkspaceSkillStatus{
+			SkillRef:    ref,
+			Dir:         e.Name(),
+			Name:        name,
+			Description: st.Description,
+			State:       skillState(st),
+		})
+	}
+	return out, nil
+}
+
+// skillState collapses the store status into the three UI states.
+func skillState(st sharedSkillStatus) string {
+	switch {
+	case !st.InStore:
+		return "local"
+	case st.Differs:
+		return "modified"
+	default:
+		return "synced"
+	}
+}
+
+// skillStatusAgainstShared asks the 1skills store (母体) for a workspace copy's
+// status (in-store, drift, parsed frontmatter). Read-only counterpart to
+// pushSkillToShared.
+func skillStatusAgainstShared(skillsAddr, skillRef, sourcePath string) (sharedSkillStatus, error) {
+	if skillsAddr == "" {
+		skillsAddr = defaultSkillsAddr
+	}
+	target := &url.URL{
+		Scheme: "http",
+		Host:   skillsAddr,
+		Path:   "/api/skills/" + skillRef + "/status-from-path",
+	}
+	payload, _ := json.Marshal(map[string]string{"sourcePath": sourcePath})
+	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return sharedSkillStatus{}, fmt.Errorf("reach skill manager: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return sharedSkillStatus{}, fmt.Errorf("skill manager: %s", strings.TrimSpace(string(body)))
+	}
+	var out sharedSkillStatus
+	if err := json.Unmarshal(body, &out); err != nil {
+		return sharedSkillStatus{}, fmt.Errorf("decode status response: %w", err)
+	}
+	return out, nil
 }
 
 // linkAgentsSkills points <ws>/.agents/skills at <ws>/.claude/skills with a

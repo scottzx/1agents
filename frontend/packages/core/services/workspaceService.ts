@@ -23,9 +23,10 @@ export const workspaceService = {
      * — the backend ignores it for plain workspace creates. `path` and `id` can
      * be omitted for assistants; the backend mints a badge folder in that case.
      */
-    async create(ws: Partial<Workspace> & { name: string }, skills?: string[]): Promise<void> {
+    async create(ws: Partial<Workspace> & { name: string }, skills?: string[], soul?: string): Promise<void> {
         const body: Record<string, unknown> = { ...ws };
         if (skills && skills.length > 0) body.skills = skills;
+        if (soul) body.soul = soul;
         const res = await apiFetch('/workspace/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
