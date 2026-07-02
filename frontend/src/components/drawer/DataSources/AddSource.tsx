@@ -55,7 +55,7 @@ const SOURCE_TYPES: SrcType[] = [
     },
 ];
 
-export function AddSource({ onGoConfig }: { onGoConfig: () => void }) {
+export function AddSource({ onConnect }: { onConnect: (key: string) => void }) {
     const language = ui.language.value;
 
     const badge = (s: SrcStatus): { text: string; cls: string } => {
@@ -89,7 +89,7 @@ export function AddSource({ onGoConfig }: { onGoConfig: () => void }) {
                                 {s.status === 'connected' ? (
                                     <button
                                         class="contacts-btn contacts-btn-sm datasource-src-btn"
-                                        onClick={onGoConfig}
+                                        onClick={() => onConnect(s.key)}
                                     >
                                         {t('datasource.add.goConfig', language)}
                                     </button>

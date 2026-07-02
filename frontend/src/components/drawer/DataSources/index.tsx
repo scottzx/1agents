@@ -20,7 +20,12 @@ import { AddSource } from './AddSource';
 type SourceId = 'feishu' | 'apple' | 'add';
 type Detail = { source: string; kind: string; title: string };
 
-const SOURCE_LABEL: Record<SourceId, string> = { feishu: '飞书', apple: 'Apple', add: '' };
+// Breadcrumb label per source — via i18n (飞书 / Lark Suite, Apple).
+const SOURCE_LABEL_KEY: Record<SourceId, string> = {
+    feishu: 'datasource.cat.feishu',
+    apple: 'datasource.cat.apple',
+    add: '',
+};
 
 export function DataSourcesPane() {
     const language = ui.language.value;
@@ -55,7 +60,7 @@ export function DataSourcesPane() {
             crumbs.push({ label: t('datasource.tab.add', language) });
         } else {
             crumbs.push({
-                label: SOURCE_LABEL[source.value],
+                label: t(SOURCE_LABEL_KEY[source.value], language),
                 onClick: detail.value ? clearDetail : undefined,
             });
             if (detail.value) crumbs.push({ label: detail.value.title });
@@ -75,7 +80,7 @@ export function DataSourcesPane() {
                 </div>
             ) : source.value === 'add' ? (
                 <div class="datasource-tab-body">
-                    <AddSource onGoConfig={() => enterSource('feishu')} />
+                    <AddSource onConnect={enterSource} />
                 </div>
             ) : detail.value ? (
                 <div class="datasource-tab-body">

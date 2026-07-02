@@ -1507,7 +1507,7 @@ export const enUS: Record<string, string> = {
     'datasource.deleted': 'deleted',
     'datasource.detailEmpty': 'No records yet — authorize and sync under "Manage Sources".',
     'datasource.cat.apple': 'Apple',
-    'datasource.cat.feishu': 'Feishu',
+    'datasource.cat.feishu': 'Lark Suite',
     'datasource.type.contacts': 'Contacts',
     'datasource.type.todos': 'Reminders',
     'datasource.type.calendar': 'Calendar',

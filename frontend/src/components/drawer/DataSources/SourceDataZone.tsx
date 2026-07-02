@@ -33,7 +33,8 @@ export function SourceDataZone({
     onOpen: (source: string, kind: string, title: string) => void;
 }) {
     const language = ui.language.value;
-    const [rows, setRows] = useState<SourceSummary[]>([]);
+    // null = still loading — renders nothing instead of flashing the empty hint.
+    const [rows, setRows] = useState<SourceSummary[] | null>(null);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -53,8 +54,10 @@ export function SourceDataZone({
         <div class="fscard-zone">
             <div class="fscard-zone-title">{t('datasource.data.title', language)}</div>
             {error && <div class="fscard-error">{error}</div>}
-            {rows.length === 0 && !error && <div class="contacts-empty">{t('datasource.data.empty', language)}</div>}
-            {rows.length > 0 && (
+            {rows !== null && rows.length === 0 && !error && (
+                <div class="contacts-empty">{t('datasource.data.empty', language)}</div>
+            )}
+            {rows !== null && rows.length > 0 && (
                 <div class="bento-grid fscard-data-grid">
                     {rows.map(r => {
                         const title = kindLabel(r.kind, language);

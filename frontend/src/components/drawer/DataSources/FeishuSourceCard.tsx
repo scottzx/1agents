@@ -1,5 +1,5 @@
 import { h, Fragment } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 
 import { t, type Lang } from '../../../i18n';
 import { sourceCliService, type CLIStatus } from '@1agents/core/services/sourceCliService';
@@ -466,9 +466,16 @@ interface HistoryZoneProps {
     refreshTick: number;
 }
 
+// Poll cadence while a dispatched work-order is still pending/running, and a
+// per-dispatch budget so a stuck executor can't keep the poll alive forever.
+const HISTORY_POLL_MS = 3000;
+const HISTORY_POLL_MAX = 20;
+
 export function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
-    const [runs, setRuns] = useState<SyncRun[]>([]);
+    // null = still loading — renders nothing instead of flashing the empty hint.
+    const [runs, setRuns] = useState<SyncRun[] | null>(null);
     const [error, setError] = useState('');
+    const pollsLeft = useRef(HISTORY_POLL_MAX);
 
     const load = useCallback(async () => {
         setError('');
@@ -480,8 +487,21 @@ export function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
     }, []);
 
     useEffect(() => {
+        pollsLeft.current = HISTORY_POLL_MAX; // each dispatch gets a fresh budget
         load();
     }, [load, refreshTick]);
+
+    // While any run is non-terminal, re-fetch so 立即同步 shows its outcome
+    // (pending → running → done/failed) without a manual refresh.
+    useEffect(() => {
+        if (!runs?.some(r => r.status === 'pending' || r.status === 'running')) return;
+        if (pollsLeft.current <= 0) return;
+        const id = window.setTimeout(() => {
+            pollsLeft.current -= 1;
+            load();
+        }, HISTORY_POLL_MS);
+        return () => window.clearTimeout(id);
+    }, [runs, load]);
 
     const statusLabel = (status: string) => {
         const norm = status === 'completed' ? 'done' : status;
@@ -496,11 +516,11 @@ export function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
 
             {error && <div class="fscard-error">{error}</div>}
 
-            {runs.length === 0 && !error && (
+            {runs !== null && runs.length === 0 && !error && (
                 <div class="contacts-empty">{t('datasource.collection.historyEmpty', language)}</div>
             )}
 
-            {runs.slice(0, 20).map(run => {
+            {(runs ?? []).slice(0, 20).map(run => {
                 const stats = parseSyncResult(run.result);
                 const cls = syncStatusClass(run.status);
                 return (
