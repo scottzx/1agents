@@ -18729,6 +18729,16 @@ body {
   font-size: 22px;
 }
 
+// Live rollup line on a source card (record total + last fetch).
+.source-home-stats {
+  font-size: 12px;
+  color: var(--text-secondary);
+
+  &.muted {
+    color: var(--text-muted);
+  }
+}
+
 .source-home-add {
   border-style: dashed;
 
