@@ -41,7 +41,9 @@ func (h *Handler) HandleAgendaRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []calendarItem{}
 	for _, p := range projects {
-		if p.Status != meta.ProjectStatusActive {
+		// Include active projects and system-owned workspaces (数据源同步 host).
+		// Archived / killed / any other status stays out — those are dormant.
+		if p.Status != meta.ProjectStatusActive && p.Status != meta.ProjectStatusSystem {
 			continue
 		}
 		// Tasks → personal reminders + scheduled/recurring project tasks.

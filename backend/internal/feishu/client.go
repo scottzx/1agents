@@ -55,6 +55,35 @@ func newClientWithRunner(run CLIRunner, account string) *Client {
 	return &Client{run: run, account: account}
 }
 
+// NewClientWithRunner builds a Client over an injected CLIRunner. It is the
+// cross-package test seam (e.g. the sources FeishuPuller tests) — production
+// code uses NewClient.
+func NewClientWithRunner(run CLIRunner, account string) *Client {
+	return newClientWithRunner(run, account)
+}
+
+// Account returns the channel account id this client is stamped with.
+func (c *Client) Account() string { return c.account }
+
+// RawAPI is the generic lark-cli passthrough the ingestion Puller drives: it
+// issues `lark-cli api <method> <path>` with params, always aggregating every
+// page (--page-all --page-limit 0) and returning raw JSON stdout verbatim. The
+// domain-specific helpers below (ListChats/FetchMessages/…) are thin wrappers
+// over it; new data domains need only a CollectionDescriptor, not new Go.
+func (c *Client) RawAPI(ctx context.Context, method, path string, params map[string]string, asUser bool) ([]byte, error) {
+	as := "auto"
+	if asUser {
+		as = "user"
+	}
+	args := []string{"api", method, path}
+	if len(params) > 0 {
+		pj, _ := json.Marshal(params)
+		args = append(args, "--params", string(pj))
+	}
+	args = append(args, "--as", as, "--page-all", "--page-limit", "0", "--format", "json")
+	return c.run(ctx, args...)
+}
+
 // ── lark-cli response shapes (only the fields we consume) ──
 
 type apiMsgResp struct {
@@ -134,9 +163,8 @@ type DoctorCheck struct {
 // ListChats returns every Feishu group the logged-in user is in. --page-all
 // loops all pages internally, mirroring FetchMessages.
 func (c *Client) ListChats(ctx context.Context) ([]ChatInfo, error) {
-	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/chats",
-		"--params", `{"page_size":"50"}`, "--as", "user",
-		"--page-all", "--page-limit", "0", "--format", "json")
+	out, err := c.RawAPI(ctx, "GET", "/open-apis/im/v1/chats",
+		map[string]string{"page_size": "50"}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -196,10 +224,7 @@ func (c *Client) FetchMessages(ctx context.Context, chatID string, startSec int6
 	if startSec > 0 {
 		params["start_time"] = strconv.FormatInt(startSec, 10)
 	}
-	paramsJSON, _ := json.Marshal(params)
-	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/messages",
-		"--params", string(paramsJSON), "--as", "user",
-		"--page-all", "--page-limit", "0", "--format", "json")
+	out, err := c.RawAPI(ctx, "GET", "/open-apis/im/v1/messages", params, true)
 	if err != nil {
 		return nil, err
 	}
@@ -245,9 +270,8 @@ type Member struct {
 // real size (e.g. 5000), so callers can show real size alongside what was
 // actually ingested. Used by the 二度联系人 ingestion path.
 func (c *Client) FetchMembersDetailed(ctx context.Context, chatID string) (members []Member, total int, err error) {
-	out, err := c.run(ctx, "api", "GET", "/open-apis/im/v1/chats/"+chatID+"/members",
-		"--params", `{"page_size":"100","member_id_type":"open_id"}`, "--as", "user",
-		"--page-all", "--page-limit", "0", "--format", "json")
+	out, err := c.RawAPI(ctx, "GET", "/open-apis/im/v1/chats/"+chatID+"/members",
+		map[string]string{"page_size": "100", "member_id_type": "open_id"}, true)
 	if err != nil {
 		return nil, 0, err
 	}

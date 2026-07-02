@@ -18398,3 +18398,431 @@ body {
     }
   }
 }
+
+// ── 飞书数据源卡片 (FeishuSourceCard) ─────────────────────────────────────────
+// Three-zone card: CLI lifecycle / collection config / sync history.
+// Reuses .contacts-* primitives for rows and buttons; adds its own
+// .fscard-* namespace for new structural elements.
+
+.fscard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+// ── Zone: CLI lifecycle ───────────────────────────────────────────────────────
+
+.fscard-cli {
+  @extend %bento-card;
+  gap: 10px;
+}
+
+.fscard-cli-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fscard-cli-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.fscard-cli-version {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.fscard-cli-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fscard-badge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+
+  &.ok {
+    background: var(--success-bg);
+    color: var(--success-fg);
+  }
+  &.bad {
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+  }
+  &.warn {
+    background: var(--warning-bg);
+    color: var(--warning-fg);
+  }
+  &.muted {
+    background: var(--bg-panel);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+  }
+}
+
+.fscard-cli-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+
+  .fscard-cli-row-label {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding-top: 1px;
+  }
+  .fscard-cli-row-val {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-main);
+    font-size: 12px;
+  }
+}
+
+.fscard-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fscard-hint-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.fscard-hint-code {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+.fscard-copy-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-page);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    background: var(--accent-light);
+  }
+}
+
+// ── Zone: collection config ───────────────────────────────────────────────────
+
+.fscard-collections {
+  @extend %bento-card;
+  gap: 10px;
+}
+
+.fscard-zone-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+// Source-centric panel (飞书 / Apple): a vertical stack of zones.
+.source-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 2px 24px;
+}
+
+// 数据源首页 (source landing): a grid of source cards.
+.source-home {
+  padding: 8px 2px 24px;
+
+  .bento-grid {
+    --bento-min-col: 240px;
+  }
+}
+
+.source-home-card {
+  cursor: pointer;
+  text-align: left;
+  min-height: 150px;
+  gap: 14px;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+    box-shadow: var(--shadow-md), 0 0 0 1px var(--accent-color);
+  }
+}
+
+.source-home-icon {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+}
+
+.source-home-add {
+  border-style: dashed;
+
+  .source-home-add-body {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+
+  .source-home-add-plus {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+}
+
+// Generic zone wrapper (auth / groups / data) inside a source panel.
+.fscard-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+// Raw-data browse: a Bento grid of per-kind cards.
+.fscard-data-grid {
+  --bento-min-col: 220px;
+}
+
+.fscard-data-card {
+  cursor: pointer;
+  text-align: left;
+  gap: 14px;
+  border: 1px solid var(--border-color);
+
+  &:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color), var(--shadow-sm);
+  }
+}
+
+.fscard-data-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-color);
+  background-color: var(--accent-light);
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.fscard-data-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.fscard-data-open {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.fscard-domain-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fscard-domain-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.fscard-collection-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+
+  &:last-child { border-bottom: none; }
+}
+
+.fscard-collection-main {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fscard-collection-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.fscard-collection-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.fscard-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+
+  label { white-space: nowrap; }
+
+  input[type='number'] {
+    width: 60px;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-main);
+    font-size: 12px;
+  }
+
+  select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-main);
+    font-size: 12px;
+  }
+}
+
+.fscard-perchat-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding-left: 4px;
+}
+
+// ── Zone: history & stats ─────────────────────────────────────────────────────
+
+.fscard-history {
+  @extend %bento-card;
+  gap: 10px;
+}
+
+.fscard-history-run {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+
+  &:last-child { border-bottom: none; }
+}
+
+.fscard-history-kind {
+  font-weight: 500;
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.fscard-history-status {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.done { background: var(--success-bg); color: var(--success-fg); }
+  &.running { background: var(--accent-light); color: var(--accent-color); }
+  &.pending { background: var(--bg-panel); color: var(--text-muted); border: 1px solid var(--border-color); }
+  &.failed { background: var(--danger-bg); color: var(--danger-fg); }
+}
+
+.fscard-history-stats {
+  color: var(--text-secondary);
+}
+
+.fscard-history-time {
+  margin-left: auto;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fscard-sync-btn {
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: var(--accent-light);
+  }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.fscard-toast {
+  padding: 6px 10px;
+  border-radius: var(--bento-radius-sm, 8px);
+  background: var(--success-bg);
+  color: var(--success-fg);
+  font-size: 13px;
+}
+
+.fscard-error {
+  padding: 6px 10px;
+  border-radius: var(--bento-radius-sm, 8px);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  font-size: 13px;
+}

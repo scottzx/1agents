@@ -8,6 +8,7 @@ package sources
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -100,9 +101,11 @@ func (h *Handler) HandleRecords(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordFields parses a raw payload into native (key, value) fields by content
-// type. vCard is handled today; other formats (iCal, JSON) plug in here as
-// their pullers land in bronze. Unknown formats fall back to a single raw
-// field so nothing is silently dropped.
+// type, so the 多维表格 viewer gets real columns instead of one opaque blob.
+// vCard → parsed props; JSON → one field per top-level key (Feishu et al.);
+// unknown formats fall back to a single raw field so nothing is silently dropped.
+// This is a viewer-side projection only — bronze still holds the verbatim
+// payload, and governance (gold) is a separate step.
 func recordFields(contentType, kind, payload string) []Field {
 	if strings.Contains(contentType, "vcard") || kind == KindContact {
 		props := icloud.VCardProps(payload)
@@ -112,7 +115,43 @@ func recordFields(contentType, kind, payload string) []Field {
 		}
 		return out
 	}
+	if strings.Contains(contentType, "json") {
+		if fields, ok := jsonFields(payload); ok {
+			return fields
+		}
+	}
 	return []Field{{Key: "payload", Value: capValue(payload)}}
+}
+
+// jsonFields flattens a JSON object's top-level keys into table columns: scalars
+// become their string form, nested objects/arrays their compact JSON. Keys are
+// sorted for a stable column order. ok=false when the payload isn't a JSON
+// object (caller falls back to the raw field).
+func jsonFields(payload string) (fields []Field, ok bool) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(payload), &m); err != nil {
+		return nil, false
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	fields = make([]Field, 0, len(keys))
+	for _, k := range keys {
+		fields = append(fields, Field{Key: k, Value: capValue(jsonScalar(m[k]))})
+	}
+	return fields, true
+}
+
+// jsonScalar renders a JSON value for a cell: a string unquoted, anything else
+// (number/bool/object/array/null) as its literal JSON text.
+func jsonScalar(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 // capValue bounds a single field value so a stray blob (e.g. a base64 PHOTO)
