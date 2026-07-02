@@ -23,9 +23,10 @@ import (
 type Handler struct {
 	fs  *feishu.Store
 	cs  *meta.ContactStore
-	ccs *meta.FeishuChatStore     // tracked-chat names overlay onto session summaries
-	cps *meta.CompanyStore        // tenant_key→org-name map for the contacts grid/modal
-	cms *meta.ChannelModuleStore  // per-sub-module consent + crawl rules (privacy gate)
+	ccs *meta.FeishuChatStore    // tracked-chat names overlay onto session summaries
+	cps *meta.CompanyStore       // tenant_key→org-name map for the contacts grid/modal
+	cms *meta.ChannelModuleStore // per-sub-module consent + crawl rules (privacy gate)
+	sas *meta.SourceAccountStore // 数据源账号注册表 (nil in tests → legacy single-account path)
 }
 
 // NewHandler builds a Handler from explicit stores (used by tests). ccs may be
@@ -55,7 +56,9 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db), meta.NewCompanyStore(db), meta.NewChannelModuleStore(db)), nil
+	h := NewHandler(fs, meta.NewContactStore(db), meta.NewFeishuChatStore(db), meta.NewCompanyStore(db), meta.NewChannelModuleStore(db))
+	h.sas = meta.NewSourceAccountStore(db)
+	return h, nil
 }
 
 // ── HTTP helpers ──

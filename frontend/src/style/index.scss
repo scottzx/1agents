@@ -19342,6 +19342,51 @@ body {
   }
 }
 
+// Per-account card: a small delete affordance in the card header (源为中心 —
+// each 厂家 + 账号 is removable). Stops propagation so it doesn't open the card.
+.source-home-del {
+  margin-left: auto;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--bento-radius-sm);
+
+  &:hover {
+    color: var(--danger-fg);
+    background: rgba(var(--danger-rgb), 0.1);
+  }
+}
+
+// 添加数据源: the vendor → region → account form (step 2 of AddSource).
+.datasource-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.datasource-region-choices {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.datasource-form-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-right: 4px;
+}
+
+// Microsoft/Google instance panel: the roadmap collection grid.
+.source-instance-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 // Generic zone wrapper (auth / groups / data) inside a source panel.
 .fscard-zone {
   display: flex;
