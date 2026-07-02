@@ -105,13 +105,23 @@ export interface CreateAccountInput {
 }
 
 // Microsoft Graph OAuth connect state for one account. `configured` is false
-// until the per-region app registration (microsoft_oauth.json) is present.
+// until the per-region app registration is present.
 export interface MSOAuthStatus {
     configured: boolean;
     connected: boolean;
     expiresAt: number; // epoch seconds; 0 when not connected
     scope: string;
     region: string; // 'intl' | 'cn'
+}
+
+// Per-region Microsoft app registration (clientId is an app identifier, not a
+// secret). Backs the in-UI configure form.
+export interface MSOAuthConfig {
+    region: string;
+    clientId: string;
+    tenant: string;
+    redirectUri: string;
+    configured: boolean;
 }
 
 export const sourceService = {
@@ -197,6 +207,31 @@ export const sourceService = {
         const res = await apiFetch(`/sources/${encodeURIComponent(source)}/history`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SyncRun[];
+    },
+
+    /** GET /api/sources/oauth/microsoft/config — current app registration for a
+     * region (to prefill the in-UI settings form). Never returns a secret. */
+    async msOAuthGetConfig(region: string): Promise<MSOAuthConfig> {
+        const res = await apiFetch(`/sources/oauth/microsoft/config?region=${encodeURIComponent(region)}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as MSOAuthConfig;
+    },
+
+    /** POST /api/sources/oauth/microsoft/config — save clientId/tenant for a region
+     * (hot-reloaded, no restart), so the connect button lights up. */
+    async msOAuthSetConfig(input: {
+        region: string;
+        clientId: string;
+        tenant: string;
+        redirectUri?: string;
+    }): Promise<{ configured: boolean }> {
+        const res = await apiFetch('/sources/oauth/microsoft/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { configured: boolean };
     },
 
     /** POST /api/sources/oauth/microsoft/start — begin the Microsoft Graph connect

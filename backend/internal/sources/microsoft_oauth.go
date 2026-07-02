@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -149,13 +150,14 @@ type msTokenResp struct {
 // code→token exchange, refresh, and the per-account token store. It doubles as
 // the puller's MSTokenProvider (AccessToken).
 type MSAuth struct {
+	mu   sync.RWMutex // guards cfg (hot-updated via SetRegionConfig from the UI)
 	cfg  MSOAuthConfig
 	dir  string // token store dir
 	http *http.Client
 }
 
 // NewMSAuth loads the client config (a missing file is not an error — the flow
-// simply reports "not configured" until the file is dropped in) and prepares the
+// simply reports "not configured" until the config is set) and prepares the
 // token store dir.
 func NewMSAuth() (*MSAuth, error) {
 	cfg, err := loadMSOAuthConfig()
@@ -169,14 +171,53 @@ func NewMSAuth() (*MSAuth, error) {
 	}, nil
 }
 
+// regionCfg returns a copy of a region's client config under the read lock.
+func (a *MSAuth) regionCfg(region string) MSOAuthRegionConfig {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cfg.forRegion(region)
+}
+
+// RegionConfig returns a region's current client config (for the settings form
+// to prefill). The clientId is an app identifier, not a secret, so it is safe to
+// surface; no client_secret is ever returned.
+func (a *MSAuth) RegionConfig(region string) MSOAuthRegionConfig {
+	rc := a.regionCfg(region)
+	rc.ClientSecret = ""
+	return rc
+}
+
+// SetRegionConfig updates a region's app registration (clientId/tenant, and
+// redirectUri when non-empty) both in memory (hot — no restart) and on disk.
+// This backs the in-UI "configure & connect" form so the user never hand-edits
+// the JSON.
+func (a *MSAuth) SetRegionConfig(region, clientID, tenant, redirectURI string) error {
+	a.mu.Lock()
+	rc := a.cfg.forRegion(region) // already holding the write lock — read directly
+
+	rc.ClientID = strings.TrimSpace(clientID)
+	rc.Tenant = strings.TrimSpace(tenant)
+	if strings.TrimSpace(redirectURI) != "" {
+		rc.RedirectURI = strings.TrimSpace(redirectURI)
+	}
+	if region == RegionCN {
+		a.cfg.CN = rc
+	} else {
+		a.cfg.Intl = rc
+	}
+	cfg := a.cfg
+	a.mu.Unlock()
+	return saveMSOAuthConfig(cfg)
+}
+
 // Configured reports whether the region has a usable app registration.
-func (a *MSAuth) Configured(region string) bool { return a.cfg.forRegion(region).configured() }
+func (a *MSAuth) Configured(region string) bool { return a.regionCfg(region).configured() }
 
 // AuthURL builds the authorization-code request for a region. verifier is the
 // PKCE code verifier (NewPKCE); its S256 challenge is embedded. state is echoed
 // back to the callback to match the pending request.
 func (a *MSAuth) AuthURL(region, state, verifier string) (string, error) {
-	rc := a.cfg.forRegion(region)
+	rc := a.regionCfg(region)
 	if !rc.configured() {
 		return "", fmt.Errorf("microsoft: region %q not configured (see microsoft_oauth.json)", region)
 	}
@@ -197,7 +238,7 @@ func (a *MSAuth) AuthURL(region, state, verifier string) (string, error) {
 
 // Exchange trades an authorization code (+ PKCE verifier) for tokens.
 func (a *MSAuth) Exchange(ctx context.Context, region, code, verifier string) (StoredToken, error) {
-	rc := a.cfg.forRegion(region)
+	rc := a.regionCfg(region)
 	form := url.Values{}
 	form.Set("client_id", rc.ClientID)
 	form.Set("grant_type", "authorization_code")
@@ -238,7 +279,7 @@ func (a *MSAuth) AccessToken(accountID string) (string, error) {
 }
 
 func (a *MSAuth) refresh(ctx context.Context, tok StoredToken) (StoredToken, error) {
-	rc := a.cfg.forRegion(tok.Region)
+	rc := a.regionCfg(tok.Region)
 	form := url.Values{}
 	form.Set("client_id", rc.ClientID)
 	form.Set("grant_type", "refresh_token")
@@ -261,7 +302,7 @@ func (a *MSAuth) refresh(ctx context.Context, tok StoredToken) (StoredToken, err
 // postToken POSTs a token-endpoint form and maps the response to a StoredToken.
 func (a *MSAuth) postToken(ctx context.Context, region string, form url.Values) (StoredToken, error) {
 	ep := msEndpointsFor(region)
-	rc := a.cfg.forRegion(region)
+	rc := a.regionCfg(region)
 	endpoint := fmt.Sprintf(ep.tokenTmpl, rc.tenant())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -394,6 +435,20 @@ func sourcesHome() string {
 }
 
 func msOAuthConfigPath() string { return filepath.Join(sourcesHome(), "microsoft_oauth.json") }
+
+// saveMSOAuthConfig persists the client config (0600, dir 0700). Written whole
+// on every SetRegionConfig so the on-disk file always mirrors the live config.
+func saveMSOAuthConfig(c MSOAuthConfig) error {
+	dir := sourcesHome()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(msOAuthConfigPath(), b, 0o600)
+}
 
 func loadMSOAuthConfig() (MSOAuthConfig, error) {
 	b, err := os.ReadFile(msOAuthConfigPath())

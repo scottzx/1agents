@@ -316,6 +316,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/microsoft/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/microsoft/history", ingestHandler.HandleHistory)
 				// Microsoft Graph OAuth (PKCE) connect flow — region-aware (大陆/21Vianet).
+				mux.HandleFunc("/api/sources/oauth/microsoft/config", ingestHandler.HandleMSOAuthConfig)         // GET ?region= / POST {region,clientId,tenant} — in-UI app registration
 				mux.HandleFunc("/api/sources/oauth/microsoft/start", ingestHandler.HandleMSOAuthStart)           // POST {accountId} → {authUrl}
 				mux.HandleFunc("/api/sources/oauth/microsoft/callback", ingestHandler.HandleMSOAuthCallback)     // GET  ?code&state (Azure redirect target)
 				mux.HandleFunc("/api/sources/oauth/microsoft/status", ingestHandler.HandleMSOAuthStatus)         // GET  ?accountId

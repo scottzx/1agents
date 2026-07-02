@@ -67,6 +67,55 @@ func takePending(state string) (pendingAuth, bool) {
 	return p, ok
 }
 
+// HandleMSOAuthConfig serves GET/POST /api/sources/oauth/microsoft/config — the
+// in-UI app-registration form. GET (?region=) prefills the current clientId /
+// tenant / redirectUri (never a secret); POST saves them and hot-reloads, so the
+// connect button lights up without touching the JSON file or restarting.
+func (h *Handler) HandleMSOAuthConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		region := regionOrDefault(r.URL.Query().Get("region"))
+		rc := h.msAuth.RegionConfig(region)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"region":      region,
+			"clientId":    rc.ClientID,
+			"tenant":      rc.Tenant,
+			"redirectUri": rc.RedirectURI,
+			"configured":  h.msAuth.Configured(region),
+		})
+	case http.MethodPost:
+		var body struct {
+			Region      string `json:"region"`
+			ClientID    string `json:"clientId"`
+			Tenant      string `json:"tenant"`
+			RedirectURI string `json:"redirectUri"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		region := regionOrDefault(body.Region)
+		if strings.TrimSpace(body.ClientID) == "" {
+			http.Error(w, "clientId is required", http.StatusBadRequest)
+			return
+		}
+		if err := h.msAuth.SetRegionConfig(region, body.ClientID, body.Tenant, body.RedirectURI); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"configured": h.msAuth.Configured(region)})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func regionOrDefault(region string) string {
+	if strings.TrimSpace(region) == sources.RegionCN {
+		return sources.RegionCN
+	}
+	return sources.RegionIntl
+}
+
 // HandleMSOAuthStart serves POST /api/sources/oauth/microsoft/start. It builds
 // the region-correct authorization URL (大陆 vs 国际) for the account and returns
 // it for the client to open.

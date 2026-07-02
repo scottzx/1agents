@@ -350,6 +350,12 @@ export const zhCN: Record<string, string> = {
     'datasource.ms.regionIntl': '国际',
     'datasource.ms.notConfigured':
         'Microsoft OAuth 尚未配置。请在 ~/.1agents/sources/microsoft_oauth.json 填写该区域的 clientId / tenant / redirectUri 后重试。',
+    'datasource.ms.appConfigTitle': '填写应用信息(一次性)',
+    'datasource.ms.appConfigHint':
+        '填入你在 Azure(大陆走 portal.azure.cn)注册的应用 ID 与租户,保存后即可点击在线授权登录。这是应用标识,不是密码、也不是令牌。',
+    'datasource.ms.clientId': '应用(客户端) ID',
+    'datasource.ms.tenant': '租户 (tenant)',
+    'datasource.ms.saveAndConnect': '保存并连接',
 
     // ── 飞书源卡片 — CLI 生命周期 ─────────────────────────────────────────────
     'datasource.cli.installed': '已安装',
@@ -1776,6 +1782,12 @@ export const enUS: Record<string, string> = {
     'datasource.ms.regionIntl': 'Global',
     'datasource.ms.notConfigured':
         'Microsoft OAuth is not configured. Fill in this region’s clientId / tenant / redirectUri in ~/.1agents/sources/microsoft_oauth.json and retry.',
+    'datasource.ms.appConfigTitle': 'Enter app details (one-time)',
+    'datasource.ms.appConfigHint':
+        'Enter the application ID and tenant of the app you registered in Azure (mainland: portal.azure.cn). After saving you can start the online sign-in. This is an app identifier — not a password or a token.',
+    'datasource.ms.clientId': 'Application (client) ID',
+    'datasource.ms.tenant': 'Tenant',
+    'datasource.ms.saveAndConnect': 'Save & connect',
 
     // ── Feishu source card — CLI lifecycle ───────────────────────────────────
     'datasource.cli.installed': 'Installed',

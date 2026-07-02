@@ -6,7 +6,39 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestSetRegionConfigHotUpdateNoDeadlock(t *testing.T) {
+	t.Setenv("ONEAGENTS_HOME", t.TempDir())
+	a := &MSAuth{}
+	if a.Configured(RegionCN) {
+		t.Fatal("should start unconfigured")
+	}
+	// SetRegionConfig holds the write lock; it must not re-enter a read lock.
+	done := make(chan error, 1)
+	go func() { done <- a.SetRegionConfig(RegionCN, "cid", "common", "http://localhost:38091/cb") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SetRegionConfig: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("SetRegionConfig deadlocked")
+	}
+	if !a.Configured(RegionCN) {
+		t.Fatal("should be configured after set (hot update)")
+	}
+	rc := a.RegionConfig(RegionCN)
+	if rc.ClientID != "cid" || rc.RedirectURI != "http://localhost:38091/cb" {
+		t.Fatalf("config not applied: %+v", rc)
+	}
+	// A fresh loader over the same home must see the persisted values.
+	cfg, err := loadMSOAuthConfig()
+	if err != nil || cfg.CN.ClientID != "cid" {
+		t.Fatalf("config not persisted: %+v err=%v", cfg, err)
+	}
+}
 
 func TestMSEndpointsPerRegion(t *testing.T) {
 	cn := msEndpointsFor(RegionCN)
