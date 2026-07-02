@@ -12,8 +12,9 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { ChatItem, ConnectionState } from '../../protocol/types';
+import type { ChatItem, ConnectionState, SessionModesState } from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
+import { normalizePermissionMode } from '../../types';
 import {
     cryptoId,
     hasRenderableArguments,
@@ -37,6 +38,7 @@ import {
     cancelQueuedAction,
     respondPermissionAction,
     setPermissionModeAction,
+    setSessionModeAction,
     type BridgeEventPayload,
 } from '../../protocol/wireProtocol';
 import { getPlatformBridge } from '../../platform/bridge';
@@ -101,6 +103,13 @@ export interface SessionBridgeState {
     everReady: boolean;
     /** Per-session permission policy mirrored from the backend record. */
     permissionMode: PermissionMode;
+    /**
+     * NATIVE session modes the agent advertised (session_meta snapshot,
+     * kept current by mode_changed). null until the first session_meta —
+     * and forever null for mode-less agents, which is what the Composer
+     * uses to fall back to the permissionMode picker.
+     */
+    modes: SessionModesState | null;
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
     reconnectAttempt: number;
     /** Pending setTimeout handle for the next reconnect; null when idle. */
@@ -143,9 +152,11 @@ export class ChatBridgeManager {
                 everReady: false,
                 // The list endpoint (GET /api/agent/sessions?workspace_id=…)
                 // already serializes ChatSessionRecord.PermissionMode onto
-                // the ChatSession object, so we can trust the field
-                // verbatim instead of doing a second GET per session.
-                permissionMode: session.permissionMode ?? DEFAULT_PERMISSION_MODE,
+                // the ChatSession object. Normalized because old records may
+                // carry the retired 'auto' value (native session modes own
+                // that concept now).
+                permissionMode: normalizePermissionMode(session.permissionMode),
+                modes: null,
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
@@ -260,6 +271,29 @@ export class ChatBridgeManager {
                     state.everReady = true;
                     this.notify(state);
                     break;
+                case 'session_meta': {
+                    // Authoritative capability snapshot sent after every
+                    // session_ready. Modes are live-only state (never in
+                    // history), so this re-send is what keeps the picker
+                    // correct across reconnects and reaps.
+                    const meta = payload.payload as { modes?: SessionModesState } | undefined;
+                    if (meta?.modes && Array.isArray(meta.modes.availableModes)) {
+                        state.modes = meta.modes;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'mode_changed': {
+                    // Either our own set_session_mode ack or the agent
+                    // switching itself (ExitPlanMode). Authoritative over any
+                    // optimistic value.
+                    const changed = payload.payload as { currentModeId?: string } | undefined;
+                    if (changed?.currentModeId && state.modes) {
+                        state.modes = { ...state.modes, currentModeId: changed.currentModeId };
+                        this.notify(state);
+                    }
+                    break;
+                }
                 case 'session_taken_over':
                     // A newer connection (another tab/browser) took over this
                     // session. The bridge closes us right after this event;
@@ -555,6 +589,23 @@ export class ChatBridgeManager {
         }).catch(err => {
             console.warn('[ChatBridgeManager] PATCH permission_mode failed:', err);
         });
+    }
+
+    /**
+     * Switch the agent's NATIVE session mode (plan/acceptEdits/default/…).
+     * Optimistic: the picker flips immediately; the bridge's `mode_changed`
+     * ack (or the session_meta re-sent after a SET_MODE_FAILED) reconciles.
+     * Persistence is free — 1acp stores desiredModeId and replays it onto
+     * fresh ACP sessions after reap/resume, so no PATCH is needed here.
+     */
+    setSessionMode(session: ChatSession, modeId: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready || !state.modes) return;
+        if (state.modes.currentModeId === modeId) return;
+        state.modes = { ...state.modes, currentModeId: modeId };
+        this.notify(state);
+        state.ws.send(JSON.stringify(setSessionModeAction(session.id, modeId)));
     }
 
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {

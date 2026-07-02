@@ -2,12 +2,14 @@ import { h } from 'preact';
 import { useRef } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
 import type { PermissionMode } from '../types';
+import type { SessionModesState } from '@1agents/core/protocol/types';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
 import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
 import { PermissionModePicker } from './PermissionModePicker';
+import { SessionModePicker } from './SessionModePicker';
 
 interface ComposerProps {
     onSend: (text: string) => void;
@@ -17,6 +19,14 @@ interface ComposerProps {
     placeholder?: string;
     permissionMode: PermissionMode;
     onPermissionModeChange: (mode: PermissionMode) => void;
+    /**
+     * NATIVE session modes advertised by the agent. When present, the
+     * native mode picker replaces the permissionMode shield (native leads;
+     * the bridge gate stays fixed at approve-reads as the safety net).
+     * null → mode-less agent → old shield picker.
+     */
+    sessionModes?: SessionModesState | null;
+    onSessionModeChange?: (modeId: string) => void;
 }
 
 export function Composer({
@@ -27,6 +37,8 @@ export function Composer({
     placeholder,
     permissionMode,
     onPermissionModeChange,
+    sessionModes,
+    onSessionModeChange,
 }: ComposerProps) {
     const ref = useRef<HTMLTextAreaElement | null>(null);
     const lang = getLang();
@@ -97,12 +109,19 @@ export function Composer({
                     wrap="soft"
                 />
                 <div class="chat-composer-toolbar">
-                    <PermissionModePicker
-                        value={permissionMode}
-                        onChange={onPermissionModeChange}
-                        variant="cycle"
-                        disabled={disabled}
-                    />
+                    {sessionModes && sessionModes.availableModes.length > 0 && onSessionModeChange ? (
+                        // Native leads: the agent's own modes (plan/acceptEdits/…)
+                        // replace the shield; the bridge gate silently stays at
+                        // approve-reads + project allowlist as the safety net.
+                        <SessionModePicker modes={sessionModes} onChange={onSessionModeChange} disabled={disabled} />
+                    ) : (
+                        <PermissionModePicker
+                            value={permissionMode}
+                            onChange={onPermissionModeChange}
+                            variant="cycle"
+                            disabled={disabled}
+                        />
+                    )}
                     <div class="chat-composer-actions">
                         <AttachButton
                             className="chat-composer-attach-inline"

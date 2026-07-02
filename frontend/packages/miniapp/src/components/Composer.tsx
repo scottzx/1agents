@@ -59,8 +59,7 @@ export function Composer({
     const nextMode = nextPermissionMode(permissionMode);
     onPermissionModeChange(nextMode);
     let label = '读取放行';
-    if (nextMode === 'auto') label = '智能放行';
-    else if (nextMode === 'approve-all') label = '全部放行';
+    if (nextMode === 'approve-all') label = '全部放行';
     else if (nextMode === 'deny-all') label = '全部拒绝';
     Taro.showToast({ title: `权限模式已切换至: ${label}`, icon: 'none' });
   };

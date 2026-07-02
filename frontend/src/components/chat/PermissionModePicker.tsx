@@ -5,14 +5,12 @@ import { PERMISSION_MODES, nextPermissionMode, type PermissionMode } from '../ty
 // Central registry for mode display tokens.
 export const MODE_LABEL_KEY: Record<PermissionMode, string> = {
     'approve-reads': 'chat.permission.mode.approveReads',
-    auto: 'chat.permission.mode.auto',
     'approve-all': 'chat.permission.mode.approveAll',
     'deny-all': 'chat.permission.mode.denyAll',
 };
 
 export const MODE_TOOLTIP_KEY: Record<PermissionMode, string> = {
     'approve-reads': 'chat.permission.mode.tooltip.approveReads',
-    auto: 'chat.permission.mode.tooltip.auto',
     'approve-all': 'chat.permission.mode.tooltip.approveAll',
     'deny-all': 'chat.permission.mode.tooltip.denyAll',
 };

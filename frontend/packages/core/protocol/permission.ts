@@ -9,9 +9,19 @@
  * activeSessions[sessionId].permissionMode. Empty string / undefined
  * means "use the bridge-server runtime default".
  */
-export type PermissionMode = 'approve-reads' | 'approve-all' | 'deny-all' | 'auto';
+export type PermissionMode = 'approve-reads' | 'approve-all' | 'deny-all';
 
-export const PERMISSION_MODES: PermissionMode[] = ['approve-reads', 'auto', 'approve-all', 'deny-all'];
+export const PERMISSION_MODES: PermissionMode[] = ['approve-reads', 'approve-all', 'deny-all'];
+
+/**
+ * Coerce a stored/wire value into a valid PermissionMode. Historical records
+ * may carry the retired 'auto' value (a mode the bridge never accepted —
+ * native session modes now own that concept); anything unrecognized falls
+ * back to the safe default.
+ */
+export function normalizePermissionMode(value: string | undefined | null): PermissionMode {
+    return PERMISSION_MODES.includes(value as PermissionMode) ? (value as PermissionMode) : 'approve-reads';
+}
 
 /** Cycle order for the Composer toggle button. */
 export function nextPermissionMode(mode: PermissionMode): PermissionMode {

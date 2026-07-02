@@ -16006,11 +16006,6 @@ body {
     color: var(--accent-color);
     background: rgba(var(--accent-color-rgb), 0.1);
   }
-  &[data-mode="auto"] {
-    border-color: rgba(var(--purple-rgb), 0.5);
-    color: var(--purple-fg);
-    background: rgba(var(--purple-rgb), 0.1);
-  }
   &[data-mode="approve-all"] {
     border-color: rgba(var(--success-rgb), 0.5);
     color: var(--success-emphasis);
@@ -16021,6 +16016,64 @@ body {
     color: var(--danger-fg);
     background: rgba(var(--danger-rgb), 0.08);
   }
+}
+
+// ── Native session-mode picker (mode-capable agents) ──
+// Shares the .chat-composer-mode-btn face; an invisible native <select>
+// stretched over it supplies the dropdown UX. Colours by mode family:
+// plan = purple (read-only planning), acceptEdits/agent = green (auto-run),
+// dangerous modes = orange warning.
+.chat-session-mode-picker {
+  position: relative;
+
+  .chat-session-mode-select {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    // The face underneath conveys state; the select only exists for its popup.
+    appearance: none;
+    border: none;
+  }
+
+  &[data-mode-id="plan"] {
+    border-color: rgba(var(--purple-rgb), 0.5);
+    color: var(--purple-fg);
+    background: rgba(var(--purple-rgb), 0.1);
+  }
+  &[data-mode-id="acceptEdits"],
+  &[data-mode-id="agent"],
+  &[data-mode-id="auto"] {
+    border-color: rgba(var(--success-rgb), 0.5);
+    color: var(--success-emphasis);
+    background: rgba(var(--success-rgb), 0.1);
+  }
+  &[data-mode-danger="true"] {
+    border-color: rgba(var(--warning-rgb), 0.6);
+    color: var(--warning-fg);
+    background: rgba(var(--warning-rgb), 0.12);
+  }
+}
+
+// Plan-mode banner + panel affordance: the whole chat surface signals
+// "read-only planning" so the mode is unmissable; ExitPlanMode clears it
+// via mode_changed → data-session-mode flips off.
+.chat-plan-banner {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--purple-fg);
+  background: var(--purple-bg);
+  border-bottom: 1px solid rgba(var(--purple-rgb), 0.35);
+}
+
+.chat-panel[data-session-mode="plan"] .chat-composer-frame {
+  border-color: rgba(var(--purple-rgb), 0.5);
+}
+.chat-panel[data-session-mode="bypassPermissions"] .chat-composer-frame,
+.chat-panel[data-session-mode="dontAsk"] .chat-composer-frame,
+.chat-panel[data-session-mode="agent-full-access"] .chat-composer-frame {
+  border-color: rgba(var(--warning-rgb), 0.6);
 }
 
 // ── Mobile composer: icon-only permission button ──
