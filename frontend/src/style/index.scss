@@ -16718,6 +16718,214 @@ body {
   overflow: hidden;
 }
 
+// 8px breathing room around 会话 / 灵魂 / 技能 / 文件 panes.
+.assistant-pane-inset {
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+// Two-pane file browser: list left, live preview right. Shared by the 文件 tab
+// (workspace tree) and the 技能 skill-folder browser.
+.file-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+
+  .file-split-list {
+    width: 280px;
+    flex-shrink: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius);
+    background: var(--bg-card);
+  }
+
+  .file-split-preview {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius);
+    background: var(--bg-card);
+  }
+}
+
+.file-preview-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+// 技能 tab — 4-per-row skill cards → skill detail (metadata + folder browser).
+.skills-tab {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  @media (max-width: 820px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  cursor: pointer;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font: inherit;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--text-main);
+  }
+}
+
+.skill-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-card-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skill-detail {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skill-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.skill-detail-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-detail-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-detail-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+
+// Skill folder file list (left column of the skill detail split).
+.skill-file-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.skill-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--bento-radius-sm);
+  background: transparent;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--btn-hover);
+  }
+  &.is-active {
+    background: var(--accent-light);
+    color: var(--accent-fg);
+  }
+}
+
+.skill-file-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.skill-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 // Content panes (人设 / 技能 / MCP) — centered readable column that scrolls.
 .assistant-pane-scroll {
   flex: 1;

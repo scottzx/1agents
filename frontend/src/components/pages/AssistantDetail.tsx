@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import type { App } from '../app';
 import { t } from '../i18n';
 import * as ui from '../../stores/uiStore';
@@ -7,12 +7,12 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as sessStore from '../../stores/sessionStore';
 import * as fs from '../../stores/fsStore';
 import * as tabs from '../../stores/tabsStore';
+import { fsService } from '../../services/fsService';
 import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
-import { FilesPane, ChannelsPane } from '../shared/WorkspacePanes';
-import { skillService, type WorkspaceSkillStatus } from '@1agents/core/services/skillService';
-import { soulService } from '@1agents/core/services/soulService';
+import { WorkspaceFilesSplit, ChannelsPane, FilePreviewPane } from '../shared/WorkspacePanes';
+import { SkillsTab } from './SkillsTab';
 
 /**
  * AssistantDetail — breadcrumb level 2 (助理 › <name>). The trail + back-nav
@@ -20,14 +20,14 @@ import { soulService } from '@1agents/core/services/soulService';
  * the assistant's workbench hub: an identity hero + a secondary top-nav that
  * switches between the surfaces that used to be locked to the side pane.
  *
- * Tabs: 会话 (all sessions incl. archived, reusing the project-management
- * SessionsView) · 人设 (SOUL.md) · 任务 (TaskList) · 技能 (#360 reverse-sync) ·
- * 渠道 (cc-connect, moved out of the side pane) · 文件 (file browser + preview) ·
- * MCP (placeholder).
+ * Tabs: 会话 (all sessions incl. archived) · 灵魂 (SOUL.md, via the shared file
+ * preview/editor) · 任务 (TaskList) · 技能 (folder-per-skill browser) · 渠道
+ * (cc-connect) · 文件 (two-pane browser + preview) · MCP (placeholder).
  *
- * 渠道 and 文件 read the *active* workspace's fs / cc-connect state, so on mount
- * we make this assistant the active workspace context (without the navigation
- * side-effects of selectWorkspace, which would drop the full-page detail).
+ * 渠道 / 文件 / 灵魂 / 技能 read the *active* workspace's fs / cc-connect state,
+ * so on mount we make this assistant the active workspace context (without the
+ * navigation side-effects of selectWorkspace, which would drop the full-page
+ * detail).
  */
 type DetailTab = 'sessions' | 'soul' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp';
 
@@ -44,8 +44,8 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
     const [activeTab, setActiveTab] = useState<DetailTab>('sessions');
 
     // Make this assistant the active workspace *context* (fs + cc-connect) so
-    // the 文件 / 渠道 tabs render its data — but skip selectWorkspace's tab
-    // navigation, which would exit this full-page detail.
+    // the 文件 / 渠道 / 灵魂 / 技能 tabs render its data — but skip
+    // selectWorkspace's tab navigation, which would exit this full-page detail.
     useEffect(() => {
         if (!ws) return;
         if (wsStore.activeWorkspaceId.value !== workspaceId) {
@@ -54,88 +54,33 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
             wsStore.loadCcProvidersUrl(workspaceId);
             void fs.switchFsContext(ws);
         }
-    }, [workspaceId]);
+    }, [workspaceId, ws]);
 
-    // ── 人设 (SOUL.md) ──────────────────────────────────────────────────────
-    const [soul, setSoul] = useState('');
-    const [soulSaved, setSoulSaved] = useState('');
-    const [soulSaving, setSoulSaving] = useState(false);
-    const [soulFlash, setSoulFlash] = useState('');
+    // 灵魂 (SOUL.md) — preview/edit via the shared file component. Ensure the
+    // file exists (empty personas have no SOUL.md yet), then open it whenever
+    // the tab is shown.
     useEffect(() => {
+        if (activeTab !== 'soul') return;
         let cancelled = false;
-        soulService
-            .getWorkspaceSoul(workspaceId)
-            .then(content => {
-                if (!cancelled) {
-                    setSoul(content);
-                    setSoulSaved(content);
+        (async () => {
+            const path = 'SOUL.md';
+            try {
+                await fsService.read(path);
+            } catch {
+                try {
+                    await fsService.write(path, '');
+                } catch {
+                    /* ignore — openFileDetail will surface any real error */
                 }
-            })
-            .catch(() => {});
+            }
+            if (!cancelled) {
+                void fs.openFileDetail({ name: 'SOUL.md', path, isDir: false, size: 0, modTime: 0 });
+            }
+        })();
         return () => {
             cancelled = true;
         };
-    }, [workspaceId]);
-
-    const onSaveSoul = async () => {
-        setSoulSaving(true);
-        setSoulFlash('');
-        try {
-            await soulService.saveWorkspaceSoul(workspaceId, soul);
-            setSoulSaved(soul);
-            setSoulFlash(t('assistant.detail.soulSaved', language));
-        } catch {
-            setSoulFlash(t('assistant.detail.soulSaveFailed', language));
-        } finally {
-            setSoulSaving(false);
-        }
-    };
-
-    // ── 技能 (#360 reverse-sync) ────────────────────────────────────────────
-    const [skills, setSkills] = useState<WorkspaceSkillStatus[]>([]);
-    const [skillsLoading, setSkillsLoading] = useState(true);
-    const [skillsError, setSkillsError] = useState<string | null>(null);
-    const [pushing, setPushing] = useState<string | null>(null);
-    const [flash, setFlash] = useState<Record<string, string>>({});
-
-    const loadSkills = useCallback(async () => {
-        setSkillsLoading(true);
-        setSkillsError(null);
-        try {
-            setSkills(await skillService.listWorkspaceSkills(workspaceId));
-        } catch (e) {
-            setSkillsError(String(e));
-        } finally {
-            setSkillsLoading(false);
-        }
-    }, [workspaceId]);
-    useEffect(() => {
-        void loadSkills();
-    }, [loadSkills]);
-
-    const onPush = async (ref: string) => {
-        setPushing(ref);
-        try {
-            const { changed, created } = await skillService.pushSkill(workspaceId, ref);
-            const msg = created
-                ? t('assistant.detail.pushedCreated', language)
-                : changed
-                  ? t('assistant.detail.pushed', language)
-                  : t('assistant.detail.pushNoChange', language);
-            setFlash(f => ({ ...f, [ref]: msg }));
-            await loadSkills();
-        } catch {
-            setFlash(f => ({ ...f, [ref]: t('assistant.detail.pushFailed', language) }));
-        } finally {
-            setPushing(null);
-        }
-    };
-
-    const BADGE: Record<WorkspaceSkillStatus['state'], { cls: string; key: string }> = {
-        synced: { cls: 'is-synced', key: 'assistant.detail.synced' },
-        modified: { cls: 'is-modified', key: 'assistant.detail.modified' },
-        local: { cls: 'is-local', key: 'assistant.detail.local' },
-    };
+    }, [activeTab, workspaceId]);
 
     // Start a fresh conversation scoped to this assistant.
     const onNewChat = async () => {
@@ -182,7 +127,7 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
 
             <div class="assistant-tab-body">
                 {activeTab === 'sessions' && (
-                    <div class="assistant-pane-fill">
+                    <div class="assistant-pane-fill assistant-pane-inset">
                         <SessionsView
                             workspaceId={workspaceId}
                             onSelectSession={s => void sessStore.selectSession(s)}
@@ -191,26 +136,8 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                 )}
 
                 {activeTab === 'soul' && (
-                    <div class="assistant-pane-scroll">
-                        <p class="assistant-hint">{t('assistant.detail.soulHint', language)}</p>
-                        <textarea
-                            class="assistant-soul-editor"
-                            value={soul}
-                            placeholder={t('assistant.detail.soulPlaceholder', language)}
-                            onInput={(e: Event) => setSoul((e.target as HTMLTextAreaElement).value)}
-                        />
-                        <div class="assistant-section-actions">
-                            {soulFlash && <span class="assistant-flash">{soulFlash}</span>}
-                            <button
-                                class="assistant-btn assistant-btn-ghost"
-                                disabled={soul === soulSaved || soulSaving}
-                                onClick={() => void onSaveSoul()}
-                            >
-                                {soulSaving
-                                    ? t('assistant.detail.soulSaving', language)
-                                    : t('assistant.detail.soulSave', language)}
-                            </button>
-                        </div>
+                    <div class="assistant-pane-fill assistant-pane-inset">
+                        <FilePreviewPane app={app} language={language} />
                     </div>
                 )}
 
@@ -221,57 +148,8 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                 )}
 
                 {activeTab === 'skills' && (
-                    <div class="assistant-pane-scroll">
-                        <p class="assistant-hint">{t('assistant.detail.skillsHint', language)}</p>
-                        {skillsLoading && <div class="assistant-empty-row">…</div>}
-                        {!skillsLoading && skillsError && (
-                            <div class="assistant-empty-row">
-                                {t('assistant.detail.skillsLoadFailed', language)}: {skillsError}
-                            </div>
-                        )}
-                        {!skillsLoading && !skillsError && skills.length === 0 && (
-                            <div class="assistant-empty-row">{t('assistant.detail.skillsEmpty', language)}</div>
-                        )}
-                        {!skillsLoading && !skillsError && skills.length > 0 && (
-                            <ul class="assistant-skill-list">
-                                {skills.map(s => {
-                                    const canPush = s.state !== 'synced';
-                                    const pushLabel =
-                                        s.state === 'local'
-                                            ? t('assistant.detail.pushCreate', language)
-                                            : t('assistant.detail.push', language);
-                                    return (
-                                        <li key={s.skillRef} class="assistant-skill-row">
-                                            <div class="assistant-skill-info">
-                                                <div class="assistant-skill-main">
-                                                    <span class="assistant-skill-name">{s.name || s.dir}</span>
-                                                    <span class={`assistant-skill-badge ${BADGE[s.state].cls}`}>
-                                                        {t(BADGE[s.state].key, language)}
-                                                    </span>
-                                                </div>
-                                                {s.description && <p class="assistant-skill-desc">{s.description}</p>}
-                                            </div>
-                                            <div class="assistant-skill-actions">
-                                                {flash[s.skillRef] && (
-                                                    <span class="assistant-flash">{flash[s.skillRef]}</span>
-                                                )}
-                                                {canPush && (
-                                                    <button
-                                                        class="assistant-btn assistant-btn-ghost"
-                                                        disabled={pushing === s.skillRef}
-                                                        onClick={() => void onPush(s.skillRef)}
-                                                    >
-                                                        {pushing === s.skillRef
-                                                            ? t('assistant.detail.pushing', language)
-                                                            : pushLabel}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        )}
+                    <div class="assistant-pane-fill assistant-pane-inset">
+                        <SkillsTab workspaceId={workspaceId} app={app} language={language} />
                     </div>
                 )}
 
@@ -282,8 +160,8 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                 )}
 
                 {activeTab === 'files' && (
-                    <div class="assistant-pane-fill">
-                        <FilesPane app={app} language={language} />
+                    <div class="assistant-pane-fill assistant-pane-inset">
+                        <WorkspaceFilesSplit app={app} language={language} />
                     </div>
                 )}
 

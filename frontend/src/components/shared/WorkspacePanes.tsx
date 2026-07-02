@@ -2,6 +2,7 @@ import { h } from 'preact';
 
 import type { App } from '../app';
 import type { Lang } from '../../i18n';
+import { t } from '../../i18n';
 import * as fs from '../../stores/fsStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as tabsStore from '../../stores/tabsStore';
@@ -43,28 +44,17 @@ function openSelectedAsPreview() {
     }
 }
 
-/** File browser (list) → in-place detail/preview, scoped to the active workspace. */
-export function FilesPane({ app, language }: { app: App; language: Lang }) {
+/**
+ * The single-file preview/editor, wired to the fs store. Renders the currently
+ * selected file (markdown/code/image) with the full toolbar (favorite / edit /
+ * save / copy / download / rename / share / fullscreen). Shows a hint when
+ * nothing is selected — used as the right half of a split browser.
+ */
+export function FilePreviewPane({ app, language }: { app: App; language: Lang }) {
     const selectedFsEntry = fs.selectedFsEntry.value;
-    if (fs.viewMode.value === 'list') {
-        return (
-            <FlatFileBrowser
-                flatFiles={fs.flatFiles.value}
-                flatFilesLoading={fs.flatFilesLoading.value}
-                searchQuery={fs.searchQuery.value}
-                selectedFilterTag={fs.selectedFilterTag.value}
-                favoriteFiles={fs.favoriteFiles.value}
-                onSearchQueryChange={fs.handleSearchChange}
-                onFilterTagChange={fs.handleFilterTagChange}
-                onOpenFileDetail={fs.openFileDetail}
-                fsEntries={fs.fsEntries.value}
-                fsLoading={fs.fsLoading.value}
-                onToggleFsDir={fs.toggleFsDir}
-                language={language}
-            />
-        );
+    if (!selectedFsEntry) {
+        return <div class="file-preview-empty">{t('assistant.detail.selectFile', language)}</div>;
     }
-    if (!selectedFsEntry) return null;
     return (
         <FileDetailView
             selectedFsEntry={selectedFsEntry}
@@ -96,6 +86,60 @@ export function FilesPane({ app, language }: { app: App; language: Lang }) {
             targetLineEnd={fs.detailTargetLineEnd.value ?? undefined}
             language={language}
         />
+    );
+}
+
+/** File browser (list) → in-place detail/preview, scoped to the active workspace. */
+export function FilesPane({ app, language }: { app: App; language: Lang }) {
+    if (fs.viewMode.value === 'list') {
+        return (
+            <FlatFileBrowser
+                flatFiles={fs.flatFiles.value}
+                flatFilesLoading={fs.flatFilesLoading.value}
+                searchQuery={fs.searchQuery.value}
+                selectedFilterTag={fs.selectedFilterTag.value}
+                favoriteFiles={fs.favoriteFiles.value}
+                onSearchQueryChange={fs.handleSearchChange}
+                onFilterTagChange={fs.handleFilterTagChange}
+                onOpenFileDetail={fs.openFileDetail}
+                fsEntries={fs.fsEntries.value}
+                fsLoading={fs.fsLoading.value}
+                onToggleFsDir={fs.toggleFsDir}
+                language={language}
+            />
+        );
+    }
+    return <FilePreviewPane app={app} language={language} />;
+}
+
+/**
+ * Two-pane workspace file browser: the tree/search list on the left, the live
+ * preview on the right. Unlike FilesPane it shows both at once (no list↔detail
+ * swap) — used by the 助理 详情 文件 tab.
+ */
+export function WorkspaceFilesSplit({ app, language }: { app: App; language: Lang }) {
+    return (
+        <div class="file-split">
+            <div class="file-split-list">
+                <FlatFileBrowser
+                    flatFiles={fs.flatFiles.value}
+                    flatFilesLoading={fs.flatFilesLoading.value}
+                    searchQuery={fs.searchQuery.value}
+                    selectedFilterTag={fs.selectedFilterTag.value}
+                    favoriteFiles={fs.favoriteFiles.value}
+                    onSearchQueryChange={fs.handleSearchChange}
+                    onFilterTagChange={fs.handleFilterTagChange}
+                    onOpenFileDetail={fs.openFileDetail}
+                    fsEntries={fs.fsEntries.value}
+                    fsLoading={fs.fsLoading.value}
+                    onToggleFsDir={fs.toggleFsDir}
+                    language={language}
+                />
+            </div>
+            <div class="file-split-preview">
+                <FilePreviewPane app={app} language={language} />
+            </div>
+        </div>
     );
 }
 
