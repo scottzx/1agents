@@ -15956,6 +15956,72 @@ body {
   min-height: 32px;
 }
 
+// Left cluster: mode picker + usage badge share a row and stay left while the
+// send/mic/attach actions stay right (toolbar is space-between).
+.chat-composer-toolbar-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+// ── Usage / cost badge (composer) ──
+// Context-window % gauge + cumulative cost, fed by the live `usage` event.
+// Tints toward warning as the window fills. Full per-turn token breakdown
+// rides in the native title tooltip.
+.chat-usage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 13px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+
+  .chat-usage-context {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+
+    svg {
+      flex-shrink: 0;
+    }
+  }
+
+  .chat-usage-cost {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+  }
+
+  &[data-level="mid"] {
+    border-color: rgba(var(--warning-rgb), 0.5);
+    color: var(--warning-fg);
+  }
+  &[data-level="high"] {
+    border-color: rgba(var(--danger-rgb), 0.55);
+    color: var(--danger-fg);
+    background: rgba(var(--danger-rgb), 0.08);
+  }
+}
+
+// Mobile: drop the cost text, keep the compact context gauge.
+@media (max-width: 768px) {
+  .chat-usage-badge {
+    padding: 0 8px;
+
+    .chat-usage-cost {
+      display: none;
+    }
+  }
+}
+
 .chat-composer-mode-btn {
   display: inline-flex;
   align-items: center;

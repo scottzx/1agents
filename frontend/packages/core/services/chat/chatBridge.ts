@@ -12,7 +12,7 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { AvailableCommand, ChatItem, ConnectionState, SessionModesState } from '../../protocol/types';
+import type { AvailableCommand, ChatItem, ConnectionState, SessionModesState, SessionUsage } from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
 import { normalizePermissionMode } from '../../types';
 import {
@@ -116,6 +116,13 @@ export interface SessionBridgeState {
      * session_meta and for agents that advertise none.
      */
     availableCommands: AvailableCommand[];
+    /**
+     * Latest token/context usage + cost from the bridge `usage` event.
+     * Live-only (never in history): null until the first usage_update, then
+     * kept as the last-known value (including across reconnects) so the badge
+     * doesn't flicker off between turns.
+     */
+    usage: SessionUsage | null;
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
     reconnectAttempt: number;
     /** Pending setTimeout handle for the next reconnect; null when idle. */
@@ -164,6 +171,7 @@ export class ChatBridgeManager {
                 permissionMode: normalizePermissionMode(session.permissionMode),
                 modes: null,
                 availableCommands: [],
+                usage: null,
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
@@ -305,6 +313,16 @@ export class ChatBridgeManager {
                     const upd = payload.payload as { availableCommands?: AvailableCommand[] } | undefined;
                     if (Array.isArray(upd?.availableCommands)) {
                         state.availableCommands = upd.availableCommands;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'usage': {
+                    // Latest context/token usage + cost. Replace wholesale —
+                    // each event is a fresh snapshot, not a delta.
+                    const u = payload.payload as SessionUsage | undefined;
+                    if (u && typeof u === 'object') {
+                        state.usage = u;
                         this.notify(state);
                     }
                     break;

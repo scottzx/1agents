@@ -41,6 +41,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         permissionMode,
         modes,
         availableCommands,
+        usage,
         send,
         cancel,
         cancelQueued,
@@ -123,6 +124,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 sessionModes={modes}
                 onSessionModeChange={setSessionMode}
                 availableCommands={availableCommands}
+                usage={usage}
             />
         </div>
     );

@@ -113,6 +113,30 @@ export interface SessionModesState {
 }
 
 /**
+ * Live token/context usage + cost surfaced by the bridge `usage` event
+ * (from ACP `usage_update`). All fields optional — not every adapter reports
+ * every field, so consumers treat missing values as "unknown", never zero.
+ * `used`/`size` are the context-window occupancy (drives the % gauge); `cost`
+ * is cumulative session USD; `breakdown` is the per-turn token split for the
+ * hover detail. Live-only — never persisted into history.
+ */
+export interface SessionUsage {
+    /** Context-window tokens currently occupied. */
+    used?: number;
+    /** Context-window capacity. */
+    size?: number;
+    cost?: { amount?: number; currency?: string };
+    breakdown?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        cachedReadTokens?: number;
+        cachedWriteTokens?: number;
+        thoughtTokens?: number;
+        totalTokens?: number;
+    };
+}
+
+/**
  * A slash command the agent advertised (ACP `available_commands_update`,
  * normalized by 1acp to name/description/hasInput). Delivered via session_meta
  * and kept current by live command updates. Executed by sending the command as
