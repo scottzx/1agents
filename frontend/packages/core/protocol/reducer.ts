@@ -301,13 +301,31 @@ export function tryAssignPending(s: PendingState): PendingState {
  */
 export function applyToolCall(
     s: PendingState,
-    ev: { arguments?: unknown; toolName?: string; toolCallId?: string }
+    ev: {
+        arguments?: unknown;
+        toolName?: string;
+        toolCallId?: string;
+        kind?: string;
+        locations?: ToolCallInfo['locations'];
+        diffs?: ToolCallInfo['diffs'];
+    }
 ): PendingState {
     const items0 = flushStreamingCursor(s.items);
-    const argsString = typeof ev.arguments === 'string' ? ev.arguments : JSON.stringify(ev.arguments, null, 2);
+    // A tool_call_update carrying only new metadata (kind/locations/diffs) may
+    // omit arguments; keep `input` empty here and let the merge below preserve
+    // any input a prior event set, rather than stomping it with "undefined".
+    const hasArgs = hasRenderableArguments(ev.arguments);
+    const argsString = !hasArgs
+        ? ''
+        : typeof ev.arguments === 'string'
+          ? ev.arguments
+          : JSON.stringify(ev.arguments, null, 2);
     const newCall: ToolCallInfo = {
         toolName: ev.toolName || 'tool',
         input: argsString,
+        ...(ev.kind ? { kind: ev.kind } : {}),
+        ...(ev.locations && ev.locations.length ? { locations: ev.locations } : {}),
+        ...(ev.diffs && ev.diffs.length ? { diffs: ev.diffs } : {}),
     };
     if (ev.toolCallId) {
         newCall.toolCallId = ev.toolCallId;
@@ -327,7 +345,11 @@ export function applyToolCall(
                         ? {
                               ...c,
                               toolName: newCall.toolName,
-                              input: newCall.input,
+                              // Preserve prior input when this event carried none.
+                              input: newCall.input || c.input,
+                              ...(newCall.kind ? { kind: newCall.kind } : {}),
+                              ...(newCall.locations ? { locations: newCall.locations } : {}),
+                              ...(newCall.diffs ? { diffs: newCall.diffs } : {}),
                           }
                         : c
                 ),

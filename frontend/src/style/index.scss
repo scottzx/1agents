@@ -15671,6 +15671,107 @@ body {
   letter-spacing: 0.05em;
 }
 
+// ── Tool kind icon (Phase 6) — sits left of the tool-name badge ──
+.chat-tool-kind-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  &[data-kind="edit"],
+  &[data-kind="move"] {
+    color: var(--accent-color);
+  }
+  &[data-kind="delete"] {
+    color: var(--danger-fg);
+  }
+  &[data-kind="execute"] {
+    color: var(--orange-fg);
+  }
+}
+
+// ── File-diff viewer (Phase 6) ──
+.chat-tool-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-tool-diff {
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 8px);
+  overflow: hidden;
+}
+
+.chat-tool-diff-path {
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  word-break: break-all;
+}
+
+.chat-tool-diff-body {
+  margin: 0;
+  padding: 6px 0;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg-card);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-tool-diff-line {
+  display: flex;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  .chat-tool-diff-gutter {
+    flex-shrink: 0;
+    width: 1.2em;
+    color: var(--text-muted);
+    user-select: none;
+  }
+  .chat-tool-diff-text {
+    flex: 1;
+  }
+
+  &.is-add {
+    background: rgba(var(--success-rgb), 0.12);
+    .chat-tool-diff-gutter {
+      color: var(--success-emphasis);
+    }
+  }
+  &.is-del {
+    background: rgba(var(--danger-rgb), 0.1);
+    .chat-tool-diff-gutter {
+      color: var(--danger-fg);
+    }
+  }
+}
+
+// ── Tool locations (files touched) ──
+.chat-tool-locations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-tool-location {
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-tool-output-box {
   margin: 0;
   padding: 8px 12px;

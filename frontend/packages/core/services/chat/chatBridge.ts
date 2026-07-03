@@ -421,8 +421,11 @@ export class ChatBridgeManager {
                     // Backend's SSE safety fallback may emit tool_call events
                     // without `arguments` (omitted) or with `arguments: {}` (the
                     // runtime's no-input placeholder); neither carries renderable
-                    // data, so drop them before they reach the fold.
-                    if (!hasRenderableArguments(payload.arguments)) break;
+                    // data, so drop them before they reach the fold — UNLESS the
+                    // event carries other renderable metadata (a diff/locations/
+                    // kind streamed on a later tool_call_update, Phase 6).
+                    const hasMeta = !!(payload.diffs?.length || payload.locations?.length || payload.kind);
+                    if (!hasRenderableArguments(payload.arguments) && !hasMeta) break;
                     const next = applyToolCall(state, payload);
                     state.items = next.items;
                     state.pendingResults = next.pendingResults;

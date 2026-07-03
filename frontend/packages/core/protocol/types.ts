@@ -8,6 +8,19 @@
 // Moved verbatim out of components/chat/hooks.ts (Phase 0 — core carve).
 // hooks.ts re-exports them so existing importers stay unchanged.
 
+/** A file location a tool touched (ACP ToolCallLocation) — drives file links. */
+export interface ToolCallLocation {
+    path: string;
+    line?: number;
+}
+
+/** A file diff a tool produced (ACP diff content block). */
+export interface ToolCallDiff {
+    path: string;
+    oldText?: string;
+    newText: string;
+}
+
 export interface ToolCallInfo {
     id?: string;
     toolName: string;
@@ -15,6 +28,12 @@ export interface ToolCallInfo {
     toolCallId?: string;
     output?: string;
     isError?: boolean;
+    /** ACP tool kind (read/edit/execute/…) — chooses the card icon. */
+    kind?: string;
+    /** Files the tool touched — rendered as clickable file links. */
+    locations?: ToolCallLocation[];
+    /** File diffs the tool produced — rendered inline in the card. */
+    diffs?: ToolCallDiff[];
     /**
      * Inline permission request that the runtime emitted for this tool call.
      * Lives as a sub-field (not a separate ChatItem) so the permission UI

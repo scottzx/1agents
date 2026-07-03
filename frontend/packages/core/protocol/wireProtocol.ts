@@ -9,7 +9,7 @@
 // parse `payload`. Top-level fields shared with Go's peek struct
 // (WsMessage) must still match its JSON tags exactly.
 
-import type { HistoryItem } from './types';
+import type { HistoryItem, ToolCallDiff, ToolCallLocation } from './types';
 import type { PermissionDecision, PermissionMode } from './permission';
 
 // ── Inbound: events the bridge emits ───────────────────────────────────────
@@ -45,6 +45,10 @@ export interface BridgeEventPayload {
     toolName?: string;
     toolCallId?: string;
     isError?: boolean;
+    /** ACP tool metadata on tool_call events (Phase 6). */
+    kind?: string;
+    locations?: ToolCallLocation[];
+    diffs?: ToolCallDiff[];
     messages?: Array<{ role: string; text: string }>;
     items?: HistoryItem[];
     /**

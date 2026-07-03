@@ -13,6 +13,8 @@ import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
 import { theme } from '../../stores/uiStore';
+import { ToolDiffView, deriveDiffsFromInput } from './ToolDiffView';
+import { ToolKindIcon } from './ToolKindIcon';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -28,6 +30,9 @@ export interface GroupedToolCall {
     input: string;
     output?: string;
     isError?: boolean;
+    kind?: string;
+    locations?: Array<{ path: string; line?: number }>;
+    diffs?: Array<{ path: string; oldText?: string; newText: string }>;
     permission?: {
         requestId: string;
         toolName: string;
@@ -537,6 +542,12 @@ function GroupedToolCallItem({
     const summary = Object.keys(args).length > 0 ? summarizeArgs(args) : undefined;
     const expanded = isExpanded.value;
 
+    // Prefer the ACP-forwarded diff blocks; fall back to deriving a diff from
+    // edit-family tool input so it survives the post-turn history reload.
+    const diffs =
+        call.diffs && call.diffs.length > 0 ? call.diffs : deriveDiffsFromInput(call.toolName, args);
+    const locations = call.locations && call.locations.length > 0 ? call.locations : undefined;
+
     return (
         <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
             <div
@@ -552,6 +563,7 @@ function GroupedToolCallItem({
                 }}
             >
                 <StatusIcon status={status} />
+                <ToolKindIcon kind={call.kind} />
                 <span class="chat-tool-name-badge">{call.toolName}</span>
                 {summary && <span class="chat-tool-row-summary">{summary}</span>}
                 {status === 'waiting' && (
@@ -584,6 +596,30 @@ function GroupedToolCallItem({
                             <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
                         )}
                     </div>
+
+                    {/* File diffs (Phase 6): ACP diff blocks or derived from
+                        edit-family input. */}
+                    {diffs.length > 0 && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.diff', lang)}</div>
+                            <ToolDiffView diffs={diffs} />
+                        </div>
+                    )}
+
+                    {/* Files the tool touched (ACP locations). */}
+                    {locations && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.locations', lang)}</div>
+                            <div class="chat-tool-locations">
+                                {locations.map((loc, i) => (
+                                    <span key={i} class="chat-tool-location" title={loc.path}>
+                                        {loc.path}
+                                        {loc.line != null ? `:${loc.line}` : ''}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Inline permission: pending shows the action buttons,
                         resolved collapses to a one-line receipt. */}
