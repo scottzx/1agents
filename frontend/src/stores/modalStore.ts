@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 
 import type { Workspace, Session, AgentType, FsEntry } from '../components/types';
 import { DEFAULT_AGENT_TYPE } from '../services/agentService';
-import type { SkillPushConflict } from '@1agents/core/services/skillService';
+import type { SkillPushConflict, SkillPushPreview } from '@1agents/core/services/skillService';
 
 /**
  * Modal state (workspace create/rename modal, chat-create modal, directory
@@ -241,4 +241,39 @@ export const closeSkillConflictModal = () => {
     skillConflictOpen.value = false;
     skillConflictData.value = null;
     skillConflictOnResolved.value = null;
+};
+
+// ── Push-preview modal (issue #379 follow-up) ──────────────────────────────
+// Shown on every "推送到母体" click, replacing the silent-overwrite push:
+// previewPush's read-only diff response drives the dialog, and the user picks
+// update/fork/create from there instead of the push having already happened.
+export const pushPreviewOpen = signal(false);
+export const pushPreviewData = signal<SkillPushPreview | null>(null);
+export const pushPreviewWorkspaceId = signal('');
+export const pushPreviewSkillRef = signal('');
+// Callback into SkillsTab so the modal doesn't need to know about workspace
+// refresh/flash wiring; set alongside the preview data when opening. Receives
+// a short status the caller turns into a flash message.
+type PushPreviewOnDone = (result: 'created' | 'main' | 'fork') => void;
+export const pushPreviewOnDone = signal<PushPreviewOnDone | null>(null);
+
+export const openPushPreviewModal = (
+    preview: SkillPushPreview,
+    workspaceId: string,
+    skillRef: string,
+    onDone: (result: 'created' | 'main' | 'fork') => void
+) => {
+    pushPreviewOpen.value = true;
+    pushPreviewData.value = preview;
+    pushPreviewWorkspaceId.value = workspaceId;
+    pushPreviewSkillRef.value = skillRef;
+    pushPreviewOnDone.value = onDone;
+};
+
+export const closePushPreviewModal = () => {
+    pushPreviewOpen.value = false;
+    pushPreviewData.value = null;
+    pushPreviewWorkspaceId.value = '';
+    pushPreviewSkillRef.value = '';
+    pushPreviewOnDone.value = null;
 };

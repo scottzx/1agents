@@ -185,6 +185,31 @@ func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (pushResult, err
 	return out, nil
 }
 
+// previewSkillFromShared asks the 1skills store what a push-back would change:
+// the diff between the workspace copy and the current 母体 plus target/divergence
+// info (#379). Read-only; returns the raw JSON for the frontend's push preview.
+func previewSkillFromShared(skillsAddr, skillRef, sourcePath string) (json.RawMessage, error) {
+	if skillsAddr == "" {
+		skillsAddr = defaultSkillsAddr
+	}
+	target := &url.URL{
+		Scheme: "http",
+		Host:   skillsAddr,
+		Path:   "/api/skills/" + skillRef + "/preview-push",
+	}
+	payload, _ := json.Marshal(map[string]string{"sourcePath": sourcePath})
+	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("reach skill manager: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("skill manager: %s", strings.TrimSpace(string(body)))
+	}
+	return json.RawMessage(body), nil
+}
+
 // WorkspaceSkillStatus describes one skill materialized in a workspace's
 // .claude/skills: its parsed frontmatter (for the card) plus its relationship to
 // the shared store (母体) as one of three states.

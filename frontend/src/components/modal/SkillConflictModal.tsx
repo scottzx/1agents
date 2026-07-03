@@ -52,11 +52,15 @@ export function SkillConflictModal({ conflict, onClose, onResolved, language }: 
                 </div>
                 <div class="ws-modal-body">
                     <p class="skill-conflict-desc">
-                        {t('assistant.conflict.body', language, {
-                            name: conflict.name,
-                            storeVersion: conflict.storeVersion,
-                            baseVersion: conflict.baseVersion,
-                        })}
+                        {t(
+                            conflict.baseVersion ? 'assistant.conflict.body' : 'assistant.conflict.bodyUntracked',
+                            language,
+                            {
+                                name: conflict.name,
+                                storeVersion: conflict.storeVersion,
+                                baseVersion: conflict.baseVersion,
+                            }
+                        )}
                     </p>
                     <div class="skill-conflict-choices">
                         <label class={`skill-conflict-choice${resolution === 'fork' ? ' is-active' : ''}`}>

@@ -97,6 +97,44 @@ async function pushSkill(workspaceId: string, skillRef: string): Promise<PushSki
     return (await res.json()) as PushSkillResponse;
 }
 
+/** One file's change within a push preview diff (issue #379 follow-up). */
+export interface SkillDiffFile {
+    path: string;
+    status: 'added' | 'removed' | 'modified';
+    diff: string;
+}
+
+/**
+ * Read-only preview of what a push would do, fetched before the user commits.
+ * `isNew` means this workspace copy isn't in 母体 yet (first-time add) — `target`
+ * and `files` are absent/empty. Otherwise `target` is the 母体 package this would
+ * push against and `files` is the per-file unified diff; `diverged` flags that
+ * 母体 moved past this copy's base version since it was last synced.
+ */
+export interface SkillPushPreview {
+    exists: boolean;
+    isNew: boolean;
+    sourcePath?: string;
+    target?: { id: string; name: string; storeVersion: number; baseVersion: number };
+    diverged?: boolean;
+    files?: SkillDiffFile[];
+}
+
+/**
+ * Preview a skill push without writing anything (issue #379 follow-up): lets the
+ * UI show a diff of "workspace copy vs 母体" before the user commits to update
+ * or fork.
+ */
+async function previewPush(workspaceId: string, skillRef: string): Promise<SkillPushPreview> {
+    const res = await apiFetch('/workspace/push-skill?preview=1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, skillRef }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json()) as SkillPushPreview;
+}
+
 /**
  * Resolve a concurrent-edit conflict surfaced by `pushSkill`. `resolution: 'fork'`
  * keeps the store's current version as main and lands the pushed content as a new
@@ -124,4 +162,4 @@ async function resolvePush(params: {
     };
 }
 
-export const skillService = { listSkills, listWorkspaceSkills, pushSkill, resolvePush };
+export const skillService = { listSkills, listWorkspaceSkills, pushSkill, previewPush, resolvePush };

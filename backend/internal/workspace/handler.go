@@ -642,6 +642,16 @@ func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if r.URL.Query().Get("preview") == "1" {
+		preview, err := previewSkillFromShared(h.skillsAddr, body.SkillRef, src)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(preview)
+		return
+	}
 	res, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)

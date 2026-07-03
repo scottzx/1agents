@@ -11206,6 +11206,137 @@ body {
   }
 }
 
+/* Push-preview dialog (issue #379 follow-up). Reuses .ws-modal primitives;
+   this block adds the diverged banner, the scrollable diff list, and the
+   per-line unified-diff coloring. Widens the modal a bit since diffs need
+   more room than the plain conflict dialog. */
+.push-preview-modal {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+
+  .push-preview-banner {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--warning-fg);
+    background-color: var(--warning-bg);
+    border: 1px solid rgba(var(--warning-rgb), 0.25);
+    border-radius: var(--bento-radius-sm);
+    padding: 8px 12px;
+    margin: 0 0 12px;
+  }
+
+  .push-preview-diff {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  .push-preview-empty {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+  }
+}
+
+.push-preview-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skill-diff-files {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skill-diff-file {
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  overflow: hidden;
+}
+
+.skill-diff-file-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.skill-diff-file-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-main);
+  word-break: break-all;
+}
+
+.skill-diff-status-chip {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+
+  &.is-added {
+    color: var(--success-fg);
+    background: var(--success-bg);
+  }
+
+  &.is-removed {
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+  }
+
+  &.is-modified {
+    color: var(--warning-fg);
+    background: var(--warning-bg);
+  }
+}
+
+.skill-diff-pre {
+  margin: 0;
+  padding: 8px 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg-page);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.skill-diff-line {
+  display: block;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  &.skill-diff-line--add {
+    color: var(--success-fg);
+    background: rgba(var(--success-rgb), 0.08);
+  }
+
+  &.skill-diff-line--del {
+    color: var(--danger-fg);
+    background: rgba(var(--danger-rgb), 0.08);
+  }
+
+  &.skill-diff-line--hunk {
+    color: var(--text-muted);
+    background: transparent;
+  }
+
+  &.skill-diff-line--meta {
+    color: var(--text-muted);
+  }
+
+  &.skill-diff-line--ctx {
+    color: var(--text-secondary);
+  }
+}
+
 /* ==========================================================================
    REMOTE DIRECTORY PICKER STYLES
    ========================================================================== */
