@@ -135,7 +135,7 @@ func TestChainVerifyFailedRequeuesWithContext(t *testing.T) {
 	})
 
 	crit := []CriterionResult{{Criterion: "达标", Pass: false, Comment: "差一步"}}
-	if _, err := applyReviewVerdict(store, ref.Path, "t1", crit, "整体未达标", AgentTypeClaudecode); err != nil {
+	if _, err := applyReviewVerdict(store, ref.Path, "t1", crit, false, "整体未达标", AgentTypeClaudecode); err != nil {
 		t.Fatalf("applyReviewVerdict: %v", err)
 	}
 
@@ -168,7 +168,7 @@ func TestChainVerifyFailedExhaustedFails(t *testing.T) {
 			Status: TaskStatusRunning, StartedAt: &now, CreatedAt: now, UpdatedAt: now},
 	})
 	crit := []CriterionResult{{Criterion: "达标", Pass: false}}
-	if _, err := applyReviewVerdict(store, ref.Path, "t1", crit, "未达标", AgentTypeClaudecode); err != nil {
+	if _, err := applyReviewVerdict(store, ref.Path, "t1", crit, false, "未达标", AgentTypeClaudecode); err != nil {
 		t.Fatalf("applyReviewVerdict: %v", err)
 	}
 	if got := loadTask(t, store, ref.Path, "t1").Status; got != TaskStatusFailed {

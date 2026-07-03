@@ -247,12 +247,18 @@ type CriterionResult struct {
 // criterion passed" — the verifier reports per-criterion results, the server
 // decides done/loop/fail. Attempt mirrors Task.ReviewCount for display. See #50.
 type ReviewVerdict struct {
-	Pass      bool              `json:"pass"`
-	Criteria  []CriterionResult `json:"criteria,omitempty"`
-	Summary   string            `json:"summary,omitempty"`
-	Attempt   int               `json:"attempt"`
-	Verifier  string            `json:"verifier,omitempty"` // agent type that judged
-	CreatedAt time.Time         `json:"createdAt"`
+	Pass bool `json:"pass"`
+	// NeedsHuman is the verifier's explicit escalation route (#50 借鉴路): the
+	// artifact can't be judged pass/fail by retrying the executor — it needs a
+	// human design/architecture/tradeoff decision. Distinct from a rejection:
+	// it drives the task to awaiting_human instead of consuming review budget.
+	// Mutually exclusive with Pass (an escalating verdict never counts as pass).
+	NeedsHuman bool              `json:"needsHuman,omitempty"`
+	Criteria   []CriterionResult `json:"criteria,omitempty"`
+	Summary    string            `json:"summary,omitempty"`
+	Attempt    int               `json:"attempt"`
+	Verifier   string            `json:"verifier,omitempty"` // agent type that judged
+	CreatedAt  time.Time         `json:"createdAt"`
 }
 
 // Priority drives scheduler ordering when several tasks are ready at once

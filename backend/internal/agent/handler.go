@@ -949,8 +949,9 @@ func (h *Handler) handleTaskGraph(w http.ResponseWriter, r *http.Request, id str
 // trusted from the request. See applyReviewVerdict (#50).
 func (h *Handler) handleTaskReview(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Criteria []CriterionResult `json:"criteria"`
-		Summary  string            `json:"summary"`
+		Criteria   []CriterionResult `json:"criteria"`
+		NeedsHuman bool              `json:"needsHuman"`
+		Summary    string            `json:"summary"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -973,7 +974,7 @@ func (h *Handler) handleTaskReview(w http.ResponseWriter, r *http.Request, id st
 	if verifier == "" {
 		verifier = SessionRoleVerifier
 	}
-	task, err := applyReviewVerdict(h.tasksStore, existing.WorkspacePath, id, body.Criteria, body.Summary, verifier)
+	task, err := applyReviewVerdict(h.tasksStore, existing.WorkspacePath, id, body.Criteria, body.NeedsHuman, body.Summary, verifier)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

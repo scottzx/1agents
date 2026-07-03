@@ -91,12 +91,21 @@ func aggregatePanel(pool []ReviewVerdict, threshold, attempt int, now time.Time)
 		return v
 	}
 	passCount := 0
+	needsHumanCount := 0
 	for _, v := range pool {
 		if v.Pass {
 			passCount++
 		}
+		if v.NeedsHuman {
+			needsHumanCount++
+		}
 	}
 	panelPass := passCount >= threshold
+	// Escalation diverts only the reject path: a pass consensus still ships,
+	// but absent one, a single credible "needs human" beats a pointless
+	// executor re-run. NeedsHuman and Pass are mutually exclusive on the
+	// aggregate (Pass wins).
+	panelNeedsHuman := !panelPass && needsHumanCount > 0
 
 	var merged []CriterionResult
 	var summaries []string
@@ -115,16 +124,20 @@ func aggregatePanel(pool []ReviewVerdict, threshold, attempt int, now time.Time)
 		}
 	}
 	summary := fmt.Sprintf("对抗式核验:%d/%d 通过(阈值 %d)", passCount, len(pool), threshold)
+	if needsHumanCount > 0 {
+		summary += fmt.Sprintf(",%d 判定需人工介入", needsHumanCount)
+	}
 	if len(summaries) > 0 {
 		summary += "\n" + strings.Join(summaries, "\n")
 	}
 	return ReviewVerdict{
-		Pass:      panelPass,
-		Criteria:  merged,
-		Summary:   summary,
-		Attempt:   attempt,
-		Verifier:  fmt.Sprintf("panel(%d)", len(pool)),
-		CreatedAt: now,
+		Pass:       panelPass,
+		NeedsHuman: panelNeedsHuman,
+		Criteria:   merged,
+		Summary:    summary,
+		Attempt:    attempt,
+		Verifier:   fmt.Sprintf("panel(%d)", len(pool)),
+		CreatedAt:  now,
 	}
 }
 
@@ -132,17 +145,24 @@ func aggregatePanel(pool []ReviewVerdict, threshold, attempt int, now time.Time)
 // under review and drives its state machine (#50):
 //
 //   - every criterion passes  → completed (绿灯)
+//   - verifier flags needsHuman → awaiting_human (升级人工), budget untouched
 //   - some criterion fails, budget left → back to pending (re-execute), so the
 //     next executor run sees the rejection in its injected timeline background
 //   - some fails, budget exhausted → failed (报异常, terminal)
+//
+// needsHuman is the verifier's explicit escalation route (借鉴路): it wins over
+// a rejection but not over a pass consensus, and never counts toward pass — so
+// an escalating verdict can't accidentally complete the task.
 //
 // The verdict is authoritative: the verifier reports per-criterion results, the
 // server computes overall pass and the transition. The task must currently be
 // running (a verification in progress); a call in any other state is rejected
 // so a duplicate/late submit can't re-transition. Returns the updated task.
-func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []CriterionResult, summary, verifier string) (*Task, error) {
+func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []CriterionResult, needsHuman bool, summary, verifier string) (*Task, error) {
 	now := time.Now().UTC()
-	pass := criteriaPass(criteria)
+	// An escalating verdict never counts as a pass, even if the verifier also
+	// happened to mark every criterion — the route it chose is authoritative.
+	pass := criteriaPass(criteria) && !needsHuman
 
 	var result *Task
 	var stateErr error
@@ -170,12 +190,13 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 		// verifier's verdict and wait for the rest before deciding (#131). For the
 		// classic single-verifier flow (n == 1) the panel completes immediately.
 		t.ReviewPool = append(t.ReviewPool, ReviewVerdict{
-			Pass:      pass,
-			Criteria:  criteria,
-			Summary:   summary,
-			Attempt:   cycle,
-			Verifier:  verifier,
-			CreatedAt: now,
+			Pass:       pass,
+			NeedsHuman: needsHuman,
+			Criteria:   criteria,
+			Summary:    summary,
+			Attempt:    cycle,
+			Verifier:   verifier,
+			CreatedAt:  now,
 		})
 
 		// In a multi-verifier panel each panelist's individual verdict lands on
@@ -209,18 +230,25 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 		// Panel complete: aggregate the pool into one authoritative verdict,
 		// clear it, and drive the same state machine the single-verifier flow uses.
 		verdict := aggregatePanel(t.ReviewPool, effectivePassThreshold(t), cycle, now)
-		pass = verdict.Pass
 		t.ReviewPool = nil
 
-		// Record the verdict before transitioning so the verify-failed rule can
-		// read the rejection summary off the task (#133).
+		// Record the verdict before transitioning so the verify-failed /
+		// verify-needs-human rules can read its summary off the task (#133).
 		t.Review = &verdict
 
 		switch {
-		case pass:
+		case verdict.Pass:
 			t.Status = TaskStatusCompleted
 			t.CompletedAt = &now
 			t.Summary = fmt.Sprintf("核验通过(第 %d 轮)", cycle)
+		case verdict.NeedsHuman:
+			// verify-needs-human → 升级人工 (借鉴路): park at awaiting_human via
+			// the declarative engine. Does NOT consume review budget — it's an
+			// escalation, not a rejection, so ReviewCount stays put and the task
+			// is not eligible for a re-execution round.
+			t.Summary = fmt.Sprintf("核验判定需人工介入(第 %d 轮),已升级等待人工决策", cycle)
+			ev := TaskEvent{Kind: EventVerifyNeedsHuman, Task: *t, Signals: DeriveSignals(*t), At: now}
+			applyEventActions(t, DefaultEventEngine().Evaluate(ev), now)
 		default:
 			t.ReviewCount = cycle
 			if cycle < effectiveReviewMax(t) {
@@ -262,8 +290,11 @@ func applyReviewVerdict(store *TasksStore, wsPath, taskID string, criteria []Cri
 func renderVerdictReply(v ReviewVerdict) string {
 	var b strings.Builder
 	headline := "❌ 打回"
-	if v.Pass {
+	switch {
+	case v.Pass:
 		headline = "✅ 通过"
+	case v.NeedsHuman:
+		headline = "⚠️ 需人工介入"
 	}
 	fmt.Fprintf(&b, "## 🔍 核验结果(第 %d 轮):%s\n\n", v.Attempt, headline)
 	for _, c := range v.Criteria {

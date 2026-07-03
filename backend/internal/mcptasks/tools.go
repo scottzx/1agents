@@ -148,7 +148,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "submit_review",
-		"description": "Submit your verification verdict for the task under review (verifier role only). Report one result per acceptance criterion: pass=true if the executor's output meets it, pass=false with a concrete comment on what is missing. The server marks the task completed only when EVERY criterion passes; otherwise it sends the task back for another execution round (or fails it once the review budget is exhausted). You do not set the task status yourself — this verdict drives it.",
+		"description": "Submit your verification verdict for the task under review (verifier role only). Report one result per acceptance criterion: pass=true if the executor's output meets it, pass=false with a concrete comment on what is missing. The server marks the task completed only when EVERY criterion passes; otherwise it sends the task back for another execution round (or fails it once the review budget is exhausted). Set needsHuman=true instead when the blocker is NOT something the executor can fix by retrying — it needs a human design, architecture, or tradeoff decision — and explain what the human must decide in summary; the server escalates the task to a human rather than looping. You do not set the task status yourself — this verdict drives it.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"criteria"},
@@ -166,7 +166,8 @@ var toolDefs = []map[string]any{
 						},
 					},
 				},
-				"summary": map[string]any{"type": "string", "description": "Optional overall note recorded with the verdict."},
+				"needsHuman": map[string]any{"type": "boolean", "description": "Set true to escalate to a human instead of rejecting: the artifact needs a design/architecture/tradeoff decision that retrying the executor won't resolve. Explain what the human must decide in summary. Does not consume the review budget."},
+				"summary":    map[string]any{"type": "string", "description": "Optional overall note recorded with the verdict; when needsHuman=true, state plainly what needs human judgement."},
 			},
 		},
 	},
@@ -235,11 +236,11 @@ var reminderScopedTools = map[string]bool{
 // update its own task. The PM-only create_*/milestone tools are withheld so the
 // lock cannot be sidestepped by creating sibling tasks. See #50.
 var executorScopedTools = map[string]bool{
-	"list_tasks":           true,
-	"get_task":             true,
-	"get_task_graph":       true,
-	"update_task":          true,
-	"complete_human_task":  true,
+	"list_tasks":          true,
+	"get_task":            true,
+	"get_task_graph":      true,
+	"update_task":         true,
+	"complete_human_task": true,
 }
 
 // verifierScopedTools is the hard read-only review subset: read the task, list
@@ -810,7 +811,8 @@ func (s *server) toolSubmitReview(args json.RawMessage) map[string]any {
 			Pass      bool   `json:"pass"`
 			Comment   string `json:"comment"`
 		} `json:"criteria"`
-		Summary string `json:"summary"`
+		NeedsHuman bool   `json:"needsHuman"`
+		Summary    string `json:"summary"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
 		return toolErr("invalid arguments: " + err.Error())
@@ -819,8 +821,9 @@ func (s *server) toolSubmitReview(args json.RawMessage) map[string]any {
 		return toolErr("criteria is required: report a result for each acceptance criterion")
 	}
 	body := map[string]any{
-		"criteria": a.Criteria,
-		"summary":  a.Summary,
+		"criteria":   a.Criteria,
+		"needsHuman": a.NeedsHuman,
+		"summary":    a.Summary,
 	}
 	status, resp, err := s.api.do("POST", "/api/agent/tasks/"+url.PathEscape(s.taskID)+"/review", nil, body)
 	if err != nil {

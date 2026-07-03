@@ -317,7 +317,7 @@ func (r *TaskRunner) runVerifierPass(workspacePath, workspaceID string, task Tas
 		return
 	}
 
-	instruction := "执行者已提交产出。请独立、默认怀疑地逐条对照本任务的验收标准核验执行者的产出,主动找漏洞与反例,然后调用 submit_review 提交裁决:每条标准报告 pass(是否达标),未达标的写明缺什么。只有全部达标才算这条通过,否则会被打回重做。"
+	instruction := "执行者已提交产出。请独立、默认怀疑地逐条对照本任务的验收标准核验执行者的产出,主动找漏洞与反例,然后调用 submit_review 提交裁决:每条标准报告 pass(是否达标),未达标的写明缺什么。只有全部达标才算这条通过,否则会被打回重做。若问题不是执行者重做能解决的,而是需要人来做设计/架构/取舍决策,则改为在裁决中设 needsHuman=true,并在 summary 写清需要人决定什么——系统会升级等待人工,而不是空转重做。"
 
 	log.Printf("[runner] Verify pass %d/%d task %s, session %s", pass, total, task.ID, sessionID)
 
@@ -371,7 +371,7 @@ func (r *TaskRunner) rejectNoVerdict(workspacePath, taskID, verifier string, poo
 		return // this pass already submitted a verdict
 	}
 	crit := []CriterionResult{{Criterion: "核验未完成", Pass: false, Comment: reason}}
-	if _, err := applyReviewVerdict(r.tasksStore, workspacePath, taskID, crit, reason, verifier); err != nil {
+	if _, err := applyReviewVerdict(r.tasksStore, workspacePath, taskID, crit, false, reason, verifier); err != nil {
 		log.Printf("[runner] verify task %s: record no-verdict rejection: %v", taskID, err)
 	}
 }

@@ -42,6 +42,10 @@ const (
 	// EventVerifyFailed fires when a verification pass rejects the artifact
 	// but the review budget still has room — the task will be re-executed.
 	EventVerifyFailed TaskEventKind = "verify-failed"
+	// EventVerifyNeedsHuman fires when a verifier judges the artifact needs a
+	// human decision (design/architecture/tradeoff), not another executor round.
+	// The task escalates to awaiting_human instead of consuming review budget.
+	EventVerifyNeedsHuman TaskEventKind = "verify-needs-human"
 	// EventFailed fires when a task reaches the terminal failed status.
 	EventFailed TaskEventKind = "failed"
 	// EventDone fires when a task reaches the terminal completed status.
@@ -74,6 +78,11 @@ const (
 	// ActionRequeue forces a task back to pending so the scheduler re-runs it,
 	// carrying Note as context. Used by the verify-failed chain.
 	ActionRequeue EventActionKind = "requeue"
+	// ActionAwaitHuman parks a task at awaiting_human, carrying Note as the
+	// escalation reason. Used by the verify-needs-human chain: the task waits
+	// for a human decision (complete_human_task / board completion) rather than
+	// being re-executed. Downstream deps stay blocked until it completes.
+	ActionAwaitHuman EventActionKind = "await-human"
 )
 
 // EventAction is the declarative result of a rule: a verb plus its target.
@@ -196,6 +205,17 @@ func defaultRules() []Rule {
 				return []EventAction{{Kind: ActionRequeue, Note: note}}
 			},
 		},
+		{
+			Name: "escalate-on-verify-needs-human",
+			On:   []TaskEventKind{EventVerifyNeedsHuman},
+			Do: func(ev TaskEvent) []EventAction {
+				note := "核验判定需人工介入,已升级等待人工决策。"
+				if ev.Task.Review != nil && strings.TrimSpace(ev.Task.Review.Summary) != "" {
+					note = "核验判定需人工介入,已升级等待人工决策。原因:" + ev.Task.Review.Summary
+				}
+				return []EventAction{{Kind: ActionAwaitHuman, Role: SessionRolePM, Note: note}}
+			},
+		},
 	}
 }
 
@@ -262,6 +282,27 @@ func applyEventActions(t *Task, actions []EventAction, now time.Time) (modified 
 			}
 			modified = true
 			log.Printf("[events] task %s requeued by rule (%s)", t.ID, a.Note)
+		case ActionAwaitHuman:
+			// Park for a human decision. Keep StartedAt (the task already ran +
+			// verified) so its elapsed time reflects the real work. The
+			// scheduler skips awaiting_human, so this holds until a human
+			// completes it via complete_human_task / board completion.
+			t.Status = TaskStatusAwaitingHuman
+			t.UpdatedAt = now
+			if strings.TrimSpace(a.Note) != "" {
+				text := a.Note
+				if strings.TrimSpace(a.Role) != "" {
+					text = fmt.Sprintf("@%s %s", a.Role, a.Note)
+				}
+				t.Replies = append(t.Replies, Reply{
+					Author:    Author{Kind: "scheduler", Name: "scheduler"},
+					Text:      text,
+					Mode:      ModePureComment,
+					CreatedAt: now,
+				})
+			}
+			modified = true
+			log.Printf("[events] task %s escalated to awaiting_human by rule (%s)", t.ID, a.Note)
 		}
 	}
 	return modified, followUps

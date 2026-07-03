@@ -74,7 +74,7 @@ func TestApplyReviewVerdictPassCompletes(t *testing.T) {
 	got, err := applyReviewVerdict(store, path, id, []CriterionResult{
 		{Criterion: "must compile", Pass: true},
 		{Criterion: "tests pass", Pass: true},
-	}, "all good", "claudecode")
+	}, false, "all good", "claudecode")
 	if err != nil {
 		t.Fatalf("applyReviewVerdict: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestApplyReviewVerdictFailRequeuesWithinBudget(t *testing.T) {
 	got, err := applyReviewVerdict(store, path, id, []CriterionResult{
 		{Criterion: "must compile", Pass: true},
 		{Criterion: "tests pass", Pass: false, Comment: "3 failing"},
-	}, "", "claudecode")
+	}, false, "", "claudecode")
 	if err != nil {
 		t.Fatalf("applyReviewVerdict: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestApplyReviewVerdictFailExhaustsBudget(t *testing.T) {
 	store, path, id := reviewTask(t, 1) // single cycle
 	got, err := applyReviewVerdict(store, path, id, []CriterionResult{
 		{Criterion: "tests pass", Pass: false, Comment: "still red"},
-	}, "", "claudecode")
+	}, false, "", "claudecode")
 	if err != nil {
 		t.Fatalf("applyReviewVerdict: %v", err)
 	}
@@ -133,12 +133,83 @@ func TestApplyReviewVerdictFailExhaustsBudget(t *testing.T) {
 	}
 }
 
+// TestApplyReviewVerdictNeedsHumanEscalates: a verifier that flags needsHuman
+// parks the task at awaiting_human without spending review budget — even a
+// tight 1-cycle budget doesn't fail it, because escalation is not a rejection.
+// The all-pass criteria here also assert the mutual exclusion: the chosen route
+// (needs_human) wins over an accidental criteria pass.
+func TestApplyReviewVerdictNeedsHumanEscalates(t *testing.T) {
+	store, path, id := reviewTask(t, 1) // single cycle: a reject would exhaust it
+	got, err := applyReviewVerdict(store, path, id, passCrit(), true,
+		"需要产品先决定是否支持多租户,执行者无法自行取舍", "claudecode")
+	if err != nil {
+		t.Fatalf("applyReviewVerdict: %v", err)
+	}
+	if got.Status != TaskStatusAwaitingHuman {
+		t.Fatalf("status = %s, want awaiting_human (升级人工)", got.Status)
+	}
+	if got.ReviewCount != 0 {
+		t.Fatalf("ReviewCount = %d, want 0 — escalation must not consume budget", got.ReviewCount)
+	}
+	if reviewExhausted(got) {
+		t.Error("escalation is not a rejection; budget must stay intact")
+	}
+	if got.Review == nil || !got.Review.NeedsHuman || got.Review.Pass {
+		t.Fatalf("verdict should be needs-human, not pass: %+v", got.Review)
+	}
+	if got.CompletedAt != nil {
+		t.Error("an escalated task is not completed")
+	}
+	if len(got.Replies) == 0 {
+		t.Error("expected an escalation reply on the timeline")
+	}
+}
+
+// TestPanelPassBeatsNeedsHuman: 2 pass + 1 needs-human at majority threshold 2 →
+// a pass consensus still ships; escalation only diverts the reject path.
+func TestPanelPassBeatsNeedsHuman(t *testing.T) {
+	store, path, id := panelTask(t, 3, 0, 2)
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v2", "claudecode")
+	got, err := applyReviewVerdict(store, path, id, passCrit(), true, "需人工", "claudecode")
+	if err != nil {
+		t.Fatalf("verdict 3: %v", err)
+	}
+	if got.Status != TaskStatusCompleted {
+		t.Fatalf("status = %s, want completed (2/3 pass ≥ majority beats 1 escalation)", got.Status)
+	}
+	if got.Review == nil || !got.Review.Pass || got.Review.NeedsHuman {
+		t.Fatalf("aggregate should be pass, not escalation: %+v", got.Review)
+	}
+}
+
+// TestPanelNeedsHumanBeatsReject: no pass consensus (1/3) but one panelist flags
+// needs-human → escalate to awaiting_human instead of a pointless re-execution.
+func TestPanelNeedsHumanBeatsReject(t *testing.T) {
+	store, path, id := panelTask(t, 3, 0, 2)
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, failCrit(), false, "v2", "claudecode")
+	got, err := applyReviewVerdict(store, path, id, failCrit(), true, "需人工决策", "claudecode")
+	if err != nil {
+		t.Fatalf("verdict 3: %v", err)
+	}
+	if got.Status != TaskStatusAwaitingHuman {
+		t.Fatalf("status = %s, want awaiting_human (1/3 pass, one escalation diverts reject)", got.Status)
+	}
+	if got.ReviewCount != 0 {
+		t.Fatalf("ReviewCount = %d, want 0 — escalation must not consume budget", got.ReviewCount)
+	}
+	if got.Review == nil || !got.Review.NeedsHuman || got.Review.Pass {
+		t.Fatalf("aggregate should be needs-human: %+v", got.Review)
+	}
+}
+
 func TestApplyReviewVerdictRejectsWhenNotRunning(t *testing.T) {
 	store, path, id := reviewTask(t, 0)
 	setStatus(t, store, path, id, TaskStatusPending)
 	if _, err := applyReviewVerdict(store, path, id, []CriterionResult{
 		{Criterion: "x", Pass: true},
-	}, "", "claudecode"); err == nil {
+	}, false, "", "claudecode"); err == nil {
 		t.Fatal("expected rejection when the task is not under review (running)")
 	}
 }
@@ -175,7 +246,7 @@ func TestEffectiveVerifierCountAndThreshold(t *testing.T) {
 func TestPanelStaysUnderReviewUntilComplete(t *testing.T) {
 	store, path, id := panelTask(t, 3, 0, 2)
 
-	got, err := applyReviewVerdict(store, path, id, passCrit(), "v1", "claudecode")
+	got, err := applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode")
 	if err != nil {
 		t.Fatalf("verdict 1: %v", err)
 	}
@@ -186,7 +257,7 @@ func TestPanelStaysUnderReviewUntilComplete(t *testing.T) {
 		t.Fatalf("pool = %d, want 1", len(got.ReviewPool))
 	}
 
-	got, err = applyReviewVerdict(store, path, id, passCrit(), "v2", "claudecode")
+	got, err = applyReviewVerdict(store, path, id, passCrit(), false, "v2", "claudecode")
 	if err != nil {
 		t.Fatalf("verdict 2: %v", err)
 	}
@@ -205,9 +276,9 @@ func TestPanelStaysUnderReviewUntilComplete(t *testing.T) {
 // (2) → the panel accepts and the task completes.
 func TestPanelMajorityPassCompletes(t *testing.T) {
 	store, path, id := panelTask(t, 3, 0, 2)
-	_, _ = applyReviewVerdict(store, path, id, passCrit(), "v1", "claudecode")
-	_, _ = applyReviewVerdict(store, path, id, failCrit(), "v2", "claudecode")
-	got, err := applyReviewVerdict(store, path, id, passCrit(), "v3", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, failCrit(), false, "v2", "claudecode")
+	got, err := applyReviewVerdict(store, path, id, passCrit(), false, "v3", "claudecode")
 	if err != nil {
 		t.Fatalf("verdict 3: %v", err)
 	}
@@ -226,9 +297,9 @@ func TestPanelMajorityPassCompletes(t *testing.T) {
 // rejects; with budget left the task requeues for re-execution.
 func TestPanelBelowThresholdRejects(t *testing.T) {
 	store, path, id := panelTask(t, 3, 0, 2)
-	_, _ = applyReviewVerdict(store, path, id, passCrit(), "v1", "claudecode")
-	_, _ = applyReviewVerdict(store, path, id, failCrit(), "v2", "claudecode")
-	got, err := applyReviewVerdict(store, path, id, failCrit(), "v3", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, failCrit(), false, "v2", "claudecode")
+	got, err := applyReviewVerdict(store, path, id, failCrit(), false, "v3", "claudecode")
 	if err != nil {
 		t.Fatalf("verdict 3: %v", err)
 	}
@@ -250,9 +321,9 @@ func TestPanelBelowThresholdRejects(t *testing.T) {
 // the artifact even if the majority passes.
 func TestPanelUnanimousThreshold(t *testing.T) {
 	store, path, id := panelTask(t, 3, 3, 2) // require all 3
-	_, _ = applyReviewVerdict(store, path, id, passCrit(), "v1", "claudecode")
-	_, _ = applyReviewVerdict(store, path, id, passCrit(), "v2", "claudecode")
-	got, err := applyReviewVerdict(store, path, id, failCrit(), "v3", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode")
+	_, _ = applyReviewVerdict(store, path, id, passCrit(), false, "v2", "claudecode")
+	got, err := applyReviewVerdict(store, path, id, failCrit(), false, "v3", "claudecode")
 	if err != nil {
 		t.Fatalf("verdict 3: %v", err)
 	}
@@ -265,7 +336,7 @@ func TestPanelUnanimousThreshold(t *testing.T) {
 // store reload (it lives in the review_pool column).
 func TestPanelPoolPersistsRoundTrip(t *testing.T) {
 	store, path, id := panelTask(t, 3, 0, 2)
-	if _, err := applyReviewVerdict(store, path, id, passCrit(), "v1", "claudecode"); err != nil {
+	if _, err := applyReviewVerdict(store, path, id, passCrit(), false, "v1", "claudecode"); err != nil {
 		t.Fatalf("verdict 1: %v", err)
 	}
 	got, ok, err := store.GetTask(id)
