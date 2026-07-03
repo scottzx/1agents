@@ -134,12 +134,25 @@ func workspaceSkillDir(workspacePath, skillRef string) (string, error) {
 	return pkg, nil
 }
 
+// pushResult mirrors the 1skills push-from-path response (#379 decision tree).
+// Status is one of updated | exists | created | conflict; on conflict the store
+// writes nothing and Conflict carries {id,name,storeVersion,baseVersion,
+// sourcePath} for the caller to resolve as main/fork.
+type pushResult struct {
+	Status   string          `json:"status"`
+	Changed  bool            `json:"changed"`
+	Created  bool            `json:"created"`
+	Version  int             `json:"version"`
+	ID       string          `json:"id"`
+	Conflict json.RawMessage `json:"conflict,omitempty"`
+}
+
 // pushSkillToShared forwards a workspace's edited skill copy back to the 1skills
-// (母体) shared store via its push-from-path endpoint. The store fingerprints the
-// source and only rewrites (and bumps the manifest revision) when the content
-// actually differs — Go never touches the store or manifest directly, keeping
-// drift detection correct. Returns whether the store baseline changed.
-func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, created bool, version int, err error) {
+// (母体) shared store via its push-from-path endpoint. The store keys off the
+// copy's stable-id sidecar (#379): a linear edit updates + snapshots, a
+// concurrent edit comes back as status=conflict (store untouched) for the caller
+// to land as main or fork. Go never touches the store or manifest directly.
+func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (pushResult, error) {
 	if skillsAddr == "" {
 		skillsAddr = defaultSkillsAddr
 	}
@@ -151,7 +164,7 @@ func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, create
 	payload, _ := json.Marshal(map[string]string{"sourcePath": sourcePath})
 	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
 	if err != nil {
-		return false, false, 0, fmt.Errorf("reach skill manager: %w", err)
+		return pushResult{}, fmt.Errorf("reach skill manager: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -163,17 +176,38 @@ func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (changed, create
 		if e.Error == "" {
 			e.Error = strings.TrimSpace(string(body))
 		}
-		return false, false, 0, fmt.Errorf("skill manager: %s", e.Error)
+		return pushResult{}, fmt.Errorf("skill manager: %s", e.Error)
 	}
-	var out struct {
-		Changed bool `json:"changed"`
-		Created bool `json:"created"`
-		Version int  `json:"version"`
-	}
+	var out pushResult
 	if err := json.Unmarshal(body, &out); err != nil {
-		return false, false, 0, fmt.Errorf("decode skill manager response: %w", err)
+		return pushResult{}, fmt.Errorf("decode skill manager response: %w", err)
 	}
-	return out.Changed, out.Created, out.Version, nil
+	return out, nil
+}
+
+// previewSkillFromShared asks the 1skills store what a push-back would change:
+// the diff between the workspace copy and the current 母体 plus target/divergence
+// info (#379). Read-only; returns the raw JSON for the frontend's push preview.
+func previewSkillFromShared(skillsAddr, skillRef, sourcePath string) (json.RawMessage, error) {
+	if skillsAddr == "" {
+		skillsAddr = defaultSkillsAddr
+	}
+	target := &url.URL{
+		Scheme: "http",
+		Host:   skillsAddr,
+		Path:   "/api/skills/" + skillRef + "/preview-push",
+	}
+	payload, _ := json.Marshal(map[string]string{"sourcePath": sourcePath})
+	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("reach skill manager: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("skill manager: %s", strings.TrimSpace(string(body)))
+	}
+	return json.RawMessage(body), nil
 }
 
 // WorkspaceSkillStatus describes one skill materialized in a workspace's

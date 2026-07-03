@@ -642,12 +642,33 @@ func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	changed, created, version, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
+	if r.URL.Query().Get("preview") == "1" {
+		preview, err := previewSkillFromShared(h.skillsAddr, body.SkillRef, src)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(preview)
+		return
+	}
+	res, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "changed": changed, "created": created, "version": version})
+	out := map[string]any{
+		"ok":      true,
+		"status":  res.Status,
+		"changed": res.Changed,
+		"created": res.Created,
+		"version": res.Version,
+		"id":      res.ID,
+	}
+	if len(res.Conflict) > 0 {
+		out["conflict"] = json.RawMessage(res.Conflict)
+	}
+	writeJSON(w, out)
 }
 
 // WorkspaceAgents handles GET /api/workspace/agents?id=<wsId>: lists the agents

@@ -8,6 +8,7 @@ import * as fs from '../../stores/fsStore';
 import { fsService } from '../../services/fsService';
 import { FilePreviewPane } from '../shared/WorkspacePanes';
 import { skillService, type WorkspaceSkillStatus } from '@1agents/core/services/skillService';
+import * as modal from '../../stores/modalStore';
 
 /**
  * 技能 tab of the 助理 详情. A skill is a *folder* under
@@ -63,17 +64,22 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         if (!selected) return;
         setPushing(true);
         try {
-            const { changed, created, version } = await skillService.pushSkill(workspaceId, selected.skillRef);
-            const base = created
-                ? t('assistant.detail.pushedCreated', language)
-                : changed
-                  ? t('assistant.detail.pushed', language)
-                  : t('assistant.detail.pushNoChange', language);
-            // Surface the new store version whenever the push moved it forward.
-            setFlash(changed && version ? `${base} · v${version}` : base);
-            await load();
+            // Read-only preview first (issue #379 follow-up) — nothing is written
+            // until the user picks a resolution in the dialog, which also covers
+            // the divergence/conflict case via a banner instead of a separate modal.
+            const preview = await skillService.previewPush(workspaceId, selected.skillRef);
+            modal.openPushPreviewModal(preview, workspaceId, selected.skillRef, result => {
+                setFlash(
+                    result === 'created'
+                        ? t('assistant.detail.pushedCreated', language)
+                        : result === 'fork'
+                          ? t('assistant.conflict.resolvedFork', language)
+                          : t('assistant.conflict.resolvedMain', language)
+                );
+                void load();
+            });
         } catch {
-            setFlash(t('assistant.detail.pushFailed', language));
+            setFlash(t('assistant.push.previewFailed', language));
         } finally {
             setPushing(false);
         }

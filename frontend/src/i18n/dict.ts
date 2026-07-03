@@ -198,7 +198,7 @@ export const zhCN: Record<string, string> = {
     'assistant.detail.push': '推送到母体',
     'assistant.detail.pushCreate': '首次推送到母体',
     'assistant.detail.pushing': '推送中…',
-    'assistant.detail.pushed': '已覆盖母体原版',
+    'assistant.detail.pushed': '已更新母体 · 旧版进历史',
     'assistant.detail.pushedCreated': '已加入母体',
     'assistant.detail.pushNoChange': '内容一致,无需推送',
     'assistant.detail.pushFailed': '推送失败',
@@ -213,6 +213,25 @@ export const zhCN: Record<string, string> = {
     'assistant.detail.sessionsHint': '该助理下的对话。点击进入,或新建一个。',
     'assistant.detail.sessionsEmpty': '还没有会话',
     'assistant.detail.newSession': '新建会话',
+
+    // ── Skill push resolution flash (reused by the push-preview flow, #379) ──
+    'assistant.conflict.resolvedFork': '已作为新 fork 推送',
+    'assistant.conflict.resolvedMain': '已更新母体 · 以你的为准',
+
+    // ── Push preview modal (assistant skills tab, issue #379 follow-up) ────
+    'assistant.push.previewTitle': '推送预览',
+    'assistant.push.divergedBanner': '母体已更新到 v{storeVersion}，你的副本基于 v{baseVersion}',
+    'assistant.push.update': '更新母体 v{from}→v{to}',
+    'assistant.push.fork': '另存为 fork',
+    'assistant.push.addToStore': '加入母体',
+    'assistant.push.cancel': '取消',
+    'assistant.push.noChange': '无改动',
+    'assistant.push.forkNamePlaceholder': '新名称(可留空)',
+    'assistant.push.statusAdded': '新增',
+    'assistant.push.statusRemoved': '删除',
+    'assistant.push.statusModified': '修改',
+    'assistant.push.previewFailed': '预览失败',
+
     'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
     'sidebar.empty': '暂无工作空间',
@@ -1674,7 +1693,7 @@ export const enUS: Record<string, string> = {
     'assistant.detail.push': 'Push to store',
     'assistant.detail.pushCreate': 'Push to store',
     'assistant.detail.pushing': 'Pushing…',
-    'assistant.detail.pushed': 'Overwrote the original',
+    'assistant.detail.pushed': 'Updated the store · prior version kept in history',
     'assistant.detail.pushedCreated': 'Added to store',
     'assistant.detail.pushNoChange': 'Already identical',
     'assistant.detail.pushFailed': 'Push failed',
@@ -1690,6 +1709,25 @@ export const enUS: Record<string, string> = {
     'assistant.detail.sessionsHint': "This assistant's conversations. Click to open, or start a new one.",
     'assistant.detail.sessionsEmpty': 'No sessions yet',
     'assistant.detail.newSession': 'New session',
+
+    // ── Skill push resolution flash (reused by the push-preview flow, #379) ──
+    'assistant.conflict.resolvedFork': 'Pushed as a new fork',
+    'assistant.conflict.resolvedMain': 'Updated the store with your version',
+
+    // ── Push preview modal (assistant skills tab, issue #379 follow-up) ────
+    'assistant.push.previewTitle': 'Push preview',
+    'assistant.push.divergedBanner': 'The store has moved on to v{storeVersion}, your copy is based on v{baseVersion}',
+    'assistant.push.update': 'Update store v{from}→v{to}',
+    'assistant.push.fork': 'Save as a fork',
+    'assistant.push.addToStore': 'Add to store',
+    'assistant.push.cancel': 'Cancel',
+    'assistant.push.noChange': 'No changes',
+    'assistant.push.forkNamePlaceholder': 'New name (optional)',
+    'assistant.push.statusAdded': 'Added',
+    'assistant.push.statusRemoved': 'Removed',
+    'assistant.push.statusModified': 'Modified',
+    'assistant.push.previewFailed': 'Preview failed',
+
     'sidebar.workspaces': 'Workspaces',
     'sidebar.newWorkspace': 'New workspace',
     'sidebar.empty': 'No workspaces yet',

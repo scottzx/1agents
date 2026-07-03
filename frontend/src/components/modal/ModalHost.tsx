@@ -7,6 +7,7 @@ import { AccessTokenModal } from './AccessTokenModal';
 import { SessionRenameModal } from './SessionRenameModal';
 import { FsRenameModal } from './FsRenameModal';
 import { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
+import { PushPreviewModal } from './PushPreviewModal';
 import { SessionCreateModal } from '../chat/SessionCreateModal';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
 import * as ui from '../../stores/uiStore';
@@ -170,6 +171,22 @@ export function ModalHost() {
                     isDir={modal.fsDeleteTarget.value.isDir}
                     onClose={modal.closeFsDeleteModal}
                     onSubmit={fsStore.submitFsDelete}
+                    language={language}
+                />
+            )}
+
+            {/* Push-preview modal (issue #379 follow-up) */}
+            {modal.pushPreviewOpen.value && modal.pushPreviewData.value && (
+                <PushPreviewModal
+                    preview={modal.pushPreviewData.value}
+                    workspaceId={modal.pushPreviewWorkspaceId.value}
+                    skillRef={modal.pushPreviewSkillRef.value}
+                    onClose={modal.closePushPreviewModal}
+                    onDone={result => {
+                        const onDone = modal.pushPreviewOnDone.value;
+                        modal.closePushPreviewModal();
+                        onDone?.(result);
+                    }}
                     language={language}
                 />
             )}
