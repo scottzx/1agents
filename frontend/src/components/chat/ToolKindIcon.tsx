@@ -17,6 +17,21 @@ const PATHS: Record<string, string> = {
     other: 'M12 8v.01 M12 12v4',
 };
 
+// Infer an ACP kind from the tool name so the icon survives the post-turn
+// history reload (history carries the tool name, not the ACP `kind`). Matches
+// on lowercased substrings — covers Claude Code + common shell tool names.
+export function deriveToolKind(toolName: string): string | undefined {
+    const n = toolName.toLowerCase();
+    if (/(multiedit|str_replace|\bedit\b|\bwrite\b|create_file|apply_patch|notebook)/.test(n)) return 'edit';
+    if (/(read|\bcat\b|open_file|view)/.test(n)) return 'read';
+    if (/(grep|glob|search|find|ripgrep|\brg\b)/.test(n)) return 'search';
+    if (/(bash|shell|\brun\b|execute|command|terminal|exec)/.test(n)) return 'execute';
+    if (/(webfetch|websearch|\bfetch\b|curl|http)/.test(n)) return 'fetch';
+    if (/(delete|remove|\brm\b|unlink)/.test(n)) return 'delete';
+    if (/(\bmove\b|rename|\bmv\b)/.test(n)) return 'move';
+    return undefined;
+}
+
 export function ToolKindIcon({ kind }: { kind?: string }) {
     if (!kind) return null;
     const d = PATHS[kind];

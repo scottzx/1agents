@@ -1,5 +1,23 @@
 import { h } from 'preact';
-import type { ToolCallDiff } from '@1agents/core/protocol/types';
+import type { ToolCallDiff, ToolCallLocation } from '@1agents/core/protocol/types';
+
+// Derive the file(s) a tool touched from its parsed input, so the locations
+// chips survive the post-turn history reload (history carries the tool input,
+// not the ACP `locations`). Covers the common file_path/path/notebook_path
+// shapes plus MultiEdit's per-edit paths.
+export function deriveLocationsFromInput(args: Record<string, unknown>): ToolCallLocation[] {
+    const paths = new Set<string>();
+    for (const key of ['file_path', 'path', 'notebook_path', 'filePath']) {
+        if (typeof args[key] === 'string') paths.add(args[key] as string);
+    }
+    if (Array.isArray(args.edits)) {
+        for (const e of args.edits) {
+            const p = e && typeof e === 'object' ? (e as Record<string, unknown>).file_path : undefined;
+            if (typeof p === 'string') paths.add(p);
+        }
+    }
+    return [...paths].map(path => ({ path }));
+}
 
 // Inline file-diff renderer for tool cards (Phase 6). Diffs come from two
 // sources, unified here:

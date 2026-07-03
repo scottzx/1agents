@@ -13,8 +13,8 @@ import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
 import { theme } from '../../stores/uiStore';
-import { ToolDiffView, deriveDiffsFromInput } from './ToolDiffView';
-import { ToolKindIcon } from './ToolKindIcon';
+import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
+import { ToolKindIcon, deriveToolKind } from './ToolKindIcon';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -542,11 +542,19 @@ function GroupedToolCallItem({
     const summary = Object.keys(args).length > 0 ? summarizeArgs(args) : undefined;
     const expanded = isExpanded.value;
 
-    // Prefer the ACP-forwarded diff blocks; fall back to deriving a diff from
-    // edit-family tool input so it survives the post-turn history reload.
+    // Prefer the ACP-forwarded metadata; fall back to deriving from the tool
+    // name/input so diff/kind/locations all survive the post-turn history
+    // reload (history carries the tool name + input, not the ACP fields).
     const diffs =
         call.diffs && call.diffs.length > 0 ? call.diffs : deriveDiffsFromInput(call.toolName, args);
-    const locations = call.locations && call.locations.length > 0 ? call.locations : undefined;
+    const derivedLocations = deriveLocationsFromInput(args);
+    const locations =
+        call.locations && call.locations.length > 0
+            ? call.locations
+            : derivedLocations.length > 0
+              ? derivedLocations
+              : undefined;
+    const kind = call.kind ?? deriveToolKind(call.toolName);
 
     return (
         <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
@@ -563,7 +571,7 @@ function GroupedToolCallItem({
                 }}
             >
                 <StatusIcon status={status} />
-                <ToolKindIcon kind={call.kind} />
+                <ToolKindIcon kind={kind} />
                 <span class="chat-tool-name-badge">{call.toolName}</span>
                 {summary && <span class="chat-tool-row-summary">{summary}</span>}
                 {status === 'waiting' && (
