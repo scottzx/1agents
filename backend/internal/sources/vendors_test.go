@@ -73,7 +73,7 @@ func TestCatalogFor(t *testing.T) {
 	if it := CatalogItemFor(VendorMicrosoft, "ms_contact"); it == nil || !it.Implemented {
 		t.Fatalf("ms_contact should exist and be implemented: %+v", it)
 	}
-	if it := CatalogItemFor(VendorMicrosoft, "ms_event"); it == nil || it.Implemented {
-		t.Fatalf("ms_event should exist and be not-yet-implemented: %+v", it)
+	if it := CatalogItemFor(VendorMicrosoft, "ms_event"); it == nil || !it.Implemented {
+		t.Fatalf("ms_event should exist and be implemented: %+v", it)
 	}
 }

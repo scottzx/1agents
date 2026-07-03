@@ -20,9 +20,9 @@ type CatalogItem struct {
 // namespaced per vendor so bronze rows never collide across sources.
 var microsoftCatalog = []CatalogItem{
 	{Kind: "ms_contact", Domain: "contacts", Label: "联系人", Implemented: true},
-	{Kind: "ms_event", Domain: "calendar", Label: "日历事件", Implemented: false},
+	{Kind: "ms_event", Domain: "calendar", Label: "日历事件", Implemented: true},
 	{Kind: "ms_mail", Domain: "mail", Label: "邮件", Implemented: true},
-	{Kind: "ms_todo", Domain: "todo", Label: "待办", Implemented: false},
+	{Kind: "ms_todo", Domain: "todo", Label: "待办", Implemented: true},
 }
 
 var googleCatalog = []CatalogItem{

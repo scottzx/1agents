@@ -42,7 +42,7 @@ const (
 // cloud will only mint a token whose audience is its own Graph host. openid /
 // offline_access are reserved scopes (no resource prefix); offline_access is
 // what yields the refresh token that keeps the connection alive.
-var msDelegatedScopes = []string{"User.Read", "Contacts.Read", "Mail.Read"}
+var msDelegatedScopes = []string{"User.Read", "Contacts.Read", "Mail.Read", "Calendars.Read", "Tasks.Read"}
 
 // MSOAuthRegionConfig is one region's app registration. ClientSecret is optional
 // (empty ⇒ public client + PKCE only). Tenant is "common" / "organizations" /
@@ -284,7 +284,15 @@ func (a *MSAuth) refresh(ctx context.Context, tok StoredToken) (StoredToken, err
 	form.Set("client_id", rc.ClientID)
 	form.Set("grant_type", "refresh_token")
 	form.Set("refresh_token", tok.RefreshToken)
-	form.Set("scope", strings.Join(msScopes(tok.Region), " "))
+	// Refresh with the ALREADY-GRANTED scope, not the current full wish-list:
+	// asking for a scope the user hasn't consented to (e.g. Calendars.Read added
+	// after this token was minted) makes the refresh fail. New scopes are granted
+	// only by an interactive re-connect (AuthURL uses the full msScopes).
+	scope := tok.Scope
+	if scope == "" {
+		scope = strings.Join(msScopes(tok.Region), " ")
+	}
+	form.Set("scope", scope)
 	if rc.ClientSecret != "" {
 		form.Set("client_secret", rc.ClientSecret)
 	}
