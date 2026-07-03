@@ -2,6 +2,7 @@ import { h, Component } from 'preact';
 import { FsEntry, getFileTag, formatBytes } from '../types';
 import { t, type Lang } from '../i18n';
 import { renderMermaidBlocks } from '../../utils/mermaid';
+import { detectCodeLang, highlightToLines } from '../../utils/highlight';
 import { theme } from '../../stores/uiStore';
 
 interface FileDetailViewProps {
@@ -44,6 +45,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
     // to (so re-renders from save/edit don't keep yanking the viewport back).
     private codeTargetEl: HTMLDivElement | null = null;
     private _lastScrolledKey = '';
+
+    // Syntax-highlighting cache: highlighting on every render is wasteful, so we
+    // memoize the per-line HTML keyed by (path + content length + lang).
+    private _hlKey = '';
+    private _hlLines: string[] | null = null;
 
     // ── Markdown worker plumbing ────────────────────────────────────────────
     // Parsing markdown with `marked()` blocks the main thread for hundreds of
@@ -298,18 +304,35 @@ export class FileDetailView extends Component<FileDetailViewProps> {
      * range. One node per line, so very large files fall back to a plain <pre>.
      */
     private renderCodePreview(content: string) {
-        const { targetLine, targetLineEnd } = this.props;
+        const { targetLine, targetLineEnd, selectedFsEntry } = this.props;
         const lines = content.split('\n');
         if (lines.length > 20000) {
             return <pre class="fb-code-preview">{content}</pre>;
         }
         const end = targetLineEnd ?? targetLine;
+
+        // Syntax highlighting: compute per-line HTML (memoized) when the file
+        // type is supported; otherwise fall through to plain-text rendering.
+        const lang = detectCodeLang(selectedFsEntry.name);
+        let htmlLines: string[] | null = null;
+        if (lang) {
+            const key = `${selectedFsEntry.path}|${content.length}|${lang}`;
+            if (this._hlKey === key && this._hlLines) {
+                htmlLines = this._hlLines;
+            } else {
+                htmlLines = highlightToLines(content, lang);
+                this._hlKey = key;
+                this._hlLines = htmlLines;
+            }
+        }
+
         return (
-            <div class="fb-code-view">
+            <div class="fb-code-view" style={{ ['--fb-gutter-w' as string]: `${String(lines.length).length + 1}ch` }}>
                 {lines.map((text, i) => {
                     const ln = i + 1;
                     const hl = targetLine !== undefined && ln >= targetLine && (end === undefined || ln <= end);
                     const isFirst = ln === targetLine;
+                    const html = htmlLines?.[i];
                     return (
                         <div
                             key={ln}
@@ -323,7 +346,11 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                             }
                         >
                             <span class="fb-code-gutter">{ln}</span>
-                            <span class="fb-code-text">{text || ' '}</span>
+                            {html !== undefined ? (
+                                <span class="fb-code-text hljs" dangerouslySetInnerHTML={{ __html: html || ' ' }} />
+                            ) : (
+                                <span class="fb-code-text">{text || ' '}</span>
+                            )}
                         </div>
                     );
                 })}
