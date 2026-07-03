@@ -9,10 +9,10 @@ interface FlatFileBrowserProps {
     flatFiles: FsEntry[];
     flatFilesLoading: boolean;
     searchQuery: string;
-    selectedFilterTag: 'all' | 'doc' | 'img' | 'code';
+    selectedFilterTag: 'all' | 'doc' | 'img' | 'code' | 'fav';
     favoriteFiles: string[];
     onSearchQueryChange: (query: string) => void;
-    onFilterTagChange: (tag: 'all' | 'doc' | 'img' | 'code') => void;
+    onFilterTagChange: (tag: 'all' | 'doc' | 'img' | 'code' | 'fav') => void;
     onOpenFileDetail: (entry: FsEntry) => void;
 
     // Tree system props
@@ -23,11 +23,12 @@ interface FlatFileBrowserProps {
     language: Lang;
 }
 
-const TAG_KEYS: Record<'all' | 'doc' | 'img' | 'code', string> = {
+const TAG_KEYS: Record<'all' | 'doc' | 'img' | 'code' | 'fav', string> = {
     all: 'fileBrowser.tagAll',
     doc: 'fileBrowser.tagDoc',
     img: 'fileBrowser.tagImg',
     code: 'fileBrowser.tagCode',
+    fav: 'fileBrowser.tagFav',
 };
 
 /** Local access (desktop/localhost) has direct filesystem reach, so the upload shortcut is only useful for remote access. */
@@ -76,12 +77,15 @@ export function FlatFileBrowser({
             if (q && !f.name.toLowerCase().includes(q) && !f.path.toLowerCase().includes(q)) {
                 return false;
             }
+            if (selectedFilterTag === 'fav') {
+                return favoriteFiles.includes(f.path);
+            }
             if (selectedFilterTag !== 'all' && getFileTag(f.name) !== selectedFilterTag) {
                 return false;
             }
             return true;
         });
-    }, [flatFiles, searchQuery, selectedFilterTag]);
+    }, [flatFiles, searchQuery, selectedFilterTag, favoriteFiles]);
 
     // 2. Sort the tree once per fsEntries change. Without this, every render
     //    re-spreads and re-sorts the full tree (O(N log N) per render) even
@@ -277,12 +281,22 @@ export function FlatFileBrowser({
             </div>
             {/* Filter Tags */}
             <div class="fb-filter-tags">
-                {(['all', 'doc', 'img', 'code'] as const).map(tag => (
+                {(['all', 'doc', 'img', 'code', 'fav'] as const).map(tag => (
                     <button
                         key={tag}
-                        class={`fb-tag ${selectedFilterTag === tag ? 'active' : ''}`}
+                        class={`fb-tag ${tag === 'fav' ? 'fb-tag-fav' : ''} ${selectedFilterTag === tag ? 'active' : ''}`}
                         onClick={() => onFilterTagChange(tag)}
                     >
+                        {tag === 'fav' && (
+                            <svg
+                                class="fb-tag-fav-icon"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                aria-hidden="true"
+                            >
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                            </svg>
+                        )}
                         {t(TAG_KEYS[tag], language)}
                     </button>
                 ))}

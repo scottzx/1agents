@@ -11885,6 +11885,30 @@ body {
           transform: rotate(180deg);
         }
       }
+
+      // Favorites filter — star glyph + a warm (not accent-blue) active state
+      // so it reads as distinct from the file-type tags.
+      &.fb-tag-fav {
+        gap: 3px;
+
+        .fb-tag-fav-icon {
+          width: 11px;
+          height: 11px;
+          color: var(--warning-fg);
+          opacity: 0.85;
+        }
+
+        &.active {
+          background-color: var(--warning-fg);
+          border-color: var(--warning-fg);
+          box-shadow: 0 1px 4px rgba(var(--warning-rgb), 0.4);
+
+          .fb-tag-fav-icon {
+            color: #ffffff;
+            opacity: 1;
+          }
+        }
+      }
     }
   }
 
@@ -12446,6 +12470,112 @@ body {
       word-break: break-all;
       overflow-wrap: break-word;
       cursor: text;
+    }
+
+    // Line-numbered code view (json / sh / py / …). One row per source line;
+    // .fb-code-text carries either plain text or highlight.js token spans.
+    .fb-code-view {
+      margin: 0;
+      padding: 12px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.65;
+      color: var(--text-main);
+      cursor: text;
+      tab-size: 4;
+      -moz-tab-size: 4;
+
+      .fb-code-row {
+        display: flex;
+        align-items: flex-start;
+        transition: background-color 0.1s ease;
+
+        &:hover {
+          background-color: rgba(var(--accent-color-rgb), 0.04);
+        }
+        // Targeted line(s) from a deep-link — amber wash + accent rail.
+        &.fb-code-row-hl {
+          background-color: rgba(var(--warning-rgb), 0.13);
+          box-shadow: inset 2px 0 0 var(--warning-fg);
+        }
+      }
+
+      .fb-code-gutter {
+        flex: 0 0 auto;
+        width: var(--fb-gutter-w, 3ch);
+        padding: 0 16px 0 8px;
+        text-align: right;
+        color: var(--text-muted);
+        user-select: none;
+        -webkit-user-select: none;
+        white-space: nowrap;
+        opacity: 0.65;
+      }
+
+      .fb-code-text {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding-right: 16px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      // ── highlight.js token palette (mapped to semantic tokens; theme-aware) ──
+      .hljs-comment,
+      .hljs-quote {
+        color: var(--text-muted);
+        font-style: italic;
+      }
+      .hljs-keyword,
+      .hljs-selector-tag,
+      .hljs-literal,
+      .hljs-section,
+      .hljs-doctag {
+        color: var(--purple-fg);
+      }
+      .hljs-string,
+      .hljs-regexp,
+      .hljs-addition,
+      .hljs-meta-string {
+        color: var(--success-fg);
+      }
+      .hljs-number,
+      .hljs-symbol,
+      .hljs-bullet,
+      .hljs-link {
+        color: var(--orange-fg);
+      }
+      .hljs-title,
+      .hljs-title.function_,
+      .hljs-built_in,
+      .hljs-type,
+      .hljs-class .hljs-title {
+        color: var(--warning-fg);
+      }
+      .hljs-attr,
+      .hljs-attribute,
+      .hljs-variable,
+      .hljs-template-variable,
+      .hljs-selector-attr,
+      .hljs-selector-class,
+      .hljs-selector-id {
+        color: var(--accent-color);
+      }
+      .hljs-tag,
+      .hljs-name,
+      .hljs-deletion {
+        color: var(--danger-fg);
+      }
+      .hljs-meta {
+        color: var(--text-secondary);
+      }
+      .hljs-emphasis {
+        font-style: italic;
+      }
+      .hljs-strong {
+        font-weight: 600;
+      }
     }
 
     .fb-editor {
@@ -16884,7 +17014,7 @@ body {
 .folder-avatar {
   width: 16px;
   height: 16px;
-  border-radius: 4px;
+  border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -16898,52 +17028,87 @@ body {
 }
 
 .assistant-modal-basics {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 20px;
-  padding: 20px 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px 16px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.assistant-modal-avatar-col {
+// Identity: circular preview on the left, name + upload stacked on the right.
+.assistant-identity-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  gap: 16px;
+  align-items: flex-start;
 }
 
 .assistant-avatar-preview {
+  flex: 0 0 auto;
   width: 96px;
   height: 96px;
-  border-radius: 16px;
+  border-radius: 50%;
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  align-self: center;
 
   img { width: 100%; height: 100%; object-fit: cover; }
 }
 
+.assistant-modal-name-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assistant-avatar-upload {
+  align-self: flex-start;
+}
+
+.assistant-name-conflict {
+  font-size: 12px;
+  color: var(--danger-fg);
+  margin-top: 2px;
+}
+
+.assistant-avatar-error {
+  font-size: 12px;
+  color: var(--danger-fg);
+}
+
+// Preset picker: full-width circular swatches in a light scroll grid. Circles
+// mask the slightly-imperfect square crop edges of the source avatars.
+.assistant-avatar-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .assistant-avatar-preset-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  // 46 presets would run 12 rows tall — cap and scroll to keep the modal compact.
-  max-height: 220px;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 8px;
+  // 46 presets — cap height and scroll so the modal stays compact.
+  max-height: 168px;
   overflow-y: auto;
+  padding: 2px;
 }
 
 .assistant-avatar-preset-btn {
   padding: 0;
-  border: 2px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-card);
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-panel);
   cursor: pointer;
   overflow: hidden;
   aspect-ratio: 1;
-  transition: border-color 0.15s;
+  width: 100%;
+  min-width: 0;
+  transition: box-shadow 0.15s;
 
   img {
     width: 100%;
@@ -16952,30 +17117,11 @@ body {
     display: block;
   }
 
-  &:hover { border-color: var(--accent-hover); }
-  &.selected { border-color: var(--accent-emphasis); }
-}
-
-.assistant-avatar-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.assistant-avatar-error {
-  font-size: 12px;
-  color: var(--danger-fg);
-}
-
-.assistant-modal-name-col {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.assistant-name-conflict {
-  font-size: 12px;
-  color: var(--danger-fg);
-  margin-top: 2px;
+  &:hover { box-shadow: 0 0 0 2px var(--accent-hover); }
+  // Ring (not border) so the circular clip isn't cut into; inner band = card bg gap.
+  // Use --accent-color (defined); --accent-emphasis is not defined in :root.
+  &.selected { box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent-color); }
+  &:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 }
 
 .assistant-modal-tabs {
@@ -17000,6 +17146,7 @@ body {
     color: var(--accent-fg);
     border-bottom-color: var(--accent-emphasis);
   }
+  &:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
 }
 
 .assistant-modal-tab-body {

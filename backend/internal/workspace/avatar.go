@@ -12,11 +12,12 @@ import (
 	"strings"
 )
 
-// presetAvatarsFS carries the built-in assistant avatar set (generated offline
-// with agy, resized to 256px). Served under /avatars/presets/<name>.png so the
-// frontend preset picker can reference them as plain avatar URLs.
+// presetAvatarsFS carries the built-in assistant avatar set (resized to 256px).
+// Lives under presets/avatars/ (sibling to presets/souls/) and is served under
+// /avatars/presets/<name>.png so the frontend preset picker can reference them
+// as plain avatar URLs.
 //
-//go:embed presets/*.png
+//go:embed presets/avatars/*.png
 var presetAvatarsFS embed.FS
 
 // avatarsDir is where uploaded assistant avatars live on disk. Served by
@@ -91,7 +92,7 @@ func ServeAvatars() http.Handler {
 	// cold-start empty installs.
 	_ = os.MkdirAll(avatarsDir(), 0o755)
 	disk := http.StripPrefix("/avatars/", http.FileServer(http.Dir(avatarsDir())))
-	presets, _ := fs.Sub(presetAvatarsFS, "presets")
+	presets, _ := fs.Sub(presetAvatarsFS, "presets/avatars")
 	presetSrv := http.StripPrefix("/avatars/presets/", http.FileServer(http.FS(presets)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/avatars/presets/") {

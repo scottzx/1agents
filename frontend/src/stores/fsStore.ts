@@ -46,7 +46,7 @@ export const detailTargetLineEnd = signal<number | null>(null);
 export const flatFiles = signal<FsEntry[]>([]);
 export const flatFilesLoading = signal(false);
 export const searchQuery = signal('');
-export const selectedFilterTag = signal<'all' | 'doc' | 'img' | 'code'>('all');
+export const selectedFilterTag = signal<'all' | 'doc' | 'img' | 'code' | 'fav'>('all');
 export const viewMode = signal<'list' | 'detail'>('list');
 export const favoriteFiles = signal<string[]>(initialFavs);
 
@@ -213,6 +213,21 @@ export const loadFlatFiles = async () => {
         return;
     }
 
+    // Favorites are a client-side list (localStorage) the backend search knows
+    // nothing about — build the flat list from the starred paths directly. The
+    // text query, if any, is applied client-side in FlatFileBrowser.
+    if (selectedFilterTag.value === 'fav') {
+        flatFiles.value = favoriteFiles.value.map(path => ({
+            name: path.split('/').pop() || path,
+            path,
+            isDir: false,
+            size: 0,
+            modTime: 0,
+        }));
+        flatFilesLoading.value = false;
+        return;
+    }
+
     _crawlCounter++;
     const currentCrawl = _crawlCounter;
     flatFilesLoading.value = true;
@@ -246,7 +261,7 @@ export const handleSearchChange = (query: string) => {
     }, 300);
 };
 
-export const handleFilterTagChange = (tag: 'all' | 'doc' | 'img' | 'code') => {
+export const handleFilterTagChange = (tag: 'all' | 'doc' | 'img' | 'code' | 'fav') => {
     selectedFilterTag.value = tag;
     if (_searchTimeout) {
         clearTimeout(_searchTimeout);

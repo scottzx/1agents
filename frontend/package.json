@@ -73,6 +73,7 @@
     "decko": "^1.2.0",
     "echarts": "^5.6.0",
     "file-saver": "^2.0.5",
+    "highlight.js": "^11.11.1",
     "jsqr": "^1.4.0",
     "marked": "^18.0.4",
     "mermaid": "^11.4.1",

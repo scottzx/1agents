@@ -151,10 +151,41 @@ export function AssistantModal(props: AssistantModalProps) {
 
                 {/* ── 上区: 基本资料 ──────────────────────────────────── */}
                 <div class="assistant-modal-basics">
-                    <div class="assistant-modal-avatar-col">
+                    <div class="assistant-identity-row">
                         <div class="assistant-avatar-preview">
                             <img src={avatar} alt="" />
                         </div>
+                        <div class="assistant-modal-name-col">
+                            <label class="ws-modal-label">{t('modal.assistant.name', language)}</label>
+                            <input
+                                class="ws-modal-input"
+                                placeholder={t('modal.assistant.namePlaceholder', language)}
+                                value={name}
+                                onInput={(e: Event) => onNameChange((e.target as HTMLInputElement).value)}
+                                onKeyDown={(e: KeyboardEvent) => {
+                                    if (e.key === 'Enter' && canSubmit) onSubmit(avatar);
+                                }}
+                                autoFocus
+                            />
+                            {nameConflict && <div class="assistant-name-conflict">{nameConflict}</div>}
+                            <button
+                                type="button"
+                                class="ws-modal-cancel assistant-avatar-upload"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                {t('assistant.avatar.upload', language)}
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                style="display:none"
+                                onChange={onFileChange}
+                            />
+                            {avatarError && <div class="assistant-avatar-error">{avatarError}</div>}
+                        </div>
+                    </div>
+                    <div class="assistant-avatar-picker">
                         <label class="ws-modal-label">{t('assistant.avatar.presets', language)}</label>
                         <div class="assistant-avatar-preset-row">
                             {AVATAR_PRESETS.map(url => (
@@ -168,33 +199,6 @@ export function AssistantModal(props: AssistantModalProps) {
                                 </button>
                             ))}
                         </div>
-                        <div class="assistant-avatar-actions">
-                            <button type="button" class="ws-modal-cancel" onClick={() => fileInputRef.current?.click()}>
-                                {t('assistant.avatar.upload', language)}
-                            </button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                style="display:none"
-                                onChange={onFileChange}
-                            />
-                        </div>
-                        {avatarError && <div class="assistant-avatar-error">{avatarError}</div>}
-                    </div>
-                    <div class="assistant-modal-name-col">
-                        <label class="ws-modal-label">{t('modal.assistant.name', language)}</label>
-                        <input
-                            class="ws-modal-input"
-                            placeholder={t('modal.assistant.namePlaceholder', language)}
-                            value={name}
-                            onInput={(e: Event) => onNameChange((e.target as HTMLInputElement).value)}
-                            onKeyDown={(e: KeyboardEvent) => {
-                                if (e.key === 'Enter' && canSubmit) onSubmit(avatar);
-                            }}
-                            autoFocus
-                        />
-                        {nameConflict && <div class="assistant-name-conflict">{nameConflict}</div>}
                     </div>
                 </div>
 
