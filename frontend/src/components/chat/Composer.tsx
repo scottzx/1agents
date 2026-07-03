@@ -1,8 +1,8 @@
 import { h } from 'preact';
-import { useRef } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
 import type { PermissionMode } from '../types';
-import type { SessionModesState } from '@1agents/core/protocol/types';
+import type { SessionModesState, AvailableCommand } from '@1agents/core/protocol/types';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
@@ -10,6 +10,7 @@ import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
 import { PermissionModePicker } from './PermissionModePicker';
 import { SessionModePicker } from './SessionModePicker';
+import { SlashCommandPalette, slashQuery, filterCommands } from './SlashCommandPalette';
 
 interface ComposerProps {
     onSend: (text: string) => void;
@@ -27,6 +28,8 @@ interface ComposerProps {
      */
     sessionModes?: SessionModesState | null;
     onSessionModeChange?: (modeId: string) => void;
+    /** Agent-advertised slash commands driving the `/` autocomplete palette. */
+    availableCommands?: AvailableCommand[];
 }
 
 export function Composer({
@@ -39,11 +42,66 @@ export function Composer({
     onPermissionModeChange,
     sessionModes,
     onSessionModeChange,
+    availableCommands = [],
 }: ComposerProps) {
     const ref = useRef<HTMLTextAreaElement | null>(null);
     const lang = getLang();
 
+    // Slash-command palette state (derived from the uncontrolled textarea in
+    // handleInput). `matches` empty ⇒ palette hidden.
+    const [slash, setSlash] = useState<{ matches: AvailableCommand[]; index: number }>({
+        matches: [],
+        index: 0,
+    });
+
+    const refreshSlash = (value: string) => {
+        const q = availableCommands.length > 0 ? slashQuery(value) : null;
+        if (q === null) {
+            if (slash.matches.length) setSlash({ matches: [], index: 0 });
+            return;
+        }
+        const matches = filterCommands(availableCommands, q);
+        setSlash({ matches, index: 0 });
+    };
+
+    const closeSlash = () => {
+        if (slash.matches.length) setSlash({ matches: [], index: 0 });
+    };
+
+    const pickSlash = (command: AvailableCommand) => {
+        const el = ref.current;
+        if (!el) return;
+        // Fill the command; leave a trailing space when it takes args so the
+        // caret is ready for them, otherwise it's send-ready as-is.
+        el.value = `/${command.name}${command.hasInput ? ' ' : ''}`;
+        closeSlash();
+        el.focus();
+        handleInput();
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+        if (slash.matches.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSlash(s => ({ ...s, index: (s.index + 1) % s.matches.length }));
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSlash(s => ({ ...s, index: (s.index - 1 + s.matches.length) % s.matches.length }));
+                return;
+            }
+            if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && !e.isComposing) {
+                e.preventDefault();
+                pickSlash(slash.matches[slash.index]);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeSlash();
+                return;
+            }
+        }
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             submit();
@@ -57,6 +115,7 @@ export function Composer({
         if (!text) return;
         onSend(text);
         el.value = '';
+        closeSlash();
         attach.clear();
         // Reset height
         el.style.height = 'auto';
@@ -67,6 +126,7 @@ export function Composer({
         if (!el) return;
         el.style.height = 'auto';
         el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+        refreshSlash(el.value);
     };
 
     // System speech-to-text. The textarea is uncontrolled, so the hook reads
@@ -96,6 +156,14 @@ export function Composer({
 
     return (
         <div class="chat-composer">
+            {slash.matches.length > 0 && (
+                <SlashCommandPalette
+                    commands={slash.matches}
+                    activeIndex={slash.index}
+                    onPick={pickSlash}
+                    onHover={i => setSlash(s => ({ ...s, index: i }))}
+                />
+            )}
             <div class="chat-composer-frame">
                 <AttachmentPreview attachments={attach.attachments} onRemove={attach.remove} />
                 <textarea

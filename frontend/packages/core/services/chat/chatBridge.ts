@@ -12,7 +12,7 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { ChatItem, ConnectionState, SessionModesState } from '../../protocol/types';
+import type { AvailableCommand, ChatItem, ConnectionState, SessionModesState } from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
 import { normalizePermissionMode } from '../../types';
 import {
@@ -110,6 +110,12 @@ export interface SessionBridgeState {
      * uses to fall back to the permissionMode picker.
      */
     modes: SessionModesState | null;
+    /**
+     * Slash commands the agent advertised (session_meta snapshot, kept
+     * current by available_commands_update). Empty until the first
+     * session_meta and for agents that advertise none.
+     */
+    availableCommands: AvailableCommand[];
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
     reconnectAttempt: number;
     /** Pending setTimeout handle for the next reconnect; null when idle. */
@@ -157,6 +163,7 @@ export class ChatBridgeManager {
                 // that concept now).
                 permissionMode: normalizePermissionMode(session.permissionMode),
                 modes: null,
+                availableCommands: [],
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
@@ -273,12 +280,31 @@ export class ChatBridgeManager {
                     break;
                 case 'session_meta': {
                     // Authoritative capability snapshot sent after every
-                    // session_ready. Modes are live-only state (never in
-                    // history), so this re-send is what keeps the picker
+                    // session_ready. Modes and commands are live-only state
+                    // (never in history), so this re-send is what keeps them
                     // correct across reconnects and reaps.
-                    const meta = payload.payload as { modes?: SessionModesState } | undefined;
+                    const meta = payload.payload as
+                        | { modes?: SessionModesState; availableCommands?: AvailableCommand[] }
+                        | undefined;
+                    let changed = false;
                     if (meta?.modes && Array.isArray(meta.modes.availableModes)) {
                         state.modes = meta.modes;
+                        changed = true;
+                    }
+                    if (Array.isArray(meta?.availableCommands)) {
+                        state.availableCommands = meta.availableCommands;
+                        changed = true;
+                    }
+                    if (changed) {
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'available_commands_update': {
+                    // Live mid-session refresh of the slash-command list.
+                    const upd = payload.payload as { availableCommands?: AvailableCommand[] } | undefined;
+                    if (Array.isArray(upd?.availableCommands)) {
+                        state.availableCommands = upd.availableCommands;
                         this.notify(state);
                     }
                     break;

@@ -111,3 +111,15 @@ export interface SessionModesState {
     currentModeId?: string;
     availableModes: SessionModeInfo[];
 }
+
+/**
+ * A slash command the agent advertised (ACP `available_commands_update`,
+ * normalized by 1acp to name/description/hasInput). Delivered via session_meta
+ * and kept current by live command updates. Executed by sending the command as
+ * ordinary prompt text (e.g. `/compact`) — no dedicated wire action.
+ */
+export interface AvailableCommand {
+    name: string;
+    description?: string;
+    hasInput?: boolean;
+}

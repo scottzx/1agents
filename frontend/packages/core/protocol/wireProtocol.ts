@@ -19,6 +19,7 @@ export type BridgeEvent =
     | 'session_taken_over'
     | 'session_meta'
     | 'mode_changed'
+    | 'available_commands_update'
     | 'prompt_queued'
     | 'prompt_cancelled'
     | 'text_delta'

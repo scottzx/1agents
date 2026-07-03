@@ -16036,6 +16036,66 @@ body {
   }
 }
 
+// ── Slash-command palette (agent-advertised commands) ──
+// Floats above the composer frame; the composer is position:relative-ish via
+// its flex column, so we anchor to the .chat-composer wrapper.
+.chat-composer {
+  position: relative;
+}
+
+.chat-slash-palette {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  gap: 1px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 10px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 20;
+}
+
+.chat-slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-main);
+
+  &:hover,
+  &.active {
+    background: var(--btn-hover);
+  }
+
+  .chat-slash-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-color);
+    flex-shrink: 0;
+  }
+  .chat-slash-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 // Plan-mode banner + panel affordance: the whole chat surface signals
 // "read-only planning" so the mode is unmissable; ExitPlanMode clears it
 // via mode_changed → data-session-mode flips off.
