@@ -15,6 +15,7 @@ import { activeProjectName } from '../../stores/taskNavStore';
 import { theme } from '../../stores/uiStore';
 import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
 import { ToolKindIcon, deriveToolKind } from './ToolKindIcon';
+import { terminalCommandLine } from './terminalCommand';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -556,6 +557,12 @@ function GroupedToolCallItem({
               : undefined;
     const kind = call.kind ?? deriveToolKind(call.toolName);
 
+    // Terminal/execute tools render as a durable terminal block — the command
+    // (from input) as a `$` prompt line + output in a dark terminal box. Both
+    // sources are in history, so it survives the post-turn reload.
+    const isTerminal = kind === 'execute';
+    const command = isTerminal ? terminalCommandLine(args) : undefined;
+
     return (
         <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
             <div
@@ -586,7 +593,17 @@ function GroupedToolCallItem({
             </div>
             {expanded && (
                 <div class="chat-tool-row-body">
-                    {/* Arguments */}
+                    {/* Terminal command line (execute tools) */}
+                    {command && (
+                        <div class="chat-tool-cmd-box">
+                            <span class="chat-tool-cmd-prompt" aria-hidden="true">
+                                $
+                            </span>
+                            <span class="chat-tool-cmd-text">{command}</span>
+                        </div>
+                    )}
+                    {/* Arguments — hidden for terminal tools (command shown above). */}
+                    {!isTerminal && (
                     <div class="chat-tool-section">
                         <div class="chat-tool-section-title">{t('chat.tool.args', lang)}</div>
                         {Object.keys(args).length > 0 ? (
@@ -604,6 +621,7 @@ function GroupedToolCallItem({
                             <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
                         )}
                     </div>
+                    )}
 
                     {/* File diffs (Phase 6): ACP diff blocks or derived from
                         edit-family input. */}
@@ -667,7 +685,9 @@ function GroupedToolCallItem({
                                     : t('chat.tool.outputMissing', lang)}
                             </div>
                         ) : call.output ? (
-                            <pre class={`chat-tool-pre chat-tool-output ${call.isError ? 'has-error' : ''}`}>
+                            <pre
+                                class={`${isTerminal ? 'chat-tool-output-box' : 'chat-tool-pre chat-tool-output'} ${call.isError ? 'has-error' : ''}`}
+                            >
                                 {call.output}
                             </pre>
                         ) : (
