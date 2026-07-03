@@ -3903,168 +3903,149 @@ body {
 
 // ── 个人任务 + 立项 (#67) — mirrors the Inbox pane's layout language ──────
 // ── 项目总览 card wall (ProjectHome.tsx, #redesign) ───────────────────────
+// L1 项目总览 — codex-minimal, mirrors the 助理 概览 (breadcrumb + toolbar +
+// flat card grid). Shares the .assistant-btn / .assistants-toolbar primitives.
 .project-home {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 28px 32px 40px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+}
 
-  .project-home-hero {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 24px;
+.project-home-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.project-home-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-home-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.project-home-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.project-home-search {
+  width: 220px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-main);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+
+  &:focus {
+    outline: none;
+    border-color: var(--text-main);
   }
+}
 
-  .project-home-title {
-    margin: 0 0 6px;
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--text-main);
-  }
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
 
-  .project-home-subtitle {
-    margin: 0 0 18px;
-    font-size: 14px;
-    color: var(--text-secondary);
-  }
+.project-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font: inherit;
+  transition: border-color 0.15s ease;
 
-  .project-home-hero-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .project-home-new-btn,
-  .project-home-bigscreen-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 40px;
-    padding: 0 16px;
-    font-size: 13px;
-    font-weight: 600;
-    border-radius: 10px;
-    cursor: pointer;
-
-    svg {
-      width: 17px;
-      height: 17px;
+  &:hover {
+    border-color: var(--text-main);
+    .project-card-chevron {
+      transform: translateX(2px);
+      color: var(--text-secondary);
     }
   }
+}
 
-  .project-home-new-btn {
-    color: var(--on-accent);
-    background: var(--accent-emphasis);
-    border: 1px solid var(--accent-emphasis);
+.project-card-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
 
-    &:hover {
-      background: var(--accent-hover);
-    }
+  svg {
+    width: 20px;
+    height: 20px;
   }
+}
 
-  .project-home-bigscreen-btn {
-    color: var(--text-main);
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
+.project-card-body {
+  min-width: 0;
+  flex: 1;
+}
 
-    &:hover {
-      border-color: var(--accent-emphasis);
-      color: var(--accent-fg);
-    }
-  }
+.project-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-  .project-home-section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 14px;
-  }
+.project-card-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-  .project-home-section-title {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-main);
-  }
-
-  .project-home-search {
-    width: 220px;
-    height: 34px;
-    padding: 0 12px;
-    font-size: 13px;
-    font-family: inherit;
-    color: var(--text-main);
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-
-    &:focus {
-      outline: none;
-      border-color: var(--accent-emphasis);
-    }
-  }
-
-  .project-home-empty {
-    padding: 32px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--text-muted);
-    background: var(--bg-card);
-    border: 1px dashed var(--border-color);
-    border-radius: 12px;
-  }
-
-  .project-home-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
-
-    .project-home-card-icon {
-      flex: none;
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 10px;
-      color: var(--accent-fg);
-      background: var(--accent-bg);
-
-      svg {
-        width: 20px;
-        height: 20px;
-      }
-    }
-
-    .project-home-card-body {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .project-home-card-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-main);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .project-home-card-desc {
-      margin-top: 2px;
-      font-size: 12px;
-      color: var(--text-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  }
+.project-card-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease, color 0.15s ease;
 }
 
 // ── Section nav breadcrumb — global so the shared ShellNav (ProjectShell,
@@ -18033,6 +18014,15 @@ body {
   flex-direction: column;
   height: 100%;
   background-color: var(--bg-panel);
+}
+
+// L2 项目详情 (detail variant) — hero + secondary top-nav, mirroring 助理 详情.
+// Reuses .assistant-hero / .assistant-tab-body / .assistant-pane-* primitives.
+.project-shell-detail {
+  .project-shell-tabbar {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }
 
 .project-shell-tabbar {

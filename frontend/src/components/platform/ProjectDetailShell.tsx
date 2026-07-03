@@ -1,5 +1,6 @@
 import { h } from 'preact';
 
+import type { App } from '../app';
 import { t } from '../../i18n';
 import * as ui from '../../stores/uiStore';
 import * as stage from '../../stores/stageStore';
@@ -12,7 +13,7 @@ import { ProjectShell } from './ProjectShell';
  * Rendered by DesktopAppLayout when `layoutMode === 'project'`. Drilling further
  * (opening a conversation from a panel) flips to the split workbench.
  */
-export function ProjectDetailShell() {
+export function ProjectDetailShell({ app }: { app?: App }) {
     const language = ui.language.value;
     const stack = stage.projectStack.value;
     const top = stack[stack.length - 1];
@@ -22,6 +23,8 @@ export function ProjectDetailShell() {
         <ProjectShell
             workspaceId={top.workspaceId}
             workspaceName={top.name}
+            variant="detail"
+            app={app}
             crumbs={[
                 { label: t('projectHome.title', language), onClick: () => stage.projectOverview() },
                 { label: top.name },

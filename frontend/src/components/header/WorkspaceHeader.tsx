@@ -213,29 +213,41 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     // session's workbench (chat or terminal) is showing.
     const sessionActive = activeDrawerTab === 'none';
 
-    // Assistant context (breadcrumb L3): when the active workspace is an
-    // assistant, the session view's header shows the full 助理 › <name> ›
+    // Entity context (breadcrumb L3): when the active workspace is an assistant
+    // OR a project, the session view's header shows the full 助理/项目 › <name> ›
     // <session> trail instead of a bare session name — clicking a crumb pops
-    // back to the assistants overview / that assistant's detail (L1 / L2).
+    // back to the overview / that entity's detail (L1 / L2).
     const activeWs = workspaces.value.find(w => w.id === activeWorkspaceId.value);
-    const isAssistantCtx = (activeWs?.kind ?? 'project') === 'assistant';
-    const openAssistantsOverview = () => {
-        tabsStore.assistantDetailId.value = null;
-        tabsStore.activeDrawerTab.value = 'assistants';
+    const wsKind = activeWs?.kind ?? 'project';
+    const isAssistantCtx = wsKind === 'assistant';
+    const isProjectCtx = !!activeWs && wsKind === 'project' && !activeWs.builtin && activeWs.id !== 'default';
+    const isEntityCtx = isAssistantCtx || isProjectCtx;
+    const openOverview = () => {
+        if (isAssistantCtx) {
+            tabsStore.assistantDetailId.value = null;
+            tabsStore.activeDrawerTab.value = 'assistants';
+        } else {
+            stage.projectOverview();
+        }
     };
-    const openAssistantDetail = () => {
+    const openEntityDetail = () => {
         if (!activeWs) return;
-        tabsStore.assistantDetailId.value = activeWs.id;
-        tabsStore.activeDrawerTab.value = 'assistants';
+        if (isAssistantCtx) {
+            tabsStore.assistantDetailId.value = activeWs.id;
+            tabsStore.activeDrawerTab.value = 'assistants';
+        } else {
+            stage.enterProjectDetail(activeWs.id, activeWs.name);
+        }
     };
     // L3 crumb: the new-chat landing shows 新建对话 until the session starts,
     // then the session title takes its place.
-    const assistantLeaf = activeTab === 'new_chat' ? t('assistant.detail.newChat', language) : sessionName;
-    const assistantCrumbs = activeWs
+    const entityLeaf = activeTab === 'new_chat' ? t('assistant.detail.newChat', language) : sessionName;
+    const rootLabel = isAssistantCtx ? t('sidebar.assistants', language) : t('projectHome.title', language);
+    const entityCrumbs = activeWs
         ? [
-              { label: t('sidebar.assistants', language), onClick: openAssistantsOverview },
-              ...(assistantLeaf
-                  ? [{ label: activeWs.name, onClick: openAssistantDetail }, { label: assistantLeaf }]
+              { label: rootLabel, onClick: openOverview },
+              ...(entityLeaf
+                  ? [{ label: activeWs.name, onClick: openEntityDetail }, { label: entityLeaf }]
                   : [{ label: activeWs.name }]),
           ]
         : [];
@@ -332,12 +344,12 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             />
                         </div>
                     ) : (
-                        <div class={`header-title-group${isAssistantCtx ? ' header-crumb-group' : ''}`}>
+                        <div class={`header-title-group${isEntityCtx ? ' header-crumb-group' : ''}`}>
                             {agentType && (
                                 <AgentAvatar agentType={agentType} role={sessionRole} class="header-agent-avatar" />
                             )}
-                            {isAssistantCtx ? (
-                                <CrumbTrail crumbs={assistantCrumbs} />
+                            {isEntityCtx ? (
+                                <CrumbTrail crumbs={entityCrumbs} />
                             ) : (
                                 <span class="session-name">{sessionName || t('header.noSession', language)}</span>
                             )}

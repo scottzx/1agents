@@ -1016,6 +1016,8 @@ export const zhCN: Record<string, string> = {
     'projectHome.searchPlaceholder': '搜索项目…',
     'projectHome.empty': '还没有项目,点"新建项目"开始。',
     'projectHome.templateLabel': '领域应用模版',
+    'projectHome.count': '共 {count} 个项目',
+    'projectShell.config': '配置',
 
     // ── 复盘归档展示 (Retro/index.tsx, #271) ──────────────────────────────
     'retro.title': '复盘归档',
@@ -2465,6 +2467,8 @@ export const enUS: Record<string, string> = {
     'projectHome.searchPlaceholder': 'Search projects…',
     'projectHome.empty': 'No projects yet — click "New project" to start.',
     'projectHome.templateLabel': 'Domain app template',
+    'projectHome.count': '{count} projects',
+    'projectShell.config': 'Config',
 
     // ── Retrospective archive (Retro/index.tsx, #271) ────────────────────
     'retro.title': 'Retrospectives',

@@ -226,7 +226,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         {isShell && mode === 'project-overview' && <ProjectHome />}
 
                         {/* [项目详情]: a drilled-in project's detail page. */}
-                        {isShell && mode === 'project' && <ProjectDetailShell />}
+                        {isShell && mode === 'project' && <ProjectDetailShell app={app} />}
 
                         {/*
                           [SHELL HEADER]: shown for both 'tasks' (project
