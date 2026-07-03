@@ -9,6 +9,7 @@ import {
     type SourceAccount,
     type CreateAccountInput,
 } from '@1agents/core/services/sourceService';
+import { VendorIcon } from './vendorIcons';
 
 // 添加数据源 (Add data source) — 源为中心: a vendor gallery, then per-vendor a
 // region choice (国际/大陆, limited by vendor capability) + an account form.
@@ -16,11 +17,11 @@ import {
 // vendors (Apple/微软/谷歌) can be added repeatedly; single-account vendors (飞书)
 // are blocked once one exists.
 
-const VENDOR_UI: Record<string, { icon: string; descKey: string }> = {
-    icloud: { icon: '🍎', descKey: 'datasource.src.appleDesc' },
-    feishu: { icon: '💬', descKey: 'datasource.src.feishuDesc' },
-    microsoft: { icon: '🪟', descKey: 'datasource.src.microsoftDesc' },
-    google: { icon: '🔎', descKey: 'datasource.src.googleDesc' },
+const VENDOR_UI: Record<string, { descKey: string }> = {
+    icloud: { descKey: 'datasource.src.appleDesc' },
+    feishu: { descKey: 'datasource.src.feishuDesc' },
+    microsoft: { descKey: 'datasource.src.microsoftDesc' },
+    google: { descKey: 'datasource.src.googleDesc' },
 };
 
 function regionLabel(region: string, language: Lang): string {
@@ -58,13 +59,13 @@ export function AddSource({ onCreated }: { onCreated: (account: SourceAccount) =
             <div class="datasource-head-hint">{t('datasource.add.multiHint', language)}</div>
             <div class="datasource-grid bento-grid">
                 {(vendors ?? []).map(v => {
-                    const uiMeta = VENDOR_UI[v.vendor] ?? { icon: '🔌', descKey: '' };
+                    const uiMeta = VENDOR_UI[v.vendor] ?? { descKey: '' };
                     const full = !v.multiAccount && countFor(v.vendor) > 0;
                     return (
                         <div key={v.vendor} class="datasource-card">
                             <div class="datasource-card-top">
-                                <span class="datasource-card-icon" aria-hidden="true">
-                                    {uiMeta.icon}
+                                <span class="datasource-card-icon">
+                                    <VendorIcon vendor={v.vendor} />
                                 </span>
                                 <span class="datasource-card-title">{v.label}</span>
                                 {!v.multiAccount && (

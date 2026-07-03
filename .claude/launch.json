@@ -5,7 +5,8 @@
       "name": "frontend",
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-lc", "cd frontend && exec yarn start"],
-      "port": 9084
+      "port": 9084,
+      "autoPort": true
     }
   ]
 }

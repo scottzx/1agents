@@ -4,17 +4,20 @@ import { useState, useEffect } from 'preact/hooks';
 import * as ui from '../../../stores/uiStore';
 import { t, type Lang } from '../../../i18n';
 import { sourceService, type SourceSummary, type SourceAccount } from '@1agents/core/services/sourceService';
+import { VendorIcon } from './vendorIcons';
 
 // SourceHome — the 数据源 landing page, 源为中心: one Bento card per registered
 // account (厂家 + 账号 = 一个源), so google+账号A and google+账号B show as two
 // separate cards, plus an "添加数据源" card. Each card rolls up its vendor's bronze
 // (record total + last fetch). Picking a card drills into that source.
 
-const VENDOR_UI: Record<string, { icon: string; color: string; descKey: string }> = {
-    icloud: { icon: '🍎', color: '#555', descKey: 'datasource.home.appleDesc' },
-    feishu: { icon: '💬', color: '#3370ff', descKey: 'datasource.home.feishuDesc' },
-    microsoft: { icon: '🪟', color: '#2f6feb', descKey: 'datasource.src.microsoftDesc' },
-    google: { icon: '🔎', color: '#ea4335', descKey: 'datasource.src.googleDesc' },
+// Brand tint per vendor (data-driven color, not a UI status token — same
+// exception CLAUDE.md carves out for the Git-author-avatar palette).
+const VENDOR_UI: Record<string, { color: string; descKey: string }> = {
+    icloud: { color: '#555', descKey: 'datasource.home.appleDesc' },
+    feishu: { color: '#3370ff', descKey: 'datasource.home.feishuDesc' },
+    microsoft: { color: '#2f6feb', descKey: 'datasource.src.microsoftDesc' },
+    google: { color: '#ea4335', descKey: 'datasource.src.googleDesc' },
 };
 
 function rollup(summaries: SourceSummary[], accountId: string): { count: number; lastFetchedAt: number } {
@@ -75,7 +78,7 @@ export function SourceHome({
         <div class="source-home">
             <div class="bento-grid">
                 {accounts.map(a => {
-                    const meta = VENDOR_UI[a.vendor] ?? { icon: '🔌', color: '#888', descKey: '' };
+                    const meta = VENDOR_UI[a.vendor] ?? { color: '#888', descKey: '' };
                     return (
                         <button key={a.id} class="bento-card source-home-card" onClick={() => onPick(a)}>
                             <div class="bento-zone-header">
@@ -83,7 +86,7 @@ export function SourceHome({
                                     class="bento-card-icon source-home-icon"
                                     style={`background-color:${meta.color}1a;color:${meta.color};`}
                                 >
-                                    {meta.icon}
+                                    <VendorIcon vendor={a.vendor} />
                                 </div>
                                 <span
                                     class="source-home-del"
