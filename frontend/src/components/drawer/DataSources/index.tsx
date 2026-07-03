@@ -6,7 +6,7 @@ import * as ui from '../../../stores/uiStore';
 import * as taskNav from '../../../stores/taskNavStore';
 import { t } from '../../../i18n';
 import { ShellNav } from '../../platform/ShellNav';
-import { sourceService, type SourceAccount } from '@1agents/core/services/sourceService';
+import { sourceService, type SourceAccount, type VendorSpec } from '@1agents/core/services/sourceService';
 import { SourceDetail } from './SourceDetail';
 import { SourceHome } from './SourceHome';
 import { FeishuSourcePanel, feishuTabs } from './FeishuSourcePanel';
@@ -20,7 +20,10 @@ import { AddSource } from './AddSource';
 // a data card drills further into the schema-free 多维表格 (SourceDetail). "添加
 // 数据源" opens the vendor → region → account flow.
 type Detail = { source: string; kind: string; title: string; account?: string };
-type View = { kind: 'home' } | { kind: 'add' } | { kind: 'account'; account: SourceAccount };
+// The add flow's picked vendor lives in the view (not inside AddSource) so the
+// second breadcrumb level (添加数据源 → <vendor>) drives back-navigation instead of
+// a bespoke in-form back button.
+type View = { kind: 'home' } | { kind: 'add'; vendor?: VendorSpec } | { kind: 'account'; account: SourceAccount };
 
 function defaultTab(vendor: string): string {
     if (vendor === 'feishu') return 'config';
@@ -56,6 +59,8 @@ export function DataSourcesPane() {
         view.value = { kind: 'add' };
         detail.value = null;
     };
+    const pickVendor = (v: VendorSpec) => (view.value = { kind: 'add', vendor: v });
+    const backToVendors = () => (view.value = { kind: 'add' });
     const onCreated = (a: SourceAccount) => {
         loadAccounts();
         openAccount(a);
@@ -78,7 +83,8 @@ export function DataSourcesPane() {
         }
         const crumbs: { label: string; onClick?: () => void }[] = [home];
         if (v.kind === 'add') {
-            crumbs.push({ label: t('datasource.tab.add', language) });
+            crumbs.push({ label: t('datasource.tab.add', language), onClick: v.vendor ? backToVendors : undefined });
+            if (v.vendor) crumbs.push({ label: v.vendor.label });
         } else {
             crumbs.push({
                 label: v.account.label,
@@ -108,7 +114,7 @@ export function DataSourcesPane() {
                 </div>
             ) : v.kind === 'add' ? (
                 <div class="datasource-tab-body">
-                    <AddSource onCreated={onCreated} />
+                    <AddSource picked={v.vendor ?? null} onPick={pickVendor} onCreated={onCreated} />
                 </div>
             ) : detail.value ? (
                 <div class="datasource-tab-body">

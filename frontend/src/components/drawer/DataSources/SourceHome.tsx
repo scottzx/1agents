@@ -15,6 +15,7 @@ const VENDOR_UI: Record<string, { icon: string; color: string; descKey: string }
     feishu: { icon: '💬', color: '#3370ff', descKey: 'datasource.home.feishuDesc' },
     microsoft: { icon: '🪟', color: '#2f6feb', descKey: 'datasource.src.microsoftDesc' },
     google: { icon: '🔎', color: '#ea4335', descKey: 'datasource.src.googleDesc' },
+    agentmail: { icon: '📧', color: '#0c9', descKey: 'datasource.src.agentmailDesc' },
 };
 
 function rollup(summaries: SourceSummary[], accountId: string): { count: number; lastFetchedAt: number } {

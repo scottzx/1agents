@@ -21,17 +21,25 @@ const VENDOR_UI: Record<string, { icon: string; descKey: string }> = {
     feishu: { icon: '💬', descKey: 'datasource.src.feishuDesc' },
     microsoft: { icon: '🪟', descKey: 'datasource.src.microsoftDesc' },
     google: { icon: '🔎', descKey: 'datasource.src.googleDesc' },
+    agentmail: { icon: '📧', descKey: 'datasource.src.agentmailDesc' },
 };
 
 function regionLabel(region: string, language: Lang): string {
     return t(`datasource.region.${region}`, language) || region;
 }
 
-export function AddSource({ onCreated }: { onCreated: (account: SourceAccount) => void }) {
+export function AddSource({
+    picked,
+    onPick,
+    onCreated,
+}: {
+    picked: VendorSpec | null;
+    onPick: (vendor: VendorSpec) => void;
+    onCreated: (account: SourceAccount) => void;
+}) {
     const language = ui.language.value;
     const [vendors, setVendors] = useState<VendorSpec[] | null>(null);
     const [accounts, setAccounts] = useState<SourceAccount[]>([]);
-    const [picked, setPicked] = useState<VendorSpec | null>(null);
 
     useEffect(() => {
         let active = true;
@@ -50,7 +58,7 @@ export function AddSource({ onCreated }: { onCreated: (account: SourceAccount) =
     const countFor = (vendor: string) => accounts.filter(a => a.vendor === vendor).length;
 
     if (picked) {
-        return <VendorForm vendor={picked} language={language} onBack={() => setPicked(null)} onCreated={onCreated} />;
+        return <VendorForm vendor={picked} language={language} onCreated={onCreated} />;
     }
 
     return (
@@ -80,7 +88,7 @@ export function AddSource({ onCreated }: { onCreated: (account: SourceAccount) =
                                 <button
                                     class="contacts-btn contacts-btn-sm datasource-src-btn"
                                     disabled={full}
-                                    onClick={() => setPicked(v)}
+                                    onClick={() => onPick(v)}
                                 >
                                     {full
                                         ? t('datasource.add.singleAccountReached', language)
@@ -98,12 +106,10 @@ export function AddSource({ onCreated }: { onCreated: (account: SourceAccount) =
 function VendorForm({
     vendor,
     language,
-    onBack,
     onCreated,
 }: {
     vendor: VendorSpec;
     language: Lang;
-    onBack: () => void;
     onCreated: (account: SourceAccount) => void;
 }) {
     const [region, setRegion] = useState(vendor.regions[0] ?? 'intl');
@@ -134,9 +140,6 @@ function VendorForm({
 
     return (
         <div class="datasource-add-form">
-            <button class="contacts-btn contacts-btn-sm" onClick={onBack}>
-                ← {t('datasource.add.back', language)}
-            </button>
             <h3 class="datasource-card-title">{vendor.label}</h3>
 
             {vendor.regions.length > 1 && (
