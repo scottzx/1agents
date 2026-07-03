@@ -7,7 +7,7 @@
 @mixin md-render {
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 1.75;
+  line-height: 1.5;
   color: var(--text-main);
   overflow-wrap: break-word;
   word-wrap: break-word;
@@ -20,7 +20,7 @@
     color: var(--text-main);
   }
   h1 {
-    font-size: 1.75em;
+    font-size: 1.5em;
     border-bottom: 2px solid var(--border-color);
     padding-bottom: 0.3em;
   }
