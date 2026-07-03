@@ -40,6 +40,12 @@ interface NewChatHomeProps {
      */
     onSubmitTerminal?: (workspaceId: string, cwd: string, initialCommand: string) => void;
     onOpenFolder: () => void;
+    /**
+     * When set, the landing is locked to this workspace (launched from an
+     * assistant's 新建对话): the picker is hidden and every chat/terminal
+     * targets this workspace. Absent = the general cross-project picker.
+     */
+    lockedWorkspaceId?: string;
     language: Lang;
 }
 
@@ -141,6 +147,7 @@ export function NewChatHome({
     onSubmitChat,
     onSubmitTerminal,
     onOpenFolder,
+    lockedWorkspaceId,
     language,
 }: NewChatHomeProps) {
     const prompt = useSignal('');
@@ -168,7 +175,9 @@ export function NewChatHome({
             ? activeWorkspaceId
             : 'default'
     );
-    const selectedWorkspaceId = sidebarMode.value === 'assistant' ? assistantWsId : projectWsId;
+    // Locked to a specific workspace (assistant 新建对话) → ignore the per-mode
+    // picker state entirely.
+    const selectedWorkspaceId = lockedWorkspaceId ?? (sidebarMode.value === 'assistant' ? assistantWsId : projectWsId);
     const setSelectedWorkspaceId = (id: string) =>
         sidebarMode.value === 'assistant' ? setAssistantWsId(id) : setProjectWsId(id);
     const wsDropdownOpen = useSignal(false);
@@ -289,8 +298,9 @@ export function NewChatHome({
     return (
         <div class="new-chat-home">
             {/* Top Workspace Picker Dropdown — shown in both modes; assistants
-                and projects share one searchable list, rows tagged 助理/项目. */}
-            {activeWorkspace && (
+                and projects share one searchable list, rows tagged 助理/项目.
+                Hidden when locked to an assistant (launched from 助理 详情). */}
+            {activeWorkspace && !lockedWorkspaceId && (
                 <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
                     <button
                         class="new-chat-ws-picker-trigger"

@@ -7,9 +7,10 @@ import type { ConnectionState } from '@1agents/core/protocol/types';
 import { AgentAvatar } from '../chat/AgentAvatar';
 import { CrumbTrail } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
+import * as tabsStore from '../../stores/tabsStore';
 import { isBeginnerMode, isMobile } from '../../stores/uiStore';
 import * as taskNav from '../../stores/taskNavStore';
-import { activeWorkspaceDeviceId, remoteDevices } from '../../stores/workspaceStore';
+import { activeWorkspaceDeviceId, activeWorkspaceId, remoteDevices, workspaces } from '../../stores/workspaceStore';
 
 interface WorkspaceHeaderProps {
     leftSidebarOpen: boolean;
@@ -79,6 +80,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         toggleLeftSidebar,
         activeDrawerTab,
         toggleDrawerTab,
+        activeTab,
         workspaceName,
         workspacePath,
         sessionName,
@@ -139,19 +141,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             <path d="M9 10h.01M12 10h.01M15 10h.01" />
-        </svg>
-    );
-    // AI Chat channels icon
-    const IconChannels = (
-        <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
     );
     // Chat-column collapse toggle icon (panel on the left)
@@ -223,6 +212,45 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     // "会话" view is active when no artifact drawer is open — the current
     // session's workbench (chat or terminal) is showing.
     const sessionActive = activeDrawerTab === 'none';
+
+    // Entity context (breadcrumb L3): when the active workspace is an assistant
+    // OR a project, the session view's header shows the full 助理/项目 › <name> ›
+    // <session> trail instead of a bare session name — clicking a crumb pops
+    // back to the overview / that entity's detail (L1 / L2).
+    const activeWs = workspaces.value.find(w => w.id === activeWorkspaceId.value);
+    const wsKind = activeWs?.kind ?? 'project';
+    const isAssistantCtx = wsKind === 'assistant';
+    const isProjectCtx = !!activeWs && wsKind === 'project' && !activeWs.builtin && activeWs.id !== 'default';
+    const isEntityCtx = isAssistantCtx || isProjectCtx;
+    const openOverview = () => {
+        if (isAssistantCtx) {
+            tabsStore.assistantDetailId.value = null;
+            tabsStore.activeDrawerTab.value = 'assistants';
+        } else {
+            stage.projectOverview();
+        }
+    };
+    const openEntityDetail = () => {
+        if (!activeWs) return;
+        if (isAssistantCtx) {
+            tabsStore.assistantDetailId.value = activeWs.id;
+            tabsStore.activeDrawerTab.value = 'assistants';
+        } else {
+            stage.enterProjectDetail(activeWs.id, activeWs.name);
+        }
+    };
+    // L3 crumb: the new-chat landing shows 新建对话 until the session starts,
+    // then the session title takes its place.
+    const entityLeaf = activeTab === 'new_chat' ? t('assistant.detail.newChat', language) : sessionName;
+    const rootLabel = isAssistantCtx ? t('sidebar.assistants', language) : t('projectHome.title', language);
+    const entityCrumbs = activeWs
+        ? [
+              { label: rootLabel, onClick: openOverview },
+              ...(entityLeaf
+                  ? [{ label: activeWs.name, onClick: openEntityDetail }, { label: entityLeaf }]
+                  : [{ label: activeWs.name }]),
+          ]
+        : [];
 
     // Show the current session: close any open artifact drawer (keeps the
     // session's own chat/terminal tab as-is).
@@ -316,11 +344,15 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             />
                         </div>
                     ) : (
-                        <div class="header-title-group">
+                        <div class={`header-title-group${isEntityCtx ? ' header-crumb-group' : ''}`}>
                             {agentType && (
                                 <AgentAvatar agentType={agentType} role={sessionRole} class="header-agent-avatar" />
                             )}
-                            <span class="session-name">{sessionName || t('header.noSession', language)}</span>
+                            {isEntityCtx ? (
+                                <CrumbTrail crumbs={entityCrumbs} />
+                            ) : (
+                                <span class="session-name">{sessionName || t('header.noSession', language)}</span>
+                            )}
                             {connection && (
                                 <span class={`header-conn header-conn-${connection}`}>
                                     {connectionLabel(connection)}
@@ -429,16 +461,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )}
                         <button
-                            id="hdr-btn-channels"
-                            class={`shortcut-btn ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                            onClick={() => toggleDrawerTab('channels')}
-                            title={t('header.col.channels', language)}
-                            aria-label={t('header.col.channels', language)}
-                            aria-pressed={activeDrawerTab === 'channels'}
-                        >
-                            {IconChannels}
-                        </button>
-                        <button
                             id="hdr-btn-files"
                             class={`shortcut-btn ${activeDrawerTab === 'files' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('files')}
@@ -526,18 +548,6 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconGit}</span>
                     <span class="mob-menu-label">{t('header.mobile.git', language)}</span>
                     {activeDrawerTab === 'git' && (
-                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
-                    )}
-                </button>
-
-                <button
-                    id="mob-menu-channels"
-                    class={`mobile-menu-item ${activeDrawerTab === 'channels' ? 'active' : ''}`}
-                    onClick={() => handleDrawerToggle('channels')}
-                >
-                    <span class="mob-menu-icon">{IconChannels}</span>
-                    <span class="mob-menu-label">{t('header.mobile.channels', language)}</span>
-                    {activeDrawerTab === 'channels' && (
                         <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>

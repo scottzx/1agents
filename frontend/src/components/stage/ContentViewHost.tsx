@@ -7,14 +7,11 @@ import { isChat, type ChatSession } from '../types';
 import { AGENT_TYPE_LABELS } from '../types';
 import { t, type Lang } from '../../i18n';
 import * as ui from '../../stores/uiStore';
-import * as fs from '../../stores/fsStore';
 import * as sess from '../../stores/sessionStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as modal from '../../stores/modalStore';
 import { getModuleByTab } from '../../modules/registry';
-import { fsService } from '../../services/fsService';
-import { extractCcToken, extractCcRedirect } from '../../modules/cc-token';
 
 import { Terminal } from '../terminal';
 import { TerminalEmptyState } from '../shared/TerminalEmptyState';
@@ -22,8 +19,7 @@ import { ChatPanel } from '../chat/ChatPanel';
 import { NewChatHome } from '../chat/NewChatHome';
 import { FilePreviewContent } from '../shared/FilePreviewContent';
 import { BuiltinBrowser } from '../browser/BuiltinBrowser';
-import { FlatFileBrowser } from '../drawer/FlatFileBrowser';
-import { FileDetailView } from '../drawer/FileDetailView';
+import { FilesPane, ChannelsPane, activeWorkspacePath } from '../shared/WorkspacePanes';
 import { GitPanel } from '../drawer/GitPanel';
 import { TaskList } from '../drawer/TaskList';
 import { ProjectShell } from '../platform/ProjectShell';
@@ -93,7 +89,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
         case 'browser':
             return renderBrowser(view.tabId, language);
         case 'files':
-            return renderFiles(app, language);
+            return <FilesPane app={app} language={language} />;
         case 'git':
             return (
                 <GitPanel
@@ -175,6 +171,9 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                 </div>
             );
         case 'assistants':
+            // No padding / scroll here — AssistantsPage (grid) and its tabbed
+            // detail manage their own scroll so full-height panes (任务/文件/渠道)
+            // don't nest inside an outer scroller.
             return (
                 <div
                     style={{
@@ -182,12 +181,11 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         minHeight: 0,
                         display: 'flex',
                         flexDirection: 'column',
-                        padding: '12px 16px',
-                        overflow: 'auto',
+                        overflow: 'hidden',
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
-                    <AssistantsPage />
+                    <AssistantsPage app={app} />
                 </div>
             );
         case 'contacts':
@@ -281,7 +279,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                 </div>
             );
         case 'channels':
-            return renderChannels(theme, language);
+            return <ChannelsPane theme={theme} language={language} />;
         case 'providers':
             return wsStore.ccProvidersUrl.value ? (
                 <CcProvidersPanel
@@ -350,11 +348,6 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
             return null;
     }
 }
-
-const activeWorkspacePath = (): string => {
-    const ws = wsStore.workspaces.value.find(w => w.id === wsStore.activeWorkspaceId.value);
-    return ws?.path || '.';
-};
 
 /**
  * The `.middle-canvas > .terminal-card` shell that wraps the workbench's
@@ -443,6 +436,7 @@ function renderNewChat(language: Lang) {
                 sess.createTerminal(wsId, cwd, initialCommand);
             }}
             onOpenFolder={modal.openCreateWorkspacePicker}
+            lockedWorkspaceId={sess.lockedNewChatWorkspaceId.value || undefined}
             language={language}
         />
     );
@@ -469,94 +463,6 @@ function renderBrowser(tabId: string, language: Lang) {
             style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         >
             <BuiltinBrowser tab={tab} active={true} onUrlChange={tabsStore.updateBrowserUrl} language={language} />
-        </div>
-    );
-}
-
-function renderFiles(app: App, language: Lang) {
-    const selectedFsEntry = fs.selectedFsEntry.value;
-    if (fs.viewMode.value === 'list') {
-        return (
-            <FlatFileBrowser
-                flatFiles={fs.flatFiles.value}
-                flatFilesLoading={fs.flatFilesLoading.value}
-                searchQuery={fs.searchQuery.value}
-                selectedFilterTag={fs.selectedFilterTag.value}
-                favoriteFiles={fs.favoriteFiles.value}
-                onSearchQueryChange={fs.handleSearchChange}
-                onFilterTagChange={fs.handleFilterTagChange}
-                onOpenFileDetail={fs.openFileDetail}
-                fsEntries={fs.fsEntries.value}
-                fsLoading={fs.fsLoading.value}
-                onToggleFsDir={fs.toggleFsDir}
-                language={language}
-            />
-        );
-    }
-    if (!selectedFsEntry) return null;
-    return (
-        <FileDetailView
-            selectedFsEntry={selectedFsEntry}
-            favoriteFiles={fs.favoriteFiles.value}
-            detailFullscreen={fs.detailFullscreen.value}
-            isEditingDetail={fs.isEditingDetail.value}
-            fileContent={fs.fileContent.value}
-            editedContent={fs.editedContent.value}
-            fileLoading={fs.fileLoading.value}
-            fileSaving={fs.fileSaving.value}
-            fileSaveMsg={fs.fileSaveMsg.value}
-            isImagePreview={fs.isImagePreview.value}
-            imageUrl={fsService.imageUrl(selectedFsEntry.path)}
-            onBackToList={() => {
-                fs.viewMode.value = 'list';
-                fs.detailFullscreen.value = false;
-            }}
-            onToggleFavorite={fs.toggleFavorite}
-            onCopyContent={fs.copyFileContent}
-            onDownloadFile={fs.downloadFile}
-            onRenameFile={fs.renameFile}
-            onToggleFullscreen={() => openSelectedAsPreview()}
-            onShareFile={app.shareFile}
-            onSaveFile={fs.saveFile}
-            onToggleEditing={isEditing => (fs.isEditingDetail.value = isEditing)}
-            onEditedContentChange={content => (fs.editedContent.value = content)}
-            onOpenPreview={IS_DESKTOP ? (path, name) => tabsStore.openPreviewTab(path, name) : undefined}
-            targetLine={fs.detailTargetLine.value ?? undefined}
-            targetLineEnd={fs.detailTargetLineEnd.value ?? undefined}
-            language={language}
-        />
-    );
-}
-
-/** Desktop "fullscreen": promote the selected file to its own preview tab. */
-function openSelectedAsPreview() {
-    const entry = fs.selectedFsEntry.value;
-    if (!entry) return;
-    const base = activeWorkspacePath();
-    const absolutePath = entry.path.startsWith('/') ? entry.path : `${base}/${entry.path}`;
-    if (IS_DESKTOP) {
-        tabsStore.openPreviewTab(absolutePath, entry.name);
-    } else {
-        const shareUrl = `${window.location.origin}${window.location.pathname}?preview=${encodeURIComponent(
-            absolutePath
-        )}`;
-        window.open(shareUrl, '_blank');
-    }
-}
-
-function renderChannels(theme: 'light' | 'dark', language: Lang) {
-    const ccConnectUrl = wsStore.ccConnectUrl.value;
-    if (!ccConnectUrl) return null;
-    return (
-        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; height: 100%;">
-            <cc-connect-panel
-                id="cc-channels-panel"
-                route={extractCcRedirect(ccConnectUrl)}
-                theme={theme}
-                lang={language}
-                auth-token={extractCcToken(ccConnectUrl)}
-                style="width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;"
-            />
         </div>
     );
 }
