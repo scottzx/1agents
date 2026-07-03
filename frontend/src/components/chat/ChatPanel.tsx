@@ -108,7 +108,6 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
             {plan && plan.length > 0 && <PlanChecklist entries={plan} />}
             <MessageList
                 items={items}
-                agentType={session.agentType}
                 typing={typing}
                 emptyHint={
                     connection === 'connecting'

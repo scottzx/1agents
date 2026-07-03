@@ -2,13 +2,12 @@ import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { MessageBubble, GroupedChatItem, GroupedToolCall } from './MessageBubble';
 import type { ChatItem } from './hooks';
-import type { AgentType, PermissionDecision } from '../types';
+import type { PermissionDecision } from '../types';
 import { t } from '../../i18n';
 import * as ui from '../../stores/uiStore';
 
 interface MessageListProps {
     items: ChatItem[];
-    agentType?: AgentType;
     /**
      * True while a turn is running. Drives the tool-call status icons
      * (spinner vs. neutral "incomplete" for history replays of
@@ -238,7 +237,6 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
 
 export function MessageList({
     items,
-    agentType,
     typing,
     emptyHint,
     loading,
@@ -338,7 +336,6 @@ export function MessageList({
                 <MessageBubble
                     key={item.id}
                     item={item}
-                    agentType={agentType}
                     isLast={index === groupedItems.length - 1}
                     active={typing}
                     onRespondPermission={onRespondPermission}

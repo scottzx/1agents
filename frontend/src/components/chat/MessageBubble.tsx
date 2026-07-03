@@ -6,9 +6,8 @@ import { Fragment } from 'preact';
 import { useEffect, useRef, useMemo } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { marked } from 'marked';
-import { AgentAvatar } from './AgentAvatar';
 import { t, getLang } from '../../i18n';
-import type { AgentType, PermissionDecision } from '../types';
+import type { PermissionDecision } from '../types';
 import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
@@ -63,7 +62,6 @@ export type GroupedChatItem =
 
 interface MessageBubbleProps {
     item: GroupedChatItem;
-    agentType?: AgentType;
     isLast: boolean;
     /**
      * True while a turn is actively running. Distinguishes "no output
@@ -77,14 +75,7 @@ interface MessageBubbleProps {
     onCancelQueued?: (queueRequestId: string) => void;
 }
 
-export function MessageBubble({
-    item,
-    agentType,
-    isLast,
-    active,
-    onRespondPermission,
-    onCancelQueued,
-}: MessageBubbleProps) {
+export function MessageBubble({ item, isLast, active, onRespondPermission, onCancelQueued }: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return (
@@ -96,7 +87,7 @@ export function MessageBubble({
                 />
             );
         case 'assistant_text':
-            return <AssistantBubble content={item.content} streaming={item.streaming} agentType={agentType} />;
+            return <AssistantBubble content={item.content} streaming={item.streaming} />;
         case 'thinking':
             return <ThinkingBubble content={item.content} streaming={!!active && isLast} />;
         case 'tool_group':
@@ -148,15 +139,7 @@ function UserBubble({
     );
 }
 
-function AssistantBubble({
-    content,
-    streaming,
-    agentType,
-}: {
-    content: string;
-    streaming: boolean;
-    agentType?: AgentType;
-}) {
+function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
     // Render through the shared renderer so GitHub-style task references
     // (#N, `项目名#N`) autolink. Numbers are optimistic in chat (the task list
     // isn't loaded here); a dead reference falls back to a not-found toast.
@@ -175,7 +158,6 @@ function AssistantBubble({
 
     return (
         <div class="chat-message-row chat-message-row-assistant">
-            {agentType && <AgentAvatar agentType={agentType} class="chat-message-avatar" />}
             <div class="chat-bubble chat-bubble-assistant">
                 <div class="chat-bubble-body">
                     <div ref={bodyRef} class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />

@@ -15416,11 +15416,6 @@ body {
     max-width: 100%;
     align-self: unset;
   }
-
-  .chat-message-avatar {
-    margin-top: 4px;
-    flex-shrink: 0;
-  }
 }
 
 @media (max-width: 768px) {
@@ -15431,10 +15426,6 @@ body {
 
   .chat-message-row-assistant {
     max-width: 100%;
-
-    .chat-message-avatar {
-      display: none;
-    }
   }
 }
 

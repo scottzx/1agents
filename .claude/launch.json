@@ -7,6 +7,12 @@
       "runtimeArgs": ["-lc", "cd frontend && exec yarn start"],
       "port": 9084,
       "autoPort": true
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "exec ./build/1agents -ttyd-bin ./build/ttyd -static ./frontend/dist -listen :38080"],
+      "port": 38080
     }
   ]
 }
