@@ -119,6 +119,36 @@ export const pruneProjectStack = (validIds: Set<string>): void => {
 };
 
 /**
+ * What the MAIN content area is currently showing, independent of which list
+ * the left sidebar renders (`ui.sidebarMode`). This is the key decoupling:
+ * flipping the 助手/项目 sidebar tabs only re-renders the sidebar list — it must
+ * NOT drag the main stage along. Only explicit navigation (opening a
+ * conversation, drilling into a project, hitting 项目总览) moves the stage.
+ *
+ *   - 'conversation' — the split chat/terminal workbench (or a focus full-page
+ *     tab, which wins in `layoutMode` regardless).
+ *   - 'project'      — the 项目总览 card wall (empty stack) or a drilled-in
+ *     project detail page (non-empty stack).
+ */
+const STAGE_VIEW_KEY = '1agents-stage-view';
+const loadStageView = (): 'conversation' | 'project' => {
+    const v = localStorage.getItem(STAGE_VIEW_KEY);
+    if (v === 'conversation' || v === 'project') return v;
+    // Legacy / first run: mirror the persisted sidebar context so a reload
+    // still lands on the project pages when the user last left 项目 context.
+    return localStorage.getItem('1agents-sidebar-mode') === 'project' ? 'project' : 'conversation';
+};
+export const stageView = signal<'conversation' | 'project'>(loadStageView());
+const setStageView = (v: 'conversation' | 'project'): void => {
+    stageView.value = v;
+    try {
+        localStorage.setItem(STAGE_VIEW_KEY, v);
+    } catch {
+        /* non-fatal */
+    }
+};
+
+/**
  * The four single-select content tabs surfaced by the header toolbar, in
  * display order (项目管理 first, before 渠道). These are also the only
  * secondary (right-column) views.
@@ -194,16 +224,18 @@ export const hasContent = computed<boolean>(() => panes.value.length > 1);
 /**
  * The active desktop layout mode (see `LayoutMode`). Full-page / focus panes
  * (incl. the L1 app page) win first — they are single-pane regardless of
- * context. Otherwise the 对话/项目 context decides: 项目 splits into overview
- * (empty stack) vs a drilled-in detail page; 对话 is the split workbench.
+ * context. Otherwise the *stage* view (`stageView`, NOT the sidebar list)
+ * decides: 项目 splits into overview (empty stack) vs a drilled-in detail
+ * page; a conversation is the split workbench. Toggling the 助手/项目 sidebar
+ * tabs does not touch `stageView`, so it never moves the main content.
  */
 export const layoutMode = computed<LayoutMode>(() => {
     if (appStore.activeL1PageId.value) return 'focus';
     if (isFullPageTab(tabsStore.activeDrawerTab.value)) return 'focus';
-    if (ui.sidebarMode.value === 'project') {
+    if (stageView.value === 'project') {
         // Drilling from a project's detail page into a conversation (chat /
         // new-chat) flips to the split workbench; the project detail page and
-        // the 项目总览 card wall share the rest of 项目 mode.
+        // the 项目总览 card wall share the rest of the 项目 stage.
         const tab = tabsStore.activeTab.value;
         if (tab === 'agents' || tab === 'new_chat') return 'split';
         return projectStack.value.length > 0 ? 'project' : 'project-overview';
@@ -243,6 +275,7 @@ export const closeContent = (): void => {
  * full-screen overlay drawer).
  */
 export const enterProject = (): void => {
+    setStageView('conversation');
     tabsStore.openContentTab('tasks');
     setChatRailed(true);
 };
@@ -253,6 +286,7 @@ export const enterProject = (): void => {
  * NEW conversation (the artifact column resets away).
  */
 export const enterConversation = (): void => {
+    setStageView('conversation');
     tabsStore.closeContentTab();
     setChatRailed(false);
 };
@@ -264,33 +298,28 @@ export const enterConversation = (): void => {
  * chat column un-rails so the conversation leads. Desktop only.
  */
 export const openConversation = (projectChanged: boolean): void => {
+    setStageView('conversation');
     if (projectChanged) tabsStore.closeContentTab();
     setChatRailed(false);
 };
 
 /**
- * Top-level 助手/项目 context switch (the sidebar mode-tabs). Switching *into*
- * 项目 clears conversation focus so a stale chat doesn't keep the split
- * workbench up over the project pages. The drill stack / assistant detail is
- * NOT preserved across this switch — merely toggling context is not a real
- * selection, so it always lands on the overview; only clicking a
- * project-folder in the tree counts as actually picking a project/assistant.
+ * Top-level 助手/项目 sidebar-tab switch. This ONLY changes which list the left
+ * sidebar renders — it deliberately does nothing to the main stage
+ * (`stageView` / drill stack / active session / drawer). Flipping the tabs
+ * back and forth must leave the content area exactly as it was; only explicit
+ * navigation (opening a session, drilling into a project, 项目总览) moves the
+ * stage. See `stageView` / `layoutMode`.
  */
 export const showProjectContext = (): void => {
     ui.sidebarMode.value = 'project';
     localStorage.setItem('1agents-sidebar-mode', 'project');
-    tabsStore.activeTab.value = 'terminal';
-    // Close any lingering focus/full-page drawer (contacts/inbox/…) so it does
-    // not keep `layoutMode` on 'focus' and hide the project pages.
-    tabsStore.closeContentTab();
-    setProjectStack([]);
     ui.triggerTerminalFit();
 };
 
 export const showAssistantContext = (): void => {
     ui.sidebarMode.value = 'assistant';
     localStorage.setItem('1agents-sidebar-mode', 'assistant');
-    tabsStore.assistantDetailId.value = null;
     ui.triggerTerminalFit();
 };
 
@@ -301,6 +330,7 @@ export const showAssistantContext = (): void => {
 export const projectOverview = (): void => {
     ui.sidebarMode.value = 'project';
     localStorage.setItem('1agents-sidebar-mode', 'project');
+    setStageView('project');
     setProjectStack([]);
     tabsStore.closeContentTab();
     // Drop any lingering conversation focus so the card wall (not a stale chat)
@@ -317,6 +347,7 @@ export const projectOverview = (): void => {
 export const enterProjectDetail = (workspaceId: string, name: string): void => {
     ui.sidebarMode.value = 'project';
     localStorage.setItem('1agents-sidebar-mode', 'project');
+    setStageView('project');
     setProjectStack([{ workspaceId, name }]);
     tabsStore.closeContentTab();
     // Reset conversation focus so the detail page (not a stale chat) shows.
