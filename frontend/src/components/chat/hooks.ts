@@ -13,7 +13,15 @@ import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // closures (never at module-eval time) so the sessionStore ⇄ hooks import cycle
 // stays safe — see the cycle note in stores/sessionStore.ts.
 import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/sessionStore';
-import type { ChatItem, ConnectionState, SessionModesState, AvailableCommand } from '@1agents/core/protocol/types';
+import type {
+    ChatItem,
+    ConnectionState,
+    SessionModesState,
+    AvailableCommand,
+    SessionUsage,
+    PlanEntry,
+    SessionConfigOption,
+} from '@1agents/core/protocol/types';
 import { ChatBridgeManager, DEFAULT_PERMISSION_MODE } from '@1agents/core/services/chat/chatBridge';
 
 export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '@1agents/core/protocol/types';
@@ -37,6 +45,12 @@ interface UseBridgeState {
     modes: SessionModesState | null;
     /** Slash commands the agent advertised (empty for agents with none). */
     availableCommands: AvailableCommand[];
+    /** NATIVE config options (model, effort, …), excluding the mode select. */
+    configOptions: SessionConfigOption[];
+    /** Latest token/context usage + cost (null until the first usage event). */
+    usage: SessionUsage | null;
+    /** Agent's execution plan checklist (null when there's no active plan). */
+    plan: PlanEntry[] | null;
     send: (content: string) => void;
     /**
      * Stop generating: cancels the running turn and drops every queued
@@ -51,6 +65,8 @@ interface UseBridgeState {
     setPermissionMode: (mode: PermissionMode) => void;
     /** Switch the agent's native session mode (plan/acceptEdits/…). */
     setSessionMode: (modeId: string) => void;
+    /** Switch a native config option (model/effort) by option id + value. */
+    setConfigOption: (key: string, value: string) => void;
     /** True when this connection was taken over by another tab/browser. */
     takenOver: boolean;
     /** Reconnect and reclaim ownership of the session (重试 button). */
@@ -111,6 +127,9 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const permissionMode = state ? state.permissionMode : DEFAULT_PERMISSION_MODE;
     const modes = state ? state.modes : null;
     const availableCommands = state ? state.availableCommands : [];
+    const configOptions = state ? state.configOptions : [];
+    const usage = state ? state.usage : null;
+    const plan = state ? state.plan : null;
     const takenOver = state ? state.takenOver : false;
 
     const send = useCallback(
@@ -158,6 +177,14 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         [session]
     );
 
+    const setConfigOption = useCallback(
+        (key: string, value: string) => {
+            if (!session) return;
+            globalBridgeManager.setConfigOption(session, key, value);
+        },
+        [session]
+    );
+
     const retry = useCallback(() => {
         if (!session) return;
         globalBridgeManager.retry(session);
@@ -171,12 +198,16 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         permissionMode,
         modes,
         availableCommands,
+        configOptions,
+        usage,
+        plan,
         send,
         cancel,
         cancelQueued,
         respondPermission,
         setPermissionMode,
         setSessionMode,
+        setConfigOption,
         takenOver,
         retry,
     };

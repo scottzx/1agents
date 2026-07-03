@@ -7,6 +7,7 @@ import * as ui from '../../stores/uiStore';
 import { useBridge } from './hooks';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
+import { PlanChecklist } from './PlanChecklist';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 
 interface ChatPanelProps {
@@ -41,12 +42,16 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         permissionMode,
         modes,
         availableCommands,
+        configOptions,
+        usage,
+        plan,
         send,
         cancel,
         cancelQueued,
         respondPermission,
         setPermissionMode,
         setSessionMode,
+        setConfigOption,
         takenOver,
         retry,
     } = useBridge(session);
@@ -100,6 +105,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
             {currentModeId === 'plan' && (
                 <div class="chat-plan-banner">{t('chat.sessionMode.planBanner', ui.language.value)}</div>
             )}
+            {plan && plan.length > 0 && <PlanChecklist entries={plan} />}
             <MessageList
                 items={items}
                 agentType={session.agentType}
@@ -123,6 +129,9 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 sessionModes={modes}
                 onSessionModeChange={setSessionMode}
                 availableCommands={availableCommands}
+                usage={usage}
+                configOptions={configOptions}
+                onConfigOptionChange={setConfigOption}
             />
         </div>
     );

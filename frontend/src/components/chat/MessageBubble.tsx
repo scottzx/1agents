@@ -13,6 +13,9 @@ import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
 import { theme } from '../../stores/uiStore';
+import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
+import { ToolKindIcon, deriveToolKind } from './ToolKindIcon';
+import { terminalCommandLine } from './terminalCommand';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
 // streamed text wraps naturally inside the chat bubble.
@@ -28,6 +31,9 @@ export interface GroupedToolCall {
     input: string;
     output?: string;
     isError?: boolean;
+    kind?: string;
+    locations?: Array<{ path: string; line?: number }>;
+    diffs?: Array<{ path: string; oldText?: string; newText: string }>;
     permission?: {
         requestId: string;
         toolName: string;
@@ -537,6 +543,25 @@ function GroupedToolCallItem({
     const summary = Object.keys(args).length > 0 ? summarizeArgs(args) : undefined;
     const expanded = isExpanded.value;
 
+    // Prefer the ACP-forwarded metadata; fall back to deriving from the tool
+    // name/input so diff/kind/locations all survive the post-turn history
+    // reload (history carries the tool name + input, not the ACP fields).
+    const diffs = call.diffs && call.diffs.length > 0 ? call.diffs : deriveDiffsFromInput(call.toolName, args);
+    const derivedLocations = deriveLocationsFromInput(args);
+    const locations =
+        call.locations && call.locations.length > 0
+            ? call.locations
+            : derivedLocations.length > 0
+              ? derivedLocations
+              : undefined;
+    const kind = call.kind ?? deriveToolKind(call.toolName);
+
+    // Terminal/execute tools render as a durable terminal block — the command
+    // (from input) as a `$` prompt line + output in a dark terminal box. Both
+    // sources are in history, so it survives the post-turn reload.
+    const isTerminal = kind === 'execute';
+    const command = isTerminal ? terminalCommandLine(args) : undefined;
+
     return (
         <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
             <div
@@ -552,6 +577,7 @@ function GroupedToolCallItem({
                 }}
             >
                 <StatusIcon status={status} />
+                <ToolKindIcon kind={kind} />
                 <span class="chat-tool-name-badge">{call.toolName}</span>
                 {summary && <span class="chat-tool-row-summary">{summary}</span>}
                 {status === 'waiting' && (
@@ -566,24 +592,59 @@ function GroupedToolCallItem({
             </div>
             {expanded && (
                 <div class="chat-tool-row-body">
-                    {/* Arguments */}
-                    <div class="chat-tool-section">
-                        <div class="chat-tool-section-title">{t('chat.tool.args', lang)}</div>
-                        {Object.keys(args).length > 0 ? (
-                            <div class="chat-tool-args-list">
-                                {Object.entries(args).map(([paramName, paramVal]) => (
-                                    <div key={paramName} class="chat-tool-arg">
-                                        <code class="chat-tool-arg-name">{paramName}</code>
-                                        <ArgValue value={paramVal} />
-                                    </div>
+                    {/* Terminal command line (execute tools) */}
+                    {command && (
+                        <div class="chat-tool-cmd-box">
+                            <span class="chat-tool-cmd-prompt" aria-hidden="true">
+                                $
+                            </span>
+                            <span class="chat-tool-cmd-text">{command}</span>
+                        </div>
+                    )}
+                    {/* Arguments — hidden for terminal tools (command shown above). */}
+                    {!isTerminal && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.args', lang)}</div>
+                            {Object.keys(args).length > 0 ? (
+                                <div class="chat-tool-args-list">
+                                    {Object.entries(args).map(([paramName, paramVal]) => (
+                                        <div key={paramName} class="chat-tool-arg">
+                                            <code class="chat-tool-arg-name">{paramName}</code>
+                                            <ArgValue value={paramVal} />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : inputWasInvalidJson ? (
+                                <pre class="chat-tool-pre">{call.input}</pre>
+                            ) : (
+                                <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* File diffs (Phase 6): ACP diff blocks or derived from
+                        edit-family input. */}
+                    {diffs.length > 0 && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.diff', lang)}</div>
+                            <ToolDiffView diffs={diffs} />
+                        </div>
+                    )}
+
+                    {/* Files the tool touched (ACP locations). */}
+                    {locations && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.locations', lang)}</div>
+                            <div class="chat-tool-locations">
+                                {locations.map((loc, i) => (
+                                    <span key={i} class="chat-tool-location" title={loc.path}>
+                                        {loc.path}
+                                        {typeof loc.line === 'number' ? `:${loc.line}` : ''}
+                                    </span>
                                 ))}
                             </div>
-                        ) : inputWasInvalidJson ? (
-                            <pre class="chat-tool-pre">{call.input}</pre>
-                        ) : (
-                            <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
                     {/* Inline permission: pending shows the action buttons,
                         resolved collapses to a one-line receipt. */}
@@ -623,7 +684,9 @@ function GroupedToolCallItem({
                                     : t('chat.tool.outputMissing', lang)}
                             </div>
                         ) : call.output ? (
-                            <pre class={`chat-tool-pre chat-tool-output ${call.isError ? 'has-error' : ''}`}>
+                            <pre
+                                class={`${isTerminal ? 'chat-tool-output-box' : 'chat-tool-pre chat-tool-output'} ${call.isError ? 'has-error' : ''}`}
+                            >
                                 {call.output}
                             </pre>
                         ) : (

@@ -2,7 +2,12 @@ import { h } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
 import type { PermissionMode } from '../types';
-import type { SessionModesState, AvailableCommand } from '@1agents/core/protocol/types';
+import type {
+    SessionModesState,
+    AvailableCommand,
+    SessionUsage,
+    SessionConfigOption,
+} from '@1agents/core/protocol/types';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
@@ -11,6 +16,8 @@ import { AttachmentPreview } from './input/AttachmentPreview';
 import { PermissionModePicker } from './PermissionModePicker';
 import { SessionModePicker } from './SessionModePicker';
 import { SlashCommandPalette, slashQuery, filterCommands } from './SlashCommandPalette';
+import { UsageBadge } from './UsageBadge';
+import { ConfigOptionPicker } from './ConfigOptionPicker';
 
 interface ComposerProps {
     onSend: (text: string) => void;
@@ -30,6 +37,11 @@ interface ComposerProps {
     onSessionModeChange?: (modeId: string) => void;
     /** Agent-advertised slash commands driving the `/` autocomplete palette. */
     availableCommands?: AvailableCommand[];
+    /** Latest token/context usage + cost; null hides the usage badge. */
+    usage?: SessionUsage | null;
+    /** NATIVE config options (model/effort); each renders a picker. */
+    configOptions?: SessionConfigOption[];
+    onConfigOptionChange?: (key: string, value: string) => void;
 }
 
 export function Composer({
@@ -43,6 +55,9 @@ export function Composer({
     sessionModes,
     onSessionModeChange,
     availableCommands = [],
+    usage,
+    configOptions = [],
+    onConfigOptionChange,
 }: ComposerProps) {
     const ref = useRef<HTMLTextAreaElement | null>(null);
     const lang = getLang();
@@ -177,19 +192,35 @@ export function Composer({
                     wrap="soft"
                 />
                 <div class="chat-composer-toolbar">
-                    {sessionModes && sessionModes.availableModes.length > 0 && onSessionModeChange ? (
-                        // Native leads: the agent's own modes (plan/acceptEdits/…)
-                        // replace the shield; the bridge gate silently stays at
-                        // approve-reads + project allowlist as the safety net.
-                        <SessionModePicker modes={sessionModes} onChange={onSessionModeChange} disabled={disabled} />
-                    ) : (
-                        <PermissionModePicker
-                            value={permissionMode}
-                            onChange={onPermissionModeChange}
-                            variant="cycle"
-                            disabled={disabled}
-                        />
-                    )}
+                    <div class="chat-composer-toolbar-left">
+                        {sessionModes && sessionModes.availableModes.length > 0 && onSessionModeChange ? (
+                            // Native leads: the agent's own modes (plan/acceptEdits/…)
+                            // replace the shield; the bridge gate silently stays at
+                            // approve-reads + project allowlist as the safety net.
+                            <SessionModePicker
+                                modes={sessionModes}
+                                onChange={onSessionModeChange}
+                                disabled={disabled}
+                            />
+                        ) : (
+                            <PermissionModePicker
+                                value={permissionMode}
+                                onChange={onPermissionModeChange}
+                                variant="cycle"
+                                disabled={disabled}
+                            />
+                        )}
+                        {onConfigOptionChange &&
+                            configOptions.map(opt => (
+                                <ConfigOptionPicker
+                                    key={opt.id}
+                                    option={opt}
+                                    onChange={onConfigOptionChange}
+                                    disabled={disabled}
+                                />
+                            ))}
+                        {usage && <UsageBadge usage={usage} />}
+                    </div>
                     <div class="chat-composer-actions">
                         <AttachButton
                             className="chat-composer-attach-inline"

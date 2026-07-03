@@ -92,6 +92,10 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     existingCall.output = call.output;
                     existingCall.isError = call.isError;
                     if (call.permission) existingCall.permission = call.permission;
+                    // Metadata (Phase 6) arrives on later updates — merge, don't clear.
+                    if (call.kind) existingCall.kind = call.kind;
+                    if (call.locations) existingCall.locations = call.locations;
+                    if (call.diffs) existingCall.diffs = call.diffs;
                 } else {
                     // Key falls back to the group-relative position when the
                     // runtime didn't supply a toolCallId — stable across
@@ -104,6 +108,9 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         input: call.input,
                         output: call.output,
                         isError: call.isError,
+                        ...(call.kind ? { kind: call.kind } : {}),
+                        ...(call.locations ? { locations: call.locations } : {}),
+                        ...(call.diffs ? { diffs: call.diffs } : {}),
                         ...(call.permission ? { permission: call.permission } : {}),
                     });
                 }

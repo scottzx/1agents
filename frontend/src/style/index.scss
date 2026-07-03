@@ -15671,6 +15671,107 @@ body {
   letter-spacing: 0.05em;
 }
 
+// ── Tool kind icon (Phase 6) — sits left of the tool-name badge ──
+.chat-tool-kind-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  &[data-kind="edit"],
+  &[data-kind="move"] {
+    color: var(--accent-color);
+  }
+  &[data-kind="delete"] {
+    color: var(--danger-fg);
+  }
+  &[data-kind="execute"] {
+    color: var(--orange-fg);
+  }
+}
+
+// ── File-diff viewer (Phase 6) ──
+.chat-tool-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-tool-diff {
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 8px);
+  overflow: hidden;
+}
+
+.chat-tool-diff-path {
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  word-break: break-all;
+}
+
+.chat-tool-diff-body {
+  margin: 0;
+  padding: 6px 0;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg-card);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-tool-diff-line {
+  display: flex;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  .chat-tool-diff-gutter {
+    flex-shrink: 0;
+    width: 1.2em;
+    color: var(--text-muted);
+    user-select: none;
+  }
+  .chat-tool-diff-text {
+    flex: 1;
+  }
+
+  &.is-add {
+    background: rgba(var(--success-rgb), 0.12);
+    .chat-tool-diff-gutter {
+      color: var(--success-emphasis);
+    }
+  }
+  &.is-del {
+    background: rgba(var(--danger-rgb), 0.1);
+    .chat-tool-diff-gutter {
+      color: var(--danger-fg);
+    }
+  }
+}
+
+// ── Tool locations (files touched) ──
+.chat-tool-locations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-tool-location {
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-tool-output-box {
   margin: 0;
   padding: 8px 12px;
@@ -15956,6 +16057,72 @@ body {
   min-height: 32px;
 }
 
+// Left cluster: mode picker + usage badge share a row and stay left while the
+// send/mic/attach actions stay right (toolbar is space-between).
+.chat-composer-toolbar-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+// ── Usage / cost badge (composer) ──
+// Context-window % gauge + cumulative cost, fed by the live `usage` event.
+// Tints toward warning as the window fills. Full per-turn token breakdown
+// rides in the native title tooltip.
+.chat-usage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 13px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+
+  .chat-usage-context {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+
+    svg {
+      flex-shrink: 0;
+    }
+  }
+
+  .chat-usage-cost {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+  }
+
+  &[data-level="mid"] {
+    border-color: rgba(var(--warning-rgb), 0.5);
+    color: var(--warning-fg);
+  }
+  &[data-level="high"] {
+    border-color: rgba(var(--danger-rgb), 0.55);
+    color: var(--danger-fg);
+    background: rgba(var(--danger-rgb), 0.08);
+  }
+}
+
+// Mobile: drop the cost text, keep the compact context gauge.
+@media (max-width: 768px) {
+  .chat-usage-badge {
+    padding: 0 8px;
+
+    .chat-usage-cost {
+      display: none;
+    }
+  }
+}
+
 .chat-composer-mode-btn {
   display: inline-flex;
   align-items: center;
@@ -16036,6 +16203,34 @@ body {
   }
 }
 
+// ── Native config-option picker (model / reasoning effort) ──
+// Same styled-button + invisible-<select> pattern as the session-mode picker,
+// rendered once per advertised option. Neutral by default; model/effort get a
+// subtle accent tint to stand apart from the mode picker.
+.chat-config-option-picker {
+  position: relative;
+
+  .chat-config-option-select {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    appearance: none;
+    border: none;
+  }
+
+  &[data-config-category="model"] {
+    border-color: rgba(var(--accent-color-rgb), 0.4);
+    color: var(--accent-color);
+  }
+  &[data-config-category="effort"],
+  &[data-config-category="reasoning"],
+  &[data-config-category="reasoningEffort"] {
+    border-color: rgba(var(--orange-rgb), 0.45);
+    color: var(--orange-fg);
+  }
+}
+
 // ── Slash-command palette (agent-advertised commands) ──
 // Floats above the composer frame; the composer is position:relative-ish via
 // its flex column, so we anchor to the .chat-composer wrapper.
@@ -16106,6 +16301,126 @@ body {
   color: var(--purple-fg);
   background: var(--purple-bg);
   border-bottom: 1px solid rgba(var(--purple-rgb), 0.35);
+}
+
+// ── Pinned execution-plan checklist (agent TodoWrite / Codex plan) ──
+// Sits above the message list; collapses to a progress bar, expands to the
+// full task list. Green tint once every item is done.
+.chat-plan-checklist {
+  flex-shrink: 0;
+  margin: 8px 12px 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 10px);
+  background: var(--bg-card);
+  overflow: hidden;
+
+  &[data-complete="true"] {
+    border-color: rgba(var(--success-rgb), 0.45);
+  }
+}
+
+.chat-plan-checklist-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-main);
+  text-align: left;
+
+  &:hover {
+    background: var(--btn-hover);
+  }
+
+  .chat-plan-caret {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+    &[data-expanded="true"] {
+      transform: rotate(90deg);
+    }
+  }
+
+  .chat-plan-title {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .chat-plan-progress-text {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .chat-plan-progress-track {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--btn-hover);
+    overflow: hidden;
+  }
+  .chat-plan-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent-color);
+    transition: width 0.25s;
+  }
+}
+
+.chat-plan-checklist[data-complete="true"] .chat-plan-progress-fill {
+  background: var(--success-emphasis);
+}
+
+.chat-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.chat-plan-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-main);
+
+  .chat-plan-item-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    margin-top: 1px;
+  }
+
+  &[data-status="completed"] {
+    color: var(--text-muted);
+    .chat-plan-item-icon {
+      color: var(--success-emphasis);
+    }
+    .chat-plan-item-text {
+      text-decoration: line-through;
+    }
+  }
+  &[data-status="in_progress"] {
+    .chat-plan-item-icon {
+      color: var(--accent-color);
+    }
+    .chat-plan-item-text {
+      font-weight: 600;
+    }
+  }
+  &[data-status="pending"] .chat-plan-item-icon {
+    color: var(--text-muted);
+  }
 }
 
 .chat-panel[data-session-mode="plan"] .chat-composer-frame {

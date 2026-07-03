@@ -8,6 +8,19 @@
 // Moved verbatim out of components/chat/hooks.ts (Phase 0 — core carve).
 // hooks.ts re-exports them so existing importers stay unchanged.
 
+/** A file location a tool touched (ACP ToolCallLocation) — drives file links. */
+export interface ToolCallLocation {
+    path: string;
+    line?: number;
+}
+
+/** A file diff a tool produced (ACP diff content block). */
+export interface ToolCallDiff {
+    path: string;
+    oldText?: string;
+    newText: string;
+}
+
 export interface ToolCallInfo {
     id?: string;
     toolName: string;
@@ -15,6 +28,12 @@ export interface ToolCallInfo {
     toolCallId?: string;
     output?: string;
     isError?: boolean;
+    /** ACP tool kind (read/edit/execute/…) — chooses the card icon. */
+    kind?: string;
+    /** Files the tool touched — rendered as clickable file links. */
+    locations?: ToolCallLocation[];
+    /** File diffs the tool produced — rendered inline in the card. */
+    diffs?: ToolCallDiff[];
     /**
      * Inline permission request that the runtime emitted for this tool call.
      * Lives as a sub-field (not a separate ChatItem) so the permission UI
@@ -110,6 +129,64 @@ export interface SessionModeInfo {
 export interface SessionModesState {
     currentModeId?: string;
     availableModes: SessionModeInfo[];
+}
+
+export interface SessionConfigOptionChoice {
+    value: string;
+    name: string;
+    description?: string;
+}
+
+/**
+ * A NATIVE session config option the agent advertised (ACP select — model,
+ * reasoning effort, …). The "mode" option is excluded upstream (it has its own
+ * SessionModePicker). Delivered via session_meta and switched with
+ * `set_config_option`. `category` echoes the agent's grouping when present.
+ */
+export interface SessionConfigOption {
+    id: string;
+    name: string;
+    category?: string;
+    currentValue?: string;
+    options: SessionConfigOptionChoice[];
+}
+
+export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
+
+/**
+ * One entry of the agent's execution plan (ACP `PlanEntry` — Claude Code's
+ * TodoWrite, Codex's plan). Delivered via the bridge `plan` event as the FULL
+ * list on every update; the host replaces its checklist wholesale. Live-only,
+ * never persisted to history.
+ */
+export interface PlanEntry {
+    content: string;
+    status: PlanEntryStatus;
+    priority?: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Live token/context usage + cost surfaced by the bridge `usage` event
+ * (from ACP `usage_update`). All fields optional — not every adapter reports
+ * every field, so consumers treat missing values as "unknown", never zero.
+ * `used`/`size` are the context-window occupancy (drives the % gauge); `cost`
+ * is cumulative session USD; `breakdown` is the per-turn token split for the
+ * hover detail. Live-only — never persisted into history.
+ */
+export interface SessionUsage {
+    /** Context-window tokens currently occupied. */
+    used?: number;
+    /** Context-window capacity. */
+    size?: number;
+    cost?: { amount?: number; currency?: string };
+    breakdown?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        cachedReadTokens?: number;
+        cachedWriteTokens?: number;
+        thoughtTokens?: number;
+        totalTokens?: number;
+    };
 }
 
 /**

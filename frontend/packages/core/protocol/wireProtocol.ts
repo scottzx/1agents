@@ -9,7 +9,7 @@
 // parse `payload`. Top-level fields shared with Go's peek struct
 // (WsMessage) must still match its JSON tags exactly.
 
-import type { HistoryItem } from './types';
+import type { HistoryItem, ToolCallDiff, ToolCallLocation } from './types';
 import type { PermissionDecision, PermissionMode } from './permission';
 
 // ── Inbound: events the bridge emits ───────────────────────────────────────
@@ -20,6 +20,8 @@ export type BridgeEvent =
     | 'session_meta'
     | 'mode_changed'
     | 'available_commands_update'
+    | 'usage'
+    | 'plan'
     | 'prompt_queued'
     | 'prompt_cancelled'
     | 'text_delta'
@@ -43,6 +45,10 @@ export interface BridgeEventPayload {
     toolName?: string;
     toolCallId?: string;
     isError?: boolean;
+    /** ACP tool metadata on tool_call events (Phase 6). */
+    kind?: string;
+    locations?: ToolCallLocation[];
+    diffs?: ToolCallDiff[];
     messages?: Array<{ role: string; text: string }>;
     items?: HistoryItem[];
     /**
@@ -104,4 +110,10 @@ export function setPermissionModeAction(sessionId: string, permissionMode: Permi
 // setPermissionModeAction, which only moves the bridge's own permission gate.
 export function setSessionModeAction(sessionId: string, modeId: string) {
     return { action: 'set_session_mode', sessionId, payload: { modeId } };
+}
+
+// Switch a NATIVE session config option (ACP session/set_config_option — e.g.
+// model, reasoning effort). The "mode" option has its own set_session_mode.
+export function setConfigOptionAction(sessionId: string, key: string, value: string) {
+    return { action: 'set_config_option', sessionId, payload: { key, value } };
 }

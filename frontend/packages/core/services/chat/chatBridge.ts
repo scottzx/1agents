@@ -12,7 +12,15 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { AvailableCommand, ChatItem, ConnectionState, SessionModesState } from '../../protocol/types';
+import type {
+    AvailableCommand,
+    ChatItem,
+    ConnectionState,
+    PlanEntry,
+    SessionConfigOption,
+    SessionModesState,
+    SessionUsage,
+} from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
 import { normalizePermissionMode } from '../../types';
 import {
@@ -39,6 +47,7 @@ import {
     respondPermissionAction,
     setPermissionModeAction,
     setSessionModeAction,
+    setConfigOptionAction,
     type BridgeEventPayload,
 } from '../../protocol/wireProtocol';
 import { getPlatformBridge } from '../../platform/bridge';
@@ -116,6 +125,25 @@ export interface SessionBridgeState {
      * session_meta and for agents that advertise none.
      */
     availableCommands: AvailableCommand[];
+    /**
+     * NATIVE config options the agent advertised (model, reasoning effort, …),
+     * excluding the mode select. session_meta snapshot, replaced wholesale;
+     * empty for agents that advertise none.
+     */
+    configOptions: SessionConfigOption[];
+    /**
+     * Latest token/context usage + cost from the bridge `usage` event.
+     * Live-only (never in history): null until the first usage_update, then
+     * kept as the last-known value (including across reconnects) so the badge
+     * doesn't flicker off between turns.
+     */
+    usage: SessionUsage | null;
+    /**
+     * The agent's current execution plan (TodoWrite / Codex plan) from the
+     * bridge `plan` event. Full list on every update — replaced wholesale.
+     * null when the agent has no active plan. Live-only, never in history.
+     */
+    plan: PlanEntry[] | null;
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
     reconnectAttempt: number;
     /** Pending setTimeout handle for the next reconnect; null when idle. */
@@ -164,6 +192,9 @@ export class ChatBridgeManager {
                 permissionMode: normalizePermissionMode(session.permissionMode),
                 modes: null,
                 availableCommands: [],
+                configOptions: [],
+                usage: null,
+                plan: null,
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
@@ -284,7 +315,11 @@ export class ChatBridgeManager {
                     // (never in history), so this re-send is what keeps them
                     // correct across reconnects and reaps.
                     const meta = payload.payload as
-                        | { modes?: SessionModesState; availableCommands?: AvailableCommand[] }
+                        | {
+                              modes?: SessionModesState;
+                              availableCommands?: AvailableCommand[];
+                              configOptions?: SessionConfigOption[];
+                          }
                         | undefined;
                     let changed = false;
                     if (meta?.modes && Array.isArray(meta.modes.availableModes)) {
@@ -293,6 +328,10 @@ export class ChatBridgeManager {
                     }
                     if (Array.isArray(meta?.availableCommands)) {
                         state.availableCommands = meta.availableCommands;
+                        changed = true;
+                    }
+                    if (Array.isArray(meta?.configOptions)) {
+                        state.configOptions = meta.configOptions;
                         changed = true;
                     }
                     if (changed) {
@@ -305,6 +344,26 @@ export class ChatBridgeManager {
                     const upd = payload.payload as { availableCommands?: AvailableCommand[] } | undefined;
                     if (Array.isArray(upd?.availableCommands)) {
                         state.availableCommands = upd.availableCommands;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'usage': {
+                    // Latest context/token usage + cost. Replace wholesale —
+                    // each event is a fresh snapshot, not a delta.
+                    const u = payload.payload as SessionUsage | undefined;
+                    if (u && typeof u === 'object') {
+                        state.usage = u;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'plan': {
+                    // Agent's execution plan. Full list on every update — replace
+                    // wholesale; an empty list clears the checklist.
+                    const p = payload.payload as { entries?: PlanEntry[] } | undefined;
+                    if (Array.isArray(p?.entries)) {
+                        state.plan = p!.entries.length > 0 ? p!.entries : null;
                         this.notify(state);
                     }
                     break;
@@ -370,8 +429,11 @@ export class ChatBridgeManager {
                     // Backend's SSE safety fallback may emit tool_call events
                     // without `arguments` (omitted) or with `arguments: {}` (the
                     // runtime's no-input placeholder); neither carries renderable
-                    // data, so drop them before they reach the fold.
-                    if (!hasRenderableArguments(payload.arguments)) break;
+                    // data, so drop them before they reach the fold — UNLESS the
+                    // event carries other renderable metadata (a diff/locations/
+                    // kind streamed on a later tool_call_update, Phase 6).
+                    const hasMeta = !!(payload.diffs?.length || payload.locations?.length || payload.kind);
+                    if (!hasRenderableArguments(payload.arguments) && !hasMeta) break;
                     const next = applyToolCall(state, payload);
                     state.items = next.items;
                     state.pendingResults = next.pendingResults;
@@ -632,6 +694,24 @@ export class ChatBridgeManager {
         state.modes = { ...state.modes, currentModeId: modeId };
         this.notify(state);
         state.ws.send(JSON.stringify(setSessionModeAction(session.id, modeId)));
+    }
+
+    /**
+     * Switch a NATIVE config option (model, reasoning effort, …). Optimistic:
+     * the option's currentValue flips immediately; the session_meta the bridge
+     * re-sends after set_config_option (success or SET_CONFIG_OPTION_FAILED)
+     * reconciles. Persistence is free — 1acp stores the desired option and
+     * replays it after reap/resume.
+     */
+    setConfigOption(session: ChatSession, key: string, value: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        const idx = state.configOptions.findIndex(o => o.id === key);
+        if (idx < 0 || state.configOptions[idx].currentValue === value) return;
+        state.configOptions = state.configOptions.map((o, i) => (i === idx ? { ...o, currentValue: value } : o));
+        this.notify(state);
+        state.ws.send(JSON.stringify(setConfigOptionAction(session.id, key, value)));
     }
 
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {
