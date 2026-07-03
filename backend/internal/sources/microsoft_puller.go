@@ -71,7 +71,10 @@ func (p *microsoftPuller) Discover(accountID string) ([]Collection, error) {
 func deltaEndpointFor(kind string) string {
 	switch kind {
 	case "ms_contact":
-		return "/me/contactFolders/contacts/delta?$select=displayName,givenName,surname,emailAddresses,mobilePhone,businessPhones,companyName,jobTitle"
+		// Default contacts folder delta. (/me/contactFolders/contacts/delta is
+		// invalid — "contacts" is not a folder id; the delta segment only hangs
+		// off /me/contacts or /me/contactFolders/{realId}/contacts.)
+		return "/me/contacts/delta?$select=displayName,givenName,surname,emailAddresses,mobilePhone,businessPhones,companyName,jobTitle"
 	case "ms_mail":
 		return "/me/mailFolders/inbox/messages/delta?$select=subject,from,toRecipients,receivedDateTime,bodyPreview,webLink,isRead"
 	default:

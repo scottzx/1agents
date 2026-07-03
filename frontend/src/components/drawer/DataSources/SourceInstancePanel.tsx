@@ -38,18 +38,6 @@ export function SourceInstancePanel({
 }) {
     const language = ui.language.value;
     const vendor = account.vendor;
-    const [collections, setCollections] = useState<CollectionView[] | null>(null);
-
-    useEffect(() => {
-        let active = true;
-        sourceService
-            .collections(vendor)
-            .then(list => active && setCollections(list))
-            .catch(() => active && setCollections([]));
-        return () => {
-            active = false;
-        };
-    }, [vendor]);
 
     return (
         <div class="source-panel">
@@ -65,34 +53,116 @@ export function SourceInstancePanel({
                     </div>
                 ))}
 
-            {tab === 'config' && (
-                <div class="source-instance-config">
-                    <div class="datasource-head-hint">{t('datasource.instance.roadmap', language)}</div>
-                    {collections === null ? (
-                        <div class="datasource-head-hint">…</div>
-                    ) : (
-                        <div class="bento-grid">
-                            {collections.map(c => (
-                                <div key={c.kind} class="bento-card sys-settings-card">
-                                    <div class="bento-zone-body">
-                                        <h3 class="bento-card-title">{c.label || c.kind}</h3>
-                                        <p class="bento-card-desc">{c.domain}</p>
-                                        <span class="datasource-card-badge warn">
-                                            {t('datasource.config.notImplemented', language)}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
+            {tab === 'config' && <SourceConfigZone vendor={vendor} language={language} />}
 
             {tab === 'data' && (
                 <Fragment>
                     <SourceDataZone sources={[vendor]} account={account.id} onOpen={onOpenData} />
                 </Fragment>
             )}
+        </div>
+    );
+}
+
+// SourceConfigZone lists a source's crawlable kinds and, for the implemented
+// ones, lets the user enable collection and trigger an immediate sync. Kinds
+// still on the roadmap show a "not implemented" badge. (Reflects the backend's
+// per-kind `implemented` flag instead of hard-coding "coming soon".)
+function SourceConfigZone({ vendor, language }: { vendor: string; language: Lang }) {
+    const [collections, setCollections] = useState<CollectionView[] | null>(null);
+    const [busyKind, setBusyKind] = useState('');
+    const [msg, setMsg] = useState('');
+
+    const load = () =>
+        sourceService
+            .collections(vendor)
+            .then(setCollections)
+            .catch(() => setCollections([]));
+
+    useEffect(() => {
+        let active = true;
+        sourceService
+            .collections(vendor)
+            .then(l => active && setCollections(l))
+            .catch(() => active && setCollections([]));
+        return () => {
+            active = false;
+        };
+    }, [vendor]);
+
+    const setEnabled = async (c: CollectionView, enabled: boolean) => {
+        setBusyKind(c.kind);
+        setMsg('');
+        try {
+            await sourceService.setCollection(vendor, {
+                kind: c.kind,
+                enabled,
+                initialLookbackDays: c.initialLookbackDays || 0,
+                incrementalMinutes: c.incrementalMinutes || 60,
+                pageSize: c.pageSize || 50,
+            });
+            await load();
+        } catch (e) {
+            setMsg((e as Error).message);
+        }
+        setBusyKind('');
+    };
+
+    const syncNow = async (c: CollectionView) => {
+        setBusyKind(c.kind);
+        setMsg('');
+        try {
+            await sourceService.syncNow(vendor, c.kind);
+            setMsg(t('datasource.config.syncStarted', language));
+        } catch (e) {
+            setMsg((e as Error).message);
+        }
+        setBusyKind('');
+    };
+
+    if (collections === null) {
+        return <div class="datasource-head-hint">…</div>;
+    }
+
+    return (
+        <div class="source-instance-config">
+            {msg && <div class="datasource-head-hint">{msg}</div>}
+            <div class="bento-grid">
+                {collections.map(c => (
+                    <div key={c.kind} class="bento-card sys-settings-card">
+                        <div class="bento-zone-body">
+                            <h3 class="bento-card-title">{c.label || c.kind}</h3>
+                            <p class="bento-card-desc">{c.domain}</p>
+                            {c.implemented ? (
+                                <div class="datasource-region-choices">
+                                    <button
+                                        class={`contacts-btn contacts-btn-sm${c.enabled ? ' contacts-btn-primary' : ''}`}
+                                        disabled={busyKind === c.kind}
+                                        onClick={() => setEnabled(c, !c.enabled)}
+                                    >
+                                        {c.enabled
+                                            ? t('datasource.config.enabled', language)
+                                            : t('datasource.config.enable', language)}
+                                    </button>
+                                    {c.enabled && (
+                                        <button
+                                            class="contacts-btn contacts-btn-sm"
+                                            disabled={busyKind === c.kind}
+                                            onClick={() => syncNow(c)}
+                                        >
+                                            {t('datasource.config.syncNow', language)}
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <span class="datasource-card-badge warn">
+                                    {t('datasource.config.notImplemented', language)}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
