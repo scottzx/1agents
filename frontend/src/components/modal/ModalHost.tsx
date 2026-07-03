@@ -7,6 +7,7 @@ import { AccessTokenModal } from './AccessTokenModal';
 import { SessionRenameModal } from './SessionRenameModal';
 import { FsRenameModal } from './FsRenameModal';
 import { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
+import { SkillConflictModal } from './SkillConflictModal';
 import { SessionCreateModal } from '../chat/SessionCreateModal';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
 import * as ui from '../../stores/uiStore';
@@ -170,6 +171,20 @@ export function ModalHost() {
                     isDir={modal.fsDeleteTarget.value.isDir}
                     onClose={modal.closeFsDeleteModal}
                     onSubmit={fsStore.submitFsDelete}
+                    language={language}
+                />
+            )}
+
+            {/* Skill push concurrent-edit conflict modal (issue #379) */}
+            {modal.skillConflictOpen.value && modal.skillConflictData.value && (
+                <SkillConflictModal
+                    conflict={modal.skillConflictData.value}
+                    onClose={modal.closeSkillConflictModal}
+                    onResolved={resolution => {
+                        const onResolved = modal.skillConflictOnResolved.value;
+                        modal.closeSkillConflictModal();
+                        onResolved?.(resolution);
+                    }}
                     language={language}
                 />
             )}

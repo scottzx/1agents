@@ -213,6 +213,20 @@ export const zhCN: Record<string, string> = {
     'assistant.detail.sessionsHint': '该助理下的对话。点击进入,或新建一个。',
     'assistant.detail.sessionsEmpty': '还没有会话',
     'assistant.detail.newSession': '新建会话',
+
+    // ── Skill push conflict modal (assistant skills tab, issue #379) ──────
+    'assistant.conflict.title': '推送冲突',
+    'assistant.conflict.body':
+        '"{name}" 已被中心库修改(当前 v{storeVersion}),而你的副本基于 v{baseVersion}。请选择如何处理 —— 两种方式都不会丢失任何一方的内容。',
+    'assistant.conflict.fork': '保留双方(推送为新分支)',
+    'assistant.conflict.setMain': '以我为准(推送成为主版本)',
+    'assistant.conflict.forkNamePlaceholder': '新分支名称(可留空)',
+    'assistant.conflict.confirm': '确认',
+    'assistant.conflict.cancel': '取消',
+    'assistant.conflict.resolving': '处理中…',
+    'assistant.conflict.resolvedFork': '已作为新分支推送',
+    'assistant.conflict.resolvedMain': '已设为主版本',
+    'assistant.conflict.resolveFailed': '处理失败',
     'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
     'sidebar.empty': '暂无工作空间',
@@ -1690,6 +1704,20 @@ export const enUS: Record<string, string> = {
     'assistant.detail.sessionsHint': "This assistant's conversations. Click to open, or start a new one.",
     'assistant.detail.sessionsEmpty': 'No sessions yet',
     'assistant.detail.newSession': 'New session',
+
+    // ── Skill push conflict modal (assistant skills tab, issue #379) ──────
+    'assistant.conflict.title': 'Concurrent edit conflict',
+    'assistant.conflict.body':
+        '"{name}" changed centrally (store v{storeVersion}) while your copy was based on v{baseVersion}. Choose how to resolve it — no data is lost either way.',
+    'assistant.conflict.fork': 'Keep both (push as a new fork)',
+    'assistant.conflict.setMain': 'Set as main (push becomes the main version)',
+    'assistant.conflict.forkNamePlaceholder': 'New fork name (optional)',
+    'assistant.conflict.confirm': 'Confirm',
+    'assistant.conflict.cancel': 'Cancel',
+    'assistant.conflict.resolving': 'Resolving…',
+    'assistant.conflict.resolvedFork': 'Pushed as a new fork',
+    'assistant.conflict.resolvedMain': 'Set as main',
+    'assistant.conflict.resolveFailed': 'Resolve failed',
     'sidebar.workspaces': 'Workspaces',
     'sidebar.newWorkspace': 'New workspace',
     'sidebar.empty': 'No workspaces yet',

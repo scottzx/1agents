@@ -8,6 +8,7 @@ import * as fs from '../../stores/fsStore';
 import { fsService } from '../../services/fsService';
 import { FilePreviewPane } from '../shared/WorkspacePanes';
 import { skillService, type WorkspaceSkillStatus } from '@1agents/core/services/skillService';
+import * as modal from '../../stores/modalStore';
 
 /**
  * 技能 tab of the 助理 详情. A skill is a *folder* under
@@ -63,7 +64,21 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         if (!selected) return;
         setPushing(true);
         try {
-            const { changed, created, version } = await skillService.pushSkill(workspaceId, selected.skillRef);
+            const res = await skillService.pushSkill(workspaceId, selected.skillRef);
+            if (res.status === 'conflict' && res.conflict) {
+                // Nothing was written — hand off to the conflict dialog instead of
+                // the generic pushed flash; it drives resolvePush + refresh itself.
+                modal.openSkillConflictModal(res.conflict, resolution => {
+                    setFlash(
+                        resolution === 'fork'
+                            ? t('assistant.conflict.resolvedFork', language)
+                            : t('assistant.conflict.resolvedMain', language)
+                    );
+                    void load();
+                });
+                return;
+            }
+            const { changed, created, version } = res;
             const base = created
                 ? t('assistant.detail.pushedCreated', language)
                 : changed

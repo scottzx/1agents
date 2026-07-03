@@ -161,20 +161,23 @@ func TestPushSkillToShared(t *testing.T) {
 		_ = json.Unmarshal(data, &body)
 		gotSource = body.SourcePath
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"changed":true,"created":true,"version":3}`))
+		_, _ = w.Write([]byte(`{"ok":true,"status":"created","changed":true,"created":true,"version":3,"id":"skl_x"}`))
 	}))
 	defer srv.Close()
 	addr := strings.TrimPrefix(srv.URL, "http://")
 
-	changed, created, version, err := pushSkillToShared(addr, "shared:alpha", "/ws/.claude/skills/alpha")
+	res, err := pushSkillToShared(addr, "shared:alpha", "/ws/.claude/skills/alpha")
 	if err != nil {
 		t.Fatalf("pushSkillToShared: %v", err)
 	}
-	if !changed || !created {
-		t.Errorf("expected changed=true created=true, got %v/%v", changed, created)
+	if !res.Changed || !res.Created {
+		t.Errorf("expected changed=true created=true, got %v/%v", res.Changed, res.Created)
 	}
-	if version != 3 {
-		t.Errorf("expected version=3, got %d", version)
+	if res.Version != 3 {
+		t.Errorf("expected version=3, got %d", res.Version)
+	}
+	if res.Status != "created" || res.ID != "skl_x" {
+		t.Errorf("expected status=created id=skl_x, got %q/%q", res.Status, res.ID)
 	}
 	if gotPath != "/api/skills/shared:alpha/push-from-path" {
 		t.Errorf("forwarded path = %q", gotPath)
@@ -223,7 +226,7 @@ func TestPushSkillToSharedError(t *testing.T) {
 	defer srv.Close()
 	addr := strings.TrimPrefix(srv.URL, "http://")
 
-	if _, _, _, err := pushSkillToShared(addr, "shared:alpha", "/nope"); err == nil {
+	if _, err := pushSkillToShared(addr, "shared:alpha", "/nope"); err == nil {
 		t.Fatal("expected error from 400 response")
 	} else if !strings.Contains(err.Error(), "SKILL.md") {
 		t.Errorf("error should surface the manager message, got %v", err)

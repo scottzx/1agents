@@ -2,6 +2,7 @@ import { signal } from '@preact/signals';
 
 import type { Workspace, Session, AgentType, FsEntry } from '../components/types';
 import { DEFAULT_AGENT_TYPE } from '../services/agentService';
+import type { SkillPushConflict } from '@1agents/core/services/skillService';
 
 /**
  * Modal state (workspace create/rename modal, chat-create modal, directory
@@ -216,4 +217,28 @@ export const openFsDeleteModal = (entry: FsEntry) => {
 export const closeFsDeleteModal = () => {
     fsDeleteModalOpen.value = false;
     fsDeleteTarget.value = null;
+};
+
+// ── Skill push concurrent-edit conflict modal (issue #379) ────────────────
+export const skillConflictOpen = signal(false);
+export const skillConflictData = signal<SkillPushConflict | null>(null);
+// Callback into SkillsTab so the modal doesn't need to know about workspace
+// refresh/flash wiring; set alongside the conflict data when opening. Receives
+// the chosen resolution so the caller can flash an appropriate message.
+type SkillConflictOnResolved = (resolution: 'main' | 'fork') => void;
+export const skillConflictOnResolved = signal<SkillConflictOnResolved | null>(null);
+
+export const openSkillConflictModal = (
+    conflict: SkillPushConflict,
+    onResolved: (resolution: 'main' | 'fork') => void
+) => {
+    skillConflictOpen.value = true;
+    skillConflictData.value = conflict;
+    skillConflictOnResolved.value = onResolved;
+};
+
+export const closeSkillConflictModal = () => {
+    skillConflictOpen.value = false;
+    skillConflictData.value = null;
+    skillConflictOnResolved.value = null;
 };

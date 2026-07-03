@@ -32,3 +32,4 @@ export { AccessTokenModal } from './AccessTokenModal';
 export { SessionRenameModal } from './SessionRenameModal';
 export { FsRenameModal } from './FsRenameModal';
 export { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
+export { SkillConflictModal } from './SkillConflictModal';
