@@ -112,6 +112,20 @@ export interface SessionModesState {
     availableModes: SessionModeInfo[];
 }
 
+export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
+
+/**
+ * One entry of the agent's execution plan (ACP `PlanEntry` — Claude Code's
+ * TodoWrite, Codex's plan). Delivered via the bridge `plan` event as the FULL
+ * list on every update; the host replaces its checklist wholesale. Live-only,
+ * never persisted to history.
+ */
+export interface PlanEntry {
+    content: string;
+    status: PlanEntryStatus;
+    priority?: 'high' | 'medium' | 'low';
+}
+
 /**
  * Live token/context usage + cost surfaced by the bridge `usage` event
  * (from ACP `usage_update`). All fields optional — not every adapter reports

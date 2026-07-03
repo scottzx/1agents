@@ -12,7 +12,7 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { AvailableCommand, ChatItem, ConnectionState, SessionModesState, SessionUsage } from '../../protocol/types';
+import type { AvailableCommand, ChatItem, ConnectionState, PlanEntry, SessionModesState, SessionUsage } from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
 import { normalizePermissionMode } from '../../types';
 import {
@@ -123,6 +123,12 @@ export interface SessionBridgeState {
      * doesn't flicker off between turns.
      */
     usage: SessionUsage | null;
+    /**
+     * The agent's current execution plan (TodoWrite / Codex plan) from the
+     * bridge `plan` event. Full list on every update — replaced wholesale.
+     * null when the agent has no active plan. Live-only, never in history.
+     */
+    plan: PlanEntry[] | null;
     /** Exponential backoff level — incremented on each reconnect attempt, reset on session_ready. */
     reconnectAttempt: number;
     /** Pending setTimeout handle for the next reconnect; null when idle. */
@@ -172,6 +178,7 @@ export class ChatBridgeManager {
                 modes: null,
                 availableCommands: [],
                 usage: null,
+                plan: null,
                 reconnectAttempt: 0,
                 reconnectTimer: null,
                 closedByUser: false,
@@ -323,6 +330,16 @@ export class ChatBridgeManager {
                     const u = payload.payload as SessionUsage | undefined;
                     if (u && typeof u === 'object') {
                         state.usage = u;
+                        this.notify(state);
+                    }
+                    break;
+                }
+                case 'plan': {
+                    // Agent's execution plan. Full list on every update — replace
+                    // wholesale; an empty list clears the checklist.
+                    const p = payload.payload as { entries?: PlanEntry[] } | undefined;
+                    if (Array.isArray(p?.entries)) {
+                        state.plan = p!.entries.length > 0 ? p!.entries : null;
                         this.notify(state);
                     }
                     break;

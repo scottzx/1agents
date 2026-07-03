@@ -21,6 +21,7 @@ export type BridgeEvent =
     | 'mode_changed'
     | 'available_commands_update'
     | 'usage'
+    | 'plan'
     | 'prompt_queued'
     | 'prompt_cancelled'
     | 'text_delta'

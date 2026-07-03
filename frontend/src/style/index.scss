@@ -16174,6 +16174,126 @@ body {
   border-bottom: 1px solid rgba(var(--purple-rgb), 0.35);
 }
 
+// ── Pinned execution-plan checklist (agent TodoWrite / Codex plan) ──
+// Sits above the message list; collapses to a progress bar, expands to the
+// full task list. Green tint once every item is done.
+.chat-plan-checklist {
+  flex-shrink: 0;
+  margin: 8px 12px 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm, 10px);
+  background: var(--bg-card);
+  overflow: hidden;
+
+  &[data-complete="true"] {
+    border-color: rgba(var(--success-rgb), 0.45);
+  }
+}
+
+.chat-plan-checklist-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-main);
+  text-align: left;
+
+  &:hover {
+    background: var(--btn-hover);
+  }
+
+  .chat-plan-caret {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+    &[data-expanded="true"] {
+      transform: rotate(90deg);
+    }
+  }
+
+  .chat-plan-title {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .chat-plan-progress-text {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .chat-plan-progress-track {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--btn-hover);
+    overflow: hidden;
+  }
+  .chat-plan-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent-color);
+    transition: width 0.25s;
+  }
+}
+
+.chat-plan-checklist[data-complete="true"] .chat-plan-progress-fill {
+  background: var(--success-emphasis);
+}
+
+.chat-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.chat-plan-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-main);
+
+  .chat-plan-item-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    margin-top: 1px;
+  }
+
+  &[data-status="completed"] {
+    color: var(--text-muted);
+    .chat-plan-item-icon {
+      color: var(--success-emphasis);
+    }
+    .chat-plan-item-text {
+      text-decoration: line-through;
+    }
+  }
+  &[data-status="in_progress"] {
+    .chat-plan-item-icon {
+      color: var(--accent-color);
+    }
+    .chat-plan-item-text {
+      font-weight: 600;
+    }
+  }
+  &[data-status="pending"] .chat-plan-item-icon {
+    color: var(--text-muted);
+  }
+}
+
 .chat-panel[data-session-mode="plan"] .chat-composer-frame {
   border-color: rgba(var(--purple-rgb), 0.5);
 }

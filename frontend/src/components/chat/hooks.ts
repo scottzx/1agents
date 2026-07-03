@@ -13,7 +13,7 @@ import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // closures (never at module-eval time) so the sessionStore ⇄ hooks import cycle
 // stays safe — see the cycle note in stores/sessionStore.ts.
 import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/sessionStore';
-import type { ChatItem, ConnectionState, SessionModesState, AvailableCommand, SessionUsage } from '@1agents/core/protocol/types';
+import type { ChatItem, ConnectionState, SessionModesState, AvailableCommand, SessionUsage, PlanEntry } from '@1agents/core/protocol/types';
 import { ChatBridgeManager, DEFAULT_PERMISSION_MODE } from '@1agents/core/services/chat/chatBridge';
 
 export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '@1agents/core/protocol/types';
@@ -39,6 +39,8 @@ interface UseBridgeState {
     availableCommands: AvailableCommand[];
     /** Latest token/context usage + cost (null until the first usage event). */
     usage: SessionUsage | null;
+    /** Agent's execution plan checklist (null when there's no active plan). */
+    plan: PlanEntry[] | null;
     send: (content: string) => void;
     /**
      * Stop generating: cancels the running turn and drops every queued
@@ -114,6 +116,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const modes = state ? state.modes : null;
     const availableCommands = state ? state.availableCommands : [];
     const usage = state ? state.usage : null;
+    const plan = state ? state.plan : null;
     const takenOver = state ? state.takenOver : false;
 
     const send = useCallback(
@@ -175,6 +178,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         modes,
         availableCommands,
         usage,
+        plan,
         send,
         cancel,
         cancelQueued,
