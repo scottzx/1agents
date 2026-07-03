@@ -341,6 +341,7 @@ export const zhCN: Record<string, string> = {
     'datasource.config.enabled': '已启用',
     'datasource.config.syncNow': '立即同步',
     'datasource.config.syncStarted': '已开始同步,稍后到「数据」标签查看拉取结果。',
+    'datasource.config.frequency': '同步频率',
     'datasource.add.oauthMicrosoft': '先登记账号,添加后在「认证」中一键连接 Microsoft(读取联系人/邮件)。',
     'datasource.ms.connect': '连接 Microsoft',
     'datasource.ms.connecting': '等待授权完成…',
@@ -1776,6 +1777,7 @@ export const enUS: Record<string, string> = {
     'datasource.config.enabled': 'Enabled',
     'datasource.config.syncNow': 'Sync now',
     'datasource.config.syncStarted': 'Sync started — check the Data tab shortly for results.',
+    'datasource.config.frequency': 'Frequency',
     'datasource.add.oauthMicrosoft':
         'Register the account first; after adding, connect Microsoft in one click under “Authentication” (reads contacts / mail).',
     'datasource.ms.connect': 'Connect Microsoft',

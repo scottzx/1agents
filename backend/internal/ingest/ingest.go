@@ -134,6 +134,7 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 	if h.disp == nil {
 		return nil
 	}
+	// Feishu (its own catalog/descriptor).
 	enabled, err := h.cfg.ListEnabled(feishu.Source)
 	if err != nil {
 		return err
@@ -144,6 +145,24 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 		}
 		if err := h.disp.EnsureRecurring(feishu.Source, c.Kind, c.IncrementalMinutes); err != nil {
 			return err
+		}
+	}
+	// Microsoft / Google (this package's catalog). Without this, their periodic
+	// sync tasks are only armed on toggle and are NOT re-created at startup — so a
+	// recurring task that ended in a terminal (e.g. failed) state would never come
+	// back after a restart. EnsureRecurring is idempotent (skips a live one).
+	for _, source := range []string{meta.VendorMicrosoft, meta.VendorGoogle} {
+		list, err := h.cfg.ListEnabled(source)
+		if err != nil {
+			return err
+		}
+		for _, c := range list {
+			if d := sources.CatalogItemFor(source, c.Kind); d == nil || !d.Implemented {
+				continue
+			}
+			if err := h.disp.EnsureRecurring(source, c.Kind, c.IncrementalMinutes); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

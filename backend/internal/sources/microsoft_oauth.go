@@ -171,11 +171,35 @@ func NewMSAuth() (*MSAuth, error) {
 	}, nil
 }
 
-// regionCfg returns a copy of a region's client config under the read lock.
+// Built-in default 国际 app registration (individual-developer app: personal
+// Microsoft accounts + any org, tenant=common). Empty fields in
+// microsoft_oauth.json fall back to these, so a fresh install connects with zero
+// config. 大陆 has no built-in default — it needs a China-registered (21Vianet)
+// app, so that region stays config-file/UI driven.
+const (
+	defaultMSClientIDIntl = "97e8061c-5dae-45d1-b879-cc8f4be76b4d"
+	defaultMSTenantIntl   = "common"
+	defaultMSRedirectIntl = "http://localhost:38080/api/sources/oauth/microsoft/callback"
+)
+
+// regionCfg returns a copy of a region's client config under the read lock, with
+// the built-in 国际 defaults filled in for any empty field.
 func (a *MSAuth) regionCfg(region string) MSOAuthRegionConfig {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.cfg.forRegion(region)
+	rc := a.cfg.forRegion(region)
+	a.mu.RUnlock()
+	if region == RegionIntl {
+		if rc.ClientID == "" {
+			rc.ClientID = defaultMSClientIDIntl
+		}
+		if rc.Tenant == "" {
+			rc.Tenant = defaultMSTenantIntl
+		}
+		if rc.RedirectURI == "" {
+			rc.RedirectURI = defaultMSRedirectIntl
+		}
+	}
+	return rc
 }
 
 // RegionConfig returns a region's current client config (for the settings form

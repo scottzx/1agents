@@ -64,6 +64,18 @@ export function SourceInstancePanel({
     );
 }
 
+// freqLabel renders a sync-interval (minutes) as a friendly duration.
+function freqLabel(m: number, lang: Lang): string {
+    if (lang === 'en-US') {
+        if (m < 60) return `${m} min`;
+        if (m === 1440) return 'Daily';
+        return `${m / 60} h`;
+    }
+    if (m < 60) return `${m} 分钟`;
+    if (m === 1440) return '每天';
+    return `${m / 60} 小时`;
+}
+
 // SourceConfigZone lists a source's crawlable kinds and, for the implemented
 // ones, lets the user enable collection and trigger an immediate sync. Kinds
 // still on the roadmap show a "not implemented" badge. (Reflects the backend's
@@ -90,15 +102,17 @@ function SourceConfigZone({ vendor, language }: { vendor: string; language: Lang
         };
     }, [vendor]);
 
-    const setEnabled = async (c: CollectionView, enabled: boolean) => {
+    // save patches one collection's config (enable state / sync frequency),
+    // preserving the other fields, then reloads.
+    const save = async (c: CollectionView, patch: { enabled?: boolean; incrementalMinutes?: number }) => {
         setBusyKind(c.kind);
         setMsg('');
         try {
             await sourceService.setCollection(vendor, {
                 kind: c.kind,
-                enabled,
+                enabled: patch.enabled ?? c.enabled,
                 initialLookbackDays: c.initialLookbackDays || 0,
-                incrementalMinutes: c.incrementalMinutes || 60,
+                incrementalMinutes: patch.incrementalMinutes ?? (c.incrementalMinutes || 60),
                 pageSize: c.pageSize || 50,
             });
             await load();
@@ -138,20 +152,42 @@ function SourceConfigZone({ vendor, language }: { vendor: string; language: Lang
                                     <button
                                         class={`contacts-btn contacts-btn-sm${c.enabled ? ' contacts-btn-primary' : ''}`}
                                         disabled={busyKind === c.kind}
-                                        onClick={() => setEnabled(c, !c.enabled)}
+                                        onClick={() => save(c, { enabled: !c.enabled })}
                                     >
                                         {c.enabled
                                             ? t('datasource.config.enabled', language)
                                             : t('datasource.config.enable', language)}
                                     </button>
                                     {c.enabled && (
-                                        <button
-                                            class="contacts-btn contacts-btn-sm"
-                                            disabled={busyKind === c.kind}
-                                            onClick={() => syncNow(c)}
-                                        >
-                                            {t('datasource.config.syncNow', language)}
-                                        </button>
+                                        <Fragment>
+                                            <label class="datasource-freq">
+                                                <span>{t('datasource.config.frequency', language)}</span>
+                                                <select
+                                                    value={String(c.incrementalMinutes || 60)}
+                                                    disabled={busyKind === c.kind}
+                                                    onChange={e =>
+                                                        save(c, {
+                                                            incrementalMinutes: Number(
+                                                                (e.target as HTMLSelectElement).value
+                                                            ),
+                                                        })
+                                                    }
+                                                >
+                                                    {[15, 30, 60, 180, 360, 720, 1440].map(m => (
+                                                        <option key={m} value={m}>
+                                                            {freqLabel(m, language)}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <button
+                                                class="contacts-btn contacts-btn-sm"
+                                                disabled={busyKind === c.kind}
+                                                onClick={() => syncNow(c)}
+                                            >
+                                                {t('datasource.config.syncNow', language)}
+                                            </button>
+                                        </Fragment>
                                     )}
                                 </div>
                             ) : (
