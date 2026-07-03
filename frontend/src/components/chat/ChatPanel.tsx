@@ -42,6 +42,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         permissionMode,
         modes,
         availableCommands,
+        configOptions,
         usage,
         plan,
         send,
@@ -50,6 +51,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         respondPermission,
         setPermissionMode,
         setSessionMode,
+        setConfigOption,
         takenOver,
         retry,
     } = useBridge(session);
@@ -128,6 +130,8 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 onSessionModeChange={setSessionMode}
                 availableCommands={availableCommands}
                 usage={usage}
+                configOptions={configOptions}
+                onConfigOptionChange={setConfigOption}
             />
         </div>
     );

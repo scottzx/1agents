@@ -12,7 +12,7 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { AvailableCommand, ChatItem, ConnectionState, PlanEntry, SessionModesState, SessionUsage } from '../../protocol/types';
+import type { AvailableCommand, ChatItem, ConnectionState, PlanEntry, SessionConfigOption, SessionModesState, SessionUsage } from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
 import { normalizePermissionMode } from '../../types';
 import {
@@ -39,6 +39,7 @@ import {
     respondPermissionAction,
     setPermissionModeAction,
     setSessionModeAction,
+    setConfigOptionAction,
     type BridgeEventPayload,
 } from '../../protocol/wireProtocol';
 import { getPlatformBridge } from '../../platform/bridge';
@@ -117,6 +118,12 @@ export interface SessionBridgeState {
      */
     availableCommands: AvailableCommand[];
     /**
+     * NATIVE config options the agent advertised (model, reasoning effort, …),
+     * excluding the mode select. session_meta snapshot, replaced wholesale;
+     * empty for agents that advertise none.
+     */
+    configOptions: SessionConfigOption[];
+    /**
      * Latest token/context usage + cost from the bridge `usage` event.
      * Live-only (never in history): null until the first usage_update, then
      * kept as the last-known value (including across reconnects) so the badge
@@ -177,6 +184,7 @@ export class ChatBridgeManager {
                 permissionMode: normalizePermissionMode(session.permissionMode),
                 modes: null,
                 availableCommands: [],
+                configOptions: [],
                 usage: null,
                 plan: null,
                 reconnectAttempt: 0,
@@ -299,7 +307,11 @@ export class ChatBridgeManager {
                     // (never in history), so this re-send is what keeps them
                     // correct across reconnects and reaps.
                     const meta = payload.payload as
-                        | { modes?: SessionModesState; availableCommands?: AvailableCommand[] }
+                        | {
+                              modes?: SessionModesState;
+                              availableCommands?: AvailableCommand[];
+                              configOptions?: SessionConfigOption[];
+                          }
                         | undefined;
                     let changed = false;
                     if (meta?.modes && Array.isArray(meta.modes.availableModes)) {
@@ -308,6 +320,10 @@ export class ChatBridgeManager {
                     }
                     if (Array.isArray(meta?.availableCommands)) {
                         state.availableCommands = meta.availableCommands;
+                        changed = true;
+                    }
+                    if (Array.isArray(meta?.configOptions)) {
+                        state.configOptions = meta.configOptions;
                         changed = true;
                     }
                     if (changed) {
@@ -667,6 +683,26 @@ export class ChatBridgeManager {
         state.modes = { ...state.modes, currentModeId: modeId };
         this.notify(state);
         state.ws.send(JSON.stringify(setSessionModeAction(session.id, modeId)));
+    }
+
+    /**
+     * Switch a NATIVE config option (model, reasoning effort, …). Optimistic:
+     * the option's currentValue flips immediately; the session_meta the bridge
+     * re-sends after set_config_option (success or SET_CONFIG_OPTION_FAILED)
+     * reconciles. Persistence is free — 1acp stores the desired option and
+     * replays it after reap/resume.
+     */
+    setConfigOption(session: ChatSession, key: string, value: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        const idx = state.configOptions.findIndex(o => o.id === key);
+        if (idx < 0 || state.configOptions[idx].currentValue === value) return;
+        state.configOptions = state.configOptions.map((o, i) =>
+            i === idx ? { ...o, currentValue: value } : o
+        );
+        this.notify(state);
+        state.ws.send(JSON.stringify(setConfigOptionAction(session.id, key, value)));
     }
 
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {

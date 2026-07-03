@@ -107,3 +107,9 @@ export function setPermissionModeAction(sessionId: string, permissionMode: Permi
 export function setSessionModeAction(sessionId: string, modeId: string) {
     return { action: 'set_session_mode', sessionId, payload: { modeId } };
 }
+
+// Switch a NATIVE session config option (ACP session/set_config_option — e.g.
+// model, reasoning effort). The "mode" option has its own set_session_mode.
+export function setConfigOptionAction(sessionId: string, key: string, value: string) {
+    return { action: 'set_config_option', sessionId, payload: { key, value } };
+}

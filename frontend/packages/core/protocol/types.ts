@@ -112,6 +112,26 @@ export interface SessionModesState {
     availableModes: SessionModeInfo[];
 }
 
+export interface SessionConfigOptionChoice {
+    value: string;
+    name: string;
+    description?: string;
+}
+
+/**
+ * A NATIVE session config option the agent advertised (ACP select — model,
+ * reasoning effort, …). The "mode" option is excluded upstream (it has its own
+ * SessionModePicker). Delivered via session_meta and switched with
+ * `set_config_option`. `category` echoes the agent's grouping when present.
+ */
+export interface SessionConfigOption {
+    id: string;
+    name: string;
+    category?: string;
+    currentValue?: string;
+    options: SessionConfigOptionChoice[];
+}
+
 export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
 
 /**

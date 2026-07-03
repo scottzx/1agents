@@ -16102,6 +16102,34 @@ body {
   }
 }
 
+// ── Native config-option picker (model / reasoning effort) ──
+// Same styled-button + invisible-<select> pattern as the session-mode picker,
+// rendered once per advertised option. Neutral by default; model/effort get a
+// subtle accent tint to stand apart from the mode picker.
+.chat-config-option-picker {
+  position: relative;
+
+  .chat-config-option-select {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    appearance: none;
+    border: none;
+  }
+
+  &[data-config-category="model"] {
+    border-color: rgba(var(--accent-color-rgb), 0.4);
+    color: var(--accent-color);
+  }
+  &[data-config-category="effort"],
+  &[data-config-category="reasoning"],
+  &[data-config-category="reasoningEffort"] {
+    border-color: rgba(var(--orange-rgb), 0.45);
+    color: var(--orange-fg);
+  }
+}
+
 // ── Slash-command palette (agent-advertised commands) ──
 // Floats above the composer frame; the composer is position:relative-ish via
 // its flex column, so we anchor to the .chat-composer wrapper.
