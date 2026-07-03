@@ -29,7 +29,7 @@ import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
 import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
 import { MountPointRenderer } from './MountPointRenderer';
-import { ProjectConfigPanel } from './ProjectConfigPanel';
+import { ProjectConfigPanel, ProjectConfigView, PROJECT_CONFIG_TABS, type ConfigTab } from './ProjectConfigPanel';
 import { ShellNav, CrumbTrail, type ShellTab, type Crumb } from './ShellNav';
 
 import * as appStore from '../../stores/appManifestStore';
@@ -111,7 +111,10 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
             label: mount.label,
             title: `${a.name} · ${mount.label}`,
         })),
+        // Detail folds the 项目配置 sub-tabs (指令/连接器/…) into the main bar.
+        ...(isDetail ? PROJECT_CONFIG_TABS.map(c => ({ id: c.id, label: c.label })) : []),
     ];
+    const isConfigTab = PROJECT_CONFIG_TABS.some(c => c.id === activeTab);
 
     // Start a fresh conversation scoped to this project (locks the picker +
     // shows 项目 › <name> › 新建对话, mirroring the 助理 flow).
@@ -169,6 +172,11 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
             {activeTab === 'activity' && <ProjectActivityTab workspaceId={workspaceId} />}
             {activeTab === 'plan' && <ProjectPlanTab workspaceId={workspaceId} />}
             {activeTab === 'assets' && <ProjectAssetsTab workspaceId={workspaceId} />}
+            {isDetail && isConfigTab && (
+                <div class="assistant-pane-fill assistant-pane-inset">
+                    <ProjectConfigView workspaceId={workspaceId} section={activeTab as ConfigTab} />
+                </div>
+            )}
             {projectTabs.map(({ app: a, mount }) =>
                 activeTab === mount.id ? (
                     <div key={mount.id} class="project-shell-app-tab">
@@ -192,23 +200,17 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
                         <CrumbTrail crumbs={crumbs} />
                     </div>
                 )}
-                <div class="assistant-hero">
-                    <span class="assistant-hero-avatar is-emoji" aria-hidden="true">
-                        {'\u{1F4C1}'}
-                    </span>
-                    <div class="assistant-hero-ident">
-                        <h1 class="assistant-hero-name">{workspaceName || workspaceId}</h1>
-                    </div>
-                    <button class="assistant-btn assistant-btn-ghost" onClick={() => setConfigOpen(true)}>
-                        {t('projectShell.config', language)}
-                    </button>
-                    <button class="assistant-btn assistant-btn-primary" onClick={() => void onNewChat()}>
-                        {t('assistant.detail.newChat', language)}
-                    </button>
-                </div>
-                <ShellNav tabs={shellTabs} activeTab={activeTab} onSelectTab={id => setActiveTab(id)} />
+                <ShellNav
+                    tabs={shellTabs}
+                    activeTab={activeTab}
+                    onSelectTab={id => setActiveTab(id)}
+                    actions={
+                        <button class="assistant-btn assistant-btn-primary" onClick={() => void onNewChat()}>
+                            {t('assistant.detail.newChat', language)}
+                        </button>
+                    }
+                />
                 <div class="assistant-tab-body">{tabContent}</div>
-                {configOpen && <ProjectConfigPanel workspaceId={workspaceId} onClose={() => setConfigOpen(false)} />}
             </div>
         );
     }

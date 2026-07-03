@@ -59,19 +59,31 @@ let _crawlCounter = 0;
 let _searchTimeout: ReturnType<typeof setTimeout> | null = null;
 let _saveMsgTimeout: ReturnType<typeof setTimeout> | null = null;
 
+// Bumped on every workspace context switch. A root listing (loadDir with
+// parent=null) that resolves for a superseded generation is discarded, so a
+// slow list for workspace A can't clobber the tree after we've switched to B
+// (which left stale files in the browser → 404 on click). See switchFsContext.
+let _fsGen = 0;
+
 const cacheTree = (entries: FsEntry[]) => {
     if (_treeCacheKey) {
         _treeCache[_treeCacheKey] = entries;
     }
 };
 
-/** Fetch a directory listing and merge it into the tree. */
-export const loadDir = async (relPath: string, parent: FsEntry | null) => {
+/**
+ * Fetch a directory listing and merge it into the tree. `gen` guards root loads
+ * against a context switch that raced ahead — pass the generation captured at
+ * the start of a switch; the result is dropped if it's no longer current.
+ */
+export const loadDir = async (relPath: string, parent: FsEntry | null, gen?: number) => {
     if (!parent && fsEntries.value.length === 0) {
         fsLoading.value = true;
     }
     try {
         const entries = await fsService.list(relPath);
+        // Root load superseded by a newer context switch — drop it.
+        if (!parent && gen !== undefined && gen !== _fsGen) return;
         let next: FsEntry[];
         if (!parent) {
             next = fsEntries.value.length > 0 ? mergeFreshEntries(fsEntries.value, entries) : entries;
@@ -317,11 +329,15 @@ export const renameFile = async () => {
  * restoring the cached tree (if any) to avoid UI flashing.
  */
 export const switchFsContext = async (ws: Workspace) => {
+    const gen = ++_fsGen;
     try {
         await fsService.setContext(ws.path);
     } catch (err) {
         console.error('[context] set error:', err);
     }
+    // A newer switch started while we awaited setContext — abandon this one so
+    // it can't reset the tree/context the newer switch already applied.
+    if (gen !== _fsGen) return;
 
     _treeCacheKey = ws.id;
     const cached = _treeCache[ws.id] || [];
@@ -332,7 +348,7 @@ export const switchFsContext = async (ws: Workspace) => {
     // Leave detail view too — a detail pane with no selected entry renders blank.
     viewMode.value = 'list';
     fsLoading.value = cached.length === 0;
-    loadDir('', null);
+    loadDir('', null, gen);
 };
 
 export const uploadFileAction = async () => {
