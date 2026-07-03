@@ -83,6 +83,8 @@ Remote Agent is a Web-based remote workbench integrating terminal access (xterm.
 
 All styles live in `frontend/src/style/index.scss` (global SCSS, no CSS modules). The design system has two pillars — **always use these instead of ad-hoc values**:
 
+**Aesthetic direction (codex-minimal, blue-white):** flat surfaces, hairline dividers, typography carries the hierarchy. **No drop shadows, no frosted glass, no gradients** on resting surfaces. Blue (`--accent-color`) is the single accent — reserved for active/primary/selected states, not resting decoration. Hover on a card = an **ink hairline** (`border-color: var(--text-main)`), never a lift or glow. Interactive controls use **pill geometry** (`border-radius: 999px`). The only surfaces that keep a shadow are genuinely floating overlays (modals, dropdowns, popovers, toasts) — for elevation, not decoration (e.g. `.ds-record-modal`, `.chat-slash-palette`). The glass/gradient tokens (`--bg-card-glass`, `--border-glass`, `--accent-gradient`) are collapsed to flat solids, so anything referencing them renders flat automatically.
+
 ### 1. Semantic Color Tokens
 
 Never write raw hex/rgba for status or UI colors in SCSS. Use the tokens defined in `:root` (light) and `[data-theme="dark"]` (dark) — consumers adapt to theme switching for free:
@@ -103,7 +105,7 @@ Card surfaces share the Bento primitives in `index.scss` (search "Bento Design L
 
 - `.bento-grid` — responsive modular grid (`auto-fill` + `minmax(var(--bento-min-col), 1fr)`, dense flow, container query enabled)
 - `.bento-span-2` / `.bento-row-2` / `.bento-span-full` — varying cell sizes; spans only activate when the grid container is ≥600px wide, so narrow panels degrade to single column
-- `.bento-card` (or `@extend %bento-card` in SCSS) — base card; add `%bento-card-interactive` (hover lift + accent ring) for clickable cards or `%bento-card-static-hover` (ring only) for info cards
+- `.bento-card` (or `@extend %bento-card` in SCSS) — base card: flat (solid `--bg-card`, hairline `--border-color`, no shadow/glass). Add `%bento-card-interactive` for clickable cards or `%bento-card-static-hover` for info cards — both hover to an ink hairline (`border-color: var(--text-main)`), no lift/glow
 - `.bento-zone-header` / `.bento-zone-body` / `.bento-zone-footer` — information zoning inside a card, with `.bento-card-icon/-badge/-title/-desc` helpers
 - Layout tokens: `--bento-gap`, `--bento-pad(-lg)`, `--bento-radius(-sm/-lg)`, `--bento-transition`
 
