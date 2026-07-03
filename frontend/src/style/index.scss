@@ -18266,6 +18266,25 @@ body {
   padding: 20px;
 }
 
+// Inline config (项目详情 config sub-tabs merged into the main tab bar).
+.project-config-inline {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 860px;
+  width: 100%;
+  box-sizing: border-box;
+
+  .project-config-inline-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
 .project-config-loading {
   display: flex;
   justify-content: center;

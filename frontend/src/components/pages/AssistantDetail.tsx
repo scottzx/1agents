@@ -109,24 +109,16 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
 
     return (
         <div class="assistant-detail">
-            <div class="assistant-hero">
-                {ws.avatar && ws.avatar.startsWith('/') ? (
-                    <img class="assistant-hero-avatar" src={ws.avatar} alt="" />
-                ) : (
-                    <span class="assistant-hero-avatar is-emoji" aria-hidden="true">
-                        {'\u{1F464}'}
-                    </span>
-                )}
-                <div class="assistant-hero-ident">
-                    <h1 class="assistant-hero-name">{ws.name}</h1>
-                    {ws.id === 'default' && <span class="assistant-tag">{t('assistant.card.default', language)}</span>}
-                </div>
-                <button class="assistant-btn assistant-btn-primary" onClick={() => void onNewChat()}>
-                    {t('assistant.detail.newChat', language)}
-                </button>
-            </div>
-
-            <ShellNav tabs={shellTabs} activeTab={activeTab} onSelectTab={id => setActiveTab(id as DetailTab)} />
+            <ShellNav
+                tabs={shellTabs}
+                activeTab={activeTab}
+                onSelectTab={id => setActiveTab(id as DetailTab)}
+                actions={
+                    <button class="assistant-btn assistant-btn-primary" onClick={() => void onNewChat()}>
+                        {t('assistant.detail.newChat', language)}
+                    </button>
+                }
+            />
 
             <div class="assistant-tab-body">
                 {activeTab === 'sessions' && (
