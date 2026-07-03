@@ -37,7 +37,7 @@ var Vendors = []VendorSpec{
 	{Vendor: VendorMicrosoft, Label: "Microsoft", MultiAccount: true, Regions: []string{RegionIntl, RegionCN}, AuthKind: AuthOAuth},
 	{Vendor: VendorGoogle, Label: "Google", MultiAccount: true, Regions: []string{RegionIntl}, AuthKind: AuthOAuth},
 	{Vendor: VendorFeishu, Label: "飞书 / Lark", MultiAccount: false, Regions: []string{RegionCN, RegionIntl}, AuthKind: AuthCLI},
-	{Vendor: VendorAgentMail, Label: "Agent Mail", MultiAccount: false, Regions: []string{RegionCN}, AuthKind: AuthCLI},
+	{Vendor: VendorAgentMail, Label: "Agent Mail", MultiAccount: true, Regions: []string{RegionCN}, AuthKind: AuthCLI},
 }
 
 // Vendor discriminators (must match meta.Vendor* and the bronze source column).

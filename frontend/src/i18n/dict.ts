@@ -363,7 +363,7 @@ export const zhCN: Record<string, string> = {
     'datasource.add.password': '应用专用密码',
     'datasource.add.accountLabel': '账号名称(邮箱)',
     'datasource.add.oauthStub': 'OAuth 授权即将上线;当前先登记账号占位,可稍后连接。',
-    'datasource.add.cliNote': '飞书通过 lark-cli 授权,请在「认证」中登录。',
+    'datasource.add.cliNote': '该数据源通过命令行工具(CLI)授权。添加后请在「认证」标签里查看安装/登录状态。',
     'datasource.add.submit': '添加数据源',
     'datasource.add.submitting': '添加中…',
     'datasource.add.back': '返回',
@@ -1862,7 +1862,8 @@ export const enUS: Record<string, string> = {
     'datasource.add.password': 'App-specific password',
     'datasource.add.accountLabel': 'Account name (email)',
     'datasource.add.oauthStub': 'OAuth is coming soon; for now this registers a placeholder account to connect later.',
-    'datasource.add.cliNote': 'Feishu authorizes via lark-cli — sign in under “Authentication”.',
+    'datasource.add.cliNote':
+        'This source authorizes via its command-line tool (CLI). After adding, check install/sign-in status under the “Authentication” tab.',
     'datasource.add.submit': 'Add source',
     'datasource.add.submitting': 'Adding…',
     'datasource.add.back': 'Back',

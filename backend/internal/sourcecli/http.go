@@ -16,10 +16,12 @@ type Handler struct {
 	mgr *Manager
 }
 
-// NewHandler wires a Handler over mgr with lark-cli pre-registered.
+// NewHandler wires a Handler over mgr with the source CLIs pre-registered
+// (lark-cli for 飞书, agently-cli for Agent Mail).
 func NewHandler() *Handler {
 	mgr := NewManager(0)
 	mgr.Register(NewLarkTool("", nil))
+	mgr.Register(NewAgentlyTool("", nil))
 	return &Handler{mgr: mgr}
 }
 

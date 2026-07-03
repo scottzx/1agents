@@ -112,9 +112,12 @@ function groupByDomain(cols: CollectionView[]): Array<{ domain: string; items: C
 
 interface CliZoneProps {
     language: Lang;
+    // Which source CLI to probe. Defaults to lark-cli (飞书); Agent Mail passes
+    // 'agently-cli' to reuse this same lifecycle card.
+    tool?: string;
 }
 
-export function CliZone({ language }: CliZoneProps) {
+export function CliZone({ language, tool = TOOL }: CliZoneProps) {
     const [status, setStatus] = useState<CLIStatus | null>(null);
     const [rechecking, setRechecking] = useState(false);
     const [error, setError] = useState('');
@@ -123,11 +126,11 @@ export function CliZone({ language }: CliZoneProps) {
     const load = useCallback(async () => {
         setError('');
         try {
-            setStatus(await sourceCliService.cliStatus(TOOL));
+            setStatus(await sourceCliService.cliStatus(tool));
         } catch (e) {
             setError((e as Error).message);
         }
-    }, []);
+    }, [tool]);
 
     useEffect(() => {
         load();
@@ -137,7 +140,7 @@ export function CliZone({ language }: CliZoneProps) {
         setRechecking(true);
         setError('');
         try {
-            setStatus(await sourceCliService.cliRecheck(TOOL));
+            setStatus(await sourceCliService.cliRecheck(tool));
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -153,7 +156,7 @@ export function CliZone({ language }: CliZoneProps) {
                         class={`agent-catalog-dot ${status?.installed ? 'installed' : 'missing'}`}
                         aria-hidden="true"
                     />
-                    <span>lark-cli</span>
+                    <span>{tool}</span>
                     {status?.installed && status.version && (
                         <span class="fscard-cli-version">
                             {t('datasource.cli.version', language)} {status.version}

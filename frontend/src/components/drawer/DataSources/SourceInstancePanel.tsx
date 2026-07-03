@@ -11,13 +11,21 @@ import {
     type MSOAuthStatus,
 } from '@1agents/core/services/sourceService';
 import { SourceDataZone } from './SourceDataZone';
+import { CliZone } from './FeishuSourceCard';
 
-// SourceInstancePanel — the generic panel for OAuth-style multi-account sources
-// (microsoft / google). One zone per tab:
-//   认证 → Microsoft: the real OAuth (PKCE) connect flow; Google: 占位 until wired
+// SourceInstancePanel — the generic panel for multi-account sources
+// (microsoft / google / agentmail). One zone per tab:
+//   认证 → Microsoft: the real OAuth (PKCE) connect flow; CLI vendors (Agent Mail):
+//          the agently-cli lifecycle card; Google: 占位 until OAuth is wired
 //   采集配置 → the roadmap of crawlable kinds (per-kind implemented flag)
 //   数据 → SourceDataZone over the vendor's bronze
-// Apple/飞书 keep their bespoke panels; this covers the Graph/Google sources.
+// Apple/飞书 keep their bespoke panels; this covers the Graph/Google/Agent Mail sources.
+
+// VENDOR_CLI_TOOL maps a CLI-auth vendor to the CLI its 认证 zone probes, so the
+// shared CliZone lifecycle card can be reused instead of an OAuth stub.
+const VENDOR_CLI_TOOL: Record<string, string> = {
+    agentmail: 'agently-cli',
+};
 
 export function instanceTabs(language: Lang): ShellTab[] {
     return [
@@ -44,6 +52,8 @@ export function SourceInstancePanel({
             {tab === 'auth' &&
                 (vendor === 'microsoft' ? (
                     <MicrosoftAuthZone account={account} language={language} />
+                ) : VENDOR_CLI_TOOL[vendor] ? (
+                    <CliZone tool={VENDOR_CLI_TOOL[vendor]} language={language} />
                 ) : (
                     <div class="contacts-privacy-banner">
                         <span class="contacts-privacy-icon" aria-hidden="true">
