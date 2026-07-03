@@ -93,16 +93,19 @@ func (p *microsoftPuller) firstPageEndpoint(c Collection) string {
 		return "/me/mailFolders/inbox/messages/delta?$select=subject,from,toRecipients,receivedDateTime,bodyPreview,webLink,isRead"
 	case "ms_event":
 		// Calendar delta is a calendarView (bounded window) with track-changes;
-		// the deltaLink encodes the window so later syncs need no dates. Window:
-		// 90 days back … 1 year ahead.
+		// the deltaLink encodes the window so later syncs need no dates. Generous
+		// initial window (3 years back … 1 year ahead) so a personal-data
+		// aggregator captures history; delta keeps subsequent syncs cheap.
 		now := time.Now().UTC()
-		start := now.AddDate(0, 0, -90).Format("2006-01-02T15:04:05Z")
+		start := now.AddDate(-3, 0, 0).Format("2006-01-02T15:04:05Z")
 		end := now.AddDate(1, 0, 0).Format("2006-01-02T15:04:05Z")
 		return "/me/calendarView/delta?startDateTime=" + start + "&endDateTime=" + end +
 			"&$select=subject,start,end,location,organizer,isAllDay,showAs,webLink,bodyPreview"
 	case "ms_todo":
-		// c.ID is the task-list id discovered in Discover.
-		return "/me/todo/lists/" + c.ID + "/tasks/delta?$select=title,status,importance,dueDateTime,createdDateTime,lastModifiedDateTime,body"
+		// c.ID is the task-list id discovered in Discover. No $select: Graph
+		// rejects $select on todo tasks(/delta) with 400 RequestBroker--ParseUri;
+		// the full task JSON goes to bronze verbatim anyway.
+		return "/me/todo/lists/" + c.ID + "/tasks/delta"
 	default:
 		return ""
 	}
