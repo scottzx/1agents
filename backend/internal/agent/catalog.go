@@ -73,7 +73,7 @@ var AgentCatalog = []AgentDescriptor{
 	{Type: AgentTypeDevin, Label: "Devin", Binary: "devin", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://cli.devin.ai/install.sh | bash"},
 	{Type: AgentTypeIflow, Label: "iFlow", Binary: "iflow", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @iflow-ai/iflow-cli"},
 	{Type: AgentTypeKimi, Label: "Kimi", Binary: "kimi", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "uv tool install --python 3.13 kimi-cli"},
-	{Type: AgentTypeOpencode, Label: "OpenCode", Binary: "opencode", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "curl -fsSL https://opencode.ai/install | bash"},
+	{Type: AgentTypeOpencode, Label: "OpenCode", Binary: "opencode", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "curl -fsSL https://opencode.ai/install | bash", AdapterPackage: "opencode-ai"},
 	{Type: AgentTypePi, Label: "Pi", Binary: "pi", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @mariozechner/pi-coding-agent"},
 	{Type: AgentTypeQoder, Label: "Qoder", Binary: "qodercli", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @qoder-ai/qodercli"},
 
