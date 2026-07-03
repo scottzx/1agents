@@ -2,11 +2,12 @@
 // shapes exchanged with the Go backend (backend/internal/agent.WsMessage) and,
 // through it, the bridge-server.
 //
-// CRITICAL: field names here must match the JSON tags on the Go WsMessage struct
-// exactly. The Go relay does ReadJSON → WriteJSON and silently DROPS unknown
-// keys, so a renamed field (e.g. `mode` instead of `permissionMode`) vanishes
-// before it reaches the bridge-server. Keep this aligned across
-// frontend → Go → bridge-server.
+// Transport convention: the Go relay forwards frames as RAW BYTES and only
+// peeks into them for its interception branches (done/error/session_ready/
+// text_delta/prompt), so unknown fields survive the hop. New events put their
+// structured data under a single `payload` object — Go must never need to
+// parse `payload`. Top-level fields shared with Go's peek struct
+// (WsMessage) must still match its JSON tags exactly.
 
 import type { HistoryItem } from './types';
 import type { PermissionDecision, PermissionMode } from './permission';
@@ -16,6 +17,8 @@ import type { PermissionDecision, PermissionMode } from './permission';
 export type BridgeEvent =
     | 'session_ready'
     | 'session_taken_over'
+    | 'session_meta'
+    | 'mode_changed'
     | 'prompt_queued'
     | 'prompt_cancelled'
     | 'text_delta'
@@ -41,6 +44,11 @@ export interface BridgeEventPayload {
     isError?: boolean;
     messages?: Array<{ role: string; text: string }>;
     items?: HistoryItem[];
+    /**
+     * Structured event data (session_meta / mode_changed). Opaque to the Go
+     * relay by convention; each consumer narrows it per event.
+     */
+    payload?: unknown;
 }
 
 // ── Outbound: actions the client sends ──────────────────────────────────────
@@ -88,4 +96,11 @@ export function respondPermissionAction(
 // drops the field on the ReadJSON → WriteJSON forward.
 export function setPermissionModeAction(sessionId: string, permissionMode: PermissionMode) {
     return { action: 'set_permission_mode', sessionId, permissionMode };
+}
+
+// Switch the agent's NATIVE session mode (ACP session/set_mode — e.g. Claude
+// Code's default/acceptEdits/plan, Codex's read-only/agent). Distinct from
+// setPermissionModeAction, which only moves the bridge's own permission gate.
+export function setSessionModeAction(sessionId: string, modeId: string) {
+    return { action: 'set_session_mode', sessionId, payload: { modeId } };
 }

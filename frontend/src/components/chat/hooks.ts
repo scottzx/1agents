@@ -13,7 +13,7 @@ import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // closures (never at module-eval time) so the sessionStore ⇄ hooks import cycle
 // stays safe — see the cycle note in stores/sessionStore.ts.
 import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/sessionStore';
-import type { ChatItem, ConnectionState } from '@1agents/core/protocol/types';
+import type { ChatItem, ConnectionState, SessionModesState } from '@1agents/core/protocol/types';
 import { ChatBridgeManager, DEFAULT_PERMISSION_MODE } from '@1agents/core/services/chat/chatBridge';
 
 export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '@1agents/core/protocol/types';
@@ -29,18 +29,26 @@ interface UseBridgeState {
      */
     ready: boolean;
     permissionMode: PermissionMode;
+    /**
+     * NATIVE session modes the agent advertised (null until session_meta,
+     * and forever null for mode-less agents — the Composer falls back to
+     * the permissionMode picker in that case).
+     */
+    modes: SessionModesState | null;
     send: (content: string) => void;
     /**
-     * Terminate the session. Cancels the running turn, drops every
-     * queued prompt, and closes the underlying ACP runtime. After
-     * this, the next `send` will re-initialize via `ensure_session`.
-     * Distinct from `cancelQueued`, which only removes a single
-     * queued entry.
+     * Stop generating: cancels the running turn and drops every queued
+     * prompt, but KEEPS the session alive so the user can continue
+     * chatting immediately. Distinct from `cancelQueued`, which only
+     * removes a single queued entry. (Full session teardown lives on the
+     * sidebar archive action — bridgeManager.destroy.)
      */
     cancel: () => void;
     cancelQueued: (requestId: string) => void;
     respondPermission: (requestId: string, decision: PermissionDecision) => void;
     setPermissionMode: (mode: PermissionMode) => void;
+    /** Switch the agent's native session mode (plan/acceptEdits/…). */
+    setSessionMode: (modeId: string) => void;
     /** True when this connection was taken over by another tab/browser. */
     takenOver: boolean;
     /** Reconnect and reclaim ownership of the session (重试 button). */
@@ -99,6 +107,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     // a null session we report false so the UI treats it as "not yet".
     const ready = state ? state.ready : false;
     const permissionMode = state ? state.permissionMode : DEFAULT_PERMISSION_MODE;
+    const modes = state ? state.modes : null;
     const takenOver = state ? state.takenOver : false;
 
     const send = useCallback(
@@ -138,6 +147,14 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         [session]
     );
 
+    const setSessionMode = useCallback(
+        (modeId: string) => {
+            if (!session) return;
+            globalBridgeManager.setSessionMode(session, modeId);
+        },
+        [session]
+    );
+
     const retry = useCallback(() => {
         if (!session) return;
         globalBridgeManager.retry(session);
@@ -149,11 +166,13 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         typing,
         ready,
         permissionMode,
+        modes,
         send,
         cancel,
         cancelQueued,
         respondPermission,
         setPermissionMode,
+        setSessionMode,
         takenOver,
         retry,
     };

@@ -93,3 +93,21 @@ export type ChatItem =
     | { id: string; kind: 'error'; content: string; createdAt: number };
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
+
+/**
+ * One NATIVE session mode the agent advertised over ACP (`session_meta` /
+ * bridge `mode_changed`). Ids differ per agent (Claude Code:
+ * default/acceptEdits/plan/…, Codex: read-only/agent/…), so pickers must
+ * render data-driven from this list — never hardcode the id set.
+ */
+export interface SessionModeInfo {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+/** Live session-mode state mirrored from the bridge's session_meta snapshot. */
+export interface SessionModesState {
+    currentModeId?: string;
+    availableModes: SessionModeInfo[];
+}

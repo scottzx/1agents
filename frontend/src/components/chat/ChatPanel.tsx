@@ -39,11 +39,13 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         typing,
         ready,
         permissionMode,
+        modes,
         send,
         cancel,
         cancelQueued,
         respondPermission,
         setPermissionMode,
+        setSessionMode,
         takenOver,
         retry,
     } = useBridge(session);
@@ -75,8 +77,14 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // states the existing status bar / empty hint is more accurate.
     const showInitLoading = connection === 'connected' && !ready;
 
+    // Native session mode drives panel-level styling: plan mode shows a
+    // banner (read-only analysis), dangerous modes tint the composer. The
+    // attribute mirrors the live mode so ExitPlanMode clears it via
+    // mode_changed without extra wiring.
+    const currentModeId = modes?.currentModeId;
+
     return (
-        <div class="chat-panel">
+        <div class="chat-panel" data-session-mode={currentModeId}>
             {takenOver && !bannerDismissed.value && (
                 <SessionTakenOverBanner
                     onRetry={() => {
@@ -87,6 +95,9 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                         bannerDismissed.value = true;
                     }}
                 />
+            )}
+            {currentModeId === 'plan' && (
+                <div class="chat-plan-banner">{t('chat.sessionMode.planBanner', ui.language.value)}</div>
             )}
             <MessageList
                 items={items}
@@ -108,6 +119,8 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 disabled={composerDisabled}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}
+                sessionModes={modes}
+                onSessionModeChange={setSessionMode}
             />
         </div>
     );

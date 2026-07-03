@@ -46,8 +46,12 @@ type ActiveBridge struct {
 	mu            sync.Mutex
 	ClientConn    *websocket.Conn
 	ServerConn    *websocket.Conn
-	MsgChan       chan WsMessage
-	IsDone        bool
+	// MsgChan carries raw server→client frames. The relay forwards bytes
+	// verbatim (lossless): WsMessage is only a typed *peek* for the
+	// interception branches, never re-serialized, so new bridge event
+	// fields flow through without touching Go.
+	MsgChan chan []byte
+	IsDone  bool
 
 	// LastActivityAt is bumped on every client- or server-side message.
 	// The idle reaper (reapLoop) uses it, together with a nil ClientConn,
@@ -328,7 +332,7 @@ func (c *AcpxClient) Bridge(w http.ResponseWriter, r *http.Request, workspacePat
 		WorkspacePath:  workspacePath,
 		ClientConn:     clientConn,
 		ServerConn:     serverConn,
-		MsgChan:        make(chan WsMessage, 100),
+		MsgChan:        make(chan []byte, 100),
 		TaskID:         taskId,
 		AgentType:      agentType,
 		ReplyID:        replyID,
@@ -403,13 +407,22 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 	}()
 
 	for {
-		var msg WsMessage
-		err := bridge.ServerConn.ReadJSON(&msg)
+		// Raw-bytes relay: read the frame verbatim and only *peek* into it
+		// with the typed WsMessage for the interception branches below. The
+		// frame forwarded to the client is the original bytes, so fields the
+		// struct doesn't declare (session_meta payloads etc.) survive.
+		_, raw, err := bridge.ServerConn.ReadMessage()
 		if err != nil {
 			log.Printf("[acpx_client] Read from server failed for session %s: %v", bridge.SessionID, err)
 			break
 		}
 		bridge.touch()
+		var msg WsMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			// Not JSON we understand — still forward verbatim; only the
+			// interception below needs the parse.
+			log.Printf("[acpx_client] Peek unmarshal failed for session %s (forwarding raw): %v", bridge.SessionID, err)
+		}
 
 		// Intercept and update status
 		if msg.Event == "session_ready" && msg.AgentSessionID != "" {
@@ -445,13 +458,13 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 			scheduler.Lock.Release(bridge.WorkspacePath)
 		}
 
-		// Send to client write channel
+		// Send the ORIGINAL bytes to the client write channel (lossless).
 		bridge.mu.Lock()
 		if !bridge.IsDone {
 			select {
-			case bridge.MsgChan <- msg:
+			case bridge.MsgChan <- raw:
 			default:
-				log.Printf("[acpx_client] MsgChan full, dropping message for session %s", bridge.SessionID)
+				log.Printf("[acpx_client] MsgChan full, dropping %q message for session %s", msg.Event, bridge.SessionID)
 			}
 		}
 		bridge.mu.Unlock()
@@ -459,13 +472,13 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 }
 
 func (c *AcpxClient) writeToClientLoop(bridge *ActiveBridge) {
-	for msg := range bridge.MsgChan {
+	for raw := range bridge.MsgChan {
 		bridge.mu.Lock()
 		clientConn := bridge.ClientConn
 		bridge.mu.Unlock()
 
 		if clientConn != nil {
-			if err := clientConn.WriteJSON(msg); err != nil {
+			if err := clientConn.WriteMessage(websocket.TextMessage, raw); err != nil {
 				log.Printf("[acpx_client] Failed to write to client connection for session %s: %v", bridge.SessionID, err)
 			}
 		}
@@ -484,13 +497,19 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 	}()
 
 	for {
-		var msg WsMessage
-		err := clientConn.ReadJSON(&msg)
+		// Raw-bytes relay (same as readFromServerLoop): peek with the typed
+		// struct, forward the original bytes so client actions with fields the
+		// struct doesn't declare reach the bridge intact.
+		_, raw, err := clientConn.ReadMessage()
 		if err != nil {
 			log.Printf("[acpx_client] Read from client connection failed for session %s: %v", bridge.SessionID, err)
 			break
 		}
 		bridge.touch()
+		var msg WsMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			log.Printf("[acpx_client] Peek unmarshal of client message failed for session %s (forwarding raw): %v", bridge.SessionID, err)
+		}
 
 		// A new prompt starts a new turn: clear any leftover text so the
 		// write-back only captures this turn's assistant output, and record
@@ -502,13 +521,16 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 			writeUserReply(bridge, bridge.tasksStore, msg.Text)
 			// First prompt of a fresh session on a non-native agent: prepend the
 			// role/system context so the agent receives it as one combined
-			// message (no separate priming turn). Consumed once.
+			// message (no separate priming turn). Consumed once. The rewrite
+			// goes through map[string]any (not WsMessage) so any fields the
+			// struct doesn't declare survive the re-marshal.
 			bridge.mu.Lock()
-			if bridge.pendingSystemContext != "" {
-				msg.Text = bridge.pendingSystemContext + "\n\n" + msg.Text
-				bridge.pendingSystemContext = ""
-			}
+			pending := bridge.pendingSystemContext
+			bridge.pendingSystemContext = ""
 			bridge.mu.Unlock()
+			if pending != "" {
+				raw = mergeSystemContextIntoPrompt(raw, pending)
+			}
 		}
 
 		bridge.mu.Lock()
@@ -521,12 +543,30 @@ func (c *AcpxClient) readFromClientLoop(bridge *ActiveBridge, clientConn *websoc
 		}
 
 		if serverConn != nil {
-			if err := serverConn.WriteJSON(msg); err != nil {
+			if err := serverConn.WriteMessage(websocket.TextMessage, raw); err != nil {
 				log.Printf("[acpx_client] Forward client message to server failed for session %s: %v", bridge.SessionID, err)
 				break
 			}
 		}
 	}
+}
+
+// mergeSystemContextIntoPrompt prepends the pending role/system context to the
+// prompt's text field, rewriting through map[string]any (never WsMessage) so
+// fields the peek struct doesn't declare survive. On any parse failure the
+// original bytes are returned unchanged — a lost preamble beats a lost prompt.
+func mergeSystemContextIntoPrompt(raw []byte, pending string) []byte {
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return raw
+	}
+	text, _ := generic["text"].(string)
+	generic["text"] = pending + "\n\n" + text
+	rewritten, err := json.Marshal(generic)
+	if err != nil {
+		return raw
+	}
+	return rewritten
 }
 
 // writeUserReply records a user prompt to the task timeline (issue-model §8,
