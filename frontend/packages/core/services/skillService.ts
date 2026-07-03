@@ -37,6 +37,9 @@ export interface WorkspaceSkillStatus {
     name: string;
     description: string;
     state: 'synced' | 'modified' | 'local';
+    // Store package's version counter, bumped on every content-changing push;
+    // 0 when the skill isn't in the store yet.
+    version: number;
 }
 
 /**
@@ -57,14 +60,17 @@ async function listWorkspaceSkills(workspaceId: string): Promise<WorkspaceSkillS
  * host resolves `<ws>/.claude/skills/<dir>` and forwards to the store, which
  * no-ops when the copy is unchanged. Returns whether the baseline actually moved.
  */
-async function pushSkill(workspaceId: string, skillRef: string): Promise<{ changed: boolean; created: boolean }> {
+async function pushSkill(
+    workspaceId: string,
+    skillRef: string
+): Promise<{ changed: boolean; created: boolean; version: number }> {
     const res = await apiFetch('/workspace/push-skill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: workspaceId, skillRef }),
     });
     if (!res.ok) throw new Error(await res.text());
-    return (await res.json()) as { changed: boolean; created: boolean };
+    return (await res.json()) as { changed: boolean; created: boolean; version: number };
 }
 
 export const skillService = { listSkills, listWorkspaceSkills, pushSkill };

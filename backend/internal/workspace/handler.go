@@ -348,6 +348,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		// into <ws>/.claude/skills on creation (#360). Used by the create-assistant
 		// flow's skill picker; empty for a plain workspace.
 		Skills []string `json:"skills"`
+		// Agents is an optional list of shared-store agent file names (<name>.md) to
+		// weak-copy into <ws>/.claude/agents on creation. Parallel to Skills; empty
+		// for a plain workspace.
+		Agents []string `json:"agents"`
 		// Soul is an optional curated persona preset ref (see presets/souls). When
 		// set, its markdown is seeded into <ws>/SOUL.md as the assistant's system
 		// prompt. Empty = 空人设 (no persona file, no injection).
@@ -458,6 +462,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			resp["skillsError"] = sErr.Error()
 		} else {
 			resp["skills"] = copied
+		}
+	}
+
+	// Optional agent weak-copy into <ws>/.claude/agents — parallel to skills.
+	// Non-fatal: a copy failure is surfaced but the workspace still exists.
+	if len(body.Agents) > 0 {
+		if copied, aErr := syncAgentsToWorkspace(ws.Path, body.Agents); aErr != nil {
+			log.Printf("[workspace] sync agents for project %s: %v", ws.ID, aErr)
+			resp["agentsError"] = aErr.Error()
+		} else {
+			resp["agents"] = copied
 		}
 	}
 
@@ -627,7 +642,98 @@ func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	changed, created, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
+	changed, created, version, err := pushSkillToShared(h.skillsAddr, body.SkillRef, src)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "changed": changed, "created": created, "version": version})
+}
+
+// WorkspaceAgents handles GET /api/workspace/agents?id=<wsId>: lists the agents
+// materialized in the workspace's .claude/agents (single <name>.md files), each
+// flagged with whether the local copy has drifted from the 母体 baseline (so the
+// detail page can light up a "推送到母体" affordance only where there's something
+// to push). Mirror of WorkspaceSkills.
+func (h *Handler) WorkspaceAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	cfg, err := h.loadConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var wsPath string
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == id {
+			wsPath = ws.Path
+			break
+		}
+	}
+	if wsPath == "" {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	agents, err := listWorkspaceAgents(wsPath, h.skillsAddr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"agents": agents})
+}
+
+// PushAgent handles POST /api/workspace/push-agent {id, agentRef}: the reverse of
+// the create-time weak-copy. It resolves the workspace's own edited copy
+// (<ws>/.claude/agents/<name>.md) and pushes it back to the 1skills shared store
+// (母体) as the new baseline. The store no-ops when the copy is unchanged, so the
+// response's `changed` tells the caller whether the baseline actually moved.
+// Mirror of PushSkill.
+func (h *Handler) PushAgent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		AgentRef string `json:"agentRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.AgentRef == "" {
+		http.Error(w, "id and agentRef are required", http.StatusBadRequest)
+		return
+	}
+	cfg, err := h.loadConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var wsPath string
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == body.ID {
+			wsPath = ws.Path
+			break
+		}
+	}
+	if wsPath == "" {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	src, err := workspaceAgentFile(wsPath, body.AgentRef)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	changed, created, err := pushAgentToShared(h.skillsAddr, body.AgentRef, src)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return

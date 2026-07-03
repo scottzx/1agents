@@ -63,14 +63,14 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         if (!selected) return;
         setPushing(true);
         try {
-            const { changed, created } = await skillService.pushSkill(workspaceId, selected.skillRef);
-            setFlash(
-                created
-                    ? t('assistant.detail.pushedCreated', language)
-                    : changed
-                      ? t('assistant.detail.pushed', language)
-                      : t('assistant.detail.pushNoChange', language)
-            );
+            const { changed, created, version } = await skillService.pushSkill(workspaceId, selected.skillRef);
+            const base = created
+                ? t('assistant.detail.pushedCreated', language)
+                : changed
+                  ? t('assistant.detail.pushed', language)
+                  : t('assistant.detail.pushNoChange', language);
+            // Surface the new store version whenever the push moved it forward.
+            setFlash(changed && version ? `${base} · v${version}` : base);
             await load();
         } catch {
             setFlash(t('assistant.detail.pushFailed', language));
@@ -94,6 +94,7 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
                             <span class={`assistant-skill-badge ${BADGE[selected.state].cls}`}>
                                 {t(BADGE[selected.state].key, language)}
                             </span>
+                            {selected.version > 0 && <span class="assistant-skill-version">v{selected.version}</span>}
                         </div>
                         {selected.description && <p class="skill-detail-desc">{selected.description}</p>}
                     </div>
@@ -148,6 +149,7 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
                                 <span class={`assistant-skill-badge ${BADGE[s.state].cls}`}>
                                     {t(BADGE[s.state].key, language)}
                                 </span>
+                                {s.version > 0 && <span class="assistant-skill-version">v{s.version}</span>}
                             </div>
                             {s.description && <p class="skill-card-desc">{s.description}</p>}
                         </button>

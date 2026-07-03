@@ -955,6 +955,7 @@ export const zhCN: Record<string, string> = {
     // ── Module nav: skills (registry.ts + 1skills FastAPI manifest) ──
     'module.skills.nav.overview': '概览',
     'module.skills.group.skills': '技能',
+    'module.skills.group.agents': 'Agent',
     'module.skills.group.slashCommands': 'Slash 命令',
     'module.skills.group.mcp': 'MCP',
     'module.skills.group.marketplace': '市场',
@@ -2408,6 +2409,7 @@ export const enUS: Record<string, string> = {
     // ── Module nav: skills (registry.ts + 1skills FastAPI manifest) ──
     'module.skills.nav.overview': 'Overview',
     'module.skills.group.skills': 'Skills',
+    'module.skills.group.agents': 'Agents',
     'module.skills.group.slashCommands': 'Slash Commands',
     'module.skills.group.mcp': 'MCP',
     'module.skills.group.marketplace': 'Marketplace',

@@ -17042,6 +17042,13 @@ body {
   }
 }
 
+.assistant-skill-version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .assistant-skill-actions {
   display: flex;
   align-items: center;
