@@ -30,7 +30,14 @@ const KNOWN_MODE_IDS = new Set([
 const DANGEROUS_MODE_IDS = new Set(['bypassPermissions', 'dontAsk', 'agent-full-access']);
 
 export function sessionModeLabel(id: string, advertisedName: string): string {
-    return KNOWN_MODE_IDS.has(id) ? t(`chat.sessionMode.id.${id}`, getLang()) : advertisedName;
+    const lang = getLang();
+    if (!KNOWN_MODE_IDS.has(id)) {
+        return advertisedName;
+    }
+    const label = t(`chat.sessionMode.id.${id}`, lang);
+    // zh UI shows 「两字中文（英文原名）」 e.g. 规划（Plan）; en UI the advertised
+    // English name alone is enough (avoids "Plan（Plan）").
+    return lang === 'zh-CN' && label !== advertisedName ? `${label}（${advertisedName}）` : label;
 }
 
 export function isDangerousSessionMode(id: string): boolean {
