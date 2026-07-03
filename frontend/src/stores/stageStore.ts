@@ -271,8 +271,10 @@ export const openConversation = (projectChanged: boolean): void => {
 /**
  * Top-level 助手/项目 context switch (the sidebar mode-tabs). Switching *into*
  * 项目 clears conversation focus so a stale chat doesn't keep the split
- * workbench up over the project pages; the drill stack is preserved so 项目
- * resumes the last-viewed detail (项目总览 goes home).
+ * workbench up over the project pages. The drill stack / assistant detail is
+ * NOT preserved across this switch — merely toggling context is not a real
+ * selection, so it always lands on the overview; only clicking a
+ * project-folder in the tree counts as actually picking a project/assistant.
  */
 export const showProjectContext = (): void => {
     ui.sidebarMode.value = 'project';
@@ -281,12 +283,14 @@ export const showProjectContext = (): void => {
     // Close any lingering focus/full-page drawer (contacts/inbox/…) so it does
     // not keep `layoutMode` on 'focus' and hide the project pages.
     tabsStore.closeContentTab();
+    setProjectStack([]);
     ui.triggerTerminalFit();
 };
 
 export const showAssistantContext = (): void => {
     ui.sidebarMode.value = 'assistant';
     localStorage.setItem('1agents-sidebar-mode', 'assistant');
+    tabsStore.assistantDetailId.value = null;
     ui.triggerTerminalFit();
 };
 
