@@ -30,6 +30,7 @@ const (
 	VendorMicrosoft = "microsoft"
 	VendorGoogle    = "google"
 	VendorFeishu    = "feishu"
+	VendorAgentMail = "agentmail"
 )
 
 // SourceAccountStore persists the data-source account registry.

@@ -29,6 +29,7 @@ const (
 	FeishuSyncFunction    = "sources.feishu.sync"
 	MicrosoftSyncFunction = "sources.microsoft.sync"
 	GoogleSyncFunction    = "sources.google.sync"
+	AgentMailSyncFunction = "sources.agentmail.sync"
 )
 
 // SystemWorkspacePath returns the on-disk host directory (~/.1agents/system/sources).
@@ -85,6 +86,7 @@ func (h *Handler) RegisterFunctions() {
 	taskapi.RegisterFunction(FeishuSyncFunction, h.runFeishuSync)
 	taskapi.RegisterFunction(MicrosoftSyncFunction, h.runMicrosoftSync)
 	taskapi.RegisterFunction(GoogleSyncFunction, h.runGoogleSync)
+	taskapi.RegisterFunction(AgentMailSyncFunction, h.runAgentMailSync)
 }
 
 // SeedLegacyAccounts migrates the pre-account-model singletons into the
@@ -215,6 +217,16 @@ func (h *Handler) runMicrosoftSync(ctx taskapi.FunctionContext) (any, error) {
 func (h *Handler) runGoogleSync(ctx taskapi.FunctionContext) (any, error) {
 	return h.runVendorSync(meta.VendorGoogle, ctx.Task.BusinessRef, func(a meta.SourceAccount, kinds []string) sources.Puller {
 		return sources.NewGooglePuller(kinds)
+	})
+}
+
+// runAgentMailSync is the function-executor body for 腾讯 Agent Mail. Like the
+// Microsoft/Google skeletons it fans out over the vendor's accounts (single in
+// practice — agently-cli holds one mailbox), but its puller is a real pull:
+// agently-cli must be on PATH and authorized on the host.
+func (h *Handler) runAgentMailSync(ctx taskapi.FunctionContext) (any, error) {
+	return h.runVendorSync(meta.VendorAgentMail, ctx.Task.BusinessRef, func(a meta.SourceAccount, kinds []string) sources.Puller {
+		return sources.NewAgentMailPuller()
 	})
 }
 

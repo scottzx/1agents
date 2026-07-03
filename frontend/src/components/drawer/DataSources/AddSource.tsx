@@ -21,6 +21,7 @@ const VENDOR_UI: Record<string, { icon: string; descKey: string }> = {
     feishu: { icon: '💬', descKey: 'datasource.src.feishuDesc' },
     microsoft: { icon: '🪟', descKey: 'datasource.src.microsoftDesc' },
     google: { icon: '🔎', descKey: 'datasource.src.googleDesc' },
+    agentmail: { icon: '📧', descKey: 'datasource.src.agentmailDesc' },
 };
 
 function regionLabel(region: string, language: Lang): string {

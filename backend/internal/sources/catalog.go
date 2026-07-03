@@ -31,6 +31,12 @@ var googleCatalog = []CatalogItem{
 	{Kind: "google_mail", Domain: "mail", Label: "邮件", Implemented: false},
 }
 
+// agentmailCatalog is the 腾讯 Agent Mail roadmap. Inbound mail only for now
+// (the agently-cli inbox); sending/replying is out of scope for the fetch layer.
+var agentmailCatalog = []CatalogItem{
+	{Kind: "agentmail_mail", Domain: "mail", Label: "邮件", Implemented: true},
+}
+
 // CatalogFor returns the roadmap for a source owned by this package, or nil for
 // sources with no local catalog (e.g. feishu, whose catalog lives in its own
 // package, or icloud, which has none).
@@ -40,6 +46,8 @@ func CatalogFor(source string) []CatalogItem {
 		return append([]CatalogItem(nil), microsoftCatalog...)
 	case VendorGoogle:
 		return append([]CatalogItem(nil), googleCatalog...)
+	case VendorAgentMail:
+		return append([]CatalogItem(nil), agentmailCatalog...)
 	default:
 		return nil
 	}
