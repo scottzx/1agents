@@ -214,21 +214,9 @@ export const zhCN: Record<string, string> = {
     'assistant.detail.sessionsEmpty': '还没有会话',
     'assistant.detail.newSession': '新建会话',
 
-    // ── Skill push conflict modal (assistant skills tab, issue #379) ──────
-    'assistant.conflict.title': '推送冲突',
-    'assistant.conflict.body':
-        '"{name}" 已被中心库修改(当前 v{storeVersion}),而你的副本基于 v{baseVersion}。请选择如何处理 —— 两种方式都不会丢失任何一方的内容。',
-    'assistant.conflict.bodyUntracked':
-        '中心库已有 "{name}"(当前 v{storeVersion}),而你推送的内容与它不同。请选择如何处理 —— 两种方式都不会丢失任何一方的内容。',
-    'assistant.conflict.fork': '另存为 fork · 保留双方',
-    'assistant.conflict.setMain': '以我为准 · 原地更新母体(旧版进历史)',
-    'assistant.conflict.forkNamePlaceholder': '新名称(可留空)',
-    'assistant.conflict.confirm': '确认',
-    'assistant.conflict.cancel': '取消',
-    'assistant.conflict.resolving': '处理中…',
+    // ── Skill push resolution flash (reused by the push-preview flow, #379) ──
     'assistant.conflict.resolvedFork': '已作为新 fork 推送',
     'assistant.conflict.resolvedMain': '已更新母体 · 以你的为准',
-    'assistant.conflict.resolveFailed': '处理失败',
 
     // ── Push preview modal (assistant skills tab, issue #379 follow-up) ────
     'assistant.push.previewTitle': '推送预览',
@@ -1722,21 +1710,9 @@ export const enUS: Record<string, string> = {
     'assistant.detail.sessionsEmpty': 'No sessions yet',
     'assistant.detail.newSession': 'New session',
 
-    // ── Skill push conflict modal (assistant skills tab, issue #379) ──────
-    'assistant.conflict.title': 'Push conflict',
-    'assistant.conflict.body':
-        '"{name}" changed centrally (store v{storeVersion}) while your copy was based on v{baseVersion}. Choose how to resolve it — no data is lost either way.',
-    'assistant.conflict.bodyUntracked':
-        '"{name}" already exists centrally (store v{storeVersion}) and your push differs from it. Choose how to resolve it — no data is lost either way.',
-    'assistant.conflict.fork': 'Save as a fork · keep both',
-    'assistant.conflict.setMain': 'Use mine · update the store in place (prior version kept)',
-    'assistant.conflict.forkNamePlaceholder': 'New name (optional)',
-    'assistant.conflict.confirm': 'Confirm',
-    'assistant.conflict.cancel': 'Cancel',
-    'assistant.conflict.resolving': 'Resolving…',
+    // ── Skill push resolution flash (reused by the push-preview flow, #379) ──
     'assistant.conflict.resolvedFork': 'Pushed as a new fork',
     'assistant.conflict.resolvedMain': 'Updated the store with your version',
-    'assistant.conflict.resolveFailed': 'Resolve failed',
 
     // ── Push preview modal (assistant skills tab, issue #379 follow-up) ────
     'assistant.push.previewTitle': 'Push preview',
