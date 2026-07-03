@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { useRef, useEffect } from 'preact/hooks';
 import type { AvailableCommand } from '@1agents/core/protocol/types';
 
 // Autocomplete palette for agent-advertised slash commands. Appears above the
@@ -36,9 +37,19 @@ interface SlashCommandPaletteProps {
 }
 
 export function SlashCommandPalette({ commands, activeIndex, onPick, onHover }: SlashCommandPaletteProps) {
+    const listRef = useRef<HTMLDivElement | null>(null);
+
+    // Keyboard navigation (↑↓) must keep the highlighted item in view: when the
+    // active index moves past the scroll viewport, pull it back into sight.
+    // `block: 'nearest'` scrolls the minimum needed and never the page.
+    useEffect(() => {
+        const active = listRef.current?.children[activeIndex] as HTMLElement | undefined;
+        active?.scrollIntoView({ block: 'nearest' });
+    }, [activeIndex]);
+
     if (commands.length === 0) return null;
     return (
-        <div class="chat-slash-palette" role="listbox">
+        <div class="chat-slash-palette" role="listbox" ref={listRef}>
             {commands.map((cmd, i) => (
                 <button
                     type="button"
