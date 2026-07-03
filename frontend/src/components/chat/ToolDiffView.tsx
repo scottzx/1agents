@@ -31,17 +31,10 @@ export function deriveLocationsFromInput(args: Record<string, unknown>): ToolCal
 type DiffLine = { type: 'ctx' | 'add' | 'del'; text: string };
 
 /** Derive diffs from an edit-family tool's parsed input, or [] if N/A. */
-export function deriveDiffsFromInput(
-    toolName: string,
-    args: Record<string, unknown>
-): ToolCallDiff[] {
+export function deriveDiffsFromInput(toolName: string, args: Record<string, unknown>): ToolCallDiff[] {
     const name = toolName.toLowerCase();
     const path =
-        typeof args.file_path === 'string'
-            ? args.file_path
-            : typeof args.path === 'string'
-              ? args.path
-              : undefined;
+        typeof args.file_path === 'string' ? args.file_path : typeof args.path === 'string' ? args.path : undefined;
     if (!path) return [];
 
     // Edit / str_replace: single old→new.

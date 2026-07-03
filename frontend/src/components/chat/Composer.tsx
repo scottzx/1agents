@@ -2,7 +2,12 @@ import { h } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
 import type { PermissionMode } from '../types';
-import type { SessionModesState, AvailableCommand, SessionUsage, SessionConfigOption } from '@1agents/core/protocol/types';
+import type {
+    SessionModesState,
+    AvailableCommand,
+    SessionUsage,
+    SessionConfigOption,
+} from '@1agents/core/protocol/types';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useFileAttachments } from '../../hooks/useFileAttachments';
 import { MicButton } from './input/MicButton';
@@ -192,7 +197,11 @@ export function Composer({
                             // Native leads: the agent's own modes (plan/acceptEdits/…)
                             // replace the shield; the bridge gate silently stays at
                             // approve-reads + project allowlist as the safety net.
-                            <SessionModePicker modes={sessionModes} onChange={onSessionModeChange} disabled={disabled} />
+                            <SessionModePicker
+                                modes={sessionModes}
+                                onChange={onSessionModeChange}
+                                disabled={disabled}
+                            />
                         ) : (
                             <PermissionModePicker
                                 value={permissionMode}

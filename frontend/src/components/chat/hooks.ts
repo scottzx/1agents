@@ -13,7 +13,15 @@ import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // closures (never at module-eval time) so the sessionStore ⇄ hooks import cycle
 // stays safe — see the cycle note in stores/sessionStore.ts.
 import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/sessionStore';
-import type { ChatItem, ConnectionState, SessionModesState, AvailableCommand, SessionUsage, PlanEntry, SessionConfigOption } from '@1agents/core/protocol/types';
+import type {
+    ChatItem,
+    ConnectionState,
+    SessionModesState,
+    AvailableCommand,
+    SessionUsage,
+    PlanEntry,
+    SessionConfigOption,
+} from '@1agents/core/protocol/types';
 import { ChatBridgeManager, DEFAULT_PERMISSION_MODE } from '@1agents/core/services/chat/chatBridge';
 
 export type { ToolCallInfo, HistoryItem, ChatItem, ConnectionState } from '@1agents/core/protocol/types';

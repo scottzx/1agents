@@ -12,7 +12,15 @@
 // direct mode uses the browser WebSocket on web/Tauri and Taro.connectSocket on
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
-import type { AvailableCommand, ChatItem, ConnectionState, PlanEntry, SessionConfigOption, SessionModesState, SessionUsage } from '../../protocol/types';
+import type {
+    AvailableCommand,
+    ChatItem,
+    ConnectionState,
+    PlanEntry,
+    SessionConfigOption,
+    SessionModesState,
+    SessionUsage,
+} from '../../protocol/types';
 import type { ChatSession, ChatStatus, PermissionDecision, PermissionMode } from '../../types';
 import { normalizePermissionMode } from '../../types';
 import {
@@ -701,9 +709,7 @@ export class ChatBridgeManager {
         if (!state.ready) return;
         const idx = state.configOptions.findIndex(o => o.id === key);
         if (idx < 0 || state.configOptions[idx].currentValue === value) return;
-        state.configOptions = state.configOptions.map((o, i) =>
-            i === idx ? { ...o, currentValue: value } : o
-        );
+        state.configOptions = state.configOptions.map((o, i) => (i === idx ? { ...o, currentValue: value } : o));
         this.notify(state);
         state.ws.send(JSON.stringify(setConfigOptionAction(session.id, key, value)));
     }

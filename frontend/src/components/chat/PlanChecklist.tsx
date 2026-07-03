@@ -12,21 +12,47 @@ import type { PlanEntry } from '@1agents/core/protocol/types';
 function StatusIcon({ status }: { status: PlanEntry['status'] }) {
     if (status === 'completed') {
         return (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+            >
                 <path d="M20 6 9 17l-5-5" />
             </svg>
         );
     }
     if (status === 'in_progress') {
         return (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+            >
                 <circle cx="12" cy="12" r="9" opacity="0.3" />
                 <path d="M12 3a9 9 0 0 1 9 9" stroke-linecap="round" />
             </svg>
         );
     }
     return (
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+        >
             <circle cx="12" cy="12" r="8" stroke-dasharray="2 3" />
         </svg>
     );

@@ -11,7 +11,7 @@ import type { SessionUsage } from '@1agents/core/protocol/types';
 // popover state to manage.
 
 function formatCost(cost: SessionUsage['cost']): string | null {
-    if (!cost || cost.amount == null) return null;
+    if (!cost || typeof cost.amount !== 'number') return null;
     const currency = cost.currency || 'USD';
     // Intl handles the symbol + minor-unit rounding for whatever currency the
     // adapter reports; fall back to a plain "$" prefix if the code is unknown.
@@ -27,7 +27,7 @@ function formatCost(cost: SessionUsage['cost']): string | null {
 }
 
 function contextPercent(usage: SessionUsage): number | null {
-    if (usage.used == null || usage.size == null || usage.size <= 0) return null;
+    if (typeof usage.used !== 'number' || typeof usage.size !== 'number' || usage.size <= 0) return null;
     return Math.min(100, Math.round((usage.used / usage.size) * 100));
 }
 
@@ -41,7 +41,7 @@ function compact(n: number): string {
 function buildTooltip(usage: SessionUsage, lang: Lang): string {
     const lines: string[] = [];
     const pct = contextPercent(usage);
-    if (pct != null && usage.used != null && usage.size != null) {
+    if (pct !== null && typeof usage.used === 'number' && typeof usage.size === 'number') {
         lines.push(
             t('chat.usage.context', lang, {
                 percent: String(pct),
@@ -64,7 +64,7 @@ function buildTooltip(usage: SessionUsage, lang: Lang): string {
             ['chat.usage.total', b.totalTokens],
         ];
         for (const [key, val] of rows) {
-            if (val != null) lines.push(`${t(key, lang)}: ${compact(val)}`);
+            if (typeof val === 'number') lines.push(`${t(key, lang)}: ${compact(val)}`);
         }
     }
     return lines.join('\n');
@@ -81,10 +81,10 @@ export function UsageBadge({ usage }: UsageBadgeProps) {
 
     // Nothing worth showing (no context %, no cost) → render nothing rather
     // than an empty chip.
-    if (pct == null && !cost) return null;
+    if (pct === null && !cost) return null;
 
     // Context gauge tints toward warning as the window fills; > 90% is red.
-    const level = pct == null ? undefined : pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low';
+    const level = pct === null ? undefined : pct >= 90 ? 'high' : pct >= 70 ? 'mid' : 'low';
 
     return (
         <span
@@ -93,9 +93,17 @@ export function UsageBadge({ usage }: UsageBadgeProps) {
             title={buildTooltip(usage, lang)}
             aria-label={t('chat.usage.label', lang)}
         >
-            {pct != null && (
+            {pct !== null && (
                 <span class="chat-usage-context">
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <svg
+                        viewBox="0 0 24 24"
+                        width="12"
+                        height="12"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        aria-hidden="true"
+                    >
                         <circle cx="12" cy="12" r="9" opacity="0.3" />
                         <path d="M12 3a9 9 0 0 1 9 9" stroke-linecap="round" />
                     </svg>

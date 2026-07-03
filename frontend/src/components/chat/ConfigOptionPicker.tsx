@@ -50,8 +50,7 @@ interface ConfigOptionPickerProps {
 
 export function ConfigOptionPicker({ option, onChange, disabled }: ConfigOptionPickerProps) {
     const lang = getLang();
-    const current =
-        option.options.find(o => o.value === option.currentValue) ?? option.options[0];
+    const current = option.options.find(o => o.value === option.currentValue) ?? option.options[0];
     if (!current) return null;
 
     const label = t('chat.configOption.label', lang, { name: option.name });

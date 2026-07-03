@@ -546,8 +546,7 @@ function GroupedToolCallItem({
     // Prefer the ACP-forwarded metadata; fall back to deriving from the tool
     // name/input so diff/kind/locations all survive the post-turn history
     // reload (history carries the tool name + input, not the ACP fields).
-    const diffs =
-        call.diffs && call.diffs.length > 0 ? call.diffs : deriveDiffsFromInput(call.toolName, args);
+    const diffs = call.diffs && call.diffs.length > 0 ? call.diffs : deriveDiffsFromInput(call.toolName, args);
     const derivedLocations = deriveLocationsFromInput(args);
     const locations =
         call.locations && call.locations.length > 0
@@ -604,23 +603,23 @@ function GroupedToolCallItem({
                     )}
                     {/* Arguments — hidden for terminal tools (command shown above). */}
                     {!isTerminal && (
-                    <div class="chat-tool-section">
-                        <div class="chat-tool-section-title">{t('chat.tool.args', lang)}</div>
-                        {Object.keys(args).length > 0 ? (
-                            <div class="chat-tool-args-list">
-                                {Object.entries(args).map(([paramName, paramVal]) => (
-                                    <div key={paramName} class="chat-tool-arg">
-                                        <code class="chat-tool-arg-name">{paramName}</code>
-                                        <ArgValue value={paramVal} />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : inputWasInvalidJson ? (
-                            <pre class="chat-tool-pre">{call.input}</pre>
-                        ) : (
-                            <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
-                        )}
-                    </div>
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.args', lang)}</div>
+                            {Object.keys(args).length > 0 ? (
+                                <div class="chat-tool-args-list">
+                                    {Object.entries(args).map(([paramName, paramVal]) => (
+                                        <div key={paramName} class="chat-tool-arg">
+                                            <code class="chat-tool-arg-name">{paramName}</code>
+                                            <ArgValue value={paramVal} />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : inputWasInvalidJson ? (
+                                <pre class="chat-tool-pre">{call.input}</pre>
+                            ) : (
+                                <div class="chat-tool-muted">{t('chat.tool.noArgs', lang)}</div>
+                            )}
+                        </div>
                     )}
 
                     {/* File diffs (Phase 6): ACP diff blocks or derived from
@@ -640,7 +639,7 @@ function GroupedToolCallItem({
                                 {locations.map((loc, i) => (
                                     <span key={i} class="chat-tool-location" title={loc.path}>
                                         {loc.path}
-                                        {loc.line != null ? `:${loc.line}` : ''}
+                                        {typeof loc.line === 'number' ? `:${loc.line}` : ''}
                                     </span>
                                 ))}
                             </div>
