@@ -10,6 +10,7 @@ import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
 import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
 import { openCreateAssistantModal } from '../../stores/modalStore';
+import { assistantDetailId } from '../../stores/tabsStore';
 import {
     remoteDevices,
     remoteExpanded,
@@ -18,6 +19,7 @@ import {
     toggleRemoteDevice,
     activeWorkspaceId as activeWsIdSignal,
     activeWorkspaceDeviceId,
+    collapseFolders,
 } from '../../stores/workspaceStore';
 import { activeL1PageId } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
@@ -434,7 +436,12 @@ export function LeftSidebar({
                             </button>
                             <div
                                 class={`nav-control-item${activeDrawerTab === 'assistants' ? ' active' : ''}`}
-                                onClick={() => toggleDrawerTab('assistants')}
+                                onClick={() => {
+                                    // 点这个总览项不算"选中了某个助理", 清掉残留的详情 id,
+                                    // 落到助理网格, 不要复现上次点开的那个助理。
+                                    assistantDetailId.value = null;
+                                    toggleDrawerTab('assistants');
+                                }}
                             >
                                 <svg
                                     class="btn-icon"
@@ -558,23 +565,47 @@ export function LeftSidebar({
                             <div class="workspace-section">
                                 <div class="section-header">
                                     <span>{t('sidebar.assistants', language)}</span>
-                                    <button
-                                        class="section-search-btn"
-                                        title={t('sidebar.addAssistant', language)}
-                                        onClick={openCreateAssistantModal}
-                                    >
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2.5"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
+                                    <div class="section-header-actions">
+                                        <button
+                                            class="section-search-btn"
+                                            title={t('sidebar.collapseAll', language) || '一键折叠'}
+                                            onClick={() => {
+                                                const ids = workspaces
+                                                    .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
+                                                    .map(w => w.id);
+                                                collapseFolders(ids);
+                                            }}
                                         >
-                                            <line x1="12" y1="5" x2="12" y2="19" />
-                                            <line x1="5" y1="12" x2="19" y2="12" />
-                                        </svg>
-                                    </button>
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="17 11 12 6 7 11" />
+                                                <polyline points="17 18 12 13 7 18" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class="section-search-btn"
+                                            title={t('sidebar.addAssistant', language)}
+                                            onClick={openCreateAssistantModal}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <line x1="12" y1="5" x2="12" y2="19" />
+                                                <line x1="5" y1="12" x2="19" y2="12" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                                 {(() => {
                                     // 助理 = kind==='assistant' 的本地工作区。default 是内置助理,
@@ -659,29 +690,6 @@ export function LeftSidebar({
                                                 </div>
                                                 {folder.expanded && (
                                                     <div class="project-children">
-                                                        {ws.id === 'default' && !isBeginnerMode.value && (
-                                                            <div
-                                                                class={`chat-item chat-row-kind-task${
-                                                                    isTaskView && isActive ? ' active' : ''
-                                                                }`}
-                                                                onClick={(e: MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    onSelectWorkspace(ws);
-                                                                }}
-                                                            >
-                                                                <div class="chat-item-left">
-                                                                    <span
-                                                                        class="chat-sidebar-avatar chat-task-icon"
-                                                                        aria-hidden="true"
-                                                                    >
-                                                                        {'\u{1F4CB}'}
-                                                                    </span>
-                                                                    <span class="chat-title">
-                                                                        {t('sidebar.subpage.tasks', language) || '任务'}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        )}
                                                         {chatSessions.map(renderSession)}
                                                         {termSessions.map(renderSession)}
                                                         {chatSessions.length === 0 && termSessions.length === 0 && (
@@ -709,28 +717,56 @@ export function LeftSidebar({
                             <div class="workspace-section">
                                 <div class="section-header">
                                     <span>Projects</span>
-                                    <button
-                                        class={`section-search-btn${projectSearchOpen ? ' active' : ''}`}
-                                        title="搜索项目"
-                                        onClick={() => {
-                                            const next = !projectSearchOpen;
-                                            setProjectSearchOpen(next);
-                                            if (!next) setProjectSearch('');
-                                            else setTimeout(() => projectSearchRef.current?.focus(), 50);
-                                        }}
-                                    >
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
+                                    <div class="section-header-actions">
+                                        <button
+                                            class="section-search-btn"
+                                            title={t('sidebar.collapseAll', language) || '一键折叠'}
+                                            onClick={() => {
+                                                const ids = folders
+                                                    .filter(
+                                                        f =>
+                                                            (workspaces.find(w => w.id === f.id)?.kind ?? 'project') !==
+                                                            'assistant'
+                                                    )
+                                                    .map(f => f.id);
+                                                collapseFolders(ids);
+                                            }}
                                         >
-                                            <circle cx="11" cy="11" r="8" />
-                                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                                        </svg>
-                                    </button>
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2.5"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <polyline points="17 11 12 6 7 11" />
+                                                <polyline points="17 18 12 13 7 18" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            class={`section-search-btn${projectSearchOpen ? ' active' : ''}`}
+                                            title="搜索项目"
+                                            onClick={() => {
+                                                const next = !projectSearchOpen;
+                                                setProjectSearchOpen(next);
+                                                if (!next) setProjectSearch('');
+                                                else setTimeout(() => projectSearchRef.current?.focus(), 50);
+                                            }}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                            >
+                                                <circle cx="11" cy="11" r="8" />
+                                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                                 {projectSearchOpen && (
                                     <div class="section-search-wrap">
@@ -953,40 +989,12 @@ export function LeftSidebar({
                                                             const termSessions = folder.sessions.filter(
                                                                 s => !isChat(s)
                                                             );
-                                                            const wsObj = workspaces.find(w => w.id === folder.id);
 
-                                                            // One unified list under each workspace: the 任务
-                                                            // landing plus every 会话 / 终端 session, all using
-                                                            // the same `.chat-item` row style (no group headers).
+                                                            // One unified list under each workspace: every
+                                                            // 会话 / 终端 session, using the same `.chat-item`
+                                                            // row style (no group headers).
                                                             return (
                                                                 <div class="project-children">
-                                                                    {/* 📋 任务 — default landing (task table) */}
-                                                                    <div
-                                                                        class={`chat-item chat-row-kind-task${
-                                                                            isTaskView &&
-                                                                            activeWorkspaceId === folder.id
-                                                                                ? ' active'
-                                                                                : ''
-                                                                        }`}
-                                                                        onClick={(e: MouseEvent) => {
-                                                                            e.stopPropagation();
-                                                                            if (wsObj) onSelectWorkspace(wsObj);
-                                                                        }}
-                                                                    >
-                                                                        <div class="chat-item-left">
-                                                                            <span
-                                                                                class="chat-sidebar-avatar chat-task-icon"
-                                                                                aria-hidden="true"
-                                                                            >
-                                                                                {'\u{1F4CB}'}
-                                                                            </span>
-                                                                            <span class="chat-title">
-                                                                                {t('sidebar.subpage.tasks', language) ||
-                                                                                    '任务'}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-
                                                                     {/* 会话 (chat) + 终端 (terminal) sessions */}
                                                                     {chatSessions.map(renderSession)}
                                                                     {termSessions.map(renderSession)}

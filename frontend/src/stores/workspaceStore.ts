@@ -67,6 +67,12 @@ export const toggleFolder = (folderId: string) => {
     folders.value = folders.value.map(f => (f.id === folderId ? { ...f, expanded: !f.expanded } : f));
 };
 
+/** 一键折叠:收起给定 id 范围内(助理/项目某一侧)所有展开的 project-folder。 */
+export const collapseFolders = (folderIds: string[]) => {
+    const idSet = new Set(folderIds);
+    folders.value = folders.value.map(f => (idSet.has(f.id) && f.expanded ? { ...f, expanded: false } : f));
+};
+
 /** 拉取已注册设备列表,过滤掉本机(self),只留远程节点用于 Sidebar 分组。 */
 export const loadRemoteDevices = async () => {
     try {

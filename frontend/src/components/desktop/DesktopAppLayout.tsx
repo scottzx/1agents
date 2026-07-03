@@ -176,9 +176,12 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onDeleteWorkspace={wsStore.deleteWorkspace}
                                 onSelectWorkspace={ws => {
                                     wsStore.selectWorkspace(ws);
-                                    // 项目模式下点非默认工作区 → 进入项目详情页(下钻);
-                                    // 对话/助手工作区仍走旧的项目管理右栏。
-                                    if (ui.sidebarMode.value === 'project' && ws.id !== 'default') {
+                                    // 点击文件夹 → 统一下钻到对应详情页:
+                                    // 助理模式进助理详情, 项目模式(非默认工作区)进项目详情。
+                                    if (ui.sidebarMode.value === 'assistant') {
+                                        tabsStore.assistantDetailId.value = ws.id;
+                                        tabsStore.activeDrawerTab.value = 'assistants';
+                                    } else if (ui.sidebarMode.value === 'project' && ws.id !== 'default') {
                                         stage.enterProjectDetail(ws.id, ws.name);
                                     } else {
                                         stage.enterProject();

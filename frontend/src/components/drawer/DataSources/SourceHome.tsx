@@ -18,6 +18,7 @@ const VENDOR_UI: Record<string, { color: string; descKey: string }> = {
     feishu: { color: '#3370ff', descKey: 'datasource.home.feishuDesc' },
     microsoft: { color: '#2f6feb', descKey: 'datasource.src.microsoftDesc' },
     google: { color: '#ea4335', descKey: 'datasource.src.googleDesc' },
+    agentmail: { color: '#0c9', descKey: 'datasource.src.agentmailDesc' },
 };
 
 function rollup(summaries: SourceSummary[], accountId: string): { count: number; lastFetchedAt: number } {

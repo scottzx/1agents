@@ -326,6 +326,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/google/collections", ingestHandler.HandleCollections)
 				mux.HandleFunc("/api/sources/google/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/google/history", ingestHandler.HandleHistory)
+				mux.HandleFunc("/api/sources/agentmail/collections", ingestHandler.HandleCollections)
+				mux.HandleFunc("/api/sources/agentmail/sync", ingestHandler.HandleSync)
+				mux.HandleFunc("/api/sources/agentmail/history", ingestHandler.HandleHistory)
 				if err := ingestHandler.SeedLegacyAccounts(); err != nil {
 					log.Printf("[server] ingest seed legacy accounts: %v", err)
 				}

@@ -151,7 +151,7 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 	// sync tasks are only armed on toggle and are NOT re-created at startup — so a
 	// recurring task that ended in a terminal (e.g. failed) state would never come
 	// back after a restart. EnsureRecurring is idempotent (skips a live one).
-	for _, source := range []string{meta.VendorMicrosoft, meta.VendorGoogle} {
+	for _, source := range []string{meta.VendorMicrosoft, meta.VendorGoogle, meta.VendorAgentMail} {
 		list, err := h.cfg.ListEnabled(source)
 		if err != nil {
 			return err
