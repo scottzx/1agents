@@ -140,6 +140,18 @@ func (s *SourceAccountStore) Create(a SourceAccount, singleAccount bool) (Source
 	return a, nil
 }
 
+// SetLabel updates an account's display label (used after an OAuth connect to
+// reflect the signed-in mailbox address). Blank labels are ignored.
+func (s *SourceAccountStore) SetLabel(id, label string) error {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil
+	}
+	_, err := s.db.sql.Exec(`UPDATE source_accounts SET label = ?, updated_at = ? WHERE id = ?`,
+		label, timeToStr(time.Now().UTC()), id)
+	return err
+}
+
 // Delete removes an account by id (its bronze rows/cursors are left in place;
 // re-adding the same id would resume them — deliberate, cheap tombstone-free
 // removal for the framework pass).

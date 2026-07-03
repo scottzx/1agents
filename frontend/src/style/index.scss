@@ -19780,6 +19780,25 @@ body {
   margin-right: 4px;
 }
 
+// Sync-frequency selector on the collection config cards.
+.datasource-freq {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+
+  select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius-sm);
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-size: 13px;
+    cursor: pointer;
+  }
+}
+
 // Microsoft/Google instance panel: the roadmap collection grid.
 .source-instance-config {
   display: flex;

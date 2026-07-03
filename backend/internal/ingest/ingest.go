@@ -26,6 +26,7 @@ type Handler struct {
 	accounts *meta.SourceAccountStore
 	chats    *meta.FeishuChatStore
 	bronze   *sources.Store
+	msAuth   *sources.MSAuth // Microsoft Graph OAuth (PKCE) — connect flow + token store
 	cli      *sourcecli.Handler
 	systemWS string     // host workspace path (set by ProvisionSystemWorkspace)
 	disp     Dispatcher // set via SetDispatcher once the task API is available
@@ -75,12 +76,19 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A missing microsoft_oauth.json is not fatal — the connect flow reports
+	// "not configured" until the config is dropped in.
+	msAuth, err := sources.NewMSAuth()
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		db:       db,
 		cfg:      meta.NewSourceCollectionStore(db),
 		accounts: meta.NewSourceAccountStore(db),
 		chats:    meta.NewFeishuChatStore(db),
 		bronze:   bronze,
+		msAuth:   msAuth,
 		cli:      sourcecli.NewHandler(),
 	}, nil
 }
@@ -126,6 +134,7 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 	if h.disp == nil {
 		return nil
 	}
+	// Feishu (its own catalog/descriptor).
 	enabled, err := h.cfg.ListEnabled(feishu.Source)
 	if err != nil {
 		return err
@@ -136,6 +145,24 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 		}
 		if err := h.disp.EnsureRecurring(feishu.Source, c.Kind, c.IncrementalMinutes); err != nil {
 			return err
+		}
+	}
+	// Microsoft / Google (this package's catalog). Without this, their periodic
+	// sync tasks are only armed on toggle and are NOT re-created at startup — so a
+	// recurring task that ended in a terminal (e.g. failed) state would never come
+	// back after a restart. EnsureRecurring is idempotent (skips a live one).
+	for _, source := range []string{meta.VendorMicrosoft, meta.VendorGoogle} {
+		list, err := h.cfg.ListEnabled(source)
+		if err != nil {
+			return err
+		}
+		for _, c := range list {
+			if d := sources.CatalogItemFor(source, c.Kind); d == nil || !d.Implemented {
+				continue
+			}
+			if err := h.disp.EnsureRecurring(source, c.Kind, c.IncrementalMinutes); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -208,7 +208,7 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 // reporting 0 changes until the real API pulls land.
 func (h *Handler) runMicrosoftSync(ctx taskapi.FunctionContext) (any, error) {
 	return h.runVendorSync(meta.VendorMicrosoft, ctx.Task.BusinessRef, func(a meta.SourceAccount, kinds []string) sources.Puller {
-		return sources.NewMicrosoftPuller(a.Region, kinds)
+		return sources.NewMicrosoftPuller(a.Region, kinds, h.msAuth)
 	})
 }
 

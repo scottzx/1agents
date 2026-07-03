@@ -31,8 +31,9 @@ func TestSkeletonPullersDiscoverAndPull(t *testing.T) {
 		source string
 		kind   string
 	}{
-		{"microsoft", NewMicrosoftPuller(RegionIntl, []string{"ms_contact", "ms_event"}), VendorMicrosoft, "ms_contact"},
-		{"microsoft-cn", NewMicrosoftPuller(RegionCN, []string{"ms_mail"}), VendorMicrosoft, "ms_mail"},
+		// nil token provider ⇒ Pull is a no-op empty page (auth not connected).
+		{"microsoft", NewMicrosoftPuller(RegionIntl, []string{"ms_contact", "ms_event"}, nil), VendorMicrosoft, "ms_contact"},
+		{"microsoft-cn", NewMicrosoftPuller(RegionCN, []string{"ms_mail"}, nil), VendorMicrosoft, "ms_mail"},
 		{"google", NewGooglePuller([]string{"google_contact"}), VendorGoogle, "google_contact"},
 	}
 	for _, c := range cases {
@@ -69,7 +70,10 @@ func TestCatalogFor(t *testing.T) {
 	if CatalogFor(VendorFeishu) != nil || CatalogFor(VendorICloud) != nil {
 		t.Fatalf("feishu/icloud have no local catalog in this package")
 	}
-	if it := CatalogItemFor(VendorMicrosoft, "ms_contact"); it == nil || it.Implemented {
-		t.Fatalf("ms_contact should exist and be not-yet-implemented: %+v", it)
+	if it := CatalogItemFor(VendorMicrosoft, "ms_contact"); it == nil || !it.Implemented {
+		t.Fatalf("ms_contact should exist and be implemented: %+v", it)
+	}
+	if it := CatalogItemFor(VendorMicrosoft, "ms_event"); it == nil || !it.Implemented {
+		t.Fatalf("ms_event should exist and be implemented: %+v", it)
 	}
 }
