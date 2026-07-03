@@ -50,13 +50,24 @@ function openSelectedAsPreview() {
  * save / copy / download / rename / share / fullscreen). Shows a hint when
  * nothing is selected — used as the right half of a split browser.
  */
-export function FilePreviewPane({ app, language }: { app: App; language: Lang }) {
+export function FilePreviewPane({
+    app,
+    language,
+    hideBack,
+}: {
+    app: App;
+    language: Lang;
+    /** Hide the back-to-list button — set in the side-by-side split, where the
+     *  file list is always on-screen so "返回" is redundant. */
+    hideBack?: boolean;
+}) {
     const selectedFsEntry = fs.selectedFsEntry.value;
     if (!selectedFsEntry) {
         return <div class="file-preview-empty">{t('assistant.detail.selectFile', language)}</div>;
     }
     return (
         <FileDetailView
+            hideBack={hideBack}
             selectedFsEntry={selectedFsEntry}
             favoriteFiles={fs.favoriteFiles.value}
             detailFullscreen={fs.detailFullscreen.value}
@@ -137,7 +148,7 @@ export function WorkspaceFilesSplit({ app, language }: { app: App; language: Lan
                 />
             </div>
             <div class="file-split-preview">
-                <FilePreviewPane app={app} language={language} />
+                <FilePreviewPane app={app} language={language} hideBack />
             </div>
         </div>
     );

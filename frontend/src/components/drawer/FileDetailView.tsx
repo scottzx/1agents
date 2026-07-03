@@ -29,6 +29,10 @@ interface FileDetailViewProps {
     onToggleEditing: (isEditing: boolean) => void;
     onEditedContentChange: (content: string) => void;
     isStandalone?: boolean;
+    /** Hide the back-to-list button (e.g. in the side-by-side split, where the
+     *  list is always visible). Unlike isStandalone, keeps the other toolbar
+     *  actions (fullscreen etc.) intact. */
+    hideBack?: boolean;
     onOpenPreview?: (path: string, name: string) => void;
     /** When set, the code view scrolls to and highlights this 1-based line. */
     targetLine?: number;
@@ -381,6 +385,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             onSaveFile,
             onShareFile,
             isStandalone,
+            hideBack,
             language,
         } = this.props;
 
@@ -397,7 +402,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
             <div class={`fb-detail-view ${detailFullscreen ? 'fullscreen' : ''}`}>
                 {/* Detail Header */}
                 <div class="fb-detail-header">
-                    {!isStandalone && (
+                    {!isStandalone && !hideBack && (
                         <button class="fb-detail-back" onClick={onBackToList} title={t('fileDetail.back', language)}>
                             <svg
                                 viewBox="0 0 24 24"

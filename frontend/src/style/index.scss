@@ -11697,6 +11697,30 @@ body {
           transform: rotate(180deg);
         }
       }
+
+      // Favorites filter — star glyph + a warm (not accent-blue) active state
+      // so it reads as distinct from the file-type tags.
+      &.fb-tag-fav {
+        gap: 3px;
+
+        .fb-tag-fav-icon {
+          width: 11px;
+          height: 11px;
+          color: var(--warning-fg);
+          opacity: 0.85;
+        }
+
+        &.active {
+          background-color: var(--warning-fg);
+          border-color: var(--warning-fg);
+          box-shadow: 0 1px 4px rgba(var(--warning-rgb), 0.4);
+
+          .fb-tag-fav-icon {
+            color: #ffffff;
+            opacity: 1;
+          }
+        }
+      }
     }
   }
 
