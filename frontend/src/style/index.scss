@@ -11920,6 +11920,13 @@ body {
     flex: 1;
     padding-right: 2px;
 
+    // Tree mode gets breathing room on all sides (search-results list keeps its
+    // edge-to-edge layout).
+    &.fb-tree-list {
+      margin: 8px;
+      padding-right: 8px;
+    }
+
     &::-webkit-scrollbar {
       width: 4px;
     }
@@ -12291,10 +12298,11 @@ body {
   .fb-detail-header {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border-color);
-    margin-bottom: 12px;
+    margin: 8px 8px 12px;
 
     .fb-detail-back {
       display: flex;
