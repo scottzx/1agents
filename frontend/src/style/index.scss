@@ -719,6 +719,12 @@ body {
       color: var(--text-sidebar-muted);
       padding: 8px 4px;
 
+      .section-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+
       .section-search-btn {
         display: flex;
         align-items: center;
