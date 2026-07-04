@@ -161,6 +161,14 @@ export function LeftSidebar({
     const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
     const [projectSearch, setProjectSearch] = useState('');
     const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+    // Footer utility entries (模型/技能/发现/数据源/系统设置) are collapsed
+    // behind a single 「更多」 that pulls up this panel — frees sidebar space.
+    const [moreOpen, setMoreOpen] = useState(false);
+    const MORE_TABS: RightDrawerTab[] = ['providers', 'skills', 'discovery', 'datasources', 'settings'];
+    const openMoreTab = (tab: RightDrawerTab) => {
+        toggleDrawerTab(tab);
+        setMoreOpen(false);
+    };
     const projectSearchRef = useRef<HTMLInputElement | null>(null);
     // Task id → title map for the optional session task badge (issue
     // model: sessions linked to a task show 📋 <task title>).
@@ -1153,10 +1161,110 @@ export function LeftSidebar({
             </div>
 
             <div class="sidebar-footer">
+                {moreOpen && (
+                    <Fragment>
+                        <div class="sidebar-more-backdrop" onClick={() => setMoreOpen(false)} />
+                        <div class="sidebar-more-panel" role="menu">
+                            <div
+                                class={`footer-item${activeDrawerTab === 'providers' ? ' active' : ''}`}
+                                onClick={() => openMoreTab('providers')}
+                                title={t('sidebar.providersTitle', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                                <span>{t('sidebar.providers', language)}</span>
+                            </div>
+                            <div
+                                class={`footer-item${activeDrawerTab === 'skills' ? ' active' : ''}`}
+                                onClick={() => openMoreTab('skills')}
+                                title={t('sidebar.skillsTitle', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                </svg>
+                                <span>{t('sidebar.skills', language)}</span>
+                            </div>
+                            <div
+                                class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
+                                onClick={() => openMoreTab('discovery')}
+                                title={t('sidebar.discoveryTitle', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
+                                </svg>
+                                <span>{t('sidebar.discovery', language)}</span>
+                            </div>
+                            <div
+                                class={`footer-item${activeDrawerTab === 'datasources' ? ' active' : ''}`}
+                                onClick={() => openMoreTab('datasources')}
+                                title={t('sidebar.datasourcesTitle', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                                    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+                                    <path d="M3 12a9 3 0 0 0 18 0" />
+                                </svg>
+                                <span>{t('sidebar.datasources', language)}</span>
+                            </div>
+                            <div
+                                class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}
+                                onClick={() => openMoreTab('settings')}
+                                title={t('sidebar.settings', language)}
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    // Icon comes from the host's icon registry, keyed by
+                                    // module id — keeps the visual identity in sync with
+                                    // the settings manifest, no inline SVG here.
+                                    dangerouslySetInnerHTML={{ __html: getModuleIconPath(SETTINGS_MODULE_ID) || '' }}
+                                />
+                                <span>{t('sidebar.settings', language)}</span>
+                            </div>
+                        </div>
+                    </Fragment>
+                )}
                 <div
-                    class={`footer-item${activeDrawerTab === 'providers' ? ' active' : ''}`}
-                    onClick={() => toggleDrawerTab('providers')}
-                    title={t('sidebar.providersTitle', language)}
+                    class={`footer-item${moreOpen || MORE_TABS.includes(activeDrawerTab) ? ' active' : ''}`}
+                    onClick={() => setMoreOpen(v => !v)}
+                    title={t('sidebar.more', language)}
                 >
                     <svg
                         viewBox="0 0 24 24"
@@ -1166,85 +1274,12 @@ export function LeftSidebar({
                         stroke-linecap="round"
                         stroke-linejoin="round"
                     >
-                        <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                        <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                        <line x1="6" y1="6" x2="6.01" y2="6" />
-                        <line x1="6" y1="18" x2="6.01" y2="18" />
+                        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                        <rect x="14" y="14" width="7" height="7" rx="1.5" />
                     </svg>
-                    <span>{t('sidebar.providers', language)}</span>
-                </div>
-                <div
-                    class={`footer-item${activeDrawerTab === 'skills' ? ' active' : ''}`}
-                    onClick={() => toggleDrawerTab('skills')}
-                    title={t('sidebar.skillsTitle', language)}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                    </svg>
-                    <span>{t('sidebar.skills', language)}</span>
-                </div>
-                <div
-                    class={`footer-item${activeDrawerTab === 'discovery' ? ' active' : ''}`}
-                    onClick={() => toggleDrawerTab('discovery')}
-                    title={t('sidebar.discoveryTitle', language)}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <circle cx="12" cy="12" r="10" />
-                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.24" />
-                    </svg>
-                    <span>{t('sidebar.discovery', language)}</span>
-                </div>
-                <div
-                    class={`footer-item${activeDrawerTab === 'datasources' ? ' active' : ''}`}
-                    onClick={() => toggleDrawerTab('datasources')}
-                    title={t('sidebar.datasourcesTitle', language)}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <ellipse cx="12" cy="5" rx="9" ry="3" />
-                        <path d="M3 5v14a9 3 0 0 0 18 0V5" />
-                        <path d="M3 12a9 3 0 0 0 18 0" />
-                    </svg>
-                    <span>{t('sidebar.datasources', language)}</span>
-                </div>
-                <div
-                    class={`footer-item${activeDrawerTab === 'settings' ? ' active' : ''}`}
-                    onClick={() => toggleDrawerTab('settings')}
-                    title={t('sidebar.settings', language)}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        // Icon comes from the host's icon registry, keyed by
-                        // module id — keeps the visual identity in sync with
-                        // the settings manifest, no inline SVG here.
-                        dangerouslySetInnerHTML={{ __html: getModuleIconPath(SETTINGS_MODULE_ID) || '' }}
-                    />
-                    <span>{t('sidebar.settings', language)}</span>
+                    <span>{t('sidebar.more', language)}</span>
                 </div>
             </div>
         </aside>

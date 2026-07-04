@@ -62,6 +62,30 @@ func (h *Handler) HandleHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, runs)
 }
 
+// HandleSchedules serves GET /api/sources/{source}/schedules — the live
+// periodic-sync trigger state per kind (armed? next trigger? last run?).
+func (h *Handler) HandleSchedules(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	source := sourceFromAction(r.URL.Path, "schedules")
+	if source == "" {
+		http.Error(w, "source required", http.StatusBadRequest)
+		return
+	}
+	if h.disp == nil {
+		writeJSON(w, http.StatusOK, []ScheduleRow{})
+		return
+	}
+	rows, err := h.disp.Schedules(source)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
 // sourceFromAction extracts {source} from /api/sources/{source}/{action}.
 func sourceFromAction(path, action string) string {
 	rest := strings.TrimPrefix(path, "/api/sources/")

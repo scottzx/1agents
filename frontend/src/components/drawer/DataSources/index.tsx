@@ -9,9 +9,7 @@ import { ShellNav } from '../../platform/ShellNav';
 import { sourceService, type SourceAccount, type VendorSpec } from '@1agents/core/services/sourceService';
 import { SourceDetail } from './SourceDetail';
 import { SourceHome } from './SourceHome';
-import { FeishuSourcePanel, feishuTabs } from './FeishuSourcePanel';
-import { AppleSourcePanel, appleTabs } from './AppleSourcePanel';
-import { SourceInstancePanel, instanceTabs } from './SourceInstancePanel';
+import { SourcePanel, sourceTabs } from './SourcePanel';
 import { AddSource } from './AddSource';
 
 // 数据源管理 (Data Source Management) — organized 源为中心: the landing page is a
@@ -34,6 +32,9 @@ export function DataSourcesPane() {
     const language = ui.language.value;
     const view = useSignal<View>({ kind: 'home' });
     const accounts = useSignal<SourceAccount[]>([]);
+    // vendor → authKind, so the unified SourcePanel drives its 认证 zone off the
+    // backend capability table instead of per-vendor branching.
+    const vendorAuth = useSignal<Record<string, string>>({});
     const subTab = useSignal<string>('auth');
     const detail = useSignal<Detail | null>(null);
 
@@ -44,6 +45,12 @@ export function DataSourcesPane() {
             .catch(() => (accounts.value = []));
     };
     useEffect(loadAccounts, []);
+    useEffect(() => {
+        sourceService
+            .vendors()
+            .then(list => (vendorAuth.value = Object.fromEntries(list.map(v => [v.vendor, v.authKind]))))
+            .catch(() => (vendorAuth.value = {}));
+    }, []);
 
     const goHome = () => {
         view.value = { kind: 'home' };
@@ -97,14 +104,7 @@ export function DataSourcesPane() {
     useEffect(() => () => void (taskNav.headerCrumbs.value = null), []);
 
     const v = view.value;
-    const zoneTabs =
-        v.kind === 'account'
-            ? v.account.vendor === 'feishu'
-                ? feishuTabs(language)
-                : v.account.vendor === 'icloud'
-                  ? appleTabs(language)
-                  : instanceTabs(language)
-            : [];
+    const zoneTabs = v.kind === 'account' ? sourceTabs(language) : [];
 
     return (
         <div class="datasource-pane">
@@ -129,13 +129,12 @@ export function DataSourcesPane() {
                 <Fragment>
                     <ShellNav tabs={zoneTabs} activeTab={subTab.value} onSelectTab={id => (subTab.value = id)} />
                     <div class="datasource-tab-body">
-                        {v.account.vendor === 'feishu' ? (
-                            <FeishuSourcePanel tab={subTab.value} onOpenData={openData} />
-                        ) : v.account.vendor === 'icloud' ? (
-                            <AppleSourcePanel account={v.account} tab={subTab.value} onOpenData={openData} />
-                        ) : (
-                            <SourceInstancePanel account={v.account} tab={subTab.value} onOpenData={openData} />
-                        )}
+                        <SourcePanel
+                            account={v.account}
+                            authKind={vendorAuth.value[v.account.vendor] ?? ''}
+                            tab={subTab.value}
+                            onOpenData={openData}
+                        />
                     </div>
                 </Fragment>
             )}

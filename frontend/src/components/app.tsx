@@ -157,6 +157,21 @@ export class App extends Component<{}, AppState> {
         // open the most recent chat, or land directly on the new-chat page.
         await this.applyBeginnerLanding();
 
+        // Advanced mode: a fresh start (nothing persisted) leaves the primary
+        // pane on the default 'terminal' tab with no live terminals, which
+        // renders the bare "暂无终端" empty state. Land on the 首页 new-chat
+        // home instead. Skipped when the user last left in 项目 context
+        // (stageView='project') so the project pages still restore, and when a
+        // terminal is already live (advanced users keep their workbench).
+        if (
+            !ui.isBeginnerMode.value &&
+            stage.stageView.value === 'conversation' &&
+            !sess.activeSession.value &&
+            sess.terminalWindows.value.length === 0
+        ) {
+            sess.onStartNewChat();
+        }
+
         sess.loadTmuxMouse();
         this.checkUrlPreview();
         this.checkUrlDeepLink();

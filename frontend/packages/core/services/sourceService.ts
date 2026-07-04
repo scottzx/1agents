@@ -74,6 +74,18 @@ export interface SyncRun {
     completedAt?: string;
 }
 
+// 定时任务触发状态 — one source kind's live periodic-sync state (armed? next
+// trigger? last run?). Mirrors ingest.ScheduleRow. The enabled/cadence policy
+// comes from CollectionView; this layers the runtime trigger status on top.
+export interface ScheduleRow {
+    kind: string;
+    recurring: boolean;
+    status?: string;
+    nextRunAt?: string;
+    lastRunAt?: string;
+    lastStatus?: string;
+}
+
 // 数据源厂家能力 (vendor capability) — drives the 添加数据源 flow: which regions a
 // vendor offers (国际/大陆), whether multiple accounts are allowed (飞书 is
 // single-account), and how the account authenticates. Mirrors sources.VendorSpec.
@@ -207,6 +219,13 @@ export const sourceService = {
         const res = await apiFetch(`/sources/${encodeURIComponent(source)}/history`);
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SyncRun[];
+    },
+
+    /** GET /api/sources/{source}/schedules — live 定时任务 trigger state per kind. */
+    async schedules(source: string): Promise<ScheduleRow[]> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/schedules`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as ScheduleRow[];
     },
 
     /** GET /api/sources/oauth/microsoft/config — current app registration for a
