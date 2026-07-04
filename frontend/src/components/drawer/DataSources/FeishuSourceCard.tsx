@@ -1,21 +1,19 @@
 import { h, Fragment } from 'preact';
-import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 
 import { t, type Lang } from '../../../i18n';
 import { sourceCliService, type CLIStatus } from '@1agents/core/services/sourceCliService';
-import { sourceService, type CollectionView, type SyncRun } from '@1agents/core/services/sourceService';
-import { ChatScopeModal } from './ChatScopeModal';
+import type { CollectionView } from '@1agents/core/services/sourceService';
 
-// 飞书数据源卡片 — shows three zones for the feishu source:
-//   1. CLI lifecycle: lark-cli install/version/auth state, hints with copy buttons
-//   2. Collection config: per-kind toggle + crawl parameters
-//   3. History & stats: recent sync runs + per-kind "sync now" buttons
+// 飞书数据源卡片 — the shared CLI-lifecycle zone (lark-cli / agently-cli) plus a
+// handful of small helpers reused by the unified ScheduleList / TaskRunsGrid.
+// Collection config + history moved into those reusable components; this file
+// keeps only the CLI card and the parsing/formatting helpers.
 
 const TOOL = 'lark-cli';
-const SOURCE = 'feishu';
 
-// Minutes available as incremental frequency options.
-const INTERVAL_OPTS = [15, 30, 60, 180, 360, 720, 1440];
+// Minutes available as incremental frequency options (shared by ScheduleList).
+export const INTERVAL_OPTS = [15, 30, 60, 180, 360, 720, 1440];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,12 +74,12 @@ function useCopyHint(): [string, (key: string, text: string) => void] {
 // Absolute local timestamp — no "刚刚 / 即将..." labels. Relative labels lie for
 // near-future timestamps (token expiries) and read as buggy; give the user the
 // actual moment and let them judge.
-function formatAbsTime(iso: string, language: Lang): string {
+export function formatAbsTime(iso: string, language: Lang): string {
     return new Date(iso).toLocaleString(language);
 }
 
 // Parse the JSON result string from a SyncRun (e.g. '{"kind":"feishu_chat","collections":1,"changed":18}')
-function parseSyncResult(result?: string): { changed?: number; collections?: number } {
+export function parseSyncResult(result?: string): { changed?: number; collections?: number } {
     if (!result) return {};
     try {
         return JSON.parse(result) as { changed?: number; collections?: number };
@@ -90,7 +88,7 @@ function parseSyncResult(result?: string): { changed?: number; collections?: num
     }
 }
 
-function syncStatusClass(status: string): string {
+export function syncStatusClass(status: string): string {
     if (status === 'done' || status === 'completed') return 'done';
     if (status === 'running') return 'running';
     if (status === 'pending') return 'pending';
@@ -98,7 +96,7 @@ function syncStatusClass(status: string): string {
 }
 
 // Group CollectionViews by domain.
-function groupByDomain(cols: CollectionView[]): Array<{ domain: string; items: CollectionView[] }> {
+export function groupByDomain(cols: CollectionView[]): Array<{ domain: string; items: CollectionView[] }> {
     const map = new Map<string, CollectionView[]>();
     for (const c of cols) {
         const arr = map.get(c.domain) ?? [];
@@ -282,278 +280,3 @@ export function CliZone({ language, tool = TOOL }: CliZoneProps) {
         </div>
     );
 }
-
-// ── Sub-zone: collection config ───────────────────────────────────────────────
-
-interface CollectionsZoneProps {
-    language: Lang;
-    onSyncDispatched: () => void;
-    onToast: (msg: string) => void;
-}
-
-export function CollectionsZone({ language, onSyncDispatched, onToast }: CollectionsZoneProps) {
-    const [collections, setCollections] = useState<CollectionView[]>([]);
-    const [error, setError] = useState('');
-    const [busyKind, setBusyKind] = useState<string | null>(null);
-    // Which chat modal is open: 'view' (群列表缓存) or 'pick' (群消息范围勾选).
-    const [modal, setModal] = useState<'view' | 'pick' | null>(null);
-
-    const load = useCallback(async () => {
-        setError('');
-        try {
-            setCollections(await sourceService.collections(SOURCE));
-        } catch (e) {
-            setError((e as Error).message);
-        }
-    }, []);
-
-    useEffect(() => {
-        load();
-    }, [load]);
-
-    const save = async (col: CollectionView, patch: Partial<CollectionView>) => {
-        setError('');
-        const next = { ...col, ...patch };
-        // Optimistic update
-        setCollections(prev => prev.map(c => (c.kind === col.kind ? next : c)));
-        try {
-            const saved = await sourceService.setCollection(SOURCE, {
-                kind: next.kind,
-                enabled: next.enabled,
-                initialLookbackDays: next.initialLookbackDays,
-                incrementalMinutes: next.incrementalMinutes,
-                pageSize: next.pageSize,
-            });
-            // MERGE the persisted config back into the existing view — the PUT
-            // response is only the SourceCollectionConfig (no label / domain /
-            // implemented / perChat), so replacing outright would wipe the view
-            // fields and make the row render as an unlabeled "即将上线" stub.
-            setCollections(prev => prev.map(c => (c.kind === col.kind ? { ...c, ...saved } : c)));
-        } catch (e) {
-            setError((e as Error).message);
-            // Rollback
-            setCollections(prev => prev.map(c => (c.kind === col.kind ? col : c)));
-        }
-    };
-
-    const syncNow = async (kind: string) => {
-        setBusyKind(kind);
-        setError('');
-        try {
-            await sourceService.syncNow(SOURCE, kind);
-            onToast(t('datasource.collection.syncDispatched', language));
-            onSyncDispatched();
-        } catch (e) {
-            setError((e as Error).message);
-        } finally {
-            setBusyKind(null);
-        }
-    };
-
-    const domainLabel = (domain: string) => {
-        const key = `datasource.collection.domain.${domain}`;
-        return t(key, language) !== key ? t(key, language) : domain;
-    };
-
-    const groups = groupByDomain(collections);
-
-    return (
-        <div class="fscard-collections">
-            <div class="fscard-zone-title">{t('datasource.tab.config', language)}</div>
-
-            {error && <div class="fscard-error">{error}</div>}
-
-            {groups.map(({ domain, items }) => (
-                <div key={domain} class="fscard-domain-group">
-                    {groups.length > 1 && <div class="fscard-domain-label">{domainLabel(domain)}</div>}
-                    {items.map(col => (
-                        <div key={col.kind} class="fscard-collection-row">
-                            <div class="fscard-collection-main">
-                                <label class="contacts-channels-toggle contacts-channels-toggle-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked={col.enabled}
-                                        disabled={!col.implemented}
-                                        onChange={(e: Event) =>
-                                            save(col, { enabled: (e.target as HTMLInputElement).checked })
-                                        }
-                                    />
-                                    <span class="fscard-collection-label">{col.label}</span>
-                                </label>
-                                {!col.implemented && (
-                                    <span class="fscard-badge muted">
-                                        {t('datasource.collection.comingSoon', language)}
-                                    </span>
-                                )}
-                            </div>
-
-                            {col.enabled && col.implemented && (
-                                <div class="fscard-collection-controls">
-                                    <div class="fscard-field">
-                                        <label>{t('datasource.collection.lookbackDays', language)}</label>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            max={3650}
-                                            value={col.initialLookbackDays}
-                                            onBlur={(e: Event) =>
-                                                save(col, {
-                                                    initialLookbackDays: Number((e.target as HTMLInputElement).value),
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                    <div class="fscard-field">
-                                        <label>{t('datasource.collection.interval', language)}</label>
-                                        <select
-                                            value={String(col.incrementalMinutes)}
-                                            onChange={(e: Event) =>
-                                                save(col, {
-                                                    incrementalMinutes: Number((e.target as HTMLSelectElement).value),
-                                                })
-                                            }
-                                        >
-                                            {INTERVAL_OPTS.map(m => (
-                                                <option key={m} value={String(m)}>
-                                                    {t(`contacts.channels.interval.${m}`, language)}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div class="fscard-field">
-                                        <label>{t('datasource.collection.pageSize', language)}</label>
-                                        <input
-                                            type="number"
-                                            min={10}
-                                            max={1000}
-                                            value={col.pageSize}
-                                            onBlur={(e: Event) =>
-                                                save(col, {
-                                                    pageSize: Number((e.target as HTMLInputElement).value),
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                    {/* 群列表 browses the cache; perChat kinds (群消息) pick
-                                        their scope from the same cache — one lark-cli pull
-                                        serves both, no duplicate fetching. */}
-                                    {col.kind === 'feishu_chat' && (
-                                        <button class="fscard-sync-btn" onClick={() => setModal('view')}>
-                                            {t('datasource.chats.viewBtn', language)}
-                                        </button>
-                                    )}
-                                    {col.perChat && (
-                                        <button class="fscard-sync-btn" onClick={() => setModal('pick')}>
-                                            {t('datasource.chats.pickBtn', language)}
-                                        </button>
-                                    )}
-                                    <button
-                                        class="fscard-sync-btn"
-                                        disabled={busyKind === col.kind}
-                                        onClick={() => syncNow(col.kind)}
-                                    >
-                                        {busyKind === col.kind
-                                            ? t('datasource.collection.syncing', language)
-                                            : t('datasource.collection.syncNow', language)}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            ))}
-
-            {modal && <ChatScopeModal mode={modal} onClose={() => setModal(null)} />}
-        </div>
-    );
-}
-
-// ── Sub-zone: sync history ────────────────────────────────────────────────────
-
-interface HistoryZoneProps {
-    language: Lang;
-    refreshTick: number;
-}
-
-// Poll cadence while a dispatched work-order is still pending/running, and a
-// per-dispatch budget so a stuck executor can't keep the poll alive forever.
-const HISTORY_POLL_MS = 3000;
-const HISTORY_POLL_MAX = 20;
-
-export function HistoryZone({ language, refreshTick }: HistoryZoneProps) {
-    // null = still loading — renders nothing instead of flashing the empty hint.
-    const [runs, setRuns] = useState<SyncRun[] | null>(null);
-    const [error, setError] = useState('');
-    const pollsLeft = useRef(HISTORY_POLL_MAX);
-
-    const load = useCallback(async () => {
-        setError('');
-        try {
-            setRuns(await sourceService.syncHistory(SOURCE));
-        } catch (e) {
-            setError((e as Error).message);
-        }
-    }, []);
-
-    useEffect(() => {
-        pollsLeft.current = HISTORY_POLL_MAX; // each dispatch gets a fresh budget
-        load();
-    }, [load, refreshTick]);
-
-    // While any run is non-terminal, re-fetch so 立即同步 shows its outcome
-    // (pending → running → done/failed) without a manual refresh.
-    useEffect(() => {
-        if (!runs?.some(r => r.status === 'pending' || r.status === 'running')) return;
-        if (pollsLeft.current <= 0) return;
-        const id = window.setTimeout(() => {
-            pollsLeft.current -= 1;
-            load();
-        }, HISTORY_POLL_MS);
-        return () => window.clearTimeout(id);
-    }, [runs, load]);
-
-    const statusLabel = (status: string) => {
-        const norm = status === 'completed' ? 'done' : status;
-        const key = `datasource.collection.status.${norm}`;
-        const val = t(key, language);
-        return val !== key ? val : status;
-    };
-
-    return (
-        <div class="fscard-history">
-            <div class="fscard-zone-title">{t('datasource.collection.historyTitle', language)}</div>
-
-            {error && <div class="fscard-error">{error}</div>}
-
-            {runs !== null && runs.length === 0 && !error && (
-                <div class="contacts-empty">{t('datasource.collection.historyEmpty', language)}</div>
-            )}
-
-            {(runs ?? []).slice(0, 20).map(run => {
-                const stats = parseSyncResult(run.result);
-                const cls = syncStatusClass(run.status);
-                return (
-                    <div key={run.taskId} class="fscard-history-run">
-                        <span class="fscard-history-kind">{run.kind}</span>
-                        <span class={`fscard-history-status ${cls}`}>{statusLabel(run.status)}</span>
-                        {stats.changed !== undefined && (
-                            <span class="fscard-history-stats">
-                                {t('datasource.collection.changed', language, { n: stats.changed })}
-                                {stats.collections !== undefined && (
-                                    <> · {t('datasource.collection.collections', language, { n: stats.collections })}</>
-                                )}
-                            </span>
-                        )}
-                        <span class="fscard-history-time">
-                            {formatAbsTime(run.completedAt || run.createdAt, language)}
-                        </span>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-// The three zones above (CliZone / CollectionsZone / HistoryZone) are composed by
-// FeishuSourcePanel under the source's top-nav tabs — this file exports the zones,
-// not a combined card.

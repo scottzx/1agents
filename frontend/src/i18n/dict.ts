@@ -448,6 +448,19 @@ export const zhCN: Record<string, string> = {
     'datasource.collection.status.done': '完成',
     'datasource.collection.status.failed': '失败',
 
+    // ── 配置 = 定时任务:两个子页面(定时任务 / 执行情况)+ 触发状态 ──
+    'datasource.config.sub.schedule': '定时任务',
+    'datasource.config.sub.runs': '任务执行情况',
+    'datasource.schedule.armed': '已排程',
+    'datasource.schedule.notArmed': '未排程',
+    'datasource.schedule.nextRun': '下次触发',
+    'datasource.schedule.lastRun': '上次运行',
+    'datasource.schedule.empty': '尚无采集项,启用采集后将自动排程定时同步。',
+    'datasource.runs.col.kind': '采集项',
+    'datasource.runs.col.status': '状态',
+    'datasource.runs.col.result': '结果',
+    'datasource.runs.col.time': '时间',
+
     'sidebar.sessionStatus.idle': '空闲',
     'sidebar.sessionStatus.busy': '繁忙中...',
     'sidebar.sessionStatus.waiting': '等待授权...',
@@ -1950,6 +1963,19 @@ export const enUS: Record<string, string> = {
     'datasource.collection.status.running': 'Running',
     'datasource.collection.status.done': 'Done',
     'datasource.collection.status.failed': 'Failed',
+
+    // ── Config = scheduled tasks: two subpages (schedule / run history) + trigger state ──
+    'datasource.config.sub.schedule': 'Scheduled Tasks',
+    'datasource.config.sub.runs': 'Run History',
+    'datasource.schedule.armed': 'Scheduled',
+    'datasource.schedule.notArmed': 'Not scheduled',
+    'datasource.schedule.nextRun': 'Next run',
+    'datasource.schedule.lastRun': 'Last run',
+    'datasource.schedule.empty': 'No collections yet — enabling one arms its periodic sync automatically.',
+    'datasource.runs.col.kind': 'Collection',
+    'datasource.runs.col.status': 'Status',
+    'datasource.runs.col.result': 'Result',
+    'datasource.runs.col.time': 'Time',
 
     'sidebar.sessionStatus.idle': 'Idle',
     'sidebar.sessionStatus.busy': 'Busy...',

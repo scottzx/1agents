@@ -102,6 +102,58 @@ func (d *taskDispatcher) History(source string) ([]SyncRun, error) {
 	return runs, nil
 }
 
+// Schedules returns the live periodic-sync trigger state for a source, one row
+// per kind that has any work-order task. The armed interval task (recurrence +
+// non-terminal) supplies the current status + next trigger; the newest terminal
+// task supplies the last-run summary.
+func (d *taskDispatcher) Schedules(source string) ([]ScheduleRow, error) {
+	var rows []ScheduleRow
+	for _, kind := range knownKinds(source) {
+		tasks, err := d.store.ListTasksByBusinessRef(businessRef(source, kind))
+		if err != nil {
+			return nil, err
+		}
+		if len(tasks) == 0 {
+			continue
+		}
+		row := ScheduleRow{Kind: kind}
+		var last *meta.Task
+		for i := range tasks {
+			t := &tasks[i]
+			if t.Recurrence != nil && !isTerminal(t.Status) {
+				row.Recurring = true
+				row.Status = string(t.Status)
+				row.NextRunAt = scheduleTrigger(t)
+			}
+			if isTerminal(t.Status) && (last == nil || t.CreatedAt.After(last.CreatedAt)) {
+				last = t
+			}
+		}
+		if last != nil {
+			row.LastStatus = string(last.Status)
+			if last.CompletedAt != nil {
+				row.LastRunAt = last.CompletedAt.Format(time.RFC3339)
+			} else {
+				row.LastRunAt = last.CreatedAt.Format(time.RFC3339)
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// scheduleTrigger is a recurring task's next fire time: ScheduledAt, else the
+// PlannedStart automation trigger (per meta.Task doc), else empty.
+func scheduleTrigger(t *meta.Task) string {
+	if t.ScheduledAt != nil {
+		return t.ScheduledAt.Format(time.RFC3339)
+	}
+	if t.PlannedStart != nil {
+		return t.PlannedStart.Format(time.RFC3339)
+	}
+	return ""
+}
+
 func isTerminal(s meta.TaskStatus) bool {
 	return s == meta.TaskStatusCompleted || s == meta.TaskStatusFailed || s == meta.TaskStatusCancelled
 }

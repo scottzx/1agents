@@ -716,6 +716,10 @@ body {
     margin-bottom: 20px;
 
     .section-header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--bg-card);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -20336,6 +20340,77 @@ body {
   flex-direction: column;
   gap: 20px;
   padding: 4px 2px 24px;
+}
+
+// 配置 tab: 定时任务 / 执行情况 两个子页面.
+.source-config-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+// Segmented sub-nav (pill geometry, accent = active) — the reusable 配置 switch.
+.datasource-subnav {
+  display: flex;
+  gap: 6px;
+}
+
+.datasource-subnav-tab {
+  padding: 5px 14px;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover { border-color: var(--text-main); }
+
+  &.is-active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--on-accent);
+  }
+}
+
+// 定时任务触发状态 — badge + next/last run, inline on a collection row.
+.datasource-schedule-status {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.datasource-schedule-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+// 任务执行情况 — 多维表格 of single sync runs.
+.datasource-runs-grid {
+  overflow-x: auto;
+}
+
+.datasource-runs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  td { color: var(--text-main); }
 }
 
 // 数据源首页 (source landing): a grid of source cards.

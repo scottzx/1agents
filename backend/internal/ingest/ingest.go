@@ -52,6 +52,9 @@ type Dispatcher interface {
 	// History returns prior sync runs for a source (newest first), read from the
 	// work-order tasks by business_ref prefix.
 	History(source string) ([]SyncRun, error)
+	// Schedules returns the live periodic-sync trigger state for a source, one row
+	// per kind that has any work-order task, read from the tasks table.
+	Schedules(source string) ([]ScheduleRow, error)
 }
 
 // SyncRun is one work-order sync task surfaced to the history view.
@@ -63,6 +66,20 @@ type SyncRun struct {
 	Result      string `json:"result,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 	CompletedAt string `json:"completedAt,omitempty"`
+}
+
+// ScheduleRow is one source kind's live periodic-sync trigger state, surfaced to
+// the 定时任务 view: whether an interval task is armed, its current status and
+// next trigger, and the most recent completed run. It is the "task system" slice
+// of the config UI — the collection's enabled/cadence policy comes from
+// /collections; this adds the runtime trigger status on top.
+type ScheduleRow struct {
+	Kind       string `json:"kind"`
+	Recurring  bool   `json:"recurring"`            // a live interval task exists
+	Status     string `json:"status,omitempty"`     // that task's status ("" = not armed)
+	NextRunAt  string `json:"nextRunAt,omitempty"`  // its scheduled trigger time
+	LastRunAt  string `json:"lastRunAt,omitempty"`  // most recent terminal run
+	LastStatus string `json:"lastStatus,omitempty"` // that run's terminal status
 }
 
 // NewHandlerDefault wires a Handler over the default meta.db + sync.db bronze

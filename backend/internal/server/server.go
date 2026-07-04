@@ -313,10 +313,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections) // GET, PUT
 				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
 				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
+				mux.HandleFunc("/api/sources/feishu/schedules", ingestHandler.HandleSchedules)     // GET — 定时任务触发状态
 				mux.HandleFunc("/api/sources/feishu/chats", ingestHandler.HandleChats)             // GET — cached 群列表 (bronze) + tracked join
 				mux.HandleFunc("/api/sources/microsoft/collections", ingestHandler.HandleCollections)
 				mux.HandleFunc("/api/sources/microsoft/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/microsoft/history", ingestHandler.HandleHistory)
+				mux.HandleFunc("/api/sources/microsoft/schedules", ingestHandler.HandleSchedules)
 				// Microsoft Graph OAuth (PKCE) connect flow — region-aware (大陆/21Vianet).
 				mux.HandleFunc("/api/sources/oauth/microsoft/config", ingestHandler.HandleMSOAuthConfig)         // GET ?region= / POST {region,clientId,tenant} — in-UI app registration
 				mux.HandleFunc("/api/sources/oauth/microsoft/start", ingestHandler.HandleMSOAuthStart)           // POST {accountId} → {authUrl}
@@ -326,9 +328,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/google/collections", ingestHandler.HandleCollections)
 				mux.HandleFunc("/api/sources/google/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/google/history", ingestHandler.HandleHistory)
+				mux.HandleFunc("/api/sources/google/schedules", ingestHandler.HandleSchedules)
 				mux.HandleFunc("/api/sources/agentmail/collections", ingestHandler.HandleCollections)
 				mux.HandleFunc("/api/sources/agentmail/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/agentmail/history", ingestHandler.HandleHistory)
+				mux.HandleFunc("/api/sources/agentmail/schedules", ingestHandler.HandleSchedules)
 				if err := ingestHandler.SeedLegacyAccounts(); err != nil {
 					log.Printf("[server] ingest seed legacy accounts: %v", err)
 				}
