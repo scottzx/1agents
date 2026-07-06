@@ -30,6 +30,7 @@ export function ChatScopeModal({ mode, onClose }: { mode: 'view' | 'pick'; onClo
     const [error, setError] = useState('');
     const [refreshing, setRefreshing] = useState(false);
     const [busyChat, setBusyChat] = useState<string | null>(null);
+    const [syncedChat, setSyncedChat] = useState<string | null>(null); // brief 已更新 flash
     // pick mode only: null = loading, false = gate, true = granted.
     const [consented, setConsented] = useState<boolean | null>(mode === 'pick' ? null : true);
 
@@ -86,6 +87,23 @@ export function ChatScopeModal({ mode, onClose }: { mode: 'view' | 'pick'; onClo
                 });
             }
             setChats(prev => prev.map(c => (c.chatId === chat.chatId ? { ...c, tracked: !c.tracked } : c)));
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusyChat(null);
+        }
+    };
+
+    // 更新成员 = manual per-group roster refresh (feishu_chat_member). The roster is
+    // captured once on first sync, not on the recurring schedule, so this is how a
+    // specific group's members get updated on demand.
+    const syncMembers = async (chat: CachedChat) => {
+        setBusyChat(chat.chatId);
+        setError('');
+        try {
+            await sourceService.syncChatMembers(chat.chatId);
+            setSyncedChat(chat.chatId);
+            window.setTimeout(() => setSyncedChat(prev => (prev === chat.chatId ? null : prev)), 2500);
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -179,6 +197,19 @@ export function ChatScopeModal({ mode, onClose }: { mode: 'view' | 'pick'; onClo
                                 )}
                                 {mode === 'view' && chat.tracked && (
                                     <span class="fscard-badge ok">{t('datasource.chats.inScope', language)}</span>
+                                )}
+                                {mode === 'view' && chat.tracked && (
+                                    <button
+                                        class="contacts-btn contacts-btn-sm ds-chat-member-btn"
+                                        disabled={busyChat === chat.chatId}
+                                        onClick={() => syncMembers(chat)}
+                                    >
+                                        {busyChat === chat.chatId
+                                            ? t('datasource.chats.memberSyncing', language)
+                                            : syncedChat === chat.chatId
+                                              ? t('datasource.chats.memberSynced', language)
+                                              : t('datasource.chats.memberSync', language)}
+                                    </button>
                                 )}
                             </div>
                         ))}

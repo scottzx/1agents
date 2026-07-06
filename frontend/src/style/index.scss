@@ -20052,6 +20052,11 @@ body {
   object-fit: cover;
 }
 
+// 更新成员 — manual per-group roster refresh; sits at the row's right edge.
+.ds-chat-member-btn {
+  flex-shrink: 0;
+}
+
 .ds-chat-avatar-fallback {
   display: flex;
   align-items: center;

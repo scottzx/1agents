@@ -292,6 +292,19 @@ export const sourceService = {
         return (await res.json()) as CachedChatsResponse;
     },
 
+    /** POST /api/sources/feishu/chats/members — manual per-group 群成员 roster
+     * refresh. The roster is captured once on first sync and not on the recurring
+     * schedule; this force-repulls one chat's members and re-governs 飞书联系人. */
+    async syncChatMembers(chatId: string): Promise<{ chatId: string; changed: number }> {
+        const res = await apiFetch('/sources/feishu/chats/members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { chatId: string; changed: number };
+    },
+
     // ---- 数据归一 (silver): cross-source conformed domains (data.db) ----
 
     /** GET /api/data/summary — per-(domain,source) silver rollup for the overview. */
