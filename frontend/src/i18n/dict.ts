@@ -325,12 +325,19 @@ export const zhCN: Record<string, string> = {
     'datasource.kind.feishu_attendance_record': '考勤记录',
     'datasource.kind.contact': '联系人',
     'datasource.kind.imessage': 'iMessage',
+    'datasource.kind.ms_mail': '邮件',
+    'datasource.kind.ms_event': '日历事件',
+    'datasource.kind.ms_todo': '待办',
+    'datasource.kind.agentmail_mail': '邮件',
     // Source home cards
     'datasource.home.feishuDesc': '群列表 / 群消息 / 日历 · 走 lark-cli 采集',
     'datasource.home.appleDesc': '联系人 / iMessage · 本地读取',
     'datasource.home.addDesc': '接入更多数据源',
     'datasource.home.manage': '管理',
-    // 已治理数据 (silver) — 单表治理:一个表一个方案,跟随本源定时同步增量修正
+    // 已治理数据 (silver) — 一事一议、一表一议:每张治理表是一个自定义方案,跟随本源
+    // 定时同步增量修正。飞书联系人是「群用户列表 + 群消息分析出的用户(+ 日后已添加联系人)」
+    // 合并出的一张表,故单独命名,而非机械继承某个 bronze kind。
+    'datasource.silver.feishuContacts': '飞书联系人',
     'datasource.silver.zoneEmpty': '尚无治理数据 —— 该源同步后会自动清洗归一。',
     'datasource.silver.rerun': '重新治理',
     'datasource.silver.rerunning': '治理中…',
@@ -1854,12 +1861,20 @@ export const enUS: Record<string, string> = {
     'datasource.kind.feishu_attendance_record': 'Attendance',
     'datasource.kind.contact': 'Contacts',
     'datasource.kind.imessage': 'iMessage',
+    'datasource.kind.ms_mail': 'Mail',
+    'datasource.kind.ms_event': 'Calendar',
+    'datasource.kind.ms_todo': 'Todos',
+    'datasource.kind.agentmail_mail': 'Mail',
     // Source home cards
     'datasource.home.feishuDesc': 'Group list / messages / calendars · via lark-cli',
     'datasource.home.appleDesc': 'Contacts / iMessage · read locally',
     'datasource.home.addDesc': 'Connect more data sources',
     'datasource.home.manage': 'Manage',
-    // Governed data (silver) — single-table governance, re-run incrementally after this source's scheduled sync
+    // Governed data (silver) — bespoke per table (一表一议): each governed table is
+    // its own scheme, re-run incrementally after this source's scheduled sync. Feishu
+    // contacts is a MERGE (group roster + users mined from messages + future added
+    // contacts), so it's named in its own right, not inherited from one bronze kind.
+    'datasource.silver.feishuContacts': 'Feishu contacts',
     'datasource.silver.zoneEmpty': 'No governed data yet — it is cleaned automatically after the source syncs.',
     'datasource.silver.rerun': 'Re-run governance',
     'datasource.silver.rerunning': 'Governing…',
