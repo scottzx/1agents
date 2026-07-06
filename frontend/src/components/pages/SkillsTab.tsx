@@ -7,8 +7,11 @@ import { t } from '../i18n';
 import * as fs from '../../stores/fsStore';
 import { fsService } from '../../services/fsService';
 import { FilePreviewPane } from '../shared/WorkspacePanes';
-import { skillService, type WorkspaceSkillStatus } from '@1agents/core/services/skillService';
+import { skillService, type WorkspaceSkillStatus, type AvailableSkill } from '@1agents/core/services/skillService';
 import * as modal from '../../stores/modalStore';
+import * as taskNav from '../../stores/taskNavStore';
+import * as wsStore from '../../stores/workspaceStore';
+import * as tabs from '../../stores/tabsStore';
 
 /**
  * 技能 tab of the 助理 详情. A skill is a *folder* under
@@ -24,6 +27,39 @@ const BADGE: Record<WorkspaceSkillStatus['state'], { cls: string; key: string }>
     'update-available': { cls: 'is-update', key: 'assistant.detail.updateAvailable' },
 };
 
+/** Classification tag chips (primary / secondary), shared by card + detail. */
+function TagBadges({
+    primaryTag,
+    secondaryTag,
+    mt,
+}: {
+    primaryTag?: string | null;
+    secondaryTag?: string | null;
+    mt: number;
+}) {
+    if (!primaryTag && !secondaryTag) return null;
+    return (
+        <div class="skill-tags" style={`display:flex; gap:6px; margin-top:${mt}px; flex-wrap:wrap;`}>
+            {primaryTag && (
+                <span
+                    class="tag-badge"
+                    style="background:rgba(0,200,255,0.15); color:#00c8ff; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
+                >
+                    {primaryTag}
+                </span>
+            )}
+            {secondaryTag && (
+                <span
+                    class="tag-badge"
+                    style="background:rgba(255,200,0,0.15); color:#ffc800; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
+                >
+                    {secondaryTag}
+                </span>
+            )}
+        </div>
+    );
+}
+
 export function SkillsTab({ workspaceId, app, language }: { workspaceId: string; app: App; language: Lang }) {
     const [skills, setSkills] = useState<WorkspaceSkillStatus[]>([]);
     const [loading, setLoading] = useState(true);
@@ -32,6 +68,12 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
     const [pushing, setPushing] = useState(false);
     const [pulling, setPulling] = useState(false);
     const [flash, setFlash] = useState('');
+    // Add-from-母体 picker + project-remove confirm (local modals).
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [available, setAvailable] = useState<AvailableSkill[]>([]);
+    const [pickerBusy, setPickerBusy] = useState(false);
+    const [confirmRemove, setConfirmRemove] = useState(false);
+    const [removing, setRemoving] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -47,6 +89,75 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
     useEffect(() => {
         void load();
     }, [load]);
+
+    const wsName = wsStore.workspaces.value.find(w => w.id === workspaceId)?.name ?? '';
+
+    // Drive back-navigation through the global header breadcrumb (助理 › <name> ›
+    // <skill>) instead of an in-pane back button: clicking <name> returns to the
+    // skill list. Restores the base assistant trail on tab switch; leaves it to
+    // AssistantsPage when navigating out of the assistant entirely.
+    useEffect(() => {
+        const assistantsCrumb = {
+            label: t('sidebar.assistants', language),
+            onClick: () => {
+                tabs.assistantDetailId.value = null;
+            },
+        };
+        taskNav.headerCrumbs.value = selected
+            ? [
+                  assistantsCrumb,
+                  { label: wsName, onClick: () => setSelected(null) },
+                  { label: selected.name || selected.dir },
+              ]
+            : [assistantsCrumb, { label: wsName }];
+        return () => {
+            if (tabs.assistantDetailId.value === workspaceId) {
+                taskNav.headerCrumbs.value = [assistantsCrumb, { label: wsName }];
+            }
+        };
+    }, [selected, wsName, language, workspaceId]);
+
+    const openPicker = async () => {
+        setPickerOpen(true);
+        setPickerBusy(true);
+        try {
+            setAvailable(await skillService.listAvailableSkills(workspaceId));
+        } catch {
+            setAvailable([]);
+        } finally {
+            setPickerBusy(false);
+        }
+    };
+
+    const onAdd = async (skillRef: string) => {
+        setPickerBusy(true);
+        try {
+            await skillService.addSkill(workspaceId, skillRef);
+            setPickerOpen(false);
+            setFlash(t('assistant.detail.added', language));
+            await load();
+        } catch {
+            setFlash(t('assistant.detail.addFailed', language));
+        } finally {
+            setPickerBusy(false);
+        }
+    };
+
+    const onRemove = async () => {
+        if (!selected) return;
+        setRemoving(true);
+        try {
+            await skillService.removeSkill(workspaceId, selected.skillRef);
+            setConfirmRemove(false);
+            setSelected(null);
+            setFlash(t('assistant.detail.removed', language));
+            await load();
+        } catch {
+            setFlash(t('assistant.detail.removeFailed', language));
+        } finally {
+            setRemoving(false);
+        }
+    };
 
     const skillDir = selected ? `.claude/skills/${selected.dir}` : '';
 
@@ -106,77 +217,104 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         const canPull = selected.state === 'update-available';
         return (
             <div class="skill-detail">
+                {/* Row 1: title + status on the left, quick actions on the right.
+                    Back-navigation lives in the header breadcrumb (no back button). */}
                 <div class="skill-detail-head">
-                    <button class="assistant-btn assistant-btn-ghost" onClick={() => setSelected(null)}>
-                        ← {t('assistant.detail.skillsTitle', language)}
-                    </button>
-                    <div class="skill-detail-meta">
-                        <div class="skill-detail-title">
-                            <span class="skill-detail-name">{selected.name || selected.dir}</span>
-                            <span class={`assistant-skill-badge ${BADGE[selected.state].cls}`}>
-                                {t(BADGE[selected.state].key, language)}
-                            </span>
-                            {selected.version > 0 && <span class="assistant-skill-version">v{selected.version}</span>}
-                        </div>
-                        {selected.primaryTag || selected.secondaryTag ? (
-                            <div
-                                class="skill-detail-tags"
-                                style="display:flex; gap:6px; margin-top:4px; margin-bottom:8px; flex-wrap:wrap;"
-                            >
-                                {selected.primaryTag && (
-                                    <span
-                                        class="tag-badge"
-                                        style="background:rgba(0,200,255,0.15); color:#00c8ff; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
-                                    >
-                                        {selected.primaryTag}
-                                    </span>
-                                )}
-                                {selected.secondaryTag && (
-                                    <span
-                                        class="tag-badge"
-                                        style="background:rgba(255,200,0,0.15); color:#ffc800; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
-                                    >
-                                        {selected.secondaryTag}
-                                    </span>
+                    <div class="skill-detail-row1">
+                        <div class="skill-detail-titlewrap">
+                            <div class="skill-detail-title">
+                                <span class="skill-detail-name">{selected.name || selected.dir}</span>
+                                <span class={`assistant-skill-badge ${BADGE[selected.state].cls}`}>
+                                    {t(BADGE[selected.state].key, language)}
+                                </span>
+                                {selected.version > 0 && (
+                                    <span class="assistant-skill-version">v{selected.version}</span>
                                 )}
                             </div>
-                        ) : null}
-                        {selected.description && <p class="skill-detail-desc">{selected.description}</p>}
-                    </div>
-                    <div class="assistant-section-actions">
-                        {flash && <span class="assistant-flash">{flash}</span>}
-                        {canPull && (
+                            <TagBadges primaryTag={selected.primaryTag} secondaryTag={selected.secondaryTag} mt={4} />
+                        </div>
+                        <div class="skill-detail-actions">
+                            {flash && <span class="assistant-flash">{flash}</span>}
+                            {canPull && (
+                                <button
+                                    class="assistant-btn assistant-btn-ghost"
+                                    disabled={pulling}
+                                    onClick={() => void onPull()}
+                                >
+                                    {pulling
+                                        ? t('assistant.pull.pulling', language)
+                                        : t('assistant.pull.pull', language)}
+                                </button>
+                            )}
+                            {canPush && (
+                                <button
+                                    class="assistant-btn assistant-btn-ghost"
+                                    disabled={pushing}
+                                    onClick={() => void onPush()}
+                                >
+                                    {pushing
+                                        ? t('assistant.detail.pushing', language)
+                                        : selected.state === 'local'
+                                          ? t('assistant.detail.pushCreate', language)
+                                          : t('assistant.detail.push', language)}
+                                </button>
+                            )}
                             <button
-                                class="assistant-btn assistant-btn-ghost"
-                                disabled={pulling}
-                                onClick={() => void onPull()}
+                                class="assistant-btn assistant-btn-danger"
+                                disabled={removing}
+                                onClick={() => setConfirmRemove(true)}
                             >
-                                {pulling ? t('assistant.pull.pulling', language) : t('assistant.pull.pull', language)}
+                                {t('assistant.detail.remove', language)}
                             </button>
-                        )}
-                        {canPush && (
-                            <button
-                                class="assistant-btn assistant-btn-ghost"
-                                disabled={pushing}
-                                onClick={() => void onPush()}
-                            >
-                                {pushing
-                                    ? t('assistant.detail.pushing', language)
-                                    : selected.state === 'local'
-                                      ? t('assistant.detail.pushCreate', language)
-                                      : t('assistant.detail.push', language)}
-                            </button>
-                        )}
+                        </div>
                     </div>
+                    {selected.description && <p class="skill-detail-desc">{selected.description}</p>}
                 </div>
                 <div class="file-split">
                     <div class="file-split-list">
                         <SkillFileList rootDir={skillDir} />
                     </div>
                     <div class="file-split-preview">
-                        <FilePreviewPane app={app} language={language} />
+                        <FilePreviewPane app={app} language={language} hideBack />
                     </div>
                 </div>
+                {confirmRemove && (
+                    <div class="ws-modal-overlay" onClick={() => !removing && setConfirmRemove(false)}>
+                        <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                            <div class="ws-modal-header">
+                                <span>{t('assistant.detail.removeConfirmTitle', language)}</span>
+                                <button class="ws-modal-close" onClick={() => setConfirmRemove(false)}>
+                                    ✕
+                                </button>
+                            </div>
+                            <div class="ws-modal-body">
+                                <p>
+                                    {t('assistant.detail.removeConfirmBody', language, {
+                                        name: selected.name || selected.dir,
+                                    })}
+                                </p>
+                            </div>
+                            <div class="ws-modal-footer">
+                                <button
+                                    class="ws-modal-cancel"
+                                    onClick={() => setConfirmRemove(false)}
+                                    disabled={removing}
+                                >
+                                    {t('assistant.detail.cancel', language)}
+                                </button>
+                                <button
+                                    class="ws-modal-confirm ws-modal-danger"
+                                    onClick={() => void onRemove()}
+                                    disabled={removing}
+                                >
+                                    {removing
+                                        ? t('assistant.detail.removing', language)
+                                        : t('assistant.detail.confirmRemove', language)}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -185,17 +323,20 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
     return (
         <div class="skills-tab">
             <p class="assistant-hint">{t('assistant.detail.skillsHint', language)}</p>
+            {flash && <span class="assistant-flash">{flash}</span>}
             {loading && <div class="assistant-empty-row">…</div>}
             {!loading && error && (
                 <div class="assistant-empty-row">
                     {t('assistant.detail.skillsLoadFailed', language)}: {error}
                 </div>
             )}
-            {!loading && !error && skills.length === 0 && (
-                <div class="assistant-empty-row">{t('assistant.detail.skillsEmpty', language)}</div>
-            )}
-            {!loading && !error && skills.length > 0 && (
+            {!loading && !error && (
                 <div class="skills-grid">
+                    {/* Add-from-母体 card — always first. */}
+                    <button class="skill-card skill-add-card" onClick={() => void openPicker()}>
+                        <span class="skill-add-plus">＋</span>
+                        <span class="skill-add-label">{t('assistant.detail.addSkill', language)}</span>
+                    </button>
                     {skills.map(s => (
                         <button key={s.skillRef} class="skill-card" onClick={() => setSelected(s)}>
                             <div class="skill-card-head">
@@ -206,31 +347,44 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
                                 {s.version > 0 && <span class="assistant-skill-version">v{s.version}</span>}
                             </div>
                             {s.description && <p class="skill-card-desc">{s.description}</p>}
-                            {s.primaryTag || s.secondaryTag ? (
-                                <div
-                                    class="skill-card-tags"
-                                    style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;"
-                                >
-                                    {s.primaryTag && (
-                                        <span
-                                            class="tag-badge"
-                                            style="background:rgba(0,200,255,0.15); color:#00c8ff; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
-                                        >
-                                            {s.primaryTag}
-                                        </span>
-                                    )}
-                                    {s.secondaryTag && (
-                                        <span
-                                            class="tag-badge"
-                                            style="background:rgba(255,200,0,0.15); color:#ffc800; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
-                                        >
-                                            {s.secondaryTag}
-                                        </span>
-                                    )}
-                                </div>
-                            ) : null}
+                            <TagBadges primaryTag={s.primaryTag} secondaryTag={s.secondaryTag} mt={8} />
                         </button>
                     ))}
+                </div>
+            )}
+            {pickerOpen && (
+                <div class="ws-modal-overlay" onClick={() => !pickerBusy && setPickerOpen(false)}>
+                    <div class="ws-modal skill-picker-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                        <div class="ws-modal-header">
+                            <span>{t('assistant.detail.addSkillTitle', language)}</span>
+                            <button class="ws-modal-close" onClick={() => setPickerOpen(false)}>
+                                ✕
+                            </button>
+                        </div>
+                        <div class="ws-modal-body">
+                            {pickerBusy && available.length === 0 && <div class="assistant-empty-row">…</div>}
+                            {!pickerBusy && available.length === 0 && (
+                                <div class="assistant-empty-row">{t('assistant.detail.addSkillEmpty', language)}</div>
+                            )}
+                            <div class="skill-picker-list">
+                                {available.map(a => (
+                                    <button
+                                        key={a.skillRef}
+                                        class="skill-picker-row"
+                                        disabled={pickerBusy}
+                                        onClick={() => void onAdd(a.skillRef)}
+                                    >
+                                        <div class="skill-picker-row-main">
+                                            <span class="skill-picker-name">{a.name || a.dir}</span>
+                                            {a.version > 0 && <span class="assistant-skill-version">v{a.version}</span>}
+                                            <TagBadges primaryTag={a.primaryTag} secondaryTag={a.secondaryTag} mt={0} />
+                                        </div>
+                                        {a.description && <p class="skill-picker-desc">{a.description}</p>}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

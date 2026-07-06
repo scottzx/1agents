@@ -233,6 +233,68 @@ func TestPushSkillToSharedError(t *testing.T) {
 	}
 }
 
+func TestRemoveWorkspaceSkill(t *testing.T) {
+	ws := t.TempDir()
+	pkg := filepath.Join(ws, ".claude", "skills", "alpha")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "SKILL.md"), []byte("# alpha"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeWorkspaceSkill(ws, "shared:alpha"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if _, err := os.Stat(pkg); !os.IsNotExist(err) {
+		t.Errorf("skill dir should be gone, stat err = %v", err)
+	}
+	// Missing package and traversal refs are rejected (no destructive fallout).
+	if err := removeWorkspaceSkill(ws, "missing"); err == nil {
+		t.Error("expected error for missing skill")
+	}
+	if err := removeWorkspaceSkill(ws, ".."); err == nil {
+		t.Error("expected error for traversal ref")
+	}
+}
+
+func TestAvailableSharedSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ONEAGENTS_HOME", home)
+	for _, n := range []string{"alpha", "beta", "gamma"} {
+		seedSharedSkill(t, home, n, map[string]string{"SKILL.md": "# " + n})
+	}
+	// The workspace already has beta → it must be excluded from "available".
+	ws := t.TempDir()
+	betaWs := filepath.Join(ws, ".claude", "skills", "beta")
+	if err := os.MkdirAll(betaWs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(betaWs, "SKILL.md"), []byte("# beta"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"inStore":true,"differs":false,"exists":true,"name":"N","description":"d","storeVersion":1}`))
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	list, err := availableSharedSkills(ws, addr)
+	if err != nil {
+		t.Fatalf("availableSharedSkills: %v", err)
+	}
+	dirs := map[string]bool{}
+	for _, s := range list {
+		dirs[s.Dir] = true
+		if s.SkillRef != "shared:"+s.Dir || s.Name != "N" {
+			t.Errorf("unexpected item: %+v", s)
+		}
+	}
+	if len(list) != 2 || !dirs["alpha"] || !dirs["gamma"] || dirs["beta"] {
+		t.Fatalf("expected {alpha,gamma}, got %v", dirs)
+	}
+}
+
 func TestNormalizeSkillRef(t *testing.T) {
 	cases := map[string]string{
 		"foo":           "foo",

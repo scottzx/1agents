@@ -189,4 +189,54 @@ async function resolvePush(params: {
     };
 }
 
-export const skillService = { listSkills, listWorkspaceSkills, pushSkill, pullSkill, previewPush, resolvePush };
+/** A 母体 (shared store) skill the project can add — one not already present
+ * under the workspace's .claude/skills. Drives the project "add skill" picker. */
+export interface AvailableSkill {
+    skillRef: string;
+    dir: string;
+    name: string;
+    description: string;
+    version: number;
+    primaryTag?: string | null;
+    secondaryTag?: string | null;
+}
+
+/** List the 母体 store skills the project can add (those not yet in it). */
+async function listAvailableSkills(workspaceId: string): Promise<AvailableSkill[]> {
+    const res = await apiFetch(`/workspace/available-skills?id=${encodeURIComponent(workspaceId)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = (await res.json()) as { skills?: AvailableSkill[] };
+    return data.skills ?? [];
+}
+
+/** Add (materialize) a 母体 store skill into the project's .claude/skills. */
+async function addSkill(workspaceId: string, skillRef: string): Promise<void> {
+    const res = await apiFetch('/workspace/add-skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, skillRef }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
+/** Remove a skill from the project's .claude/skills only (母体 untouched). */
+async function removeSkill(workspaceId: string, skillRef: string): Promise<void> {
+    const res = await apiFetch('/workspace/remove-skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, skillRef }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
+export const skillService = {
+    listSkills,
+    listWorkspaceSkills,
+    pushSkill,
+    pullSkill,
+    previewPush,
+    resolvePush,
+    listAvailableSkills,
+    addSkill,
+    removeSkill,
+};

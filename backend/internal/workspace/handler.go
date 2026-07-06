@@ -712,6 +712,111 @@ func (h *Handler) PullSkill(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "status": res.Status, "version": res.Version})
 }
 
+// workspacePathByID resolves a workspace id to its filesystem path from config.
+func (h *Handler) workspacePathByID(id string) (string, error) {
+	cfg, err := h.loadConfig()
+	if err != nil {
+		return "", err
+	}
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == id {
+			return ws.Path, nil
+		}
+	}
+	return "", fmt.Errorf("workspace not found")
+}
+
+// AvailableSkills handles GET /api/workspace/available-skills?id=<wsId>: lists
+// the 母体 (shared store) skills the project can add — everything not already
+// under its .claude/skills. Powers the project "add skill" picker.
+func (h *Handler) AvailableSkills(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+	wsPath, err := h.workspacePathByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	list, err := availableSharedSkills(wsPath, h.skillsAddr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"skills": list})
+}
+
+// AddSkill handles POST /api/workspace/add-skill {id, skillRef}: materializes a
+// 母体 store skill into the workspace's .claude/skills (the create-time weak
+// copy, on demand). Idempotent — re-adding an existing skill is a no-op copy.
+func (h *Handler) AddSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		SkillRef string `json:"skillRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.SkillRef == "" {
+		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
+		return
+	}
+	wsPath, err := h.workspacePathByID(body.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	synced, err := syncSkillsToWorkspace(wsPath, []string{body.SkillRef})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(synced) == 0 {
+		http.Error(w, "skill not found in shared store", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "added": synced})
+}
+
+// RemoveSkill handles POST /api/workspace/remove-skill {id, skillRef}: deletes a
+// skill package from the workspace's own .claude/skills. Project-level only —
+// the 母体 store is untouched.
+func (h *Handler) RemoveSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		SkillRef string `json:"skillRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.SkillRef == "" {
+		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
+		return
+	}
+	wsPath, err := h.workspacePathByID(body.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if err := removeWorkspaceSkill(wsPath, body.SkillRef); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // WorkspaceAgents handles GET /api/workspace/agents?id=<wsId>: lists the agents
 // materialized in the workspace's .claude/agents (single <name>.md files), each
 // flagged with whether the local copy has drifted from the 母体 baseline (so the

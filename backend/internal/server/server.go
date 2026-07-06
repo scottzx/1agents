@@ -84,6 +84,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/skills", wsHandler.WorkspaceSkills)           // GET ?id= — synced skills + drift status
 	mux.HandleFunc("/api/workspace/push-skill", wsHandler.PushSkill)             // POST {id, skillRef} — push edited copy back to 母体
 	mux.HandleFunc("/api/workspace/pull-skill", wsHandler.PullSkill)             // POST {id, skillRef} — pull latest from 母体 into workspace copy
+	mux.HandleFunc("/api/workspace/available-skills", wsHandler.AvailableSkills) // GET ?id= — 母体 skills the project can add
+	mux.HandleFunc("/api/workspace/add-skill", wsHandler.AddSkill)               // POST {id, skillRef} — materialize a 母体 skill into the project
+	mux.HandleFunc("/api/workspace/remove-skill", wsHandler.RemoveSkill)         // POST {id, skillRef} — delete a skill from the project only
 	mux.HandleFunc("/api/workspace/agents", wsHandler.WorkspaceAgents)           // GET ?id= — synced agents + drift status
 	mux.HandleFunc("/api/workspace/push-agent", wsHandler.PushAgent)             // POST {id, agentRef} — push edited copy back to 母体
 	mux.HandleFunc("/api/workspace/soul", wsHandler.WorkspaceSoul)               // GET ?id= / POST {id, content} — assistant persona SOUL.md
@@ -127,8 +130,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 			if migErr := db.MigrateLegacy(); migErr != nil {
 				log.Printf("[server] legacy metadata migration: %v", migErr)
 			}
-			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
-			mux.HandleFunc("/api/search", meta.SearchHandler(db))     // GET ?q=xxx — 对话历史 quick search over tasks + sessions
+			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db))       // GET, POST
+			mux.HandleFunc("/api/search", meta.SearchHandler(db))           // GET ?q=xxx — 对话历史 quick search over tasks + sessions
 			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db)) // POST {id}/archive|close|reopen
 
 			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
@@ -286,6 +289,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 			} else {
 				mux.HandleFunc("/api/data/summary", dataHandler.HandleSummary) // GET
 				mux.HandleFunc("/api/data/records", dataHandler.HandleRecords) // GET ?domain=&source=&limit=
+				// 数据融合 (gold) 只读视图: 跨源归并后的联系人/消息/日历.
+				mux.HandleFunc("/api/data/gold/summary", dataHandler.HandleGoldSummary) // GET
+				mux.HandleFunc("/api/data/gold/records", dataHandler.HandleGoldRecords) // GET ?domain=&limit=
 			}
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
@@ -311,10 +317,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/accounts/", ingestHandler.HandleAccountItem) // DELETE /{id}
 				// Per-source collection config / sync / history — the handlers parse the
 				// {source} from the path (feishu / microsoft / google).
-				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections) // GET, PUT
-				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
-				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
-				mux.HandleFunc("/api/sources/feishu/schedules", ingestHandler.HandleSchedules)     // GET — 定时任务触发状态
+				mux.HandleFunc("/api/sources/feishu/collections", ingestHandler.HandleCollections)       // GET, PUT
+				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)                     // POST {kind}
+				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)               // GET
+				mux.HandleFunc("/api/sources/feishu/schedules", ingestHandler.HandleSchedules)           // GET — 定时任务触发状态
 				mux.HandleFunc("/api/sources/feishu/chats", ingestHandler.HandleChats)                   // GET — cached 群列表 (bronze) + tracked join
 				mux.HandleFunc("/api/sources/feishu/chats/members", ingestHandler.HandleChatMembersSync) // POST {chatId} — manual 群成员 roster refresh
 				mux.HandleFunc("/api/sources/microsoft/collections", ingestHandler.HandleCollections)

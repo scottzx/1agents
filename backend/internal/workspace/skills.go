@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -336,6 +337,78 @@ func listWorkspaceSkills(workspacePath, skillsAddr string) ([]WorkspaceSkillStat
 		})
 	}
 	return out, nil
+}
+
+// AvailableSkill is a 母体 (shared store) skill the project can add — one that
+// isn't already materialized under the workspace's .claude/skills.
+type AvailableSkill struct {
+	SkillRef     string `json:"skillRef"`
+	Dir          string `json:"dir"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Version      int    `json:"version"`
+	PrimaryTag   string `json:"primaryTag,omitempty"`
+	SecondaryTag string `json:"secondaryTag,omitempty"`
+}
+
+// availableSharedSkills lists the 母体 store packages the workspace can add:
+// every shared-store skill (has SKILL.md) not already present under
+// <ws>/.claude/skills. Name/description/tags are read via the 1skills store so
+// the picker shows the same card data as the rest of the skills UI.
+func availableSharedSkills(workspacePath, skillsAddr string) ([]AvailableSkill, error) {
+	root := sharedSkillsRoot()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []AvailableSkill{}, nil
+		}
+		return nil, err
+	}
+	have := map[string]bool{}
+	if wsEntries, e := os.ReadDir(filepath.Join(workspacePath, ".claude", "skills")); e == nil {
+		for _, w := range wsEntries {
+			if w.IsDir() {
+				have[w.Name()] = true
+			}
+		}
+	}
+	out := make([]AvailableSkill, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || have[e.Name()] {
+			continue
+		}
+		pkg := filepath.Join(root, e.Name())
+		if _, err := os.Stat(filepath.Join(pkg, "SKILL.md")); err != nil {
+			continue // not a skill package
+		}
+		item := AvailableSkill{SkillRef: "shared:" + e.Name(), Dir: e.Name(), Name: e.Name()}
+		if st, err := skillStatusAgainstShared(skillsAddr, item.SkillRef, pkg); err == nil {
+			if st.Name != "" {
+				item.Name = st.Name
+			}
+			item.Description = st.Description
+			item.Version = st.StoreVersion
+			item.PrimaryTag = st.PrimaryTag
+			item.SecondaryTag = st.SecondaryTag
+		}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// removeWorkspaceSkill deletes a skill package from the workspace's own
+// .claude/skills — a project-level removal only; the 母体 store is untouched.
+func removeWorkspaceSkill(workspacePath, skillRef string) error {
+	dir := normalizeSkillRef(skillRef)
+	if dir == "" || dir == "." || dir == ".." {
+		return fmt.Errorf("invalid skill ref %q", skillRef)
+	}
+	target := filepath.Join(workspacePath, ".claude", "skills", dir)
+	if info, err := os.Stat(target); err != nil || !info.IsDir() {
+		return fmt.Errorf("no skill at %s", target)
+	}
+	return os.RemoveAll(target)
 }
 
 // skillState collapses the store status into the four UI states.
