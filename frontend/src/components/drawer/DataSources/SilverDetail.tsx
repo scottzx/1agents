@@ -1,10 +1,12 @@
 import { h } from 'preact';
 import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 
 import * as ui from '../../../stores/uiStore';
 import { t } from '../../../i18n';
 import { sourceService, type SourceRecordRow } from '@1agents/core/services/sourceService';
 import { DataGrid } from '../TaskList/DataGrid';
+import { RecordModal } from './SourceDetail';
 import {
     buildSourceColumns,
     buildGroupOptions,
@@ -27,6 +29,7 @@ export function SilverDetail({ domain, source, title }: { domain: string; source
     const [rerunning, setRerunning] = useState(false);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
+    const selected = useSignal<SourceRecordRow | null>(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -95,8 +98,11 @@ export function SilverDetail({ domain, source, title }: { domain: string; source
                 defaultCompare={sourceDefaultCompare}
                 groupValue={sourceGroupValue}
                 rowClass={r => `task-row${r.deleted ? ' ds-row-deleted' : ''}`}
+                onOpenRow={r => (selected.value = r)}
                 renderCell={(r, col, helpers) => renderSourceCell(r, col, helpers, language)}
             />
+
+            {selected.value && <RecordModal record={selected.value} onClose={() => (selected.value = null)} />}
         </div>
     );
 }

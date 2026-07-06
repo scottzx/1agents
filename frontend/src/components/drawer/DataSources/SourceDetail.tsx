@@ -105,7 +105,9 @@ export function SourceDetail({
 
 // RecordModal lists every native field of one record, in source order (repeats
 // included), plus the record envelope + raw payload preview — "逐个展示数据".
-function RecordModal({ record, onClose }: { record: SourceRecordRow; onClose: () => void }) {
+// Exported so the governed (silver) detail reuses the same popup — silver rows
+// share the SourceRecordRow envelope.
+export function RecordModal({ record, onClose }: { record: SourceRecordRow; onClose: () => void }) {
     const language = ui.language.value;
 
     useEffect(() => {
