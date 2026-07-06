@@ -1416,16 +1416,30 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// carry their history.
 		mcpServers = h.buildReminderMcpServers(wsID)
 		if acpSessionID == "" {
-			// Assistant persona (人设): if the workspace carries a SOUL.md, inject
-			// it ahead of the reminder hint as the session's system prompt. Empty
-			// SOUL.md (blank persona) leaves just the hint. New sessions only —
-			// resumed ones already have the persona in replayed history.
+			// General chat carries just the reminder-tool hint here; the
+			// assistant persona (SOUL.md) is prepended centrally below so every
+			// session kind (chat / task / role) shares one injection point.
 			systemContext = reminderChatHint
-			if soul, err := workspace.ReadWorkspaceSoul(wsPath); err == nil && strings.TrimSpace(soul) != "" {
-				systemContext = strings.TrimSpace(soul) + "\n\n" + reminderChatHint
-			}
 		}
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task, reminder tools)", sessionId)
+	}
+
+	// Assistant persona (人设): the workspace's SOUL.md is the assistant's
+	// standing system prompt. It sits AHEAD of whatever role/task context the
+	// branches above built (role instructions → task background), so the persona
+	// frames every mode — plain chat, executor/verifier, and PM alike. New
+	// sessions only (acpSessionID == ""); resumed ones already replay it in
+	// history. Empty SOUL.md (blank persona) is a no-op.
+	if acpSessionID == "" {
+		if soul, err := workspace.ReadWorkspaceSoul(wsPath); err == nil {
+			if s := strings.TrimSpace(soul); s != "" {
+				if systemContext == "" {
+					systemContext = s
+				} else {
+					systemContext = s + "\n\n" + systemContext
+				}
+			}
+		}
 	}
 
 	h.acpxClient.Bridge(w, r, wsPath, taskId, sessionId, agentType, systemContext, mcpServers, h.scheduler, h.tasksStore, h.store, acpSessionID, replyID)
