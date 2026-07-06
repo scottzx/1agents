@@ -102,8 +102,6 @@ export const zhCN: Record<string, string> = {
     'header.title.contacts': '联系人',
     'header.title.datasources': '数据源',
     'header.title.inbox': '收件箱',
-    'header.title.personal': '个人任务',
-    'header.title.retro': '复盘归档',
     'header.noWorkspace': '未选择工作空间',
     'header.noSession': '无会话',
     'header.modeToggleTitleScroll': '当前模式：滚轮滑动（点击切换为选择复制）',
@@ -196,6 +194,7 @@ export const zhCN: Record<string, string> = {
     'assistant.detail.modified': '有改动',
     'assistant.detail.synced': '已同步',
     'assistant.detail.local': '未入母体',
+    'assistant.detail.updateAvailable': '有更新',
     'assistant.detail.push': '推送到母体',
     'assistant.detail.pushCreate': '首次推送到母体',
     'assistant.detail.pushing': '推送中…',
@@ -232,6 +231,16 @@ export const zhCN: Record<string, string> = {
     'assistant.push.statusRemoved': '删除',
     'assistant.push.statusModified': '修改',
     'assistant.push.previewFailed': '预览失败',
+    'assistant.push.submitCopy': '推送修改',
+    'assistant.push.conflictStaged': '检测到版本冲突！修改已保存在本地，请前往技能管理器进行统一采纳和血缘合并。',
+    'assistant.push.pushed': '修改已推送',
+
+    // ── Pull-from-store (skills tab, project→母体 skill pull) ────────────────
+    'assistant.pull.pull': '拉取更新',
+    'assistant.pull.pulling': '拉取中…',
+    'assistant.pull.pulled': '已拉取更新',
+    'assistant.pull.dirty': '本地有改动,无法拉取,请先推送或放弃改动',
+    'assistant.pull.failed': '拉取失败',
 
     'sidebar.workspaces': '工作空间',
     'sidebar.newWorkspace': '新建工作空间',
@@ -1113,8 +1122,6 @@ export const zhCN: Record<string, string> = {
     'sidebar.navCtrl.contacts': '联系人',
     'sidebar.navCtrl.inbox': '收件箱',
     'sidebar.navCtrl.scheduledTasks': '定时任务',
-    'sidebar.navCtrl.personalTasks': '个人任务',
-    'sidebar.navCtrl.retro': '复盘归档',
     'sidebar.navCtrl.projectOverview': '项目总览',
 
     // ── 项目总览 (ProjectHome.tsx, #redesign) ─────────────────────────────
@@ -1129,12 +1136,6 @@ export const zhCN: Record<string, string> = {
     'projectHome.templateLabel': '领域应用模版',
     'projectHome.count': '共 {count} 个项目',
     'projectShell.config': '配置',
-
-    // ── 复盘归档展示 (Retro/index.tsx, #271) ──────────────────────────────
-    'retro.title': '复盘归档',
-    'retro.intro': '项目归档/关闭时自动沉淀的复盘记录:任务完成情况、决策记录与经验沉淀。',
-    'retro.empty': '暂无复盘记录。归档或关闭项目后,这里会出现对应的复盘。',
-    'retro.back': '← 返回列表',
 
     // ── 联系人聚合 (Contacts/index.tsx) ────────────────────────────────────
     'contacts.title': '联系人',
@@ -1283,34 +1284,12 @@ export const zhCN: Record<string, string> = {
     'inbox.source.email': '邮件',
     'inbox.source.rss': '资讯',
     'inbox.source.misc': '杂项',
-    'inbox.toPersonalTask': '转个人任务',
     'inbox.dispatch': '分发到项目',
     'inbox.dispatchPickProject': '选择目标项目',
     'inbox.dispatchConfirm': '分发',
     'inbox.dispatchCancel': '取消',
     'inbox.dispatchDone': '已分发到需求池',
     'inbox.dispatchNoProjects': '暂无可分发的项目',
-
-    // ── 个人任务 + 立项 (PersonalTasks/index.tsx) ──────────────────────────
-    'personal.title': '个人任务',
-    'personal.detailTitle': '任务详情',
-    'personal.desc': '不属于任何项目的零散待办,先收在这里。够分量时再立项,变成长期项目。',
-    'personal.capturePlaceholder': '记一件待办,先收着…',
-    'personal.captureBtn': '收录',
-    'personal.empty': '还没有个人任务。把不属于任何项目的零散待办先收在这里。',
-    'personal.fromInbox': '来自收件箱',
-    'personal.incubate': '立项',
-    'personal.incubate.title': '立项为长期项目',
-    'personal.incubate.from': '源自个人任务:',
-    'personal.incubate.projectName': '项目名称',
-    'personal.incubate.workspacePath': '工作区路径',
-    'personal.incubate.workspacePathHint': '一个本地目录的绝对路径,将作为新项目的工作区。',
-    'personal.incubate.milestones': '里程碑(每行一个,可选)',
-    'personal.incubate.milestonesPlaceholder': 'MVP\nBeta\n正式发布',
-    'personal.incubate.submit': '立项',
-    'personal.incubate.cancel': '取消',
-    'personal.incubate.success': '已立项:{name}',
-    'personal.incubate.registerFailed': '项目已创建,但注册到工作区列表失败:{err}',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': '切换项目工作空间',
@@ -1638,8 +1617,6 @@ export const enUS: Record<string, string> = {
     'header.title.contacts': 'Contacts',
     'header.title.datasources': 'Data Sources',
     'header.title.inbox': 'Inbox',
-    'header.title.personal': 'Personal Tasks',
-    'header.title.retro': 'Retrospectives',
     'header.noWorkspace': 'No workspace selected',
     'header.noSession': 'No session',
     'header.modeToggleTitleScroll': 'Current: Scroll mode (click to switch to Select-to-copy)',
@@ -1734,6 +1711,7 @@ export const enUS: Record<string, string> = {
     'assistant.detail.modified': 'Modified',
     'assistant.detail.synced': 'In sync',
     'assistant.detail.local': 'Not in store',
+    'assistant.detail.updateAvailable': 'Update available',
     'assistant.detail.push': 'Push to store',
     'assistant.detail.pushCreate': 'Push to store',
     'assistant.detail.pushing': 'Pushing…',
@@ -1771,6 +1749,17 @@ export const enUS: Record<string, string> = {
     'assistant.push.statusRemoved': 'Removed',
     'assistant.push.statusModified': 'Modified',
     'assistant.push.previewFailed': 'Preview failed',
+    'assistant.push.submitCopy': 'Push changes',
+    'assistant.push.conflictStaged':
+        'Conflict detected! Your changes remain in the local workspace. Please open Skills Manager to adopt/merge them.',
+    'assistant.push.pushed': 'Changes pushed',
+
+    // ── Pull-from-store (skills tab, project→母体 skill pull) ────────────────
+    'assistant.pull.pull': 'Pull update',
+    'assistant.pull.pulling': 'Pulling…',
+    'assistant.pull.pulled': 'Update pulled',
+    'assistant.pull.dirty': 'Local changes present — push or discard them before pulling',
+    'assistant.pull.failed': 'Pull failed',
 
     'sidebar.workspaces': 'Workspaces',
     'sidebar.newWorkspace': 'New workspace',
@@ -2682,8 +2671,6 @@ export const enUS: Record<string, string> = {
     'sidebar.navCtrl.contacts': 'Contacts',
     'sidebar.navCtrl.inbox': 'Inbox',
     'sidebar.navCtrl.scheduledTasks': 'Scheduled Tasks',
-    'sidebar.navCtrl.personalTasks': 'Personal Tasks',
-    'sidebar.navCtrl.retro': 'Retrospectives',
     'sidebar.navCtrl.projectOverview': 'Overview',
     'projectHome.title': 'Projects',
     'projectHome.subtitle': 'Collaborate to build a super team',
@@ -2696,13 +2683,6 @@ export const enUS: Record<string, string> = {
     'projectHome.templateLabel': 'Domain app template',
     'projectHome.count': '{count} projects',
     'projectShell.config': 'Config',
-
-    // ── Retrospective archive (Retro/index.tsx, #271) ────────────────────
-    'retro.title': 'Retrospectives',
-    'retro.intro':
-        'Retrospectives auto-distilled when a project is archived or closed: task outcomes, decisions, and lessons learned.',
-    'retro.empty': 'No retrospectives yet. Archiving or closing a project will surface one here.',
-    'retro.back': '← Back to list',
 
     // ── Contacts aggregation (Contacts/index.tsx) ───────────────────────
     'contacts.title': 'Contacts',
@@ -2855,35 +2835,12 @@ export const enUS: Record<string, string> = {
     'inbox.source.email': 'Email',
     'inbox.source.rss': 'Feed',
     'inbox.source.misc': 'Misc',
-    'inbox.toPersonalTask': 'To personal task',
     'inbox.dispatch': 'Dispatch to project',
     'inbox.dispatchPickProject': 'Pick a target project',
     'inbox.dispatchConfirm': 'Dispatch',
     'inbox.dispatchCancel': 'Cancel',
     'inbox.dispatchDone': 'Dispatched to the requirement pool',
     'inbox.dispatchNoProjects': 'No projects available to dispatch into',
-
-    // ── Personal tasks + incubation (PersonalTasks/index.tsx) ────────────
-    'personal.title': 'Personal Tasks',
-    'personal.detailTitle': 'Task detail',
-    'personal.desc':
-        'Loose to-dos that belong to no project. Park them here; incubate one into a long-term project once it carries enough weight.',
-    'personal.capturePlaceholder': 'Jot down a to-do…',
-    'personal.captureBtn': 'Capture',
-    'personal.empty': 'No personal tasks yet. Park the loose to-dos that belong to no project here.',
-    'personal.fromInbox': 'From inbox',
-    'personal.incubate': 'Incubate',
-    'personal.incubate.title': 'Incubate into a long-term project',
-    'personal.incubate.from': 'From personal task:',
-    'personal.incubate.projectName': 'Project name',
-    'personal.incubate.workspacePath': 'Workspace path',
-    'personal.incubate.workspacePathHint': 'Absolute path to a local directory — it becomes the new project workspace.',
-    'personal.incubate.milestones': 'Milestones (one per line, optional)',
-    'personal.incubate.milestonesPlaceholder': 'MVP\nBeta\nRelease',
-    'personal.incubate.submit': 'Incubate',
-    'personal.incubate.cancel': 'Cancel',
-    'personal.incubate.success': 'Incubated: {name}',
-    'personal.incubate.registerFailed': 'Project created, but registering it to the workspace list failed: {err}',
 
     // ── New Chat Home (NewChatHome.tsx) ───────────────────────────────────
     'newchat.wsDropdownHeader': 'Switch project workspace',

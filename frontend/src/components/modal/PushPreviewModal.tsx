@@ -48,11 +48,10 @@ function DiffBlock({ diff }: { diff: string }) {
  * fork it, or (first-time) just add it.
  */
 export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDone, language }: PushPreviewModalProps) {
-    const [forkName, setForkName] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
 
-    const { isNew, target, diverged, files } = preview;
+    const { isNew, diverged, files } = preview;
 
     const onCreate = async () => {
         setBusy(true);
@@ -67,18 +66,16 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
         }
     };
 
-    const onResolve = async (resolution: 'main' | 'fork') => {
-        if (!target || !preview.sourcePath) return;
+    const onPush = async () => {
         setBusy(true);
         setError('');
         try {
-            await skillService.resolvePush({
-                sourcePath: preview.sourcePath,
-                baseId: target.id,
-                resolution,
-                name: forkName.trim() || undefined,
-            });
-            onDone(resolution);
+            const res = await skillService.pushSkill(workspaceId, skillRef);
+            if (res.status === 'conflict') {
+                setError(t('assistant.push.conflictStaged', language));
+            } else {
+                onDone('main');
+            }
         } catch {
             setError(t('assistant.push.previewFailed', language));
         } finally {
@@ -96,11 +93,11 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                     </button>
                 </div>
                 <div class="ws-modal-body">
-                    {diverged && target && (
+                    {diverged && preview.target && (
                         <p class="push-preview-banner">
                             {t('assistant.push.divergedBanner', language, {
-                                storeVersion: target.storeVersion,
-                                baseVersion: target.baseVersion,
+                                storeVersion: preview.target.storeVersion,
+                                baseVersion: preview.target.baseVersion,
                             })}
                         </p>
                     )}
@@ -124,17 +121,6 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                             </div>
                         )}
                     </div>
-                    {!isNew && (
-                        <input
-                            class="ws-modal-input"
-                            placeholder={t('assistant.push.forkNamePlaceholder', language)}
-                            value={forkName}
-                            onInput={(e: Event) => setForkName((e.target as HTMLInputElement).value)}
-                            onKeyDown={(e: KeyboardEvent) => {
-                                if (e.key === 'Escape') onClose();
-                            }}
-                        />
-                    )}
                     {error && <p class="skill-conflict-error">{error}</p>}
                 </div>
                 <div class="ws-modal-footer">
@@ -146,19 +132,9 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                             {t('assistant.push.addToStore', language)}
                         </button>
                     ) : (
-                        target && (
-                            <div class="push-preview-footer-actions">
-                                <button class="ws-modal-cancel" onClick={() => void onResolve('fork')} disabled={busy}>
-                                    {t('assistant.push.fork', language)}
-                                </button>
-                                <button class="ws-modal-confirm" onClick={() => void onResolve('main')} disabled={busy}>
-                                    {t('assistant.push.update', language, {
-                                        from: target.storeVersion,
-                                        to: target.storeVersion + 1,
-                                    })}
-                                </button>
-                            </div>
-                        )
+                        <button class="ws-modal-confirm" onClick={() => void onPush()} disabled={busy}>
+                            {t('assistant.push.submitCopy', language)}
+                        </button>
                     )}
                 </div>
             </div>

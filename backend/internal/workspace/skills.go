@@ -185,6 +185,50 @@ func pushSkillToShared(skillsAddr, skillRef, sourcePath string) (pushResult, err
 	return out, nil
 }
 
+// pullResult mirrors the 1skills pull-to-path response: status is one of
+// pulled | uptodate | dirty. "dirty" means the workspace copy has local edits
+// so the store refused to fast-forward (no overwrite happened).
+type pullResult struct {
+	Status  string `json:"status"`
+	Version int    `json:"version"`
+}
+
+// pullSkillFromShared asks the 1skills (母体) shared store to fast-forward a
+// workspace's skill copy to the store's current version. Mirror of
+// pushSkillToShared but in the opposite direction.
+func pullSkillFromShared(skillsAddr, skillRef, targetPath string) (pullResult, error) {
+	if skillsAddr == "" {
+		skillsAddr = defaultSkillsAddr
+	}
+	target := &url.URL{
+		Scheme: "http",
+		Host:   skillsAddr,
+		Path:   "/api/skills/" + skillRef + "/pull-to-path",
+	}
+	payload, _ := json.Marshal(map[string]string{"targetPath": targetPath})
+	resp, err := http.Post(target.String(), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return pullResult{}, fmt.Errorf("reach skill manager: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(body, &e)
+		if e.Error == "" {
+			e.Error = strings.TrimSpace(string(body))
+		}
+		return pullResult{}, fmt.Errorf("skill manager: %s", e.Error)
+	}
+	var out pullResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return pullResult{}, fmt.Errorf("decode skill manager response: %w", err)
+	}
+	return out, nil
+}
+
 // previewSkillFromShared asks the 1skills store what a push-back would change:
 // the diff between the workspace copy and the current 母体 plus target/divergence
 // info (#379). Read-only; returns the raw JSON for the frontend's push preview.
@@ -212,18 +256,22 @@ func previewSkillFromShared(skillsAddr, skillRef, sourcePath string) (json.RawMe
 
 // WorkspaceSkillStatus describes one skill materialized in a workspace's
 // .claude/skills: its parsed frontmatter (for the card) plus its relationship to
-// the shared store (母体) as one of three states.
+// the shared store (母体) as one of four states.
 type WorkspaceSkillStatus struct {
 	SkillRef    string `json:"skillRef"`    // "shared:<dir>" — the store ref
 	Dir         string `json:"dir"`         // package directory name
 	Name        string `json:"name"`        // declared name from SKILL.md frontmatter
 	Description string `json:"description"` // description from SKILL.md frontmatter
 	// State: "synced" (in store, identical), "modified" (in store, drifted →
-	// push overwrites), or "local" (not in store → push creates/ingests).
+	// push overwrites), "update-available" (in store, unmodified, but the store
+	// has moved past the workspace's base version → pull fast-forwards), or
+	// "local" (not in store → push creates/ingests).
 	State string `json:"state"`
 	// Version is the store package's version counter (bumped on every
 	// content-changing push); 0 when the skill isn't in the store yet.
-	Version int `json:"version"`
+	Version      int    `json:"version"`
+	PrimaryTag   string `json:"primaryTag,omitempty"`
+	SecondaryTag string `json:"secondaryTag,omitempty"`
 }
 
 // sharedSkillStatus mirrors the 1skills status-from-path response.
@@ -234,6 +282,13 @@ type sharedSkillStatus struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	StoreVersion int    `json:"storeVersion"`
+	BaseVersion  int    `json:"baseVersion"`
+	// BaseMatches is true when the workspace copy is unchanged from the version
+	// it was taken from — so a store that has moved ahead can be pulled in as a
+	// clean fast-forward (vs. a locally-edited copy, which would be "modified").
+	BaseMatches  bool   `json:"baseMatches"`
+	PrimaryTag   string `json:"primaryTag,omitempty"`
+	SecondaryTag string `json:"secondaryTag,omitempty"`
 }
 
 // listWorkspaceSkills enumerates the skill packages under <ws>/.claude/skills and
@@ -270,22 +325,29 @@ func listWorkspaceSkills(workspacePath, skillsAddr string) ([]WorkspaceSkillStat
 			name = e.Name()
 		}
 		out = append(out, WorkspaceSkillStatus{
-			SkillRef:    ref,
-			Dir:         e.Name(),
-			Name:        name,
-			Description: st.Description,
-			State:       skillState(st),
-			Version:     st.StoreVersion,
+			SkillRef:     ref,
+			Dir:          e.Name(),
+			Name:         name,
+			Description:  st.Description,
+			State:        skillState(st),
+			Version:      st.StoreVersion,
+			PrimaryTag:   st.PrimaryTag,
+			SecondaryTag: st.SecondaryTag,
 		})
 	}
 	return out, nil
 }
 
-// skillState collapses the store status into the three UI states.
+// skillState collapses the store status into the four UI states.
 func skillState(st sharedSkillStatus) string {
 	switch {
 	case !st.InStore:
 		return "local"
+	case st.StoreVersion > st.BaseVersion && st.BaseMatches:
+		// Store moved ahead while the copy stayed clean → a fast-forward pull is
+		// safe. Checked before Differs because such a copy *does* differ from the
+		// (advanced) store; the drift is upstream, not local.
+		return "update-available"
 	case st.Differs:
 		return "modified"
 	default:

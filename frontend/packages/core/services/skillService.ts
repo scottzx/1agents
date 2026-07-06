@@ -36,10 +36,12 @@ export interface WorkspaceSkillStatus {
     dir: string;
     name: string;
     description: string;
-    state: 'synced' | 'modified' | 'local';
+    state: 'synced' | 'modified' | 'local' | 'update-available';
     // Store package's version counter, bumped on every content-changing push;
     // 0 when the skill isn't in the store yet.
     version: number;
+    primaryTag?: string | null;
+    secondaryTag?: string | null;
 }
 
 /**
@@ -95,6 +97,31 @@ async function pushSkill(workspaceId: string, skillRef: string): Promise<PushSki
     });
     if (!res.ok) throw new Error(await res.text());
     return (await res.json()) as PushSkillResponse;
+}
+
+/** Response shape for `pullSkill`: fast-forwards the workspace copy to 母体's
+ * current version. `dirty` means the workspace copy has local edits, so the
+ * store refused to overwrite it (nothing written). */
+export interface PullSkillResponse {
+    status: 'pulled' | 'uptodate' | 'dirty';
+    version: number;
+}
+
+/**
+ * Pull the shared store's (母体) current version of a skill into a workspace's
+ * own copy — the reverse of `pushSkill`. The Go host resolves
+ * `<ws>/.claude/skills/<dir>` and forwards to the store's pull-to-path
+ * endpoint, which refuses (status: 'dirty') when the workspace copy has local
+ * edits rather than overwriting them.
+ */
+async function pullSkill(workspaceId: string, skillRef: string): Promise<PullSkillResponse> {
+    const res = await apiFetch('/workspace/pull-skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, skillRef }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json()) as PullSkillResponse;
 }
 
 /** One file's change within a push preview diff (issue #379 follow-up). */
@@ -162,4 +189,4 @@ async function resolvePush(params: {
     };
 }
 
-export const skillService = { listSkills, listWorkspaceSkills, pushSkill, previewPush, resolvePush };
+export const skillService = { listSkills, listWorkspaceSkills, pushSkill, pullSkill, previewPush, resolvePush };

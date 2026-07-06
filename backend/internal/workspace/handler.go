@@ -284,15 +284,6 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, active)
 }
 
-// RegisterIncubatedProject wires the cc-connect bridge + guide files for a
-// project promoted via 立项 (the project row is already persisted by
-// meta.Incubate as a workspace). Passed as the onIncubated hook to
-// meta.PersonalTaskItemHandler so promotion gets a working bridge without meta
-// importing the workspace package.
-func (h *Handler) RegisterIncubatedProject(p meta.Project) {
-	h.registerWorkspaceProject(projectToWorkspace(p))
-}
-
 // registerWorkspaceProject performs the side-effects of bringing a workspace
 // online: agent guidance files + dynamic CC-Connect bridge registration + hot
 // restart. Shared by Create and the 立项 (Incubate) hook so a promoted project
@@ -669,6 +660,56 @@ func (h *Handler) PushSkill(w http.ResponseWriter, r *http.Request) {
 		out["conflict"] = json.RawMessage(res.Conflict)
 	}
 	writeJSON(w, out)
+}
+
+// PullSkill handles POST /api/workspace/pull-skill {id, skillRef}: fast-forwards
+// the workspace's own copy (<ws>/.claude/skills/<dir>) to the 1skills shared
+// store's (母体) current version. The store refuses (status=dirty) when the
+// workspace copy has local edits, so nothing is overwritten silently.
+func (h *Handler) PullSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		SkillRef string `json:"skillRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.SkillRef == "" {
+		http.Error(w, "id and skillRef are required", http.StatusBadRequest)
+		return
+	}
+	cfg, err := h.loadConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var wsPath string
+	for _, ws := range cfg.Workspaces {
+		if ws.ID == body.ID {
+			wsPath = ws.Path
+			break
+		}
+	}
+	if wsPath == "" {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	pkg, err := workspaceSkillDir(wsPath, body.SkillRef)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	res, err := pullSkillFromShared(h.skillsAddr, body.SkillRef, pkg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "status": res.Status, "version": res.Version})
 }
 
 // WorkspaceAgents handles GET /api/workspace/agents?id=<wsId>: lists the agents

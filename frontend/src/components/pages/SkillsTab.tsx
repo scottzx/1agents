@@ -21,6 +21,7 @@ const BADGE: Record<WorkspaceSkillStatus['state'], { cls: string; key: string }>
     synced: { cls: 'is-synced', key: 'assistant.detail.synced' },
     modified: { cls: 'is-modified', key: 'assistant.detail.modified' },
     local: { cls: 'is-local', key: 'assistant.detail.local' },
+    'update-available': { cls: 'is-update', key: 'assistant.detail.updateAvailable' },
 };
 
 export function SkillsTab({ workspaceId, app, language }: { workspaceId: string; app: App; language: Lang }) {
@@ -29,6 +30,7 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<WorkspaceSkillStatus | null>(null);
     const [pushing, setPushing] = useState(false);
+    const [pulling, setPulling] = useState(false);
     const [flash, setFlash] = useState('');
 
     const load = useCallback(async () => {
@@ -65,16 +67,13 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         setPushing(true);
         try {
             // Read-only preview first (issue #379 follow-up) — nothing is written
-            // until the user picks a resolution in the dialog, which also covers
-            // the divergence/conflict case via a banner instead of a separate modal.
+            // until the user picks a resolution in the dialog.
             const preview = await skillService.previewPush(workspaceId, selected.skillRef);
             modal.openPushPreviewModal(preview, workspaceId, selected.skillRef, result => {
                 setFlash(
                     result === 'created'
                         ? t('assistant.detail.pushedCreated', language)
-                        : result === 'fork'
-                          ? t('assistant.conflict.resolvedFork', language)
-                          : t('assistant.conflict.resolvedMain', language)
+                        : t('assistant.push.pushed', language)
                 );
                 void load();
             });
@@ -85,9 +84,26 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         }
     };
 
+    const onPull = async () => {
+        if (!selected) return;
+        setPulling(true);
+        try {
+            const res = await skillService.pullSkill(workspaceId, selected.skillRef);
+            setFlash(
+                res.status === 'dirty' ? t('assistant.pull.dirty', language) : t('assistant.pull.pulled', language)
+            );
+            void load();
+        } catch {
+            setFlash(t('assistant.pull.failed', language));
+        } finally {
+            setPulling(false);
+        }
+    };
+
     // ── Skill detail (folder browser + preview) ──────────────────────────────
     if (selected) {
         const canPush = selected.state !== 'synced';
+        const canPull = selected.state === 'update-available';
         return (
             <div class="skill-detail">
                 <div class="skill-detail-head">
@@ -102,10 +118,42 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
                             </span>
                             {selected.version > 0 && <span class="assistant-skill-version">v{selected.version}</span>}
                         </div>
+                        {selected.primaryTag || selected.secondaryTag ? (
+                            <div
+                                class="skill-detail-tags"
+                                style="display:flex; gap:6px; margin-top:4px; margin-bottom:8px; flex-wrap:wrap;"
+                            >
+                                {selected.primaryTag && (
+                                    <span
+                                        class="tag-badge"
+                                        style="background:rgba(0,200,255,0.15); color:#00c8ff; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
+                                    >
+                                        {selected.primaryTag}
+                                    </span>
+                                )}
+                                {selected.secondaryTag && (
+                                    <span
+                                        class="tag-badge"
+                                        style="background:rgba(255,200,0,0.15); color:#ffc800; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
+                                    >
+                                        {selected.secondaryTag}
+                                    </span>
+                                )}
+                            </div>
+                        ) : null}
                         {selected.description && <p class="skill-detail-desc">{selected.description}</p>}
                     </div>
                     <div class="assistant-section-actions">
                         {flash && <span class="assistant-flash">{flash}</span>}
+                        {canPull && (
+                            <button
+                                class="assistant-btn assistant-btn-ghost"
+                                disabled={pulling}
+                                onClick={() => void onPull()}
+                            >
+                                {pulling ? t('assistant.pull.pulling', language) : t('assistant.pull.pull', language)}
+                            </button>
+                        )}
                         {canPush && (
                             <button
                                 class="assistant-btn assistant-btn-ghost"
@@ -158,6 +206,29 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
                                 {s.version > 0 && <span class="assistant-skill-version">v{s.version}</span>}
                             </div>
                             {s.description && <p class="skill-card-desc">{s.description}</p>}
+                            {s.primaryTag || s.secondaryTag ? (
+                                <div
+                                    class="skill-card-tags"
+                                    style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;"
+                                >
+                                    {s.primaryTag && (
+                                        <span
+                                            class="tag-badge"
+                                            style="background:rgba(0,200,255,0.15); color:#00c8ff; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
+                                        >
+                                            {s.primaryTag}
+                                        </span>
+                                    )}
+                                    {s.secondaryTag && (
+                                        <span
+                                            class="tag-badge"
+                                            style="background:rgba(255,200,0,0.15); color:#ffc800; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
+                                        >
+                                            {s.secondaryTag}
+                                        </span>
+                                    )}
+                                </div>
+                            ) : null}
                         </button>
                     ))}
                 </div>

@@ -29,10 +29,8 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/gateway"
 	"github.com/scottzx/1Agents/backend/internal/git"
 	"github.com/scottzx/1Agents/backend/internal/ingest"
-	"github.com/scottzx/1Agents/backend/internal/kwiki"
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
-	"github.com/scottzx/1Agents/backend/internal/retro"
 	"github.com/scottzx/1Agents/backend/internal/sources"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/taskapi"
@@ -85,6 +83,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
 	mux.HandleFunc("/api/workspace/skills", wsHandler.WorkspaceSkills)           // GET ?id= — synced skills + drift status
 	mux.HandleFunc("/api/workspace/push-skill", wsHandler.PushSkill)             // POST {id, skillRef} — push edited copy back to 母体
+	mux.HandleFunc("/api/workspace/pull-skill", wsHandler.PullSkill)             // POST {id, skillRef} — pull latest from 母体 into workspace copy
 	mux.HandleFunc("/api/workspace/agents", wsHandler.WorkspaceAgents)           // GET ?id= — synced agents + drift status
 	mux.HandleFunc("/api/workspace/push-agent", wsHandler.PushAgent)             // POST {id, agentRef} — push edited copy back to 母体
 	mux.HandleFunc("/api/workspace/soul", wsHandler.WorkspaceSoul)               // GET ?id= / POST {id, content} — assistant persona SOUL.md
@@ -130,23 +129,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 			}
 			mux.HandleFunc("/api/projects", meta.ProjectsHandler(db)) // GET, POST
 			mux.HandleFunc("/api/search", meta.SearchHandler(db))     // GET ?q=xxx — 对话历史 quick search over tasks + sessions
-			// #144: archiving/closing a project triggers a复盘沉淀 — summarize
-			// its tasks/decisions and ingest a retrospective into kwiki.
-			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db, retrospectiveHook(db))) // POST {id}/archive|close|reopen
+			mux.HandleFunc("/api/projects/", meta.ProjectActionHandler(db)) // POST {id}/archive|close|reopen
 
 			// Inbox 统一信息收口层 (#60): multi-source intake + archive.
 			inboxStore := meta.NewInboxStore(db)
 			mux.HandleFunc("/api/inbox", meta.InboxHandler(inboxStore))      // GET (?archived=1), POST capture
 			mux.HandleFunc("/api/inbox/", meta.InboxItemHandler(inboxStore)) // POST /{id}/archive|read|unread
-
-			// #271: read-only access to the复盘 (#144) pages the archive hook
-			// ingests into the shared kwiki knowledge base.
-			if kw, kwErr := kwiki.Open(knowledgeRoot()); kwErr == nil {
-				mux.HandleFunc("/api/retrospectives", retro.Handler(kw))  // GET list
-				mux.HandleFunc("/api/retrospectives/", retro.Handler(kw)) // GET /{slug}
-			} else {
-				log.Printf("[server] open kwiki for retrospectives: %v", kwErr)
-			}
 		}
 
 		tasksStore, tsErr := agent.NewTasksStore()
@@ -370,16 +358,6 @@ func NewRouter(cfg *config.Config) http.Handler {
 					log.Printf("[server] ingest re-arm recurring: %v", rErr)
 				}
 			}
-
-			// Inbox 下游 Task 汇总层 + 立项流程 (#67): personal (no-project) tasks
-			// and the promote-to-project gate. Shares the task store, so the
-			// reserved personal bucket reuses #N numbering / write locking.
-			personalStore := meta.NewPersonalStore(tasksStore)
-			mux.HandleFunc("/api/personal-tasks", meta.PersonalTasksHandler(personalStore)) // GET list, POST capture
-			// onIncubated: 立项 persists the project AS a workspace (unified registry);
-			// the hook adds the cc-connect bridge + guide files so it works like a
-			// hand-created workspace and shows up in the sidebar/board immediately.
-			mux.HandleFunc("/api/personal-tasks/", meta.PersonalTaskItemHandler(personalStore, wsHandler.RegisterIncubatedProject)) // POST /{id}/incubate
 
 			// PMO 跨项目对话式需求分发层 (#61): dispatch a clarified requirement into
 			// a target project's pool (and close the originating inbox item). Shares
@@ -947,38 +925,6 @@ func acpxBridgePort() int {
 		}
 	}
 	return 38082
-}
-
-// retrospectiveHook builds the #144 project-archive hook: on archive/close it
-// loads the project's tasks, summarizes a retrospective, and ingests it into the
-// shared kwiki knowledge base under ~/.1agents/knowledge. Returns nil-safe
-// errors only — the caller logs them best-effort.
-func retrospectiveHook(db *meta.DB) meta.ProjectArchiveHook {
-	tasks := meta.NewTaskStore(db)
-	return func(p meta.Project) error {
-		store, err := kwiki.Open(knowledgeRoot())
-		if err != nil {
-			return fmt.Errorf("open kwiki: %w", err)
-		}
-		cfg, err := tasks.Load(p.WorkspacePath)
-		if err != nil {
-			return fmt.Errorf("load tasks: %w", err)
-		}
-		_, err = retro.Archive(store, retro.Input{Project: p, Tasks: cfg.Tasks})
-		return err
-	}
-}
-
-// knowledgeRoot is the kwiki knowledge-base directory (~/.1agents/knowledge),
-// honoring ONEAGENTS_HOME like the meta DB.
-func knowledgeRoot() string {
-	home := os.Getenv("ONEAGENTS_HOME")
-	if home == "" {
-		if h, err := os.UserHomeDir(); err == nil {
-			home = h
-		}
-	}
-	return filepath.Join(home, ".1agents", "knowledge")
 }
 
 // ── Access Token Handlers ───────────────────────────────────────────────────────
