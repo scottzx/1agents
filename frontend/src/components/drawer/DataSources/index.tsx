@@ -97,17 +97,15 @@ export function DataSourcesPane() {
     };
 
     // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
-    // Only bronze drills — silver/gold are single screens the layer switch already
-    // labels, so they show just the root crumb.
+    // The breadcrumb root is the active layer (数据接入 / 数据融合) rather than a
+    // generic 数据源, so a drilled path reads 数据接入 › <账号> › <表> and the redundant
+    // in-pane layer switch can hide once you drill in. Only bronze drills.
     useSignalEffect(() => {
-        const home = { label: t('header.title.datasources', language), onClick: goHome };
-        if (layer.value !== 'bronze') {
-            taskNav.headerCrumbs.value = [{ label: t('header.title.datasources', language) }];
-            return;
-        }
+        const rootLabel = t(`datasource.layer.${layer.value}`, language);
+        const home = { label: rootLabel, onClick: goHome };
         const v = view.value;
-        if (v.kind === 'home') {
-            taskNav.headerCrumbs.value = [{ label: t('header.title.datasources', language) }];
+        if (layer.value !== 'bronze' || v.kind === 'home') {
+            taskNav.headerCrumbs.value = [{ label: rootLabel }];
             return;
         }
         const crumbs: { label: string; onClick?: () => void }[] = [home];
@@ -132,20 +130,26 @@ export function DataSourcesPane() {
 
     const v = view.value;
     const zoneTabs = layer.value === 'bronze' && v.kind === 'account' ? sourceTabs(language) : [];
+    // Once drilled into a source (account / add / detail), the header breadcrumb
+    // (数据接入 › <账号> › …) carries the context, so the layer switch hides to avoid
+    // a redundant second row. It shows only at a layer's top (bronze home / gold).
+    const drilled = layer.value === 'bronze' && v.kind !== 'home';
 
     return (
         <div class="datasource-pane">
-            <div class="datasource-layer-switch">
-                {layers.map(l => (
-                    <button
-                        key={l.id}
-                        class={`datasource-subnav-tab${layer.value === l.id ? ' is-active' : ''}`}
-                        onClick={() => (layer.value = l.id)}
-                    >
-                        {l.label}
-                    </button>
-                ))}
-            </div>
+            {!drilled && (
+                <div class="datasource-layer-switch">
+                    {layers.map(l => (
+                        <button
+                            key={l.id}
+                            class={`datasource-subnav-tab${layer.value === l.id ? ' is-active' : ''}`}
+                            onClick={() => (layer.value = l.id)}
+                        >
+                            {l.label}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {layer.value === 'gold' ? (
                 <div class="datasource-tab-body">
