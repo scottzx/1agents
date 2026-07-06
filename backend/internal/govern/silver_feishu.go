@@ -213,7 +213,14 @@ func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
 		EndTime             feishuEventTime `json:"end_time"`
 		Recurrence          string          `json:"recurrence"`
 		OrganizerCalendarID string          `json:"organizer_calendar_id"`
-		Location            struct {
+		EventOrganizer      struct {
+			DisplayName string `json:"display_name"`
+			UserID      string `json:"user_id"` // open_id of the organizing person
+		} `json:"event_organizer"`
+		Vchat struct {
+			MeetingURL string `json:"meeting_url"`
+		} `json:"vchat"`
+		Location struct {
 			Name string `json:"name"`
 		} `json:"location"`
 	}
@@ -229,9 +236,10 @@ func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
 	return []data.SilverFeishuEvent{{
 		AccountID: r.AccountID, ExternalID: ext, CalendarID: r.Collection,
 		Subject: e.Summary, Description: e.Description, Location: e.Location.Name,
-		StartsAt: startMs, EndsAt: endMs, AllDay: allDay,
-		Status: e.Status, OrganizerID: e.OrganizerCalendarID, Recurrence: e.Recurrence,
-		Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
+		StartsAt: startMs, EndsAt: endMs, AllDay: allDay, Status: e.Status,
+		OrganizerOpenID: e.EventOrganizer.UserID, OrganizerName: e.EventOrganizer.DisplayName,
+		OrganizerCalendarID: e.OrganizerCalendarID, MeetingURL: e.Vchat.MeetingURL,
+		Recurrence: e.Recurrence, Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
 	}}
 }
 

@@ -94,7 +94,10 @@ CREATE TABLE IF NOT EXISTS silver_feishu_events (
     ends_at       INTEGER NOT NULL DEFAULT 0,   -- epoch ms
     all_day       INTEGER NOT NULL DEFAULT 0,
     status        TEXT    NOT NULL DEFAULT '',  -- tentative | confirmed | cancelled
-    organizer_id  TEXT    NOT NULL DEFAULT '',  -- organizer_calendar_id
+    organizer_open_id     TEXT NOT NULL DEFAULT '', -- event_organizer.user_id (the PERSON → gold links to contact)
+    organizer_name        TEXT NOT NULL DEFAULT '', -- event_organizer.display_name
+    organizer_calendar_id TEXT NOT NULL DEFAULT '', -- organizer_calendar_id (owning calendar)
+    meeting_url   TEXT    NOT NULL DEFAULT '',  -- vchat.meeting_url
     recurrence    TEXT    NOT NULL DEFAULT '',  -- RRULE
     deleted       INTEGER NOT NULL DEFAULT 0,
     updated_at    INTEGER NOT NULL DEFAULT 0,
@@ -141,9 +144,13 @@ type SilverFeishuEvent struct {
 	CalendarID, Subject, Description, Location string
 	StartsAt, EndsAt                           int64
 	AllDay                                     bool
-	Status, OrganizerID, Recurrence            string
-	Deleted                                    bool
-	UpdatedAt                                  int64
+	Status                                     string
+	// OrganizerOpenID/Name = the organizing PERSON (event_organizer), the fusion
+	// key that links an event to a contact; OrganizerCalendarID = the owning calendar.
+	OrganizerOpenID, OrganizerName, OrganizerCalendarID string
+	MeetingURL, Recurrence                              string
+	Deleted                                             bool
+	UpdatedAt                                           int64
 }
 
 // SilverFeishuChat is 飞书 group metadata (thread source for gold).
@@ -188,11 +195,13 @@ func (s *Store) UpsertFeishuEvents(rows []SilverFeishuEvent) (int, error) {
 	return withTx(s.sql, rows, func(tx *sql.Tx) (*sql.Stmt, error) {
 		return tx.Prepare(`INSERT OR REPLACE INTO silver_feishu_events
             (source, account_id, external_id, calendar_id, subject, description, location,
-             starts_at, ends_at, all_day, status, organizer_id, recurrence, deleted, updated_at)
-            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+             starts_at, ends_at, all_day, status, organizer_open_id, organizer_name,
+             organizer_calendar_id, meeting_url, recurrence, deleted, updated_at)
+            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}, func(stmt *sql.Stmt, r SilverFeishuEvent) error {
 		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.CalendarID, r.Subject, r.Description,
-			r.Location, r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.Status, r.OrganizerID, r.Recurrence,
+			r.Location, r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.Status, r.OrganizerOpenID,
+			r.OrganizerName, r.OrganizerCalendarID, r.MeetingURL, r.Recurrence,
 			boolInt(r.Deleted), r.UpdatedAt)
 		return err
 	})
