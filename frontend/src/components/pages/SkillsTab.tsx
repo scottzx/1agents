@@ -72,6 +72,7 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
     const [pickerOpen, setPickerOpen] = useState(false);
     const [available, setAvailable] = useState<AvailableSkill[]>([]);
     const [pickerBusy, setPickerBusy] = useState(false);
+    const [pickerQuery, setPickerQuery] = useState('');
     const [confirmRemove, setConfirmRemove] = useState(false);
     const [removing, setRemoving] = useState(false);
 
@@ -119,6 +120,7 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
 
     const openPicker = async () => {
         setPickerOpen(true);
+        setPickerQuery('');
         setPickerBusy(true);
         try {
             setAvailable(await skillService.listAvailableSkills(workspaceId));
@@ -362,27 +364,62 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
                             </button>
                         </div>
                         <div class="ws-modal-body">
-                            {pickerBusy && available.length === 0 && <div class="assistant-empty-row">…</div>}
-                            {!pickerBusy && available.length === 0 && (
-                                <div class="assistant-empty-row">{t('assistant.detail.addSkillEmpty', language)}</div>
-                            )}
-                            <div class="skill-picker-list">
-                                {available.map(a => (
-                                    <button
-                                        key={a.skillRef}
-                                        class="skill-picker-row"
-                                        disabled={pickerBusy}
-                                        onClick={() => void onAdd(a.skillRef)}
-                                    >
-                                        <div class="skill-picker-row-main">
-                                            <span class="skill-picker-name">{a.name || a.dir}</span>
-                                            {a.version > 0 && <span class="assistant-skill-version">v{a.version}</span>}
-                                            <TagBadges primaryTag={a.primaryTag} secondaryTag={a.secondaryTag} mt={0} />
+                            <input
+                                class="ws-modal-input skill-picker-search"
+                                type="search"
+                                placeholder={t('assistant.detail.addSkillSearch', language)}
+                                value={pickerQuery}
+                                onInput={(e: Event) => setPickerQuery((e.target as HTMLInputElement).value)}
+                            />
+                            {(() => {
+                                const q = pickerQuery.trim().toLowerCase();
+                                const filtered = q
+                                    ? available.filter(a =>
+                                          [a.name, a.dir, a.description, a.primaryTag, a.secondaryTag]
+                                              .filter(Boolean)
+                                              .some(s => (s as string).toLowerCase().includes(q))
+                                      )
+                                    : available;
+                                if (pickerBusy && available.length === 0)
+                                    return <div class="assistant-empty-row">…</div>;
+                                if (available.length === 0)
+                                    return (
+                                        <div class="assistant-empty-row">
+                                            {t('assistant.detail.addSkillEmpty', language)}
                                         </div>
-                                        {a.description && <p class="skill-picker-desc">{a.description}</p>}
-                                    </button>
-                                ))}
-                            </div>
+                                    );
+                                if (filtered.length === 0)
+                                    return (
+                                        <div class="assistant-empty-row">
+                                            {t('assistant.detail.addSkillNoMatch', language)}
+                                        </div>
+                                    );
+                                return (
+                                    <div class="skill-picker-grid">
+                                        {filtered.map(a => (
+                                            <button
+                                                key={a.skillRef}
+                                                class="skill-card skill-picker-card"
+                                                disabled={pickerBusy}
+                                                onClick={() => void onAdd(a.skillRef)}
+                                            >
+                                                <div class="skill-card-head">
+                                                    <span class="skill-card-name">{a.name || a.dir}</span>
+                                                    {a.version > 0 && (
+                                                        <span class="assistant-skill-version">v{a.version}</span>
+                                                    )}
+                                                </div>
+                                                {a.description && <p class="skill-card-desc">{a.description}</p>}
+                                                <TagBadges
+                                                    primaryTag={a.primaryTag}
+                                                    secondaryTag={a.secondaryTag}
+                                                    mt={8}
+                                                />
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>

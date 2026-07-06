@@ -17227,61 +17227,29 @@ body {
   color: var(--on-accent);
 }
 
-// 母体 add-skill picker (list of installable skills inside the shared modal).
+// 母体 add-skill picker — a searchable, scrollable card grid inside the shared
+// modal (multiple cards per row).
 .skill-picker-modal {
-  width: min(560px, 92vw);
+  width: min(760px, 94vw);
 }
 
-.skill-picker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.skill-picker-search {
+  margin-bottom: 10px;
 }
 
-.skill-picker-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: left;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--bento-radius-sm);
-  background: var(--bg-card);
-  color: var(--text-main);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-
-  &:hover:not(:disabled) {
-    border-color: var(--text-main);
-  }
-  &:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-}
-
-.skill-picker-row-main {
-  display: flex;
-  align-items: center;
+.skill-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 8px;
-  min-width: 0;
+  max-height: 56vh;
+  overflow-y: auto;
+  padding: 2px;
 }
 
-.skill-picker-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.skill-picker-desc {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+// The picker cards reuse .skill-card; only the disabled (mid-add) state differs.
+.skill-picker-card:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 // Skill folder file list (left column of the skill detail split).
