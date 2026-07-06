@@ -41,6 +41,7 @@ func Silver(src *sources.Store, dst *data.Store) (SilverStats, error) {
 		{&st.Messages, SilverMicrosoftMail},
 		{&st.Messages, SilverAgentMail},
 		{&st.Events, SilverMicrosoftEvents},
+		{&st.Events, SilverFeishuEvents},
 		{&st.Todos, SilverMicrosoftTodos},
 		{nil, SilverFeishuChats}, // group metadata; supports gold threads, not a viewer domain
 	}

@@ -25,12 +25,15 @@ type feishuPuller struct {
 
 // FeishuSpec is one enabled kind the caller wants crawled. PageSize and
 // LookbackDays come from source_collection_config; ChatIDs is the tracked-chat
-// set for PerChat kinds (feishu_message) and is ignored otherwise.
+// set for PerChat kinds (feishu_message / feishu_chat_member); CalendarIDs is the
+// calendar set for PerCalendar kinds (feishu_calendar_event). Both are ignored by
+// kinds that don't fan out.
 type FeishuSpec struct {
 	Kind         string
 	PageSize     int
 	LookbackDays int
 	ChatIDs      []string
+	CalendarIDs  []string
 }
 
 // NewFeishuPuller builds a Feishu puller over client for the given specs.
@@ -57,6 +60,12 @@ func (p *feishuPuller) Discover(accountID string) ([]Collection, error) {
 			}
 			continue
 		}
+		if d.PerCalendar {
+			for _, calID := range s.CalendarIDs {
+				out = append(out, Collection{Kind: s.Kind, ID: calID})
+			}
+			continue
+		}
 		out = append(out, Collection{Kind: s.Kind, ID: s.Kind})
 	}
 	return out, nil
@@ -80,13 +89,18 @@ func (p *feishuPuller) Pull(accountID string, c Collection, cur Cursor) ([]RawRe
 	if spec.PageSize > 0 {
 		params["page_size"] = strconv.Itoa(spec.PageSize)
 	}
-	// PerChat kinds carry the chat id either as a container_id param (messages)
-	// or embedded in the path (group members: /im/v1/chats/{chat_id}/members).
+	// Fan-out kinds carry their parent id either as a container_id param (messages)
+	// or embedded in the path (group members: /im/v1/chats/{chat_id}/members;
+	// calendar events: /calendar/v4/calendars/{calendar_id}/events). c.ID is the
+	// fanned-out chat/calendar id in all cases.
 	endpoint := d.Endpoint
-	if d.PerChat {
-		if strings.Contains(endpoint, "{chat_id}") {
+	if d.PerChat || d.PerCalendar {
+		switch {
+		case strings.Contains(endpoint, "{chat_id}"):
 			endpoint = strings.ReplaceAll(endpoint, "{chat_id}", c.ID)
-		} else {
+		case strings.Contains(endpoint, "{calendar_id}"):
+			endpoint = strings.ReplaceAll(endpoint, "{calendar_id}", c.ID)
+		default:
 			params["container_id"] = c.ID
 		}
 	}

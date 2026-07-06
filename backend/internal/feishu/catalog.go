@@ -45,6 +45,10 @@ type CollectionDescriptor struct {
 	// PerChat marks message-family kinds whose collection is one chat: Discover
 	// expands them across the tracked-chat set instead of a single collection.
 	PerChat bool
+	// PerCalendar marks calendar-event kinds whose collection is one calendar:
+	// Discover expands them across the calendar set (calendar_ids from the
+	// feishu_calendar bronze list), one collection per calendar.
+	PerCalendar bool
 	// Implemented gates whether Discover surfaces the kind. Descriptors for
 	// endpoints whose list semantics are not wired yet (department traversal,
 	// approval-code fan-out) ship as documentation with Implemented=false.
@@ -100,6 +104,15 @@ var catalog = []CollectionDescriptor{
 		Endpoint: "/open-apis/calendar/v4/calendars", Method: "GET",
 		BaseParams: map[string]string{}, ItemPath: "data.calendar_list", UIDField: "calendar_id",
 		CursorFlavor: "page_token", Implemented: true,
+	},
+	{
+		// 日历事件 (calendar events) — sub-resource of each calendar; calendar_id is
+		// embedded in the path. Discover fans out over the calendars in the
+		// feishu_calendar bronze list (ingest supplies CalendarIDs).
+		Kind: "feishu_calendar_event", Domain: DomainCalendar, Label: "日历事件",
+		Endpoint: "/open-apis/calendar/v4/calendars/{calendar_id}/events", Method: "GET",
+		BaseParams: map[string]string{}, ItemPath: "data.items", UIDField: "event_id",
+		CursorFlavor: "page_token", PerCalendar: true, Implemented: true,
 	},
 
 	// ── 通讯录 / 组织架构 (list semantics need department traversal / scope;

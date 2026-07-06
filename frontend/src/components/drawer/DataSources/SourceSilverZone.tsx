@@ -19,7 +19,11 @@ import { sourceService, type SilverSummary } from '@1agents/core/services/source
 // backend silver registry (internal/data/silver_*.go) — a new source adds a line
 // here just as it registers a silverTableDef there.
 const SILVER_TABLE_LABEL: Record<string, Record<string, string>> = {
-    feishu: { contacts: 'datasource.silver.feishuContacts', messages: 'datasource.kind.feishu_message' },
+    feishu: {
+        contacts: 'datasource.silver.feishuContacts',
+        messages: 'datasource.kind.feishu_message',
+        events: 'datasource.kind.feishu_calendar_event',
+    },
     icloud: { contacts: 'datasource.kind.contact' },
     microsoft: {
         messages: 'datasource.kind.ms_mail',

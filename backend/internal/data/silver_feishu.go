@@ -13,6 +13,7 @@ func init() {
 		tables: []silverTableDef{
 			{"contacts", "feishu", "silver_feishu_users"},
 			{"messages", "feishu", "silver_feishu_messages"},
+			{"events", "feishu", "silver_feishu_events"},
 			// silver_feishu_chats intentionally omitted: gold thread metadata,
 			// not a browsable domain.
 		},
@@ -77,6 +78,29 @@ CREATE TABLE IF NOT EXISTS silver_feishu_chats (
     PRIMARY KEY (source, account_id, external_id)
 );
 CREATE INDEX IF NOT EXISTS idx_silver_feishu_chats_wm ON silver_feishu_chats(updated_at);
+
+-- 日历 · 飞书 日程事件 — one row per calendar event. Column names align with
+-- silver_microsoft_events (subject/location/starts_at/ends_at/all_day) so the
+-- events viewer domain reads consistently across sources and gold can fuse them.
+CREATE TABLE IF NOT EXISTS silver_feishu_events (
+    source        TEXT    NOT NULL DEFAULT 'feishu',
+    account_id    TEXT    NOT NULL DEFAULT 'default',
+    external_id   TEXT    NOT NULL,             -- event_id
+    calendar_id   TEXT    NOT NULL DEFAULT '',  -- the calendar it lives in (collection)
+    subject       TEXT    NOT NULL DEFAULT '',  -- summary
+    description   TEXT    NOT NULL DEFAULT '',
+    location      TEXT    NOT NULL DEFAULT '',
+    starts_at     INTEGER NOT NULL DEFAULT 0,   -- epoch ms
+    ends_at       INTEGER NOT NULL DEFAULT 0,   -- epoch ms
+    all_day       INTEGER NOT NULL DEFAULT 0,
+    status        TEXT    NOT NULL DEFAULT '',  -- tentative | confirmed | cancelled
+    organizer_id  TEXT    NOT NULL DEFAULT '',  -- organizer_calendar_id
+    recurrence    TEXT    NOT NULL DEFAULT '',  -- RRULE
+    deleted       INTEGER NOT NULL DEFAULT 0,
+    updated_at    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (source, account_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_silver_feishu_events_wm ON silver_feishu_events(updated_at);
 `
 
 // Mention is one 飞书 @mention: the OpenID plus the `@_user_N` key used in the
@@ -109,6 +133,17 @@ type SilverFeishuMessage struct {
 	CreateTime                    int64
 	Deleted                       bool
 	UpdatedAt                     int64
+}
+
+// SilverFeishuEvent is one 飞书 calendar event (events domain, aligned to MS events).
+type SilverFeishuEvent struct {
+	AccountID, ExternalID                      string
+	CalendarID, Subject, Description, Location string
+	StartsAt, EndsAt                           int64
+	AllDay                                     bool
+	Status, OrganizerID, Recurrence            string
+	Deleted                                    bool
+	UpdatedAt                                  int64
 }
 
 // SilverFeishuChat is 飞书 group metadata (thread source for gold).
@@ -145,6 +180,20 @@ func (s *Store) UpsertFeishuMessages(rows []SilverFeishuMessage) (int, error) {
 		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.ChatID, r.MsgType, r.SenderOpenID,
 			r.SenderTenantKey, r.BodyText, jsonOrEmpty(r.Mentions), r.ParentID, r.RootID, r.ThreadID,
 			r.CreateTime, boolInt(r.Deleted), r.UpdatedAt)
+		return err
+	})
+}
+
+func (s *Store) UpsertFeishuEvents(rows []SilverFeishuEvent) (int, error) {
+	return withTx(s.sql, rows, func(tx *sql.Tx) (*sql.Stmt, error) {
+		return tx.Prepare(`INSERT OR REPLACE INTO silver_feishu_events
+            (source, account_id, external_id, calendar_id, subject, description, location,
+             starts_at, ends_at, all_day, status, organizer_id, recurrence, deleted, updated_at)
+            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	}, func(stmt *sql.Stmt, r SilverFeishuEvent) error {
+		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.CalendarID, r.Subject, r.Description,
+			r.Location, r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.Status, r.OrganizerID, r.Recurrence,
+			boolInt(r.Deleted), r.UpdatedAt)
 		return err
 	})
 }

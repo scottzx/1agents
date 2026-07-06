@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -165,6 +166,12 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 		spec.ChatIDs = h.trackedChatIDs()
 		if len(spec.ChatIDs) == 0 {
 			return map[string]any{"kind": kind, "skipped": "no tracked chats"}, nil
+		}
+	}
+	if d.PerCalendar {
+		spec.CalendarIDs = h.calendarIDs()
+		if len(spec.CalendarIDs) == 0 {
+			return map[string]any{"kind": kind, "skipped": "no calendars — sync 日历 first"}, nil
 		}
 	}
 
@@ -333,6 +340,34 @@ func (h *Handler) trackedChatIDs() []string {
 	ids := make([]string, 0, len(tracked))
 	for _, c := range tracked {
 		ids = append(ids, c.ChatID)
+	}
+	return ids
+}
+
+// calendarIDs returns the feishu calendar_ids to crawl events from, read from the
+// feishu_calendar bronze list (so 日历 must be synced first). Only owner/writer
+// calendars are included — read-only (show_only_free_busy) calendars return no
+// event detail, so crawling them is wasted work.
+func (h *Handler) calendarIDs() []string {
+	recs, err := h.bronze.ListRecords(feishu.Source, "", "feishu_calendar", 0)
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, r := range recs {
+		if r.Deleted {
+			continue
+		}
+		var cal struct {
+			CalendarID string `json:"calendar_id"`
+			Role       string `json:"role"`
+		}
+		if json.Unmarshal([]byte(r.Payload), &cal) != nil || cal.CalendarID == "" {
+			continue
+		}
+		if cal.Role == "owner" || cal.Role == "writer" {
+			ids = append(ids, cal.CalendarID)
+		}
 	}
 	return ids
 }

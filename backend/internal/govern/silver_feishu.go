@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/sources"
@@ -14,9 +15,10 @@ import (
 // Bronze kind identifiers for 飞书 (declared where the pullers live; the catalog
 // uses the same strings).
 const (
-	kindFeishuMessage    = "feishu_message"
-	kindFeishuChat       = "feishu_chat"
-	kindFeishuChatMember = "feishu_chat_member"
+	kindFeishuMessage       = "feishu_message"
+	kindFeishuChat          = "feishu_chat"
+	kindFeishuChatMember    = "feishu_chat_member"
+	kindFeishuCalendarEvent = "feishu_calendar_event"
 )
 
 func SilverFeishuMessages(src *sources.Store, dst *data.Store) (int, error) {
@@ -25,6 +27,10 @@ func SilverFeishuMessages(src *sources.Store, dst *data.Store) (int, error) {
 
 func SilverFeishuChats(src *sources.Store, dst *data.Store) (int, error) {
 	return runSilver(src, dst, sources.VendorFeishu, kindFeishuChat, parseFeishuChat, dst.UpsertFeishuChats)
+}
+
+func SilverFeishuEvents(src *sources.Store, dst *data.Store) (int, error) {
+	return runSilver(src, dst, sources.VendorFeishu, kindFeishuCalendarEvent, parseFeishuEvent, dst.UpsertFeishuEvents)
 }
 
 // SilverFeishuUsers rebuilds 飞书联系人 by MERGING two discovery sources into one
@@ -173,6 +179,60 @@ func decodeFeishuMember(payload string) *feishuMember {
 		return nil
 	}
 	return &m
+}
+
+// feishuEventTime is one edge of a 飞书 calendar event: timed events carry
+// `timestamp` (epoch SECONDS as a string), all-day events carry `date`.
+type feishuEventTime struct {
+	Timestamp string `json:"timestamp"`
+	Date      string `json:"date"`
+}
+
+// ms returns the edge as epoch-milliseconds and whether it is an all-day date.
+func (t feishuEventTime) ms() (int64, bool) {
+	if t.Timestamp != "" {
+		if s, err := strconv.ParseInt(t.Timestamp, 10, 64); err == nil {
+			return s * 1000, false
+		}
+	}
+	if t.Date != "" {
+		if d, err := time.Parse("2006-01-02", t.Date); err == nil {
+			return d.UnixMilli(), true
+		}
+	}
+	return 0, false
+}
+
+func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
+	var e struct {
+		EventID             string          `json:"event_id"`
+		Summary             string          `json:"summary"`
+		Description         string          `json:"description"`
+		Status              string          `json:"status"`
+		StartTime           feishuEventTime `json:"start_time"`
+		EndTime             feishuEventTime `json:"end_time"`
+		Recurrence          string          `json:"recurrence"`
+		OrganizerCalendarID string          `json:"organizer_calendar_id"`
+		Location            struct {
+			Name string `json:"name"`
+		} `json:"location"`
+	}
+	if json.Unmarshal([]byte(r.Payload), &e) != nil {
+		return nil
+	}
+	ext := e.EventID
+	if ext == "" {
+		ext = r.UID
+	}
+	startMs, allDay := e.StartTime.ms()
+	endMs, _ := e.EndTime.ms()
+	return []data.SilverFeishuEvent{{
+		AccountID: r.AccountID, ExternalID: ext, CalendarID: r.Collection,
+		Subject: e.Summary, Description: e.Description, Location: e.Location.Name,
+		StartsAt: startMs, EndsAt: endMs, AllDay: allDay,
+		Status: e.Status, OrganizerID: e.OrganizerCalendarID, Recurrence: e.Recurrence,
+		Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
+	}}
 }
 
 func parseFeishuMessage(r sources.StoredRecord) []data.SilverFeishuMessage {
