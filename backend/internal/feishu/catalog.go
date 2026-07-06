@@ -82,6 +82,17 @@ var catalog = []CollectionDescriptor{
 		TimeItemField: "create_time", TimeMs: true,
 		PerChat: true, Implemented: true,
 	},
+	{
+		// 群成员 (group roster) — chat_id is embedded in the path. The roster
+		// changes rarely, so it is NOT a recurring scheduled collection: the
+		// ingest handler pulls it once per chat on the first message sync and on
+		// manual per-group refresh (Handler.SyncChatMembers), never on the ticker.
+		Kind: "feishu_chat_member", Domain: DomainContacts, Label: "群成员",
+		Endpoint: "/open-apis/im/v1/chats/{chat_id}/members", Method: "GET",
+		BaseParams: map[string]string{"member_id_type": "open_id"},
+		ItemPath:   "data.items", UIDField: "member_id",
+		CursorFlavor: "page_token", PerChat: true, Implemented: true,
+	},
 
 	// ── 日历 ─────────────────────────────────────────────────────────────
 	{

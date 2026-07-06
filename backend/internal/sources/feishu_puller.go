@@ -80,8 +80,15 @@ func (p *feishuPuller) Pull(accountID string, c Collection, cur Cursor) ([]RawRe
 	if spec.PageSize > 0 {
 		params["page_size"] = strconv.Itoa(spec.PageSize)
 	}
+	// PerChat kinds carry the chat id either as a container_id param (messages)
+	// or embedded in the path (group members: /im/v1/chats/{chat_id}/members).
+	endpoint := d.Endpoint
 	if d.PerChat {
-		params["container_id"] = c.ID
+		if strings.Contains(endpoint, "{chat_id}") {
+			endpoint = strings.ReplaceAll(endpoint, "{chat_id}", c.ID)
+		} else {
+			params["container_id"] = c.ID
+		}
 	}
 
 	// timestamp flavor: bound the lower edge by the stored watermark (seconds),
@@ -95,7 +102,7 @@ func (p *feishuPuller) Pull(accountID string, c Collection, cur Cursor) ([]RawRe
 
 	ctx, cancel := context.WithTimeout(context.Background(), pullTimeout)
 	defer cancel()
-	out, err := p.client.RawAPI(ctx, d.Method, d.Endpoint, params, true)
+	out, err := p.client.RawAPI(ctx, d.Method, endpoint, params, true)
 	if err != nil {
 		return nil, cur, true, err
 	}

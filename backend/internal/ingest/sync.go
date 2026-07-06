@@ -199,8 +199,50 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 			result["messageSync"] = "ok"
 		}
 	}
+	// First-time roster capture: after the message sync, pull each tracked chat's
+	// group members ONCE (SyncChatMembers skips chats already captured) so 飞书联系人
+	// gets the full roster. The roster is not on the recurring schedule — it rarely
+	// changes; manual per-group refresh handles updates.
+	if kind == "feishu_message" {
+		if n, e := h.SyncChatMembers(spec.ChatIDs, false); e != nil {
+			result["memberSyncError"] = e.Error()
+		} else if n > 0 {
+			result["memberChanged"] = n
+		}
+	}
 	h.afterSyncSilver(result) // shape the just-synced bronze into silver
 	return result, nil
+}
+
+// SyncChatMembers pulls the group roster (feishu_chat_member) for the given chats
+// into bronze. force=false pulls only chats without an existing snapshot (the
+// first-time capture); force=true re-pulls regardless (manual per-group refresh).
+// The roster is NOT on the recurring schedule — it changes rarely — so this is
+// its sole driver: once after the first message sync, and on demand. The caller
+// runs silver governance afterwards (runFeishuSync via afterSyncSilver; the
+// manual endpoint explicitly).
+func (h *Handler) SyncChatMembers(chatIDs []string, force bool) (int, error) {
+	accountID := h.feishuAccountID()
+	client := feishu.NewClient("", "default")
+	var changed int
+	for _, chatID := range chatIDs {
+		if chatID == "" {
+			continue
+		}
+		if !force {
+			if _, _, ok, _ := h.bronze.LoadCursor(feishu.Source, accountID, "feishu_chat_member", chatID); ok {
+				continue // already captured once
+			}
+		}
+		spec := sources.FeishuSpec{Kind: "feishu_chat_member", PageSize: 100, ChatIDs: []string{chatID}}
+		puller := sources.NewFeishuPuller(client, []sources.FeishuSpec{spec})
+		stats, err := h.bronze.Sync(puller, accountID)
+		if err != nil {
+			return changed, err
+		}
+		changed += stats.Changed
+	}
+	return changed, nil
 }
 
 // runMicrosoftSync / runGoogleSync are the function-executor bodies for the

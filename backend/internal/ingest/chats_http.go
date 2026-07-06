@@ -78,3 +78,28 @@ func (h *Handler) HandleChats(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
+
+// HandleChatMembersSync serves POST /api/sources/feishu/chats/members — a manual
+// per-group roster refresh. Body: {chatId}. The group roster is captured once on
+// the first message sync and is not on the recurring schedule; this force-repulls
+// one chat's members into bronze and re-governs silver so 飞书联系人 reflects it.
+func (h *Handler) HandleChatMembersSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ChatID string `json:"chatId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ChatID == "" {
+		http.Error(w, "chatId required", http.StatusBadRequest)
+		return
+	}
+	changed, err := h.SyncChatMembers([]string{body.ChatID}, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.afterSyncSilver(map[string]any{"kind": "feishu_chat_member"})
+	writeJSON(w, http.StatusOK, map[string]any{"chatId": body.ChatID, "changed": changed})
+}

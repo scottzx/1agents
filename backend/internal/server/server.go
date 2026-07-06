@@ -327,7 +327,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/feishu/sync", ingestHandler.HandleSync)               // POST {kind}
 				mux.HandleFunc("/api/sources/feishu/history", ingestHandler.HandleHistory)         // GET
 				mux.HandleFunc("/api/sources/feishu/schedules", ingestHandler.HandleSchedules)     // GET — 定时任务触发状态
-				mux.HandleFunc("/api/sources/feishu/chats", ingestHandler.HandleChats)             // GET — cached 群列表 (bronze) + tracked join
+				mux.HandleFunc("/api/sources/feishu/chats", ingestHandler.HandleChats)                   // GET — cached 群列表 (bronze) + tracked join
+				mux.HandleFunc("/api/sources/feishu/chats/members", ingestHandler.HandleChatMembersSync) // POST {chatId} — manual 群成员 roster refresh
 				mux.HandleFunc("/api/sources/microsoft/collections", ingestHandler.HandleCollections)
 				mux.HandleFunc("/api/sources/microsoft/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/microsoft/history", ingestHandler.HandleHistory)

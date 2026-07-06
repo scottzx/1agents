@@ -14,8 +14,9 @@ import (
 // Bronze kind identifiers for 飞书 (declared where the pullers live; the catalog
 // uses the same strings).
 const (
-	kindFeishuMessage = "feishu_message"
-	kindFeishuChat    = "feishu_chat"
+	kindFeishuMessage    = "feishu_message"
+	kindFeishuChat       = "feishu_chat"
+	kindFeishuChatMember = "feishu_chat_member"
 )
 
 func SilverFeishuMessages(src *sources.Store, dst *data.Store) (int, error) {
@@ -26,15 +27,23 @@ func SilverFeishuChats(src *sources.Store, dst *data.Store) (int, error) {
 	return runSilver(src, dst, sources.VendorFeishu, kindFeishuChat, parseFeishuChat, dst.UpsertFeishuChats)
 }
 
-// SilverFeishuUsers rebuilds the 二级用户 table from EVERY 飞书 message's sender +
-// @mentions (name comes free from mentions[].name). It is a full recompute over
-// the message stream each run (not cursor-gated): cheap at chat scale and always
-// consistent. Once a feishu_user bronze kind (group roster) lands, it merges in
-// as a second discovery source.
+// SilverFeishuUsers rebuilds 飞书联系人 by MERGING two discovery sources into one
+// table: (1) every 飞书 message's sender + @mentions (name comes free from
+// mentions[].name), and (2) the group roster (feishu_chat_member) — the members
+// list pulled per chat via lark-cli, which also brings in members who never
+// spoke and carries authoritative names. It is a full recompute over both
+// streams each run (not cursor-gated): cheap at chat scale and always consistent.
 func SilverFeishuUsers(src *sources.Store, dst *data.Store) (int, error) {
 	recs, maxFetched, err := src.RecordsSince(sources.VendorFeishu, kindFeishuMessage, 0)
 	if err != nil {
 		return 0, err
+	}
+	members, memMax, err := src.RecordsSince(sources.VendorFeishu, kindFeishuChatMember, 0)
+	if err != nil {
+		return 0, err
+	}
+	if memMax > maxFetched {
+		maxFetched = memMax
 	}
 	users := map[string]*data.SilverFeishuUser{}
 	touch := func(openID, name, tenant, via, chatID string, t int64) {
@@ -76,6 +85,16 @@ func SilverFeishuUsers(src *sources.Store, dst *data.Store) (int, error) {
 		for _, mn := range m.Mentions {
 			touch(mn.ID, mn.Name, mn.TenantKey, "mention", m.ChatID, t)
 		}
+	}
+	// Group roster: one bronze record per (chat, member); Collection is the chat
+	// id. "roster" discovery brings in members who never spoke + authoritative
+	// names, but has no per-message timestamp — pass t=0.
+	for _, r := range members {
+		mem := decodeFeishuMember(r.Payload)
+		if mem == nil {
+			continue
+		}
+		touch(mem.MemberID, mem.Name, mem.TenantKey, "roster", r.Collection, 0)
 	}
 	rows := make([]data.SilverFeishuUser, 0, len(users))
 	for _, u := range users {
@@ -136,6 +155,21 @@ type feishuMsg struct {
 func decodeFeishuMessage(payload string) *feishuMsg {
 	var m feishuMsg
 	if json.Unmarshal([]byte(payload), &m) != nil {
+		return nil
+	}
+	return &m
+}
+
+// feishuMember is one item from /im/v1/chats/:id/members (bronze feishu_chat_member).
+type feishuMember struct {
+	MemberID  string `json:"member_id"` // open_id (member_id_type=open_id)
+	Name      string `json:"name"`
+	TenantKey string `json:"tenant_key"`
+}
+
+func decodeFeishuMember(payload string) *feishuMember {
+	var m feishuMember
+	if json.Unmarshal([]byte(payload), &m) != nil || m.MemberID == "" {
 		return nil
 	}
 	return &m
