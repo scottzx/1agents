@@ -46,8 +46,6 @@ export type ContentView =
     | { kind: 'contacts' }
     | { kind: 'datasources' }
     | { kind: 'inbox' }
-    | { kind: 'personal' }
-    | { kind: 'retro' }
     | { kind: 'channels' }
     | { kind: 'providers' }
     | { kind: 'skills' }

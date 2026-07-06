@@ -59,7 +59,7 @@ interface WorkspaceHeaderProps {
 // they show a "助手 › <module>" breadcrumb. Everything else full-page
 // (数据源 / 设置 / 技能 / 发现 / providers) is a first-level module and shows
 // just its own name, no parent.
-const ASSISTANT_FOCUS_TABS: RightDrawerTab[] = ['contacts', 'inbox', 'reminders', 'personal', 'retro'];
+const ASSISTANT_FOCUS_TABS: RightDrawerTab[] = ['contacts', 'inbox', 'reminders'];
 
 const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
     providers: 'header.title.providers',
@@ -70,8 +70,6 @@ const FULLPAGE_TITLE_KEYS: Partial<Record<RightDrawerTab, string>> = {
     contacts: 'header.title.contacts',
     datasources: 'header.title.datasources',
     inbox: 'header.title.inbox',
-    personal: 'header.title.personal',
-    retro: 'header.title.retro',
 };
 
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {

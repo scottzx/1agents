@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// PersonalProjectID is the fixed id of the legacy "个人任务" reserved bucket, a
+// pseudo-project that once backed the removed personal-tasks feature. It is kept
+// only so any pre-existing bucket row stays excluded from the workspace registry
+// (sidebar) and PMO dispatch targets — nothing creates it anymore.
+const PersonalProjectID = "__personal__"
+
 // EnsureProject upserts a project row keyed by id (= workspace id). Name and
 // path are refreshed on every call so renames in the workspace registry
 // propagate.

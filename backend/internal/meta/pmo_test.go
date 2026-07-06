@@ -89,7 +89,7 @@ func TestDispatchWithoutInboxSource(t *testing.T) {
 }
 
 func TestDispatchValidation(t *testing.T) {
-	pmo, ts, _ := newTestPMOStore(t)
+	pmo, _, _ := newTestPMOStore(t)
 
 	// Blank title rejected.
 	if _, err := pmo.Dispatch("proj", "  ", "", "", ""); err == nil {
@@ -103,28 +103,18 @@ func TestDispatchValidation(t *testing.T) {
 	if _, err := pmo.Dispatch("ghost", "T", "", "", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown project should be ErrNotFound, got %v", err)
 	}
-	// The reserved personal bucket is not a dispatch target.
-	if err := ts.db.EnsureProject(PersonalProjectID, "个人任务", personalProjectPath); err != nil {
-		t.Fatalf("ensure personal bucket: %v", err)
-	}
-	if _, err := pmo.Dispatch(PersonalProjectID, "T", "", "", ""); err == nil {
-		t.Fatal("dispatching into the personal bucket should be rejected")
-	}
 }
 
-func TestTargetsExcludesPersonalBucket(t *testing.T) {
+func TestTargetsListsActiveProjects(t *testing.T) {
 	pmo, ts, _ := newTestPMOStore(t)
 	if err := ts.db.EnsureProject("p-active", "活跃项目", t.TempDir()); err != nil {
 		t.Fatalf("ensure project: %v", err)
-	}
-	if err := ts.db.EnsureProject(PersonalProjectID, "个人任务", personalProjectPath); err != nil {
-		t.Fatalf("ensure personal bucket: %v", err)
 	}
 	targets, err := pmo.Targets()
 	if err != nil {
 		t.Fatalf("targets: %v", err)
 	}
 	if len(targets) != 1 || targets[0].ProjectID != "p-active" {
-		t.Fatalf("targets should list only the active non-personal project, got %+v", targets)
+		t.Fatalf("targets should list the active project, got %+v", targets)
 	}
 }

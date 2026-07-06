@@ -563,36 +563,6 @@ func TestWorkspaceProjectUnification(t *testing.T) {
 		t.Fatalf("reorder failed: %+v", list)
 	}
 
-	// Personal bucket is never part of the workspace registry.
-	ps := NewPersonalStore(NewTaskStore(db))
-	pt, err := ps.Capture("todo", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	list, _ = db.ListWorkspaceProjects()
-	for _, p := range list {
-		if p.ID == PersonalProjectID {
-			t.Fatalf("personal bucket leaked into workspace list")
-		}
-	}
-
-	// Core regression (#67 seam): 立项 makes the new project appear in the
-	// workspace registry automatically — no separate workspace registration.
-	res, err := ps.Incubate(pt.ID, "Promoted", "/p/promoted", nil)
-	if err != nil {
-		t.Fatalf("incubate: %v", err)
-	}
-	list, _ = db.ListWorkspaceProjects()
-	found := false
-	for _, p := range list {
-		if p.ID == res.Project.ID {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("incubated project not in workspace list — seam not closed")
-	}
-
 	// Archiving sets status; the row stays in ListWorkspaceProjects (so id→path
 	// resolution still works) but the List handler's active filter would hide it.
 	if err := db.ArchiveProject("a", ProjectStatusArchived, ArchiveReasonCompleted, ""); err != nil {

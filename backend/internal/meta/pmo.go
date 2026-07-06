@@ -8,9 +8,9 @@ import (
 
 // PMOStore is the PMO 跨项目对话式需求分发层 (#61): the layer that sits between
 // Inbox 收口 (#60) and the per-project requirement pool. Where Inbox is passive
-// intake and PersonalStore is the lightweight no-project landing spot, the PMO
-// is the cross-project dispatcher — it takes a clarified idea (often an inbox
-// item) and writes it into a specific project's requirement pool as a
+// intake, the PMO is the cross-project dispatcher — it takes a clarified idea
+// (often an inbox item) and writes it into a specific project's requirement pool
+// as a
 // tasks.type = requirement card. From there the project's AI Project Manager
 // (#49/#50) schedules it. The PMO never schedules; it only dispatches.
 //
@@ -51,8 +51,7 @@ type DispatchResult struct {
 // 验收说明 the PMO clarified in conversation. fromInbox, when set, is the
 // originating inbox_item id: it is stamped as a dispatched-from backlink label,
 // and the inbox item is flipped to read so it leaves the unread queue (the
-// intake → dispatch loop closes). Returns ErrNotFound when projectID is unknown
-// or names the reserved personal bucket (which is not a dispatch target).
+// intake → dispatch loop closes). Returns ErrNotFound when projectID is unknown.
 func (s *PMOStore) Dispatch(projectID, title, description, priority, fromInbox string) (DispatchResult, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -63,8 +62,7 @@ func (s *PMOStore) Dispatch(projectID, title, description, priority, fromInbox s
 		return DispatchResult{}, fmt.Errorf("meta: target projectID is required")
 	}
 	if projectID == PersonalProjectID {
-		// The personal bucket is the no-project landing spot (#67), never a
-		// dispatch target — dispatching is cross-PROJECT by definition.
+		// A legacy personal bucket (removed feature) is never a dispatch target.
 		return DispatchResult{}, fmt.Errorf("meta: cannot dispatch into the personal bucket")
 	}
 
@@ -119,8 +117,7 @@ func (s *PMOStore) Dispatch(projectID, title, description, priority, fromInbox s
 	return DispatchResult{Requirement: saved, Project: project}, nil
 }
 
-// DispatchTarget is one selectable project the PMO can dispatch into. The
-// reserved personal bucket is excluded — it is not a project.
+// DispatchTarget is one selectable project the PMO can dispatch into.
 type DispatchTarget struct {
 	ProjectID     string `json:"projectId"`
 	Name          string `json:"name"`
@@ -128,8 +125,8 @@ type DispatchTarget struct {
 }
 
 // Targets lists the projects the PMO may dispatch requirements into: every
-// active project except the reserved personal bucket. This is the cross-project
-// menu the PMO conversation picks a target from.
+// active project (a legacy personal bucket, if present, is excluded). This is
+// the cross-project menu the PMO conversation picks a target from.
 func (s *PMOStore) Targets() ([]DispatchTarget, error) {
 	projects, err := s.tasks.db.ListProjectsByStatus(ProjectStatusActive)
 	if err != nil {
