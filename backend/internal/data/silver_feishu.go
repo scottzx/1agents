@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS silver_feishu_events (
     meeting_url       TEXT    NOT NULL DEFAULT '',  -- vchat.meeting_url
     vchat_type        TEXT    NOT NULL DEFAULT '',  -- vchat.vc_type
     reminders         TEXT    NOT NULL DEFAULT '[]',-- JSON [{minutes}]
+    attendees         TEXT    NOT NULL DEFAULT '[]',-- JSON; reserved, left empty for now
+                                                    -- (参会人 is a separate per-event API, not yet ingested)
     recurrence        TEXT    NOT NULL DEFAULT '',  -- RRULE
     app_link          TEXT    NOT NULL DEFAULT '',  -- feishu deep link to the event
     color             INTEGER NOT NULL DEFAULT 0,
@@ -164,6 +166,7 @@ type SilverFeishuEvent struct {
 	OrganizerOpenID, OrganizerName, OrganizerCalendarID string
 	MeetingURL, VchatType                               string
 	Reminders                                           string // JSON [{minutes}]
+	Attendees                                           string // JSON; reserved, empty until 参会人 ingestion lands
 	Recurrence, AppLink                                 string
 	Color                                               int64
 	CreateTime                                          int64
@@ -215,13 +218,13 @@ func (s *Store) UpsertFeishuEvents(rows []SilverFeishuEvent) (int, error) {
             (source, account_id, external_id, calendar_id, subject, description, location, location_address,
              starts_at, ends_at, all_day, status, visibility, free_busy_status, self_rsvp_status,
              attendee_ability, is_exception, organizer_open_id, organizer_name, organizer_calendar_id,
-             meeting_url, vchat_type, reminders, recurrence, app_link, color, create_time, deleted, updated_at)
-            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+             meeting_url, vchat_type, reminders, attendees, recurrence, app_link, color, create_time, deleted, updated_at)
+            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}, func(stmt *sql.Stmt, r SilverFeishuEvent) error {
 		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.CalendarID, r.Subject, r.Description,
 			r.Location, r.LocationAddress, r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.Status, r.Visibility,
 			r.FreeBusyStatus, r.SelfRsvpStatus, r.AttendeeAbility, boolInt(r.IsException), r.OrganizerOpenID,
-			r.OrganizerName, r.OrganizerCalendarID, r.MeetingURL, r.VchatType, r.Reminders,
+			r.OrganizerName, r.OrganizerCalendarID, r.MeetingURL, r.VchatType, r.Reminders, r.Attendees,
 			r.Recurrence, r.AppLink, r.Color, r.CreateTime, boolInt(r.Deleted), r.UpdatedAt)
 		return err
 	})

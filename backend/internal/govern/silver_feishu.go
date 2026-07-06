@@ -258,7 +258,8 @@ func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
 		OrganizerOpenID: e.EventOrganizer.UserID, OrganizerName: e.EventOrganizer.DisplayName,
 		OrganizerCalendarID: e.OrganizerCalendarID,
 		MeetingURL:          e.Vchat.MeetingURL, VchatType: e.Vchat.VcType,
-		Reminders: rawJSONArr(e.Reminders), Recurrence: e.Recurrence, AppLink: e.AppLink,
+		Reminders: rawJSONArr(e.Reminders), Attendees: "[]", // 参会人 reserved, not yet ingested
+		Recurrence: e.Recurrence, AppLink: e.AppLink,
 		Color: e.Color, CreateTime: createMs, Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
 	}}
 }
