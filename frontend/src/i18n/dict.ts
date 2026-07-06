@@ -330,7 +330,12 @@ export const zhCN: Record<string, string> = {
     'datasource.layer.bronze': '数据接入',
     'datasource.layer.gold': '数据融合',
     'datasource.gold.title': '数据融合(金层)',
-    'datasource.gold.empty': '数据融合尚在建设中(#400)—— 跨源实体归并 / 会话线程 / 指纹去重完成后在此展示。',
+    'datasource.gold.empty': '该域暂无融合数据。',
+    'datasource.gold.zoneEmpty': '尚无融合数据 —— 各源同步治理后自动跨源归并联系人 / 会话 / 日历。',
+    'datasource.gold.domain.contacts': '联系人',
+    'datasource.gold.domain.messages': '消息',
+    'datasource.gold.domain.events': '日历',
+    'datasource.gold.domain.todos': '待办',
     // Source-centric panel zones + raw-data browse
     'datasource.zone.auth': '认证与授权',
     'datasource.zone.groups': '群选择（群消息域）',
@@ -1865,8 +1870,13 @@ export const enUS: Record<string, string> = {
     'datasource.layer.bronze': 'Ingestion',
     'datasource.layer.gold': 'Fusion',
     'datasource.gold.title': 'Data fusion (gold)',
-    'datasource.gold.empty':
-        'Data fusion is under construction (#400) — cross-source entity merge / threads / fingerprint dedup will show here.',
+    'datasource.gold.empty': 'No fused data in this domain yet.',
+    'datasource.gold.zoneEmpty':
+        'No fused data yet — contacts / conversations / calendar are merged across sources after each source syncs.',
+    'datasource.gold.domain.contacts': 'Contacts',
+    'datasource.gold.domain.messages': 'Messages',
+    'datasource.gold.domain.events': 'Calendar',
+    'datasource.gold.domain.todos': 'Todos',
     // Source-centric panel zones + raw-data browse
     'datasource.zone.auth': 'Authentication',
     'datasource.zone.groups': 'Group selection (messages)',

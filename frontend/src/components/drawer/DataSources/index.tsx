@@ -12,7 +12,7 @@ import { SilverDetail } from './SilverDetail';
 import { SourceHome } from './SourceHome';
 import { SourcePanel, sourceTabs } from './SourcePanel';
 import { AddSource } from './AddSource';
-import { GoldView } from './GoldView';
+import { GoldZone, GoldDetail } from './GoldView';
 
 // 数据源管理 (Data Source Management) — two medallion layers switch at the top:
 //   数据接入 (bronze) — 源为中心 landing grid → source drill → 原始/已治理 zones
@@ -49,6 +49,9 @@ export function DataSourcesPane() {
     const vendorAuth = useSignal<Record<string, string>>({});
     const subTab = useSignal<string>('auth');
     const detail = useSignal<Detail | null>(null);
+    // gold is a single top-layer screen with its own cards→domain drill (联系人/
+    // 消息/日历), kept out of the bronze Detail union since it's cross-source.
+    const goldDomain = useSignal<{ domain: string; title: string } | null>(null);
 
     const loadAccounts = () => {
         sourceService
@@ -95,6 +98,8 @@ export function DataSourcesPane() {
         if (view.value.kind !== 'account') return;
         detail.value = { stage: 'silver', domain, source: view.value.account.vendor, title };
     };
+    const openGold = (domain: string, title: string) => (goldDomain.value = { domain, title });
+    const clearGold = () => (goldDomain.value = null);
 
     // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
     // The breadcrumb root is the active layer (数据接入 / 数据融合) rather than a
@@ -104,7 +109,14 @@ export function DataSourcesPane() {
         const rootLabel = t(`datasource.layer.${layer.value}`, language);
         const home = { label: rootLabel, onClick: goHome };
         const v = view.value;
-        if (layer.value !== 'bronze' || v.kind === 'home') {
+        if (layer.value === 'gold') {
+            // 数据融合 root, drilling into a domain reads 数据融合 › <域>.
+            taskNav.headerCrumbs.value = goldDomain.value
+                ? [{ label: rootLabel, onClick: clearGold }, { label: goldDomain.value.title }]
+                : [{ label: rootLabel }];
+            return;
+        }
+        if (v.kind === 'home') {
             taskNav.headerCrumbs.value = [{ label: rootLabel }];
             return;
         }
@@ -130,10 +142,11 @@ export function DataSourcesPane() {
 
     const v = view.value;
     const zoneTabs = layer.value === 'bronze' && v.kind === 'account' ? sourceTabs(language) : [];
-    // Once drilled into a source (account / add / detail), the header breadcrumb
-    // (数据接入 › <账号> › …) carries the context, so the layer switch hides to avoid
-    // a redundant second row. It shows only at a layer's top (bronze home / gold).
-    const drilled = layer.value === 'bronze' && v.kind !== 'home';
+    // Once drilled (bronze source detail, or a gold domain), the header breadcrumb
+    // carries the context, so the layer switch hides to avoid a redundant second
+    // row. It shows only at a layer's top (bronze home / gold cards).
+    const drilled =
+        (layer.value === 'bronze' && v.kind !== 'home') || (layer.value === 'gold' && goldDomain.value !== null);
 
     return (
         <div class="datasource-pane">
@@ -153,7 +166,11 @@ export function DataSourcesPane() {
 
             {layer.value === 'gold' ? (
                 <div class="datasource-tab-body">
-                    <GoldView />
+                    {goldDomain.value ? (
+                        <GoldDetail domain={goldDomain.value.domain} title={goldDomain.value.title} />
+                    ) : (
+                        <GoldZone onOpen={openGold} />
+                    )}
                 </div>
             ) : v.kind === 'home' ? (
                 <div class="datasource-tab-body">

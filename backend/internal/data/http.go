@@ -63,6 +63,45 @@ func (h *Handler) HandleRecords(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
+// HandleGoldSummary: GET /api/data/gold/summary → per-domain fused rollup.
+func (h *Handler) HandleGoldSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sums, err := h.store.GoldSummary()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, sums)
+}
+
+// HandleGoldRecords: GET /api/data/gold/records?domain=&limit= → one fused
+// domain's rows (contacts|messages|events) as grid rows.
+func (h *Handler) HandleGoldRecords(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	domain := q.Get("domain")
+	if domain == "" {
+		http.Error(w, "domain required", http.StatusBadRequest)
+		return
+	}
+	limit := 0
+	if v := q.Get("limit"); v != "" {
+		limit, _ = strconv.Atoi(v)
+	}
+	rows, err := h.store.ListGold(domain, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

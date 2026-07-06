@@ -330,6 +330,24 @@ export const sourceService = {
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SilverRunResult;
     },
+
+    // ---- 数据融合 (gold): cross-source fused entities (data.db) ----
+
+    /** GET /api/data/gold/summary — per fused domain (contacts|messages|events) rollup. */
+    async goldSummary(): Promise<GoldSummary[]> {
+        const res = await apiFetch('/data/gold/summary');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as GoldSummary[];
+    },
+
+    /** GET /api/data/gold/records?domain=&limit= — one fused domain's rows as grid
+     * rows (same envelope as bronze/silver records, so the 多维表格 grid is reused). */
+    async goldRecords(domain: string, limit = 1000): Promise<SourceRecordRow[]> {
+        const qs = new URLSearchParams({ domain, limit: String(limit) });
+        const res = await apiFetch(`/data/gold/records?${qs.toString()}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SourceRecordRow[];
+    },
 };
 
 // One (domain, source) silver rollup. Mirrors data.SilverSummaryRow.
@@ -346,6 +364,13 @@ export interface SilverRunResult {
     messages: number;
     events: number;
     todos: number;
+}
+
+// One fused-domain rollup for the 数据融合 overview. Mirrors data.GoldSummaryRow.
+export interface GoldSummary {
+    domain: string; // contacts | messages | events
+    count: number;
+    lastUpdated: number; // epoch ms
 }
 
 /** One Feishu group from the bronze cache, with its message-scope tracked flag. */

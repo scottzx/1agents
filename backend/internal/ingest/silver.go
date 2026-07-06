@@ -84,5 +84,7 @@ func goldSummary(g govern.GoldStats) map[string]int {
 		"threads":  g.Threads,
 		"messages": g.Messages,
 		"contacts": g.Contacts,
+		"events":   g.Events,
+		"todos":    g.Todos,
 	}
 }
