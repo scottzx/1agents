@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "_gstack_source": "plan-tune-cathedral",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/modules/gstack/hosts/claude/hooks/question-log-hook",
+            "timeout": 5
+          }
+        ],
+        "matcher": "(AskUserQuestion|mcp__.*__AskUserQuestion)"
+      },
+      {
+        "_gstack_source": "auq-error-fallback",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/modules/gstack/hosts/claude/hooks/auq-error-fallback-hook",
+            "timeout": 5
+          }
+        ],
+        "matcher": "(AskUserQuestion|mcp__.*__AskUserQuestion)"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "_gstack_source": "plan-tune-cathedral",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/scott/Documents/01-开发项目/1agents/1agents_app/modules/gstack/hosts/claude/hooks/question-preference-hook",
+            "timeout": 5
+          }
+        ],
+        "matcher": "(AskUserQuestion|mcp__.*__AskUserQuestion)"
+      }
+    ]
+  }
+}
