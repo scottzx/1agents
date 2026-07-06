@@ -9,6 +9,7 @@ import { SourceAuthZone } from './SourceAuthZone';
 import { ScheduleList } from './ScheduleList';
 import { TaskRunsGrid } from './TaskRunsGrid';
 import { SourceDataZone } from './SourceDataZone';
+import { SourceSilverZone } from './SourceSilverZone';
 
 // SourcePanel — the single, source-agnostic panel for every 数据源. It replaces
 // the per-vendor FeishuSourcePanel / AppleSourcePanel / SourceInstancePanel: one
@@ -19,12 +20,14 @@ import { SourceDataZone } from './SourceDataZone';
 //   认证 → SourceAuthZone (authKind → oauth / cli / credentials)
 //   配置 → 定时任务: ScheduleList (采集项 + 触发状态) | 执行情况: TaskRunsGrid (工单运行)
 //   数据 → SourceDataZone 卡片 → SourceDetail 多维表格 (via onOpenData)
-
+//   治理 → SourceSilverZone 卡片 → SilverDetail 多维表格 (via onOpenSilver);
+//          silver 单表治理,跟随本源定时同步增量修正
 export function sourceTabs(language: Lang): ShellTab[] {
     return [
         { id: 'auth', label: t('datasource.zone.auth', language) },
         { id: 'config', label: t('datasource.tab.config', language) },
         { id: 'data', label: t('datasource.data.title', language) },
+        { id: 'silver', label: t('datasource.zone.silver', language) },
     ];
 }
 
@@ -41,11 +44,13 @@ export function SourcePanel({
     authKind,
     tab,
     onOpenData,
+    onOpenSilver,
 }: {
     account: SourceAccount;
     authKind: string;
     tab: string;
     onOpenData: (source: string, kind: string, title: string, account?: string) => void;
+    onOpenSilver: (domain: string, title: string) => void;
 }) {
     const language = ui.language.value;
     const data = dataSourcesFor(account.vendor);
@@ -64,6 +69,8 @@ export function SourcePanel({
                     onOpen={onOpenData}
                 />
             )}
+
+            {tab === 'silver' && <SourceSilverZone vendor={account.vendor} onOpen={onOpenSilver} />}
         </div>
     );
 }

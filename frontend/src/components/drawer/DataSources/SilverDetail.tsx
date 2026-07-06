@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 
 import * as ui from '../../../stores/uiStore';
 import { t } from '../../../i18n';
-import { sourceService, type SourceRecordRow, type SilverSummary } from '@1agents/core/services/sourceService';
+import { sourceService, type SourceRecordRow } from '@1agents/core/services/sourceService';
 import { DataGrid } from '../TaskList/DataGrid';
 import {
     buildSourceColumns,
@@ -15,33 +15,18 @@ import {
     searchText,
 } from './sourceGrid';
 
-// 数据归一 (silver) — the cross-source, conformed four-domain view. Unlike the
-// source-centric bronze browser, silver is domain-oriented: pick a domain
-// (联系人/消息/日历/待办) and see every source's rows together in one 多维表格,
-// filterable by source. Reuses the bronze grid wholesale (silver rows share the
-// SourceRecordRow envelope). "重新清洗" re-runs bronze→silver on demand.
-
-const DOMAINS = ['contacts', 'messages', 'events', 'todos'] as const;
-type Domain = (typeof DOMAINS)[number];
-
-export function SilverView() {
+// 已治理数据详情 (silver detail) — the cleaned 多维表格 for ONE (source, domain).
+// Silver is single-table governance: one bronze table → one cleaning scheme,
+// re-run incrementally after that source's scheduled sync. Rows share the bronze
+// SourceRecordRow envelope, so the whole grid (sourceGrid + DataGrid) is reused.
+// "重新治理" re-runs bronze→silver on demand (global, cursor-gated = cheap).
+export function SilverDetail({ domain, source, title }: { domain: string; source: string; title: string }) {
     const language = ui.language.value;
-    const [domain, setDomain] = useState<Domain>('messages');
-    const [source, setSource] = useState(''); // '' = 全部来源
     const [rows, setRows] = useState<SourceRecordRow[]>([]);
-    const [summary, setSummary] = useState<SilverSummary[]>([]);
     const [loading, setLoading] = useState(false);
     const [rerunning, setRerunning] = useState(false);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
-
-    const loadSummary = useCallback(() => {
-        sourceService
-            .silverSummary()
-            .then(setSummary)
-            .catch(() => setSummary([]));
-    }, []);
-    useEffect(loadSummary, [loadSummary]);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -54,21 +39,15 @@ export function SilverView() {
             setLoading(false);
         }
     }, [domain, source]);
+
     useEffect(() => {
         refresh();
     }, [refresh]);
-
-    // A domain switch clears the source filter (sources differ per domain).
-    const pickDomain = (d: Domain) => {
-        setDomain(d);
-        setSource('');
-    };
 
     const rerun = async () => {
         setRerunning(true);
         try {
             await sourceService.runSilver();
-            loadSummary();
             await refresh();
         } catch (err) {
             setError((err as Error).message);
@@ -76,12 +55,6 @@ export function SilverView() {
             setRerunning(false);
         }
     };
-
-    // Sources available for the active domain (for the filter dropdown) + total.
-    const domainRollup = summary.filter(s => s.domain === domain);
-    const domainSources = [...new Set(domainRollup.map(s => s.source))].sort();
-    const domainTotal = domainRollup.reduce((n, s) => n + s.count, 0);
-    const countFor = (d: Domain) => summary.filter(s => s.domain === d).reduce((n, s) => n + s.count, 0);
 
     const columns = useMemo(() => buildSourceColumns(rows, language), [rows, language]);
     const groupOptions = useMemo(() => buildGroupOptions(columns, language), [columns, language]);
@@ -92,29 +65,9 @@ export function SilverView() {
 
     return (
         <div class="datasource-detail">
-            <div class="silver-tabs">
-                {DOMAINS.map(d => (
-                    <button key={d} class={`silver-tab${d === domain ? ' active' : ''}`} onClick={() => pickDomain(d)}>
-                        {t(`datasource.silver.domain.${d}`, language)}
-                        <span class="silver-tab-count">{countFor(d)}</span>
-                    </button>
-                ))}
-            </div>
-
             <div class="datasource-subhead">
-                <span class="datasource-subhead-count">{t('datasource.records', language, { n: domainTotal })}</span>
-                <select
-                    class="silver-source-filter"
-                    value={source}
-                    onChange={(e: Event) => setSource((e.target as HTMLSelectElement).value)}
-                >
-                    <option value="">{t('datasource.silver.allSources', language)}</option>
-                    {domainSources.map(s => (
-                        <option key={s} value={s}>
-                            {s}
-                        </option>
-                    ))}
-                </select>
+                <span class="datasource-subhead-title">{title}</span>
+                <span class="datasource-subhead-count">{t('datasource.records', language, { n: rows.length })}</span>
                 <input
                     class="contacts-search datasource-search"
                     placeholder={t('contacts.searchPlaceholder', language)}
@@ -129,7 +82,7 @@ export function SilverView() {
 
             <DataGrid<SourceRecordRow>
                 key={colSig}
-                persistKey={`silver:cols:${domain}`}
+                persistKey={`silver:cols:${source}:${domain}`}
                 rows={filtered}
                 totalCount={rows.length}
                 columns={columns}

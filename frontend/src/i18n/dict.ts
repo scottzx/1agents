@@ -304,13 +304,13 @@ export const zhCN: Record<string, string> = {
     'datasource.add.hint': '选择一个数据源类型接入;已接入的可直接去配置。',
     // Medallion 三层切换:接入(bronze) / 治理(silver) / 融合(gold)
     'datasource.layer.bronze': '数据接入',
-    'datasource.layer.silver': '数据治理',
     'datasource.layer.gold': '数据融合',
     'datasource.gold.title': '数据融合(金层)',
     'datasource.gold.empty': '数据融合尚在建设中(#400)—— 跨源实体归并 / 会话线程 / 指纹去重完成后在此展示。',
     // Source-centric panel zones + raw-data browse
     'datasource.zone.auth': '认证与授权',
     'datasource.zone.groups': '群选择（群消息域）',
+    'datasource.zone.silver': '已治理数据',
     'datasource.data.title': '已获取原始数据',
     'datasource.data.empty': '尚无已采集数据,启用采集后可在此浏览。',
     'datasource.data.records': '{n} 条',
@@ -330,14 +330,11 @@ export const zhCN: Record<string, string> = {
     'datasource.home.appleDesc': '联系人 / iMessage · 本地读取',
     'datasource.home.addDesc': '接入更多数据源',
     'datasource.home.manage': '管理',
-    // 数据归一 (silver) — 跨源清洗后的四大域视图
-    'datasource.silver.entry': '数据归一',
-    'datasource.silver.entryDesc': '联系人 / 消息 / 日历 / 待办 · 跨源清洗归一',
-    'datasource.silver.title': '数据归一（清洗后）',
-    'datasource.silver.rerun': '重新清洗',
-    'datasource.silver.rerunning': '清洗中…',
-    'datasource.silver.allSources': '全部来源',
-    'datasource.silver.empty': '该域暂无清洗数据 — 先在数据源同步，或点「重新清洗」。',
+    // 已治理数据 (silver) — 单表治理:一个表一个方案,跟随本源定时同步增量修正
+    'datasource.silver.zoneEmpty': '尚无治理数据 —— 该源同步后会自动清洗归一。',
+    'datasource.silver.rerun': '重新治理',
+    'datasource.silver.rerunning': '治理中…',
+    'datasource.silver.empty': '该域暂无治理数据 — 先在数据源同步，或点「重新治理」。',
     'datasource.silver.domain.contacts': '联系人',
     'datasource.silver.domain.messages': '消息',
     'datasource.silver.domain.events': '日历',
@@ -1835,7 +1832,6 @@ export const enUS: Record<string, string> = {
     'datasource.add.hint': 'Pick a source type to connect; configure the ones already connected.',
     // Medallion layer switch: ingestion (bronze) / governance (silver) / fusion (gold)
     'datasource.layer.bronze': 'Ingestion',
-    'datasource.layer.silver': 'Governance',
     'datasource.layer.gold': 'Fusion',
     'datasource.gold.title': 'Data fusion (gold)',
     'datasource.gold.empty':
@@ -1843,6 +1839,7 @@ export const enUS: Record<string, string> = {
     // Source-centric panel zones + raw-data browse
     'datasource.zone.auth': 'Authentication',
     'datasource.zone.groups': 'Group selection (messages)',
+    'datasource.zone.silver': 'Governed data',
     'datasource.data.title': 'Ingested raw data',
     'datasource.data.empty': 'No data ingested yet — enable a collection to browse it here.',
     'datasource.data.records': '{n} records',
@@ -1862,14 +1859,11 @@ export const enUS: Record<string, string> = {
     'datasource.home.appleDesc': 'Contacts / iMessage · read locally',
     'datasource.home.addDesc': 'Connect more data sources',
     'datasource.home.manage': 'Manage',
-    // Data normalization (silver) — the cross-source, conformed four-domain view
-    'datasource.silver.entry': 'Normalized data',
-    'datasource.silver.entryDesc': 'Contacts / messages / calendar / todos · cross-source',
-    'datasource.silver.title': 'Normalized data (silver)',
-    'datasource.silver.rerun': 'Re-run cleaning',
-    'datasource.silver.rerunning': 'Cleaning…',
-    'datasource.silver.allSources': 'All sources',
-    'datasource.silver.empty': 'No conformed rows in this domain yet — sync a source, or click Re-run cleaning.',
+    // Governed data (silver) — single-table governance, re-run incrementally after this source's scheduled sync
+    'datasource.silver.zoneEmpty': 'No governed data yet — it is cleaned automatically after the source syncs.',
+    'datasource.silver.rerun': 'Re-run governance',
+    'datasource.silver.rerunning': 'Governing…',
+    'datasource.silver.empty': 'No governed rows in this domain yet — sync the source, or click Re-run governance.',
     'datasource.silver.domain.contacts': 'Contacts',
     'datasource.silver.domain.messages': 'Messages',
     'datasource.silver.domain.events': 'Calendar',

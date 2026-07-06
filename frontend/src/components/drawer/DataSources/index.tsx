@@ -8,22 +8,27 @@ import { t } from '../../../i18n';
 import { ShellNav } from '../../platform/ShellNav';
 import { sourceService, type SourceAccount, type VendorSpec } from '@1agents/core/services/sourceService';
 import { SourceDetail } from './SourceDetail';
+import { SilverDetail } from './SilverDetail';
 import { SourceHome } from './SourceHome';
 import { SourcePanel, sourceTabs } from './SourcePanel';
 import { AddSource } from './AddSource';
-import { SilverView } from './SilverView';
 import { GoldView } from './GoldView';
 
-// 数据源管理 (Data Source Management) — organized as the three medallion layers,
-// switchable at the top of the pane so users follow one batch of data through
-// 原始 → 清洗 → 融合:
-//   数据接入 (bronze) — 源为中心 landing grid → source drill → schema-free 多维表格
-//   数据治理 (silver) — 域为中心 cross-source conformed view (SilverView)
-//   数据融合 (gold)   — 融合视图 (placeholder until #400 lands)
-// Only the bronze layer drills (home → account → data); silver/gold are single
-// screens. Each layer keeps its own state, so switching away and back is seamless.
-type Layer = 'bronze' | 'silver' | 'gold';
-type Detail = { source: string; kind: string; title: string; account?: string };
+// 数据源管理 (Data Source Management) — two medallion layers switch at the top:
+//   数据接入 (bronze) — 源为中心 landing grid → source drill → 原始/已治理 zones
+//   数据融合 (gold)   — 跨源融合视图 (placeholder until #400 lands)
+// Silver is no longer a top layer: it merged into bronze as the 已治理数据 zone
+// tab (single-table governance, one bronze table = one cleaning scheme, re-run
+// incrementally after that source's scheduled sync). Only bronze drills (home →
+// account → 原始/治理 detail); gold is a single screen. Each layer keeps its own
+// state, so switching away and back is seamless.
+type Layer = 'bronze' | 'gold';
+// The drill target discriminates by stage: bronze opens a raw (source, kind)
+// table; silver opens a governed (source, domain) table. Both carry a title so
+// the breadcrumb's "push detail.title" logic works unchanged.
+type Detail =
+    | { stage: 'bronze'; source: string; kind: string; title: string; account?: string }
+    | { stage: 'silver'; domain: string; source: string; title: string };
 // The add flow's picked vendor lives in the view (not inside AddSource) so the
 // second breadcrumb level (添加数据源 → <vendor>) drives back-navigation instead of
 // a bespoke in-form back button.
@@ -84,7 +89,11 @@ export function DataSourcesPane() {
     };
     const clearDetail = () => (detail.value = null);
     const openData = (s: string, kind: string, title: string, account?: string) => {
-        detail.value = { source: s, kind, title, account };
+        detail.value = { stage: 'bronze', source: s, kind, title, account };
+    };
+    const openSilver = (domain: string, title: string) => {
+        if (view.value.kind !== 'account') return;
+        detail.value = { stage: 'silver', domain, source: view.value.account.vendor, title };
     };
 
     // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
@@ -118,7 +127,6 @@ export function DataSourcesPane() {
 
     const layers: { id: Layer; label: string }[] = [
         { id: 'bronze', label: t('datasource.layer.bronze', language) },
-        { id: 'silver', label: t('datasource.layer.silver', language) },
         { id: 'gold', label: t('datasource.layer.gold', language) },
     ];
 
@@ -139,11 +147,7 @@ export function DataSourcesPane() {
                 ))}
             </div>
 
-            {layer.value === 'silver' ? (
-                <div class="datasource-tab-body">
-                    <SilverView />
-                </div>
-            ) : layer.value === 'gold' ? (
+            {layer.value === 'gold' ? (
                 <div class="datasource-tab-body">
                     <GoldView />
                 </div>
@@ -157,12 +161,20 @@ export function DataSourcesPane() {
                 </div>
             ) : detail.value ? (
                 <div class="datasource-tab-body">
-                    <SourceDetail
-                        source={detail.value.source}
-                        kind={detail.value.kind}
-                        title={detail.value.title}
-                        account={detail.value.account}
-                    />
+                    {detail.value.stage === 'silver' ? (
+                        <SilverDetail
+                            domain={detail.value.domain}
+                            source={detail.value.source}
+                            title={detail.value.title}
+                        />
+                    ) : (
+                        <SourceDetail
+                            source={detail.value.source}
+                            kind={detail.value.kind}
+                            title={detail.value.title}
+                            account={detail.value.account}
+                        />
+                    )}
                 </div>
             ) : (
                 <Fragment>
@@ -173,6 +185,7 @@ export function DataSourcesPane() {
                             authKind={vendorAuth.value[v.account.vendor] ?? ''}
                             tab={subTab.value}
                             onOpenData={openData}
+                            onOpenSilver={openSilver}
                         />
                     </div>
                 </Fragment>
