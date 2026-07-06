@@ -209,9 +209,18 @@ func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
 		Summary             string          `json:"summary"`
 		Description         string          `json:"description"`
 		Status              string          `json:"status"`
+		Visibility          string          `json:"visibility"`
+		FreeBusyStatus      string          `json:"free_busy_status"`
+		SelfRsvpStatus      string          `json:"self_rsvp_status"`
+		AttendeeAbility     string          `json:"attendee_ability"`
+		IsException         bool            `json:"is_exception"`
 		StartTime           feishuEventTime `json:"start_time"`
 		EndTime             feishuEventTime `json:"end_time"`
 		Recurrence          string          `json:"recurrence"`
+		AppLink             string          `json:"app_link"`
+		Color               int64           `json:"color"`
+		CreateTime          string          `json:"create_time"` // epoch seconds
+		Reminders           json.RawMessage `json:"reminders"`
 		OrganizerCalendarID string          `json:"organizer_calendar_id"`
 		EventOrganizer      struct {
 			DisplayName string `json:"display_name"`
@@ -219,9 +228,11 @@ func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
 		} `json:"event_organizer"`
 		Vchat struct {
 			MeetingURL string `json:"meeting_url"`
+			VcType     string `json:"vc_type"`
 		} `json:"vchat"`
 		Location struct {
-			Name string `json:"name"`
+			Name    string `json:"name"`
+			Address string `json:"address"`
 		} `json:"location"`
 	}
 	if json.Unmarshal([]byte(r.Payload), &e) != nil {
@@ -233,13 +244,22 @@ func parseFeishuEvent(r sources.StoredRecord) []data.SilverFeishuEvent {
 	}
 	startMs, allDay := e.StartTime.ms()
 	endMs, _ := e.EndTime.ms()
+	var createMs int64
+	if s, err := strconv.ParseInt(e.CreateTime, 10, 64); err == nil {
+		createMs = s * 1000
+	}
 	return []data.SilverFeishuEvent{{
 		AccountID: r.AccountID, ExternalID: ext, CalendarID: r.Collection,
-		Subject: e.Summary, Description: e.Description, Location: e.Location.Name,
-		StartsAt: startMs, EndsAt: endMs, AllDay: allDay, Status: e.Status,
+		Subject: e.Summary, Description: e.Description,
+		Location: e.Location.Name, LocationAddress: e.Location.Address,
+		StartsAt: startMs, EndsAt: endMs, AllDay: allDay,
+		Status: e.Status, Visibility: e.Visibility, FreeBusyStatus: e.FreeBusyStatus,
+		SelfRsvpStatus: e.SelfRsvpStatus, AttendeeAbility: e.AttendeeAbility, IsException: e.IsException,
 		OrganizerOpenID: e.EventOrganizer.UserID, OrganizerName: e.EventOrganizer.DisplayName,
-		OrganizerCalendarID: e.OrganizerCalendarID, MeetingURL: e.Vchat.MeetingURL,
-		Recurrence: e.Recurrence, Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
+		OrganizerCalendarID: e.OrganizerCalendarID,
+		MeetingURL:          e.Vchat.MeetingURL, VchatType: e.Vchat.VcType,
+		Reminders: rawJSONArr(e.Reminders), Recurrence: e.Recurrence, AppLink: e.AppLink,
+		Color: e.Color, CreateTime: createMs, Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
 	}}
 }
 

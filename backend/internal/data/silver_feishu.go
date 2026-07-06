@@ -83,24 +83,35 @@ CREATE INDEX IF NOT EXISTS idx_silver_feishu_chats_wm ON silver_feishu_chats(upd
 -- silver_microsoft_events (subject/location/starts_at/ends_at/all_day) so the
 -- events viewer domain reads consistently across sources and gold can fuse them.
 CREATE TABLE IF NOT EXISTS silver_feishu_events (
-    source        TEXT    NOT NULL DEFAULT 'feishu',
-    account_id    TEXT    NOT NULL DEFAULT 'default',
-    external_id   TEXT    NOT NULL,             -- event_id
-    calendar_id   TEXT    NOT NULL DEFAULT '',  -- the calendar it lives in (collection)
-    subject       TEXT    NOT NULL DEFAULT '',  -- summary
-    description   TEXT    NOT NULL DEFAULT '',
-    location      TEXT    NOT NULL DEFAULT '',
-    starts_at     INTEGER NOT NULL DEFAULT 0,   -- epoch ms
-    ends_at       INTEGER NOT NULL DEFAULT 0,   -- epoch ms
-    all_day       INTEGER NOT NULL DEFAULT 0,
-    status        TEXT    NOT NULL DEFAULT '',  -- tentative | confirmed | cancelled
+    source            TEXT    NOT NULL DEFAULT 'feishu',
+    account_id        TEXT    NOT NULL DEFAULT 'default',
+    external_id       TEXT    NOT NULL,             -- event_id
+    calendar_id       TEXT    NOT NULL DEFAULT '',  -- the calendar it lives in (collection)
+    subject           TEXT    NOT NULL DEFAULT '',  -- summary
+    description       TEXT    NOT NULL DEFAULT '',
+    location          TEXT    NOT NULL DEFAULT '',  -- location.name
+    location_address  TEXT    NOT NULL DEFAULT '',  -- location.address
+    starts_at         INTEGER NOT NULL DEFAULT 0,   -- epoch ms
+    ends_at           INTEGER NOT NULL DEFAULT 0,   -- epoch ms
+    all_day           INTEGER NOT NULL DEFAULT 0,
+    status            TEXT    NOT NULL DEFAULT '',  -- tentative | confirmed | cancelled
+    visibility        TEXT    NOT NULL DEFAULT '',  -- default | public | private
+    free_busy_status  TEXT    NOT NULL DEFAULT '',  -- busy | free
+    self_rsvp_status  TEXT    NOT NULL DEFAULT '',  -- accept | tentative | decline | needs_action
+    attendee_ability  TEXT    NOT NULL DEFAULT '',
+    is_exception      INTEGER NOT NULL DEFAULT 0,   -- overrides a recurrence instance
     organizer_open_id     TEXT NOT NULL DEFAULT '', -- event_organizer.user_id (the PERSON → gold links to contact)
     organizer_name        TEXT NOT NULL DEFAULT '', -- event_organizer.display_name
     organizer_calendar_id TEXT NOT NULL DEFAULT '', -- organizer_calendar_id (owning calendar)
-    meeting_url   TEXT    NOT NULL DEFAULT '',  -- vchat.meeting_url
-    recurrence    TEXT    NOT NULL DEFAULT '',  -- RRULE
-    deleted       INTEGER NOT NULL DEFAULT 0,
-    updated_at    INTEGER NOT NULL DEFAULT 0,
+    meeting_url       TEXT    NOT NULL DEFAULT '',  -- vchat.meeting_url
+    vchat_type        TEXT    NOT NULL DEFAULT '',  -- vchat.vc_type
+    reminders         TEXT    NOT NULL DEFAULT '[]',-- JSON [{minutes}]
+    recurrence        TEXT    NOT NULL DEFAULT '',  -- RRULE
+    app_link          TEXT    NOT NULL DEFAULT '',  -- feishu deep link to the event
+    color             INTEGER NOT NULL DEFAULT 0,
+    create_time       INTEGER NOT NULL DEFAULT 0,   -- epoch ms
+    deleted           INTEGER NOT NULL DEFAULT 0,
+    updated_at        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (source, account_id, external_id)
 );
 CREATE INDEX IF NOT EXISTS idx_silver_feishu_events_wm ON silver_feishu_events(updated_at);
@@ -138,17 +149,24 @@ type SilverFeishuMessage struct {
 	UpdatedAt                     int64
 }
 
-// SilverFeishuEvent is one 飞书 calendar event (events domain, aligned to MS events).
+// SilverFeishuEvent is one 飞书 calendar event (events domain, aligned to MS
+// events). Every meaningful payload field is kept structured — no key data dropped.
 type SilverFeishuEvent struct {
-	AccountID, ExternalID                      string
-	CalendarID, Subject, Description, Location string
-	StartsAt, EndsAt                           int64
-	AllDay                                     bool
-	Status                                     string
+	AccountID, ExternalID                                       string
+	CalendarID, Subject, Description, Location, LocationAddress string
+	StartsAt, EndsAt                                            int64
+	AllDay                                                      bool
+	Status, Visibility, FreeBusyStatus                          string
+	SelfRsvpStatus, AttendeeAbility                             string
+	IsException                                                 bool
 	// OrganizerOpenID/Name = the organizing PERSON (event_organizer), the fusion
 	// key that links an event to a contact; OrganizerCalendarID = the owning calendar.
 	OrganizerOpenID, OrganizerName, OrganizerCalendarID string
-	MeetingURL, Recurrence                              string
+	MeetingURL, VchatType                               string
+	Reminders                                           string // JSON [{minutes}]
+	Recurrence, AppLink                                 string
+	Color                                               int64
+	CreateTime                                          int64
 	Deleted                                             bool
 	UpdatedAt                                           int64
 }
@@ -194,15 +212,17 @@ func (s *Store) UpsertFeishuMessages(rows []SilverFeishuMessage) (int, error) {
 func (s *Store) UpsertFeishuEvents(rows []SilverFeishuEvent) (int, error) {
 	return withTx(s.sql, rows, func(tx *sql.Tx) (*sql.Stmt, error) {
 		return tx.Prepare(`INSERT OR REPLACE INTO silver_feishu_events
-            (source, account_id, external_id, calendar_id, subject, description, location,
-             starts_at, ends_at, all_day, status, organizer_open_id, organizer_name,
-             organizer_calendar_id, meeting_url, recurrence, deleted, updated_at)
-            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            (source, account_id, external_id, calendar_id, subject, description, location, location_address,
+             starts_at, ends_at, all_day, status, visibility, free_busy_status, self_rsvp_status,
+             attendee_ability, is_exception, organizer_open_id, organizer_name, organizer_calendar_id,
+             meeting_url, vchat_type, reminders, recurrence, app_link, color, create_time, deleted, updated_at)
+            VALUES ('feishu', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}, func(stmt *sql.Stmt, r SilverFeishuEvent) error {
 		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.CalendarID, r.Subject, r.Description,
-			r.Location, r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.Status, r.OrganizerOpenID,
-			r.OrganizerName, r.OrganizerCalendarID, r.MeetingURL, r.Recurrence,
-			boolInt(r.Deleted), r.UpdatedAt)
+			r.Location, r.LocationAddress, r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.Status, r.Visibility,
+			r.FreeBusyStatus, r.SelfRsvpStatus, r.AttendeeAbility, boolInt(r.IsException), r.OrganizerOpenID,
+			r.OrganizerName, r.OrganizerCalendarID, r.MeetingURL, r.VchatType, r.Reminders,
+			r.Recurrence, r.AppLink, r.Color, r.CreateTime, boolInt(r.Deleted), r.UpdatedAt)
 		return err
 	})
 }
