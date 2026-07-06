@@ -44,6 +44,7 @@ type Cursor struct {
 
 // StoredRecord is a bronze row read back for governance / the data-source viewer.
 type StoredRecord struct {
+	AccountID   string
 	Kind        string
 	Collection  string
 	UID         string
@@ -229,7 +230,7 @@ func (st *Store) SaveGate(source, accountID, kind, collection, gate string) erro
 // process only records changed since it last ran; a full re-govern is always
 // safe (pass since=0) because the gold upsert is idempotent.
 func (st *Store) RecordsSince(source, kind string, since int64) (recs []StoredRecord, maxFetched int64, err error) {
-	rows, err := st.sql.Query(`SELECT kind, collection, uid, etag, content_type, payload, deleted, fetched_at
+	rows, err := st.sql.Query(`SELECT account_id, kind, collection, uid, etag, content_type, payload, deleted, fetched_at
         FROM source_records
         WHERE source = ? AND kind = ? AND fetched_at > ?
         ORDER BY fetched_at`, source, kind, since)
@@ -241,7 +242,7 @@ func (st *Store) RecordsSince(source, kind string, since int64) (recs []StoredRe
 	for rows.Next() {
 		var r StoredRecord
 		var del int
-		if err := rows.Scan(&r.Kind, &r.Collection, &r.UID, &r.ETag, &r.ContentType, &r.Payload, &del, &r.FetchedAt); err != nil {
+		if err := rows.Scan(&r.AccountID, &r.Kind, &r.Collection, &r.UID, &r.ETag, &r.ContentType, &r.Payload, &del, &r.FetchedAt); err != nil {
 			return nil, since, err
 		}
 		r.Deleted = del != 0

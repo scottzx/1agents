@@ -291,7 +291,49 @@ export const sourceService = {
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as CachedChatsResponse;
     },
+
+    // ---- 数据归一 (silver): cross-source conformed domains (data.db) ----
+
+    /** GET /api/data/summary — per-(domain,source) silver rollup for the overview. */
+    async silverSummary(): Promise<SilverSummary[]> {
+        const res = await apiFetch('/data/summary');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SilverSummary[];
+    },
+
+    /** GET /api/data/records?domain=&source=&limit= — one domain's conformed rows
+     * as grid rows (same envelope as bronze records, so the 多维表格 grid is reused). */
+    async silverRecords(domain: string, source = '', limit = 1000): Promise<SourceRecordRow[]> {
+        const qs = new URLSearchParams({ domain, limit: String(limit) });
+        if (source) qs.set('source', source);
+        const res = await apiFetch(`/data/records?${qs.toString()}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SourceRecordRow[];
+    },
+
+    /** POST /api/data/silver/run — manually re-shape bronze→silver, returns per-domain counts. */
+    async runSilver(): Promise<SilverRunResult> {
+        const res = await apiFetch('/data/silver/run', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SilverRunResult;
+    },
 };
+
+// One (domain, source) silver rollup. Mirrors data.SilverSummaryRow.
+export interface SilverSummary {
+    domain: string; // contacts | messages | events | todos
+    source: string;
+    count: number;
+    lastUpdated: number; // epoch ms
+}
+
+// Per-domain row counts returned by a manual re-run.
+export interface SilverRunResult {
+    contacts: number;
+    messages: number;
+    events: number;
+    todos: number;
+}
 
 /** One Feishu group from the bronze cache, with its message-scope tracked flag. */
 export interface CachedChat {

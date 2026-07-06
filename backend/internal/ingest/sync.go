@@ -199,6 +199,7 @@ func (h *Handler) runFeishuSync(ctx taskapi.FunctionContext) (any, error) {
 			result["messageSync"] = "ok"
 		}
 	}
+	h.afterSyncSilver(result) // shape the just-synced bronze into silver
 	return result, nil
 }
 
@@ -266,13 +267,15 @@ func (h *Handler) runVendorSync(source, ref string, build func(meta.SourceAccoun
 		total.Changed += stats.Changed
 		total.Skipped += stats.Skipped
 	}
-	return map[string]any{
+	result := map[string]any{
 		"kind":        kind,
 		"accounts":    len(accts),
 		"collections": total.Collections,
 		"changed":     total.Changed,
 		"skipped":     total.Skipped,
-	}, nil
+	}
+	h.afterSyncSilver(result) // shape the just-synced bronze into silver
+	return result, nil
 }
 
 // trackedChatIDs returns the ids of chats flagged for auto-sync — the collection

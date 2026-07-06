@@ -42,11 +42,13 @@ export function SourceHome({
     onPick,
     onAdd,
     onDelete,
+    onOpenSilver,
 }: {
     accounts: SourceAccount[];
     onPick: (account: SourceAccount) => void;
     onAdd: () => void;
     onDelete: (account: SourceAccount) => void;
+    onOpenSilver: () => void;
 }) {
     const language = ui.language.value;
     const [summaries, setSummaries] = useState<SourceSummary[] | null>(null);
@@ -123,6 +125,13 @@ export function SourceHome({
                         <span class="source-home-add-plus">+</span>
                         <h3 class="bento-card-title">{t('datasource.tab.add', language)}</h3>
                         <p class="bento-card-desc">{t('datasource.home.addDesc', language)}</p>
+                    </div>
+                </button>
+                <button class="bento-card source-home-card source-home-silver" onClick={onOpenSilver}>
+                    <div class="bento-zone-body">
+                        <span class="source-home-add-plus">◇</span>
+                        <h3 class="bento-card-title">{t('datasource.silver.entry', language)}</h3>
+                        <p class="bento-card-desc">{t('datasource.silver.entryDesc', language)}</p>
                     </div>
                 </button>
             </div>

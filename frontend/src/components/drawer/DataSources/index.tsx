@@ -11,6 +11,7 @@ import { SourceDetail } from './SourceDetail';
 import { SourceHome } from './SourceHome';
 import { SourcePanel, sourceTabs } from './SourcePanel';
 import { AddSource } from './AddSource';
+import { SilverView } from './SilverView';
 
 // 数据源管理 (Data Source Management) — organized 源为中心: the landing page is a
 // grid of account cards (厂家 + 账号 = 一个源). Picking one drills into that source
@@ -21,7 +22,11 @@ type Detail = { source: string; kind: string; title: string; account?: string };
 // The add flow's picked vendor lives in the view (not inside AddSource) so the
 // second breadcrumb level (添加数据源 → <vendor>) drives back-navigation instead of
 // a bespoke in-form back button.
-type View = { kind: 'home' } | { kind: 'add'; vendor?: VendorSpec } | { kind: 'account'; account: SourceAccount };
+type View =
+    | { kind: 'home' }
+    | { kind: 'add'; vendor?: VendorSpec }
+    | { kind: 'account'; account: SourceAccount }
+    | { kind: 'silver' };
 
 function defaultTab(vendor: string): string {
     if (vendor === 'feishu') return 'config';
@@ -66,6 +71,10 @@ export function DataSourcesPane() {
         view.value = { kind: 'add' };
         detail.value = null;
     };
+    const openSilver = () => {
+        view.value = { kind: 'silver' };
+        detail.value = null;
+    };
     const pickVendor = (v: VendorSpec) => (view.value = { kind: 'add', vendor: v });
     const backToVendors = () => (view.value = { kind: 'add' });
     const onCreated = (a: SourceAccount) => {
@@ -89,7 +98,9 @@ export function DataSourcesPane() {
             return;
         }
         const crumbs: { label: string; onClick?: () => void }[] = [home];
-        if (v.kind === 'add') {
+        if (v.kind === 'silver') {
+            crumbs.push({ label: t('datasource.silver.entry', language) });
+        } else if (v.kind === 'add') {
             crumbs.push({ label: t('datasource.tab.add', language), onClick: v.vendor ? backToVendors : undefined });
             if (v.vendor) crumbs.push({ label: v.vendor.label });
         } else {
@@ -110,7 +121,17 @@ export function DataSourcesPane() {
         <div class="datasource-pane">
             {v.kind === 'home' ? (
                 <div class="datasource-tab-body">
-                    <SourceHome accounts={accounts.value} onPick={openAccount} onAdd={openAdd} onDelete={onDelete} />
+                    <SourceHome
+                        accounts={accounts.value}
+                        onPick={openAccount}
+                        onAdd={openAdd}
+                        onDelete={onDelete}
+                        onOpenSilver={openSilver}
+                    />
+                </div>
+            ) : v.kind === 'silver' ? (
+                <div class="datasource-tab-body">
+                    <SilverView />
                 </div>
             ) : v.kind === 'add' ? (
                 <div class="datasource-tab-body">

@@ -13,6 +13,7 @@ package ingest
 import (
 	"context"
 
+	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/feishu"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/sourcecli"
@@ -26,6 +27,7 @@ type Handler struct {
 	accounts *meta.SourceAccountStore
 	chats    *meta.FeishuChatStore
 	bronze   *sources.Store
+	silver   *data.Store     // data.db silver/gold — bronze→silver runs after each sync
 	msAuth   *sources.MSAuth // Microsoft Graph OAuth (PKCE) — connect flow + token store
 	cli      *sourcecli.Handler
 	systemWS string     // host workspace path (set by ProvisionSystemWorkspace)
@@ -99,12 +101,17 @@ func NewHandlerDefault() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	silver, err := data.OpenDefault()
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		db:       db,
 		cfg:      meta.NewSourceCollectionStore(db),
 		accounts: meta.NewSourceAccountStore(db),
 		chats:    meta.NewFeishuChatStore(db),
 		bronze:   bronze,
+		silver:   silver,
 		msAuth:   msAuth,
 		cli:      sourcecli.NewHandler(),
 	}, nil

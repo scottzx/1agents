@@ -23,6 +23,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/config"
 	"github.com/scottzx/1Agents/backend/internal/contacts"
 	ctxt "github.com/scottzx/1Agents/backend/internal/context"
+	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/digest"
 	"github.com/scottzx/1Agents/backend/internal/fs"
 	"github.com/scottzx/1Agents/backend/internal/gateway"
@@ -288,6 +289,17 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/records", sourcesHandler.HandleRecords) // GET ?source=&kind=&limit=
 			}
 
+			// 数据归一 (data normalization): read-only silver layer (data.db) — the
+			// conformed, domain-oriented (联系人/消息/日历/待办) view that cuts across
+			// sources. The bronze→silver transform runs on the ingest path; this is
+			// the viewer. (POST /api/data/silver/run is registered with ingest below.)
+			if dataHandler, dErr := data.NewHandlerDefault(); dErr != nil {
+				log.Printf("[server] data (silver) init failed: %v", dErr)
+			} else {
+				mux.HandleFunc("/api/data/summary", dataHandler.HandleSummary) // GET
+				mux.HandleFunc("/api/data/records", dataHandler.HandleRecords) // GET ?domain=&source=&limit=
+			}
+
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
 			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
 			// function task through the scheduler above — this package never grows
@@ -303,6 +315,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				} else {
 					ingestHandler.SetDispatcher(ingest.NewDispatcher(taskAPI, tasksStore, wsPath))
 				}
+				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.
 				mux.HandleFunc("/api/sources/vendors", ingestHandler.HandleVendors)       // GET — vendor capability table
