@@ -3,6 +3,8 @@ package system
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -55,7 +57,38 @@ type pairState struct {
 
 var pairing = &pairState{status: pairIdle}
 
-var pairHTTP = &http.Client{Timeout: 15 * time.Second}
+// pairHTTP talks to the relay's /v1/auth/* endpoints. When the relay runs on a
+// self-signed dev cert (mkcert), macOS's platform verifier won't trust it, so we
+// build an explicit RootCAs pool (system roots + an extra PEM) — setting RootCAs
+// makes Go use the pure-Go verifier and honor the extra CA. The extra CA path is
+// read from HAPPY_EXTRA_CA_CERTS, falling back to NODE_EXTRA_CA_CERTS (which
+// dev-backend.sh already exports for the spawned happy daemon). No env → default
+// behaviour (system trust only), so production with real certs is unaffected.
+var pairHTTP = newPairHTTPClient()
+
+func newPairHTTPClient() *http.Client {
+	client := &http.Client{Timeout: 15 * time.Second}
+	caPath := os.Getenv("HAPPY_EXTRA_CA_CERTS")
+	if caPath == "" {
+		caPath = os.Getenv("NODE_EXTRA_CA_CERTS")
+	}
+	if caPath == "" {
+		return client
+	}
+	pem, err := os.ReadFile(caPath)
+	if err != nil {
+		return client
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pem) {
+		return client
+	}
+	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}
+	return client
+}
 
 // finish updates the terminal status, but only if this poller is still the
 // active one (a newer pair/start supersedes older pollers).
@@ -234,10 +267,42 @@ func completePairing(token, respB64 string, priv *[32]byte) error {
 		return fmt.Errorf("write credentials: %w", err)
 	}
 
+	// Rebinding to a new account: drop the old machineId so the daemon mints a
+	// fresh one on restart. Machine.id is a GLOBAL primary key on the server —
+	// reusing the previous account's machineId under account C fails the create
+	// with P2002 (unique violation) and the machine never registers (client then
+	// sees "0 nodes"). A fresh id sidesteps the collision; the stale machine on
+	// the old account is orphaned and reaped.
+	_ = clearHappyMachineID()
+
 	// Restart the daemon so it reads the new credentials and reconnects as C.
 	_ = stopHappyDaemonProcess()
 	time.Sleep(500 * time.Millisecond)
 	return startHappyDaemon()
+}
+
+// clearHappyMachineID removes machineId from ~/.happy/settings.json (preserving
+// all other keys) so the daemon regenerates a fresh id on next start. Called on
+// account rebind — see completePairing for why the old id must not be reused.
+func clearHappyMachineID() error {
+	path := filepath.Join(happyHome(), "settings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil // no settings yet → daemon creates fresh
+	}
+	var m map[string]any
+	if json.Unmarshal(data, &m) != nil {
+		return nil
+	}
+	if _, ok := m["machineId"]; !ok {
+		return nil
+	}
+	delete(m, "machineId")
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o600)
 }
 
 // openApprovalResponse box-opens the client's approval bundle and returns

@@ -165,6 +165,29 @@ export function isBackendReady(): boolean {
     return m === 'direct' || m === 'relay';
 }
 
+// 连续中转失败计数:节点 daemon 掉线/被顶替时,socket 仍连着中转(账号没变),
+// 但打到该 machine 的 RPC 会失败/超时。累计到阈值就判定"节点失联"。
+let relayFailStreak = 0;
+const RELAY_FAIL_THRESHOLD = 2;
+
+/**
+ * 中转节点失联(daemon 掉线 / 被新账号顶替 / 后端重启)时的恢复:关掉指向死节点
+ * 的 socket、把后端目标翻回 none。backendTarget 是信号,顶层 app 订阅后会重新显示
+ * 配对门禁,让用户重选节点/重新配对,而不是卡死在中转模式打不通的界面。
+ */
+export function reportBackendUnreachable(): void {
+    const t = backendTarget.value;
+    if (t.mode === 'relay') {
+        try {
+            t.socket.close();
+        } catch {
+            /* ignore */
+        }
+    }
+    relayFailStreak = 0;
+    backendTarget.value = { mode: 'none' };
+}
+
 /** 统一后端调用。direct → 同源 /api;relay → 经中转打到节点;none/probing → 抛错。 */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     const t = backendTarget.value;
@@ -187,7 +210,16 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
                   : String(rawBody);
         const headers =
             init?.headers && !(init.headers instanceof Headers) ? (init.headers as Record<string, string>) : undefined;
-        const r = await proxyApi(t.socket, t.machine, '/api' + path, { method, body, headers });
+        let r: Awaited<ReturnType<typeof proxyApi>>;
+        try {
+            r = await proxyApi(t.socket, t.machine, '/api' + path, { method, body, headers });
+        } catch (e) {
+            // RPC 失败/超时 = 打不到该节点的 daemon。累计到阈值判定节点失联并回退到
+            // 门禁(见 reportBackendUnreachable),避免卡死;单次抖动不误伤。
+            if (++relayFailStreak >= RELAY_FAIL_THRESHOLD) reportBackendUnreachable();
+            throw e;
+        }
+        relayFailStreak = 0;
         return new Response(r.body ?? '', {
             status: r.status ?? (r.success ? 200 : 502),
             headers: { 'content-type': 'application/json' },

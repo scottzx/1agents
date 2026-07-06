@@ -22,22 +22,6 @@ interface HappyStatus {
     hostname?: string;
 }
 
-/**
- * 把本机凭据编码成二维码,供客户端(H5 / 小程序 / App)扫码导入,免去手动复制多个字段。
- * 二维码内容 = 面板上展示的同一份凭据(JSON),不含任何额外信息。
- * 注意:这是机密 —— 黑白固定渲染保证可扫,默认隐藏、点按才显示。
- */
-function buildCredentialPayload(s: HappyStatus): string {
-    const payload: Record<string, string> = { v: '1', type: '1agents-relay' };
-    if (s.hostname) payload.hostname = s.hostname;
-    if (s.serverUrl) payload.serverUrl = s.serverUrl;
-    if (s.token) payload.token = s.token;
-    if (s.machineId) payload.machineId = s.machineId;
-    if (s.machineKey) payload.machineKey = s.machineKey;
-    // 客户端配对不需要 publicKey(parseDeviceBundle 不读),省略以减小二维码体积、提升可扫性。
-    return JSON.stringify(payload);
-}
-
 function CredentialQr({ payload }: { payload: string }) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const err = useSignal('');
@@ -305,7 +289,6 @@ export function LocalMachinePanel() {
 
     const s = status.value;
     const hasCredentials = !!(s?.token || s?.machineKey);
-    const showQr = useSignal(false);
 
     return (
         <div class="sys-settings-card">
@@ -403,61 +386,23 @@ export function LocalMachinePanel() {
 
             {error.value && <div style="margin-top:8px;font-size:12px;color:var(--danger-fg)">{error.value}</div>}
 
-            {/* 凭据展示 — 只在有数据时显示 */}
+            {/* 本机凭据(只读查看)。客户端接入统一走下方「账户级配对」(Model A);
+                旧「设备档案」扫码流(Model B)已下线,这里仅供排查/查看本机身份。 */}
             {hasCredentials && (
                 <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:14px">
                     <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">
-                        客户端配置凭据
+                        本机凭据(只读)
                     </div>
                     <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">
-                        将以下信息填入 H5 / 小程序 / App 的中转配置，使其能连接到本机
+                        本机 relay 身份,供排查查看;客户端接入请用下方「生成账户配对码」。
                     </div>
 
                     {s?.hostname && <MonoRow label="设备名称" value={s.hostname} />}
-                    {/* 中转地址不在面板明文展示 —— 避免暴露 relay 域名招致 DoS。
-                        仍随二维码下发(buildCredentialPayload),客户端扫码即可连接。 */}
+                    {/* 中转地址不在面板明文展示 —— 避免暴露 relay 域名招致 DoS。 */}
                     {s?.machineId && <MonoRow label="Machine ID" value={s.machineId} />}
                     {s?.token && <MonoRow label="Token" value={s.token} redact />}
                     {s?.machineKey && <MonoRow label="Machine Key" value={s.machineKey} redact />}
                     {s?.publicKey && <MonoRow label="Public Key" value={s.publicKey} redact />}
-
-                    {/* 扫码导入 — 把以上凭据打包成二维码,客户端扫码即可,免去逐个复制 */}
-                    <div style="margin-top:12px">
-                        <button
-                            class="sys-settings-btn ghost"
-                            style="height:28px;padding:0 12px;font-size:11.5px"
-                            onClick={() => (showQr.value = !showQr.value)}
-                        >
-                            <svg
-                                width="13"
-                                height="13"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                style="margin-right:5px"
-                            >
-                                <rect x="3" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="3" y="14" width="7" height="7" rx="1" />
-                                <line x1="14" y1="14" x2="14" y2="17" />
-                                <line x1="17" y1="14" x2="21" y2="14" />
-                                <line x1="21" y1="17" x2="21" y2="21" />
-                                <line x1="14" y1="21" x2="17" y2="21" />
-                            </svg>
-                            {showQr.value ? '隐藏二维码' : '显示配置二维码'}
-                        </button>
-                        {showQr.value && s && (
-                            <Fragment>
-                                <CredentialQr payload={buildCredentialPayload(s)} />
-                                <div style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:4px">
-                                    含敏感凭据,请勿截图外传
-                                </div>
-                            </Fragment>
-                        )}
-                    </div>
 
                     {s?.running && s?.pid && (
                         <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">

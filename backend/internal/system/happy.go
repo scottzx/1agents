@@ -290,6 +290,16 @@ func startHappyDaemon() error {
 	if _, set := os.LookupEnv("HAPPY_SERVER_URL"); !set && happySettingsServerURL() == "" {
 		cmd.Env = append(cmd.Env, "HAPPY_SERVER_URL="+defaultRelayURL)
 	}
+	// Let the spawned node daemon trust a self-signed dev relay (mkcert). Node
+	// reads NODE_EXTRA_CA_CERTS; if the backend only carries HAPPY_EXTRA_CA_CERTS
+	// (our Go-side knob, see happy_pair.go), propagate it so the daemon's TLS
+	// matches the backend's. Without this the daemon dies with "unable to verify
+	// the first certificate" against a self-signed relay. No-op with real certs.
+	if _, set := os.LookupEnv("NODE_EXTRA_CA_CERTS"); !set {
+		if ca := os.Getenv("HAPPY_EXTRA_CA_CERTS"); ca != "" {
+			cmd.Env = append(cmd.Env, "NODE_EXTRA_CA_CERTS="+ca)
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}

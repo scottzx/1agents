@@ -6,7 +6,8 @@ import { AccessTokenGate } from './auth/AccessTokenGate';
 import { WelcomeOnboarding } from './welcome/WelcomeOnboarding';
 import { ModeSelectOnboarding } from './welcome/ModeSelectOnboarding';
 import { RelayOnboarding } from './settings/RelayOnboarding';
-import { initBackend } from '../services/apiClient';
+import { initBackend, backendTarget } from '../services/apiClient';
+import { effect } from '@preact/signals-core';
 import { ModalHost } from './modal/ModalHost';
 import { fsService } from '../services/fsService';
 import { accessService } from '../services/accessService';
@@ -56,6 +57,7 @@ let _resizerContainerW = 0;
 export class App extends Component<{}, AppState> {
     private _tunnelHeartbeat: ReturnType<typeof setInterval> | null = null;
     private _terminalPollInterval: ReturnType<typeof setInterval> | null = null;
+    private _backendWatch: (() => void) | null = null;
 
     constructor() {
         super();
@@ -68,6 +70,13 @@ export class App extends Component<{}, AppState> {
     }
 
     async componentDidMount() {
+        // 中转节点失联时 apiClient 会把 backendTarget 翻回 none;订阅它,一旦后端
+        // 丢失就重新弹出配对门禁(RelayOnboarding),而不是卡死在打不通的中转界面。
+        this._backendWatch = effect(() => {
+            if (backendTarget.value.mode === 'none') {
+                this.setState({ backendGateVisible: true });
+            }
+        });
         // 解析后端来源:本机直连 / 经中转远程节点 / 未连接。
         const target = await initBackend();
         if (target.mode === 'none') {
@@ -246,6 +255,10 @@ export class App extends Component<{}, AppState> {
         if (this._tunnelHeartbeat) {
             clearInterval(this._tunnelHeartbeat);
             this._tunnelHeartbeat = null;
+        }
+        if (this._backendWatch) {
+            this._backendWatch();
+            this._backendWatch = null;
         }
         if (this._terminalPollInterval) {
             clearInterval(this._terminalPollInterval);

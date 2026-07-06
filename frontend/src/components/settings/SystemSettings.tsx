@@ -17,6 +17,10 @@ import { apply as applyFrontendUpdate } from '../../ota/applier';
 
 export type { SettingsCategory };
 
+// R2 收敛：账户级配对(RelayPairingPanel)为唯一主路径；旧「借机器 token」
+// 设备档案流(RelayDevicePanel/devices.ts)默认隐藏，保留代码作回退。置 true 可重新露出。
+const SHOW_LEGACY_DEVICE_PROFILE = false;
+
 interface SystemSettingsProps {
     theme: 'light' | 'dark';
     toggleTheme: (themeMode?: 'light' | 'dark') => void;
@@ -507,11 +511,15 @@ export function SystemSettings(props: SystemSettingsProps) {
                 </div>
             </div>
 
-            {/* 客户端模式：扫码绑定 / 切换多台远程机器(主路径) */}
-            {!isLocalMachineMode() && <RelayDevicePanel embedded onConnected={() => window.location.reload()} />}
-
-            {/* 客户端模式：账户配对(进阶,旧路径) */}
+            {/* 客户端模式：账户级配对(R2 主路径) —— 设备作为 machine 绑定到人账号 P，
+                订阅跟人账号走、连接寿命由 server orphan-reaping 依 P 订阅驱动。 */}
             {!isLocalMachineMode() && <RelayPairingPanel embedded />}
+
+            {/* 旧「借机器 token」设备档案流(Model B) —— 已被 R2 账户级绑定取代，
+                默认隐藏保留回退，勿作主路径(与 R2 混用会导致账号/密钥错配)。 */}
+            {!isLocalMachineMode() && SHOW_LEGACY_DEVICE_PROFILE && (
+                <RelayDevicePanel embedded onConnected={() => window.location.reload()} />
+            )}
         </div>
     );
 
