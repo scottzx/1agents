@@ -302,6 +302,12 @@ export const zhCN: Record<string, string> = {
     'datasource.tab.config': '配置数据源',
     'datasource.tab.add': '新增数据源',
     'datasource.add.hint': '选择一个数据源类型接入;已接入的可直接去配置。',
+    // Medallion 三层切换:接入(bronze) / 治理(silver) / 融合(gold)
+    'datasource.layer.bronze': '数据接入',
+    'datasource.layer.silver': '数据治理',
+    'datasource.layer.gold': '数据融合',
+    'datasource.gold.title': '数据融合(金层)',
+    'datasource.gold.empty': '数据融合尚在建设中(#400)—— 跨源实体归并 / 会话线程 / 指纹去重完成后在此展示。',
     // Source-centric panel zones + raw-data browse
     'datasource.zone.auth': '认证与授权',
     'datasource.zone.groups': '群选择（群消息域）',
@@ -1827,6 +1833,13 @@ export const enUS: Record<string, string> = {
     'datasource.tab.config': 'Configure Sources',
     'datasource.tab.add': 'Add Source',
     'datasource.add.hint': 'Pick a source type to connect; configure the ones already connected.',
+    // Medallion layer switch: ingestion (bronze) / governance (silver) / fusion (gold)
+    'datasource.layer.bronze': 'Ingestion',
+    'datasource.layer.silver': 'Governance',
+    'datasource.layer.gold': 'Fusion',
+    'datasource.gold.title': 'Data fusion (gold)',
+    'datasource.gold.empty':
+        'Data fusion is under construction (#400) — cross-source entity merge / threads / fingerprint dedup will show here.',
     // Source-centric panel zones + raw-data browse
     'datasource.zone.auth': 'Authentication',
     'datasource.zone.groups': 'Group selection (messages)',

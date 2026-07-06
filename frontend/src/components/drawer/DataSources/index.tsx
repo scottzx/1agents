@@ -12,21 +12,22 @@ import { SourceHome } from './SourceHome';
 import { SourcePanel, sourceTabs } from './SourcePanel';
 import { AddSource } from './AddSource';
 import { SilverView } from './SilverView';
+import { GoldView } from './GoldView';
 
-// 数据源管理 (Data Source Management) — organized 源为中心: the landing page is a
-// grid of account cards (厂家 + 账号 = 一个源). Picking one drills into that source
-// (breadcrumb gains a second level, the source's zones show as top-nav tabs);
-// a data card drills further into the schema-free 多维表格 (SourceDetail). "添加
-// 数据源" opens the vendor → region → account flow.
+// 数据源管理 (Data Source Management) — organized as the three medallion layers,
+// switchable at the top of the pane so users follow one batch of data through
+// 原始 → 清洗 → 融合:
+//   数据接入 (bronze) — 源为中心 landing grid → source drill → schema-free 多维表格
+//   数据治理 (silver) — 域为中心 cross-source conformed view (SilverView)
+//   数据融合 (gold)   — 融合视图 (placeholder until #400 lands)
+// Only the bronze layer drills (home → account → data); silver/gold are single
+// screens. Each layer keeps its own state, so switching away and back is seamless.
+type Layer = 'bronze' | 'silver' | 'gold';
 type Detail = { source: string; kind: string; title: string; account?: string };
 // The add flow's picked vendor lives in the view (not inside AddSource) so the
 // second breadcrumb level (添加数据源 → <vendor>) drives back-navigation instead of
 // a bespoke in-form back button.
-type View =
-    | { kind: 'home' }
-    | { kind: 'add'; vendor?: VendorSpec }
-    | { kind: 'account'; account: SourceAccount }
-    | { kind: 'silver' };
+type View = { kind: 'home' } | { kind: 'add'; vendor?: VendorSpec } | { kind: 'account'; account: SourceAccount };
 
 function defaultTab(vendor: string): string {
     if (vendor === 'feishu') return 'config';
@@ -35,6 +36,7 @@ function defaultTab(vendor: string): string {
 
 export function DataSourcesPane() {
     const language = ui.language.value;
+    const layer = useSignal<Layer>('bronze');
     const view = useSignal<View>({ kind: 'home' });
     const accounts = useSignal<SourceAccount[]>([]);
     // vendor → authKind, so the unified SourcePanel drives its 认证 zone off the
@@ -71,10 +73,6 @@ export function DataSourcesPane() {
         view.value = { kind: 'add' };
         detail.value = null;
     };
-    const openSilver = () => {
-        view.value = { kind: 'silver' };
-        detail.value = null;
-    };
     const pickVendor = (v: VendorSpec) => (view.value = { kind: 'add', vendor: v });
     const backToVendors = () => (view.value = { kind: 'add' });
     const onCreated = (a: SourceAccount) => {
@@ -90,17 +88,21 @@ export function DataSourcesPane() {
     };
 
     // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
+    // Only bronze drills — silver/gold are single screens the layer switch already
+    // labels, so they show just the root crumb.
     useSignalEffect(() => {
         const home = { label: t('header.title.datasources', language), onClick: goHome };
+        if (layer.value !== 'bronze') {
+            taskNav.headerCrumbs.value = [{ label: t('header.title.datasources', language) }];
+            return;
+        }
         const v = view.value;
         if (v.kind === 'home') {
             taskNav.headerCrumbs.value = [{ label: t('header.title.datasources', language) }];
             return;
         }
         const crumbs: { label: string; onClick?: () => void }[] = [home];
-        if (v.kind === 'silver') {
-            crumbs.push({ label: t('datasource.silver.entry', language) });
-        } else if (v.kind === 'add') {
+        if (v.kind === 'add') {
             crumbs.push({ label: t('datasource.tab.add', language), onClick: v.vendor ? backToVendors : undefined });
             if (v.vendor) crumbs.push({ label: v.vendor.label });
         } else {
@@ -114,24 +116,40 @@ export function DataSourcesPane() {
     });
     useEffect(() => () => void (taskNav.headerCrumbs.value = null), []);
 
+    const layers: { id: Layer; label: string }[] = [
+        { id: 'bronze', label: t('datasource.layer.bronze', language) },
+        { id: 'silver', label: t('datasource.layer.silver', language) },
+        { id: 'gold', label: t('datasource.layer.gold', language) },
+    ];
+
     const v = view.value;
-    const zoneTabs = v.kind === 'account' ? sourceTabs(language) : [];
+    const zoneTabs = layer.value === 'bronze' && v.kind === 'account' ? sourceTabs(language) : [];
 
     return (
         <div class="datasource-pane">
-            {v.kind === 'home' ? (
-                <div class="datasource-tab-body">
-                    <SourceHome
-                        accounts={accounts.value}
-                        onPick={openAccount}
-                        onAdd={openAdd}
-                        onDelete={onDelete}
-                        onOpenSilver={openSilver}
-                    />
-                </div>
-            ) : v.kind === 'silver' ? (
+            <div class="datasource-layer-switch">
+                {layers.map(l => (
+                    <button
+                        key={l.id}
+                        class={`datasource-subnav-tab${layer.value === l.id ? ' is-active' : ''}`}
+                        onClick={() => (layer.value = l.id)}
+                    >
+                        {l.label}
+                    </button>
+                ))}
+            </div>
+
+            {layer.value === 'silver' ? (
                 <div class="datasource-tab-body">
                     <SilverView />
+                </div>
+            ) : layer.value === 'gold' ? (
+                <div class="datasource-tab-body">
+                    <GoldView />
+                </div>
+            ) : v.kind === 'home' ? (
+                <div class="datasource-tab-body">
+                    <SourceHome accounts={accounts.value} onPick={openAccount} onAdd={openAdd} onDelete={onDelete} />
                 </div>
             ) : v.kind === 'add' ? (
                 <div class="datasource-tab-body">

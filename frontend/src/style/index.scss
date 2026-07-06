@@ -19535,6 +19535,16 @@ body {
   overflow: hidden;
 }
 
+// Medallion layer switch (数据接入 / 数据治理 / 数据融合) — a pill segmented control
+// pinned at the top of the pane; reuses the .datasource-subnav-tab pill look.
+.datasource-layer-switch {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
 // ShellNav (breadcrumb + tab bar) sits flush at the top; the content body below
 // takes the remaining height and scrolls, with its own padding.
 .datasource-tab-body {
