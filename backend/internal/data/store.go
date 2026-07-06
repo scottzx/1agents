@@ -69,12 +69,40 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("data: open %s: %w", path, err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if _, err := sqlDB.Exec(schema); err != nil {
+	// Apply the shared gold + cursor skeleton, then every source's self-registered
+	// silver DDL. Adding a source is a new file that registers itself (issue #399);
+	// the skeleton here never changes. All statements are CREATE IF NOT EXISTS, so
+	// order is irrelevant and re-open is a no-op.
+	if _, err := sqlDB.Exec(coreSchema); err != nil {
 		sqlDB.Close()
-		return nil, fmt.Errorf("data: apply schema: %w", err)
+		return nil, fmt.Errorf("data: apply core schema: %w", err)
+	}
+	for _, src := range silverSources {
+		if _, err := sqlDB.Exec(src.ddl); err != nil {
+			sqlDB.Close()
+			return nil, fmt.Errorf("data: apply silver schema: %w", err)
+		}
 	}
 	return &Store{sql: sqlDB}, nil
 }
+
+// silverSource is one data source's contribution to the silver layer: the DDL
+// that builds its physical tables, plus which of those tables the 数据归一 viewer
+// browses (domain-tagged; a subset — e.g. 飞书 群 metadata is not browsable). Each
+// source registers itself from its own file's init() (registerSilverSource), so
+// adding a source is a single new go file — no edits to this shared skeleton or
+// to the viewer (issue #399).
+type silverSource struct {
+	ddl    string           // CREATE TABLE ... for this source's silver tables
+	tables []silverTableDef // viewer-exposed tables (domain, source, table)
+}
+
+// silverSources is populated by each per-source file's init(). Order follows
+// lexical file-name order; viewer consumers sort by domain/time, so it is not
+// load-bearing.
+var silverSources []silverSource
+
+func registerSilverSource(s silverSource) { silverSources = append(silverSources, s) }
 
 var (
 	openMu    sync.Mutex
@@ -139,193 +167,12 @@ func (s *Store) SaveGovernCursor(stage, source, kind string, watermark int64) er
 	return err
 }
 
-// schema is idempotent (CREATE IF NOT EXISTS); every table is additive, so no
-// version-gated migration is needed (mirrors the bronze store convention).
-const schema = `
--- ============================ SILVER (清洗) ============================
--- Per-SOURCE physical tables: each source keeps its own native columns so no
--- valuable field is flattened away (Apple birthday/nickname, 飞书 @mentions +
--- reply chain, MS todo recurrence/checklist). Cleaning is source-specific; the
--- viewer groups these by domain and the schema-free grid tolerates the differing
--- shapes. Cross-source unification is gold (step 3), not here. Every table keys
--- on the bronze grain (source, account_id, external_id) and carries updated_at
--- (bronze fetched_at) for the silver→gold cursor.
-
--- 联系人 · Apple/iCloud — lossless vCard: promoted columns + raw_props catch-all.
-CREATE TABLE IF NOT EXISTS silver_icloud_contacts (
-    source       TEXT    NOT NULL DEFAULT 'icloud',
-    account_id   TEXT    NOT NULL DEFAULT 'default',
-    external_id  TEXT    NOT NULL,               -- vCard href / UID
-    full_name    TEXT    NOT NULL DEFAULT '',    -- FN
-    family_name  TEXT    NOT NULL DEFAULT '',    -- N[0]
-    given_name   TEXT    NOT NULL DEFAULT '',    -- N[1]
-    phones       TEXT    NOT NULL DEFAULT '[]',  -- JSON (all TEL)
-    emails       TEXT    NOT NULL DEFAULT '[]',  -- JSON (all EMAIL)
-    org          TEXT    NOT NULL DEFAULT '',
-    title        TEXT    NOT NULL DEFAULT '',
-    birthday     TEXT    NOT NULL DEFAULT '',    -- BDAY (kept verbatim; may be --MM-DD)
-    nickname     TEXT    NOT NULL DEFAULT '',
-    note         TEXT    NOT NULL DEFAULT '',
-    im_handles   TEXT    NOT NULL DEFAULT '[]',  -- JSON (IMPP)
-    urls         TEXT    NOT NULL DEFAULT '[]',  -- JSON (URL)
-    addresses    TEXT    NOT NULL DEFAULT '[]',  -- JSON (ADR)
-    -- No raw_props catch-all: bronze (source_records) already holds the verbatim
-    -- vCard, so any un-promoted property is recoverable by re-governing — silver
-    -- keeps only the cleaned, promoted columns rather than re-duplicating bronze.
-    deleted      INTEGER NOT NULL DEFAULT 0,
-    updated_at   INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_icloud_contacts_wm ON silver_icloud_contacts(updated_at);
-
--- 联系人 · 飞书 二级用户 — every OpenID discovered from message senders + @mentions.
--- Aggregated across the message stream (name comes free from mentions[].name).
-CREATE TABLE IF NOT EXISTS silver_feishu_users (
-    source          TEXT    NOT NULL DEFAULT 'feishu',
-    account_id      TEXT    NOT NULL DEFAULT 'default',
-    external_id     TEXT    NOT NULL,            -- open_id
-    name            TEXT    NOT NULL DEFAULT '', -- best-known display name (from a mention)
-    tenant_key      TEXT    NOT NULL DEFAULT '',
-    discovered_via  TEXT    NOT NULL DEFAULT '[]', -- JSON set: ["sender","mention"]
-    chat_ids        TEXT    NOT NULL DEFAULT '[]', -- JSON set of chats seen in
-    as_sender_count INTEGER NOT NULL DEFAULT 0,
-    first_seen      INTEGER NOT NULL DEFAULT 0,  -- min create_time
-    last_seen       INTEGER NOT NULL DEFAULT 0,  -- max create_time
-    deleted         INTEGER NOT NULL DEFAULT 0,
-    updated_at      INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_feishu_users_wm ON silver_feishu_users(updated_at);
-
--- 消息 · 飞书 — keeps @mentions (OpenID+name+key), reply chain (parent/root/thread).
-CREATE TABLE IF NOT EXISTS silver_feishu_messages (
-    source            TEXT    NOT NULL DEFAULT 'feishu',
-    account_id        TEXT    NOT NULL DEFAULT 'default',
-    external_id       TEXT    NOT NULL,          -- message_id
-    chat_id           TEXT    NOT NULL DEFAULT '',
-    msg_type          TEXT    NOT NULL DEFAULT '',
-    sender_open_id    TEXT    NOT NULL DEFAULT '',
-    sender_tenant_key TEXT    NOT NULL DEFAULT '',
-    body_text         TEXT    NOT NULL DEFAULT '',
-    mentions          TEXT    NOT NULL DEFAULT '[]', -- JSON [{openId,key,name,tenantKey}]
-    parent_id         TEXT    NOT NULL DEFAULT '', -- reply parent message
-    root_id           TEXT    NOT NULL DEFAULT '', -- reply thread root
-    thread_id         TEXT    NOT NULL DEFAULT '',
-    create_time       INTEGER NOT NULL DEFAULT 0,
-    deleted           INTEGER NOT NULL DEFAULT 0,
-    updated_at        INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_feishu_messages_wm ON silver_feishu_messages(updated_at);
-
--- 飞书 群 (thread metadata) — feeds gold thread titles; not a viewer domain itself.
-CREATE TABLE IF NOT EXISTS silver_feishu_chats (
-    source        TEXT    NOT NULL DEFAULT 'feishu',
-    account_id    TEXT    NOT NULL DEFAULT 'default',
-    external_id   TEXT    NOT NULL,             -- chat_id
-    name          TEXT    NOT NULL DEFAULT '',
-    chat_mode     TEXT    NOT NULL DEFAULT '',  -- group | p2p
-    external      INTEGER NOT NULL DEFAULT 0,
-    owner_open_id TEXT    NOT NULL DEFAULT '',
-    tenant_key    TEXT    NOT NULL DEFAULT '',
-    avatar        TEXT    NOT NULL DEFAULT '',
-    description   TEXT    NOT NULL DEFAULT '',
-    deleted       INTEGER NOT NULL DEFAULT 0,
-    updated_at    INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_feishu_chats_wm ON silver_feishu_chats(updated_at);
-
--- 消息 · MS 邮件
-CREATE TABLE IF NOT EXISTS silver_microsoft_mail (
-    source          TEXT    NOT NULL DEFAULT 'microsoft',
-    account_id      TEXT    NOT NULL DEFAULT 'default',
-    external_id     TEXT    NOT NULL,           -- Graph id
-    subject         TEXT    NOT NULL DEFAULT '',
-    body_preview    TEXT    NOT NULL DEFAULT '',
-    received_at     INTEGER NOT NULL DEFAULT 0,
-    from_addr       TEXT    NOT NULL DEFAULT '',
-    from_name       TEXT    NOT NULL DEFAULT '',
-    to_recipients   TEXT    NOT NULL DEFAULT '[]', -- JSON [{addr,name}]
-    is_read         INTEGER NOT NULL DEFAULT 0,
-    web_link        TEXT    NOT NULL DEFAULT '',
-    conversation_id TEXT    NOT NULL DEFAULT '',
-    deleted         INTEGER NOT NULL DEFAULT 0,
-    updated_at      INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_microsoft_mail_wm ON silver_microsoft_mail(updated_at);
-
--- 消息 · 腾讯 Agent Mail
-CREATE TABLE IF NOT EXISTS silver_agentmail_mail (
-    source          TEXT    NOT NULL DEFAULT 'agentmail',
-    account_id      TEXT    NOT NULL DEFAULT 'default',
-    external_id     TEXT    NOT NULL,           -- message_id
-    subject         TEXT    NOT NULL DEFAULT '',
-    snippet         TEXT    NOT NULL DEFAULT '',
-    created_at_src  INTEGER NOT NULL DEFAULT 0,
-    from_email      TEXT    NOT NULL DEFAULT '',
-    from_name       TEXT    NOT NULL DEFAULT '',
-    to_recipients   TEXT    NOT NULL DEFAULT '[]',
-    dir_name        TEXT    NOT NULL DEFAULT '',
-    has_attachments INTEGER NOT NULL DEFAULT 0,
-    is_read         INTEGER NOT NULL DEFAULT 0,
-    deleted         INTEGER NOT NULL DEFAULT 0,
-    updated_at      INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_agentmail_mail_wm ON silver_agentmail_mail(updated_at);
-
--- 日历 · MS
-CREATE TABLE IF NOT EXISTS silver_microsoft_events (
-    source          TEXT    NOT NULL DEFAULT 'microsoft',
-    account_id      TEXT    NOT NULL DEFAULT 'default',
-    external_id     TEXT    NOT NULL,
-    calendar_id     TEXT    NOT NULL DEFAULT '',
-    subject         TEXT    NOT NULL DEFAULT '',
-    body            TEXT    NOT NULL DEFAULT '',
-    location        TEXT    NOT NULL DEFAULT '',
-    starts_at       INTEGER NOT NULL DEFAULT 0,
-    ends_at         INTEGER NOT NULL DEFAULT 0,
-    all_day         INTEGER NOT NULL DEFAULT 0,
-    show_as         TEXT    NOT NULL DEFAULT '',
-    web_link        TEXT    NOT NULL DEFAULT '',
-    organizer_addr  TEXT    NOT NULL DEFAULT '',
-    organizer_name  TEXT    NOT NULL DEFAULT '',
-    attendees       TEXT    NOT NULL DEFAULT '[]', -- JSON [{addr,name,response}]
-    recurrence      TEXT    NOT NULL DEFAULT '',   -- JSON (raw Graph recurrence)
-    deleted         INTEGER NOT NULL DEFAULT 0,
-    updated_at      INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_microsoft_events_wm ON silver_microsoft_events(updated_at);
-
--- 待办 · MS — recurrence / checklist / reminder / categories all preserved.
-CREATE TABLE IF NOT EXISTS silver_microsoft_todos (
-    source           TEXT    NOT NULL DEFAULT 'microsoft',
-    account_id       TEXT    NOT NULL DEFAULT 'default',
-    external_id      TEXT    NOT NULL,
-    list_id          TEXT    NOT NULL DEFAULT '',
-    title            TEXT    NOT NULL DEFAULT '',
-    body             TEXT    NOT NULL DEFAULT '',
-    status           TEXT    NOT NULL DEFAULT '',
-    importance       TEXT    NOT NULL DEFAULT '',
-    due_at           INTEGER NOT NULL DEFAULT 0,
-    completed_at     INTEGER NOT NULL DEFAULT 0,
-    created_at_src   INTEGER NOT NULL DEFAULT 0,
-    reminder_at      INTEGER NOT NULL DEFAULT 0,
-    is_reminder_on   INTEGER NOT NULL DEFAULT 0,
-    has_attachments  INTEGER NOT NULL DEFAULT 0,
-    categories       TEXT    NOT NULL DEFAULT '[]', -- JSON
-    recurrence       TEXT    NOT NULL DEFAULT '',   -- JSON (raw)
-    checklist_items  TEXT    NOT NULL DEFAULT '[]', -- JSON
-    linked_resources TEXT    NOT NULL DEFAULT '[]', -- JSON
-    deleted          INTEGER NOT NULL DEFAULT 0,
-    updated_at       INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (source, account_id, external_id)
-);
-CREATE INDEX IF NOT EXISTS idx_silver_microsoft_todos_wm ON silver_microsoft_todos(updated_at);
-
+// coreSchema is the source-agnostic skeleton: the gold (融合) domains + the
+// transform cursor table. Per-source silver DDL lives in each silver_<source>.go
+// file and is applied on top via the silverSources registry (issue #399).
+// Idempotent (CREATE IF NOT EXISTS); every table is additive, so no version-gated
+// migration is needed (mirrors the bronze store convention).
+const coreSchema = `
 -- ============================ GOLD (融合) ============================
 
 -- Domain ① 联系人 — canonical person + universal identity table (fusion anchor).

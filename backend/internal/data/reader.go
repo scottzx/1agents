@@ -43,17 +43,18 @@ type SilverSummaryRow struct {
 // silverTableDef maps one per-source physical silver table into a viewer domain.
 type silverTableDef struct{ Domain, Source, Table string }
 
-// silverRegistry is the single source of truth for which tables belong to which
-// domain. silver_feishu_chats is intentionally absent — it is group metadata for
-// gold thread titles, not a browsable domain.
-var silverRegistry = []silverTableDef{
-	{"contacts", "icloud", "silver_icloud_contacts"},
-	{"contacts", "feishu", "silver_feishu_users"},
-	{"messages", "feishu", "silver_feishu_messages"},
-	{"messages", "microsoft", "silver_microsoft_mail"},
-	{"messages", "agentmail", "silver_agentmail_mail"},
-	{"events", "microsoft", "silver_microsoft_events"},
-	{"todos", "microsoft", "silver_microsoft_todos"},
+// silverRegistry flattens every registered source's viewer-exposed tables — the
+// single source of truth for which tables belong to which domain, now assembled
+// from the per-source registrations (issue #399) rather than a hardcoded literal.
+// silver_feishu_chats is intentionally absent (each source chooses which of its
+// tables to expose): it is group metadata for gold thread titles, not a browsable
+// domain.
+func silverRegistry() []silverTableDef {
+	var out []silverTableDef
+	for _, src := range silverSources {
+		out = append(out, src.tables...)
+	}
+	return out
 }
 
 var domainOrder = []string{"contacts", "messages", "events", "todos"}
@@ -86,7 +87,7 @@ func (s *Store) ListSilver(domain, source string, limit int) ([]RecordRow, error
 		limit = 1000
 	}
 	out := []RecordRow{}
-	for _, d := range silverRegistry {
+	for _, d := range silverRegistry() {
 		if d.Domain != domain || (source != "" && d.Source != source) {
 			continue
 		}
@@ -149,7 +150,7 @@ func (s *Store) readTable(domain, table string, limit int) ([]RecordRow, error) 
 // SilverSummary rolls up every registered table by (domain, source).
 func (s *Store) SilverSummary() ([]SilverSummaryRow, error) {
 	out := []SilverSummaryRow{}
-	for _, d := range silverRegistry {
+	for _, d := range silverRegistry() {
 		var cnt int
 		var last int64
 		err := s.sql.QueryRow("SELECT COUNT(*), COALESCE(MAX(updated_at), 0) FROM "+d.Table).Scan(&cnt, &last)
