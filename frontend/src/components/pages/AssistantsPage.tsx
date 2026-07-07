@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { useSignalEffect } from '@preact/signals';
 import type { App } from '../app';
 import { t } from '../i18n';
@@ -28,6 +28,7 @@ export function AssistantsPage({ app }: { app: App }) {
     const folders = wsStore.folders.value;
 
     const archived = wsStore.archivedWorkspaces.value;
+    const [archivedOpen, setArchivedOpen] = useState(false);
     const detailId = tabs.assistantDetailId.value;
     const showDetail = !!detailId && !!wsStore.findWorkspaceAnyStatus(detailId);
 
@@ -147,34 +148,59 @@ export function AssistantsPage({ app }: { app: App }) {
 
             {archivedAssistants.length > 0 && (
                 <div class="archived-section">
-                    <div class="archived-section-head">{t('overview.archived', language)}</div>
-                    <div class="assistants-grid">
-                        {archivedAssistants.map(ws => (
-                            <button key={ws.id} class="assistant-card is-archived" onClick={() => onCardClick(ws.id)}>
-                                <span class="assistant-card-avatar is-emoji" aria-hidden="true">
-                                    {'\u{1F464}'}
-                                </span>
-                                <div class="assistant-card-body">
-                                    <div class="assistant-card-title">
-                                        <span class="assistant-card-name">{ws.name}</span>
-                                        <span class="assistant-tag">{t('overview.archivedTag', language)}</span>
-                                    </div>
-                                </div>
-                                <svg
-                                    class="assistant-card-chevron"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    aria-hidden="true"
+                    <button
+                        class={`archived-section-head is-toggle${archivedOpen ? ' is-open' : ''}`}
+                        onClick={() => setArchivedOpen(v => !v)}
+                    >
+                        <svg
+                            class="archived-chevron"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <polyline points="9 6 15 12 9 18" />
+                        </svg>
+                        <span>
+                            {t('overview.archived', language)} ({archivedAssistants.length})
+                        </span>
+                    </button>
+                    {archivedOpen && (
+                        <div class="assistants-grid">
+                            {archivedAssistants.map(ws => (
+                                <button
+                                    key={ws.id}
+                                    class="assistant-card is-archived"
+                                    onClick={() => onCardClick(ws.id)}
                                 >
-                                    <polyline points="9 6 15 12 9 18" />
-                                </svg>
-                            </button>
-                        ))}
-                    </div>
+                                    <span class="assistant-card-avatar is-emoji" aria-hidden="true">
+                                        {'\u{1F464}'}
+                                    </span>
+                                    <div class="assistant-card-body">
+                                        <div class="assistant-card-title">
+                                            <span class="assistant-card-name">{ws.name}</span>
+                                            <span class="assistant-tag">{t('overview.archivedTag', language)}</span>
+                                        </div>
+                                    </div>
+                                    <svg
+                                        class="assistant-card-chevron"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <polyline points="9 6 15 12 9 18" />
+                                    </svg>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
