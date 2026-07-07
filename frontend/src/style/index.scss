@@ -17632,98 +17632,43 @@ body {
   }
 }
 
-// Team tab (助理/项目 详情) — the persona home. Two layouts share .team-tab.
-.team-tab {
+// Team tab (助理/项目 详情) — the persona home. Cards reuse .skill-card; the
+// 核心 (primary) member gets an accent hairline (selected state).
+.team-card {
+  &.is-primary {
+    border-color: var(--accent-color);
+  }
+}
+
+// Member detail — reuses .skill-detail head; an agent is one .md, so the file
+// list is hidden and the preview/editor fills the lower half.
+.team-detail {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
-
-// Single-persona (assistant): header row + full-height persona editor.
-.team-single-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 2px 12px;
-
-  .team-single-name {
-    font-weight: 600;
-    color: var(--text-main);
-  }
-  .team-single-unset {
-    margin-left: auto;
-  }
-}
-.team-single-preview {
+.team-detail-preview {
   flex: 1;
   min-height: 0;
+  margin-top: 8px;
 }
 
-// List (project): left roster + right editor. Reuses .file-split geometry.
-.team-tab-list {
-  .file-split {
-    flex: 1;
-    min-height: 0;
-  }
-}
-.team-member-list {
+// 工具 metadata row under the description.
+.team-meta-tools {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px;
-}
-.team-member-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: var(--bento-radius-sm, 8px);
-  border: 1px solid transparent;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
 
-  &.is-active {
-    border-color: var(--accent-color);
-    background: rgba(var(--accent-rgb), 0.06);
-  }
-
-  .team-member-main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    padding: 8px 10px;
-    text-align: left;
-  }
-  .team-member-name {
-    font-size: 13px;
-    color: var(--text-main);
-  }
-  .team-member-desc {
-    font-size: 11px;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-  }
-  .team-member-setprimary {
+  .team-meta-label {
+    color: var(--text-muted);
     flex-shrink: 0;
-    font-size: 11px;
-    padding: 3px 10px;
-    margin-right: 6px;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
+  }
+  .team-meta-value {
     color: var(--text-secondary);
-    background: transparent;
-
-    &:hover:not(:disabled) {
-      border-color: var(--accent-color);
-      color: var(--accent-fg);
-    }
-    &:disabled {
-      opacity: 0.5;
-    }
+    font-family: var(--font-mono);
+    word-break: break-word;
   }
 }
 

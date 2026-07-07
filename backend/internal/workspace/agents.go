@@ -86,6 +86,105 @@ func syncAgentsToWorkspace(workspacePath string, refs []string) ([]string, error
 	return synced, nil
 }
 
+// AvailableAgent is one agent in the shared store (母体), offered in the project
+// "add member" picker. Installed marks the ones already materialized here.
+type AvailableAgent struct {
+	AgentRef    string `json:"agentRef"` // "shared:<name>.md"
+	File        string `json:"file"`     // <name>.md
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Installed   bool   `json:"installed"`
+}
+
+// availableSharedAgents lists every <name>.md in the shared agents store,
+// flagging which are already in the workspace's .claude/agents. Frontmatter is
+// parsed for name/description; a file that won't parse still lists with its stem.
+func availableSharedAgents(workspacePath string) ([]AvailableAgent, error) {
+	root := sharedAgentsRoot()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []AvailableAgent{}, nil
+		}
+		return nil, err
+	}
+	installed := map[string]bool{}
+	if wsEntries, err := os.ReadDir(filepath.Join(workspacePath, ".claude", "agents")); err == nil {
+		for _, e := range wsEntries {
+			installed[e.Name()] = true
+		}
+	}
+	out := make([]AvailableAgent, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".md")
+		desc := ""
+		if raw, rErr := os.ReadFile(filepath.Join(root, e.Name())); rErr == nil {
+			if n, d, _ := parseAgentMeta(string(raw)); n != "" || d != "" {
+				if n != "" {
+					name = n
+				}
+				desc = d
+			}
+		}
+		out = append(out, AvailableAgent{
+			AgentRef:    "shared:" + e.Name(),
+			File:        e.Name(),
+			Name:        name,
+			Description: desc,
+			Installed:   installed[e.Name()],
+		})
+	}
+	return out, nil
+}
+
+// removeWorkspaceAgent deletes an agent file from the workspace's own
+// .claude/agents (project-level only; the shared store is untouched). Missing
+// file is a no-op.
+func removeWorkspaceAgent(workspacePath, agentRef string) error {
+	name := normalizeAgentRef(agentRef)
+	if name == "" || name == "." || name == ".." {
+		return fmt.Errorf("invalid agent ref %q", agentRef)
+	}
+	path := filepath.Join(workspacePath, ".claude", "agents", name)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// parseAgentMeta pulls name/description/tools out of a Claude-native agent
+// frontmatter block (--- … ---), reading simple `key: value` lines. Missing keys
+// return ""; content without frontmatter yields all "".
+func parseAgentMeta(md string) (name, description, tools string) {
+	s := strings.TrimLeft(md, "\ufeff \t\r\n")
+	if !strings.HasPrefix(s, "---\n") && !strings.HasPrefix(s, "---\r\n") {
+		return "", "", ""
+	}
+	for _, raw := range strings.Split(s, "\n")[1:] {
+		line := strings.TrimRight(raw, "\r")
+		if strings.TrimSpace(line) == "---" {
+			break
+		}
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		val = strings.Trim(strings.TrimSpace(val), "\"'")
+		switch strings.TrimSpace(key) {
+		case "name":
+			name = val
+		case "description":
+			description = val
+		case "tools":
+			tools = val
+		}
+	}
+	return name, description, tools
+}
+
 // workspaceAgentFile resolves a workspace's own copy of an agent file
 // (<ws>/.claude/agents/<name>.md) from an agent ref, validating it is a real
 // file. The file name is derived via normalizeAgentRef, which strips any scope
