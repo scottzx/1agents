@@ -42,6 +42,10 @@ export interface GroupedToolCall {
     };
 }
 
+export type ToolGroupElement =
+    | { kind: 'thinking'; id: string; content: string }
+    | { kind: 'call'; call: GroupedToolCall };
+
 export type GroupedChatItem =
     | { id: string; kind: 'user'; content: string; createdAt: number; queueStatus?: 'queued'; queueRequestId?: string }
     | { id: string; kind: 'assistant_text'; content: string; createdAt: number; streaming: boolean }
@@ -50,6 +54,8 @@ export type GroupedChatItem =
           id: string;
           kind: 'tool_group';
           calls: GroupedToolCall[];
+          thinkingBlocks?: string[];
+          elements?: ToolGroupElement[];
           createdAt: number;
           // True for groups assembled from the realtime pending pool
           // (tool_result / permission_request without a matching
@@ -94,6 +100,8 @@ export function MessageBubble({ item, isLast, active, onRespondPermission, onCan
             return (
                 <ToolGroupBubble
                     calls={item.calls}
+                    thinkingBlocks={item.thinkingBlocks}
+                    elements={item.elements}
                     pending={item.pending}
                     active={active}
                     onRespondPermission={onRespondPermission}
@@ -280,11 +288,15 @@ function callStatus(call: GroupedToolCall, active: boolean): CallStatus {
 
 function ToolGroupBubble({
     calls,
+    thinkingBlocks = [],
+    elements = [],
     pending,
     active,
     onRespondPermission,
 }: {
     calls: GroupedToolCall[];
+    thinkingBlocks?: string[];
+    elements?: ToolGroupElement[];
     pending?: boolean;
     active?: boolean;
     onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
@@ -331,6 +343,29 @@ function ToolGroupBubble({
         summary = { cls: 'status-error', text: t('chat.tool.summary.error', lang, { n: String(errorCount) }) };
     }
 
+    const totalItemsCount = calls.length + thinkingBlocks.length;
+
+    if (totalItemsCount === 1) {
+        if (calls.length === 1) {
+            return (
+                <div class={`chat-bubble chat-bubble-tool-group is-single ${pending ? 'is-pending' : ''}`}>
+                    <GroupedToolCallItem
+                        call={calls[0]}
+                        status={statuses[0]}
+                        onRespondPermission={onRespondPermission}
+                    />
+                </div>
+            );
+        }
+        if (thinkingBlocks.length === 1) {
+            return (
+                <div class={`chat-bubble chat-bubble-tool-group is-single ${pending ? 'is-pending' : ''}`}>
+                    <GroupedThinkingItem content={thinkingBlocks[0]} streaming={!!active} />
+                </div>
+            );
+        }
+    }
+
     return (
         <div
             class={`chat-bubble chat-bubble-tool-group ${expanded ? 'is-expanded' : 'is-collapsed'} ${pending ? 'is-pending' : ''}`}
@@ -351,9 +386,16 @@ function ToolGroupBubble({
                     {expanded ? '▾' : '▸'}
                 </span>
                 <span class="chat-tool-group-title">
-                    {pending ? t('chat.tool.groupPending', lang) : t('chat.tool.groupTitle', lang)}
+                    {pending
+                        ? t('chat.tool.groupPending', lang)
+                        : thinkingBlocks.length > 0
+                          ? t('chat.tool.groupTitleWithThinking', lang, {
+                                x: String(thinkingBlocks.length),
+                                n: String(calls.length),
+                            })
+                          : t('chat.tool.groupTitle', lang)}
                 </span>
-                <span class="chat-tool-group-count">{calls.length}</span>
+                {!pending && thinkingBlocks.length === 0 && <span class="chat-tool-group-count">{calls.length}</span>}
                 {summary && (
                     <span class={`chat-tool-group-summary ${summary.cls}`}>
                         {(hasWaiting || runningCount > 0) && <span class="chat-tool-spinner" aria-hidden="true" />}
@@ -363,14 +405,103 @@ function ToolGroupBubble({
             </div>
             {expanded && (
                 <div class="chat-tool-calls-list">
-                    {calls.map((call, idx) => (
-                        <GroupedToolCallItem
-                            key={call.id || idx}
-                            call={call}
-                            status={statuses[idx]}
-                            onRespondPermission={onRespondPermission}
-                        />
-                    ))}
+                    {elements.map((el, idx) => {
+                        if (el.kind === 'thinking') {
+                            const isLastThinking = el.content === thinkingBlocks[thinkingBlocks.length - 1];
+                            return (
+                                <GroupedThinkingItem
+                                    key={el.id || idx}
+                                    content={el.content}
+                                    streaming={!!active && isLastThinking}
+                                />
+                            );
+                        } else {
+                            const callIdx = calls.indexOf(el.call);
+                            return (
+                                <GroupedToolCallItem
+                                    key={el.call.id || idx}
+                                    call={el.call}
+                                    status={statuses[callIdx]}
+                                    onRespondPermission={onRespondPermission}
+                                />
+                            );
+                        }
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function GroupedThinkingItem({ content, streaming }: { content: string; streaming: boolean }) {
+    const isExpanded = useSignal(streaming);
+    const lang = getLang();
+
+    // Auto-expand/collapse on streaming changes
+    const prevStreaming = useRef(streaming);
+    useEffect(() => {
+        if (prevStreaming.current === streaming) return;
+        prevStreaming.current = streaming;
+        isExpanded.value = streaming;
+    }, [streaming]);
+
+    const toggle = () => {
+        isExpanded.value = !isExpanded.value;
+    };
+
+    const expanded = isExpanded.value;
+
+    const { preview, html } = useMemo(() => {
+        const previewText = content.trim().replace(/\s+/g, ' ');
+        return {
+            preview: previewText.length > 60 ? `${previewText.slice(0, 60)}…` : previewText,
+            html: marked.parse(content, { async: false }) as string,
+        };
+    }, [content]);
+
+    return (
+        <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-thinking`}>
+            <div
+                class="chat-tool-row-header"
+                role="button"
+                tabIndex={0}
+                onClick={toggle}
+                onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggle();
+                    }
+                }}
+            >
+                {streaming ? (
+                    <span class="chat-tool-status-icon chat-tool-spinner" aria-hidden="true" />
+                ) : (
+                    <span class="chat-tool-status-icon" style="color: var(--warning-fg);" aria-hidden="true">
+                        💭
+                    </span>
+                )}
+                <span
+                    class="chat-tool-name-badge"
+                    style="background: rgba(var(--warning-rgb), 0.1); color: var(--warning-fg);"
+                >
+                    {streaming ? t('chat.thinking.streaming', lang) : t('chat.thinking.label', lang)}
+                </span>
+                {!expanded && preview && (
+                    <span class="chat-tool-row-summary" style="font-style: italic; font-family: inherit;">
+                        {preview}
+                    </span>
+                )}
+                <span class="chat-tool-row-caret" aria-hidden="true">
+                    {expanded ? '▾' : '▸'}
+                </span>
+            </div>
+            {expanded && (
+                <div class="chat-tool-row-body" style="background: rgba(var(--warning-rgb), 0.02);">
+                    <div
+                        class="chat-thinking-body markdown-body"
+                        style="margin-top: 0; padding-right: 0;"
+                        dangerouslySetInnerHTML={{ __html: html }}
+                    />
                 </div>
             )}
         </div>
