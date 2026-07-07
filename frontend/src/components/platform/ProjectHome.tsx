@@ -20,6 +20,7 @@ export function ProjectHome() {
     const workspaces = wsStore.workspaces.value;
     const apps = appStore.appManifests.value;
     const [search, setSearch] = useState('');
+    const [archivedOpen, setArchivedOpen] = useState(false);
 
     // Real projects only — the builtin 对话/助手 workspace is not a project.
     const projects = workspaces
@@ -171,27 +172,46 @@ export function ProjectHome() {
 
                 {archivedProjects.length > 0 && (
                     <section class="project-home-section">
-                        <div class="project-home-section-head">
-                            <h2 class="project-home-section-title">{t('overview.archived', language)}</h2>
-                        </div>
-                        <div class="project-grid">
-                            {archivedProjects.map(ws => (
-                                <button
-                                    key={ws.id}
-                                    class="project-card is-archived"
-                                    onClick={() => stage.enterProjectDetail(ws.id, ws.name)}
-                                >
-                                    <span class="project-card-icon">{FolderIcon}</span>
-                                    <div class="project-card-body">
-                                        <div class="project-card-name">{ws.name}</div>
-                                        <div class="project-card-meta" title={ws.path}>
-                                            {t('overview.archivedTag', language)}
+                        <button
+                            class={`archived-section-head is-toggle${archivedOpen ? ' is-open' : ''}`}
+                            onClick={() => setArchivedOpen(v => !v)}
+                        >
+                            <svg
+                                class="archived-chevron"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <polyline points="9 6 15 12 9 18" />
+                            </svg>
+                            <span>
+                                {t('overview.archived', language)} ({archivedProjects.length})
+                            </span>
+                        </button>
+                        {archivedOpen && (
+                            <div class="project-grid">
+                                {archivedProjects.map(ws => (
+                                    <button
+                                        key={ws.id}
+                                        class="project-card is-archived"
+                                        onClick={() => stage.enterProjectDetail(ws.id, ws.name)}
+                                    >
+                                        <span class="project-card-icon">{FolderIcon}</span>
+                                        <div class="project-card-body">
+                                            <div class="project-card-name">{ws.name}</div>
+                                            <div class="project-card-meta" title={ws.path}>
+                                                {t('overview.archivedTag', language)}
+                                            </div>
                                         </div>
-                                    </div>
-                                    {Chevron}
-                                </button>
-                            ))}
-                        </div>
+                                        {Chevron}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </section>
                 )}
 
