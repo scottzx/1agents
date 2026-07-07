@@ -81,6 +81,7 @@ type (
 	LinkEdge          = meta.LinkEdge
 	Priority          = meta.Priority
 	Recurrence        = meta.Recurrence
+	ChecklistItem     = meta.ChecklistItem
 	WorkspaceRef      = meta.WorkspaceRef
 	ReviewVerdict     = meta.ReviewVerdict
 	CriterionResult   = meta.CriterionResult

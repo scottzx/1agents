@@ -2457,6 +2457,11 @@ body {
       font-size: 10.5px;
       color: var(--text-secondary);
     }
+    .kanban-card-checklist,
+    .kanban-card-recur {
+      font-size: 10.5px;
+      color: var(--text-secondary);
+    }
     .kanban-card-assignee {
       margin-left: auto;
       font-size: 10.5px;
@@ -5816,6 +5821,189 @@ body {
       box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.45);
       transform: translateY(-1px);
     }
+  }
+}
+
+// Recurrence multi-weekday pills (create-task form) — pill geometry, accent when
+// active, ink hairline otherwise (design language: flat, no glow).
+.recur-weekday-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  .recur-weekday-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+
+    input {
+      display: none;
+    }
+
+    &:hover {
+      border-color: var(--text-main);
+    }
+
+    &.active {
+      background: var(--accent-color);
+      border-color: var(--accent-color);
+      color: var(--on-accent);
+    }
+  }
+}
+
+// Embedded checklist editor (create-task form) + interactive view (task detail).
+.task-checklist-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .task-checklist-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+
+    input {
+      flex: 1;
+    }
+  }
+
+  .task-checklist-remove {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 6px;
+
+    &:hover {
+      color: var(--danger-fg);
+    }
+  }
+
+  .task-checklist-add {
+    align-self: flex-start;
+    border: 1px dashed var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--text-main);
+      color: var(--text-main);
+    }
+  }
+}
+
+.task-checklist-card {
+  .task-checklist-progress {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 12px;
+  }
+
+  .task-checklist-view {
+    list-style: none;
+    margin: 0 0 8px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      label {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      &.done label span {
+        text-decoration: line-through;
+        color: var(--text-muted);
+      }
+
+      .task-checklist-remove {
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+
+        &:hover {
+          color: var(--danger-fg);
+        }
+      }
+    }
+  }
+
+  .task-checklist-add-row {
+    display: flex;
+    gap: 6px;
+
+    input {
+      flex: 1;
+    }
+
+    button {
+      border: 1px solid var(--border-color);
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 12px;
+      cursor: pointer;
+
+      &:hover {
+        border-color: var(--text-main);
+        color: var(--text-main);
+      }
+    }
+  }
+}
+
+// Promote-to-task affordance on a gold to-do.
+.ds-record-promote {
+  margin-left: auto;
+  border: 1px solid var(--accent-color);
+  background: transparent;
+  color: var(--accent-color);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-color);
+    color: var(--on-accent);
+  }
+}
+
+.ds-promote-modal {
+  .ds-promote-todo-title {
+    font-size: 14px;
+    color: var(--text-main);
+    margin: 4px 0 12px;
+  }
+
+  .ds-promote-actions {
+    margin-top: 12px;
   }
 }
 

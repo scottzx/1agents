@@ -348,6 +348,23 @@ export const sourceService = {
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as SourceRecordRow[];
     },
+
+    /** POST /api/data/gold/todos/promote — turn a fused to-do into a task
+     * (assignee='user' for a personal todo, or an agent type to schedule it).
+     * Idempotent: an already-linked to-do returns its existing task id. */
+    async promoteTodo(input: {
+        id: string;
+        workspaceId: string;
+        assignee: string;
+    }): Promise<{ taskId: string; alreadyLinked?: boolean }> {
+        const res = await apiFetch('/data/gold/todos/promote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { taskId: string; alreadyLinked?: boolean };
+    },
 };
 
 // One (domain, source) silver rollup. Mirrors data.SilverSummaryRow.

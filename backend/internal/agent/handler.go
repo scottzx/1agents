@@ -333,31 +333,32 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var body struct {
-			WorkspaceID         string       `json:"workspace_id"`
-			Title               string       `json:"title"`
-			Description         string       `json:"description"`
-			AcceptanceCriteria  string       `json:"acceptanceCriteria"`
-			Priority            string       `json:"priority"`
-			Assignee            string       `json:"assignee"`
-			Labels              []string     `json:"labels"`
-			ParentID            string       `json:"parentId"`
-			Milestone           string       `json:"milestone"`
-			Sprint              string       `json:"sprint"`
-			Type                string       `json:"type"`
-			Source              string       `json:"source"`
-			UserConfirm         bool         `json:"userConfirm"`
-			Recurrence          *Recurrence  `json:"recurrence"`
-			MaxRetries          *int         `json:"maxRetries"`
-			Verifier            string       `json:"verifier"`
-			ReviewMaxAttempts   *int         `json:"reviewMaxAttempts"`
-			VerifierCount       *int         `json:"verifierCount"`
-			VerifyPassThreshold *int         `json:"verifyPassThreshold"`
-			ScheduleType        ScheduleType `json:"scheduleType"`
-			ScheduledAt         *time.Time   `json:"scheduledAt"`
-			PlannedStart        *time.Time   `json:"plannedStart"`
-			PlannedEnd          *time.Time   `json:"plannedEnd"`
-			DependsOn           []string     `json:"dependsOn"`
-			Links               []TaskLink   `json:"links"`
+			WorkspaceID         string          `json:"workspace_id"`
+			Title               string          `json:"title"`
+			Description         string          `json:"description"`
+			AcceptanceCriteria  string          `json:"acceptanceCriteria"`
+			Priority            string          `json:"priority"`
+			Assignee            string          `json:"assignee"`
+			Labels              []string        `json:"labels"`
+			ParentID            string          `json:"parentId"`
+			Milestone           string          `json:"milestone"`
+			Sprint              string          `json:"sprint"`
+			Type                string          `json:"type"`
+			Source              string          `json:"source"`
+			UserConfirm         bool            `json:"userConfirm"`
+			Recurrence          *Recurrence     `json:"recurrence"`
+			Checklist           []ChecklistItem `json:"checklist"`
+			MaxRetries          *int            `json:"maxRetries"`
+			Verifier            string          `json:"verifier"`
+			ReviewMaxAttempts   *int            `json:"reviewMaxAttempts"`
+			VerifierCount       *int            `json:"verifierCount"`
+			VerifyPassThreshold *int            `json:"verifyPassThreshold"`
+			ScheduleType        ScheduleType    `json:"scheduleType"`
+			ScheduledAt         *time.Time      `json:"scheduledAt"`
+			PlannedStart        *time.Time      `json:"plannedStart"`
+			PlannedEnd          *time.Time      `json:"plannedEnd"`
+			DependsOn           []string        `json:"dependsOn"`
+			Links               []TaskLink      `json:"links"`
 			// GitHub Issue/PR mapping (#74). Optional sync backfill — normally
 			// written by the future sync pass, not the create form.
 			GithubRepo      string     `json:"githubRepo"`
@@ -444,6 +445,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			Source:              TaskSource(body.Source),
 			UserConfirm:         body.UserConfirm,
 			Recurrence:          body.Recurrence,
+			Checklist:           body.Checklist,
 			MaxRetries:          maxRetries,
 			ScheduleType:        body.ScheduleType,
 			ScheduledAt:         body.ScheduledAt,
@@ -662,29 +664,30 @@ func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
 // present in the body are touched.
 func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id string) {
 	var body struct {
-		Title              *string      `json:"title,omitempty"`
-		Description        *string      `json:"description,omitempty"`
-		IssueState         *string      `json:"issueState,omitempty"`
-		Status             *string      `json:"status,omitempty"`
-		AcceptanceCriteria *string      `json:"acceptanceCriteria,omitempty"`
-		Priority           *string      `json:"priority,omitempty"`
-		Assignee           *string      `json:"assignee,omitempty"`
-		Labels             *[]string    `json:"labels,omitempty"`
-		ParentID           *string      `json:"parentId,omitempty"`
-		Milestone          *string      `json:"milestone,omitempty"`
-		Sprint             *string      `json:"sprint,omitempty"`
-		Type               *string      `json:"type,omitempty"`
-		Source             *string      `json:"source,omitempty"`
-		UserConfirm        *bool        `json:"userConfirm,omitempty"`
-		Recurrence         **Recurrence `json:"recurrence,omitempty"`
-		MaxRetries         *int         `json:"maxRetries,omitempty"`
-		Verifier           *string      `json:"verifier,omitempty"`
-		ReviewMaxAttempts  *int         `json:"reviewMaxAttempts,omitempty"`
-		PlannedStart       *time.Time   `json:"plannedStart,omitempty"`
-		PlannedEnd         *time.Time   `json:"plannedEnd,omitempty"`
-		ScheduledAt        *time.Time   `json:"scheduledAt,omitempty"`
-		ScheduleType       *string      `json:"scheduleType,omitempty"`
-		Links              *[]TaskLink  `json:"links,omitempty"`
+		Title              *string          `json:"title,omitempty"`
+		Description        *string          `json:"description,omitempty"`
+		IssueState         *string          `json:"issueState,omitempty"`
+		Status             *string          `json:"status,omitempty"`
+		AcceptanceCriteria *string          `json:"acceptanceCriteria,omitempty"`
+		Priority           *string          `json:"priority,omitempty"`
+		Assignee           *string          `json:"assignee,omitempty"`
+		Labels             *[]string        `json:"labels,omitempty"`
+		ParentID           *string          `json:"parentId,omitempty"`
+		Milestone          *string          `json:"milestone,omitempty"`
+		Sprint             *string          `json:"sprint,omitempty"`
+		Type               *string          `json:"type,omitempty"`
+		Source             *string          `json:"source,omitempty"`
+		UserConfirm        *bool            `json:"userConfirm,omitempty"`
+		Recurrence         **Recurrence     `json:"recurrence,omitempty"`
+		Checklist          *[]ChecklistItem `json:"checklist,omitempty"`
+		MaxRetries         *int             `json:"maxRetries,omitempty"`
+		Verifier           *string          `json:"verifier,omitempty"`
+		ReviewMaxAttempts  *int             `json:"reviewMaxAttempts,omitempty"`
+		PlannedStart       *time.Time       `json:"plannedStart,omitempty"`
+		PlannedEnd         *time.Time       `json:"plannedEnd,omitempty"`
+		ScheduledAt        *time.Time       `json:"scheduledAt,omitempty"`
+		ScheduleType       *string          `json:"scheduleType,omitempty"`
+		Links              *[]TaskLink      `json:"links,omitempty"`
 		// GitHub Issue/PR mapping (#74). Optional sync backfill.
 		GithubRepo      *string    `json:"githubRepo,omitempty"`
 		GithubKind      *string    `json:"githubKind,omitempty"`
@@ -841,6 +844,9 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Recurrence != nil {
 			target.Recurrence = *body.Recurrence
+		}
+		if body.Checklist != nil {
+			target.Checklist = *body.Checklist
 		}
 		if body.MaxRetries != nil && *body.MaxRetries >= 0 {
 			target.MaxRetries = *body.MaxRetries

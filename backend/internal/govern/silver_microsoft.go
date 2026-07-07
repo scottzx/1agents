@@ -145,7 +145,8 @@ func parseMicrosoftEvent(r sources.StoredRecord) []data.SilverMicrosoftEvent {
 		StartsAt: parseISOTime(e.Start.DateTime), EndsAt: parseISOTime(e.End.DateTime), AllDay: e.IsAllDay,
 		ShowAs: e.ShowAs, WebLink: e.WebLink,
 		OrganizerAddr: e.Organizer.EmailAddress.Address, OrganizerName: e.Organizer.EmailAddress.Name,
-		Attendees: att, Recurrence: rawJSON(e.Recurrence), Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
+		Attendees: att, Recurrence: rawJSON(e.Recurrence), RecurrenceStd: NormalizeGraphRecurrence(rawJSON(e.Recurrence)),
+		Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
 	}}
 }
 
@@ -182,7 +183,8 @@ func parseMicrosoftTodo(r sources.StoredRecord) []data.SilverMicrosoftTodo {
 		DueAt: parseGraphDT(t.DueDateTime), CompletedAt: parseGraphDT(t.CompletedDateTime),
 		CreatedAtSrc: parseISOTime(t.Created), ReminderAt: parseGraphDT(t.ReminderDateTime),
 		IsReminderOn: t.IsReminder, HasAttachments: t.HasAttach, Categories: t.Categories,
-		Recurrence: rawJSON(t.Recurrence), ChecklistItems: rawJSONArr(t.ChecklistItems),
+		Recurrence: rawJSON(t.Recurrence), RecurrenceStd: NormalizeGraphRecurrence(rawJSON(t.Recurrence)),
+		ChecklistItems:  rawJSONArr(t.ChecklistItems),
 		LinkedResources: rawJSONArr(t.LinkedResources), Deleted: r.Deleted, UpdatedAt: r.FetchedAt,
 	}}
 }

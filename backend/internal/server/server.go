@@ -293,6 +293,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 				// 数据融合 (gold) 只读视图: 跨源归并后的联系人/消息/日历.
 				mux.HandleFunc("/api/data/gold/summary", dataHandler.HandleGoldSummary) // GET
 				mux.HandleFunc("/api/data/gold/records", dataHandler.HandleGoldRecords) // GET ?domain=&limit=
+				// 提拔: 把一条融合待办转成任务 (agent 或 human), 回写 linked_task_id.
+				dataHandler.SetSelfBaseURL(selfBaseURL)
+				mux.HandleFunc("/api/data/gold/todos/promote", dataHandler.HandlePromoteTodo) // POST {id, workspaceId, assignee}
 			}
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取

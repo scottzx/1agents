@@ -3,6 +3,7 @@ import { useState } from 'preact/hooks';
 
 import { taskCardVM } from '@1agents/core/view/taskCard';
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
+import { recurrenceLabel } from './utils';
 import type { Task } from './types';
 
 interface KanbanBoardProps {
@@ -150,6 +151,16 @@ function KanbanCard({ task, dragging, showProject, onSelect, onDragStart, onDrag
                 </span>
                 {(task.dependsOn?.length ?? 0) > 0 && (
                     <span class="kanban-card-deps" title="前置依赖数">{`⛓ ${task.dependsOn!.length}`}</span>
+                )}
+                {(task.checklist?.length ?? 0) > 0 && (
+                    <span class="kanban-card-checklist" title="清单进度">
+                        {`✓ ${task.checklist!.filter(c => c.done).length}/${task.checklist!.length}`}
+                    </span>
+                )}
+                {task.recurrence && (
+                    <span class="kanban-card-recur" title={recurrenceLabel(task.recurrence)}>
+                        🔁
+                    </span>
                 )}
                 <span class="kanban-card-assignee">{task.assignee || 'claudecode'}</span>
             </div>

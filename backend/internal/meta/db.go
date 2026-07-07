@@ -293,6 +293,8 @@ func (db *DB) ensureTasksColumns() error {
 		{"task_target", "ALTER TABLE tasks ADD COLUMN task_target TEXT NOT NULL DEFAULT ''"},
 		{"result", "ALTER TABLE tasks ADD COLUMN result TEXT NOT NULL DEFAULT ''"},
 		{"cost_tokens", "ALTER TABLE tasks ADD COLUMN cost_tokens INTEGER NOT NULL DEFAULT 0"},
+		// ── embedded checklist (in-task progress ledger) ──
+		{"checklist", "ALTER TABLE tasks ADD COLUMN checklist TEXT NOT NULL DEFAULT '[]'"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {

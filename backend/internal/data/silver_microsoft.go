@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS silver_microsoft_events (
     organizer_name  TEXT    NOT NULL DEFAULT '',
     attendees       TEXT    NOT NULL DEFAULT '[]', -- JSON [{addr,name,response}]
     recurrence      TEXT    NOT NULL DEFAULT '',   -- JSON (raw Graph recurrence)
+    recurrence_std  TEXT    NOT NULL DEFAULT '',   -- canonical meta.Recurrence JSON (normalized)
     deleted         INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (source, account_id, external_id)
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS silver_microsoft_todos (
     has_attachments  INTEGER NOT NULL DEFAULT 0,
     categories       TEXT    NOT NULL DEFAULT '[]', -- JSON
     recurrence       TEXT    NOT NULL DEFAULT '',   -- JSON (raw)
+    recurrence_std   TEXT    NOT NULL DEFAULT '',   -- canonical meta.Recurrence JSON (normalized)
     checklist_items  TEXT    NOT NULL DEFAULT '[]', -- JSON
     linked_resources TEXT    NOT NULL DEFAULT '[]', -- JSON
     deleted          INTEGER NOT NULL DEFAULT 0,
@@ -118,6 +120,7 @@ type SilverMicrosoftEvent struct {
 	OrganizerAddr, OrganizerName        string
 	Attendees                           []Attendee
 	Recurrence                          string // raw JSON
+	RecurrenceStd                       string // canonical meta.Recurrence JSON
 	Deleted                             bool
 	UpdatedAt                           int64
 }
@@ -131,6 +134,7 @@ type SilverMicrosoftTodo struct {
 	IsReminderOn, HasAttachments                 bool
 	Categories                                   []string
 	Recurrence                                   string // raw JSON
+	RecurrenceStd                                string // canonical meta.Recurrence JSON
 	ChecklistItems, LinkedResources              string // raw JSON arrays
 	Deleted                                      bool
 	UpdatedAt                                    int64
@@ -154,12 +158,12 @@ func (s *Store) UpsertMicrosoftEvents(rows []SilverMicrosoftEvent) (int, error) 
 	return withTx(s.sql, rows, func(tx *sql.Tx) (*sql.Stmt, error) {
 		return tx.Prepare(`INSERT OR REPLACE INTO silver_microsoft_events
             (source, account_id, external_id, calendar_id, subject, body, location, starts_at, ends_at,
-             all_day, show_as, web_link, organizer_addr, organizer_name, attendees, recurrence, deleted, updated_at)
-            VALUES ('microsoft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+             all_day, show_as, web_link, organizer_addr, organizer_name, attendees, recurrence, recurrence_std, deleted, updated_at)
+            VALUES ('microsoft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}, func(stmt *sql.Stmt, r SilverMicrosoftEvent) error {
 		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.CalendarID, r.Subject, r.Body, r.Location,
 			r.StartsAt, r.EndsAt, boolInt(r.AllDay), r.ShowAs, r.WebLink, r.OrganizerAddr, r.OrganizerName,
-			jsonOrEmpty(r.Attendees), r.Recurrence, boolInt(r.Deleted), r.UpdatedAt)
+			jsonOrEmpty(r.Attendees), r.Recurrence, r.RecurrenceStd, boolInt(r.Deleted), r.UpdatedAt)
 		return err
 	})
 }
@@ -168,13 +172,13 @@ func (s *Store) UpsertMicrosoftTodos(rows []SilverMicrosoftTodo) (int, error) {
 	return withTx(s.sql, rows, func(tx *sql.Tx) (*sql.Stmt, error) {
 		return tx.Prepare(`INSERT OR REPLACE INTO silver_microsoft_todos
             (source, account_id, external_id, list_id, title, body, status, importance, due_at, completed_at,
-             created_at_src, reminder_at, is_reminder_on, has_attachments, categories, recurrence,
+             created_at_src, reminder_at, is_reminder_on, has_attachments, categories, recurrence, recurrence_std,
              checklist_items, linked_resources, deleted, updated_at)
-            VALUES ('microsoft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            VALUES ('microsoft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}, func(stmt *sql.Stmt, r SilverMicrosoftTodo) error {
 		_, err := stmt.Exec(acct(r.AccountID), r.ExternalID, r.ListID, r.Title, r.Body, r.Status,
 			r.Importance, r.DueAt, r.CompletedAt, r.CreatedAtSrc, r.ReminderAt, boolInt(r.IsReminderOn),
-			boolInt(r.HasAttachments), jsonOrEmpty(r.Categories), nz(r.Recurrence), nzArr(r.ChecklistItems),
+			boolInt(r.HasAttachments), jsonOrEmpty(r.Categories), nz(r.Recurrence), nz(r.RecurrenceStd), nzArr(r.ChecklistItems),
 			nzArr(r.LinkedResources), boolInt(r.Deleted), r.UpdatedAt)
 		return err
 	})

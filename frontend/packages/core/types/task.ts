@@ -67,10 +67,23 @@ export interface TaskLink {
 }
 
 export interface TaskRecurrence {
-    freq: 'daily' | 'weekly' | 'monthly';
-    weekday?: number;
-    monthday?: number;
+    freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval?: number; // every N periods (default 1)
+    weekday?: number; // weekly single-day (legacy)
+    daysOfWeek?: number[]; // weekly multi-day, 0=Sunday…6 (e.g. [6,0] = Sat & Sun)
+    monthday?: number; // monthly/yearly absolute day
+    weekIndex?: number; // monthly/yearly relative: 1..4 / -1=last, with daysOfWeek
+    month?: number; // yearly only: 1–12
     at?: string;
+    until?: string; // stop after this date (RFC3339 or 'YYYY-MM-DD')
+    count?: number; // stop after this many occurrences
+}
+
+// One entry of a task's embedded checklist — an ordered, individually-checkable
+// sub-item held inside the task (distinct from a parent/child subtask).
+export interface ChecklistItem {
+    text: string;
+    done?: boolean;
 }
 
 export interface Task {
@@ -111,6 +124,8 @@ export interface Task {
     lastSyncedAt?: string;
     acceptanceCriteria?: string;
     recurrence?: TaskRecurrence | null;
+    // Embedded ordered progress ledger — items the executor ticks off as it works.
+    checklist?: ChecklistItem[];
     maxRetries?: number;
     retryCount?: number;
     createdAt: string;

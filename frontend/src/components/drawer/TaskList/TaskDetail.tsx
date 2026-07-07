@@ -7,7 +7,7 @@ import { agentService } from '../../../services/agentService';
 import { taskService } from '@1agents/core/services/taskService';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
-import type { LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
+import type { ChecklistItem, LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
 import { renderMermaidBlocks } from '../../../utils/mermaid';
@@ -336,8 +336,28 @@ export function TaskDetail({
         links?: TaskLink[];
         status?: Task['status'];
         userConfirm?: boolean;
+        checklist?: ChecklistItem[];
     }) => {
         setTask(await taskService.patch(taskId, patch));
+    };
+
+    // Checklist edits: toggle a single item's done, append, or remove — each
+    // rewrites the whole array and persists via PATCH.
+    const [newChecklistText, setNewChecklistText] = useState('');
+    const updateChecklist = (next: ChecklistItem[]) => patchTask({ checklist: next });
+    const toggleChecklistItem = (idx: number) => {
+        const list = task?.checklist ?? [];
+        updateChecklist(list.map((c, i) => (i === idx ? { ...c, done: !c.done } : c)));
+    };
+    const removeChecklistItem = (idx: number) => {
+        const list = task?.checklist ?? [];
+        updateChecklist(list.filter((_, i) => i !== idx));
+    };
+    const addChecklistItem = () => {
+        const text = newChecklistText.trim();
+        if (!text) return;
+        updateChecklist([...(task?.checklist ?? []), { text, done: false }]);
+        setNewChecklistText('');
     };
 
     const saveDescription = async () => {
@@ -850,6 +870,72 @@ export function TaskDetail({
                                                 {t('task.detail.acceptanceEmpty', lang)}
                                             </span>
                                         )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Embedded checklist — the task's in-progress ledger.
+                                Interactive: tick / add / remove, persisted via PATCH. */}
+                            {!isDiscussion && (
+                                <div class="gh-comment-card is-user task-checklist-card">
+                                    <div class="gh-comment-header">
+                                        <div class="gh-comment-header-left">
+                                            <span>
+                                                ☑️ <strong>清单</strong>
+                                                {(task.checklist?.length ?? 0) > 0 && (
+                                                    <span class="task-checklist-progress">
+                                                        {`  ${task.checklist!.filter(c => c.done).length}/${
+                                                            task.checklist!.length
+                                                        }`}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="gh-comment-body">
+                                        {(task.checklist?.length ?? 0) > 0 && (
+                                            <ul class="task-checklist-view">
+                                                {task.checklist!.map((c, i) => (
+                                                    <li key={i} class={c.done ? 'done' : ''}>
+                                                        <label>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={c.done}
+                                                                onChange={() => toggleChecklistItem(i)}
+                                                            />
+                                                            <span>{c.text}</span>
+                                                        </label>
+                                                        <button
+                                                            type="button"
+                                                            class="task-checklist-remove"
+                                                            title="删除"
+                                                            onClick={() => removeChecklistItem(i)}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        <div class="task-checklist-add-row">
+                                            <input
+                                                type="text"
+                                                placeholder="添加子项…"
+                                                value={newChecklistText}
+                                                onInput={(e: Event) =>
+                                                    setNewChecklistText((e.target as HTMLInputElement).value)
+                                                }
+                                                onKeyDown={(e: KeyboardEvent) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        addChecklistItem();
+                                                    }
+                                                }}
+                                            />
+                                            <button type="button" onClick={addChecklistItem}>
+                                                添加
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}

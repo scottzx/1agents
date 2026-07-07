@@ -82,13 +82,13 @@ const taskCols = `id, title, description, issue_state, status, schedule_type,
 	github_repo, github_kind, github_number, github_node_id, github_url,
 	github_state, github_assignees, last_synced_at,
 	verifier_count, verify_pass_threshold, review_pool,
-	executor, business_ref, task_target, result, cost_tokens`
+	executor, business_ref, task_target, result, cost_tokens, checklist`
 
 func scanTask(r rowScanner) (Task, error) {
 	var t Task
 	var scheduledAt, plannedStart, plannedEnd, startedAt, completedAt, lastSyncedAt sql.NullString
 	var createdAt, updatedAt, labels, recurrence, links, review, githubAssignees, reviewPool string
-	var executor, taskTarget string
+	var executor, taskTarget, checklist string
 	if err := r.Scan(&t.ID, &t.Title, &t.Description, &t.IssueState, &t.Status,
 		&t.ScheduleType, &scheduledAt, &plannedStart, &plannedEnd, &startedAt,
 		&completedAt, &t.Summary, &createdAt, &updatedAt,
@@ -100,10 +100,11 @@ func scanTask(r rowScanner) (Task, error) {
 		&t.GithubRepo, &t.GithubKind, &t.GithubNumber, &t.GithubNodeId, &t.GithubUrl,
 		&t.GithubState, &githubAssignees, &lastSyncedAt,
 		&t.VerifierCount, &t.VerifyPassThreshold, &reviewPool,
-		&executor, &t.BusinessRef, &taskTarget, &t.Result, &t.CostTokens); err != nil {
+		&executor, &t.BusinessRef, &taskTarget, &t.Result, &t.CostTokens, &checklist); err != nil {
 		return Task{}, err
 	}
 	t.Executor = taskExecutorFromDB(executor)
+	t.Checklist = jsonToChecklist(checklist)
 	t.TaskTarget = jsonToTaskTarget(taskTarget)
 	t.ScheduledAt = valToTimePtr(scheduledAt)
 	t.PlannedStart = valToTimePtr(plannedStart)
@@ -163,6 +164,28 @@ func jsonToLinks(s string) []TaskLink {
 		return nil
 	}
 	var out []TaskLink
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func checklistToJSON(v []ChecklistItem) string {
+	if len(v) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+func jsonToChecklist(s string) []ChecklistItem {
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var out []ChecklistItem
 	if err := json.Unmarshal([]byte(s), &out); err != nil {
 		return nil
 	}
@@ -533,8 +556,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			github_repo, github_kind, github_number, github_node_id, github_url,
 			github_state, github_assignees, last_synced_at,
 			verifier_count, verify_pass_threshold, review_pool,
-			executor, business_ref, task_target, result, cost_tokens)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			executor, business_ref, task_target, result, cost_tokens, checklist)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project_id = excluded.project_id,
 			title = excluded.title,
@@ -585,7 +608,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 			business_ref = excluded.business_ref,
 			task_target = excluded.task_target,
 			result = excluded.result,
-			cost_tokens = excluded.cost_tokens`,
+			cost_tokens = excluded.cost_tokens,
+			checklist = excluded.checklist`,
 		t.ID, projectID, t.Title, t.Description, t.IssueState, t.Status,
 		t.ScheduleType, timePtrToVal(t.ScheduledAt), timePtrToVal(t.PlannedStart),
 		timePtrToVal(t.PlannedEnd), timePtrToVal(t.StartedAt), timePtrToVal(t.CompletedAt),
@@ -598,7 +622,8 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.GithubRepo, t.GithubKind, t.GithubNumber, t.GithubNodeId, t.GithubUrl,
 		t.GithubState, stringsToJSON(t.GithubAssignees), timePtrToVal(t.LastSyncedAt),
 		t.VerifierCount, t.VerifyPassThreshold, reviewPoolToJSON(t.ReviewPool),
-		taskExecutorToDB(t.Executor), t.BusinessRef, taskTargetToJSON(t.TaskTarget), t.Result, t.CostTokens)
+		taskExecutorToDB(t.Executor), t.BusinessRef, taskTargetToJSON(t.TaskTarget), t.Result, t.CostTokens,
+		checklistToJSON(t.Checklist))
 	if err != nil {
 		return err
 	}

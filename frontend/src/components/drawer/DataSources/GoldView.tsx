@@ -3,8 +3,10 @@ import { useState, useEffect, useMemo } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
 import * as ui from '../../../stores/uiStore';
+import * as wsStore from '../../../stores/workspaceStore';
 import { t, type Lang } from '../../../i18n';
 import { sourceService, type GoldSummary, type SourceRecordRow } from '@1agents/core/services/sourceService';
+import { AGENT_OPTIONS } from '../TaskList/constants';
 import { DataGrid } from '../TaskList/DataGrid';
 import { RecordModal } from './SourceDetail';
 import {
@@ -94,7 +96,102 @@ export function GoldZone({ onOpen }: { onOpen: (domain: string, title: string) =
     );
 }
 
-// GoldDetail — one fused domain's 多维表格 (contacts / messages / events).
+// PromoteTodoDialog — pick a target workspace + executor (me / an agent), then
+// turn the fused to-do into a task via POST /api/data/gold/todos/promote.
+function PromoteTodoDialog({
+    todo,
+    onClose,
+    onDone,
+}: {
+    todo: { id: string; title: string };
+    onClose: () => void;
+    onDone: (msg: string) => void;
+}) {
+    const language = ui.language.value;
+    const workspaces = wsStore.workspaces.value;
+    const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
+    const [assignee, setAssignee] = useState('user');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const submit = async () => {
+        if (!workspaceId) {
+            setError(t('datasource.gold.promoteNoWorkspace', language));
+            return;
+        }
+        setBusy(true);
+        setError('');
+        try {
+            const res = await sourceService.promoteTodo({ id: todo.id, workspaceId, assignee });
+            onDone(
+                res.alreadyLinked
+                    ? t('datasource.gold.promoteAlready', language)
+                    : t('datasource.gold.promoteOk', language)
+            );
+            onClose();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div class="ds-record-overlay" onClick={onClose}>
+            <div
+                class="ds-record-modal ds-promote-modal"
+                role="dialog"
+                aria-modal="true"
+                onClick={(e: Event) => e.stopPropagation()}
+            >
+                <button class="ds-record-close" aria-label={t('contacts.close', language)} onClick={onClose}>
+                    ×
+                </button>
+                <h3 class="ds-record-title">{t('datasource.gold.promoteTitle', language)}</h3>
+                <div class="ds-promote-todo-title">{todo.title}</div>
+
+                <div class="form-group">
+                    <label>{t('datasource.gold.promoteWorkspace', language)}</label>
+                    <select
+                        value={workspaceId}
+                        onChange={(e: Event) => setWorkspaceId((e.target as HTMLSelectElement).value)}
+                    >
+                        {workspaces.length === 0 && <option value="">—</option>}
+                        {workspaces.map(w => (
+                            <option key={w.id} value={w.id}>
+                                {w.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>{t('datasource.gold.promoteAssignee', language)}</label>
+                    <select
+                        value={assignee}
+                        onChange={(e: Event) => setAssignee((e.target as HTMLSelectElement).value)}
+                    >
+                        <option value="user">{t('datasource.gold.promoteAsUser', language)}</option>
+                        {AGENT_OPTIONS.map(a => (
+                            <option key={a} value={a}>
+                                {a}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                {error && <div class="contacts-error">{error}</div>}
+                <div class="ds-promote-actions">
+                    <button class="submit-task-btn" disabled={busy} onClick={submit}>
+                        {busy ? t('datasource.gold.promoting', language) : t('datasource.gold.promote', language)}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// GoldDetail — one fused domain's 多维表格 (contacts / messages / events / todos).
 export function GoldDetail({ domain, title }: { domain: string; title: string }) {
     const language = ui.language.value;
     const [rows, setRows] = useState<SourceRecordRow[]>([]);
@@ -102,6 +199,7 @@ export function GoldDetail({ domain, title }: { domain: string; title: string })
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
     const selected = useSignal<SourceRecordRow | null>(null);
+    const [promoting, setPromoting] = useState<{ id: string; title: string } | null>(null);
 
     useEffect(() => {
         let active = true;
@@ -157,7 +255,32 @@ export function GoldDetail({ domain, title }: { domain: string; title: string })
                 renderCell={(r, col, helpers) => renderSourceCell(r, col, helpers, language)}
             />
 
-            {selected.value && <RecordModal record={selected.value} onClose={() => (selected.value = null)} />}
+            {selected.value && (
+                <RecordModal
+                    record={selected.value}
+                    onClose={() => (selected.value = null)}
+                    onPromote={
+                        domain === 'todos'
+                            ? () => {
+                                  const r = selected.value!;
+                                  setPromoting({ id: r.uid, title: (r.preview || r.uid).split('\n')[0].slice(0, 80) });
+                                  selected.value = null;
+                              }
+                            : undefined
+                    }
+                />
+            )}
+
+            {promoting && (
+                <PromoteTodoDialog
+                    todo={promoting}
+                    onClose={() => setPromoting(null)}
+                    onDone={msg => {
+                        ui.showToast(msg);
+                        setPromoting(null);
+                    }}
+                />
+            )}
         </div>
     );
 }
