@@ -1,6 +1,6 @@
 import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { MessageBubble, GroupedChatItem, GroupedToolCall } from './MessageBubble';
+import { MessageBubble, GroupedChatItem, GroupedToolCall, ToolGroupElement } from './MessageBubble';
 import type { ChatItem } from './hooks';
 import type { PermissionDecision } from '../types';
 import { t } from '../../i18n';
@@ -60,10 +60,6 @@ function isCallRenderable(call: GroupedToolCall): boolean {
 
 function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     const grouped: GroupedChatItem[] = [];
-    // Calls assembled from tool_result / permission_request items
-    // that didn't find a matching tool_use yet. They get folded into
-    // a single "待分配" tool_group at the end of the stream so the
-    // user still sees the data instead of having it silently dropped.
     const pendingCalls: GroupedToolCall[] = [];
 
     for (const item of items) {
@@ -77,10 +73,15 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     id: `group-${item.id}`,
                     kind: 'tool_group',
                     calls: [],
+                    thinkingBlocks: [],
+                    elements: [],
                     createdAt: item.createdAt,
                 };
                 grouped.push(lastGroup);
             }
+
+            if (!lastGroup.thinkingBlocks) lastGroup.thinkingBlocks = [];
+            if (!lastGroup.elements) lastGroup.elements = [];
 
             for (const call of item.calls) {
                 const callId = call.toolCallId;
@@ -100,7 +101,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     // runtime didn't supply a toolCallId — stable across
                     // re-renders, unlike Math.random() which remounted the
                     // row (and dropped its expand state) on every render.
-                    lastGroup.calls.push({
+                    const newCall: GroupedToolCall = {
                         id: `call-${callId || lastGroup.calls.length}`,
                         toolCallId: callId,
                         toolName: call.toolName,
@@ -111,9 +112,42 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         ...(call.locations ? { locations: call.locations } : {}),
                         ...(call.diffs ? { diffs: call.diffs } : {}),
                         ...(call.permission ? { permission: call.permission } : {}),
-                    });
+                    };
+                    lastGroup.calls.push(newCall);
+                    lastGroup.elements.push({ kind: 'call', call: newCall });
                 }
             }
+        } else if (item.kind === 'thinking') {
+            let lastGroup = grouped[grouped.length - 1];
+            if (!lastGroup || lastGroup.kind !== 'tool_group' || lastGroup.pending) {
+                lastGroup = {
+                    id: `group-${item.id}`,
+                    kind: 'tool_group',
+                    calls: [],
+                    thinkingBlocks: [],
+                    elements: [],
+                    createdAt: item.createdAt,
+                };
+                grouped.push(lastGroup);
+            }
+
+            if (!lastGroup.thinkingBlocks) lastGroup.thinkingBlocks = [];
+            if (!lastGroup.elements) lastGroup.elements = [];
+
+            const existingElement = lastGroup.elements.find(el => el.kind === 'thinking' && el.id === item.id);
+            if (existingElement && existingElement.kind === 'thinking') {
+                existingElement.content = item.content;
+            } else {
+                lastGroup.elements.push({
+                    kind: 'thinking',
+                    id: item.id,
+                    content: item.content,
+                });
+            }
+
+            lastGroup.thinkingBlocks = lastGroup.elements
+                .filter(el => el.kind === 'thinking')
+                .map(el => (el as Extract<ToolGroupElement, { kind: 'thinking' }>).content);
         } else if (item.kind === 'tool_result') {
             const callId = item.toolCallId;
             let matchedCall: GroupedToolCall | null = null;
@@ -227,6 +261,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
             id: 'pending-group',
             kind: 'tool_group',
             calls: pendingCalls,
+            thinkingBlocks: [],
+            elements: pendingCalls.map(c => ({ kind: 'call', call: c })),
             createdAt: Date.now(),
             pending: true,
         });
@@ -302,12 +338,22 @@ export function MessageList({
         // body while waiting for the streaming input to land. If everything
         // is empty, hide the whole group — it'll reappear once content
         // arrives.
+        const hasThinking = item.thinkingBlocks && item.thinkingBlocks.length > 0;
         const renderable = item.calls.filter(isCallRenderable);
-        if (renderable.length === 0) continue;
+        if (renderable.length === 0 && !hasThinking) continue;
         if (renderable.length === item.calls.length) {
             groupedItems.push(item);
         } else {
-            groupedItems.push({ ...item, calls: renderable });
+            const renderableCallIds = new Set(renderable.map(c => c.id));
+            const filteredElements = item.elements?.filter(el => {
+                if (el.kind === 'thinking') return true;
+                return renderableCallIds.has(el.call.id);
+            });
+            groupedItems.push({
+                ...item,
+                calls: renderable,
+                elements: filteredElements,
+            });
         }
     }
 
