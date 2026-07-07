@@ -83,7 +83,10 @@ func taskToCalendarItem(t *Task, p Project) (calendarItem, bool) {
 	if t.Type == TaskTypeDiscussion || t.Source == TaskSourceAgent {
 		return calendarItem{}, false
 	}
-	isReminder := t.Assignee == AssigneeUser
+	// A human task (assignee=user or executor=human) is a personal to-do / gate
+	// the user must act on — surface it on the agenda regardless of which field
+	// declared it (one human lane).
+	isReminder := isHumanTask(t)
 	if isReminder {
 		if t.Status == TaskStatusCancelled {
 			return calendarItem{}, false

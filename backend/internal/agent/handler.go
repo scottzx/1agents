@@ -469,6 +469,12 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if newTask.ScheduleType == "" {
 			newTask.ScheduleType = ScheduleTypeImmediate
 		}
+		// executor is a derived kind, not a second "who" axis: a task assigned to
+		// the user IS a human task. Stamp it so the stored kind matches assignee
+		// and the human/agent/function branches read one field consistently.
+		if newTask.Assignee == AssigneeUser {
+			newTask.Executor = TaskExecutorHuman
+		}
 
 		if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
 			cfg.Tasks = append(cfg.Tasks, newTask)
@@ -817,6 +823,15 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		}
 		if body.Assignee != nil {
 			target.Assignee = *body.Assignee
+			// Keep the derived executor kind in sync with the reassignment:
+			// → user makes it a human task; → an agent reverts a formerly-human
+			// task to agent dispatch (function tasks are set via the kernel API,
+			// not reassigned here, so they're left untouched).
+			if target.Assignee == AssigneeUser {
+				target.Executor = TaskExecutorHuman
+			} else if target.Executor == TaskExecutorHuman {
+				target.Executor = TaskExecutorAgent
+			}
 		}
 		if body.Labels != nil {
 			target.Labels = *body.Labels
