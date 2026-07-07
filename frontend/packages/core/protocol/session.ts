@@ -85,6 +85,13 @@ export interface ChatSession {
      */
     replyId?: string;
     /**
+     * Transient: the team expert (a <ws>/.claude/agents/<name>.md file) chosen
+     * to drive this conversation, forwarded as agent_ref on the chat WS so the
+     * backend injects that persona. Empty = the project's primary agent. Only
+     * meaningful on a new session's first connect; not persisted.
+     */
+    agentRef?: string;
+    /**
      * Transient: a prompt to auto-send to the agent as soon as the session is
      * ready (issue-model 追问/启动新会话). Routed into `pendingInitialMessage`
      * by `selectSession`, then fired once by `ChatPanel`. Not persisted.

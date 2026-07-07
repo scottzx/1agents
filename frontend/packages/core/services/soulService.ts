@@ -39,4 +39,42 @@ async function saveWorkspaceSoul(workspaceId: string, content: string): Promise<
     if (!res.ok) throw new Error(await res.text());
 }
 
-export const soulService = { listSouls, getWorkspaceSoul, saveWorkspaceSoul };
+/** One agent in a project's team (mirrors backend WorkspaceAgentStatus). */
+export interface TeamMember {
+    agentRef: string; // "shared:<name>.md" store ref
+    file: string; // <name>.md
+    name: string; // declared name (frontmatter) or file stem
+    description: string;
+    state: string; // synced | modified | local
+}
+
+export interface WorkspaceTeam {
+    primary: string; // <name>.md that drives the default conversation; "" = none
+    members: TeamMember[];
+}
+
+/** Read a project's agent-team manifest (primary + roster). */
+async function getWorkspaceTeam(workspaceId: string): Promise<WorkspaceTeam> {
+    const res = await apiFetch(`/workspace/team?id=${encodeURIComponent(workspaceId)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = (await res.json()) as { primary?: string; members?: TeamMember[] };
+    return { primary: data.primary ?? '', members: data.members ?? [] };
+}
+
+/** Set the project's primary agent (drives the default conversation). "" clears it. */
+async function setWorkspacePrimary(workspaceId: string, primary: string): Promise<void> {
+    const res = await apiFetch('/workspace/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, primary }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
+export const soulService = {
+    listSouls,
+    getWorkspaceSoul,
+    saveWorkspaceSoul,
+    getWorkspaceTeam,
+    setWorkspacePrimary,
+};

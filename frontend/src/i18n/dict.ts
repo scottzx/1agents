@@ -129,6 +129,9 @@ export const zhCN: Record<string, string> = {
     'newchat.role.executor': '执行者',
     'newchat.role.verifier': '校验者',
     'newchat.role.pmHint': '选择会话角色（PM = AI 项目经理：聊需求，自动拆解成带依赖的任务）',
+    'newchat.expert.aria': '对话专家',
+    'newchat.expert.hint': '选择由哪个团队专家（人设）主导这次对话；默认用项目的主智能体',
+    'newchat.expert.default': '默认专家',
     'newchat.noProject': '无项目（跨项目）',
     'header.menu': '菜单',
     'header.openMenu': '打开功能菜单',
@@ -1673,6 +1676,10 @@ export const enUS: Record<string, string> = {
     'newchat.role.verifier': 'Verifier',
     'newchat.role.pmHint':
         'Pick a conversation role (PM = AI Project Manager: discuss requirements, auto-split into dependency-aware tasks)',
+    'newchat.expert.aria': 'Conversation expert',
+    'newchat.expert.hint':
+        "Pick which team expert (persona) drives this conversation; defaults to the project's primary agent",
+    'newchat.expert.default': 'Default expert',
     'newchat.noProject': 'No project (cross-project)',
     'header.menu': 'Menu',
     'header.openMenu': 'Open feature menu',

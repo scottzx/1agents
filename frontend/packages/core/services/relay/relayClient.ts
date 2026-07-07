@@ -313,6 +313,7 @@ export interface RelayChatParams {
     sessionId: string; // 1Agents chat session id
     agentType: string;
     replyId?: string;
+    agentRef?: string; // team expert persona pick (forwarded to the node bridge)
 }
 
 /** 在节点上开一条聊天桥,返回用于扇出过滤的 Happy session id。 */
