@@ -17648,6 +17648,32 @@ body {
   height: 100%;
   min-height: 0;
 }
+// In-pane breadcrumb back to the roster.
+.team-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 8px;
+
+  .team-crumb-back {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--accent-fg);
+    }
+  }
+  .team-crumb-sep {
+    color: var(--text-muted);
+  }
+  .team-crumb-leaf {
+    color: var(--text-main);
+  }
+}
 .team-detail-preview {
   flex: 1;
   min-height: 0;
