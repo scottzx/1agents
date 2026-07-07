@@ -152,8 +152,8 @@ func tasksMcpServerEntry(baseURL, workspaceID, taskID, taskRole string) map[stri
 	if taskID != "" {
 		env = append(env, map[string]string{"name": "ONEAGENTS_TASK_ID", "value": taskID})
 	}
-	// taskRole applies with a task lock (executor/verifier, #50) or project-wide
-	// (reminder, #192 — a general chat session narrowed to recording reminders).
+	// taskRole applies the locked tool surface for a task-bound session
+	// (executor/verifier, #50). Empty for project-wide conversation/PM sessions.
 	if taskRole != "" {
 		env = append(env, map[string]string{"name": "ONEAGENTS_TASK_ROLE", "value": taskRole})
 	}
@@ -182,31 +182,6 @@ func (h *Handler) buildPMMcpServers(workspaceID string) json.RawMessage {
 	}
 	return b
 }
-
-// buildReminderMcpServers builds the per-session MCP config for a general
-// (non-PM) chat session: project-wide tasks tools narrowed to the reminder
-// surface (create_reminder + list_tasks) so the agent can record the user's
-// personal todos/deadlines but cannot create project tasks (#192).
-func (h *Handler) buildReminderMcpServers(workspaceID string) json.RawMessage {
-	srv := h.buildTasksMcpServer(workspaceID, "", reminderRole)
-	if srv == nil {
-		return nil
-	}
-	b, err := json.Marshal([]map[string]any{srv})
-	if err != nil {
-		log.Printf("[agent] reminder mcpServers: marshal failed: %v", err)
-		return nil
-	}
-	return b
-}
-
-// reminderRole is the ONEAGENTS_TASK_ROLE value selecting the reminder-only tool
-// surface in the tasks MCP server. Mirrors the constant in package mcptasks.
-const reminderRole = "reminder"
-
-// reminderChatHint is appended to a general chat session so the agent knows it
-// can record personal reminders — but only when the user explicitly asks.
-const reminderChatHint = `当用户明确要求记录待办、提醒事项或截止日期（例如"提醒我…""记一下…""加个待办"）时，调用 create_reminder 工具把它记下来；这类条目执行者是用户本人，不会派给智能体执行。不要主动臆测或在用户没要求时创建提醒。`
 
 // resolvePMRole resolves the builtin "pm" role template for a PM/PMO session
 // and returns its rendered system prompt and per-session MCP config. Both the

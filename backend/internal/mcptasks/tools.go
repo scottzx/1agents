@@ -80,7 +80,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_task",
-		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates a relates link) or it is likewise held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is the executing AI agent type (claudecode/codex) and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
+		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates a relates link) or it is likewise held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
@@ -91,12 +91,23 @@ var toolDefs = []map[string]any{
 				"type":                map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}, "description": "Issue discriminator. Maps to GitHub Issue Types / a label."},
 				"priority":            map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority. No native GitHub Issue field — maps to a Projects v2 custom field."},
 				"milestone":           map[string]any{"type": "string", "description": "Maps to GitHub milestone (matched/created by title)."},
-				"assignee":            map[string]any{"type": "string", "description": "Executing AGENT type for this task, e.g. 'claudecode' or 'codex' (whichever agents are installed). LOCAL ONLY — this is NOT a GitHub user. Empty defaults to claudecode. For GitHub users, use githubAssignees."},
+				"assignee":            map[string]any{"type": "string", "description": "WHO executes this task. An AGENT type (e.g. 'claudecode' or 'codex', whichever are installed) is dispatched by the scheduler. 'user' makes it a personal/human task: never dispatched, lives on the user's calendar until they mark it done (use with dueAt/recurrence for reminders/deadlines). LOCAL ONLY — not a GitHub user. Empty defaults to claudecode. For GitHub users, use githubAssignees."},
 				"githubAssignees":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (issue.assignees[].login) — human collaborators on the mapped Issue/PR. Distinct from `assignee` (the executing agent). Sync field."},
 				"verifier":            map[string]any{"type": "string", "description": "Optional reviewing agent type. When set (and acceptanceCriteria is non-empty), after the executor finishes a verifier of this type auto-checks the output against the criteria; the task only completes when every criterion passes, otherwise it re-executes. Empty = no verification."},
 				"verifierCount":       map[string]any{"type": "integer", "description": "Optional. How many independent verifiers form an adversarial review panel (#131). >1 runs that many separate verifier passes that each judge the output; the panel decides by threshold. Default/0/1 = a single verifier."},
 				"verifyPassThreshold": map[string]any{"type": "integer", "description": "Optional. How many of the verifierCount verdicts must pass for the panel to accept the output. 0 = simple majority (⌊N/2⌋+1). Set equal to verifierCount to require unanimity."},
 				"dependsOn":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
+				"dueAt":               map[string]any{"type": "string", "description": "Optional due/trigger time, RFC3339 (e.g. '2026-06-25T15:00:00+08:00'). For a personal task (assignee='user') this is the calendar deadline/reminder time. Omit for an undated item."},
+				"recurrence": map[string]any{
+					"type":        "object",
+					"description": "Optional repeat rule for a personal (assignee='user') task. Omit for a one-off.",
+					"properties": map[string]any{
+						"freq":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly"}},
+						"weekday":  map[string]any{"type": "integer", "description": "0=Sunday…6=Saturday (for weekly)."},
+						"monthday": map[string]any{"type": "integer", "description": "1–31 (for monthly)."},
+						"at":       map[string]any{"type": "string", "description": "'HH:MM' local time; defaults to midnight."},
+					},
+				},
 				"githubRepo":          map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo' of the bound GitHub object. Normally backfilled by sync."},
 				"githubKind":          map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: whether the bound GitHub object is an issue or a pr."},
 				"githubNumber":        map[string]any{"type": "integer", "description": "Sync anchor: the remote #N (per-repo), distinct from the local task number."},
@@ -171,29 +182,6 @@ var toolDefs = []map[string]any{
 			},
 		},
 	},
-	{
-		"name":        "create_reminder",
-		"description": "Record a personal reminder / todo / deadline for the USER in the current project. The executor is the user themselves — it is NEVER dispatched to or run by an agent; it just lives on the user's calendar until they mark it done. Use this (not create_task) when the user explicitly asks you to remember a todo, note a deadline, or remind them of something. Set dueAt for a deadline/scheduled reminder; add recurrence for a repeating one.",
-		"inputSchema": map[string]any{
-			"type":     "object",
-			"required": []string{"title"},
-			"properties": map[string]any{
-				"title": map[string]any{"type": "string", "description": "Short reminder text, e.g. 'Submit the quarterly report'."},
-				"note":  map[string]any{"type": "string", "description": "Optional extra detail (Markdown supported)."},
-				"dueAt": map[string]any{"type": "string", "description": "Optional due/trigger time, RFC3339 (e.g. '2026-06-25T15:00:00+08:00'). Omit for an undated todo."},
-				"recurrence": map[string]any{
-					"type":        "object",
-					"description": "Optional repeat rule. Omit for a one-off reminder.",
-					"properties": map[string]any{
-						"freq":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly"}},
-						"weekday":  map[string]any{"type": "integer", "description": "0=Sunday…6=Saturday (for weekly)."},
-						"monthday": map[string]any{"type": "integer", "description": "1–31 (for monthly)."},
-						"at":       map[string]any{"type": "string", "description": "'HH:MM' local time; defaults to midnight."},
-					},
-				},
-			},
-		},
-	},
 }
 
 // complete_human_task tool definition (appended to toolDefs at init time).
@@ -216,20 +204,6 @@ func init() {
 // reviewVerifier is "verifier" — the ONEAGENTS_TASK_ROLE value selecting the
 // hard read-only review scope.
 const reviewVerifier = "verifier"
-
-// reminderRole is "reminder" — the ONEAGENTS_TASK_ROLE value for a general
-// (non-PM) chat session: project-wide but narrowed to recording personal
-// reminders (#192). Unlike executor/verifier it is not task-locked.
-const reminderRole = "reminder"
-
-// reminderScopedTools is the surface for a reminder-role session: record a
-// personal reminder and read the current list (for dedup/context). All other
-// PM tools are withheld so a general chat agent cannot create project tasks,
-// milestones, or discussions.
-var reminderScopedTools = map[string]bool{
-	"create_reminder": true,
-	"list_tasks":      true,
-}
 
 // executorScopedTools is the tool subset advertised and accepted in a task-
 // locked executor session: read its own task, list (filtered to itself), and
@@ -269,14 +243,6 @@ func (s *server) scopedTools() map[string]bool {
 func (s *server) listedTools() []map[string]any {
 	out := make([]map[string]any, 0, len(toolDefs))
 	if s.taskID == "" {
-		if s.taskRole == reminderRole {
-			for _, d := range toolDefs {
-				if name, _ := d["name"].(string); reminderScopedTools[name] {
-					out = append(out, d)
-				}
-			}
-			return out
-		}
 		for _, d := range toolDefs {
 			if name, _ := d["name"].(string); name == "submit_review" {
 				continue
@@ -362,9 +328,6 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 	if s.taskID != "" && !s.scopedTools()[p.Name] {
 		return toolErr(fmt.Sprintf("tool %q is not available in this task-scoped session", p.Name))
 	}
-	if s.taskID == "" && s.taskRole == reminderRole && !reminderScopedTools[p.Name] {
-		return toolErr(fmt.Sprintf("tool %q is not available in this reminder-scoped session", p.Name))
-	}
 	switch p.Name {
 	case "list_tasks":
 		return s.toolListTasks(p.Arguments)
@@ -380,8 +343,6 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolUpdateMilestone(p.Arguments)
 	case "create_task":
 		return s.toolCreateTask(p.Arguments)
-	case "create_reminder":
-		return s.toolCreateReminder(p.Arguments)
 	case "create_discussion":
 		return s.toolCreateDiscussion(p.Arguments)
 	case "update_task":
@@ -574,6 +535,11 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		VerifierCount       int      `json:"verifierCount"`
 		VerifyPassThreshold int      `json:"verifyPassThreshold"`
 		DependsOn           []string `json:"dependsOn"`
+		// Personal (assignee='user') scheduling: dueAt becomes the calendar
+		// trigger time, recurrence makes it repeat. Ignored by the scheduler for
+		// agent-assigned tasks (they run on dependency readiness, not the clock).
+		DueAt      string          `json:"dueAt"`
+		Recurrence json.RawMessage `json:"recurrence"`
 		// GitHub Issue/PR mapping (#74). githubAssignees is the human-collaborator
 		// dimension (distinct from assignee); the github* refs are the sync anchor.
 		GithubAssignees []string `json:"githubAssignees"`
@@ -608,6 +574,15 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 	}
 	if a.VerifyPassThreshold > 0 {
 		body["verifyPassThreshold"] = a.VerifyPassThreshold
+	}
+	// Personal-task scheduling (assignee='user'): dueAt → a scheduled trigger,
+	// recurrence → a repeat rule. Mirrors the old create_reminder mapping.
+	if strings.TrimSpace(a.DueAt) != "" {
+		body["scheduleType"] = "scheduled"
+		body["scheduledAt"] = a.DueAt
+	}
+	if len(a.Recurrence) > 0 && string(a.Recurrence) != "null" {
+		body["recurrence"] = a.Recurrence
 	}
 	// Forward GitHub mapping fields only when provided, so a normal create never
 	// writes empty anchors over a row a future sync pass might populate.
@@ -653,55 +628,6 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		"title":     created.Title,
 		"status":    created.Status,
 		"dependsOn": created.DependsOn,
-	})
-}
-
-// toolCreateReminder records a personal reminder/todo for the user (#192). It is
-// a task pinned to assignee="user" so the scheduler never runs it; an optional
-// dueAt becomes the scheduled trigger time and recurrence makes it repeat.
-func (s *server) toolCreateReminder(args json.RawMessage) map[string]any {
-	var a struct {
-		Title      string          `json:"title"`
-		Note       string          `json:"note"`
-		DueAt      string          `json:"dueAt"`
-		Recurrence json.RawMessage `json:"recurrence"`
-	}
-	if err := json.Unmarshal(args, &a); err != nil {
-		return toolErr("invalid arguments: " + err.Error())
-	}
-	if strings.TrimSpace(a.Title) == "" {
-		return toolErr("title is required")
-	}
-	body := map[string]any{
-		"workspace_id": s.workspaceID,
-		"title":        a.Title,
-		"description":  a.Note,
-		"type":         "task",
-		"assignee":     "user", // executor is the user; scheduler skips it
-	}
-	if strings.TrimSpace(a.DueAt) != "" {
-		body["scheduleType"] = "scheduled"
-		body["scheduledAt"] = a.DueAt
-	}
-	if len(a.Recurrence) > 0 && string(a.Recurrence) != "null" {
-		body["recurrence"] = a.Recurrence
-	}
-	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
-	if err != nil {
-		return toolErr(err.Error())
-	}
-	if status != 200 {
-		return toolErr(fmt.Sprintf("create reminder failed (%d): %s", status, strings.TrimSpace(string(resp))))
-	}
-	var created task
-	if err := json.Unmarshal(resp, &created); err != nil {
-		return toolText(string(resp))
-	}
-	return toolJSON(map[string]any{
-		"ok":     true,
-		"id":     created.ID,
-		"number": created.Number,
-		"title":  created.Title,
 	})
 }
 
