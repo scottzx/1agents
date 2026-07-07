@@ -13,6 +13,7 @@ import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
 import { WorkspaceFilesSplit, ChannelsPane, FilePreviewPane } from '../shared/WorkspacePanes';
 import { SkillsTab } from './SkillsTab';
+import { TeamTab } from './TeamTab';
 
 /**
  * AssistantDetail — breadcrumb level 2 (助理 › <name>). The trail + back-nav
@@ -29,7 +30,7 @@ import { SkillsTab } from './SkillsTab';
  * navigation side-effects of selectWorkspace, which would drop the full-page
  * detail).
  */
-type DetailTab = 'sessions' | 'soul' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp';
+type DetailTab = 'sessions' | 'team' | 'soul' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp';
 
 interface AssistantDetailProps {
     workspaceId: string;
@@ -99,6 +100,7 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
 
     const shellTabs: ShellTab[] = [
         { id: 'sessions', label: t('assistant.detail.tab.sessions', language) },
+        { id: 'team', label: t('assistant.detail.tab.team', language) },
         { id: 'soul', label: t('assistant.detail.tab.soul', language) },
         { id: 'tasks', label: t('assistant.detail.tab.tasks', language) },
         { id: 'skills', label: t('assistant.detail.tab.skills', language) },
@@ -127,6 +129,12 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                             workspaceId={workspaceId}
                             onSelectSession={s => void sessStore.selectSession(s)}
                         />
+                    </div>
+                )}
+
+                {activeTab === 'team' && (
+                    <div class="assistant-pane-fill assistant-pane-inset assistant-pane-scroll">
+                        <TeamTab workspaceId={workspaceId} language={language} />
                     </div>
                 )}
 
