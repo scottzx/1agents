@@ -1244,6 +1244,11 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	// reply_id links this session to the timeline reply that triggered it
 	// (issue-model §7.2); optional for sessions outside any task.
 	replyID := r.URL.Query().Get("reply_id")
+	// agent_ref is the expert pick from the input-box dropdown (a team member's
+	// .claude/agents/<name>.md); empty falls back to the project's primary agent.
+	// Orthogonal to agent_type (the CLI/engine). New sessions only — a resume
+	// already carries the persona in its replayed history.
+	agentRef := r.URL.Query().Get("agent_ref")
 
 	if wsID == "" || sessionId == "" || agentType == "" {
 		http.Error(w, "workspace_id, session_id, and agent_type query parameters are required", http.StatusBadRequest)
@@ -1424,21 +1429,25 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task, reminder tools)", sessionId)
 	}
 
-	// Assistant persona (人设): the workspace's SOUL.md is the assistant's
-	// standing system prompt. It sits AHEAD of whatever role/task context the
-	// branches above built (role instructions → task background), so the persona
-	// frames every mode — plain chat, executor/verifier, and PM alike. New
-	// sessions only (acpSessionID == ""); resumed ones already replay it in
-	// history. Empty SOUL.md (blank persona) is a no-op.
+	// Assistant persona (人设): the project's agent team supplies the standing
+	// system prompt. agentRef is the dropdown's expert pick; empty resolves the
+	// team's primary agent (and an empty primary — project-level folders with no
+	// fixed personality — injects nothing). The persona sits AHEAD of whatever
+	// role/task context the branches above built (role instructions → task
+	// background), so it frames every mode — plain chat, executor/verifier, and
+	// PM alike. New sessions only (acpSessionID == ""); resumed ones already
+	// replay it in history. Legacy SOUL.md is the fallback (see ResolveAgentPersona).
 	if acpSessionID == "" {
-		if soul, err := workspace.ReadWorkspaceSoul(wsPath); err == nil {
-			if s := strings.TrimSpace(soul); s != "" {
+		if persona, err := workspace.ResolveAgentPersona(wsPath, agentRef); err == nil {
+			if s := strings.TrimSpace(persona); s != "" {
 				if systemContext == "" {
 					systemContext = s
 				} else {
 					systemContext = s + "\n\n" + systemContext
 				}
 			}
+		} else {
+			log.Printf("[agent] resolve persona (ws=%s ref=%q): %v", wsPath, agentRef, err)
 		}
 	}
 
