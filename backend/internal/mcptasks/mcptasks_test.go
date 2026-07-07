@@ -75,12 +75,16 @@ func TestInitializeAndToolsList(t *testing.T) {
 	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res, _ = env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 11 {
-		t.Fatalf("expected 11 tools, got %d", len(tools))
+	if len(tools) != 10 {
+		t.Fatalf("expected 10 tools, got %d", len(tools))
 	}
 }
 
-func TestReminderRoleScopesToolsAndCreatesReminder(t *testing.T) {
+// A default conversation session (no task lock, no role) exposes the full PM
+// tool set — create_reminder is gone; a personal todo is a create_task with
+// assignee='user', which maps dueAt → a scheduled trigger (the old reminder
+// mapping, now unified into create_task).
+func TestConversationExposesPMToolsAndPersonalTask(t *testing.T) {
 	var gotBody map[string]any
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks" {
@@ -91,26 +95,33 @@ func TestReminderRoleScopesToolsAndCreatesReminder(t *testing.T) {
 		}
 		w.Write([]byte(`[]`))
 	})
-	s.taskRole = reminderRole // general chat session, project-wide reminder scope
+	// No taskRole, no taskID: the project-wide conversation surface.
 
-	// tools/list narrows to create_reminder + list_tasks only.
 	env := call(t, s, buf, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	res, _ := env["result"].(map[string]any)
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 2 {
-		t.Fatalf("reminder role should expose 2 tools, got %d", len(tools))
+	names := map[string]bool{}
+	for _, tv := range tools {
+		if m, ok := tv.(map[string]any); ok {
+			if n, _ := m["name"].(string); n != "" {
+				names[n] = true
+			}
+		}
+	}
+	if !names["create_task"] || !names["create_milestone"] || !names["create_discussion"] {
+		t.Errorf("conversation should expose the PM tool set, got %v", names)
+	}
+	if names["create_reminder"] {
+		t.Error("create_reminder must no longer exist")
+	}
+	if names["submit_review"] {
+		t.Error("submit_review is verifier-only, not advertised project-wide")
 	}
 
-	// create_task is withheld in reminder scope.
-	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"sneak"}}}`)
-	if _, isErr := resultText(t, env); !isErr {
-		t.Error("create_task should be rejected in reminder scope")
-	}
-
-	// create_reminder pins assignee=user and maps dueAt → scheduledAt.
-	env = call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_reminder","arguments":{"title":"交报告","dueAt":"2026-06-25T15:00:00+08:00"}}}`)
+	// A personal todo: create_task with assignee='user' + dueAt → scheduled.
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"交报告","assignee":"user","dueAt":"2026-06-25T15:00:00+08:00"}}}`)
 	if _, isErr := resultText(t, env); isErr {
-		t.Fatalf("create_reminder returned error: %v", env)
+		t.Fatalf("create_task returned error: %v", env)
 	}
 	if gotBody["assignee"] != "user" {
 		t.Errorf("assignee = %v, want user", gotBody["assignee"])

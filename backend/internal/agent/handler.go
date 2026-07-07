@@ -1415,18 +1415,13 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		mcpServers = pmMcp
 		log.Printf("[agent] Bridging AI Project Manager WebSocket for session %s (workspace %s)", sessionId, wsID)
 	} else {
-		// General (non-PM) chat session: give it a reminder-scoped tasks MCP so
-		// the user can have it record personal todos/deadlines (#192). New
-		// sessions also get a short hint about the tool; resumed ones already
-		// carry their history.
-		mcpServers = h.buildReminderMcpServers(wsID)
-		if acpSessionID == "" {
-			// General chat carries just the reminder-tool hint here; the
-			// assistant persona (SOUL.md) is prepended centrally below so every
-			// session kind (chat / task / role) shares one injection point.
-			systemContext = reminderChatHint
-		}
-		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task, reminder tools)", sessionId)
+		// Default conversation session: PM-capable — the full project task MCP
+		// (create/update tasks, milestones, discussions). A personal todo is just
+		// a create_task with assignee='user' (never dispatched, calendar-only), so
+		// no separate reminder surface is needed. The persona is prepended centrally
+		// below; systemContext stays empty here (an empty primary injects nothing).
+		mcpServers = h.buildPMMcpServers(wsID)
+		log.Printf("[agent] Bridging Chat UI WebSocket for session %s (no task, PM tools)", sessionId)
 	}
 
 	// Assistant persona (人设): the project's agent team supplies the standing
