@@ -467,14 +467,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Optional persona seed into <ws>/SOUL.md — the assistant create flow's 人设
-	// picker. Non-fatal: a seed failure is surfaced but the workspace still exists.
+	// Optional persona seed — the assistant create flow's 人设 picker. The chosen
+	// soul becomes the workspace's primary team agent (<ws>/.claude/agents/<ref>.md
+	// + .agents/team.json). Empty = 空人设 (no agent, no team, no injection).
+	// Non-fatal: a seed failure is surfaced but the workspace still exists.
 	if body.Soul != "" {
-		if sErr := seedSoulToWorkspace(ws.Path, body.Soul); sErr != nil {
+		if file, sErr := seedSoulAsPrimaryAgent(ws.Path, body.Soul); sErr != nil {
 			log.Printf("[workspace] seed soul %q for project %s: %v", body.Soul, ws.ID, sErr)
 			resp["soulError"] = sErr.Error()
 		} else {
 			resp["soul"] = body.Soul
+			resp["primaryAgent"] = file
 		}
 	}
 	writeJSON(w, resp)
@@ -547,6 +550,72 @@ func (h *Handler) WorkspaceSoul(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// WorkspaceTeam handles the project's agent-team manifest (<ws>/.agents/team.json):
+//
+//	GET  /api/workspace/team?id=<wsId>      → {primary, members:[WorkspaceAgentStatus]}
+//	POST /api/workspace/team {id, primary}  → set the primary agent (drives the
+//	                                           default conversation). primary="" clears it.
+//
+// members is the full .claude/agents roster (with drift status) so the picker can
+// list every expert; primary names which one drives the default main session.
+func (h *Handler) WorkspaceTeam(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		wsPath, ok := h.resolveWorkspacePath(r.URL.Query().Get("id"))
+		if !ok {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		team, err := ReadTeam(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		members, err := listWorkspaceAgents(wsPath, h.skillsAddr)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"primary": team.Primary, "members": members})
+	case http.MethodPost:
+		var body struct {
+			ID      string `json:"id"`
+			Primary string `json:"primary"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		wsPath, ok := h.resolveWorkspacePath(body.ID)
+		if !ok {
+			http.Error(w, "workspace not found", http.StatusNotFound)
+			return
+		}
+		primary := strings.TrimSpace(body.Primary)
+		// A non-empty primary must name a real agent file so the picker can't set
+		// a dangling primary that resolves to no persona.
+		if primary != "" {
+			if _, err := workspaceAgentFile(wsPath, primary); err != nil {
+				http.Error(w, "unknown agent: "+primary, http.StatusBadRequest)
+				return
+			}
+		}
+		team, err := ReadTeam(wsPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		team.Primary = primary
+		if err := WriteTeam(wsPath, team); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "primary": primary})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

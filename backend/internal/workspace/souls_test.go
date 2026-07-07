@@ -90,3 +90,53 @@ func TestSeedAndReadWorkspaceSoul(t *testing.T) {
 		t.Errorf("clearing should remove SOUL.md, stat err = %v", err)
 	}
 }
+
+func TestSeedSoulAsPrimaryAgent(t *testing.T) {
+	ws := t.TempDir()
+	file, err := seedSoulAsPrimaryAgent(ws, "code-reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file != "code-reviewer.md" {
+		t.Fatalf("file = %q, want code-reviewer.md", file)
+	}
+
+	// Agent file written under .claude/agents with Claude-native frontmatter.
+	raw, err := os.ReadFile(filepath.Join(ws, ".claude", "agents", "code-reviewer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(raw), "---\nname: code-reviewer\n") {
+		t.Fatalf("missing frontmatter header, got:\n%.60s", string(raw))
+	}
+
+	// team.json records it as primary.
+	team, err := ReadTeam(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team.Primary != "code-reviewer.md" {
+		t.Fatalf("primary = %q, want code-reviewer.md", team.Primary)
+	}
+
+	// The persona resolves to the soul body with frontmatter stripped.
+	persona, err := ResolveAgentPersona(ws, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(persona, "---") {
+		t.Fatal("frontmatter must be stripped from the resolved persona")
+	}
+	if !strings.Contains(persona, "Code Reviewer") {
+		t.Fatalf("persona should carry the soul body, got:\n%.80s", persona)
+	}
+
+	// An empty ref is the 空人设 no-op.
+	empty := t.TempDir()
+	if f, err := seedSoulAsPrimaryAgent(empty, ""); err != nil || f != "" {
+		t.Fatalf("blank persona: file=%q err=%v", f, err)
+	}
+	if _, err := os.Stat(filepath.Join(empty, ".agents", "team.json")); !os.IsNotExist(err) {
+		t.Fatal("blank persona should not write team.json")
+	}
+}
