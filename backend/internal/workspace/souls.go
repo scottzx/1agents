@@ -117,6 +117,63 @@ func seedSoulToWorkspace(workspacePath, ref string) error {
 	return fmt.Errorf("unknown soul preset %q", ref)
 }
 
+// seedSoulAsPrimaryAgent materializes a curated soul as the workspace's primary
+// team agent: it writes the persona to <ws>/.claude/agents/<ref>.md (wrapped in
+// a Claude-native subagent frontmatter header derived from the manifest entry)
+// and records it as the primary in <ws>/.agents/team.json. An empty ref is a
+// no-op — the 空人设 choice: no agent, no team, no injection. Returns the agent
+// file name (<ref>.md) that was written.
+func seedSoulAsPrimaryAgent(workspacePath, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", nil
+	}
+	entries, err := loadSoulManifest()
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if e.Ref != ref {
+			continue
+		}
+		content, err := soulContent(e)
+		if err != nil {
+			return "", err
+		}
+		file := ref + ".md"
+		dir := filepath.Join(workspacePath, ".claude", "agents")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(renderAgentMarkdown(e, content)), 0o644); err != nil {
+			return "", err
+		}
+		if err := WriteTeam(workspacePath, Team{Primary: file, Members: []string{file}}); err != nil {
+			return "", err
+		}
+		// Convenience mirror for the generic .agents convention; non-fatal — the
+		// agent file + team.json are the source of truth.
+		_ = linkAgentsAgents(workspacePath)
+		return file, nil
+	}
+	return "", fmt.Errorf("unknown soul preset %q", ref)
+}
+
+// renderAgentMarkdown wraps a soul's body in a Claude-native subagent frontmatter
+// header (name + description) so the same file doubles as a .claude/agents/*.md
+// agent. A body that already carries frontmatter is returned unchanged.
+func renderAgentMarkdown(e soulManifestEntry, body string) string {
+	if strings.HasPrefix(strings.TrimLeft(body, "\ufeff \t\r\n"), "---") {
+		return body
+	}
+	desc := e.SummaryEn
+	if desc == "" {
+		desc = e.SummaryZh
+	}
+	desc = strings.ReplaceAll(strings.ReplaceAll(desc, "\n", " "), "\"", "'")
+	return fmt.Sprintf("---\nname: %s\ndescription: \"%s\"\n---\n\n%s", e.Ref, desc, strings.TrimSpace(body))
+}
+
 // ReadWorkspaceSoul returns the workspace's SOUL.md content, or "" when absent.
 // Exported for the agent chat handler, which prepends it to the session's system
 // prompt (the persona injection point).

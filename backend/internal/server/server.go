@@ -90,6 +90,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/workspace/agents", wsHandler.WorkspaceAgents)           // GET ?id= — synced agents + drift status
 	mux.HandleFunc("/api/workspace/push-agent", wsHandler.PushAgent)             // POST {id, agentRef} — push edited copy back to 母体
 	mux.HandleFunc("/api/workspace/soul", wsHandler.WorkspaceSoul)               // GET ?id= / POST {id, content} — assistant persona SOUL.md
+	mux.HandleFunc("/api/workspace/team", wsHandler.WorkspaceTeam)               // GET ?id= / POST {id, primary} — agent-team manifest (primary + members)
 	mux.HandleFunc("/api/assistant/souls", wsHandler.ListSouls)                  // GET ?lang= — curated persona presets
 	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder)                  // POST
 	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)                    // DELETE ?id=xxx
