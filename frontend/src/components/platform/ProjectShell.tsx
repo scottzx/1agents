@@ -29,6 +29,7 @@ import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
 import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
 import { TeamTab } from '../pages/TeamTab';
+import { SettingsTab } from '../pages/SettingsTab';
 import { MountPointRenderer } from './MountPointRenderer';
 import { ProjectConfigPanel, ProjectConfigView, PROJECT_CONFIG_TABS, type ConfigTab } from './ProjectConfigPanel';
 import { ShellNav, CrumbTrail, type ShellTab, type Crumb } from './ShellNav';
@@ -37,7 +38,7 @@ import * as appStore from '../../stores/appManifestStore';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type BuiltinTab = 'sessions' | 'team' | 'activity' | 'plan' | 'tasks' | 'files' | 'channels' | 'assets';
+type BuiltinTab = 'sessions' | 'team' | 'activity' | 'plan' | 'tasks' | 'files' | 'channels' | 'assets' | 'settings';
 type TabId = BuiltinTab | string; // string for app-contributed tabs (mount point id)
 
 interface ProjectShellProps {
@@ -57,7 +58,7 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
     const isDetail = variant === 'detail';
     const language = ui.language.value;
     const theme = ui.theme.value;
-    const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
+    const ws = wsStore.findWorkspaceAnyStatus(workspaceId);
 
     const [activeTab, setActiveTab] = useState<TabId>('tasks');
     const [configOpen, setConfigOpen] = useState(false);
@@ -115,6 +116,7 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
         })),
         // Detail folds the 项目配置 sub-tabs (指令/连接器/…) into the main bar.
         ...(isDetail ? PROJECT_CONFIG_TABS.map(c => ({ id: c.id, label: c.label })) : []),
+        ...(isDetail ? [{ id: 'settings' as BuiltinTab, label: t('assistant.detail.tab.settings', language) }] : []),
     ];
     const isConfigTab = PROJECT_CONFIG_TABS.some(c => c.id === activeTab);
 
@@ -174,6 +176,11 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
             {activeTab === 'team' && app && (
                 <div class="assistant-pane-fill assistant-pane-inset">
                     <TeamTab workspaceId={workspaceId} app={app} language={language} />
+                </div>
+            )}
+            {activeTab === 'settings' && (
+                <div class="assistant-pane-fill assistant-pane-inset">
+                    <SettingsTab workspaceId={workspaceId} language={language} />
                 </div>
             )}
             {activeTab === 'activity' && <ProjectActivityTab workspaceId={workspaceId} />}

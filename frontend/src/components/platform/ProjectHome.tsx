@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 
 import { t } from '../../i18n';
 import * as ui from '../../stores/uiStore';
@@ -25,6 +25,14 @@ export function ProjectHome() {
     const projects = workspaces
         .filter(w => !w.builtin && w.id !== 'default' && (w.kind ?? 'project') === 'project')
         .filter(w => !search || w.name.toLowerCase().includes(search.toLowerCase()));
+
+    // 已归档 board (loaded on demand; kept out of the sidebar).
+    useEffect(() => {
+        void wsStore.loadArchivedWorkspaces();
+    }, []);
+    const archivedProjects = wsStore.archivedWorkspaces.value.filter(
+        w => !w.deviceId && (w.kind ?? 'project') === 'project'
+    );
 
     // 大屏: desktop opens an in-app tab, the web opens a new browser tab.
     const openBigScreen = () => {
@@ -160,6 +168,32 @@ export function ProjectHome() {
                         </div>
                     )}
                 </section>
+
+                {archivedProjects.length > 0 && (
+                    <section class="project-home-section">
+                        <div class="project-home-section-head">
+                            <h2 class="project-home-section-title">{t('overview.archived', language)}</h2>
+                        </div>
+                        <div class="project-grid">
+                            {archivedProjects.map(ws => (
+                                <button
+                                    key={ws.id}
+                                    class="project-card is-archived"
+                                    onClick={() => stage.enterProjectDetail(ws.id, ws.name)}
+                                >
+                                    <span class="project-card-icon">{FolderIcon}</span>
+                                    <div class="project-card-body">
+                                        <div class="project-card-name">{ws.name}</div>
+                                        <div class="project-card-meta" title={ws.path}>
+                                            {t('overview.archivedTag', language)}
+                                        </div>
+                                    </div>
+                                    {Chevron}
+                                </button>
+                            ))}
+                        </div>
+                    </section>
+                )}
 
                 {apps.length > 0 && (
                     <section class="project-home-section">

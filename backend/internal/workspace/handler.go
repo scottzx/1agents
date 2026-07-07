@@ -275,13 +275,28 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	// Sidebar shows only active workspaces — archived/killed projects (#141) drop
 	// out of the registry view while staying queryable by id for the archive board.
-	active := make([]Workspace, 0, len(cfg.Workspaces))
+	// ?status=archived returns the archive board instead (the overview's 已归档
+	// cards); any other status filters to that exact status.
+	wantStatus := r.URL.Query().Get("status")
+	out := make([]Workspace, 0, len(cfg.Workspaces))
 	for _, ws := range cfg.Workspaces {
-		if ws.Status == "" || ws.Status == string(meta.ProjectStatusActive) {
-			active = append(active, ws)
+		isActive := ws.Status == "" || ws.Status == string(meta.ProjectStatusActive)
+		switch {
+		case wantStatus == "":
+			if isActive {
+				out = append(out, ws)
+			}
+		case wantStatus == string(meta.ProjectStatusActive):
+			if isActive {
+				out = append(out, ws)
+			}
+		default:
+			if ws.Status == wantStatus {
+				out = append(out, ws)
+			}
 		}
 	}
-	writeJSON(w, active)
+	writeJSON(w, out)
 }
 
 // registerWorkspaceProject performs the side-effects of bringing a workspace

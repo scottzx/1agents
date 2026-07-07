@@ -24,6 +24,9 @@ import * as modal from './modalStore';
 
 export const workspaces = signal<Workspace[]>([]);
 export const workspacesLoading = signal(true);
+// Archived projects/assistants — the overview's 已归档 board. Loaded on demand
+// (not in the sidebar); kept separate from the active `workspaces` list.
+export const archivedWorkspaces = signal<Workspace[]>([]);
 export const folders = signal<WorkspaceFolder[]>([]);
 export const activeWorkspaceId = signal(localStorage.getItem('1agents-active-workspace') || '');
 /**
@@ -116,6 +119,35 @@ export const toggleRemoteDevice = async (device: RemoteDevice) => {
 };
 
 /** Fetch all workspaces from GET /api/workspace/list */
+/** Load the archived projects/assistants board (overview 已归档 cards). */
+export const loadArchivedWorkspaces = async () => {
+    try {
+        archivedWorkspaces.value = await workspaceService.listArchived();
+    } catch (err) {
+        console.error('[workspace] load archived error:', err);
+        archivedWorkspaces.value = [];
+    }
+    return archivedWorkspaces.value;
+};
+
+/** Resolve a workspace by id from the active list OR the archived board. Detail
+ *  pages use this so an archived project's detail still renders (it's absent
+ *  from the active `workspaces` list). */
+export const findWorkspaceAnyStatus = (id: string): Workspace | undefined =>
+    workspaces.value.find(w => w.id === id) ?? archivedWorkspaces.value.find(w => w.id === id);
+
+/** Archive a project/assistant, then refresh both boards. */
+export const archiveWorkspace = async (id: string) => {
+    await workspaceService.archive(id);
+    await Promise.all([loadWorkspaces(true), loadArchivedWorkspaces()]);
+};
+
+/** Reopen an archived project/assistant, then refresh both boards. */
+export const reopenWorkspace = async (id: string) => {
+    await workspaceService.reopen(id);
+    await Promise.all([loadWorkspaces(true), loadArchivedWorkspaces()]);
+};
+
 export const loadWorkspaces = async (skipAutoSelect = false) => {
     workspacesLoading.value = true;
     try {
