@@ -621,6 +621,127 @@ func (h *Handler) WorkspaceTeam(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// WorkspaceAvailableAgents handles GET /api/workspace/available-agents?id=<wsId>:
+// the 母体 (shared store) agents the project can add as team members, each
+// flagged with whether it is already installed here.
+func (h *Handler) WorkspaceAvailableAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	wsPath, ok := h.resolveWorkspacePath(r.URL.Query().Get("id"))
+	if !ok {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	list, err := availableSharedAgents(wsPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"agents": list})
+}
+
+// AddAgent handles POST /api/workspace/add-agent {id, agentRef}: materializes a
+// 母体 agent into the workspace's .claude/agents (the create-time weak copy, on
+// demand). Idempotent. Registers it in team.json members.
+func (h *Handler) AddAgent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		AgentRef string `json:"agentRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.AgentRef == "" {
+		http.Error(w, "id and agentRef are required", http.StatusBadRequest)
+		return
+	}
+	wsPath, ok := h.resolveWorkspacePath(body.ID)
+	if !ok {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	synced, err := syncAgentsToWorkspace(wsPath, []string{body.AgentRef})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(synced) == 0 {
+		http.Error(w, "agent not found in shared store", http.StatusNotFound)
+		return
+	}
+	// Register in team.json members (idempotent), so the roster reflects it even
+	// before a full re-list.
+	if team, tErr := ReadTeam(wsPath); tErr == nil {
+		for _, f := range synced {
+			present := false
+			for _, m := range team.Members {
+				if m == f {
+					present = true
+					break
+				}
+			}
+			if !present {
+				team.Members = append(team.Members, f)
+			}
+		}
+		_ = WriteTeam(wsPath, team)
+	}
+	writeJSON(w, map[string]any{"ok": true, "added": synced})
+}
+
+// RemoveAgent handles POST /api/workspace/remove-agent {id, agentRef}: deletes an
+// agent from the workspace's own .claude/agents (project-level only; the 母体 is
+// untouched) and drops it from team.json — clearing the primary if it was the one.
+func (h *Handler) RemoveAgent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		ID       string `json:"id"`
+		AgentRef string `json:"agentRef"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.AgentRef == "" {
+		http.Error(w, "id and agentRef are required", http.StatusBadRequest)
+		return
+	}
+	wsPath, ok := h.resolveWorkspacePath(body.ID)
+	if !ok {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+	if err := removeWorkspaceAgent(wsPath, body.AgentRef); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	file := normalizeAgentRef(body.AgentRef)
+	if team, tErr := ReadTeam(wsPath); tErr == nil {
+		next := team.Members[:0]
+		for _, m := range team.Members {
+			if m != file {
+				next = append(next, m)
+			}
+		}
+		team.Members = next
+		if team.Primary == file {
+			team.Primary = ""
+		}
+		_ = WriteTeam(wsPath, team)
+	}
+	writeJSON(w, map[string]any{"ok": true, "removed": file})
+}
+
 // WorkspaceSkills handles GET /api/workspace/skills?id=<wsId>: lists the skills
 // materialized in the workspace's .claude/skills, each flagged with whether the
 // local copy has drifted from the 母体 baseline (so the detail page can light up

@@ -4,37 +4,69 @@ import type { App } from '../app';
 import type { Lang } from '../i18n';
 import { t } from '../i18n';
 import * as fs from '../../stores/fsStore';
+import { fsService } from '../../services/fsService';
 import { FilePreviewPane } from '../shared/WorkspacePanes';
-import { soulService, type WorkspaceTeam } from '@1agents/core/services/soulService';
+import { soulService, type TeamMember, type AvailableAgent } from '@1agents/core/services/soulService';
 
 /**
- * 团队 tab of the 助理/项目 详情 — the single home for personas (the 灵魂 tab was
- * retired into this). Two modes, keyed on whether a PRIMARY agent is set:
+ * 团队 tab — the persona home (the 灵魂 tab was retired into this). Mirrors the
+ * 技能 tab shape: a card roster you add to / open, then a member detail with a
+ * metadata header (name + 核心/删除 actions, then 概述/工具) over the agent's single
+ * markdown file. Because an agent is one .md, the detail hides the file list and
+ * shows the file preview/editor directly.
  *
- *   • primary set (assistant): show that agent's persona — the .claude/agents
- *     markdown — directly in the file preview/editor (修改 / 保存 built in).
- *   • no primary (project): a left roster of every .claude/agents member; click
- *     one to preview/edit it on the right. Each row can be promoted to primary.
- *
- * Editing reuses the shared fs preview/editor (same component the 灵魂 tab used),
- * so agent files get the full edit/save toolbar for free.
+ * 核心 (primary) = the agent whose persona drives the default conversation.
  */
 const AGENTS_DIR = '.claude/agents';
 
+/** Pull `tools:` (and a description fallback) out of an agent .md frontmatter. */
+function parseFrontmatter(md: string): { description: string; tools: string } {
+    const s = md.replace(/^\uFEFF/, '');
+    if (!s.startsWith('---')) return { description: '', tools: '' };
+    const end = s.indexOf('\n---', 3);
+    if (end < 0) return { description: '', tools: '' };
+    const block = s.slice(s.indexOf('\n') + 1, end);
+    let description = '';
+    let tools = '';
+    for (const line of block.split('\n')) {
+        const i = line.indexOf(':');
+        if (i < 0) continue;
+        const key = line.slice(0, i).trim();
+        const val = line
+            .slice(i + 1)
+            .trim()
+            .replace(/^["']|["']$/g, '');
+        if (key === 'description') description = val;
+        else if (key === 'tools') tools = val;
+    }
+    return { description, tools };
+}
+
 export function TeamTab({ workspaceId, app, language }: { workspaceId: string; app: App; language: Lang }) {
-    const [team, setTeam] = useState<WorkspaceTeam>({ primary: '', members: [] });
+    const [primary, setPrimary] = useState('');
+    const [members, setMembers] = useState<TeamMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [busy, setBusy] = useState('');
+    const [selected, setSelected] = useState<TeamMember | null>(null);
+    const [busy, setBusy] = useState(false);
     const [flash, setFlash] = useState('');
-    // The member (<name>.md) whose file is open in the right pane (list mode).
-    const [selectedFile, setSelectedFile] = useState('');
+    const [meta, setMeta] = useState<{ description: string; tools: string }>({ description: '', tools: '' });
+    // Add-from-母体 picker.
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [available, setAvailable] = useState<AvailableAgent[]>([]);
+    const [pickerBusy, setPickerBusy] = useState(false);
+    const [pickerQuery, setPickerQuery] = useState('');
+    const [confirmRemove, setConfirmRemove] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            setTeam(await soulService.getWorkspaceTeam(workspaceId));
+            const team = await soulService.getWorkspaceTeam(workspaceId);
+            setPrimary(team.primary);
+            setMembers(team.members);
+            // Keep the open member in sync (e.g. after set-primary reload).
+            setSelected(prev => (prev ? team.members.find(m => m.file === prev.file) ?? null : null));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -45,30 +77,25 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
         void load();
     }, [load]);
 
-    // Open an agent's markdown into the shared fs preview/editor.
-    const openAgentFile = useCallback((file: string) => {
-        if (!file) return;
-        const path = `${AGENTS_DIR}/${file}`;
-        void fs.openFileDetail({ name: file, path, isDir: false, size: 0, modTime: 0 });
-    }, []);
-
-    // Single-persona mode (primary set): auto-open the primary's file. List mode:
-    // open the selected member, defaulting to the first once the roster loads.
+    // On opening a member: preview its .md and parse 概述/工具 from frontmatter.
     useEffect(() => {
-        if (loading || error) return;
-        if (team.primary) {
-            openAgentFile(team.primary);
-            return;
-        }
-        const target = selectedFile || team.members[0]?.file || '';
-        if (target) {
-            setSelectedFile(target);
-            openAgentFile(target);
-        }
-    }, [loading, error, team.primary, team.members, selectedFile, openAgentFile]);
+        if (!selected) return;
+        const path = `${AGENTS_DIR}/${selected.file}`;
+        void fs.openFileDetail({ name: selected.file, path, isDir: false, size: 0, modTime: 0 });
+        let cancelled = false;
+        fsService
+            .read(path)
+            .then(content => {
+                if (!cancelled) setMeta(parseFrontmatter(typeof content === 'string' ? content : ''));
+            })
+            .catch(() => !cancelled && setMeta({ description: '', tools: '' }));
+        return () => {
+            cancelled = true;
+        };
+    }, [selected]);
 
-    const setPrimary = async (file: string) => {
-        setBusy(file || '__clear__');
+    const makePrimary = async (file: string) => {
+        setBusy(true);
         try {
             await soulService.setWorkspacePrimary(workspaceId, file);
             setFlash(t('assistant.detail.team.primarySet', language));
@@ -76,7 +103,50 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
         } catch {
             setFlash(t('assistant.detail.team.primaryFailed', language));
         } finally {
-            setBusy('');
+            setBusy(false);
+        }
+    };
+
+    const openPicker = async () => {
+        setPickerOpen(true);
+        setPickerQuery('');
+        setPickerBusy(true);
+        try {
+            setAvailable(await soulService.listAvailableAgents(workspaceId));
+        } catch {
+            setAvailable([]);
+        } finally {
+            setPickerBusy(false);
+        }
+    };
+
+    const onAdd = async (agentRef: string) => {
+        setPickerBusy(true);
+        try {
+            await soulService.addAgent(workspaceId, agentRef);
+            setPickerOpen(false);
+            setFlash(t('assistant.detail.added', language));
+            await load();
+        } catch {
+            setFlash(t('assistant.detail.team.addFailed', language));
+        } finally {
+            setPickerBusy(false);
+        }
+    };
+
+    const onRemove = async () => {
+        if (!selected) return;
+        setBusy(true);
+        try {
+            await soulService.removeAgent(workspaceId, selected.file);
+            setConfirmRemove(false);
+            setSelected(null);
+            setFlash(t('assistant.detail.removed', language));
+            await load();
+        } catch {
+            setFlash(t('assistant.detail.team.removeFailed', language));
+        } finally {
+            setBusy(false);
         }
     };
 
@@ -88,69 +158,196 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
             </div>
         );
 
-    // ── Single-persona mode — the assistant's primary agent ──────────────────
-    if (team.primary) {
-        const primaryName = team.members.find(m => m.file === team.primary)?.name || team.primary;
+    // ── Member detail ────────────────────────────────────────────────────────
+    if (selected) {
+        const isPrimary = selected.file === primary && primary !== '';
+        const desc = meta.description || selected.description;
         return (
-            <div class="team-tab team-tab-single">
-                <div class="team-single-head">
-                    <span class="team-single-name">{primaryName}</span>
-                    <span class="assistant-skill-badge is-primary-badge">
-                        {t('assistant.detail.team.primaryBadge', language)}
-                    </span>
-                    {flash && <span class="assistant-flash">{flash}</span>}
-                    <button
-                        class="assistant-btn assistant-btn-ghost team-single-unset"
-                        disabled={busy !== ''}
-                        onClick={() => void setPrimary('')}
-                    >
-                        {t('assistant.detail.team.unsetPrimary', language)}
-                    </button>
+            <div class="skill-detail team-detail">
+                <div class="skill-detail-head">
+                    {/* Row 1: title + 核心 tag on the left, quick actions on the right. */}
+                    <div class="skill-detail-row1">
+                        <div class="skill-detail-titlewrap">
+                            <div class="skill-detail-title">
+                                <span class="skill-detail-name">{selected.name || selected.file}</span>
+                                {isPrimary && (
+                                    <span class="assistant-skill-badge is-primary-badge">
+                                        {t('assistant.detail.team.primaryBadge', language)}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div class="skill-detail-actions">
+                            {flash && <span class="assistant-flash">{flash}</span>}
+                            {!isPrimary && (
+                                <button
+                                    class="assistant-btn assistant-btn-ghost"
+                                    disabled={busy}
+                                    onClick={() => void makePrimary(selected.file)}
+                                >
+                                    {t('assistant.detail.team.setPrimary', language)}
+                                </button>
+                            )}
+                            {isPrimary && (
+                                <button
+                                    class="assistant-btn assistant-btn-ghost"
+                                    disabled={busy}
+                                    onClick={() => void makePrimary('')}
+                                >
+                                    {t('assistant.detail.team.unsetPrimary', language)}
+                                </button>
+                            )}
+                            <button
+                                class="assistant-btn assistant-btn-danger"
+                                disabled={busy}
+                                onClick={() => setConfirmRemove(true)}
+                            >
+                                {t('assistant.detail.remove', language)}
+                            </button>
+                        </div>
+                    </div>
+                    {/* Row 2+: metadata — 概述 / 工具. */}
+                    {desc && <p class="skill-detail-desc">{desc}</p>}
+                    {meta.tools && (
+                        <div class="team-meta-tools">
+                            <span class="team-meta-label">{t('assistant.detail.team.tools', language)}</span>
+                            <span class="team-meta-value">{meta.tools}</span>
+                        </div>
+                    )}
                 </div>
-                <div class="team-single-preview">
+                {/* Single-file agent → hide the file list, show the editor directly. */}
+                <div class="team-detail-preview">
                     <FilePreviewPane app={app} language={language} hideBack />
                 </div>
+                {confirmRemove && (
+                    <div class="ws-modal-overlay" onClick={() => !busy && setConfirmRemove(false)}>
+                        <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                            <div class="ws-modal-header">
+                                <span>{t('assistant.detail.team.removeConfirmTitle', language)}</span>
+                                <button class="ws-modal-close" onClick={() => setConfirmRemove(false)}>
+                                    ✕
+                                </button>
+                            </div>
+                            <div class="ws-modal-body">
+                                <p>
+                                    {t('assistant.detail.team.removeConfirmBody', language, {
+                                        name: selected.name || selected.file,
+                                    })}
+                                </p>
+                            </div>
+                            <div class="ws-modal-footer">
+                                <button class="ws-modal-cancel" onClick={() => setConfirmRemove(false)} disabled={busy}>
+                                    {t('assistant.detail.cancel', language)}
+                                </button>
+                                <button
+                                    class="ws-modal-confirm ws-modal-danger"
+                                    onClick={() => void onRemove()}
+                                    disabled={busy}
+                                >
+                                    {t('assistant.detail.confirmRemove', language)}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
-    // ── List mode — a project's agent roster (master-detail) ─────────────────
-    if (team.members.length === 0) {
-        return <div class="assistant-empty-row">{t('assistant.detail.team.empty', language)}</div>;
-    }
+    // ── Roster (card grid) ───────────────────────────────────────────────────
     return (
-        <div class="team-tab team-tab-list">
+        <div class="skills-tab team-tab">
             <p class="assistant-hint">{t('assistant.detail.team.hint', language)}</p>
             {flash && <span class="assistant-flash">{flash}</span>}
-            <div class="file-split">
-                <div class="file-split-list team-member-list">
-                    {team.members.map(m => (
-                        <div key={m.agentRef} class={`team-member-row${selectedFile === m.file ? ' is-active' : ''}`}>
-                            <button
-                                class="team-member-main"
-                                onClick={() => {
-                                    setSelectedFile(m.file);
-                                    openAgentFile(m.file);
-                                }}
-                            >
-                                <span class="team-member-name">{m.name || m.file}</span>
-                                {m.description && <span class="team-member-desc">{m.description}</span>}
-                            </button>
-                            <button
-                                class="team-member-setprimary"
-                                title={t('assistant.detail.team.setPrimary', language)}
-                                disabled={busy !== ''}
-                                onClick={() => void setPrimary(m.file)}
-                            >
-                                {t('assistant.detail.team.setPrimary', language)}
+            <div class="skills-grid">
+                <button class="skill-card skill-add-card" onClick={() => void openPicker()}>
+                    <span class="skill-add-plus">＋</span>
+                    <span class="skill-add-label">{t('assistant.detail.team.addMember', language)}</span>
+                </button>
+                {members.map(m => {
+                    const isPrimary = m.file === primary && primary !== '';
+                    return (
+                        <button
+                            key={m.agentRef}
+                            class={`skill-card team-card${isPrimary ? ' is-primary' : ''}`}
+                            onClick={() => setSelected(m)}
+                        >
+                            <div class="skill-card-head">
+                                <span class="skill-card-name">{m.name || m.file}</span>
+                                {isPrimary && (
+                                    <span class="assistant-skill-badge is-primary-badge">
+                                        {t('assistant.detail.team.primaryBadge', language)}
+                                    </span>
+                                )}
+                            </div>
+                            {m.description && <p class="skill-card-desc">{m.description}</p>}
+                        </button>
+                    );
+                })}
+            </div>
+            {pickerOpen && (
+                <div class="ws-modal-overlay" onClick={() => !pickerBusy && setPickerOpen(false)}>
+                    <div class="ws-modal skill-picker-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                        <div class="ws-modal-header">
+                            <span>{t('assistant.detail.team.addMemberTitle', language)}</span>
+                            <button class="ws-modal-close" onClick={() => setPickerOpen(false)}>
+                                ✕
                             </button>
                         </div>
-                    ))}
+                        <div class="ws-modal-body">
+                            <input
+                                class="ws-modal-input skill-picker-search"
+                                type="search"
+                                placeholder={t('assistant.detail.team.addMemberSearch', language)}
+                                value={pickerQuery}
+                                onInput={(e: Event) => setPickerQuery((e.target as HTMLInputElement).value)}
+                            />
+                            {(() => {
+                                const q = pickerQuery.trim().toLowerCase();
+                                const pool = available.filter(a => !a.installed);
+                                const filtered = q
+                                    ? pool.filter(a =>
+                                          [a.name, a.file, a.description]
+                                              .filter(Boolean)
+                                              .some(s => (s as string).toLowerCase().includes(q))
+                                      )
+                                    : pool;
+                                if (pickerBusy && available.length === 0)
+                                    return <div class="assistant-empty-row">…</div>;
+                                if (pool.length === 0)
+                                    return (
+                                        <div class="assistant-empty-row">
+                                            {t('assistant.detail.team.addMemberEmpty', language)}
+                                        </div>
+                                    );
+                                if (filtered.length === 0)
+                                    return (
+                                        <div class="assistant-empty-row">
+                                            {t('assistant.detail.team.addMemberNoMatch', language)}
+                                        </div>
+                                    );
+                                return (
+                                    <div class="skill-picker-grid">
+                                        {filtered.map(a => (
+                                            <button
+                                                key={a.agentRef}
+                                                class="skill-card skill-picker-card"
+                                                disabled={pickerBusy}
+                                                onClick={() => void onAdd(a.agentRef)}
+                                            >
+                                                <div class="skill-card-head">
+                                                    <span class="skill-card-name">{a.name || a.file}</span>
+                                                </div>
+                                                {a.description && <p class="skill-card-desc">{a.description}</p>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </div>
                 </div>
-                <div class="file-split-preview">
-                    <FilePreviewPane app={app} language={language} hideBack />
-                </div>
-            </div>
+            )}
         </div>
     );
 }

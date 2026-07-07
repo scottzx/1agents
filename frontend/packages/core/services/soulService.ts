@@ -71,10 +71,50 @@ async function setWorkspacePrimary(workspaceId: string, primary: string): Promis
     if (!res.ok) throw new Error(await res.text());
 }
 
+/** One agent in the shared store (母体) offered in the project add-member picker. */
+export interface AvailableAgent {
+    agentRef: string; // "shared:<name>.md"
+    file: string; // <name>.md
+    name: string;
+    description: string;
+    installed: boolean; // already in this workspace's .claude/agents
+}
+
+/** List 母体 agents the project can add as team members. */
+async function listAvailableAgents(workspaceId: string): Promise<AvailableAgent[]> {
+    const res = await apiFetch(`/workspace/available-agents?id=${encodeURIComponent(workspaceId)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = (await res.json()) as { agents?: AvailableAgent[] };
+    return data.agents ?? [];
+}
+
+/** Materialize a 母体 agent into the workspace's .claude/agents. */
+async function addAgent(workspaceId: string, agentRef: string): Promise<void> {
+    const res = await apiFetch('/workspace/add-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, agentRef }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
+/** Delete an agent from the workspace's .claude/agents (母体 untouched). */
+async function removeAgent(workspaceId: string, agentRef: string): Promise<void> {
+    const res = await apiFetch('/workspace/remove-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workspaceId, agentRef }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
 export const soulService = {
     listSouls,
     getWorkspaceSoul,
     saveWorkspaceSoul,
     getWorkspaceTeam,
     setWorkspacePrimary,
+    listAvailableAgents,
+    addAgent,
+    removeAgent,
 };
