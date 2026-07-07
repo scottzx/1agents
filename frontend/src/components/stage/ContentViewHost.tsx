@@ -386,13 +386,22 @@ function renderNewChat(language: Lang) {
         <NewChatHome
             workspaces={wsStore.workspaces.value}
             activeWorkspaceId={wsStore.activeWorkspaceId.value}
-            onSubmitChat={(wsId, agentType, prompt, role, permissionMode) => {
+            onSubmitChat={(wsId, agentType, prompt, role, permissionMode, agentRef) => {
                 // Same neutral name for every role — the avatar role ring already
                 // signals PM, and the backend auto-resolves the real title from
                 // the session (and the user can rename). 'general' stores no role
                 // (matches legacy chats); 'pm' still carries its behavior + ring.
                 const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
-                sess.createChatSession(wsId, name, agentType, prompt, role === 'pm' ? 'pm' : undefined, permissionMode);
+                sess.createChatSession(
+                    wsId,
+                    name,
+                    agentType,
+                    prompt,
+                    role === 'pm' ? 'pm' : undefined,
+                    permissionMode,
+                    undefined,
+                    agentRef
+                );
             }}
             onSubmitTerminal={(wsId, cwd, initialCommand) => {
                 sess.createTerminal(wsId, cwd, initialCommand);

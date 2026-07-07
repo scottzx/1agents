@@ -12,6 +12,7 @@ import { MicButton } from './input/MicButton';
 import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
 import { PermissionModePicker } from './PermissionModePicker';
+import { soulService, type TeamMember } from '@1agents/core/services/soulService';
 
 /** Roles offered at creation. Dropdown-driven so more roles slot in later
  *  (PMO / Executor / Verifier). 'pmo' is derived (not user-selectable): it
@@ -31,7 +32,8 @@ interface NewChatHomeProps {
         agentType: AgentType,
         prompt: string,
         role: ChatRole,
-        permissionMode: PermissionMode
+        permissionMode: PermissionMode,
+        agentRef: string
     ) => void;
     /**
      * Terminal mode: open a terminal in the workspace dir and optionally run
@@ -152,6 +154,11 @@ export function NewChatHome({
 }: NewChatHomeProps) {
     const prompt = useSignal('');
     const selectedAgent = useSignal<AgentType>('claudecode');
+    // Team expert (agent_ref) driving this conversation's persona; '' = the
+    // project's primary agent (or no persona for a bare project). Populated from
+    // <ws>/.claude/agents via /api/workspace/team when the workspace changes.
+    const selectedExpert = useSignal<string>('');
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
     // Conversation role declared at creation (chat mode). 'general' = ordinary
     // chat; 'pm' = AI 项目经理 (project-locked task tools + PM prompt).
     const selectedRole = useSignal<ChatRole>('general');
@@ -240,6 +247,30 @@ export function NewChatHome({
         }
     }, [selectedWorkspaceId, activeWorkspace]);
 
+    // Load the workspace's agent team (experts) for the input-box picker. Reset
+    // the pick to '' (= primary) on every workspace switch. Non-fatal: an error
+    // just leaves an empty roster (the picker hides itself).
+    useEffect(() => {
+        let cancelled = false;
+        selectedExpert.value = '';
+        if (!selectedWorkspaceId) {
+            setTeamMembers([]);
+            return;
+        }
+        soulService
+            .getWorkspaceTeam(selectedWorkspaceId)
+            .then(team => {
+                if (cancelled) return;
+                setTeamMembers(team.members);
+            })
+            .catch(() => {
+                if (!cancelled) setTeamMembers([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedWorkspaceId]);
+
     // Adopt a workspace freshly created via "Open folder…" as the picker
     // selection, without leaving the new-chat landing. One-shot: consume + clear.
     useEffect(() => {
@@ -283,7 +314,14 @@ export function NewChatHome({
             (activeWorkspace.id === 'default' || activeWorkspace.builtin) && selectedRole.value === 'pm'
                 ? 'pmo'
                 : selectedRole.value;
-        onSubmitChat(activeWorkspace.id, selectedAgent.value, trimmed, effectiveRole, selectedPermissionMode.value);
+        onSubmitChat(
+            activeWorkspace.id,
+            selectedAgent.value,
+            trimmed,
+            effectiveRole,
+            selectedPermissionMode.value,
+            selectedExpert.value
+        );
         prompt.value = '';
         attach.clear();
     };
@@ -468,6 +506,22 @@ export function NewChatHome({
                         {/* Primary controls (role + permission) — stay on the first
                         row on mobile, next to the send cluster. */}
                         <div class="actions-primary">
+                            {/* Expert selector — pick which team agent (persona) drives
+                                this conversation. Chat mode only, and only when the
+                                workspace has a team roster. '' = the project's primary. */}
+                            {mode.value === 'chat' && teamMembers.length > 0 && (
+                                <CustomSelect
+                                    value={selectedExpert.value}
+                                    ariaLabel={t('newchat.expert.aria', language)}
+                                    title={t('newchat.expert.hint', language)}
+                                    options={[
+                                        { value: '', label: t('newchat.expert.default', language) },
+                                        ...teamMembers.map(m => ({ value: m.file, label: m.name })),
+                                    ]}
+                                    onChange={v => (selectedExpert.value = v)}
+                                />
+                            )}
+
                             {/* Role selector — chat mode only; hidden in beginner mode (forced general) */}
                             {mode.value === 'chat' && !isBeginnerMode.value && (
                                 <CustomSelect

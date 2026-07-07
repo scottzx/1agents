@@ -260,11 +260,13 @@ export class ChatBridgeManager {
                 sessionId: session.id,
                 agentType: session.agentType,
                 replyId: session.replyId,
+                agentRef: session.agentRef,
             });
         } else {
             const taskId = session.taskId || '';
             const replyId = session.replyId || '';
-            const wsUrl = `${this.opts.directWsOrigin()}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}`;
+            const agentRef = session.agentRef || '';
+            const wsUrl = `${this.opts.directWsOrigin()}/api/agent/chat/ws?workspace_id=${encodeURIComponent(session.workspaceId)}&task_id=${encodeURIComponent(taskId)}&session_id=${encodeURIComponent(session.id)}&agent_type=${encodeURIComponent(session.agentType)}&reply_id=${encodeURIComponent(replyId)}&agent_ref=${encodeURIComponent(agentRef)}`;
             console.log('[ChatBridgeManager] Connecting to backend websocket:', wsUrl);
             // Route through the platform transport seam so weapp uses
             // Taro.connectSocket while web/Tauri use the browser WebSocket.

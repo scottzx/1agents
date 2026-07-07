@@ -463,7 +463,14 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <NewChatHome
                                             workspaces={workspaces}
                                             activeWorkspaceId={activeWorkspaceId}
-                                            onSubmitChat={async (wsId, agentType, prompt, role, permissionMode) => {
+                                            onSubmitChat={async (
+                                                wsId,
+                                                agentType,
+                                                prompt,
+                                                role,
+                                                permissionMode,
+                                                agentRef
+                                            ) => {
                                                 const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
                                                 await sess.createChatSession(
                                                     wsId,
@@ -471,7 +478,9 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                     agentType,
                                                     prompt,
                                                     role === 'pm' ? 'pm' : undefined,
-                                                    permissionMode
+                                                    permissionMode,
+                                                    undefined,
+                                                    agentRef
                                                 );
                                                 tabsStore.activeDrawerTab.value = 'none';
                                                 this.setState({

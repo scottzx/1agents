@@ -225,7 +225,8 @@ export const createChatSession = async (
     initialMessage?: string,
     role?: string,
     permissionMode?: import('../components/types').PermissionMode,
-    taskId?: string
+    taskId?: string,
+    agentRef?: string
 ) => {
     const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
     if (!ws) {
@@ -249,8 +250,10 @@ export const createChatSession = async (
             task_id: taskId,
         });
         await loadChatSessions(workspaceId);
-        // Auto-select the new session and switch to the agents tab.
-        activeSession.value = { ...indexed, active: true };
+        // Auto-select the new session and switch to the agents tab. agentRef is a
+        // transient expert pick — carried on the in-memory session so the first
+        // chat-WS connect forwards it (persona is injected once, on that connect).
+        activeSession.value = { ...indexed, agentRef, active: true };
         pendingInitialMessage.value = initialMessage || null;
         // Switch the primary pane to the new chat. activeTabId must move off
         // 'tasks' too, otherwise the kanban stays on top and the new session
