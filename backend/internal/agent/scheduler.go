@@ -126,6 +126,15 @@ type readyTask struct {
 	isReview bool
 }
 
+// isHumanTask reports whether a task is done by a person rather than dispatched
+// to an agent. "谁来做" collapses onto assignee: assignee=user marks a human (the
+// personal-todo / reminder / decision-gate case), and the legacy executor=human
+// declaration maps onto the same one behavior. executor is thus a derived kind,
+// not a second independent axis — one lane for human, not two.
+func isHumanTask(t *Task) bool {
+	return t.Assignee == AssigneeUser || t.Executor == TaskExecutorHuman
+}
+
 // needsAcceptanceCriteria reports whether an executable task is missing the
 // acceptance criteria required to enter the runnable queue (#135). Only real
 // work qualifies: requirement/bug/discussion items are non-executable issues
@@ -143,7 +152,7 @@ func needsAcceptanceCriteria(t *Task) bool {
 	// run under the executor-agnostic ready gate (#319): function/human steps have
 	// no agent self-check, and agent steps are scoped by the app's spec — none are
 	// PM-authored project tasks, so the acceptance-criteria authoring gate is moot.
-	if strings.TrimSpace(t.BusinessRef) != "" || (t.Executor != "" && t.Executor != TaskExecutorAgent) {
+	if strings.TrimSpace(t.BusinessRef) != "" || isHumanTask(t) || (t.Executor != "" && t.Executor != TaskExecutorAgent) {
 		return false
 	}
 	if strings.TrimSpace(t.Description) == "" {
@@ -179,7 +188,7 @@ func needsSourcing(t *Task, taskMap map[string]*Task) bool {
 	// object (lead/episode/material) instead of a requirement/bug. App/kernel-
 	// dispatched tasks (#320) are therefore sourced by construction; the #68
 	// traceability gate only governs PM-authored project tasks.
-	if strings.TrimSpace(t.BusinessRef) != "" || (t.Executor != "" && t.Executor != TaskExecutorAgent) {
+	if strings.TrimSpace(t.BusinessRef) != "" || isHumanTask(t) || (t.Executor != "" && t.Executor != TaskExecutorAgent) {
 		return false
 	}
 	if strings.TrimSpace(t.Description) == "" {
@@ -495,9 +504,11 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.Source == TaskSourceAgent {
 				continue // AI 建议未被采纳前不进入调度
 			}
-			if t.Assignee == AssigneeUser {
-				continue // 执行者=user 的个人提醒/待办，不交给智能体调度执行（#192）
-			}
+			// Human tasks (assignee=user / executor=human) are NOT skipped here:
+			// they flow through the trigger/dependency gates so a dated reminder
+			// only becomes actionable at its time and a decision gate blocks its
+			// dependents. Dispatch (step 5) parks them at awaiting_human instead of
+			// running an agent — one lane for "a person does it" (#192 收敛).
 			if t.IssueState == IssueClosed {
 				continue
 			}
@@ -542,24 +553,31 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			return ready[i].task.CreatedAt.Before(ready[j].task.CreatedAt)
 		})
 
-		if len(ready) > 0 {
-			rt := ready[0]
-			// Human executor: transition to awaiting_human (a decision gate)
-			// without acquiring the workspace lock. The task stays visible in
-			// the queue and downstream deps remain blocked until the user
-			// completes it via complete_human_task (MCP tool) or the API.
-			// The workspace lock is NOT held — a human task doesn't monopolise
-			// the runner slot.
-			if !rt.isReview && rt.task.Executor == TaskExecutorHuman && rt.task.Status != TaskStatusAwaitingHuman {
-				rt.task.Status = TaskStatusAwaitingHuman
-				if rt.task.StartedAt == nil {
-					rt.task.StartedAt = &now
+		// Human tasks are decision points, not agent work: park every ready human
+		// task at awaiting_human (no lock, no dispatch — it waits for the person,
+		// and its dependents stay blocked until it is completed via
+		// complete_human_task / the board), then dispatch the highest-priority
+		// remaining agent/function task. Parking is lock-free, so a queue of human
+		// todos never monopolises the runner slot.
+		var runnable []readyTask
+		for _, rt := range ready {
+			if !rt.isReview && isHumanTask(rt.task) {
+				if rt.task.Status != TaskStatusAwaitingHuman {
+					rt.task.Status = TaskStatusAwaitingHuman
+					if rt.task.StartedAt == nil {
+						rt.task.StartedAt = &now
+					}
+					rt.task.UpdatedAt = now
+					modified = true
+					log.Printf("[scheduler] Human task %s (%s) → awaiting_human", rt.task.ID, rt.task.Title)
 				}
-				rt.task.UpdatedAt = now
-				modified = true
-				log.Printf("[scheduler] Human task %s (%s) → awaiting_human", rt.task.ID, rt.task.Title)
-				// Don't continue: skip agent-runner dispatch for human tasks.
-			} else if s.Lock.TryAcquire(ref.Path, rt.task.ID) {
+				continue
+			}
+			runnable = append(runnable, rt)
+		}
+		if len(runnable) > 0 {
+			rt := runnable[0]
+			if s.Lock.TryAcquire(ref.Path, rt.task.ID) {
 				task := rt.task
 				task.Status = TaskStatusRunning
 				if !rt.isReview {
