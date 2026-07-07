@@ -284,6 +284,10 @@ export const zhCN: Record<string, string> = {
     'sidebar.datasources': '数据源',
     'sidebar.datasourcesTitle': '数据源管理',
     'sidebar.settings': '系统设置',
+    'sidebar.studio': '录制工作室',
+    'sidebar.studioTitle': 'Presenter Studio',
+    'studio.catRecord': '口播录制',
+    'studio.catList': '录制列表',
     // 数据源管理 (Data Source Management)
     'datasource.title': '数据源',
     'datasource.overviewHint': '按渠道查看已汇聚的各信息源数据;点击卡片以多维表格浏览,右上角管理数据源。',
@@ -693,7 +697,10 @@ export const zhCN: Record<string, string> = {
     'discovery.opensourceBadge': '开源',
     'discovery.catFeatured': '精选推荐',
     'discovery.catOpensource': '开源项目',
-    'discovery.intro': '精选各类实用的 AI 辅助工具与技能库，点击即可在内置浏览器中快速访问。',
+    'discovery.catApps': '应用中心',
+    'discovery.studioDesc': '双屏口播录像与剪辑工坊。支持同步录制摄像头人脸与网页操作画面，结合麦克风设备选择与音频优化，实现文本化可视化粗剪。',
+    'discovery.studioBadge': '口播录像',
+    'discovery.intro': '精选各类实用的 AI 辅助工具与技能库，点击即可快速访问。',
     'discovery.exploreNow': '立即探索',
 
     // ── Task list (TaskList.tsx) ──────────────────────────────────────────
@@ -1823,6 +1830,10 @@ export const enUS: Record<string, string> = {
     'sidebar.datasources': 'Data Sources',
     'sidebar.datasourcesTitle': 'Data Source Management',
     'sidebar.settings': 'Settings',
+    'sidebar.studio': 'Studio',
+    'sidebar.studioTitle': 'Presenter Studio',
+    'studio.catRecord': 'Record',
+    'studio.catList': 'Recordings',
     // Data Source Management
     'datasource.title': 'Data Sources',
     'datasource.overviewHint':
@@ -2244,8 +2255,11 @@ export const enUS: Record<string, string> = {
     'discovery.opensourceBadge': 'Open Source',
     'discovery.catFeatured': 'Featured',
     'discovery.catOpensource': 'Open Source',
+    'discovery.catApps': 'Apps & Tools',
+    'discovery.studioDesc': 'Dual-screen presenter studio for synchronizing camera feed with webpage captures, enabling text-based editing from automated transcriptions.',
+    'discovery.studioBadge': 'Studio',
     'discovery.intro':
-        'A curated collection of practical AI tools and skill libraries — click to open in the built-in browser.',
+        'A curated collection of practical AI tools and apps — click to open.',
     'discovery.exploreNow': 'Explore now',
 
     // ── Task list ────────────────────────────────────────────────────────

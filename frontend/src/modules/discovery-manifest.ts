@@ -13,7 +13,7 @@
 
 import type { ModuleManifest } from './module-types';
 
-export type DiscoveryCategory = 'featured' | 'opensource';
+export type DiscoveryCategory = 'apps' | 'featured' | 'opensource';
 
 export interface DiscoveryNavItem {
     key: DiscoveryCategory;
@@ -24,11 +24,12 @@ export interface DiscoveryNavItem {
 }
 
 export const DISCOVERY_CATEGORIES: DiscoveryNavItem[] = [
+    { key: 'apps', path: '/apps', i18nKey: 'discovery.catApps' },
     { key: 'featured', path: '/featured', i18nKey: 'discovery.catFeatured' },
     { key: 'opensource', path: '/opensource', i18nKey: 'discovery.catOpensource' },
 ];
 
-export const DISCOVERY_DEFAULT_CATEGORY: DiscoveryCategory = 'featured';
+export const DISCOVERY_DEFAULT_CATEGORY: DiscoveryCategory = 'apps';
 export const DISCOVERY_ENTRY_PATH = `/${DISCOVERY_DEFAULT_CATEGORY}`;
 
 export const DISCOVERY_MODULE_ID = 'discovery';

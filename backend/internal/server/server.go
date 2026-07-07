@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -293,6 +294,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/data/gold/summary", dataHandler.HandleGoldSummary) // GET
 				mux.HandleFunc("/api/data/gold/records", dataHandler.HandleGoldRecords) // GET ?domain=&limit=
 			}
+
+			mux.HandleFunc("/api/studio/save-assets", handleStudioSaveAssets) // POST
+			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)   // POST
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
 			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
@@ -1385,4 +1389,106 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			strings.Join(candidates, ", "),
 		)
 	}
+}
+
+func handleStudioSaveAssets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID           string `json:"id"`
+		WebcamBase64 string `json:"webcamBase64"`
+		ScreenBase64 string `json:"screenBase64"`
+		AudioBase64  string `json:"audioBase64"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	dir := filepath.Join(home, ".1agents", "studio", req.ID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	saveBase64File := func(filename, b64 string) error {
+		if b64 == "" {
+			return nil
+		}
+		data, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, filename), data, 0644)
+	}
+
+	if err := saveBase64File("webcam.webm", req.WebcamBase64); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := saveBase64File("screen.webm", req.ScreenBase64); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := saveBase64File("audio.webm", req.AudioBase64); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "path": dir})
+}
+
+func handleStudioTranscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID          string `json:"id"`
+		AudioBase64 string `json:"audioBase64"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	res := map[string]any{
+		"id":           req.ID,
+		"createdAt":    1717171717,
+		"duration":     60,
+		"speakerCount": 1,
+		"title":        "演示录制",
+		"fullText":     "这是一次双录屏的演示录制。我们将在这里展示摄像头和网页的同步录制，并进行粗剪测试。",
+		"summary":      "本次录制演示了摄像头与屏幕的双录功能。",
+		"utterances": []map[string]any{
+			{
+				"speaker": "speaker_0",
+				"start":   0.0,
+				"end":     5.0,
+				"text":    "这是一次双录屏的演示录制。",
+			},
+			{
+				"speaker": "speaker_0",
+				"start":   5.0,
+				"end":     10.0,
+				"text":    "我们将在这里展示摄像头和网页的同步录制，",
+			},
+			{
+				"speaker": "speaker_0",
+				"start":   10.0,
+				"end":     15.0,
+				"text":    "并进行粗剪测试。",
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(res)
 }

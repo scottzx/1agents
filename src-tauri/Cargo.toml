@@ -28,7 +28,8 @@ tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
 
 # 智能录音:本地推理 + 本地持久化
-sherpa-rs = "0.4" # 默认拉 macOS 预编译库(含 CoreML EP);CoreML 经运行时 provider="coreml" 启用
+sherpa-rs = "0.6.8" # 默认拉 macOS 预编译库(含 CoreML EP);CoreML 经运行时 provider="coreml" 启用
+eyre = "0.6.12"
 rusqlite = { version = "0.31", features = ["bundled"] }           # 静态 sqlite,免系统依赖
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"

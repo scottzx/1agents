@@ -34,6 +34,8 @@ import { DataSourcesPane } from '../drawer/DataSources';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
 import { CcProvidersPanel } from '../shared/CcProvidersPanel';
 import { SystemSettingsHost } from '../shared/SystemSettingsHost';
+import { VlogStudio } from '../studio/VlogStudio';
+import { STUDIO_CATEGORIES, type StudioCategory } from '../../modules/studio-manifest';
 import {
     lightTermTheme,
     darkTermTheme,
@@ -259,8 +261,40 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
         case 'skills':
             return renderSkills(theme, language);
         case 'discovery': {
+            if (tabsStore.activeExternalApp.value === 'studio') {
+                const studioTabs: ShellTab[] = STUDIO_CATEGORIES.map(c => ({
+                    id: c.key,
+                    label: t(c.i18nKey, language),
+                }));
+                const navTabs: ShellTab[] = [
+                    { id: 'back', label: '◀ ' + t('sidebar.discovery', language) },
+                    ...studioTabs,
+                ];
+                return (
+                    <div class="project-shell">
+                        <ShellNav
+                            tabs={navTabs}
+                            activeTab={tabsStore.activeStudioCategory.value}
+                            onSelectTab={id => {
+                                if (id === 'back') {
+                                    tabsStore.closeExternalApp();
+                                } else {
+                                    tabsStore.setStudioCategory(id as StudioCategory);
+                                }
+                            }}
+                        />
+                        <div
+                            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+                        >
+                            <VlogStudio activeCategory={tabsStore.activeStudioCategory.value} language={language} />
+                        </div>
+                    </div>
+                );
+            }
+
             // Category nav lives in the top tab bar (ShellNav), not the sidebar.
             const discoveryTabs: ShellTab[] = [
+                { id: 'apps', label: t('discovery.catApps', language) },
                 { id: 'featured', label: t('discovery.catFeatured', language) },
                 { id: 'opensource', label: t('discovery.catOpensource', language) },
             ];
@@ -274,6 +308,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
                         <DiscoveryPanel
                             onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
+                            onOpenApp={tabsStore.openExternalApp}
                             language={language}
                             activeCategory={tabsStore.discoveryCategory.value}
                         />
@@ -306,6 +341,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                 </div>
             );
         }
+
         default:
             return null;
     }
