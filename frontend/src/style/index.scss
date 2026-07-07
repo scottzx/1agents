@@ -17436,6 +17436,25 @@ body {
     color: var(--accent-fg);
     border-color: var(--accent-fg);
   }
+  // Primary team agent — the single filled accent chip (selected = accent).
+  &.is-primary-badge {
+    color: var(--on-accent);
+    background: var(--accent-emphasis);
+    border-color: var(--accent-emphasis);
+  }
+}
+
+// Team tab (助理/项目 详情) — cards reuse .skill-card; the primary member gets
+// an accent hairline (selected state) and a small action row.
+.team-card {
+  &.is-primary {
+    border-color: var(--accent-color);
+  }
+}
+.team-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .assistant-skill-version {
