@@ -27,8 +27,14 @@ export function AssistantsPage({ app }: { app: App }) {
     const workspaces = wsStore.workspaces.value;
     const folders = wsStore.folders.value;
 
+    const archived = wsStore.archivedWorkspaces.value;
     const detailId = tabs.assistantDetailId.value;
-    const showDetail = !!detailId && workspaces.some(w => w.id === detailId);
+    const showDetail = !!detailId && !!wsStore.findWorkspaceAnyStatus(detailId);
+
+    // Load the 已归档 board for the overview (and so an archived detail resolves).
+    useEffect(() => {
+        void wsStore.loadArchivedWorkspaces();
+    }, []);
 
     // Own the global header breadcrumb for both levels: 助理 (grid) and
     // 助理 › <name> (detail). Clicking 助理 drops back to the grid. Cleared on
@@ -36,7 +42,7 @@ export function AssistantsPage({ app }: { app: App }) {
     useSignalEffect(() => {
         const lang = ui.language.value;
         const id = tabs.assistantDetailId.value;
-        const ws = id ? wsStore.workspaces.value.find(w => w.id === id) : null;
+        const ws = id ? wsStore.findWorkspaceAnyStatus(id) : null;
         taskNav.headerCrumbs.value = ws
             ? [
                   { label: t('sidebar.assistants', lang), onClick: () => (tabs.assistantDetailId.value = null) },
@@ -62,6 +68,8 @@ export function AssistantsPage({ app }: { app: App }) {
         const folder = folders.find(f => f.id === wsId);
         return folder ? folder.sessions.length : 0;
     };
+
+    const archivedAssistants = archived.filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId);
 
     const onCardClick = (wsId: string) => {
         tabs.assistantDetailId.value = wsId;
@@ -134,6 +142,39 @@ export function AssistantsPage({ app }: { app: App }) {
                             </svg>
                         </button>
                     ))}
+                </div>
+            )}
+
+            {archivedAssistants.length > 0 && (
+                <div class="archived-section">
+                    <div class="archived-section-head">{t('overview.archived', language)}</div>
+                    <div class="assistants-grid">
+                        {archivedAssistants.map(ws => (
+                            <button key={ws.id} class="assistant-card is-archived" onClick={() => onCardClick(ws.id)}>
+                                <span class="assistant-card-avatar is-emoji" aria-hidden="true">
+                                    {'\u{1F464}'}
+                                </span>
+                                <div class="assistant-card-body">
+                                    <div class="assistant-card-title">
+                                        <span class="assistant-card-name">{ws.name}</span>
+                                        <span class="assistant-tag">{t('overview.archivedTag', language)}</span>
+                                    </div>
+                                </div>
+                                <svg
+                                    class="assistant-card-chevron"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <polyline points="9 6 15 12 9 18" />
+                                </svg>
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

@@ -17680,6 +17680,58 @@ body {
   margin-top: 8px;
 }
 
+// Settings tab — a stack of setting rows (label/desc on the left, control right).
+.settings-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius, 12px);
+  background: var(--bg-card);
+
+  .settings-row-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+  .settings-row-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+  .settings-row-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+// Overview 已归档 board — a labelled section of dimmed cards under the active grid.
+.archived-section {
+  margin-top: 24px;
+}
+.archived-section-head {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 10px 2px;
+}
+.assistant-card.is-archived,
+.project-card.is-archived {
+  opacity: 0.65;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
 // 工具 metadata row under the description.
 .team-meta-tools {
   display: flex;

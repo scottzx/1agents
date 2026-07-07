@@ -13,6 +13,7 @@ import { SessionsView } from '../drawer/TaskList/SessionsView';
 import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
 import { SkillsTab } from './SkillsTab';
 import { TeamTab } from './TeamTab';
+import { SettingsTab } from './SettingsTab';
 
 /**
  * AssistantDetail — breadcrumb level 2 (助理 › <name>). The trail + back-nav
@@ -29,7 +30,7 @@ import { TeamTab } from './TeamTab';
  * navigation side-effects of selectWorkspace, which would drop the full-page
  * detail).
  */
-type DetailTab = 'sessions' | 'team' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp';
+type DetailTab = 'sessions' | 'team' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp' | 'settings';
 
 interface AssistantDetailProps {
     workspaceId: string;
@@ -39,7 +40,9 @@ interface AssistantDetailProps {
 export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
     const language = ui.language.value;
     const theme = ui.theme.value;
-    const ws = wsStore.workspaces.value.find(w => w.id === workspaceId);
+    // Resolve from active OR archived so an archived assistant's detail (opened
+    // from the overview's 已归档 board) still renders.
+    const ws = wsStore.findWorkspaceAnyStatus(workspaceId);
 
     const [activeTab, setActiveTab] = useState<DetailTab>('sessions');
 
@@ -79,6 +82,7 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
         { id: 'channels', label: t('assistant.detail.tab.channels', language) },
         { id: 'files', label: t('assistant.detail.tab.files', language) },
         { id: 'mcp', label: t('assistant.detail.tab.mcp', language) },
+        { id: 'settings', label: t('assistant.detail.tab.settings', language) },
     ];
 
     return (
@@ -137,6 +141,12 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                 {activeTab === 'mcp' && (
                     <div class="assistant-pane-scroll">
                         <div class="assistant-empty-row">{t('assistant.detail.mcpPlaceholder', language)}</div>
+                    </div>
+                )}
+
+                {activeTab === 'settings' && (
+                    <div class="assistant-pane-fill assistant-pane-inset assistant-pane-scroll">
+                        <SettingsTab workspaceId={workspaceId} language={language} />
                     </div>
                 )}
             </div>

@@ -35,6 +35,31 @@ export const workspaceService = {
         if (!res.ok) throw new Error(await res.text());
     },
 
+    /** List archived projects/assistants (the overview's 已归档 board). */
+    async listArchived(): Promise<Workspace[]> {
+        const res = await apiFetch('/workspace/list?status=archived');
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    },
+
+    /** Archive a project/assistant (active → archived; drops from the sidebar). */
+    async archive(id: string): Promise<void> {
+        const res = await apiFetch(`/projects/${encodeURIComponent(id)}/archive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    /** Reopen an archived project/assistant (archived → active). */
+    async reopen(id: string): Promise<void> {
+        const res = await apiFetch(`/projects/${encodeURIComponent(id)}/reopen`, {
+            method: 'POST',
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
     async update(ws: Workspace): Promise<void> {
         const res = await apiFetch('/workspace/update', {
             method: 'POST',
