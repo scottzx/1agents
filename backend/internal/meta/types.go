@@ -296,12 +296,34 @@ func PriorityRank(p Priority) int {
 // for machine-driven cadences — data-source incremental sync fires "every N
 // minutes", not "daily at HH:MM" — so the work-order scheduler can own periodic
 // ingestion instead of each syncer growing its own ticker.
+// The extra fields (Interval/DaysOfWeek/WeekIndex/Until/Count) exist so the rule
+// can losslessly hold what external sources express — MS Graph patterns and
+// RFC5545 RRULE — e.g. "every Sat & Sun", "first Monday of the month", "10
+// times", "until 2026-12-31". They are all optional; a rule that uses only the
+// legacy Weekday/Monthday keeps working unchanged.
 type Recurrence struct {
-	Freq         string `json:"freq"` // daily | weekly | monthly | interval
-	Weekday      int    `json:"weekday,omitempty"`
-	Monthday     int    `json:"monthday,omitempty"`
+	Freq         string `json:"freq"`                 // daily | weekly | monthly | yearly | interval
+	Interval     int    `json:"interval,omitempty"`   // every N periods (default 1)
+	Weekday      int    `json:"weekday,omitempty"`    // weekly single-day (legacy)
+	DaysOfWeek   []int  `json:"daysOfWeek,omitempty"` // weekly multi-day, 0=Sunday…6
+	Monthday     int    `json:"monthday,omitempty"`   // monthly/yearly absolute day (1–31)
+	WeekIndex    int    `json:"weekIndex,omitempty"`  // monthly/yearly relative: 1..4 / -1=last, with DaysOfWeek
+	Month        int    `json:"month,omitempty"`      // yearly only: 1–12
 	At           string `json:"at,omitempty"`
 	EveryMinutes int    `json:"everyMinutes,omitempty"` // interval only: minutes between runs
+	Until        string `json:"until,omitempty"`        // RFC3339/date: stop after this
+	Count        int    `json:"count,omitempty"`        // stop after this many occurrences
+}
+
+// ChecklistItem is one entry of a task's embedded checklist — an ordered,
+// individually-checkable sub-item held inside the task itself (distinct from a
+// parent/child subtask). It gives an executing agent a progress ledger to tick
+// off as it works, and a verifier a per-item list to confirm against. Modeled
+// on Microsoft To Do's checklistItems; also the promotion target for external
+// todos that carry one.
+type ChecklistItem struct {
+	Text string `json:"text"`
+	Done bool   `json:"done,omitempty"`
 }
 
 // IssueState is the open/closed dimension layered on top of the workflow
@@ -466,9 +488,12 @@ type Task struct {
 	// ── automation fields (schema v2) ──
 	AcceptanceCriteria string      `json:"acceptanceCriteria,omitempty"` // injected; agent self-checks before completing
 	Recurrence         *Recurrence `json:"recurrence,omitempty"`         // nil = one-shot
-	MaxRetries         int         `json:"maxRetries"`                   // auto-retry budget on failure (default 1)
-	RetryCount         int         `json:"retryCount,omitempty"`
-	TimeoutMinutes     int         `json:"timeoutMinutes,omitempty"` // 0 = runner default idle timeout
+	// Checklist is the task's embedded ordered progress ledger (see
+	// ChecklistItem). Empty for tasks without one. Serialized as a JSON column.
+	Checklist      []ChecklistItem `json:"checklist,omitempty"`
+	MaxRetries     int             `json:"maxRetries"` // auto-retry budget on failure (default 1)
+	RetryCount     int             `json:"retryCount,omitempty"`
+	TimeoutMinutes int             `json:"timeoutMinutes,omitempty"` // 0 = runner default idle timeout
 
 	// ── verification fields (schema v9, #50) ──
 	// Verifier is the agent type that reviews this task after the executor

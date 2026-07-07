@@ -107,7 +107,18 @@ export function SourceDetail({
 // included), plus the record envelope + raw payload preview — "逐个展示数据".
 // Exported so the governed (silver) detail reuses the same popup — silver rows
 // share the SourceRecordRow envelope.
-export function RecordModal({ record, onClose }: { record: SourceRecordRow; onClose: () => void }) {
+export function RecordModal({
+    record,
+    onClose,
+    onPromote,
+    promoteLabel,
+}: {
+    record: SourceRecordRow;
+    onClose: () => void;
+    // Optional action rendered in the modal header (e.g. 提拔为任务 for gold todos).
+    onPromote?: () => void;
+    promoteLabel?: string;
+}) {
     const language = ui.language.value;
 
     useEffect(() => {
@@ -133,6 +144,11 @@ export function RecordModal({ record, onClose }: { record: SourceRecordRow; onCl
                 <h3 class="ds-record-title">
                     {t('datasource.recordDetail', language)}
                     {record.deleted && <span class="ds-tombstone">{t('datasource.deleted', language)}</span>}
+                    {onPromote && (
+                        <button class="ds-record-promote" onClick={onPromote}>
+                            {promoteLabel || t('datasource.gold.promote', language)}
+                        </button>
+                    )}
                 </h3>
 
                 <div class="ds-record-section">{t('datasource.nativeFields', language)}</div>

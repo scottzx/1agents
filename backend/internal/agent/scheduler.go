@@ -291,7 +291,27 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 				continue
 			}
 			next := nextOccurrence(now, t.Recurrence)
+			// Termination: stop respawning when the next run would fall past
+			// `until`, or when the occurrence budget (`count`) is spent. This
+			// completed instance always counts as one occurrence.
+			rec := *t.Recurrence // copy so we can decrement Count for the clone
+			if until, ok := parseRecurrenceUntil(rec.Until); ok && next.After(until) {
+				t.Recurrence = nil
+				t.UpdatedAt = now
+				modified = true
+				continue
+			}
+			if rec.Count > 0 {
+				if rec.Count <= 1 {
+					t.Recurrence = nil
+					t.UpdatedAt = now
+					modified = true
+					continue
+				}
+				rec.Count--
+			}
 			clone := *t
+			clone.Recurrence = &rec
 			clone.ID = newID()
 			clone.Status = TaskStatusPending
 			clone.ScheduleType = ScheduleTypeScheduled
@@ -620,6 +640,23 @@ func (s *Scheduler) emit(t *Task, kind TaskEventKind, now time.Time) bool {
 	return modified
 }
 
+// parseRecurrenceUntil parses a recurrence Until bound, accepting either an
+// RFC3339 timestamp or a bare date ("2006-01-02"). Returns ok=false when unset
+// or unparseable (treated as "no end").
+func parseRecurrenceUntil(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		// A date-only bound means "through the end of that day".
+		return t.Add(24*time.Hour - time.Second), true
+	}
+	return time.Time{}, false
+}
+
 // nextOccurrence computes the next trigger after `after` for a simple-enum
 // recurrence rule. At ("HH:MM", local time) defaults to midnight.
 func nextOccurrence(after time.Time, r *Recurrence) time.Time {
@@ -642,26 +679,127 @@ func nextOccurrence(after time.Time, r *Recurrence) time.Time {
 	local := after.Local()
 	candidate := time.Date(local.Year(), local.Month(), local.Day(), hour, minute, 0, 0, local.Location())
 
+	step := r.Interval
+	if step < 1 {
+		step = 1
+	}
+
 	switch r.Freq {
 	case "weekly":
-		for candidate.Weekday() != time.Weekday(r.Weekday) || !candidate.After(local) {
+		days := weekdaySet(r)
+		// Advance day-by-day to the next allowed weekday strictly after `local`.
+		for !candidate.After(local) || !days[int(candidate.Weekday())] {
 			candidate = candidate.AddDate(0, 0, 1)
 		}
-	case "monthly":
-		day := r.Monthday
-		if day < 1 {
-			day = 1
+		// Interval>1 counts in whole weeks from `local`'s week: skip candidates
+		// that fall in a non-multiple week.
+		if step > 1 {
+			base := startOfWeek(local)
+			for weeksBetween(base, candidate)%step != 0 {
+				candidate = candidate.AddDate(0, 0, 1)
+				for !days[int(candidate.Weekday())] {
+					candidate = candidate.AddDate(0, 0, 1)
+				}
+			}
 		}
-		candidate = monthlyAt(local, day, hour, minute)
+	case "monthly":
+		// Relative month ("first Monday") when WeekIndex + a weekday is set;
+		// otherwise the legacy absolute Monthday path.
+		if r.WeekIndex != 0 && len(weekdayList(r)) > 0 {
+			wd := weekdayList(r)[0]
+			candidate = nthWeekdayOfMonth(local, r.WeekIndex, wd, hour, minute)
+			if !candidate.After(local) {
+				candidate = nthWeekdayOfMonth(local.AddDate(0, step, 0), r.WeekIndex, wd, hour, minute)
+			}
+		} else {
+			day := r.Monthday
+			if day < 1 {
+				day = 1
+			}
+			candidate = monthlyAt(local, day, hour, minute)
+			if !candidate.After(local) {
+				candidate = monthlyAt(local.AddDate(0, step, 0), day, hour, minute)
+			}
+		}
+	case "yearly":
+		month := time.Month(r.Month)
+		if month < time.January || month > time.December {
+			month = local.Month()
+		}
+		yearAnchor := time.Date(local.Year(), month, 1, hour, minute, 0, 0, local.Location())
+		candidate = yearlyOccurrence(yearAnchor, r, hour, minute)
 		if !candidate.After(local) {
-			candidate = monthlyAt(local.AddDate(0, 1, 0), day, hour, minute)
+			candidate = yearlyOccurrence(yearAnchor.AddDate(step, 0, 0), r, hour, minute)
 		}
 	default: // daily
 		if !candidate.After(local) {
-			candidate = candidate.AddDate(0, 0, 1)
+			candidate = candidate.AddDate(0, 0, step)
 		}
 	}
 	return candidate.UTC()
+}
+
+// yearlyOccurrence resolves the day within `anchor`'s month for a yearly rule:
+// relative (WeekIndex + weekday) when set, else the absolute Monthday.
+func yearlyOccurrence(anchor time.Time, r *Recurrence, hour, minute int) time.Time {
+	if r.WeekIndex != 0 && len(weekdayList(r)) > 0 {
+		return nthWeekdayOfMonth(anchor, r.WeekIndex, weekdayList(r)[0], hour, minute)
+	}
+	day := r.Monthday
+	if day < 1 {
+		day = 1
+	}
+	return monthlyAt(anchor, day, hour, minute)
+}
+
+// weekdaySet returns the allowed weekdays for a weekly rule as a set. Falls back
+// to the legacy single Weekday when DaysOfWeek is empty.
+func weekdaySet(r *Recurrence) map[int]bool {
+	set := map[int]bool{}
+	for _, d := range weekdayList(r) {
+		set[d] = true
+	}
+	return set
+}
+
+func weekdayList(r *Recurrence) []int {
+	if len(r.DaysOfWeek) > 0 {
+		return r.DaysOfWeek
+	}
+	return []int{r.Weekday}
+}
+
+func startOfWeek(t time.Time) time.Time {
+	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	return d.AddDate(0, 0, -int(d.Weekday()))
+}
+
+func weeksBetween(a, b time.Time) int {
+	return int(startOfWeek(b).Sub(startOfWeek(a)).Hours()) / (24 * 7)
+}
+
+// nthWeekdayOfMonth returns the index-th (1..4, or -1 for last) weekday `wd` in
+// ref's month at hour:minute. A too-large positive index clamps to the last.
+func nthWeekdayOfMonth(ref time.Time, index, wd, hour, minute int) time.Time {
+	first := time.Date(ref.Year(), ref.Month(), 1, hour, minute, 0, 0, ref.Location())
+	// All matching weekdays in the month.
+	var matches []time.Time
+	for d := first; d.Month() == first.Month(); d = d.AddDate(0, 0, 1) {
+		if int(d.Weekday()) == wd {
+			matches = append(matches, d)
+		}
+	}
+	if len(matches) == 0 {
+		return first
+	}
+	if index < 0 {
+		return matches[len(matches)-1]
+	}
+	i := index - 1
+	if i >= len(matches) {
+		i = len(matches) - 1
+	}
+	return matches[i]
 }
 
 // monthlyAt returns the given day-of-month (clamped to the month's length)

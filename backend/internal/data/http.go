@@ -5,14 +5,23 @@
 package data
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
-// Handler serves the read-only silver API over the default data.db.
+// Handler serves the read-only silver/gold API over the default data.db, plus
+// the one write path — promoting a fused to-do into a task.
 type Handler struct {
 	store *Store
+	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
+	// http://127.0.0.1:8080). Promotion posts to the full-featured
+	// POST /api/agent/tasks over loopback so it keeps package data decoupled
+	// from the task store.
+	selfBaseURL string
 }
 
 // NewHandlerDefault wires a Handler from the default data.db silver store.
@@ -23,6 +32,9 @@ func NewHandlerDefault() (*Handler, error) {
 	}
 	return &Handler{store: st}, nil
 }
+
+// SetSelfBaseURL injects the loopback base used by todo promotion.
+func (h *Handler) SetSelfBaseURL(u string) { h.selfBaseURL = u }
 
 // HandleSummary: GET /api/data/summary → per-(domain,source) silver rollup.
 func (h *Handler) HandleSummary(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +112,84 @@ func (h *Handler) HandleGoldRecords(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
+}
+
+// HandlePromoteTodo: POST /api/data/gold/todos/promote {id, workspaceId,
+// assignee} → create a task from the fused to-do and link it back. assignee is
+// "user" (a personal human todo, never dispatched) or an agent type (scheduled
+// for execution). Idempotent: an already-linked to-do returns its existing task.
+func (h *Handler) HandlePromoteTodo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID          string `json:"id"`
+		WorkspaceID string `json:"workspaceId"`
+		Assignee    string `json:"assignee"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.ID) == "" || strings.TrimSpace(req.WorkspaceID) == "" {
+		http.Error(w, "id and workspaceId are required", http.StatusBadRequest)
+		return
+	}
+	if h.selfBaseURL == "" {
+		http.Error(w, "promotion unavailable: task API base not configured", http.StatusServiceUnavailable)
+		return
+	}
+	todo, ok, err := h.store.TodoForPromotion(req.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "todo not found", http.StatusNotFound)
+		return
+	}
+	// Idempotent: never create a second task for an already-promoted to-do.
+	if todo.LinkedTaskID != "" {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "taskId": todo.LinkedTaskID, "alreadyLinked": true})
+		return
+	}
+
+	body := todo.Body
+	body["workspace_id"] = req.WorkspaceID
+	if a := strings.TrimSpace(req.Assignee); a != "" {
+		body["assignee"] = a
+	} else {
+		body["assignee"] = "user" // default: a personal human todo mirror
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp, err := http.Post(h.selfBaseURL+"/api/agent/tasks", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		http.Error(w, "create task: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "create task failed: "+strings.TrimSpace(string(respBody)), http.StatusBadGateway)
+		return
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(respBody, &created); err != nil || created.ID == "" {
+		http.Error(w, "create task returned no id", http.StatusBadGateway)
+		return
+	}
+	if err := h.store.LinkTodoTask(req.ID, created.ID); err != nil {
+		http.Error(w, "link todo: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "taskId": created.ID})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

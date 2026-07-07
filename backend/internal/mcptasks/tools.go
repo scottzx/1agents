@@ -102,19 +102,37 @@ var toolDefs = []map[string]any{
 					"type":        "object",
 					"description": "Optional repeat rule for a personal (assignee='user') task. Omit for a one-off.",
 					"properties": map[string]any{
-						"freq":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly"}},
-						"weekday":  map[string]any{"type": "integer", "description": "0=Sunday…6=Saturday (for weekly)."},
-						"monthday": map[string]any{"type": "integer", "description": "1–31 (for monthly)."},
-						"at":       map[string]any{"type": "string", "description": "'HH:MM' local time; defaults to midnight."},
+						"freq":       map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly", "yearly"}},
+						"interval":   map[string]any{"type": "integer", "description": "Every N periods (default 1), e.g. every 2 weeks."},
+						"weekday":    map[string]any{"type": "integer", "description": "0=Sunday…6=Saturday (single-day weekly)."},
+						"daysOfWeek": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Multi-day weekly, e.g. [6,0] for every Sat & Sun."},
+						"monthday":   map[string]any{"type": "integer", "description": "1–31 (absolute monthly/yearly day)."},
+						"weekIndex":  map[string]any{"type": "integer", "description": "Relative month/year: 1..4, or -1 for last, combined with daysOfWeek (e.g. first Monday)."},
+						"month":      map[string]any{"type": "integer", "description": "1–12 (yearly only)."},
+						"at":         map[string]any{"type": "string", "description": "'HH:MM' local time; defaults to midnight."},
+						"until":      map[string]any{"type": "string", "description": "Stop after this date (RFC3339 or 'YYYY-MM-DD')."},
+						"count":      map[string]any{"type": "integer", "description": "Stop after this many occurrences."},
 					},
 				},
-				"githubRepo":          map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo' of the bound GitHub object. Normally backfilled by sync."},
-				"githubKind":          map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: whether the bound GitHub object is an issue or a pr."},
-				"githubNumber":        map[string]any{"type": "integer", "description": "Sync anchor: the remote #N (per-repo), distinct from the local task number."},
-				"githubNodeId":        map[string]any{"type": "string", "description": "Sync anchor: GraphQL global node id (needed by the Projects v2 API)."},
-				"githubUrl":           map[string]any{"type": "string", "description": "Sync anchor: the object's html_url."},
-				"githubState":         map[string]any{"type": "string", "description": "Sync anchor: remote open/closed state, for conflict detection."},
-				"lastSyncedAt":        map[string]any{"type": "string", "description": "Sync anchor: RFC3339 timestamp of the last successful GitHub sync."},
+				"checklist": map[string]any{
+					"type":        "array",
+					"description": "Optional embedded checklist — ordered progress items the executor ticks off. Each item: {text, done?}.",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"text": map[string]any{"type": "string"},
+							"done": map[string]any{"type": "boolean"},
+						},
+						"required": []string{"text"},
+					},
+				},
+				"githubRepo":   map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo' of the bound GitHub object. Normally backfilled by sync."},
+				"githubKind":   map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: whether the bound GitHub object is an issue or a pr."},
+				"githubNumber": map[string]any{"type": "integer", "description": "Sync anchor: the remote #N (per-repo), distinct from the local task number."},
+				"githubNodeId": map[string]any{"type": "string", "description": "Sync anchor: GraphQL global node id (needed by the Projects v2 API)."},
+				"githubUrl":    map[string]any{"type": "string", "description": "Sync anchor: the object's html_url."},
+				"githubState":  map[string]any{"type": "string", "description": "Sync anchor: remote open/closed state, for conflict detection."},
+				"lastSyncedAt": map[string]any{"type": "string", "description": "Sync anchor: RFC3339 timestamp of the last successful GitHub sync."},
 			},
 		},
 	},
@@ -540,6 +558,9 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		// agent-assigned tasks (they run on dependency readiness, not the clock).
 		DueAt      string          `json:"dueAt"`
 		Recurrence json.RawMessage `json:"recurrence"`
+		// Checklist is the task's embedded progress ledger — ordered items each
+		// with a done flag. Optional; the agent ticks them as it works.
+		Checklist json.RawMessage `json:"checklist"`
 		// GitHub Issue/PR mapping (#74). githubAssignees is the human-collaborator
 		// dimension (distinct from assignee); the github* refs are the sync anchor.
 		GithubAssignees []string `json:"githubAssignees"`
@@ -583,6 +604,9 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 	}
 	if len(a.Recurrence) > 0 && string(a.Recurrence) != "null" {
 		body["recurrence"] = a.Recurrence
+	}
+	if len(a.Checklist) > 0 && string(a.Checklist) != "null" {
+		body["checklist"] = a.Checklist
 	}
 	// Forward GitHub mapping fields only when provided, so a normal create never
 	// writes empty anchors over a row a future sync pass might populate.

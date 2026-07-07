@@ -83,7 +83,63 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("data: apply silver schema: %w", err)
 		}
 	}
+	// Backfill columns added after a table's original DDL. silver is derived and
+	// fully re-runnable, but an existing DB still needs the new column present
+	// before an upsert can write it. Idempotent (skips columns already there).
+	if err := ensureSilverColumns(sqlDB); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("data: ensure silver columns: %w", err)
+	}
 	return &Store{sql: sqlDB}, nil
+}
+
+// ensureSilverColumns adds columns introduced after a silver table's original
+// CREATE (which is IF NOT EXISTS and so never alters an existing table). Mirrors
+// meta.ensureTasksColumns. DDL must match the column definition in the table's
+// schema constant.
+func ensureSilverColumns(db *sql.DB) error {
+	type addCol struct{ table, col, ddl string }
+	wanted := []addCol{
+		{"silver_microsoft_todos", "recurrence_std", "ALTER TABLE silver_microsoft_todos ADD COLUMN recurrence_std TEXT NOT NULL DEFAULT ''"},
+		{"silver_microsoft_events", "recurrence_std", "ALTER TABLE silver_microsoft_events ADD COLUMN recurrence_std TEXT NOT NULL DEFAULT ''"},
+		{"silver_feishu_events", "recurrence_std", "ALTER TABLE silver_feishu_events ADD COLUMN recurrence_std TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, w := range wanted {
+		has, err := columnExists(db, w.table, w.col)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := db.Exec(w.ddl); err != nil {
+			return fmt.Errorf("add %s.%s: %w", w.table, w.col, err)
+		}
+	}
+	return nil
+}
+
+// columnExists reports whether table has a column named col (via PRAGMA
+// table_info). A missing table reports false without error.
+func columnExists(db *sql.DB, table, col string) (bool, error) {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == col {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // silverSource is one data source's contribution to the silver layer: the DDL

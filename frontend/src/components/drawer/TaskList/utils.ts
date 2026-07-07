@@ -27,12 +27,43 @@ export function orderForTable(tasks: Task[]): Array<{ task: Task; isChild: boole
     return out;
 }
 
+const WEEKDAY_CN = '日一二三四五六';
+const WEEK_INDEX_CN: Record<number, string> = { 1: '第一个', 2: '第二个', 3: '第三个', 4: '第四个', [-1]: '最后一个' };
+
 export function recurrenceLabel(r?: TaskRecurrence | null): string {
     if (!r) return '';
     const at = r.at ? ` ${r.at}` : '';
-    if (r.freq === 'daily') return `每天${at}`;
-    if (r.freq === 'weekly') return `每周${'日一二三四五六'[r.weekday ?? 0]}${at}`;
-    return `每月${r.monthday ?? 1}号${at}`;
+    const n = r.interval && r.interval > 1 ? r.interval : 0;
+    const days = r.daysOfWeek && r.daysOfWeek.length ? r.daysOfWeek : undefined;
+
+    let core: string;
+    if (r.freq === 'daily') {
+        core = n ? `每${n}天` : '每天';
+    } else if (r.freq === 'weekly') {
+        const unit = n ? `每${n}周` : '每周';
+        const list = (days ?? [r.weekday ?? 0]).map(d => WEEKDAY_CN[d]).join('、');
+        core = `${unit}${list}`;
+    } else if (r.freq === 'yearly') {
+        const m = r.month ?? 1;
+        if (r.weekIndex && days) {
+            core = `每年${m}月${WEEK_INDEX_CN[r.weekIndex] ?? ''}周${WEEKDAY_CN[days[0]]}`;
+        } else {
+            core = `每年${m}月${r.monthday ?? 1}号`;
+        }
+    } else {
+        // monthly
+        const unit = n ? `每${n}月` : '每月';
+        if (r.weekIndex && days) {
+            core = `${unit}${WEEK_INDEX_CN[r.weekIndex] ?? ''}周${WEEKDAY_CN[days[0]]}`;
+        } else {
+            core = `${unit}${r.monthday ?? 1}号`;
+        }
+    }
+
+    let suffix = '';
+    if (r.count && r.count > 0) suffix = ` · 共${r.count}次`;
+    else if (r.until) suffix = ` · 至${r.until.slice(0, 10)}`;
+    return `${core}${at}${suffix}`;
 }
 
 export function fmtDate(iso?: string): string {
