@@ -28,6 +28,7 @@ import * as fs from '../../stores/fsStore';
 import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
 import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
+import { TeamTab } from '../pages/TeamTab';
 import { MountPointRenderer } from './MountPointRenderer';
 import { ProjectConfigPanel, ProjectConfigView, PROJECT_CONFIG_TABS, type ConfigTab } from './ProjectConfigPanel';
 import { ShellNav, CrumbTrail, type ShellTab, type Crumb } from './ShellNav';
@@ -36,7 +37,7 @@ import * as appStore from '../../stores/appManifestStore';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type BuiltinTab = 'sessions' | 'activity' | 'plan' | 'tasks' | 'files' | 'channels' | 'assets';
+type BuiltinTab = 'sessions' | 'team' | 'activity' | 'plan' | 'tasks' | 'files' | 'channels' | 'assets';
 type TabId = BuiltinTab | string; // string for app-contributed tabs (mount point id)
 
 interface ProjectShellProps {
@@ -92,6 +93,7 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
     // Detail-only: 会话/文件/渠道 tabs prepend the project-specific ones.
     const detailLead: Array<{ id: BuiltinTab; label: string }> = [
         { id: 'sessions', label: t('assistant.detail.tab.sessions', language) },
+        { id: 'team', label: t('assistant.detail.tab.team', language) },
         { id: 'tasks', label: t('assistant.detail.tab.tasks', language) },
         { id: 'files', label: t('assistant.detail.tab.files', language) },
         { id: 'channels', label: t('assistant.detail.tab.channels', language) },
@@ -167,6 +169,11 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
             {activeTab === 'channels' && (
                 <div class="assistant-pane-fill">
                     <ChannelsPane theme={theme} language={language} />
+                </div>
+            )}
+            {activeTab === 'team' && app && (
+                <div class="assistant-pane-fill assistant-pane-inset">
+                    <TeamTab workspaceId={workspaceId} app={app} language={language} />
                 </div>
             )}
             {activeTab === 'activity' && <ProjectActivityTab workspaceId={workspaceId} />}

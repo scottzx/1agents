@@ -7,11 +7,10 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as sessStore from '../../stores/sessionStore';
 import * as fs from '../../stores/fsStore';
 import * as tabs from '../../stores/tabsStore';
-import { fsService } from '../../services/fsService';
 import { ShellNav, type ShellTab } from '../platform/ShellNav';
 import { TaskList } from '../drawer/TaskList';
 import { SessionsView } from '../drawer/TaskList/SessionsView';
-import { WorkspaceFilesSplit, ChannelsPane, FilePreviewPane } from '../shared/WorkspacePanes';
+import { WorkspaceFilesSplit, ChannelsPane } from '../shared/WorkspacePanes';
 import { SkillsTab } from './SkillsTab';
 import { TeamTab } from './TeamTab';
 
@@ -30,7 +29,7 @@ import { TeamTab } from './TeamTab';
  * navigation side-effects of selectWorkspace, which would drop the full-page
  * detail).
  */
-type DetailTab = 'sessions' | 'team' | 'soul' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp';
+type DetailTab = 'sessions' | 'team' | 'tasks' | 'skills' | 'channels' | 'files' | 'mcp';
 
 interface AssistantDetailProps {
     workspaceId: string;
@@ -57,32 +56,6 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
         }
     }, [workspaceId, ws]);
 
-    // 灵魂 (SOUL.md) — preview/edit via the shared file component. Ensure the
-    // file exists (empty personas have no SOUL.md yet), then open it whenever
-    // the tab is shown.
-    useEffect(() => {
-        if (activeTab !== 'soul') return;
-        let cancelled = false;
-        (async () => {
-            const path = 'SOUL.md';
-            try {
-                await fsService.read(path);
-            } catch {
-                try {
-                    await fsService.write(path, '');
-                } catch {
-                    /* ignore — openFileDetail will surface any real error */
-                }
-            }
-            if (!cancelled) {
-                void fs.openFileDetail({ name: 'SOUL.md', path, isDir: false, size: 0, modTime: 0 });
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [activeTab, workspaceId]);
-
     // Start a fresh conversation scoped to this assistant: open the new-chat
     // landing, then lock it to this workspace (picker hidden; breadcrumb shows
     // 助理 › <name> › 新建对话). Set after onStartNewChat, which clears the lock.
@@ -101,7 +74,6 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
     const shellTabs: ShellTab[] = [
         { id: 'sessions', label: t('assistant.detail.tab.sessions', language) },
         { id: 'team', label: t('assistant.detail.tab.team', language) },
-        { id: 'soul', label: t('assistant.detail.tab.soul', language) },
         { id: 'tasks', label: t('assistant.detail.tab.tasks', language) },
         { id: 'skills', label: t('assistant.detail.tab.skills', language) },
         { id: 'channels', label: t('assistant.detail.tab.channels', language) },
@@ -133,14 +105,8 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                 )}
 
                 {activeTab === 'team' && (
-                    <div class="assistant-pane-fill assistant-pane-inset assistant-pane-scroll">
-                        <TeamTab workspaceId={workspaceId} language={language} />
-                    </div>
-                )}
-
-                {activeTab === 'soul' && (
                     <div class="assistant-pane-fill assistant-pane-inset">
-                        <FilePreviewPane app={app} language={language} />
+                        <TeamTab workspaceId={workspaceId} app={app} language={language} />
                     </div>
                 )}
 
