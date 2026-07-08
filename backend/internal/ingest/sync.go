@@ -423,6 +423,14 @@ func (h *Handler) runManifestSync(ctx taskapi.FunctionContext) (any, error) {
 	}
 	baseURL, _ := sources.RESTBaseURL(source)
 	accountID := h.manifestAccountID(source)
+	// Never run a tokenless pull for a bearer source: an unauthenticated response
+	// (e.g. HTTP 200 {"success":false,"res":"apikey missing"}) looks like an empty
+	// page to the generic puller and would burn a date-window cursor past real data.
+	// Skip until the token is entered — the auto-armed recurring task fires before
+	// the user sets it, so this guard is what keeps the first real sync intact.
+	if v := sources.VendorFor(source); v != nil && v.AuthKind == sources.AuthBearer && !sources.BearerConfigured(source, accountID) {
+		return map[string]any{"kind": kind, "skipped": "no token"}, nil
+	}
 	token := func() (string, bool) {
 		tok, ok, _ := sources.LoadBearerToken(source, accountID)
 		return tok, ok
