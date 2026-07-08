@@ -49,7 +49,10 @@ func CatalogFor(source string) []CatalogItem {
 	case VendorAgentMail:
 		return append([]CatalogItem(nil), agentmailCatalog...)
 	default:
-		return nil
+		// Manifest-loaded REST sources (e.g. 训记) surface their descriptors here,
+		// so the config UI / putCollection guard / EnsureRecurringForEnabled all
+		// treat them like any built-in source.
+		return restCatalogItems(source)
 	}
 }
 

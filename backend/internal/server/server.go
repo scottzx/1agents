@@ -314,12 +314,29 @@ func NewRouter(cfg *config.Config) http.Handler {
 				log.Printf("[server] ingest init failed: %v", iErr)
 			} else {
 				ingestHandler = ih
+				// Declarative REST connectors: load ~/.1agents/connectors/*.yaml and
+				// register each vendor + its REST descriptors BEFORE RegisterFunctions,
+				// so the generic sync handler is wired per manifest vendor.
+				manifests, mfErr := sources.LoadManifests()
+				if mfErr != nil {
+					log.Printf("[server] load connector manifests: %v", mfErr)
+				}
+				for _, m := range manifests {
+					sources.RegisterManifest(m)
+				}
 				ingestHandler.RegisterFunctions()
 				if wsPath, pErr := ingestHandler.ProvisionSystemWorkspace(); pErr != nil {
 					log.Printf("[server] ingest system workspace: %v", pErr)
 				} else {
 					ingestHandler.SetDispatcher(ingest.NewDispatcher(taskAPI, tasksStore, wsPath))
 				}
+				if aErr := ingestHandler.SeedManifestAccounts(manifests); aErr != nil {
+					log.Printf("[server] ingest seed manifest accounts: %v", aErr)
+				}
+				if sErr := ingestHandler.SeedManifestConfigs(manifests); sErr != nil {
+					log.Printf("[server] ingest seed manifest configs: %v", sErr)
+				}
+				ingestHandler.RegisterManifestGovernance(manifests) // generic bronze→silver + viewer tables
 				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.
@@ -352,6 +369,16 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/agentmail/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/agentmail/history", ingestHandler.HandleHistory)
 				mux.HandleFunc("/api/sources/agentmail/schedules", ingestHandler.HandleSchedules)
+				// Manifest REST sources reuse the same source-agnostic handlers (they
+				// parse {source} from the path) plus a Bearer-token endpoint.
+				for _, m := range manifests {
+					base := "/api/sources/" + m.Vendor
+					mux.HandleFunc(base+"/collections", ingestHandler.HandleCollections)
+					mux.HandleFunc(base+"/sync", ingestHandler.HandleSync)
+					mux.HandleFunc(base+"/history", ingestHandler.HandleHistory)
+					mux.HandleFunc(base+"/schedules", ingestHandler.HandleSchedules)
+					mux.HandleFunc(base+"/bearer", ingestHandler.HandleBearer) // PUT set / GET status
+				}
 				if err := ingestHandler.SeedLegacyAccounts(); err != nil {
 					log.Printf("[server] ingest seed legacy accounts: %v", err)
 				}

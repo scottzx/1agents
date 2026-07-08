@@ -15,6 +15,7 @@ import (
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/feishu"
+	"github.com/scottzx/1Agents/backend/internal/govern"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/sourcecli"
 	"github.com/scottzx/1Agents/backend/internal/sources"
@@ -37,6 +38,9 @@ type Handler struct {
 	// the feishu_message work-order task also keeps the message/digest UI fresh
 	// while bronze holds the raw archive. nil until wired.
 	messageSync func(context.Context) error
+	// manifestSilver holds the generic bronze→silver specs derived from connector
+	// manifests (set by RegisterManifestGovernance), run after each sync.
+	manifestSilver []govern.ManifestSilverSpec
 }
 
 // Dispatcher is the narrow slice of the work-order task API this package needs:
@@ -175,7 +179,10 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 	// sync tasks are only armed on toggle and are NOT re-created at startup — so a
 	// recurring task that ended in a terminal (e.g. failed) state would never come
 	// back after a restart. EnsureRecurring is idempotent (skips a live one).
-	for _, source := range []string{meta.VendorMicrosoft, meta.VendorGoogle, meta.VendorAgentMail} {
+	// Built-in multi-account sources + manifest-declared REST sources (both use
+	// CatalogItemFor, which now surfaces REST kinds too).
+	vendors := append([]string{meta.VendorMicrosoft, meta.VendorGoogle, meta.VendorAgentMail}, sources.RESTSources()...)
+	for _, source := range vendors {
 		list, err := h.cfg.ListEnabled(source)
 		if err != nil {
 			return err

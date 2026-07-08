@@ -82,12 +82,77 @@ func (h *Handler) ProvisionSystemWorkspace() (string, error) {
 }
 
 // RegisterFunctions registers the source sync function handlers into the global
-// work-order function registry. Call once at startup after NewHandlerDefault.
+// work-order function registry. Call once at startup after NewHandlerDefault and
+// after manifests are registered (so REST sources get their handler too).
 func (h *Handler) RegisterFunctions() {
 	taskapi.RegisterFunction(FeishuSyncFunction, h.runFeishuSync)
 	taskapi.RegisterFunction(MicrosoftSyncFunction, h.runMicrosoftSync)
 	taskapi.RegisterFunction(GoogleSyncFunction, h.runGoogleSync)
 	taskapi.RegisterFunction(AgentMailSyncFunction, h.runAgentMailSync)
+	// Manifest-declared REST sources share one generic handler, keyed per vendor
+	// so the dispatcher's "sources.<vendor>.sync" FunctionType resolves.
+	for _, source := range sources.RESTSources() {
+		taskapi.RegisterFunction("sources."+source+".sync", h.runManifestSync)
+	}
+}
+
+// SeedManifestAccounts auto-registers one account for each manifest source that
+// has none yet, so its card appears on the 数据接入 home without the user manually
+// running 添加数据源 (a manifest connector is self-describing — vendor + region +
+// label all come from the file). Idempotent: skips a vendor that already has an
+// account. The account id then keys the bronze rows + Bearer token consistently.
+func (h *Handler) SeedManifestAccounts(ms []sources.Manifest) error {
+	if h.accounts == nil {
+		return nil
+	}
+	for _, m := range ms {
+		n, err := h.accounts.CountByVendor(m.Vendor)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			continue
+		}
+		region := m.Region
+		if region == "" {
+			region = sources.RegionIntl
+		}
+		label := m.Label
+		if label == "" {
+			label = m.Vendor
+		}
+		if _, err := h.accounts.Create(meta.SourceAccount{Vendor: m.Vendor, Region: region, Label: label}, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SeedManifestConfigs writes a default SourceCollectionConfig for each manifest
+// collection that was never configured, so a freshly dropped-in connector appears
+// in the config UI (enabled per its manifest default) and is picked up by
+// EnsureRecurringForEnabled. Idempotent — never overwrites an existing row.
+func (h *Handler) SeedManifestConfigs(ms []sources.Manifest) error {
+	for _, m := range ms {
+		for _, c := range m.Collections {
+			if _, ok, err := h.cfg.Get(m.Vendor, c.Kind); err != nil {
+				return err
+			} else if ok {
+				continue
+			}
+			if err := h.cfg.Upsert(meta.SourceCollectionConfig{
+				Source:              m.Vendor,
+				Kind:                c.Kind,
+				Enabled:             c.Defaults.Enabled,
+				InitialLookbackDays: c.Defaults.InitialLookbackDays,
+				IncrementalMinutes:  c.Defaults.IncrementalMinutes, // Upsert clamps <1 → default
+				PageSize:            c.Defaults.PageSize,            // Upsert clamps <1 → default
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // SeedLegacyAccounts migrates the pre-account-model singletons into the
@@ -327,6 +392,61 @@ func (h *Handler) runVendorSync(source, ref string, build func(meta.SourceAccoun
 	return result, nil
 }
 
+// runManifestSync is the function-executor body for a manifest-declared REST
+// source (e.g. 训记). vendor + kind come from business_ref; the RESTDescriptor and
+// base URL from the manifest registry; the Bearer token from the per-account store.
+// It runs Store.Sync (bronze only) then governance — the same shape as the built-in
+// vendor syncs, but driven entirely by manifest data (zero per-source Go).
+func (h *Handler) runManifestSync(ctx taskapi.FunctionContext) (any, error) {
+	ref := ctx.Task.BusinessRef
+	source, kind := sourceFromRef(ref), kindFromRef(ref)
+	if source == "" || kind == "" {
+		return nil, fmt.Errorf("ingest: bad business_ref %q", ref)
+	}
+	cfg, _, err := h.cfg.Get(source, kind)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled {
+		return map[string]any{"kind": kind, "skipped": "disabled"}, nil
+	}
+	desc, ok := sources.RESTDescriptorFor(source, kind)
+	if !ok {
+		return map[string]any{"kind": kind, "skipped": "no descriptor"}, nil
+	}
+	baseURL, _ := sources.RESTBaseURL(source)
+	accountID := h.manifestAccountID(source)
+	token := func() (string, bool) {
+		tok, ok, _ := sources.LoadBearerToken(source, accountID)
+		return tok, ok
+	}
+	puller := sources.NewRESTPuller(source, baseURL, []sources.RESTDescriptor{desc}, token)
+	stats, err := h.bronze.Sync(puller, accountID)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{
+		"kind":        kind,
+		"collections": stats.Collections,
+		"changed":     stats.Changed,
+		"skipped":     stats.Skipped,
+	}
+	h.afterSyncSilver(result)
+	return result, nil
+}
+
+// manifestAccountID returns the first registered account for a manifest source,
+// or "default" pre-seed. Manifest sources may be single- or multi-account; the
+// Bearer token store is keyed by this id.
+func (h *Handler) manifestAccountID(source string) string {
+	if h.accounts != nil {
+		if accts, err := h.accounts.ListByVendor(source); err == nil && len(accts) > 0 {
+			return accts[0].ID
+		}
+	}
+	return "default"
+}
+
 // trackedChatIDs returns the ids of chats flagged for auto-sync — the collection
 // set for message-family kinds.
 func (h *Handler) trackedChatIDs() []string {
@@ -380,6 +500,15 @@ func kindFromRef(ref string) string {
 	parts := strings.SplitN(ref, ":", 3)
 	if len(parts) == 3 && parts[0] == "sources" {
 		return parts[2]
+	}
+	return ""
+}
+
+// sourceFromRef pulls <source> out of "sources:<source>:<kind>".
+func sourceFromRef(ref string) string {
+	parts := strings.SplitN(ref, ":", 3)
+	if len(parts) == 3 && parts[0] == "sources" {
+		return parts[1]
 	}
 	return ""
 }

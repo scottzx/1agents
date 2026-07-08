@@ -160,6 +160,15 @@ var silverSources []silverSource
 
 func registerSilverSource(s silverSource) { silverSources = append(silverSources, s) }
 
+// RegisterViewerTable registers a viewer-exposed silver table at runtime, without
+// DDL — the physical table is built by its governance step (manifest REST sources
+// build it via CREATE TABLE IF NOT EXISTS, since they register after Open). The
+// schema-free reader (SELECT *) renders any table that carries the conformed
+// external_id/source/updated_at columns.
+func RegisterViewerTable(domain, source, table string) {
+	registerSilverSource(silverSource{tables: []silverTableDef{{Domain: domain, Source: source, Table: table}}})
+}
+
 var (
 	openMu    sync.Mutex
 	openCache = map[string]*Store{}

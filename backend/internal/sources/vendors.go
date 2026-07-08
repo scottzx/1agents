@@ -19,6 +19,7 @@ const (
 	AuthCredentials = "credentials" // Apple ID + app-specific password (Keychain)
 	AuthCLI         = "cli"         // lark-cli manages the token
 	AuthOAuth       = "oauth"       // OAuth authorization-code flow (骨架/占位 for now)
+	AuthBearer      = "bearer"      // static Bearer token, stored per-account (manifest REST sources)
 )
 
 // VendorSpec is one vendor's add-time capability surface.
