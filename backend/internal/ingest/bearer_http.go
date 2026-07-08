@@ -13,7 +13,7 @@ import (
 //	GET  ?accountId= → {configured bool}
 //	PUT  {accountId?, token} → store the token (empty token clears it)
 func (h *Handler) HandleBearer(w http.ResponseWriter, r *http.Request) {
-	source := sourceFromPath(r.URL.Path)
+	source := sourceFromAction(r.URL.Path, "bearer")
 	if source == "" {
 		http.Error(w, "source required", http.StatusBadRequest)
 		return
