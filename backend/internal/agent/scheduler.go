@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -451,36 +450,47 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			}
 		}
 
-		// 3.6 Closes-link auto-close: when a task completes, any task it links to
-		//      with rel=="closes" is itself closed (GitHub-style "fixes #N").
-		//      "relates" links are pure cross-references and never auto-act.
-		//      Idempotent: an already-closed target is skipped.
+		// 3.6 Requirement/bug auto-close via decomposition: an open issue item is
+		//      closed once every task decomposed under it (its ParentID subtasks)
+		//      has reached a terminal state — completed, cancelled, or itself a
+		//      closed issue. This is the natural close path (the PM splits a
+		//      requirement into child tasks; finishing them all closes it) and it
+		//      replaces the old explicit "closes"-link propagation. It reacts to
+		//      the child completion the runner records, firing once per issue.
+		//      Idempotent: an already-closed issue is skipped; a childless issue
+		//      is never auto-closed (nothing was decomposed to finish).
+		allChildrenTerminal := func(t *Task) bool {
+			kids := childrenOf[t.ID]
+			if len(kids) == 0 {
+				return false
+			}
+			for _, c := range kids {
+				if c.Status != TaskStatusCompleted && c.Status != TaskStatusCancelled && c.IssueState != IssueClosed {
+					return false
+				}
+			}
+			return true
+		}
 		for i := range cfg.Tasks {
-			src := &cfg.Tasks[i]
-			if src.Status != TaskStatusCompleted {
+			t := &cfg.Tasks[i]
+			if t.Type != TaskTypeRequirement && t.Type != TaskTypeBug {
 				continue
 			}
-			for _, link := range src.Links {
-				if link.Rel != LinkCloses {
-					continue
-				}
-				tgt, ok := taskMap[link.Target]
-				if !ok || tgt.IssueState == IssueClosed {
-					continue
-				}
-				tgt.Status = TaskStatusCompleted
-				tgt.IssueState = IssueClosed
-				tgt.CompletedAt = &now
-				tgt.UpdatedAt = now
-				tgt.Replies = append(tgt.Replies, Reply{
-					Author:    Author{Kind: "scheduler", Name: "scheduler"},
-					Text:      fmt.Sprintf("由 #%d 修复并关闭", src.Number),
-					Mode:      ModePureComment,
-					CreatedAt: now,
-				})
-				modified = true
-				log.Printf("[scheduler] Task %s closed by #%d (closes link)", tgt.ID, src.Number)
+			if t.IssueState == IssueClosed || !allChildrenTerminal(t) {
+				continue
 			}
+			t.IssueState = IssueClosed
+			t.Status = TaskStatusCompleted
+			t.CompletedAt = &now
+			t.UpdatedAt = now
+			t.Replies = append(t.Replies, Reply{
+				Author:    Author{Kind: "scheduler", Name: "scheduler"},
+				Text:      "全部子任务已完成，需求自动关闭",
+				Mode:      ModePureComment,
+				CreatedAt: now,
+			})
+			modified = true
+			log.Printf("[scheduler] Issue %s auto-closed (all subtasks terminal)", t.ID)
 		}
 
 		// 4. Collect ready tasks: trigger time arrived, dependencies met,

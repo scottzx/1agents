@@ -503,15 +503,18 @@ export function TaskDetail({
         return miss;
     };
 
-    // Toggle the user-confirmed gate. Confirming requires the essentials to be
-    // filled (otherwise prompt what's missing); un-confirming is unconditional.
-    // Only confirmed requirements/bugs may be scheduled by the PM (#49).
+    // Toggle the user-confirmed gate. Confirmation is a lightweight signal, not a
+    // hard gate: agents may decompose an agreed requirement into sub-tasks and
+    // schedule them without a per-item confirmation round. If the essentials are
+    // still thin we surface a skippable nudge rather than blocking the toggle.
     const toggleUserConfirm = async () => {
         if (!task) return;
         if (!task.userConfirm) {
             const miss = confirmBlockers();
-            if (miss.length) {
-                alert(`确认前请先补全：${miss.join('、')}。\n可点「与 AI 讨论」让 AI 帮你完善这些内容。`);
+            if (
+                miss.length &&
+                !confirm(`还差：${miss.join('、')}。\n可点「与 AI 讨论」让 AI 帮你完善。仍要标记为已确认吗？`)
+            ) {
                 return;
             }
         }
@@ -717,7 +720,7 @@ export function TaskDetail({
                         <button
                             class={`task-confirm-btn${task.userConfirm ? ' confirmed' : ''}`}
                             onClick={toggleUserConfirm}
-                            title="只有已确认的需求/缺陷，PM 才能排期"
+                            title="标记需求已和你对齐（非排期硬门槛，agent 可据此直接拆解排期）"
                         >
                             {task.userConfirm ? '已确认 ✓' : '确认，可排期'}
                         </button>
@@ -1349,7 +1352,6 @@ export function TaskDetail({
                                         }
                                     >
                                         <option value="relates">{t('task.link.relates', lang)}</option>
-                                        <option value="closes">{t('task.link.closes', lang)}</option>
                                     </select>
                                     <button class="gh-submit-btn" disabled={!linkTarget} onClick={addLink}>
                                         {t('task.detail.addLink', lang)}

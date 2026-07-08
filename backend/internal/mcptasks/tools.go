@@ -80,7 +80,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_task",
-		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates a relates link) or it is likewise held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
+		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — either set parentId to the source requirement, pass its id in the `links` field (rel 'relates') right here at creation, or reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates the same relates link); otherwise it is held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nDecomposition flow: once the user has agreed on a top-level requirement, you may break it down into sub-requirements and executable tasks and schedule them directly — small sub-items do NOT need a separate user-confirmation round. When every task decomposed under a requirement (its ParentID children) reaches a terminal state, the requirement auto-closes.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
@@ -97,6 +97,18 @@ var toolDefs = []map[string]any{
 				"verifierCount":       map[string]any{"type": "integer", "description": "Optional. How many independent verifiers form an adversarial review panel (#131). >1 runs that many separate verifier passes that each judge the output; the panel decides by threshold. Default/0/1 = a single verifier."},
 				"verifyPassThreshold": map[string]any{"type": "integer", "description": "Optional. How many of the verifierCount verdicts must pass for the panel to accept the output. 0 = simple majority (⌊N/2⌋+1). Set equal to verifierCount to require unanimity."},
 				"dependsOn":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
+				"links": map[string]any{
+					"type":        "array",
+					"description": "Peer cross-reference links to other tasks, set here at creation so you don't need a follow-up update_task. Use this to trace an executable task back to the requirement/bug it implements (任务归口 #68): pass {target: <the source requirement's id>, rel: 'relates'}. Referencing the source's #N in the description auto-creates the same 'relates' link, so links and #N are one and the same relation — pick whichever is convenient.",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"target": map[string]any{"type": "string", "description": "The peer task's id (e.g. the requirement returned by an earlier create_task)."},
+							"rel":    map[string]any{"type": "string", "enum": []string{"relates"}, "description": "Relation kind. 'relates' is a plain cross-reference / sourcing link."},
+						},
+						"required": []string{"target"},
+					},
+				},
 				"dueAt":               map[string]any{"type": "string", "description": "Optional due/trigger time, RFC3339 (e.g. '2026-06-25T15:00:00+08:00'). For a personal task (assignee='user') this is the calendar deadline/reminder time. Omit for an undated item."},
 				"recurrence": map[string]any{
 					"type":        "object",
@@ -553,6 +565,10 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		VerifierCount       int      `json:"verifierCount"`
 		VerifyPassThreshold int      `json:"verifyPassThreshold"`
 		DependsOn           []string `json:"dependsOn"`
+		// Links are peer cross-references (task 归口), set at creation so no
+		// follow-up update_task is needed. Forwarded verbatim to the REST create,
+		// which parses []{target, rel}.
+		Links json.RawMessage `json:"links"`
 		// Personal (assignee='user') scheduling: dueAt becomes the calendar
 		// trigger time, recurrence makes it repeat. Ignored by the scheduler for
 		// agent-assigned tasks (they run on dependency readiness, not the clock).
@@ -604,6 +620,9 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 	}
 	if len(a.Recurrence) > 0 && string(a.Recurrence) != "null" {
 		body["recurrence"] = a.Recurrence
+	}
+	if len(a.Links) > 0 && string(a.Links) != "null" {
+		body["links"] = a.Links
 	}
 	if len(a.Checklist) > 0 && string(a.Checklist) != "null" {
 		body["checklist"] = a.Checklist

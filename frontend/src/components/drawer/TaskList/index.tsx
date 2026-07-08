@@ -283,6 +283,11 @@ export function TaskList({
     const discussions = tasks.filter(t => t.type === 'discussion');
     const suggestions = tasks.filter(t => t.source === 'agent-suggested');
     const boardTasks = tasks.filter(t => t.type !== 'discussion' && t.source !== 'agent-suggested');
+    // The 任务 tab shows executable work only. Requirements and bugs are
+    // open/closed issues, not schedulable rows — they live in the 需求池. The
+    // 里程碑 roadmap keeps all three kinds and switches between them via its own
+    // lens, so it receives boardTasks directly.
+    const workItems = boardTasks.filter(t => !t.type || t.type === 'task');
 
     return (
         <div class="task-dashboard-container">
@@ -331,7 +336,7 @@ export function TaskList({
 
             {view.value === 'tasks' && (
                 <TasksView
-                    tasks={boardTasks}
+                    tasks={workItems}
                     loading={loading}
                     onSelectTask={setSelectedTaskId}
                     onDeleteTask={handleDeleteTask}

@@ -5019,6 +5019,10 @@ body {
     border-radius: var(--bento-radius, 10px);
     background-color: var(--bg-card);
     overflow: hidden;
+    // Don't let the flex column squeeze the detail below its natural height —
+    // otherwise overflow:hidden clips the task rows and they can't be scrolled
+    // to. Kept full height, the body's own max-height/overflow drives the scroll.
+    flex-shrink: 0;
 
     .milestone-detail-head {
       display: flex;
@@ -5048,8 +5052,29 @@ body {
     }
     .milestone-detail-actions {
       display: flex;
+      align-items: center;
       gap: 6px;
       flex-shrink: 0;
+
+      .ms-type-select {
+        margin-right: 4px;
+        padding: 4px 10px;
+        font-size: 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-card);
+        color: var(--text-secondary);
+        cursor: pointer;
+
+        &:hover {
+          border-color: var(--text-main);
+          color: var(--text-main);
+        }
+        &:focus {
+          outline: none;
+          border-color: var(--accent-color);
+        }
+      }
 
       button {
         padding: 4px 10px;
@@ -5092,6 +5117,8 @@ body {
   .milestone-detail-body {
     display: flex;
     flex-direction: column;
+    max-height: 360px;
+    overflow-y: auto;
   }
 
   .milestone-task-row {

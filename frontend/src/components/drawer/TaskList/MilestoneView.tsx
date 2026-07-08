@@ -44,10 +44,18 @@ export function MilestoneView({
 }: MilestoneViewProps) {
     const expandedId = useSignal<string | null>(null); // null=default(current), COLLAPSED, or id
     const editing = useSignal<Milestone | null>(null); // milestone being edited (modal)
+    // Which item kind the roadmap lens shows. 任务 is the default (executable
+    // work); 需求/缺陷 switch the tree + detail to the issue items sharing that
+    // milestone. Progress/"done" then means closed for issues, completed for tasks.
+    const typeFilter = useSignal<'task' | 'requirement' | 'bug'>('task');
+    const isTask = typeFilter.value === 'task';
+    const isDone = (t: Task) => (isTask ? t.status === 'completed' : t.issueState === 'closed');
 
-    // Group tasks by milestone name (kept in sync on rename, so name is a stable key).
+    // Group the selected kind by milestone name (kept in sync on rename, so name
+    // is a stable key).
     const byName = new Map<string, Task[]>();
     for (const t of tasks) {
+        if ((t.type || 'task') !== typeFilter.value) continue;
         const key = t.milestone || UNGROUPED;
         if (!byName.has(key)) byName.set(key, []);
         byName.get(key)!.push(t);
@@ -55,8 +63,10 @@ export function MilestoneView({
 
     const mkNode = (m: Milestone): Node => {
         const items = byName.get(m.name) || [];
-        const total = m.total || items.length;
-        const done = m.completed || items.filter(t => t.status === 'completed').length;
+        // Server-side milestone totals count executable tasks, so only trust them
+        // for the 任务 lens; for 需求/缺陷 derive counts from the filtered items.
+        const total = isTask ? m.total || items.length : items.length;
+        const done = isTask ? m.completed || items.filter(isDone).length : items.filter(isDone).length;
         return {
             id: m.id,
             name: m.name,
@@ -84,7 +94,7 @@ export function MilestoneView({
     }
     const ungrouped = byName.get(UNGROUPED) || [];
     if (ungrouped.length) {
-        const done = ungrouped.filter(t => t.status === 'completed').length;
+        const done = ungrouped.filter(isDone).length;
         roots.push({
             id: UNGROUPED,
             name: '未分组',
@@ -190,25 +200,43 @@ export function MilestoneView({
                                 );
                             })()}
                         </div>
-                        {expanded.milestone && (
-                            <div class="milestone-detail-actions">
-                                <button onClick={() => (editing.value = expanded.milestone)}>编辑</button>
-                                <button
-                                    class="danger"
-                                    onClick={async () => {
-                                        if (!confirm(`删除里程碑「${expanded.name}」？任务会回到未分组。`)) return;
-                                        try {
-                                            await onDeleteMilestone(expanded.milestone!.id);
-                                            if (expandedId.value === expanded.id) expandedId.value = COLLAPSED;
-                                        } catch (err) {
-                                            alert((err as Error).message);
-                                        }
-                                    }}
-                                >
-                                    删除
-                                </button>
-                            </div>
-                        )}
+                        <div class="milestone-detail-actions">
+                            {/* 需求/任务/缺陷 透镜切换 — sits left of 编辑/删除. Changing it
+                                re-filters the whole roadmap while keeping this milestone open. */}
+                            <select
+                                class="ms-type-select"
+                                value={typeFilter.value}
+                                onChange={(e: Event) =>
+                                    (typeFilter.value = (e.target as HTMLSelectElement).value as
+                                        | 'task'
+                                        | 'requirement'
+                                        | 'bug')
+                                }
+                            >
+                                <option value="task">任务</option>
+                                <option value="requirement">需求</option>
+                                <option value="bug">缺陷</option>
+                            </select>
+                            {expanded.milestone && (
+                                <Fragment>
+                                    <button onClick={() => (editing.value = expanded.milestone)}>编辑</button>
+                                    <button
+                                        class="danger"
+                                        onClick={async () => {
+                                            if (!confirm(`删除里程碑「${expanded.name}」？任务会回到未分组。`)) return;
+                                            try {
+                                                await onDeleteMilestone(expanded.milestone!.id);
+                                                if (expandedId.value === expanded.id) expandedId.value = COLLAPSED;
+                                            } catch (err) {
+                                                alert((err as Error).message);
+                                            }
+                                        }}
+                                    >
+                                        删除
+                                    </button>
+                                </Fragment>
+                            )}
+                        </div>
                     </div>
 
                     {expanded.milestone?.description && (
@@ -217,20 +245,31 @@ export function MilestoneView({
 
                     <div class="milestone-detail-body">
                         {expanded.tasks.length === 0 ? (
-                            <div class="milestone-detail-empty">该里程碑下还没有任务。</div>
+                            <div class="milestone-detail-empty">
+                                {`该里程碑下还没有${isTask ? '任务' : typeFilter.value === 'bug' ? '缺陷' : '需求'}。`}
+                            </div>
                         ) : (
                             expanded.tasks.map(task => {
                                 const prio = task.priority || 'medium';
+                                // Issue items (需求/缺陷) are open/closed, not executable —
+                                // show the issue state instead of the workflow status (#4).
+                                const closed = task.issueState === 'closed';
                                 return (
                                     <div
                                         key={task.id}
                                         class={`milestone-task-row status-${task.status}`}
                                         onClick={() => onSelectTask(task.id)}
                                     >
-                                        <span class={`task-status-badge ${task.status}`}>
-                                            {task.status === 'running' && <span class="pulse-indicator" />}
-                                            {STATUS_LABELS[task.status] || task.status}
-                                        </span>
+                                        {isTask ? (
+                                            <span class={`task-status-badge ${task.status}`}>
+                                                {task.status === 'running' && <span class="pulse-indicator" />}
+                                                {STATUS_LABELS[task.status] || task.status}
+                                            </span>
+                                        ) : (
+                                            <span class={`issue-state-badge ${closed ? 'closed' : 'open'}`}>
+                                                {closed ? '已关闭' : '开放'}
+                                            </span>
+                                        )}
                                         <span class="milestone-task-title">
                                             {task.parentId && <span class="subtask-indent">└─</span>}
                                             {task.number ? <span class="task-number">#{task.number}</span> : null}
