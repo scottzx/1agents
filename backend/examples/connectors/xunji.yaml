@@ -22,9 +22,9 @@ collections:
       scheme: bearer
       headerName: Authorization
       prefix: "Bearer "
-    successPath: success        # 期望 success === true
+    # 注:真实响应无顶层 success 字段(HTTP 200 + res 即成功),故不设 successPath。
     itemPath: res.trains        # 训练数组
-    uidField: localid           # 稳定外部 id
+    uidField: localid           # 稳定外部 id (数值,连接器按字面量取字符串)
     cursor:
       flavor: date-window       # 按 datestr 从 today-lookback 遍历到 today，逐日一请求
       dateParam: datestr
