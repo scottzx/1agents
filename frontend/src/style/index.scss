@@ -20565,6 +20565,31 @@ body {
   max-width: 420px;
 }
 
+.datasource-connector-form {
+  max-width: 680px;
+}
+
+.datasource-connector-yaml {
+  width: 100%;
+  min-height: 340px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+  resize: vertical;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+}
+
 .datasource-region-choices {
   display: flex;
   align-items: center;

@@ -103,6 +103,13 @@ func RESTBaseURL(source string) (string, bool) {
 	return b, ok
 }
 
+// IsRESTSource reports whether a source is a manifest-declared REST source.
+func IsRESTSource(source string) bool {
+	restRegistry.mu.RLock()
+	defer restRegistry.mu.RUnlock()
+	return len(restRegistry.descs[source]) > 0
+}
+
 // RESTSources returns the sources that have at least one registered descriptor.
 func RESTSources() []string {
 	restRegistry.mu.RLock()

@@ -92,8 +92,15 @@ func (h *Handler) RegisterFunctions() {
 	// Manifest-declared REST sources share one generic handler, keyed per vendor
 	// so the dispatcher's "sources.<vendor>.sync" FunctionType resolves.
 	for _, source := range sources.RESTSources() {
-		taskapi.RegisterFunction("sources."+source+".sync", h.runManifestSync)
+		h.RegisterManifestSyncFn(source)
 	}
+}
+
+// RegisterManifestSyncFn registers the generic sync handler for one manifest
+// vendor. Called at startup for pre-loaded manifests and at runtime for a
+// hot-added connector (taskapi.RegisterFunction is mutex-guarded).
+func (h *Handler) RegisterManifestSyncFn(vendor string) {
+	taskapi.RegisterFunction("sources."+vendor+".sync", h.runManifestSync)
 }
 
 // SeedManifestAccounts auto-registers one account for each manifest source that

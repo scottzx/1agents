@@ -228,6 +228,18 @@ export const sourceService = {
         return (await res.json()) as ScheduleRow[];
     },
 
+    /** POST /api/sources/connectors — add a custom connector from manifest YAML.
+     * Hot-registered immediately (no restart): the vendor + card appear at once. */
+    async addConnector(yaml: string): Promise<{ vendor: string; label: string; collections: number }> {
+        const res = await apiFetch('/sources/connectors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-yaml' },
+            body: yaml,
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { vendor: string; label: string; collections: number };
+    },
+
     /** GET /api/sources/{source}/bearer — whether a Bearer token is stored for a
      * manifest REST source (authKind=bearer). */
     async bearerStatus(source: string, accountId?: string): Promise<{ configured: boolean }> {

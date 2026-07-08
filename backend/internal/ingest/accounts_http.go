@@ -26,7 +26,7 @@ func (h *Handler) HandleVendors(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, sources.Vendors)
+	writeJSON(w, http.StatusOK, sources.VendorsSnapshot())
 }
 
 // createAccountReq is the POST body. Secret fields are vendor-specific: iCloud

@@ -98,3 +98,34 @@ func TestLoadAndRegisterManifest_Xunji(t *testing.T) {
 		t.Fatal("CatalogItemFor should resolve manifest kind")
 	}
 }
+
+func TestValidateManifest(t *testing.T) {
+	good := Manifest{Vendor: "myapi", BaseURL: "https://x.test", Collections: []ManifestColl{{Kind: "k", Endpoint: "/e"}}}
+	if err := ValidateManifest(good); err != nil {
+		t.Fatalf("good manifest rejected: %v", err)
+	}
+	bad := []Manifest{
+		{Vendor: "", BaseURL: "https://x", Collections: []ManifestColl{{Kind: "k", Endpoint: "/e"}}},
+		{Vendor: "Bad Name", BaseURL: "https://x", Collections: []ManifestColl{{Kind: "k", Endpoint: "/e"}}},
+		{Vendor: "../etc", BaseURL: "https://x", Collections: []ManifestColl{{Kind: "k", Endpoint: "/e"}}},
+		{Vendor: "ok", BaseURL: "", Collections: []ManifestColl{{Kind: "k", Endpoint: "/e"}}},
+		{Vendor: "ok", BaseURL: "https://x", Collections: nil},
+		{Vendor: "ok", BaseURL: "https://x", Collections: []ManifestColl{{Kind: "", Endpoint: "/e"}}},
+		{Vendor: "ok", BaseURL: "https://x", Collections: []ManifestColl{{Kind: "k", Endpoint: ""}}},
+	}
+	for i, m := range bad {
+		if err := ValidateManifest(m); err == nil {
+			t.Errorf("bad manifest [%d] accepted: %+v", i, m)
+		}
+	}
+}
+
+func TestSaveManifest_RejectsUnsafeVendor(t *testing.T) {
+	t.Setenv("ONEAGENTS_HOME", t.TempDir())
+	if err := SaveManifest("../evil", []byte("x")); err == nil {
+		t.Fatal("path-traversal vendor should be rejected")
+	}
+	if err := SaveManifest("safe_v1", []byte("vendor: safe_v1\n")); err != nil {
+		t.Fatalf("safe vendor rejected: %v", err)
+	}
+}

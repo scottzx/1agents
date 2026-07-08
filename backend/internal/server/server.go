@@ -369,16 +369,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/agentmail/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/agentmail/history", ingestHandler.HandleHistory)
 				mux.HandleFunc("/api/sources/agentmail/schedules", ingestHandler.HandleSchedules)
-				// Manifest REST sources reuse the same source-agnostic handlers (they
-				// parse {source} from the path) plus a Bearer-token endpoint.
-				for _, m := range manifests {
-					base := "/api/sources/" + m.Vendor
-					mux.HandleFunc(base+"/collections", ingestHandler.HandleCollections)
-					mux.HandleFunc(base+"/sync", ingestHandler.HandleSync)
-					mux.HandleFunc(base+"/history", ingestHandler.HandleHistory)
-					mux.HandleFunc(base+"/schedules", ingestHandler.HandleSchedules)
-					mux.HandleFunc(base+"/bearer", ingestHandler.HandleBearer) // PUT set / GET status
-				}
+				// 自定义连接器: add/list manifests from the UI (hot-registered, no restart).
+				mux.HandleFunc("/api/sources/connectors", ingestHandler.HandleConnectors) // GET list, POST add
+				// Manifest REST sources are served by ONE source-agnostic catch-all (built-in
+				// vendors keep their explicit routes above, which win by longest-prefix match).
+				// A hot-added vendor needs no new route: /api/sources/{vendor}/{action}.
+				mux.HandleFunc("/api/sources/", ingestHandler.HandleManifestRoute)
 				if err := ingestHandler.SeedLegacyAccounts(); err != nil {
 					log.Printf("[server] ingest seed legacy accounts: %v", err)
 				}

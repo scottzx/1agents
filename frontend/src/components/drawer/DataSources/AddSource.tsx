@@ -41,6 +41,7 @@ export function AddSource({
     const language = ui.language.value;
     const [vendors, setVendors] = useState<VendorSpec[] | null>(null);
     const [accounts, setAccounts] = useState<SourceAccount[]>([]);
+    const [custom, setCustom] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -58,6 +59,9 @@ export function AddSource({
 
     const countFor = (vendor: string) => accounts.filter(a => a.vendor === vendor).length;
 
+    if (custom) {
+        return <CustomConnectorForm language={language} onCreated={onCreated} onBack={() => setCustom(false)} />;
+    }
     if (picked) {
         return <VendorForm vendor={picked} language={language} onCreated={onCreated} />;
     }
@@ -99,6 +103,104 @@ export function AddSource({
                         </div>
                     );
                 })}
+                <div class="datasource-card">
+                    <div class="datasource-card-top">
+                        <span class="datasource-card-icon">🧩</span>
+                        <span class="datasource-card-title">{t('datasource.custom.title', language)}</span>
+                    </div>
+                    <div class="datasource-card-body">
+                        <span class="datasource-card-sub">{t('datasource.custom.desc', language)}</span>
+                        <button class="contacts-btn contacts-btn-sm datasource-src-btn" onClick={() => setCustom(true)}>
+                            {t('datasource.tab.add', language)}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// CONNECTOR_TEMPLATE prefills the paste box so a non-technical user edits fields
+// rather than starting from a blank page. Mirrors examples/connectors/xunji.yaml.
+const CONNECTOR_TEMPLATE = `vendor: myapi           # 唯一标识(小写字母/数字/_/-)
+label: 我的数据源
+region: cn              # cn | intl
+multiAccount: false
+authKind: bearer        # 静态 token
+baseUrl: https://api.example.com
+collections:
+  - kind: myapi_item    # 记录类型(全局唯一)
+    domain: fitness     # 查看器分组
+    label: 我的数据
+    method: POST        # GET | POST
+    endpoint: /open/v1/list
+    body:               # POST 的 JSON body(保留类型)
+      schema_version: v2
+    auth: { scheme: bearer, headerName: Authorization, prefix: "Bearer " }
+    itemPath: res.list  # 响应里数组的点路径
+    uidField: id        # 每条记录稳定 id 字段
+    cursor:
+      flavor: date-window   # 或留空=每次全量
+      dateParam: datestr
+      lookbackDays: 30
+      minIntervalSeconds: 2
+    defaults: { enabled: true, incrementalMinutes: 720, initialLookbackDays: 30 }
+    silver:             # bronze→silver 落地(可选)
+      table: silver_myapi
+      domain: fitness
+      promote: { title: title }
+`;
+
+// CustomConnectorForm pastes a manifest YAML → hot-registers it → lands on the new
+// source's auto-created card. No file drop, no restart.
+function CustomConnectorForm({
+    language,
+    onCreated,
+    onBack,
+}: {
+    language: Lang;
+    onCreated: (account: SourceAccount) => void;
+    onBack: () => void;
+}) {
+    const [yaml, setYaml] = useState(CONNECTOR_TEMPLATE);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const submit = async () => {
+        setBusy(true);
+        setError('');
+        try {
+            const { vendor } = await sourceService.addConnector(yaml);
+            // The connector auto-creates one account; land on its card.
+            const accounts = await sourceService.accounts();
+            const acct = accounts.find(a => a.vendor === vendor);
+            if (acct) onCreated(acct);
+            else onBack();
+        } catch (e) {
+            setError(`${t('datasource.add.failed', language)}: ${(e as Error).message}`);
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div class="datasource-add-form datasource-connector-form">
+            <h3 class="datasource-card-title">{t('datasource.custom.title', language)}</h3>
+            <div class="datasource-head-hint">{t('datasource.custom.hint', language)}</div>
+            <textarea
+                class="datasource-connector-yaml"
+                spellcheck={false}
+                rows={20}
+                value={yaml}
+                onInput={(e: Event) => setYaml((e.target as HTMLTextAreaElement).value)}
+            />
+            {error && <div class="contacts-error">{error}</div>}
+            <div class="contacts-modal-actions">
+                <button class="contacts-btn contacts-btn-primary" disabled={busy || !yaml.trim()} onClick={submit}>
+                    {busy ? t('datasource.custom.submitting', language) : t('datasource.custom.submit', language)}
+                </button>
+                <button class="contacts-btn contacts-btn-sm" disabled={busy} onClick={onBack}>
+                    {t('datasource.add.back', language)}
+                </button>
             </div>
         </div>
     );
