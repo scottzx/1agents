@@ -41,14 +41,18 @@ const GOLD_DOMAIN_TABLES: Record<string, string> = {
     todos: 'todos',
 };
 
-function tableLabel(table: string, domain: string | undefined, language: Lang): string {
-    const d = domain || GOLD_DOMAIN_TABLES[table];
-    if (d) {
-        const key = `datasource.gold.domain.${d}`;
+function tableLabel(table: string, language: Lang): string {
+    // Only the fused gold entity tables get the friendly domain name (联系人/消息/…).
+    // Silver + manifest tables show their real table name, so per-source tables
+    // (silver_feishu_users vs silver_icloud_contacts, both domain=contacts) stay
+    // distinct rather than collapsing to one label.
+    const goldDomain = GOLD_DOMAIN_TABLES[table];
+    if (goldDomain) {
+        const key = `datasource.gold.domain.${goldDomain}`;
         const val = t(key, language);
         if (val !== key) return val;
     }
-    return table; // silver_* / manifest outputs: the technical name is the honest label
+    return table;
 }
 
 function fmtTime(iso: string, language: Lang): string {
@@ -171,7 +175,7 @@ export function GovernanceZone({
                         <div class="fscard-zone-title">{t('datasource.gov.tablesTitle', language)}</div>
                         <div class="bento-grid fscard-data-grid">
                             {groups.map(g => {
-                                const title = tableLabel(g.output, g.domain, language);
+                                const title = tableLabel(g.output, language);
                                 const upstreams = [...new Set(g.steps.flatMap(s => s.upstreams))];
                                 return (
                                     <div key={g.output} class="bento-card gov-card">
