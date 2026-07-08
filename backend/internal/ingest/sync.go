@@ -96,6 +96,38 @@ func (h *Handler) RegisterFunctions() {
 	}
 }
 
+// SeedManifestAccounts auto-registers one account for each manifest source that
+// has none yet, so its card appears on the 数据接入 home without the user manually
+// running 添加数据源 (a manifest connector is self-describing — vendor + region +
+// label all come from the file). Idempotent: skips a vendor that already has an
+// account. The account id then keys the bronze rows + Bearer token consistently.
+func (h *Handler) SeedManifestAccounts(ms []sources.Manifest) error {
+	if h.accounts == nil {
+		return nil
+	}
+	for _, m := range ms {
+		n, err := h.accounts.CountByVendor(m.Vendor)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			continue
+		}
+		region := m.Region
+		if region == "" {
+			region = sources.RegionIntl
+		}
+		label := m.Label
+		if label == "" {
+			label = m.Vendor
+		}
+		if _, err := h.accounts.Create(meta.SourceAccount{Vendor: m.Vendor, Region: region, Label: label}, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SeedManifestConfigs writes a default SourceCollectionConfig for each manifest
 // collection that was never configured, so a freshly dropped-in connector appears
 // in the config UI (enabled per its manifest default) and is picked up by

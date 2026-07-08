@@ -326,6 +326,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 				} else {
 					ingestHandler.SetDispatcher(ingest.NewDispatcher(taskAPI, tasksStore, wsPath))
 				}
+				if aErr := ingestHandler.SeedManifestAccounts(manifests); aErr != nil {
+					log.Printf("[server] ingest seed manifest accounts: %v", aErr)
+				}
 				if sErr := ingestHandler.SeedManifestConfigs(manifests); sErr != nil {
 					log.Printf("[server] ingest seed manifest configs: %v", sErr)
 				}
