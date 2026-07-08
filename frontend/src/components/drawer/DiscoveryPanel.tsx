@@ -62,7 +62,13 @@ interface DiscoveryPanelProps {
     activeCategory?: string;
 }
 
-export function DiscoveryPanel({ onOpenBrowserTab, onOpenApp, language, scrollToCategory, activeCategory }: DiscoveryPanelProps) {
+export function DiscoveryPanel({
+    onOpenBrowserTab,
+    onOpenApp,
+    language,
+    scrollToCategory,
+    activeCategory,
+}: DiscoveryPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {

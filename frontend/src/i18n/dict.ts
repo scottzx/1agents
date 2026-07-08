@@ -698,7 +698,8 @@ export const zhCN: Record<string, string> = {
     'discovery.catFeatured': '精选推荐',
     'discovery.catOpensource': '开源项目',
     'discovery.catApps': '应用中心',
-    'discovery.studioDesc': '双屏口播录像与剪辑工坊。支持同步录制摄像头人脸与网页操作画面，结合麦克风设备选择与音频优化，实现文本化可视化粗剪。',
+    'discovery.studioDesc':
+        '双屏口播录像与剪辑工坊。支持同步录制摄像头人脸与网页操作画面，结合麦克风设备选择与音频优化，实现文本化可视化粗剪。',
     'discovery.studioBadge': '口播录像',
     'discovery.intro': '精选各类实用的 AI 辅助工具与技能库，点击即可快速访问。',
     'discovery.exploreNow': '立即探索',
@@ -2256,10 +2257,10 @@ export const enUS: Record<string, string> = {
     'discovery.catFeatured': 'Featured',
     'discovery.catOpensource': 'Open Source',
     'discovery.catApps': 'Apps & Tools',
-    'discovery.studioDesc': 'Dual-screen presenter studio for synchronizing camera feed with webpage captures, enabling text-based editing from automated transcriptions.',
+    'discovery.studioDesc':
+        'Dual-screen presenter studio for synchronizing camera feed with webpage captures, enabling text-based editing from automated transcriptions.',
     'discovery.studioBadge': 'Studio',
-    'discovery.intro':
-        'A curated collection of practical AI tools and apps — click to open.',
+    'discovery.intro': 'A curated collection of practical AI tools and apps — click to open.',
     'discovery.exploreNow': 'Explore now',
 
     // ── Task list ────────────────────────────────────────────────────────

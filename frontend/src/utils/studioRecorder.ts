@@ -39,16 +39,18 @@ export class StudioRecorder {
         // 1. Capture webcam (video) + mic (audio)
         this.webcamStream = await navigator.mediaDevices.getUserMedia({
             video: { width: 1280, height: 720 },
-            audio: audioDeviceId ? {
-                deviceId: { exact: audioDeviceId },
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-            } : {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-            },
+            audio: audioDeviceId
+                ? {
+                      deviceId: { exact: audioDeviceId },
+                      echoCancellation: true,
+                      noiseSuppression: true,
+                      autoGainControl: true,
+                  }
+                : {
+                      echoCancellation: true,
+                      noiseSuppression: true,
+                      autoGainControl: true,
+                  },
         });
 
         // 2. Capture screen (video only)
@@ -118,47 +120,47 @@ export class StudioRecorder {
                 return;
             }
 
-             let stopCount = 0;
-             const checkResolve = async () => {
-                 stopCount++;
-                 if (stopCount < 3) return; // Wait for all 3 recorders to stop
- 
-                 // Stop track captures after all recorders finished flushing
-                 if (this.webcamStream) {
-                     this.webcamStream.getTracks().forEach(t => t.stop());
-                 }
-                 if (this.audioOnlyStream) {
-                     this.audioOnlyStream.getTracks().forEach(t => t.stop());
-                 }
-                 if (this.screenStream) {
-                     this.screenStream.getTracks().forEach(t => t.stop());
-                 }
- 
-                 try {
-                     const webcamBlob = new Blob(this.webcamChunks, { type: 'video/webm' });
-                     const screenBlob = new Blob(this.screenChunks, { type: 'video/webm' });
-                     const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
- 
-                     // Decode audio blob to PCM 16kHz mono
-                     const pcmData = await this.decodeAudioToPcm16(audioBlob);
- 
-                     this.isRecording = false;
-                     this.webcamStream = null;
-                     this.screenStream = null;
-                     this.webcamOnlyStream = null;
-                     this.screenOnlyStream = null;
-                     this.audioOnlyStream = null;
- 
-                     resolve({
-                         webcamBlob,
-                         screenBlob,
-                         audioBlob,
-                         pcmData,
-                     });
-                 } catch (err) {
-                     reject(err);
-                 }
-             };
+            let stopCount = 0;
+            const checkResolve = async () => {
+                stopCount++;
+                if (stopCount < 3) return; // Wait for all 3 recorders to stop
+
+                // Stop track captures after all recorders finished flushing
+                if (this.webcamStream) {
+                    this.webcamStream.getTracks().forEach(t => t.stop());
+                }
+                if (this.audioOnlyStream) {
+                    this.audioOnlyStream.getTracks().forEach(t => t.stop());
+                }
+                if (this.screenStream) {
+                    this.screenStream.getTracks().forEach(t => t.stop());
+                }
+
+                try {
+                    const webcamBlob = new Blob(this.webcamChunks, { type: 'video/webm' });
+                    const screenBlob = new Blob(this.screenChunks, { type: 'video/webm' });
+                    const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+
+                    // Decode audio blob to PCM 16kHz mono
+                    const pcmData = await this.decodeAudioToPcm16(audioBlob);
+
+                    this.isRecording = false;
+                    this.webcamStream = null;
+                    this.screenStream = null;
+                    this.webcamOnlyStream = null;
+                    this.screenOnlyStream = null;
+                    this.audioOnlyStream = null;
+
+                    resolve({
+                        webcamBlob,
+                        screenBlob,
+                        audioBlob,
+                        pcmData,
+                    });
+                } catch (err) {
+                    reject(err);
+                }
+            };
 
             if (this.webcamRecorder) {
                 this.webcamRecorder.onstop = checkResolve;

@@ -284,7 +284,13 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                             }}
                         />
                         <div
-                            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+                            style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflow: 'hidden',
+                                display: 'flex',
+                                flexDirection: 'column',
+                            }}
                         >
                             <VlogStudio activeCategory={tabsStore.activeStudioCategory.value} language={language} />
                         </div>

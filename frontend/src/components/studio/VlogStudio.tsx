@@ -4,19 +4,8 @@ import type { Lang } from '../../i18n';
 import { t } from '../../i18n';
 import { StudioCategory } from '../../modules/studio-manifest';
 import { StudioRecorder } from '../../utils/studioRecorder';
-import {
-    transcribeAndSave,
-    listRecordings,
-    getRecording,
-    deleteRecording,
-    type Recording,
-} from '../../utils/recording';
+import { listRecordings, getRecording, deleteRecording, type Recording } from '../../utils/recording';
 import * as ui from '../../stores/uiStore';
-
-interface TauriCore {
-    invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
-}
-const core = (): TauriCore | undefined => (window as unknown as { __TAURI__?: { core: TauriCore } }).__TAURI__?.core;
 
 interface VlogStudioProps {
     activeCategory: StudioCategory;
@@ -30,7 +19,7 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
     const [webpageUrl, setWebpageUrl] = useState('https://1agents.com');
     const [recordTime, setRecordTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
- 
+
     // Test audio state
     const [isTestAudioRecording, setIsTestAudioRecording] = useState(false);
     const [testAudioUrl, setTestAudioUrl] = useState<string | null>(null);
@@ -49,10 +38,11 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
             setAudioDevices(audioInputs);
             if (audioInputs.length > 0) {
                 // Try to find a default AirPods or Built-in Mic or similar
-                const preferred = audioInputs.find(d => 
-                    d.label.toLowerCase().includes('airpod') || 
-                    d.label.toLowerCase().includes('macbook') || 
-                    d.label.toLowerCase().includes('built-in')
+                const preferred = audioInputs.find(
+                    d =>
+                        d.label.toLowerCase().includes('airpod') ||
+                        d.label.toLowerCase().includes('macbook') ||
+                        d.label.toLowerCase().includes('built-in')
                 );
                 setSelectedDeviceId(preferred ? preferred.deviceId : audioInputs[0].deviceId);
             }
@@ -63,9 +53,10 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
 
     useEffect(() => {
         loadAudioDevices();
-        
+
         // Try requesting access once if labels are empty to query actual device names
-        navigator.mediaDevices.getUserMedia({ audio: true })
+        navigator.mediaDevices
+            .getUserMedia({ audio: true })
             .then(s => {
                 loadAudioDevices();
                 s.getTracks().forEach(t => t.stop());
@@ -180,7 +171,7 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                     console.log('Recorded test audio blob size:', audioBlob.size);
                     setTestAudioUrl(URL.createObjectURL(audioBlob));
                     ui.showToast(`测试录音完成，文件大小: ${audioBlob.size} 字节`);
-                    
+
                     // Stop tracks
                     if (testAudioStreamRef.current) {
                         testAudioStreamRef.current.getTracks().forEach(t => t.stop());
@@ -193,20 +184,22 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
             // Start
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: selectedDeviceId ? {
-                        deviceId: { exact: selectedDeviceId },
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    } : {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    }
+                    audio: selectedDeviceId
+                        ? {
+                              deviceId: { exact: selectedDeviceId },
+                              echoCancellation: true,
+                              noiseSuppression: true,
+                              autoGainControl: true,
+                          }
+                        : {
+                              echoCancellation: true,
+                              noiseSuppression: true,
+                              autoGainControl: true,
+                          },
                 });
                 testAudioStreamRef.current = stream;
                 testAudioChunksRef.current = [];
-                
+
                 const track = stream.getAudioTracks()[0];
                 const deviceName = track ? track.label : '未知设备';
                 console.log('Opened microphone device:', deviceName);
@@ -214,7 +207,7 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                 const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
                     ? 'audio/webm;codecs=opus'
                     : 'audio/webm';
-                    
+
                 const recorder = new MediaRecorder(stream, { mimeType: mime });
                 recorder.ondataavailable = e => {
                     if (e.data && e.data.size > 0) {
@@ -251,29 +244,29 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                 createdAt: Math.floor(Date.now() / 1000),
                 duration: 60,
                 speakerCount: 1,
-                title: "演示录制 (本地)",
-                fullText: "这是一次双录屏的本地演示录制。我们将在这里展示摄像头和网页的同步录制，并进行粗剪测试。",
-                summary: "本次录制成功捕获了摄像头与屏幕画面。",
+                title: '演示录制 (本地)',
+                fullText: '这是一次双录屏的本地演示录制。我们将在这里展示摄像头和网页的同步录制，并进行粗剪测试。',
+                summary: '本次录制成功捕获了摄像头与屏幕画面。',
                 utterances: [
                     {
-                        speaker: "speaker_0",
+                        speaker: 'speaker_0',
                         start: 0,
                         end: 5,
-                        text: "这是一次双录屏的本地演示录制。"
+                        text: '这是一次双录屏的本地演示录制。',
                     },
                     {
-                        speaker: "speaker_0",
+                        speaker: 'speaker_0',
                         start: 5,
                         end: 10,
-                        text: "我们将在这里展示摄像头和网页的同步录制，"
+                        text: '我们将在这里展示摄像头和网页的同步录制，',
                     },
                     {
-                        speaker: "speaker_0",
+                        speaker: 'speaker_0',
                         start: 10,
                         end: 15,
-                        text: "并进行粗剪测试。"
-                    }
-                ]
+                        text: '并进行粗剪测试。',
+                    },
+                ],
             };
 
             // Set local blob URLs for instant playback in browser
@@ -286,7 +279,7 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                     const webcamBase64 = await blobToBase64(assets.webcamBlob);
                     const screenBase64 = await blobToBase64(assets.screenBlob);
                     const audioBase64 = await blobToBase64(assets.audioBlob);
-                    
+
                     const saveRes = await fetch('/api/studio/save-assets', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -381,18 +374,6 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
             }
         });
         return parseFloat(dur.toFixed(1));
-    };
-
-    // Helper: Convert PCM Int16 to Base64 in chunks
-    const pcmToBase64 = (pcm: Int16Array): string => {
-        const bytes = new Uint8Array(pcm.buffer);
-        let binary = '';
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-            const slice = bytes.subarray(i, i + chunk);
-            binary += String.fromCharCode.apply(null, slice as unknown as number[]);
-        }
-        return btoa(binary);
     };
 
     // Helper: Convert Blob to Base64
@@ -892,7 +873,7 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                             </label>
                             <select
                                 value={selectedDeviceId}
-                                onChange={(e) => setSelectedDeviceId((e.target as HTMLSelectElement).value)}
+                                onChange={e => setSelectedDeviceId((e.target as HTMLSelectElement).value)}
                                 style={{
                                     width: '100%',
                                     padding: '10px',
@@ -975,7 +956,9 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                 </div>
 
                 {/* Standalone Audio Recording Test Panel */}
-                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+                <div
+                    style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}
+                >
                     <button
                         onClick={handleToggleTestAudio}
                         style={{
@@ -993,7 +976,18 @@ export function VlogStudio({ activeCategory, language }: VlogStudioProps) {
                         {isTestAudioRecording ? '⏹ 停止录音测试 (Stop Test)' : '🎙 独立录音测试 (Start Test)'}
                     </button>
                     {testAudioUrl && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', backgroundColor: 'var(--bg-card)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                        <div
+                            style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px',
+                                alignItems: 'center',
+                                backgroundColor: 'var(--bg-card)',
+                                padding: '10px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-color)',
+                            }}
+                        >
                             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>测试音频回放：</span>
                             <audio src={testAudioUrl} controls style={{ width: '100%' }} />
                         </div>
