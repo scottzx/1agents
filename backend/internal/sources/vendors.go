@@ -1,5 +1,7 @@
 package sources
 
+import "sync"
+
 // vendors.go is the declarative capability table for data-source 厂家 (vendors).
 // The 添加数据源 flow reads it to know, per vendor: which regions are offered
 // (Apple 之前的国际/大陆问题 is fixed by making region an explicit choice here),
@@ -50,8 +52,30 @@ const (
 	VendorAgentMail = "agentmail" // 腾讯 Agent Mail (agently-cli manages the token)
 )
 
+// vendorsMu guards mutation of Vendors so a manifest hot-add (append) can race
+// safely against readers (HandleVendors / VendorFor). Existing entries are never
+// mutated in place, so a pointer from VendorFor stays valid across an append.
+var vendorsMu sync.RWMutex
+
+// appendVendor adds a vendor spec under the write lock (manifest registration).
+func appendVendor(v VendorSpec) {
+	vendorsMu.Lock()
+	Vendors = append(Vendors, v)
+	vendorsMu.Unlock()
+}
+
+// VendorsSnapshot returns a copy of the vendor table under the read lock — the
+// safe way to serialize Vendors while hot-adds may be happening.
+func VendorsSnapshot() []VendorSpec {
+	vendorsMu.RLock()
+	defer vendorsMu.RUnlock()
+	return append([]VendorSpec(nil), Vendors...)
+}
+
 // VendorFor returns the spec for a vendor name, or nil when unknown.
 func VendorFor(vendor string) *VendorSpec {
+	vendorsMu.RLock()
+	defer vendorsMu.RUnlock()
 	for i := range Vendors {
 		if Vendors[i].Vendor == vendor {
 			return &Vendors[i]
