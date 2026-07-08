@@ -337,6 +337,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 					log.Printf("[server] ingest seed manifest configs: %v", sErr)
 				}
 				ingestHandler.RegisterManifestGovernance(manifests) // generic bronze→silver + viewer tables
+				// Standalone governance DAGs (集成/治理解耦): cross-source entity steps.
+				if gms, gErr := sources.LoadGovernanceManifests(); gErr != nil {
+					log.Printf("[server] load governance manifests: %v", gErr)
+				} else {
+					ingestHandler.RegisterGovernanceManifests(gms)
+				}
 				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.

@@ -41,6 +41,7 @@ type ManifestStep struct {
 	Upstreams   []string         `yaml:"upstreams"`
 	Output      string           `yaml:"output"`
 	Domain      string           `yaml:"domain"`
+	Source      string           `yaml:"source"` // viewer source tag ("" ⇒ owning vendor / manifest name)
 	CreateSQL   string           `yaml:"createSQL"`
 	Body        string           `yaml:"body"`
 	Incremental ManifestStepIncr `yaml:"incremental"`
@@ -227,6 +228,54 @@ func manifestRegions(region string) []string {
 		return []string{RegionIntl}
 	}
 	return []string{region}
+}
+
+// GovernanceManifest is a standalone governance declaration — decoupled from any
+// connector. It expresses the 集成/治理解耦 principle at the config layer: a DAG of
+// steps that read ANY data.db table (built-in silver/gold + connector silver) and
+// write cross-source entity tables. Loaded from ~/.1agents/governance/*.yaml.
+type GovernanceManifest struct {
+	Name  string         `yaml:"name"`
+	Steps []ManifestStep `yaml:"steps"`
+}
+
+// GovernanceDir is ~/.1agents/governance (honoring ONEAGENTS_HOME).
+func GovernanceDir() string { return filepath.Join(filepath.Dir(sourcesHome()), "governance") }
+
+// LoadGovernanceManifests reads every *.yaml in the governance dir. A missing dir
+// yields none (not an error). A file with no name/steps is skipped.
+func LoadGovernanceManifests() ([]GovernanceManifest, error) {
+	dir := GovernanceDir()
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []GovernanceManifest
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		var gm GovernanceManifest
+		if err := yaml.Unmarshal(b, &gm); err != nil {
+			return nil, fmt.Errorf("governance manifest %s: %w", name, err)
+		}
+		if gm.Name == "" || len(gm.Steps) == 0 {
+			continue
+		}
+		out = append(out, gm)
+	}
+	return out, nil
 }
 
 // vendorNameRe restricts a vendor name to a safe filename + bronze discriminator.

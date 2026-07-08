@@ -35,46 +35,69 @@ func (h *Handler) RegisterManifestGovernance(ms []sources.Manifest) {
 			})
 			data.RegisterViewerTable(domain, m.Vendor, table)
 		}
-		// silver→gold steps (all in data.db): a step with a Script runs an external
-		// Python transform; otherwise it is an in-process SQL step.
+		// silver→gold steps declared inside the connector manifest (vendor-scoped).
 		for _, g := range m.Governance {
-			if g.Script != "" {
-				script := g.Script
-				if !filepath.IsAbs(script) {
-					script = filepath.Join(sources.ConnectorsDir(), script)
-				}
-				interp := g.Interpreter
-				if interp == "" {
-					interp = "python3"
-				}
-				h.manifestScript = append(h.manifestScript, govern.ScriptStep{
-					Name:        g.Name,
-					Interpreter: interp,
-					Script:      script,
-					InputSQL:    g.InputSQL,
-					IncrCol:     g.Incremental.Column,
-					Output:      g.Output,
-					CreateSQL:   g.CreateSQL,
-					Conflict:    g.Conflict,
-					Upstreams:   g.Upstreams,
-					Domain:      g.Domain,
-				})
-			} else {
-				h.manifestGold = append(h.manifestGold, govern.SQLStep{
-					Name:      g.Name,
-					Upstreams: g.Upstreams,
-					Output:    g.Output,
-					Domain:    g.Domain,
-					CreateSQL: g.CreateSQL,
-					Body:      g.Body,
-					IncrTable: g.Incremental.Table,
-					IncrCol:   g.Incremental.Column,
-				})
-			}
-			if g.Output != "" && g.Domain != "" {
-				data.RegisterViewerTable(g.Domain, m.Vendor, g.Output)
-			}
+			h.addGovernStep(g, m.Vendor, sources.ConnectorsDir())
 		}
+	}
+}
+
+// RegisterGovernanceManifests registers standalone governance DAGs (decoupled from
+// any connector — 集成/治理解耦): cross-source steps that read any data.db table and
+// write entity tables. Scripts resolve relative to the governance dir. Called once
+// at startup.
+func (h *Handler) RegisterGovernanceManifests(gms []sources.GovernanceManifest) {
+	for _, gm := range gms {
+		for _, g := range gm.Steps {
+			src := g.Source
+			if src == "" {
+				src = gm.Name
+			}
+			g.Source = src
+			h.addGovernStep(g, src, sources.GovernanceDir())
+		}
+	}
+}
+
+// addGovernStep turns one declared step into an SQL or Python governance step and
+// registers its output table with the viewer. scriptBase resolves relative script
+// paths (the connectors dir for vendor steps, the governance dir for standalone).
+func (h *Handler) addGovernStep(g sources.ManifestStep, sourceTag, scriptBase string) {
+	if g.Script != "" {
+		script := g.Script
+		if !filepath.IsAbs(script) {
+			script = filepath.Join(scriptBase, script)
+		}
+		interp := g.Interpreter
+		if interp == "" {
+			interp = "python3"
+		}
+		h.manifestScript = append(h.manifestScript, govern.ScriptStep{
+			Name:        g.Name,
+			Interpreter: interp,
+			Script:      script,
+			InputSQL:    g.InputSQL,
+			IncrCol:     g.Incremental.Column,
+			Output:      g.Output,
+			CreateSQL:   g.CreateSQL,
+			Conflict:    g.Conflict,
+			Upstreams:   g.Upstreams,
+			Domain:      g.Domain,
+		})
+	} else {
+		h.manifestGold = append(h.manifestGold, govern.SQLStep{
+			Name:      g.Name,
+			Upstreams: g.Upstreams,
+			Output:    g.Output,
+			Domain:    g.Domain,
+			CreateSQL: g.CreateSQL,
+			Body:      g.Body,
+			IncrTable: g.Incremental.Table,
+			IncrCol:   g.Incremental.Column,
+		})
+	}
+	if g.Output != "" && g.Domain != "" {
+		data.RegisterViewerTable(g.Domain, sourceTag, g.Output)
 	}
 }
 
