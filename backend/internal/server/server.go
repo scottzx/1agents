@@ -79,30 +79,30 @@ func NewRouter(cfg *config.Config) http.Handler {
 	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
 		log.Printf("[server] ensure default workspace: %v", err)
 	}
-	mux.HandleFunc("/api/workspace/list", wsHandler.List)                        // GET
-	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                    // POST
-	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                    // POST
-	mux.HandleFunc("/api/workspace/skills", wsHandler.WorkspaceSkills)           // GET ?id= — synced skills + drift status
-	mux.HandleFunc("/api/workspace/push-skill", wsHandler.PushSkill)             // POST {id, skillRef} — push edited copy back to 母体
-	mux.HandleFunc("/api/workspace/pull-skill", wsHandler.PullSkill)             // POST {id, skillRef} — pull latest from 母体 into workspace copy
-	mux.HandleFunc("/api/workspace/available-skills", wsHandler.AvailableSkills) // GET ?id= — 母体 skills the project can add
-	mux.HandleFunc("/api/workspace/add-skill", wsHandler.AddSkill)               // POST {id, skillRef} — materialize a 母体 skill into the project
-	mux.HandleFunc("/api/workspace/remove-skill", wsHandler.RemoveSkill)         // POST {id, skillRef} — delete a skill from the project only
-	mux.HandleFunc("/api/workspace/agents", wsHandler.WorkspaceAgents)           // GET ?id= — synced agents + drift status
-	mux.HandleFunc("/api/workspace/push-agent", wsHandler.PushAgent)             // POST {id, agentRef} — push edited copy back to 母体
-	mux.HandleFunc("/api/workspace/soul", wsHandler.WorkspaceSoul)               // GET ?id= / POST {id, content} — assistant persona SOUL.md
-	mux.HandleFunc("/api/workspace/team", wsHandler.WorkspaceTeam)               // GET ?id= / POST {id, primary} — agent-team manifest (primary + members)
+	mux.HandleFunc("/api/workspace/list", wsHandler.List)                                 // GET
+	mux.HandleFunc("/api/workspace/create", wsHandler.Create)                             // POST
+	mux.HandleFunc("/api/workspace/update", wsHandler.Update)                             // POST
+	mux.HandleFunc("/api/workspace/skills", wsHandler.WorkspaceSkills)                    // GET ?id= — synced skills + drift status
+	mux.HandleFunc("/api/workspace/push-skill", wsHandler.PushSkill)                      // POST {id, skillRef} — push edited copy back to 母体
+	mux.HandleFunc("/api/workspace/pull-skill", wsHandler.PullSkill)                      // POST {id, skillRef} — pull latest from 母体 into workspace copy
+	mux.HandleFunc("/api/workspace/available-skills", wsHandler.AvailableSkills)          // GET ?id= — 母体 skills the project can add
+	mux.HandleFunc("/api/workspace/add-skill", wsHandler.AddSkill)                        // POST {id, skillRef} — materialize a 母体 skill into the project
+	mux.HandleFunc("/api/workspace/remove-skill", wsHandler.RemoveSkill)                  // POST {id, skillRef} — delete a skill from the project only
+	mux.HandleFunc("/api/workspace/agents", wsHandler.WorkspaceAgents)                    // GET ?id= — synced agents + drift status
+	mux.HandleFunc("/api/workspace/push-agent", wsHandler.PushAgent)                      // POST {id, agentRef} — push edited copy back to 母体
+	mux.HandleFunc("/api/workspace/soul", wsHandler.WorkspaceSoul)                        // GET ?id= / POST {id, content} — assistant persona SOUL.md
+	mux.HandleFunc("/api/workspace/team", wsHandler.WorkspaceTeam)                        // GET ?id= / POST {id, primary} — agent-team manifest (primary + members)
 	mux.HandleFunc("/api/workspace/available-agents", wsHandler.WorkspaceAvailableAgents) // GET ?id= — 母体 agents the project can add
-	mux.HandleFunc("/api/workspace/add-agent", wsHandler.AddAgent)               // POST {id, agentRef} — materialize a 母体 agent into the project
-	mux.HandleFunc("/api/workspace/remove-agent", wsHandler.RemoveAgent)         // POST {id, agentRef} — delete an agent from the project only
-	mux.HandleFunc("/api/assistant/souls", wsHandler.ListSouls)                  // GET ?lang= — curated persona presets
-	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder)                  // POST
-	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)                    // DELETE ?id=xxx
-	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)     // POST — opens native folder picker
-	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories) // GET ?path=...
-	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory) // POST
-	mux.HandleFunc("/api/workspace/upload-avatar", wsHandler.UploadAvatar)       // POST multipart file → {url}
-	mux.Handle("/avatars/", workspace.ServeAvatars())                            // GET avatar files (embedded presets + uploads)
+	mux.HandleFunc("/api/workspace/add-agent", wsHandler.AddAgent)                        // POST {id, agentRef} — materialize a 母体 agent into the project
+	mux.HandleFunc("/api/workspace/remove-agent", wsHandler.RemoveAgent)                  // POST {id, agentRef} — delete an agent from the project only
+	mux.HandleFunc("/api/assistant/souls", wsHandler.ListSouls)                           // GET ?lang= — curated persona presets
+	mux.HandleFunc("/api/workspace/reorder", wsHandler.Reorder)                           // POST
+	mux.HandleFunc("/api/workspace/delete", wsHandler.Delete)                             // DELETE ?id=xxx
+	mux.HandleFunc("/api/workspace/pick-directory", wsHandler.PickDirectory)              // POST — opens native folder picker
+	mux.HandleFunc("/api/workspace/list-directories", wsHandler.ListDirectories)          // GET ?path=...
+	mux.HandleFunc("/api/workspace/create-directory", wsHandler.CreateDirectory)          // POST
+	mux.HandleFunc("/api/workspace/upload-avatar", wsHandler.UploadAvatar)                // POST multipart file → {url}
+	mux.Handle("/avatars/", workspace.ServeAvatars())                                     // GET avatar files (embedded presets + uploads)
 
 	// ── App registry API (Wave 2a, #330) ────────────────────────────────────
 	mux.HandleFunc("/api/apps", appregistry.HandleList)  // GET → {apps:[...]}
@@ -303,7 +303,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 			}
 
 			mux.HandleFunc("/api/studio/save-assets", handleStudioSaveAssets) // POST
-			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)   // POST
+			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)  // POST
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
 			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
@@ -343,13 +343,14 @@ func NewRouter(cfg *config.Config) http.Handler {
 				} else {
 					ingestHandler.RegisterGovernanceManifests(gms)
 				}
-				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
+				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver) // POST — 手动重新清洗 bronze→silver
 				// 数据治理 DAG: 依赖关系 + 执行日志 + 按需重跑。
-				mux.HandleFunc("/api/data/governance", ingestHandler.HandleGovernanceDAG)        // GET — steps + nodes + edges
-				mux.HandleFunc("/api/data/governance/runs", ingestHandler.HandleGovernanceRuns)   // GET ?step=&limit=
-				mux.HandleFunc("/api/data/governance/run", ingestHandler.HandleGovernanceRun)     // POST ?step=&rebuild= — 重跑整个 DAG 或单步
-				mux.HandleFunc("/api/data/governance/table", ingestHandler.HandleGovernanceTable) // GET ?name=&limit= — 治理输出表下钻
-				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
+				mux.HandleFunc("/api/data/governance", ingestHandler.HandleGovernanceDAG)                 // GET — steps + nodes + edges
+				mux.HandleFunc("/api/data/governance/runs", ingestHandler.HandleGovernanceRuns)           // GET ?step=&limit=
+				mux.HandleFunc("/api/data/governance/run", ingestHandler.HandleGovernanceRun)             // POST ?step=&rebuild= — 重跑整个 DAG 或单步
+				mux.HandleFunc("/api/data/governance/table", ingestHandler.HandleGovernanceTable)         // GET ?name=&limit= — 治理输出表下钻
+				mux.HandleFunc("/api/data/governance/manifests", ingestHandler.HandleGovernanceManifests) // GET list, POST 热加治理规则/脚本
+				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI)                 // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.
 				mux.HandleFunc("/api/sources/vendors", ingestHandler.HandleVendors)       // GET — vendor capability table
 				mux.HandleFunc("/api/sources/accounts", ingestHandler.HandleAccounts)     // GET list, POST create

@@ -291,6 +291,52 @@ func ParseGovernanceManifest(b []byte) (GovernanceManifest, error) {
 	return gm, nil
 }
 
+// govNameRe restricts a governance manifest name to a safe filename.
+var govNameRe = regexp.MustCompile(`^[a-z0-9_-]{1,60}$`)
+
+// ValidateGovernanceManifest checks a standalone governance manifest is safe to
+// persist + hot-register: a filename-safe name and ≥1 well-formed step. Each step
+// writes an output table and is either an SQL rule (body) or a script (Python);
+// a script step also needs conflict keys for its upsert.
+func ValidateGovernanceManifest(gm GovernanceManifest) error {
+	if !govNameRe.MatchString(gm.Name) {
+		return fmt.Errorf("name must match %s (got %q)", govNameRe, gm.Name)
+	}
+	if len(gm.Steps) == 0 {
+		return fmt.Errorf("at least one step required")
+	}
+	for i, s := range gm.Steps {
+		if strings.TrimSpace(s.Name) == "" {
+			return fmt.Errorf("step[%d]: name required", i)
+		}
+		if strings.TrimSpace(s.Output) == "" {
+			return fmt.Errorf("step[%d] %q: output required", i, s.Name)
+		}
+		hasBody := strings.TrimSpace(s.Body) != ""
+		hasScript := strings.TrimSpace(s.Script) != ""
+		if hasBody == hasScript {
+			return fmt.Errorf("step[%d] %q: set exactly one of body (SQL) or script (Python)", i, s.Name)
+		}
+		if hasScript && len(s.Conflict) == 0 {
+			return fmt.Errorf("step[%d] %q: script step needs conflict keys", i, s.Name)
+		}
+	}
+	return nil
+}
+
+// SaveGovernanceManifest writes the raw governance manifest YAML to
+// ~/.1agents/governance/<name>.yaml (mode 0644, dir 0755).
+func SaveGovernanceManifest(name string, b []byte) error {
+	if !govNameRe.MatchString(name) {
+		return fmt.Errorf("unsafe governance name %q", name)
+	}
+	dir := GovernanceDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, name+".yaml"), b, 0o644)
+}
+
 // ParseManifest unmarshals raw YAML into a Manifest.
 func ParseManifest(b []byte) (Manifest, error) {
 	var m Manifest
