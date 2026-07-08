@@ -15,6 +15,7 @@ import (
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/feishu"
+	"github.com/scottzx/1Agents/backend/internal/govern"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/sourcecli"
 	"github.com/scottzx/1Agents/backend/internal/sources"
@@ -37,6 +38,9 @@ type Handler struct {
 	// the feishu_message work-order task also keeps the message/digest UI fresh
 	// while bronze holds the raw archive. nil until wired.
 	messageSync func(context.Context) error
+	// manifestSilver holds the generic bronze→silver specs derived from connector
+	// manifests (set by RegisterManifestGovernance), run after each sync.
+	manifestSilver []govern.ManifestSilverSpec
 }
 
 // Dispatcher is the narrow slice of the work-order task API this package needs:

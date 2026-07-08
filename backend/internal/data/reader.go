@@ -74,6 +74,13 @@ func isDomain(d string) bool {
 			return true
 		}
 	}
+	// Manifest sources may declare their own domain (e.g. fitness); accept any
+	// domain that a registered viewer table belongs to.
+	for _, t := range silverRegistry() {
+		if t.Domain == d {
+			return true
+		}
+	}
 	return false
 }
 

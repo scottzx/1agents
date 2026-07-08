@@ -329,6 +329,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				if sErr := ingestHandler.SeedManifestConfigs(manifests); sErr != nil {
 					log.Printf("[server] ingest seed manifest configs: %v", sErr)
 				}
+				ingestHandler.RegisterManifestGovernance(manifests) // generic bronze→silver + viewer tables
 				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.

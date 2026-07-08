@@ -5,8 +5,48 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/govern"
+	"github.com/scottzx/1Agents/backend/internal/sources"
 )
+
+// RegisterManifestGovernance derives the generic bronze→silver specs from the
+// connector manifests and registers each target table with the 数据归一 viewer.
+// Idempotent per process start; called once during startup wiring. A collection
+// without a silver.table is skipped (no viewer landing).
+func (h *Handler) RegisterManifestGovernance(ms []sources.Manifest) {
+	for _, m := range ms {
+		for _, c := range m.Collections {
+			table := c.Silver.Table
+			if table == "" {
+				continue
+			}
+			domain := c.Silver.Domain
+			if domain == "" {
+				domain = c.Domain
+			}
+			h.manifestSilver = append(h.manifestSilver, govern.ManifestSilverSpec{
+				Source:  m.Vendor,
+				Kind:    c.Kind,
+				Table:   table,
+				Domain:  domain,
+				Promote: c.Silver.Promote,
+			})
+			data.RegisterViewerTable(domain, m.Vendor, table)
+		}
+	}
+}
+
+// runManifestSilver lands every manifest source's newly-synced bronze into its
+// generic silver table. Cursor-incremental + idempotent, so running all specs
+// after any sync only shapes rows that sync just changed.
+func (h *Handler) runManifestSilver() {
+	for _, spec := range h.manifestSilver {
+		if _, err := govern.SilverManifest(h.bronze, h.silver, spec); err != nil {
+			log.Printf("[ingest] manifest silver %s/%s: %v", spec.Source, spec.Kind, err)
+		}
+	}
+}
 
 // silver.go wires the bronze→silver transform (internal/govern) into ingestion:
 // it runs after every sync (silver should never lag bronze) and is exposed as a
@@ -49,6 +89,7 @@ func (h *Handler) afterSyncSilver(result map[string]any) {
 		return
 	}
 	result["gold"] = goldSummary(gold)
+	h.runManifestSilver() // manifest REST sources land into their generic silver tables
 }
 
 // HandleRunSilver: POST /api/data/silver/run → run the full bronze→silver→gold
@@ -69,6 +110,7 @@ func (h *Handler) HandleRunSilver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.runManifestSilver()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"contacts": stats.Contacts,

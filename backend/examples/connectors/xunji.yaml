@@ -36,3 +36,10 @@ collections:
       incrementalMinutes: 720   # 每 12h 增量
       pageSize: 0
       initialLookbackDays: 30
+    # 通用 bronze→silver 落地：整存 payload + 把这些 JSON 路径提成列，查看器直接渲染。
+    silver:
+      table: silver_xunji
+      domain: fitness
+      promote:
+        title: title
+        datestr: datestr

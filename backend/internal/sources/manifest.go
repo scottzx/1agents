@@ -47,6 +47,16 @@ type ManifestColl struct {
 	UIDField   string            `yaml:"uidField"`
 	Cursor     ManifestCursor    `yaml:"cursor"`
 	Defaults   ManifestDefaults  `yaml:"defaults"`
+	Silver     ManifestSilver    `yaml:"silver"`
+}
+
+// ManifestSilver declares the generic bronze→silver landing for a collection: the
+// target table + viewer domain, and which payload JSON paths to promote to their
+// own columns (the full payload is always stored). Optional — omit to skip silver.
+type ManifestSilver struct {
+	Table   string            `yaml:"table"`
+	Domain  string            `yaml:"domain"`
+	Promote map[string]string `yaml:"promote"`
 }
 
 type ManifestAuth struct {
