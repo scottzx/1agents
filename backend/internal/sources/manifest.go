@@ -61,21 +61,25 @@ type ManifestStepIncr struct {
 
 // ManifestColl is one crawlable collection in a manifest.
 type ManifestColl struct {
-	Kind       string            `yaml:"kind"`
-	Domain     string            `yaml:"domain"`
-	Label      string            `yaml:"label"`
-	Method     string            `yaml:"method"`
-	Endpoint   string            `yaml:"endpoint"`
-	BaseParams map[string]string `yaml:"baseParams"`
-	Body       map[string]any    `yaml:"body"`
-	Headers    map[string]string `yaml:"headers"`
-	Auth       ManifestAuth      `yaml:"auth"`
-	SuccessPath string           `yaml:"successPath"`
-	ItemPath   string            `yaml:"itemPath"`
-	UIDField   string            `yaml:"uidField"`
-	Cursor     ManifestCursor    `yaml:"cursor"`
-	Defaults   ManifestDefaults  `yaml:"defaults"`
-	Silver     ManifestSilver    `yaml:"silver"`
+	Kind    string `yaml:"kind"`
+	Domain  string `yaml:"domain"`
+	Label   string `yaml:"label"`
+	// Transport: "" | "rest" → HTTP; "cli" → shell out to Command with Args.
+	Transport   string            `yaml:"transport"`
+	Command     string            `yaml:"command"` // cli: binary (e.g. agently-cli)
+	Args        []string          `yaml:"args"`    // cli: static args
+	Method      string            `yaml:"method"`
+	Endpoint    string            `yaml:"endpoint"`
+	BaseParams  map[string]string `yaml:"baseParams"`
+	Body        map[string]any    `yaml:"body"`
+	Headers     map[string]string `yaml:"headers"`
+	Auth        ManifestAuth      `yaml:"auth"`
+	SuccessPath string            `yaml:"successPath"`
+	ItemPath    string            `yaml:"itemPath"`
+	UIDField    string            `yaml:"uidField"`
+	Cursor      ManifestCursor    `yaml:"cursor"`
+	Defaults    ManifestDefaults  `yaml:"defaults"`
+	Silver      ManifestSilver    `yaml:"silver"`
 }
 
 // ManifestSilver declares the generic bronze→silver landing for a collection: the
@@ -100,6 +104,8 @@ type ManifestCursor struct {
 	LookbackDays       int    `yaml:"lookbackDays"`
 	MinIntervalSeconds int    `yaml:"minIntervalSeconds"`
 	TooFrequentPath    string `yaml:"tooFrequentPath"`
+	Arg                string `yaml:"arg"`       // cli timestamp: flag carrying the watermark (e.g. --after)
+	TimeField          string `yaml:"timeField"` // cli timestamp: per-item watermark field (e.g. created_at)
 }
 
 type ManifestDefaults struct {
@@ -152,17 +158,37 @@ func LoadManifests() ([]Manifest, error) {
 // its REST descriptors. Call once per manifest at startup, before RegisterFunctions.
 func RegisterManifest(m Manifest) {
 	if VendorFor(m.Vendor) == nil {
+		cliTool, isCLI := m.cliTool()
+		authKind := m.AuthKind
+		if authKind == "" {
+			authKind = AuthBearer
+			if isCLI {
+				authKind = AuthCLI // a CLI transport manages its own credential
+			}
+		}
 		appendVendor(VendorSpec{
 			Vendor:       m.Vendor,
 			Label:        orDefault(m.Label, m.Vendor),
 			MultiAccount: m.MultiAccount,
 			Regions:      manifestRegions(m.Region),
-			AuthKind:     orDefault(m.AuthKind, AuthBearer),
+			AuthKind:     authKind,
+			CliTool:      cliTool,
 		})
 	}
 	for _, c := range m.Collections {
 		RegisterRESTDescriptor(m.Vendor, m.BaseURL, c.descriptor())
 	}
+}
+
+// cliTool returns the CLI binary a manifest's collections shell out to (first one
+// found) and whether any collection uses the cli transport.
+func (m Manifest) cliTool() (string, bool) {
+	for _, c := range m.Collections {
+		if c.Transport == "cli" {
+			return c.Command, true
+		}
+	}
+	return "", false
 }
 
 // descriptor maps a manifest collection onto a RESTDescriptor.
@@ -171,6 +197,10 @@ func (c ManifestColl) descriptor() RESTDescriptor {
 		Kind:               c.Kind,
 		Domain:             c.Domain,
 		Label:              c.Label,
+		Transport:          c.Transport,
+		Command:            c.Command,
+		Args:               c.Args,
+		CursorArg:          c.Cursor.Arg,
 		Method:             c.Method,
 		Endpoint:           c.Endpoint,
 		BaseParams:         c.BaseParams,
@@ -186,6 +216,7 @@ func (c ManifestColl) descriptor() RESTDescriptor {
 		DateParam:          c.Cursor.DateParam,
 		DateLayout:         c.Cursor.DateLayout,
 		LookbackDays:       c.Cursor.LookbackDays,
+		TimeItemField:      c.Cursor.TimeField,
 		MinIntervalSeconds: c.Cursor.MinIntervalSeconds,
 		TooFrequentPath:    c.Cursor.TooFrequentPath,
 	}
@@ -216,15 +247,23 @@ func ValidateManifest(m Manifest) error {
 	if !vendorNameRe.MatchString(m.Vendor) {
 		return fmt.Errorf("vendor must match %s (got %q)", vendorNameRe, m.Vendor)
 	}
-	if strings.TrimSpace(m.BaseURL) == "" {
-		return fmt.Errorf("baseUrl required")
-	}
 	if len(m.Collections) == 0 {
 		return fmt.Errorf("at least one collection required")
 	}
 	for i, c := range m.Collections {
 		if strings.TrimSpace(c.Kind) == "" {
 			return fmt.Errorf("collection[%d]: kind required", i)
+		}
+		if c.Transport == "cli" {
+			// CLI transport: needs a command; baseUrl/endpoint are irrelevant.
+			if strings.TrimSpace(c.Command) == "" {
+				return fmt.Errorf("collection[%d] %q: command required for transport=cli", i, c.Kind)
+			}
+			continue
+		}
+		// REST transport (default): needs a base URL + an endpoint.
+		if strings.TrimSpace(m.BaseURL) == "" {
+			return fmt.Errorf("baseUrl required for REST collections")
 		}
 		if strings.TrimSpace(c.Endpoint) == "" {
 			return fmt.Errorf("collection[%d] %q: endpoint required", i, c.Kind)

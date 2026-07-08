@@ -20,6 +20,13 @@ type RESTDescriptor struct {
 	Domain string // viewer domain grouping (contacts|messages|calendar|todo|fitness|...)
 	Label  string // UI display name
 
+	// Transport selects how a page is fetched: "" | "rest" → HTTP; "cli" → shell out
+	// to a local command (like agently-cli / lark-cli), reusing the same JSON parsing.
+	Transport string
+	Command   string   // cli: the binary to run (e.g. "agently-cli")
+	Args      []string // cli: static args (e.g. ["message","+list","--dir","inbox"])
+	CursorArg string   // cli: flag that carries the cursor value (e.g. "--after")
+
 	Method     string            // GET | POST (default GET)
 	Endpoint   string            // absolute URL, or path joined onto the source BaseURL
 	BaseParams map[string]string // constant query params (GET)
@@ -37,11 +44,14 @@ type RESTDescriptor struct {
 	UIDField    string // per-item stable id field; "" falls back to a content hash
 
 	// Cursor strategy.
-	CursorFlavor string // "date-window" | "" (single full pull, ETag dedups)
+	CursorFlavor string // "date-window" | "timestamp" | "" (single full pull, ETag dedups)
 	// date-window (训记): walk datestr from today-LookbackDays to today, one request/day.
 	DateParam    string // key carrying the date (query for GET, body for POST)
 	DateLayout   string // date format, default "2006-01-02"
 	LookbackDays int    // days to backfill on a first/empty cursor
+	// timestamp (agentmail cli): watermark = max item TimeItemField seen, passed back
+	// as CursorArg next run; the source returns only newer rows.
+	TimeItemField string // per-item field supplying the watermark (e.g. "created_at")
 
 	// Rate limiting.
 	MinIntervalSeconds int    // minimum gap between requests for this kind (guards "too frequent")

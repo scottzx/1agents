@@ -26,11 +26,12 @@ const (
 
 // VendorSpec is one vendor's add-time capability surface.
 type VendorSpec struct {
-	Vendor       string   `json:"vendor"`       // icloud|microsoft|google|feishu
-	Label        string   `json:"label"`        // display name
-	MultiAccount bool     `json:"multiAccount"` // false = at most one account (Feishu)
-	Regions      []string `json:"regions"`      // allowed regions, in display order
-	AuthKind     string   `json:"authKind"`     // credentials|cli|oauth
+	Vendor       string   `json:"vendor"`            // icloud|microsoft|google|feishu
+	Label        string   `json:"label"`             // display name
+	MultiAccount bool     `json:"multiAccount"`      // false = at most one account (Feishu)
+	Regions      []string `json:"regions"`           // allowed regions, in display order
+	AuthKind     string   `json:"authKind"`          // credentials|cli|oauth|bearer
+	CliTool      string   `json:"cliTool,omitempty"` // cli authKind: the tool the 认证 zone probes (agently-cli)
 }
 
 // Vendors is the capability table. Region lists are limited by real vendor

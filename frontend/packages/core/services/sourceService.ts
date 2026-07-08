@@ -94,7 +94,8 @@ export interface VendorSpec {
     label: string;
     multiAccount: boolean;
     regions: string[]; // 'intl' | 'cn'
-    authKind: string; // 'credentials' | 'cli' | 'oauth'
+    authKind: string; // 'credentials' | 'cli' | 'oauth' | 'bearer'
+    cliTool?: string; // cli authKind: the CLI the 认证 zone probes (e.g. agently-cli)
 }
 
 // 数据源账号 (source account) — 厂家 + 账号 = 一个源. Mirrors meta.SourceAccount.

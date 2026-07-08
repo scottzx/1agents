@@ -30,7 +30,7 @@ export function SourceAuthZone({ account, authKind }: { account: SourceAccount; 
         case 'oauth':
             return <OAuthAuthZone account={account} language={language} />;
         case 'cli':
-            return <CliZone tool={VENDOR_CLI_TOOL[account.vendor]} language={language} />;
+            return <CliAuthZone account={account} language={language} />;
         case 'credentials':
             return <CredentialsAuthZone account={account} language={language} />;
         case 'bearer':
@@ -45,6 +45,26 @@ export function SourceAuthZone({ account, authKind }: { account: SourceAccount; 
                 </div>
             );
     }
+}
+
+// CliAuthZone resolves which CLI a source authorizes through, then renders its
+// probe. Built-in vendors are in VENDOR_CLI_TOOL; a manifest CLI source carries its
+// tool on the VendorSpec (cliTool), fetched here so a hot-added connector's 认证 zone
+// works without a code change.
+function CliAuthZone({ account, language }: { account: SourceAccount; language: Lang }) {
+    const [tool, setTool] = useState<string | undefined>(VENDOR_CLI_TOOL[account.vendor]);
+    useEffect(() => {
+        if (VENDOR_CLI_TOOL[account.vendor]) return; // built-in, no lookup needed
+        let active = true;
+        sourceService
+            .vendors()
+            .then(vs => active && setTool(vs.find(v => v.vendor === account.vendor)?.cliTool))
+            .catch(() => {});
+        return () => {
+            active = false;
+        };
+    }, [account.vendor]);
+    return <CliZone tool={tool} language={language} />;
 }
 
 // ── credentials → Apple (currently the sole credentials vendor) ────────────────
