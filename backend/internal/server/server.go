@@ -344,6 +344,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 					ingestHandler.RegisterGovernanceManifests(gms)
 				}
 				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
+				// 数据治理 DAG: 依赖关系 + 执行日志 + 按需重跑。
+				mux.HandleFunc("/api/data/governance", ingestHandler.HandleGovernanceDAG)      // GET — steps + nodes + edges
+				mux.HandleFunc("/api/data/governance/runs", ingestHandler.HandleGovernanceRuns) // GET ?step=&limit=
+				mux.HandleFunc("/api/data/governance/run", ingestHandler.HandleGovernanceRun)   // POST — 重跑整个 DAG
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.
 				mux.HandleFunc("/api/sources/vendors", ingestHandler.HandleVendors)       // GET — vendor capability table

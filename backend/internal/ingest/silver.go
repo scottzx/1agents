@@ -110,14 +110,28 @@ func (h *Handler) runManifestSilver() {
 			log.Printf("[ingest] manifest silver %s/%s: %v", spec.Source, spec.Kind, err)
 		}
 	}
+	rec := h.governanceRecorder()
 	if len(h.manifestGold) > 0 {
-		if err := govern.RunSQLSteps(h.silver, h.manifestGold); err != nil {
+		if err := govern.RunSQLSteps(h.silver, h.manifestGold, rec); err != nil {
 			log.Printf("[ingest] manifest gold: %v", err)
 		}
 	}
 	if len(h.manifestScript) > 0 {
-		if err := govern.RunScriptSteps(h.silver, h.manifestScript); err != nil {
+		if err := govern.RunScriptSteps(h.silver, h.manifestScript, rec); err != nil {
 			log.Printf("[ingest] manifest script gold: %v", err)
+		}
+	}
+}
+
+// governanceRecorder returns a RunRecorder that appends each step run to the
+// data.db execution log (数据治理 执行日志).
+func (h *Handler) governanceRecorder() govern.RunRecorder {
+	return func(r govern.RunRecord) {
+		if err := h.silver.RecordGovernanceRun(data.GovernanceRun{
+			Step: r.Step, OutputTable: r.Output, Lang: r.Lang,
+			Status: r.Status, Rows: r.Rows, DurationMs: r.DurationMs, Error: r.Err,
+		}); err != nil {
+			log.Printf("[ingest] record governance run %s: %v", r.Step, err)
 		}
 	}
 }

@@ -143,8 +143,9 @@ func RunScriptStep(dst *data.Store, s ScriptStep) (int, error) {
 	return n, nil
 }
 
-// RunScriptSteps runs script steps in dependency order.
-func RunScriptSteps(dst *data.Store, steps []ScriptStep) error {
+// RunScriptSteps runs script steps in dependency order. rec (optional) receives
+// one RunRecord per step for the execution log.
+func RunScriptSteps(dst *data.Store, steps []ScriptStep, rec RunRecorder) error {
 	order, err := topoOrder(len(steps), func(i int) ([]string, string) {
 		return steps[i].Upstreams, steps[i].Output
 	})
@@ -152,7 +153,11 @@ func RunScriptSteps(dst *data.Store, steps []ScriptStep) error {
 		return err
 	}
 	for _, i := range order {
-		if _, err := RunScriptStep(dst, steps[i]); err != nil {
+		s := steps[i]
+		start := time.Now()
+		n, err := RunScriptStep(dst, s)
+		recordRun(rec, RunRecord{Step: s.Name, Output: s.Output, Lang: "python", Upstreams: s.Upstreams}, start, n, err)
+		if err != nil {
 			return err
 		}
 	}

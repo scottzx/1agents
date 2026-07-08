@@ -16,9 +16,40 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 )
+
+// RunRecord is one governance-step execution outcome, handed to a RunRecorder so
+// the caller can persist an execution log. Lang is "sql" | "python".
+type RunRecord struct {
+	Step       string
+	Output     string
+	Lang       string
+	Upstreams  []string
+	Rows       int
+	DurationMs int64
+	Status     string // "success" | "failed"
+	Err        string
+}
+
+// RunRecorder receives one RunRecord per step run (nil ⇒ no logging).
+type RunRecorder func(RunRecord)
+
+func recordRun(rec RunRecorder, r RunRecord, start time.Time, n int, err error) {
+	if rec == nil {
+		return
+	}
+	r.Rows = n
+	r.DurationMs = time.Since(start).Milliseconds()
+	if err != nil {
+		r.Status, r.Err = "failed", err.Error()
+	} else {
+		r.Status = "success"
+	}
+	rec(r)
+}
 
 // SQLStep is one declarative silver→gold transform.
 type SQLStep struct {
@@ -85,14 +116,17 @@ func RunSQLStep(dst *data.Store, s SQLStep) (int, error) {
 
 // RunSQLSteps runs steps in dependency order (producers before consumers). A
 // step's error stops the batch (the caller logs it; the next sync re-runs from the
-// unchanged cursor).
-func RunSQLSteps(dst *data.Store, steps []SQLStep) error {
+// unchanged cursor). rec (optional) receives one RunRecord per step for the log.
+func RunSQLSteps(dst *data.Store, steps []SQLStep, rec RunRecorder) error {
 	ordered, err := topoSortSteps(steps)
 	if err != nil {
 		return err
 	}
 	for _, s := range ordered {
-		if _, err := RunSQLStep(dst, s); err != nil {
+		start := time.Now()
+		n, err := RunSQLStep(dst, s)
+		recordRun(rec, RunRecord{Step: s.Name, Output: s.Output, Lang: "sql", Upstreams: s.Upstreams}, start, n, err)
+		if err != nil {
 			return err
 		}
 	}

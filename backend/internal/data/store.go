@@ -220,6 +220,70 @@ func (s *Store) GovernCursor(stage, source, kind string) (int64, error) {
 	return wm, nil
 }
 
+// GovernanceRun is one governance-step execution outcome (数据治理 执行日志).
+type GovernanceRun struct {
+	Step        string `json:"step"`
+	Source      string `json:"source"`
+	OutputTable string `json:"outputTable"`
+	Lang        string `json:"lang"`   // sql | python | go
+	Status      string `json:"status"` // success | failed
+	Rows        int    `json:"rows"`
+	DurationMs  int64  `json:"durationMs"`
+	Error       string `json:"error,omitempty"`
+	RanAt       string `json:"ranAt"` // RFC3339
+}
+
+// RecordGovernanceRun appends one step-run to the execution log.
+func (s *Store) RecordGovernanceRun(r GovernanceRun) error {
+	if r.RanAt == "" {
+		r.RanAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	_, err := s.sql.Exec(`INSERT INTO governance_runs
+        (step, source, output_table, lang, status, rows, duration_ms, error, ran_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Step, r.Source, r.OutputTable, r.Lang, r.Status, r.Rows, r.DurationMs, r.Error, r.RanAt)
+	return err
+}
+
+// ListGovernanceRuns returns the newest runs (all steps when step==""), capped.
+func (s *Store) ListGovernanceRuns(step string, limit int) ([]GovernanceRun, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	q := `SELECT step, source, output_table, lang, status, rows, duration_ms, error, ran_at
+        FROM governance_runs`
+	args := []any{}
+	if step != "" {
+		q += ` WHERE step = ?`
+		args = append(args, step)
+	}
+	q += ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.sql.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []GovernanceRun{}
+	for rows.Next() {
+		var r GovernanceRun
+		if err := rows.Scan(&r.Step, &r.Source, &r.OutputTable, &r.Lang, &r.Status, &r.Rows, &r.DurationMs, &r.Error, &r.RanAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// LastGovernanceRun returns the most recent run for a step (ok=false when none).
+func (s *Store) LastGovernanceRun(step string) (GovernanceRun, bool, error) {
+	runs, err := s.ListGovernanceRuns(step, 1)
+	if err != nil || len(runs) == 0 {
+		return GovernanceRun{}, false, err
+	}
+	return runs[0], true, nil
+}
+
 // SaveGovernCursor persists a transform stage's high-water mark for (source, kind).
 func (s *Store) SaveGovernCursor(stage, source, kind string, watermark int64) error {
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -384,4 +448,22 @@ CREATE TABLE IF NOT EXISTS data_cursors (
     updated_at TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (stage, source, kind)
 );
+
+-- ========================= GOVERNANCE EXECUTION LOG =========================
+-- One row per governance-step run (SQL / Python / built-in), for the 数据治理
+-- 执行日志. Append-only; the UI reads the newest N per step. Separate from the
+-- work-order tasks table (that tracks source SYNC; this tracks TRANSFORM steps).
+CREATE TABLE IF NOT EXISTS governance_runs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    step         TEXT    NOT NULL,
+    source       TEXT    NOT NULL DEFAULT '',
+    output_table TEXT    NOT NULL DEFAULT '',
+    lang         TEXT    NOT NULL DEFAULT '',
+    status       TEXT    NOT NULL DEFAULT '',
+    rows         INTEGER NOT NULL DEFAULT 0,
+    duration_ms  INTEGER NOT NULL DEFAULT 0,
+    error        TEXT    NOT NULL DEFAULT '',
+    ran_at       TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_governance_runs_step ON governance_runs(step, id DESC);
 `
