@@ -383,6 +383,64 @@ export const sourceService = {
         return (await res.json()) as SourceRecordRow[];
     },
 
+    // ---- 数据治理 (governance DAG): steps + dependency graph + execution log ----
+
+    /** GET /api/data/governance — the full governance DAG: steps (built-in Go +
+     * manifest SQL/Python) with tier/lang/last-run, plus nodes + edges. */
+    async governance(): Promise<GovDAG> {
+        const res = await apiFetch('/data/governance');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as GovDAG;
+    },
+
+    /** GET /api/data/governance/runs?step=&limit= — the execution log, newest first. */
+    async governanceRuns(step = '', limit = 100): Promise<GovRun[]> {
+        const qs = new URLSearchParams({ limit: String(limit) });
+        if (step) qs.set('step', step);
+        const res = await apiFetch(`/data/governance/runs?${qs.toString()}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as GovRun[];
+    },
+
+    /** POST /api/data/governance/run?step=&rebuild= — re-run one step (step given)
+     * or the whole DAG. rebuild clears the step's output table first. Returns steps. */
+    async runGovernance(step = '', rebuild = false): Promise<GovStep[]> {
+        const qs = new URLSearchParams();
+        if (step) qs.set('step', step);
+        if (rebuild) qs.set('rebuild', '1');
+        const suffix = qs.toString() ? `?${qs.toString()}` : '';
+        const res = await apiFetch(`/data/governance/run${suffix}`, { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as GovStep[];
+    },
+
+    /** GET /api/data/governance/table?name=&limit= — one governance output table's
+     * rows as schema-free grid rows (same envelope as bronze/silver, grid reused). */
+    async governanceTable(name: string, limit = 1000): Promise<SourceRecordRow[]> {
+        const qs = new URLSearchParams({ name, limit: String(limit) });
+        const res = await apiFetch(`/data/governance/table?${qs.toString()}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as SourceRecordRow[];
+    },
+
+    /** GET /api/sources/templates — the embedded connector + governance templates. */
+    async templates(): Promise<TemplateInfo[]> {
+        const res = await apiFetch('/sources/templates');
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as TemplateInfo[];
+    },
+
+    /** POST /api/sources/templates — install one embedded template by id, hot-registered. */
+    async installTemplate(id: string): Promise<TemplateInfo> {
+        const res = await apiFetch('/sources/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as TemplateInfo;
+    },
+
     /** POST /api/data/gold/todos/promote — turn a fused to-do into a task
      * (assignee='user' for a personal todo, or an agent type to schedule it).
      * Idempotent: an already-linked to-do returns its existing task id. */
@@ -439,4 +497,61 @@ export interface CachedChatsResponse {
     chats: CachedChat[];
     /** Epoch ms of the newest bronze row; 0 = 群列表 never synced. */
     cachedAt: number;
+}
+
+// ---- 数据治理 DAG (mirrors ingest.govStep / govNode / govEdge / data.GovernanceRun) ----
+
+/** One governance-step execution outcome from the log. */
+export interface GovRun {
+    step: string;
+    source?: string;
+    outputTable: string;
+    lang: string; // go | manifest | sql | python
+    status: string; // success | failed
+    rows: number;
+    durationMs: number;
+    error?: string;
+    ranAt: string; // RFC3339
+}
+
+/** One governance step: which upstream tables it reads → which output it writes. */
+export interface GovStep {
+    name: string;
+    lang: string; // go | manifest | sql | python
+    tier: string; // silver | gold
+    upstreams: string[];
+    output: string;
+    domain?: string;
+    watermark: number;
+    lastRun?: GovRun;
+}
+
+/** One DAG node (a table). Leaf bronze/silver tables have isStep=false. */
+export interface GovNode {
+    table: string;
+    isStep: boolean;
+    layer: string; // bronze | silver | gold
+    domain?: string;
+}
+
+export interface GovEdge {
+    from: string;
+    to: string;
+}
+
+export interface GovDAG {
+    steps: GovStep[];
+    nodes: GovNode[];
+    edges: GovEdge[];
+}
+
+/** One installable template (embedded connector or governance DAG). */
+export interface TemplateInfo {
+    id: string; // "connectors/<base>" | "governance/<base>"
+    kind: string; // connector | governance
+    vendor?: string;
+    label: string;
+    collections?: number;
+    steps?: number;
+    installed: boolean;
 }

@@ -8,27 +8,23 @@ import { t } from '../../../i18n';
 import { ShellNav } from '../../platform/ShellNav';
 import { sourceService, type SourceAccount, type VendorSpec } from '@1agents/core/services/sourceService';
 import { SourceDetail } from './SourceDetail';
-import { SilverDetail } from './SilverDetail';
 import { SourceHome } from './SourceHome';
 import { SourcePanel, sourceTabs } from './SourcePanel';
 import { AddSource } from './AddSource';
-import { GoldZone, GoldDetail } from './GoldView';
+import { GovernanceZone, GovernanceTableDetail } from './GovernanceView';
 
-// 数据源管理 (Data Source Management) — two medallion layers switch at the top:
-//   数据接入 (bronze) — 源为中心 landing grid → source drill → 原始/已治理 zones
-//   数据融合 (gold)   — 跨源融合视图 (placeholder until #400 lands)
-// Silver is no longer a top layer: it merged into bronze as the 已治理数据 zone
-// tab (single-table governance, one bronze table = one cleaning scheme, re-run
-// incrementally after that source's scheduled sync). Only bronze drills (home →
-// account → 原始/治理 detail); gold is a single screen. Each layer keeps its own
-// state, so switching away and back is seamless.
+// 数据源管理 (Data Source Management) — two actions switch at the top (集成/治理解耦):
+//   数据接入 (bronze) — 源为中心 landing grid → source drill → raw-data zone
+//   数据治理 (governance) — the whole DAG: 清洗(silver) + 融合(gold) tables as cards,
+//     dependency graph + execution log + re-run + template install
+// Silver is no longer a per-source tab and 数据融合 is no longer a separate layer:
+// both fold into 数据治理 (governed tables are viewed there, not per source). Only
+// bronze drills (home → account → raw detail); governance drills into one output
+// table. Each layer keeps its own state, so switching away and back is seamless.
 type Layer = 'bronze' | 'gold';
-// The drill target discriminates by stage: bronze opens a raw (source, kind)
-// table; silver opens a governed (source, domain) table. Both carry a title so
+// The bronze drill target opens a raw (source, kind) table. It carries a title so
 // the breadcrumb's "push detail.title" logic works unchanged.
-type Detail =
-    | { stage: 'bronze'; source: string; kind: string; title: string; account?: string }
-    | { stage: 'silver'; domain: string; source: string; title: string };
+type Detail = { stage: 'bronze'; source: string; kind: string; title: string; account?: string };
 // The add flow's picked vendor lives in the view (not inside AddSource) so the
 // second breadcrumb level (添加数据源 → <vendor>) drives back-navigation instead of
 // a bespoke in-form back button.
@@ -49,9 +45,9 @@ export function DataSourcesPane() {
     const vendorAuth = useSignal<Record<string, string>>({});
     const subTab = useSignal<string>('auth');
     const detail = useSignal<Detail | null>(null);
-    // gold is a single top-layer screen with its own cards→domain drill (联系人/
-    // 消息/日历), kept out of the bronze Detail union since it's cross-source.
-    const goldDomain = useSignal<{ domain: string; title: string } | null>(null);
+    // 数据治理 is a single top-layer screen with a cards→table drill; kept out of the
+    // bronze Detail union since it opens a physical governance output table by name.
+    const govTable = useSignal<{ table: string; title: string; domain?: string } | null>(null);
 
     const loadAccounts = () => {
         sourceService
@@ -94,12 +90,8 @@ export function DataSourcesPane() {
     const openData = (s: string, kind: string, title: string, account?: string) => {
         detail.value = { stage: 'bronze', source: s, kind, title, account };
     };
-    const openSilver = (domain: string, title: string) => {
-        if (view.value.kind !== 'account') return;
-        detail.value = { stage: 'silver', domain, source: view.value.account.vendor, title };
-    };
-    const openGold = (domain: string, title: string) => (goldDomain.value = { domain, title });
-    const clearGold = () => (goldDomain.value = null);
+    const openGovTable = (table: string, title: string, domain?: string) => (govTable.value = { table, title, domain });
+    const clearGov = () => (govTable.value = null);
 
     // Publish the drill breadcrumb into the global WorkspaceHeader; clear on unmount.
     // The breadcrumb root is the active layer (数据接入 / 数据融合) rather than a
@@ -110,9 +102,9 @@ export function DataSourcesPane() {
         const home = { label: rootLabel, onClick: goHome };
         const v = view.value;
         if (layer.value === 'gold') {
-            // 数据融合 root, drilling into a domain reads 数据融合 › <域>.
-            taskNav.headerCrumbs.value = goldDomain.value
-                ? [{ label: rootLabel, onClick: clearGold }, { label: goldDomain.value.title }]
+            // 数据治理 root, drilling into a table reads 数据治理 › <表>.
+            taskNav.headerCrumbs.value = govTable.value
+                ? [{ label: rootLabel, onClick: clearGov }, { label: govTable.value.title }]
                 : [{ label: rootLabel }];
             return;
         }
@@ -146,7 +138,7 @@ export function DataSourcesPane() {
     // carries the context, so the layer switch hides to avoid a redundant second
     // row. It shows only at a layer's top (bronze home / gold cards).
     const drilled =
-        (layer.value === 'bronze' && v.kind !== 'home') || (layer.value === 'gold' && goldDomain.value !== null);
+        (layer.value === 'bronze' && v.kind !== 'home') || (layer.value === 'gold' && govTable.value !== null);
 
     return (
         <div class="datasource-pane">
@@ -166,10 +158,14 @@ export function DataSourcesPane() {
 
             {layer.value === 'gold' ? (
                 <div class="datasource-tab-body">
-                    {goldDomain.value ? (
-                        <GoldDetail domain={goldDomain.value.domain} title={goldDomain.value.title} />
+                    {govTable.value ? (
+                        <GovernanceTableDetail
+                            table={govTable.value.table}
+                            title={govTable.value.title}
+                            domain={govTable.value.domain}
+                        />
                     ) : (
-                        <GoldZone onOpen={openGold} />
+                        <GovernanceZone onOpenTable={openGovTable} />
                     )}
                 </div>
             ) : v.kind === 'home' ? (
@@ -182,20 +178,12 @@ export function DataSourcesPane() {
                 </div>
             ) : detail.value ? (
                 <div class="datasource-tab-body">
-                    {detail.value.stage === 'silver' ? (
-                        <SilverDetail
-                            domain={detail.value.domain}
-                            source={detail.value.source}
-                            title={detail.value.title}
-                        />
-                    ) : (
-                        <SourceDetail
-                            source={detail.value.source}
-                            kind={detail.value.kind}
-                            title={detail.value.title}
-                            account={detail.value.account}
-                        />
-                    )}
+                    <SourceDetail
+                        source={detail.value.source}
+                        kind={detail.value.kind}
+                        title={detail.value.title}
+                        account={detail.value.account}
+                    />
                 </div>
             ) : (
                 <Fragment>
@@ -206,7 +194,6 @@ export function DataSourcesPane() {
                             authKind={vendorAuth.value[v.account.vendor] ?? ''}
                             tab={subTab.value}
                             onOpenData={openData}
-                            onOpenSilver={openSilver}
                         />
                     </div>
                 </Fragment>

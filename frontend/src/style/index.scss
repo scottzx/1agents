@@ -20841,3 +20841,206 @@ body {
   color: var(--danger-fg);
   font-size: 13px;
 }
+
+// ---- 数据治理 (governance DAG view): table cards + dependency board + log ----
+.gov-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gov-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.gov-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+
+  &:hover:not(:disabled) { border-color: var(--text-main); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.gov-btn-primary {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: var(--on-accent, #fff);
+
+  &:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+}
+
+// One governance table = one card.
+.gov-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gov-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+
+  .bento-card-title { transition: color 0.15s ease; }
+  &:hover .bento-card-title { color: var(--accent-color); }
+}
+
+.gov-tier {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.gov-tier-silver { color: var(--accent-color); background: var(--accent-light); }
+.gov-tier-gold { color: var(--purple-fg, var(--accent-color)); background: var(--purple-bg, var(--accent-light)); }
+
+.gov-card-langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gov-lang {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+.gov-lang-go { border-color: var(--accent-color); color: var(--accent-color); }
+.gov-lang-python { border-color: var(--warning-fg, var(--text-secondary)); color: var(--warning-fg, var(--text-secondary)); }
+
+.gov-upstreams {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.gov-upstreams-label { color: var(--text-muted); }
+.gov-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--btn-hover, var(--bg-panel));
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.gov-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+}
+.gov-card-run { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.gov-card-time { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gov-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+.gov-mini-btn {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) { border-color: var(--text-main); color: var(--text-main); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+.gov-mini-danger:hover:not(:disabled) { border-color: var(--danger-fg); color: var(--danger-fg); }
+
+// Run-status dot.
+.gov-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.gov-dot-ok { background: var(--success-fg); }
+.gov-dot-fail { background: var(--danger-fg); }
+.gov-dot-idle { background: var(--text-muted); opacity: 0.4; }
+
+// Dependency board: medallion columns.
+.gov-dag {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  align-items: flex-start;
+}
+.gov-dag-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  flex: 1;
+}
+.gov-dag-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.gov-dag-node {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--bento-radius-sm, 8px);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+}
+.gov-dag-node-silver { border-left: 2px solid var(--accent-color); }
+.gov-dag-node-gold { border-left: 2px solid var(--purple-fg, var(--accent-color)); }
+.gov-dag-node-name { font-size: 12px; color: var(--text-main); word-break: break-all; }
+.gov-dag-node-up { font-size: 10px; color: var(--text-muted); }
+
+// Execution log.
+.gov-log-table {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.gov-log-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+.gov-log-step { font-family: var(--font-mono); color: var(--text-main); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.gov-log-rows, .gov-log-dur { color: var(--text-secondary); white-space: nowrap; }
+.gov-log-time { color: var(--text-muted); white-space: nowrap; }
+.gov-log-err { color: var(--danger-fg); flex-basis: 100%; font-size: 11px; }
+
+// Template library modal.
+.gov-tpl-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.gov-tpl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--bento-radius-sm, 8px);
+  border: 1px solid var(--border-color);
+}
+.gov-tpl-info { display: flex; flex-direction: column; gap: 2px; }
+.gov-tpl-name { font-size: 14px; color: var(--text-main); }
+.gov-tpl-kind { font-size: 11px; color: var(--text-muted); }
