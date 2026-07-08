@@ -20849,7 +20849,14 @@ body {
   gap: 20px;
 }
 
-.gov-toolbar {
+// 治理表 zone header: title left, global actions (全部重跑 / 从模板安装) right.
+.gov-zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gov-zone-actions {
   display: flex;
   gap: 8px;
 }
@@ -20876,11 +20883,20 @@ body {
   &:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 }
 
-// One governance table = one card.
+// One governance table = one clickable card (whole card drills into the table).
 .gov-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.gov-card-btn {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+
+  .bento-card-title { transition: color 0.15s ease; }
+  &:hover .bento-card-title { color: var(--accent-color); }
 }
 
 .gov-card-head {
@@ -20888,15 +20904,6 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  color: inherit;
-
-  .bento-card-title { transition: color 0.15s ease; }
-  &:hover .bento-card-title { color: var(--accent-color); }
 }
 
 .gov-tier {
@@ -20927,22 +20934,6 @@ body {
 .gov-lang-go { border-color: var(--accent-color); color: var(--accent-color); }
 .gov-lang-python { border-color: var(--warning-fg, var(--text-secondary)); color: var(--warning-fg, var(--text-secondary)); }
 
-.gov-upstreams {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-}
-.gov-upstreams-label { color: var(--text-muted); }
-.gov-chip {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--btn-hover, var(--bg-panel));
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
 .gov-card-foot {
   display: flex;
   align-items: center;
@@ -20953,7 +20944,6 @@ body {
 }
 .gov-card-run { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .gov-card-time { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gov-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
 .gov-mini-btn {
   font-size: 11px;
@@ -20975,40 +20965,59 @@ body {
 .gov-dot-fail { background: var(--danger-fg); }
 .gov-dot-idle { background: var(--text-muted); opacity: 0.4; }
 
-// Dependency board: medallion columns.
-.gov-dag {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  align-items: flex-start;
-}
-.gov-dag-col {
+// Table-detail secondary nav (数据 / 依赖关系 / 执行日志) + its body.
+.gov-detail-tabs { margin-bottom: 12px; }
+.gov-detail-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 180px;
-  flex: 1;
+  gap: 20px;
 }
-.gov-dag-col-title {
+
+// Per-table dependency: upstreams → this table → downstreams.
+.gov-deps-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+.gov-deps-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+.gov-deps-col-title {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
+.gov-deps-arrow { align-self: center; color: var(--text-muted); font-size: 16px; }
+.gov-deps-none { color: var(--text-muted); font-size: 12px; }
+
 .gov-dag-node {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   padding: 8px 10px;
   border-radius: var(--bento-radius-sm, 8px);
   border: 1px solid var(--border-color);
   background: var(--bg-card);
+  font-size: 12px;
+  color: var(--text-main);
+  word-break: break-all;
 }
-.gov-dag-node-silver { border-left: 2px solid var(--accent-color); }
-.gov-dag-node-gold { border-left: 2px solid var(--purple-fg, var(--accent-color)); }
-.gov-dag-node-name { font-size: 12px; color: var(--text-main); word-break: break-all; }
-.gov-dag-node-up { font-size: 10px; color: var(--text-muted); }
+.gov-dag-node-self { border-color: var(--accent-color); color: var(--accent-color); font-weight: 600; }
+
+// Per-table governing steps with re-run / rebuild.
+.gov-steps-list { display: flex; flex-direction: column; gap: 6px; }
+.gov-step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+.gov-step-actions { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
 
 // Execution log.
 .gov-log-table {
