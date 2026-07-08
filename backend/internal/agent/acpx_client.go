@@ -28,7 +28,7 @@ const (
 )
 
 // nativeSystemPromptAgents are agent types whose ACP adapter honors
-// _meta.systemPrompt (claude-agent-acp natively; codex-acp via our patch), so
+// _meta.systemPrompt (claude-agent-acp natively), so
 // the role/system context reaches them cleanly through ensure_session. ACP has
 // no portable system-prompt field — session/new carries only cwd + mcpServers,
 // and all prompt content is treated as the user message — so for every other
@@ -37,7 +37,6 @@ const (
 // is already in the replayed history.
 var nativeSystemPromptAgents = map[string]bool{
 	string(AgentTypeClaudecode): true,
-	string(AgentTypeCodex):      true,
 }
 
 type ActiveBridge struct {
