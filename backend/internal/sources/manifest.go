@@ -37,13 +37,19 @@ type Manifest struct {
 // upstream tables (any join, all in data.db) and writes/upserts an output table.
 // The generic form of the built-in Go gold governors, but pure config.
 type ManifestStep struct {
-	Name        string              `yaml:"name"`
-	Upstreams   []string            `yaml:"upstreams"`
-	Output      string              `yaml:"output"`
-	Domain      string              `yaml:"domain"`
-	CreateSQL   string              `yaml:"createSQL"`
-	Body        string              `yaml:"body"`
-	Incremental ManifestStepIncr    `yaml:"incremental"`
+	Name        string           `yaml:"name"`
+	Upstreams   []string         `yaml:"upstreams"`
+	Output      string           `yaml:"output"`
+	Domain      string           `yaml:"domain"`
+	CreateSQL   string           `yaml:"createSQL"`
+	Body        string           `yaml:"body"`
+	Incremental ManifestStepIncr `yaml:"incremental"`
+	// Script fields — when Script is set the step runs an external Python transform
+	// (InputSQL selects rows → script → upsert into Output on Conflict) instead of Body.
+	Script      string   `yaml:"script"`      // path (relative to the connectors dir, or absolute)
+	Interpreter string   `yaml:"interpreter"` // default "python3"
+	InputSQL    string   `yaml:"inputSQL"`    // SELECT ... WHERE <column> > :since
+	Conflict    []string `yaml:"conflict"`    // ON CONFLICT(...) columns for the upsert
 }
 
 // ManifestStepIncr names the driving upstream table + watermark column for a step's

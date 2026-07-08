@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path/filepath"
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/govern"
@@ -34,18 +35,42 @@ func (h *Handler) RegisterManifestGovernance(ms []sources.Manifest) {
 			})
 			data.RegisterViewerTable(domain, m.Vendor, table)
 		}
-		// silver→gold SQL steps (multi-upstream join / upsert, all in data.db).
+		// silver→gold steps (all in data.db): a step with a Script runs an external
+		// Python transform; otherwise it is an in-process SQL step.
 		for _, g := range m.Governance {
-			h.manifestGold = append(h.manifestGold, govern.SQLStep{
-				Name:      g.Name,
-				Upstreams: g.Upstreams,
-				Output:    g.Output,
-				Domain:    g.Domain,
-				CreateSQL: g.CreateSQL,
-				Body:      g.Body,
-				IncrTable: g.Incremental.Table,
-				IncrCol:   g.Incremental.Column,
-			})
+			if g.Script != "" {
+				script := g.Script
+				if !filepath.IsAbs(script) {
+					script = filepath.Join(sources.ConnectorsDir(), script)
+				}
+				interp := g.Interpreter
+				if interp == "" {
+					interp = "python3"
+				}
+				h.manifestScript = append(h.manifestScript, govern.ScriptStep{
+					Name:        g.Name,
+					Interpreter: interp,
+					Script:      script,
+					InputSQL:    g.InputSQL,
+					IncrCol:     g.Incremental.Column,
+					Output:      g.Output,
+					CreateSQL:   g.CreateSQL,
+					Conflict:    g.Conflict,
+					Upstreams:   g.Upstreams,
+					Domain:      g.Domain,
+				})
+			} else {
+				h.manifestGold = append(h.manifestGold, govern.SQLStep{
+					Name:      g.Name,
+					Upstreams: g.Upstreams,
+					Output:    g.Output,
+					Domain:    g.Domain,
+					CreateSQL: g.CreateSQL,
+					Body:      g.Body,
+					IncrTable: g.Incremental.Table,
+					IncrCol:   g.Incremental.Column,
+				})
+			}
 			if g.Output != "" && g.Domain != "" {
 				data.RegisterViewerTable(g.Domain, m.Vendor, g.Output)
 			}
@@ -65,6 +90,11 @@ func (h *Handler) runManifestSilver() {
 	if len(h.manifestGold) > 0 {
 		if err := govern.RunSQLSteps(h.silver, h.manifestGold); err != nil {
 			log.Printf("[ingest] manifest gold: %v", err)
+		}
+	}
+	if len(h.manifestScript) > 0 {
+		if err := govern.RunScriptSteps(h.silver, h.manifestScript); err != nil {
+			log.Printf("[ingest] manifest script gold: %v", err)
 		}
 	}
 }

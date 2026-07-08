@@ -44,6 +44,9 @@ type Handler struct {
 	// manifestGold holds the declarative silver→gold SQL steps from connector
 	// manifests, run (in dependency order) after manifestSilver.
 	manifestGold []govern.SQLStep
+	// manifestScript holds the Python script steps from connector manifests, run
+	// after the SQL steps (for transforms SQL can't express).
+	manifestScript []govern.ScriptStep
 }
 
 // Dispatcher is the narrow slice of the work-order task API this package needs:

@@ -2,11 +2,14 @@ package govern
 
 import (
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/sources"
 )
+
+var execLookPath = exec.LookPath
 
 // TestXunjiLivePipeline proves the full manifest path against the real 训记 API:
 // generic REST puller → bronze (Store.Sync) → generic silver governor → 数据归一
@@ -101,6 +104,36 @@ func TestXunjiLivePipeline(t *testing.T) {
 	t.Logf("gold row: title=%s movements=%d duration_s=%d", title, mv, dur)
 	if mv != 5 { // the 2026-07-06 training has 5 movements
 		t.Errorf("movements = %d, want 5", mv)
+	}
+
+	// 3b) Govern via Python script step (nested-array aggregation SQL can't do):
+	// run the real example script against the live record.
+	if _, err := execLookPath("python3"); err == nil {
+		scriptStep := ScriptStep{
+			Name: "gold_xunji_volume", Upstreams: []string{"silver_xunji"}, Output: "gold_xunji_volume",
+			Script:  "../../examples/connectors/scripts/xunji_volume.py",
+			InputSQL: "SELECT external_id, datestr, payload, updated_at FROM silver_xunji WHERE updated_at > :since",
+			IncrCol: "updated_at", Conflict: []string{"external_id"},
+			CreateSQL: `CREATE TABLE IF NOT EXISTS gold_xunji_volume (
+				source TEXT, external_id TEXT PRIMARY KEY, datestr TEXT,
+				total_volume_kg REAL, total_sets INTEGER, updated_at INTEGER)`,
+		}
+		if sn, err := RunScriptStep(silver, scriptStep); err != nil {
+			t.Fatalf("script step: %v", err)
+		} else {
+			t.Logf("script gold: %d rows into gold_xunji_volume", sn)
+		}
+		var vol float64
+		var sets int
+		if err := silver.SQL().QueryRow(
+			`SELECT total_volume_kg, total_sets FROM gold_xunji_volume WHERE external_id='1783328972762'`,
+		).Scan(&vol, &sets); err != nil {
+			t.Fatalf("read script gold: %v", err)
+		}
+		t.Logf("script gold row: total_volume_kg=%v total_sets=%d", vol, sets)
+		if sets == 0 || vol == 0 {
+			t.Errorf("expected non-zero volume/sets, got vol=%v sets=%d", vol, sets)
+		}
 	}
 
 	// 4) View: schema-free viewer renders the promoted columns.

@@ -78,3 +78,26 @@ governance:
         datestr=excluded.datestr, title=excluded.title,
         movements=excluded.movements, duration_s=excluded.duration_s,
         updated_at=excluded.updated_at;
+
+  # Python 脚本步骤(SQL 够不着的嵌套数组聚合):遍历 movements[].sets[] 累加
+  # 已完成组的 weight*reps 得每次训练总容量。inputSQL 选行→脚本→upsert 到 output。
+  # 脚本需与本 manifest 一起放进 ~/.1agents/connectors/(相对该目录解析)。
+  - name: gold_xunji_volume
+    upstreams: [silver_xunji]
+    output: gold_xunji_volume
+    domain: fitness
+    script: scripts/xunji_volume.py
+    interpreter: python3
+    inputSQL: SELECT external_id, datestr, payload, updated_at FROM silver_xunji WHERE updated_at > :since
+    incremental: { table: silver_xunji, column: updated_at }
+    conflict: [external_id]
+    createSQL: |
+      CREATE TABLE IF NOT EXISTS gold_xunji_volume (
+        source TEXT NOT NULL DEFAULT 'xunji',
+        external_id TEXT NOT NULL,
+        datestr TEXT NOT NULL DEFAULT '',
+        total_volume_kg REAL NOT NULL DEFAULT 0,
+        total_sets INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (external_id)
+      );
