@@ -48,6 +48,10 @@ export const MODULE_ICONS: Record<string, IconDescriptor> = {
         viewBox: '0 0 24 24',
         paths: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
     },
+    studio: {
+        viewBox: '0 0 24 24',
+        paths: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>',
+    },
 };
 
 /**

@@ -98,7 +98,7 @@ mod engine {
             provider: Some(provider()),
             ..Default::default()
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e: eyre::Error| e.to_string())?;
 
         let mut utterances = Vec::new();
         let mut full_text = String::new();
@@ -386,4 +386,44 @@ pub fn update_recording_summary(id: String, summary: String) -> Result<(), Strin
 #[tauri::command]
 pub fn delete_recording(id: String) -> Result<(), String> {
     store::delete(&id)
+}
+
+fn save_base64_file(path: PathBuf, b64: &str) -> Result<(), String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, bytes).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 保存录像资产：视频轨道和音频轨道
+#[tauri::command]
+pub async fn save_studio_assets(
+    id: String,
+    webcam_base64: String,
+    screen_base64: String,
+    audio_base64: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = dirs::home_dir()
+            .expect("no home dir")
+            .join(".1agents")
+            .join("studio")
+            .join(&id);
+
+        let webcam_path = dir.join("webcam.webm");
+        let screen_path = dir.join("screen.webm");
+        let audio_path = dir.join("audio.webm");
+
+        save_base64_file(webcam_path, &webcam_base64)?;
+        save_base64_file(screen_path, &screen_base64)?;
+        save_base64_file(audio_path, &audio_base64)?;
+
+        Ok(dir.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

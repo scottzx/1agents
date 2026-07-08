@@ -2,7 +2,7 @@ import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { t, type Lang } from '../i18n';
 
-type CategoryId = 'featured' | 'opensource';
+type CategoryId = 'apps' | 'featured' | 'opensource';
 
 interface LinkCard {
     title: string;
@@ -11,14 +11,25 @@ interface LinkCard {
     url: string;
     iconColor?: string;
     category: CategoryId;
+    appId?: string;
 }
 
 const CATEGORIES: { id: CategoryId; titleKey: string }[] = [
+    { id: 'apps', titleKey: 'discovery.catApps' },
     { id: 'featured', titleKey: 'discovery.catFeatured' },
     { id: 'opensource', titleKey: 'discovery.catOpensource' },
 ];
 
 const QUICK_LINKS: LinkCard[] = [
+    {
+        title: '录制工坊 (Vlog Studio)',
+        descriptionKey: 'discovery.studioDesc',
+        badgeKey: 'discovery.studioBadge',
+        url: '#/studio',
+        iconColor: '#eb5757', // Studio Red
+        category: 'apps',
+        appId: 'studio',
+    },
     {
         title: 'NanoSkill.ai',
         descriptionKey: 'discovery.nanoDesc',
@@ -39,6 +50,7 @@ const QUICK_LINKS: LinkCard[] = [
 
 interface DiscoveryPanelProps {
     onOpenBrowserTab?: (url: string) => void;
+    onOpenApp?: (appId: string) => void;
     language: Lang;
     /** When set, smoothly scroll the matching category section into view. */
     scrollToCategory?: string;
@@ -50,7 +62,13 @@ interface DiscoveryPanelProps {
     activeCategory?: string;
 }
 
-export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory, activeCategory }: DiscoveryPanelProps) {
+export function DiscoveryPanel({
+    onOpenBrowserTab,
+    onOpenApp,
+    language,
+    scrollToCategory,
+    activeCategory,
+}: DiscoveryPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -63,10 +81,13 @@ export function DiscoveryPanel({ onOpenBrowserTab, language, scrollToCategory, a
         <a
             key={idx}
             href={card.url}
-            target="_blank"
+            target={card.appId ? undefined : '_blank'}
             rel="noopener noreferrer"
             onClick={e => {
-                if (onOpenBrowserTab) {
+                if (card.appId) {
+                    e.preventDefault();
+                    if (onOpenApp) onOpenApp(card.appId);
+                } else if (onOpenBrowserTab) {
                     e.preventDefault();
                     onOpenBrowserTab(card.url);
                 }

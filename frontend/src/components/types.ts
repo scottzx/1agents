@@ -66,6 +66,7 @@ export type RightDrawerTab =
     | 'contacts'
     | 'datasources'
     | 'inbox'
+    | 'studio'
     | 'none';
 
 export function isFullPageTab(tab: RightDrawerTab): boolean {
@@ -78,7 +79,8 @@ export function isFullPageTab(tab: RightDrawerTab): boolean {
         tab === 'assistants' ||
         tab === 'contacts' ||
         tab === 'datasources' ||
-        tab === 'inbox'
+        tab === 'inbox' ||
+        tab === 'studio'
     );
 }
 

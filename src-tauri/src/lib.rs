@@ -112,6 +112,7 @@ pub fn run() {
             recording::get_recording,
             recording::update_recording_summary,
             recording::delete_recording,
+            recording::save_studio_assets,
         ])
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -125,8 +126,9 @@ pub fn run() {
             let url;
             let mut spawned = false;
 
-            if let Some(active_addr) = get_active_daemon_addr(app) {
-                println!("[tauri] Found active daemon running at {}. Reusing it.", active_addr);
+            let forced_addr = Some("127.0.0.1:39090".to_string());
+            if let Some(active_addr) = forced_addr {
+                println!("[tauri] FORCED daemon running at {}. Reusing it.", active_addr);
                 url = if active_addr.starts_with("http://") || active_addr.starts_with("https://") {
                     active_addr
                 } else {

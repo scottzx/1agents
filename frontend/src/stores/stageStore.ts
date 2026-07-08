@@ -51,6 +51,7 @@ export type ContentView =
     | { kind: 'skills' }
     | { kind: 'discovery' }
     | { kind: 'settings' }
+    | { kind: 'studio' }
     /** L1 app page rendered via MountPointRenderer (#332). */
     | { kind: 'l1-app'; mountId: string };
 

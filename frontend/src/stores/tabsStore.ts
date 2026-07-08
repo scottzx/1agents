@@ -12,6 +12,13 @@ import {
     type SettingsCategory,
 } from '../modules/settings-manifest';
 import { DISCOVERY_MODULE_ID, pathToDiscoveryCategory, discoveryCategoryToPath } from '../modules/discovery-manifest';
+import {
+    STUDIO_MODULE_ID,
+    STUDIO_DEFAULT_CATEGORY,
+    pathToStudioCategory,
+    studioCategoryToPath,
+    type StudioCategory,
+} from '../modules/studio-manifest';
 import * as ui from './uiStore';
 import * as fs from './fsStore';
 import * as wsStore from './workspaceStore';
@@ -86,6 +93,7 @@ const initialDrawerTab = (): RightDrawerTab => {
 export const activeDrawerTab = signal<RightDrawerTab>(initialDrawerTab());
 /** Selected discovery category, drives the sidebar second-level menu. */
 export const discoveryCategory = signal('featured');
+export const activeExternalApp = signal<string | null>(null);
 
 /**
  * Assistant currently opened in the 助理 detail view (workspace id), or null for
@@ -116,6 +124,11 @@ export const moduleManifests = signal<Record<string, ModuleManifest>>({});
  * overloading `activeModulePath`.
  */
 export const activeSettingsCategory = signal<SettingsCategory>(SETTINGS_DEFAULT_CATEGORY);
+export const activeStudioCategory = signal<StudioCategory>(STUDIO_DEFAULT_CATEGORY);
+export const setStudioCategory = (category: StudioCategory) => {
+    if (activeStudioCategory.value === category) return;
+    activeStudioCategory.value = category;
+};
 
 export const setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat') => {
     activeTab.value = tab;
@@ -219,6 +232,7 @@ export const openContentTab = (tab: RightDrawerTab) => {
 
 /** Close the right content column. */
 export const closeContentTab = () => {
+    activeExternalApp.value = null;
     if (activeDrawerTab.value === 'none') return;
     activeDrawerTab.value = 'none';
     activeModulePath.value = '';
@@ -226,8 +240,21 @@ export const closeContentTab = () => {
     ui.triggerTerminalFit();
 };
 
+// Open external app helper
+export const openExternalApp = (appId: string) => {
+    activeDrawerTab.value = 'discovery';
+    activeExternalApp.value = appId;
+    ui.triggerTerminalFit();
+};
+
+export const closeExternalApp = () => {
+    activeExternalApp.value = null;
+    ui.triggerTerminalFit();
+};
+
 // Coze click shortcut toggle dynamic drawer logic
 export const toggleDrawerTab = (tab: RightDrawerTab) => {
+    activeExternalApp.value = null;
     // 任务 is a normal right-column / drawer content tab on both platforms now
     // (the old mobile full-screen 任务 overlay was removed in favor of the
     // unified in-project view switcher).
@@ -406,6 +433,13 @@ export const buildModuleNav = ():
             manifest,
             activePath: discoveryCategoryToPath(discoveryCategory.value),
             onNavigate: (to: string) => selectDiscoveryCategory(pathToDiscoveryCategory(to)),
+        };
+    }
+    if (mod.moduleId === STUDIO_MODULE_ID) {
+        return {
+            manifest,
+            activePath: studioCategoryToPath(activeStudioCategory.value),
+            onNavigate: (to: string) => setStudioCategory(pathToStudioCategory(to)),
         };
     }
     return {
