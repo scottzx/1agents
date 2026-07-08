@@ -2,9 +2,14 @@ package data
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+// tableNameRe whitelists a physical table name (SELECT * / DELETE targets built by
+// string concat must never take an untrusted identifier).
+var tableNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // reader.go exposes the silver layer read-only for the 数据归一 viewer. Silver is
 // per-SOURCE physical tables grouped into domains (联系人/消息/日历/待办) by a
@@ -152,6 +157,104 @@ func (s *Store) readTable(domain, table string, limit int) ([]RecordRow, error) 
 		})
 	}
 	return out, rows.Err()
+}
+
+// ListTable reads ANY governance output table (SELECT *) as schema-free grid rows,
+// for the 数据治理 drill-in. Where ListSilver reads a domain (a union of source
+// tables), this reads one physical table by name — serving gold entity tables
+// (contacts/messages/…) and manifest step outputs (unified_contacts, gold_xunji_*)
+// through one path. Newest first by whichever of updated_at/created_at exists.
+func (s *Store) ListTable(table string, limit int) ([]RecordRow, error) {
+	if !tableNameRe.MatchString(table) {
+		return nil, fmt.Errorf("data: unsafe table %q", table)
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+	cols, err := s.tableColumns(table)
+	if err != nil {
+		return nil, err
+	}
+	if len(cols) == 0 {
+		return nil, fmt.Errorf("data: unknown table %q", table)
+	}
+	has := map[string]bool{}
+	for _, c := range cols {
+		has[c] = true
+	}
+	order := "rowid"
+	if has["created_at"] {
+		order = "created_at"
+	}
+	if has["updated_at"] {
+		order = "updated_at"
+	}
+	rows, err := s.sql.Query("SELECT * FROM "+table+" ORDER BY "+order+" DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RecordRow{}
+	for rows.Next() {
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		m := make(map[string]string, len(cols))
+		fields := make([]Field, 0, len(cols))
+		for i, c := range cols {
+			v := toStr(vals[i])
+			m[c] = v
+			if c == order { // surfaced as FetchedAt (时间), not a duplicate field
+				continue
+			}
+			fields = append(fields, Field{Key: c, Value: capValue(v)})
+		}
+		uid := m["id"]
+		if uid == "" {
+			uid = m["external_id"]
+		}
+		out = append(out, RecordRow{
+			UID:        uid,
+			Collection: m["source"],
+			Deleted:    m["deleted"] == "1",
+			FetchedAt:  parseInt(m[order]),
+			Fields:     fields,
+			Preview:    genericPreview(m),
+		})
+	}
+	return out, rows.Err()
+}
+
+// tableColumns returns a table's column names (empty when the table is absent).
+func (s *Store) tableColumns(table string) ([]string, error) {
+	rows, err := s.sql.Query("SELECT * FROM " + table + " LIMIT 0")
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	return rows.Columns()
+}
+
+// genericPreview picks a one-line preview across the common name/title/subject
+// columns any governance table might carry.
+func genericPreview(m map[string]string) string {
+	for _, c := range []string{"full_name", "name", "title", "subject", "body_text", "snippet", "display_name"} {
+		if v := strings.TrimSpace(m[c]); v != "" {
+			if len(v) > 160 {
+				return v[:160]
+			}
+			return v
+		}
+	}
+	return ""
 }
 
 // SilverSummary rolls up every registered table by (domain, source).

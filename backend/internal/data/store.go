@@ -284,6 +284,26 @@ func (s *Store) LastGovernanceRun(step string) (GovernanceRun, bool, error) {
 	return runs[0], true, nil
 }
 
+// TruncateGovernanceOutput clears a declarative step's output table for a clean
+// rebuild (删除/rebuild). The name is whitelisted (a step output is a validated
+// identifier) and must be a real table — a no-op if it does not exist yet.
+func (s *Store) TruncateGovernanceOutput(table string) error {
+	if !tableNameRe.MatchString(table) {
+		return fmt.Errorf("data: unsafe output table %q", table)
+	}
+	var exists int
+	if err := s.sql.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return nil
+	}
+	_, err := s.sql.Exec("DELETE FROM " + table)
+	return err
+}
+
 // SaveGovernCursor persists a transform stage's high-water mark for (source, kind).
 func (s *Store) SaveGovernCursor(stage, source, kind string, watermark int64) error {
 	now := time.Now().UTC().Format(time.RFC3339)

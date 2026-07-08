@@ -33,16 +33,17 @@ const scriptTimeout = 2 * time.Minute
 // each row is streamed to the script; the script's emitted rows are upserted into
 // Output on the Conflict key.
 type ScriptStep struct {
-	Name        string
-	Interpreter string   // default "python3"
-	Script      string   // absolute path to the script file
-	InputSQL    string   // SELECT ... WHERE <IncrCol> > :since (multi-upstream join allowed)
-	IncrCol     string   // watermark column present in each input row
-	Output      string   // output table (validated identifier)
-	CreateSQL   string   // CREATE TABLE IF NOT EXISTS ...
-	Conflict    []string // ON CONFLICT(...) columns for the upsert
-	Upstreams   []string // for dependency ordering
-	Domain      string   // viewer domain for Output
+	Name         string
+	Interpreter  string   // default "python3"
+	Script       string   // absolute path to the script file
+	InputSQL     string   // SELECT ... WHERE <IncrCol> > :since (multi-upstream join allowed)
+	IncrCol      string   // watermark column present in each input row
+	Output       string   // output table (validated identifier)
+	CreateSQL    string   // CREATE TABLE IF NOT EXISTS ...
+	Conflict     []string // ON CONFLICT(...) columns for the upsert
+	Upstreams    []string // for dependency ordering
+	Domain       string   // viewer domain for Output
+	Requirements []string // pip packages → a per-step venv is provisioned (issue #406)
 }
 
 func (s ScriptStep) validate() error {
@@ -97,6 +98,12 @@ func RunScriptStep(dst *data.Store, s ScriptStep) (int, error) {
 	interp := s.Interpreter
 	if interp == "" {
 		interp = "python3"
+	}
+	// A step with declared requirements runs under its own venv interpreter (#406).
+	if venvPy, err := ensureVenv(s.Name, s.Requirements); err != nil {
+		return 0, err
+	} else if venvPy != "" {
+		interp = venvPy
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), scriptTimeout)
 	defer cancel()

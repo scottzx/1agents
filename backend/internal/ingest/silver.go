@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/data"
 	"github.com/scottzx/1Agents/backend/internal/govern"
@@ -73,16 +74,17 @@ func (h *Handler) addGovernStep(g sources.ManifestStep, sourceTag, scriptBase st
 			interp = "python3"
 		}
 		h.manifestScript = append(h.manifestScript, govern.ScriptStep{
-			Name:        g.Name,
-			Interpreter: interp,
-			Script:      script,
-			InputSQL:    g.InputSQL,
-			IncrCol:     g.Incremental.Column,
-			Output:      g.Output,
-			CreateSQL:   g.CreateSQL,
-			Conflict:    g.Conflict,
-			Upstreams:   g.Upstreams,
-			Domain:      g.Domain,
+			Name:         g.Name,
+			Interpreter:  interp,
+			Script:       script,
+			InputSQL:     g.InputSQL,
+			IncrCol:      g.Incremental.Column,
+			Output:       g.Output,
+			CreateSQL:    g.CreateSQL,
+			Conflict:     g.Conflict,
+			Upstreams:    g.Upstreams,
+			Domain:       g.Domain,
+			Requirements: g.Requirements,
 		})
 	} else {
 		h.manifestGold = append(h.manifestGold, govern.SQLStep{
@@ -101,16 +103,36 @@ func (h *Handler) addGovernStep(g sources.ManifestStep, sourceTag, scriptBase st
 	}
 }
 
-// runManifestSilver lands every manifest source's newly-synced bronze into its
-// generic silver table, then runs the declarative silver→gold SQL steps. Both are
-// cursor-incremental + idempotent, so running after any sync only shapes changes.
-func (h *Handler) runManifestSilver() {
-	for _, spec := range h.manifestSilver {
-		if _, err := govern.SilverManifest(h.bronze, h.silver, spec); err != nil {
-			log.Printf("[ingest] manifest silver %s/%s: %v", spec.Source, spec.Kind, err)
+// silver.go wires the governance DAG into ingestion. It runs after every sync
+// (silver/gold must never lag bronze) and is exposed as manual re-run endpoints
+// for the 数据治理 view. Every step is idempotent + cursor-incremental, so running
+// opportunistically after each sync only shapes the records that sync changed.
+
+// runGovernance runs the whole governance DAG once, in order — built-in Go
+// governors (silver source-cleaning, then gold fusion/resolution), then the
+// declarative manifest steps (generic bronze→silver, SQL silver→gold, Python
+// silver→gold) — recording each step to the execution log. Returns rows-written
+// per output table. Best-effort: a step error is logged, never fails the sync
+// (the next run resumes from the unchanged cursor).
+func (h *Handler) runGovernance() map[string]int {
+	written := map[string]int{}
+	base := h.governanceRecorder()
+	rec := func(r govern.RunRecord) {
+		base(r)
+		if r.Status == "success" && r.Output != "" {
+			written[r.Output] += r.Rows
 		}
 	}
-	rec := h.governanceRecorder()
+
+	// ① built-in Go governors (silver + gold), each a first-class recorded step.
+	if err := govern.RunBuiltin(h.bronze, h.silver, rec); err != nil {
+		log.Printf("[ingest] builtin governance: %v", err)
+	}
+	// ② manifest generic bronze→silver (REST/CLI sources land into their table).
+	for _, spec := range h.manifestSilver {
+		h.recordManifestSilver(rec, spec)
+	}
+	// ③ manifest declarative silver→gold — SQL then Python steps.
 	if len(h.manifestGold) > 0 {
 		if err := govern.RunSQLSteps(h.silver, h.manifestGold, rec); err != nil {
 			log.Printf("[ingest] manifest gold: %v", err)
@@ -121,6 +143,89 @@ func (h *Handler) runManifestSilver() {
 			log.Printf("[ingest] manifest script gold: %v", err)
 		}
 	}
+	return written
+}
+
+// recordManifestSilver runs one generic bronze→silver landing and logs it as a
+// step (so a manifest REST/CLI source's silver table shows in the DAG + log).
+func (h *Handler) recordManifestSilver(rec govern.RunRecorder, spec govern.ManifestSilverSpec) {
+	start := time.Now()
+	n, err := govern.SilverManifest(h.bronze, h.silver, spec)
+	r := govern.RunRecord{Step: spec.Table, Output: spec.Table, Lang: "manifest", Upstreams: []string{"bronze:" + spec.Source}, Rows: n, DurationMs: time.Since(start).Milliseconds(), Status: "success"}
+	if err != nil {
+		r.Status, r.Err = "failed", err.Error()
+		log.Printf("[ingest] manifest silver %s/%s: %v", spec.Source, spec.Kind, err)
+	}
+	rec(r)
+}
+
+// runGovernanceStep re-runs a single step by name, across all executors (built-in
+// Go / manifest silver / SQL / Python). When rebuild is set, a declarative step's
+// output is truncated + its cursor reset first, for a clean rebuild of union/dedup
+// tables (built-in shared tables are only cursor-reset, never truncated). Returns
+// whether a step with that name was found.
+func (h *Handler) runGovernanceStep(name string, rebuild bool) (bool, error) {
+	rec := h.governanceRecorder()
+	if _, found, err := govern.RunBuiltinStep(h.bronze, h.silver, name, rec); found {
+		return true, err
+	}
+	for _, spec := range h.manifestSilver {
+		if spec.Table == name {
+			h.recordManifestSilver(rec, spec)
+			return true, nil
+		}
+	}
+	for _, s := range h.manifestGold {
+		if s.Name == name {
+			if rebuild {
+				if err := h.rebuildStep(s.Output, name); err != nil {
+					return true, err
+				}
+			}
+			start := time.Now()
+			n, err := govern.RunSQLStep(h.silver, s)
+			rec(govern.RunRecord{Step: s.Name, Output: s.Output, Lang: "sql", Upstreams: s.Upstreams, Rows: n, DurationMs: time.Since(start).Milliseconds(), Status: statusOf(err), Err: errStr(err)})
+			return true, err
+		}
+	}
+	for _, s := range h.manifestScript {
+		if s.Name == name {
+			if rebuild {
+				if err := h.rebuildStep(s.Output, name); err != nil {
+					return true, err
+				}
+			}
+			start := time.Now()
+			n, err := govern.RunScriptStep(h.silver, s)
+			rec(govern.RunRecord{Step: s.Name, Output: s.Output, Lang: "python", Upstreams: s.Upstreams, Rows: n, DurationMs: time.Since(start).Milliseconds(), Status: statusOf(err), Err: errStr(err)})
+			return true, err
+		}
+	}
+	return false, nil
+}
+
+// rebuildStep clears a declarative step's output table + resets its cursor, so the
+// next run recomputes it from scratch (删除/rebuild — for union/dedup tables whose
+// upsert can't retract rows that no longer belong).
+func (h *Handler) rebuildStep(output, name string) error {
+	if err := h.silver.TruncateGovernanceOutput(output); err != nil {
+		return err
+	}
+	return h.silver.SaveGovernCursor("dag", name, "", 0)
+}
+
+func statusOf(err error) string {
+	if err != nil {
+		return "failed"
+	}
+	return "success"
+}
+
+func errStr(err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // governanceRecorder returns a RunRecorder that appends each step run to the
@@ -136,85 +241,20 @@ func (h *Handler) governanceRecorder() govern.RunRecorder {
 	}
 }
 
-// silver.go wires the bronze→silver transform (internal/govern) into ingestion:
-// it runs after every sync (silver should never lag bronze) and is exposed as a
-// manual re-run endpoint for the 数据归一 viewer. The transform is idempotent and
-// cursor-incremental, so running it opportunistically after each sync only
-// shapes the records that sync just changed.
-
-// runSilver shapes any newly-synced bronze into the silver tables. Best-effort:
-// callers log the error but never fail the sync task on it — a silver hiccup must
-// not roll back a good bronze pull (silver re-runs safely next time).
-func (h *Handler) runSilver() (govern.SilverStats, error) {
-	return govern.Silver(h.bronze, h.silver)
-}
-
-// runGold fuses silver into gold (identity resolution + threads + messages).
-// Runs on the same data.db, after silver, so gold never lags the just-cleaned
-// silver. Idempotent and cursor-incremental like silver.
-func (h *Handler) runGold() (govern.GoldStats, error) {
-	return govern.Gold(h.silver)
-}
-
-// afterSyncSilver runs the silver→gold pipeline and folds a compact summary into
-// a sync task's result map, so the work-order result shows what was normalized.
-// Errors are logged, not propagated (a normalize hiccup never fails a good sync).
+// afterSyncSilver runs the governance DAG and folds a compact summary into a sync
+// task's result map, so the work-order result shows what was normalized. Errors
+// are logged, not propagated (a normalize hiccup never fails a good sync).
 func (h *Handler) afterSyncSilver(result map[string]any) {
-	stats, err := h.runSilver()
-	if err != nil {
-		log.Printf("[ingest] silver after sync: %v", err)
-		return
-	}
-	result["silver"] = map[string]int{
-		"contacts": stats.Contacts,
-		"messages": stats.Messages,
-		"events":   stats.Events,
-		"todos":    stats.Todos,
-	}
-	gold, err := h.runGold()
-	if err != nil {
-		log.Printf("[ingest] gold after sync: %v", err)
-		return
-	}
-	result["gold"] = goldSummary(gold)
-	h.runManifestSilver() // manifest REST sources land into their generic silver tables
+	result["governance"] = h.runGovernance()
 }
 
-// HandleRunSilver: POST /api/data/silver/run → run the full bronze→silver→gold
-// pipeline now and return the per-stage counts. The manual "重新清洗" control
-// behind the 数据归一 viewer.
+// HandleRunSilver: POST /api/data/silver/run → run the whole governance DAG now and
+// return rows-written per output table. The manual "重新治理" control.
 func (h *Handler) HandleRunSilver(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	stats, err := h.runSilver()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	gold, err := h.runGold()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	h.runManifestSilver()
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"contacts": stats.Contacts,
-		"messages": stats.Messages,
-		"events":   stats.Events,
-		"todos":    stats.Todos,
-		"gold":     goldSummary(gold),
-	})
-}
-
-func goldSummary(g govern.GoldStats) map[string]int {
-	return map[string]int{
-		"threads":  g.Threads,
-		"messages": g.Messages,
-		"contacts": g.Contacts,
-		"events":   g.Events,
-		"todos":    g.Todos,
-	}
+	_ = json.NewEncoder(w).Encode(h.runGovernance())
 }

@@ -23,14 +23,14 @@ import (
 // parsed by the govern layer; yaml.v3 ignores unknown keys, so a manifest may
 // carry a `governance:` block without breaking this loader.
 type Manifest struct {
-	Vendor       string           `yaml:"vendor"`
-	Label        string           `yaml:"label"`
-	Region       string           `yaml:"region"`
-	MultiAccount bool             `yaml:"multiAccount"`
-	AuthKind     string           `yaml:"authKind"`
-	BaseURL      string           `yaml:"baseUrl"`
-	Collections  []ManifestColl   `yaml:"collections"`
-	Governance   []ManifestStep   `yaml:"governance"`
+	Vendor       string         `yaml:"vendor"`
+	Label        string         `yaml:"label"`
+	Region       string         `yaml:"region"`
+	MultiAccount bool           `yaml:"multiAccount"`
+	AuthKind     string         `yaml:"authKind"`
+	BaseURL      string         `yaml:"baseUrl"`
+	Collections  []ManifestColl `yaml:"collections"`
+	Governance   []ManifestStep `yaml:"governance"`
 }
 
 // ManifestStep is one declarative silver→gold SQL governance step: it reads N
@@ -47,10 +47,11 @@ type ManifestStep struct {
 	Incremental ManifestStepIncr `yaml:"incremental"`
 	// Script fields — when Script is set the step runs an external Python transform
 	// (InputSQL selects rows → script → upsert into Output on Conflict) instead of Body.
-	Script      string   `yaml:"script"`      // path (relative to the connectors dir, or absolute)
-	Interpreter string   `yaml:"interpreter"` // default "python3"
-	InputSQL    string   `yaml:"inputSQL"`    // SELECT ... WHERE <column> > :since
-	Conflict    []string `yaml:"conflict"`    // ON CONFLICT(...) columns for the upsert
+	Script       string   `yaml:"script"`       // path (relative to the connectors dir, or absolute)
+	Interpreter  string   `yaml:"interpreter"`  // default "python3"
+	InputSQL     string   `yaml:"inputSQL"`     // SELECT ... WHERE <column> > :since
+	Conflict     []string `yaml:"conflict"`     // ON CONFLICT(...) columns for the upsert
+	Requirements []string `yaml:"requirements"` // pip packages → per-step venv (issue #406)
 }
 
 // ManifestStepIncr names the driving upstream table + watermark column for a step's
@@ -62,9 +63,9 @@ type ManifestStepIncr struct {
 
 // ManifestColl is one crawlable collection in a manifest.
 type ManifestColl struct {
-	Kind    string `yaml:"kind"`
-	Domain  string `yaml:"domain"`
-	Label   string `yaml:"label"`
+	Kind   string `yaml:"kind"`
+	Domain string `yaml:"domain"`
+	Label  string `yaml:"label"`
 	// Transport: "" | "rest" → HTTP; "cli" → shell out to Command with Args.
 	Transport   string            `yaml:"transport"`
 	Command     string            `yaml:"command"` // cli: binary (e.g. agently-cli)
@@ -280,6 +281,15 @@ func LoadGovernanceManifests() ([]GovernanceManifest, error) {
 
 // vendorNameRe restricts a vendor name to a safe filename + bronze discriminator.
 var vendorNameRe = regexp.MustCompile(`^[a-z0-9_-]{1,40}$`)
+
+// ParseGovernanceManifest unmarshals raw YAML into a GovernanceManifest.
+func ParseGovernanceManifest(b []byte) (GovernanceManifest, error) {
+	var gm GovernanceManifest
+	if err := yaml.Unmarshal(b, &gm); err != nil {
+		return gm, fmt.Errorf("parse governance manifest: %w", err)
+	}
+	return gm, nil
+}
 
 // ParseManifest unmarshals raw YAML into a Manifest.
 func ParseManifest(b []byte) (Manifest, error) {

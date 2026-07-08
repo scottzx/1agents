@@ -345,9 +345,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 				}
 				mux.HandleFunc("/api/data/silver/run", ingestHandler.HandleRunSilver)     // POST — 手动重新清洗 bronze→silver
 				// 数据治理 DAG: 依赖关系 + 执行日志 + 按需重跑。
-				mux.HandleFunc("/api/data/governance", ingestHandler.HandleGovernanceDAG)      // GET — steps + nodes + edges
-				mux.HandleFunc("/api/data/governance/runs", ingestHandler.HandleGovernanceRuns) // GET ?step=&limit=
-				mux.HandleFunc("/api/data/governance/run", ingestHandler.HandleGovernanceRun)   // POST — 重跑整个 DAG
+				mux.HandleFunc("/api/data/governance", ingestHandler.HandleGovernanceDAG)        // GET — steps + nodes + edges
+				mux.HandleFunc("/api/data/governance/runs", ingestHandler.HandleGovernanceRuns)   // GET ?step=&limit=
+				mux.HandleFunc("/api/data/governance/run", ingestHandler.HandleGovernanceRun)     // POST ?step=&rebuild= — 重跑整个 DAG 或单步
+				mux.HandleFunc("/api/data/governance/table", ingestHandler.HandleGovernanceTable) // GET ?name=&limit= — 治理输出表下钻
 				mux.HandleFunc("/api/sources/cli/", ingestHandler.CLIHandler().HandleCLI) // GET /{tool}/status, POST /{tool}/recheck
 				// 账号注册表 (源为中心): 厂家能力 + 每账号 CRUD.
 				mux.HandleFunc("/api/sources/vendors", ingestHandler.HandleVendors)       // GET — vendor capability table
@@ -381,6 +382,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/agentmail/schedules", ingestHandler.HandleSchedules)
 				// 自定义连接器: add/list manifests from the UI (hot-registered, no restart).
 				mux.HandleFunc("/api/sources/connectors", ingestHandler.HandleConnectors) // GET list, POST add
+				mux.HandleFunc("/api/sources/templates", ingestHandler.HandleTemplates)   // GET embedded templates, POST install
 				// Manifest REST sources are served by ONE source-agnostic catch-all (built-in
 				// vendors keep their explicit routes above, which win by longest-prefix match).
 				// A hot-added vendor needs no new route: /api/sources/{vendor}/{action}.
