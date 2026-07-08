@@ -34,16 +34,37 @@ func (h *Handler) RegisterManifestGovernance(ms []sources.Manifest) {
 			})
 			data.RegisterViewerTable(domain, m.Vendor, table)
 		}
+		// silver→gold SQL steps (multi-upstream join / upsert, all in data.db).
+		for _, g := range m.Governance {
+			h.manifestGold = append(h.manifestGold, govern.SQLStep{
+				Name:      g.Name,
+				Upstreams: g.Upstreams,
+				Output:    g.Output,
+				Domain:    g.Domain,
+				CreateSQL: g.CreateSQL,
+				Body:      g.Body,
+				IncrTable: g.Incremental.Table,
+				IncrCol:   g.Incremental.Column,
+			})
+			if g.Output != "" && g.Domain != "" {
+				data.RegisterViewerTable(g.Domain, m.Vendor, g.Output)
+			}
+		}
 	}
 }
 
 // runManifestSilver lands every manifest source's newly-synced bronze into its
-// generic silver table. Cursor-incremental + idempotent, so running all specs
-// after any sync only shapes rows that sync just changed.
+// generic silver table, then runs the declarative silver→gold SQL steps. Both are
+// cursor-incremental + idempotent, so running after any sync only shapes changes.
 func (h *Handler) runManifestSilver() {
 	for _, spec := range h.manifestSilver {
 		if _, err := govern.SilverManifest(h.bronze, h.silver, spec); err != nil {
 			log.Printf("[ingest] manifest silver %s/%s: %v", spec.Source, spec.Kind, err)
+		}
+	}
+	if len(h.manifestGold) > 0 {
+		if err := govern.RunSQLSteps(h.silver, h.manifestGold); err != nil {
+			log.Printf("[ingest] manifest gold: %v", err)
 		}
 	}
 }

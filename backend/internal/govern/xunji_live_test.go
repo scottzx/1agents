@@ -67,7 +67,43 @@ func TestXunjiLivePipeline(t *testing.T) {
 	}
 	t.Logf("silver: %d rows into %s", n, spec.Table)
 
-	// 3) View: schema-free viewer renders the promoted columns.
+	// 3) Govern silver→gold: declarative SQL step projects payload JSON → columns.
+	goldStep := SQLStep{
+		Name: "gold_xunji_train", Upstreams: []string{"silver_xunji"}, Output: "gold_xunji_train",
+		IncrTable: "silver_xunji", IncrCol: "updated_at",
+		CreateSQL: `CREATE TABLE IF NOT EXISTS gold_xunji_train (
+			source TEXT NOT NULL DEFAULT 'xunji', external_id TEXT NOT NULL,
+			datestr TEXT, title TEXT, movements INTEGER, duration_s INTEGER,
+			updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (external_id))`,
+		Body: `INSERT INTO gold_xunji_train
+			(source, external_id, datestr, title, movements, duration_s, updated_at)
+			SELECT 'xunji', external_id, datestr, title,
+			  COALESCE(json_array_length(json_extract(payload,'$.movements')),0),
+			  CAST((COALESCE(json_extract(payload,'$.end'),0)-COALESCE(json_extract(payload,'$.start'),0))/1000 AS INTEGER),
+			  updated_at
+			FROM silver_xunji WHERE updated_at > :since
+			ON CONFLICT(external_id) DO UPDATE SET
+			  datestr=excluded.datestr, title=excluded.title, movements=excluded.movements,
+			  duration_s=excluded.duration_s, updated_at=excluded.updated_at`,
+	}
+	if gn, err := RunSQLStep(silver, goldStep); err != nil {
+		t.Fatalf("gold SQL step: %v", err)
+	} else {
+		t.Logf("gold: %d rows into gold_xunji_train", gn)
+	}
+	var mv, dur int
+	var title string
+	if err := silver.SQL().QueryRow(
+		`SELECT title, movements, duration_s FROM gold_xunji_train WHERE external_id='1783328972762'`,
+	).Scan(&title, &mv, &dur); err != nil {
+		t.Fatalf("read gold row: %v", err)
+	}
+	t.Logf("gold row: title=%s movements=%d duration_s=%d", title, mv, dur)
+	if mv != 5 { // the 2026-07-06 training has 5 movements
+		t.Errorf("movements = %d, want 5", mv)
+	}
+
+	// 4) View: schema-free viewer renders the promoted columns.
 	rows, err := silver.ListSilver("fitness", "xunji", 100)
 	if err != nil {
 		t.Fatalf("ListSilver: %v", err)

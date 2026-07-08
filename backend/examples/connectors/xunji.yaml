@@ -43,3 +43,38 @@ collections:
       promote:
         title: title
         datestr: datestr
+
+# silver→gold 声明式 SQL 步骤（全在 data.db,不需 ATTACH）。这一步是 1:1 投影:
+# 从 silver_xunji 的 payload JSON 抽出动作数/时长成结构化 gold 列。多前项表时在
+# body 里 join 即可(runner 不关心 join 结构)。cursor 增量 + ON CONFLICT upsert 幂等。
+governance:
+  - name: gold_xunji_train
+    upstreams: [silver_xunji]
+    output: gold_xunji_train
+    domain: fitness
+    incremental: { table: silver_xunji, column: updated_at }
+    createSQL: |
+      CREATE TABLE IF NOT EXISTS gold_xunji_train (
+        source TEXT NOT NULL DEFAULT 'xunji',
+        external_id TEXT NOT NULL,
+        datestr TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        movements INTEGER NOT NULL DEFAULT 0,
+        duration_s INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (external_id)
+      );
+    body: |
+      INSERT INTO gold_xunji_train
+        (source, external_id, datestr, title, movements, duration_s, updated_at)
+      SELECT 'xunji', external_id, datestr, title,
+             COALESCE(json_array_length(json_extract(payload, '$.movements')), 0),
+             CAST((COALESCE(json_extract(payload, '$.end'), 0)
+                 - COALESCE(json_extract(payload, '$.start'), 0)) / 1000 AS INTEGER),
+             updated_at
+      FROM silver_xunji
+      WHERE updated_at > :since
+      ON CONFLICT(external_id) DO UPDATE SET
+        datestr=excluded.datestr, title=excluded.title,
+        movements=excluded.movements, duration_s=excluded.duration_s,
+        updated_at=excluded.updated_at;

@@ -41,6 +41,9 @@ type Handler struct {
 	// manifestSilver holds the generic bronze→silver specs derived from connector
 	// manifests (set by RegisterManifestGovernance), run after each sync.
 	manifestSilver []govern.ManifestSilverSpec
+	// manifestGold holds the declarative silver→gold SQL steps from connector
+	// manifests, run (in dependency order) after manifestSilver.
+	manifestGold []govern.SQLStep
 }
 
 // Dispatcher is the narrow slice of the work-order task API this package needs:

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -29,6 +30,27 @@ type Manifest struct {
 	AuthKind     string           `yaml:"authKind"`
 	BaseURL      string           `yaml:"baseUrl"`
 	Collections  []ManifestColl   `yaml:"collections"`
+	Governance   []ManifestStep   `yaml:"governance"`
+}
+
+// ManifestStep is one declarative silver→gold SQL governance step: it reads N
+// upstream tables (any join, all in data.db) and writes/upserts an output table.
+// The generic form of the built-in Go gold governors, but pure config.
+type ManifestStep struct {
+	Name        string              `yaml:"name"`
+	Upstreams   []string            `yaml:"upstreams"`
+	Output      string              `yaml:"output"`
+	Domain      string              `yaml:"domain"`
+	CreateSQL   string              `yaml:"createSQL"`
+	Body        string              `yaml:"body"`
+	Incremental ManifestStepIncr    `yaml:"incremental"`
+}
+
+// ManifestStepIncr names the driving upstream table + watermark column for a step's
+// incremental cursor (body filters WHERE <column> > :since; cursor advances to MAX).
+type ManifestStepIncr struct {
+	Table  string `yaml:"table"`
+	Column string `yaml:"column"`
 }
 
 // ManifestColl is one crawlable collection in a manifest.
@@ -124,7 +146,7 @@ func LoadManifests() ([]Manifest, error) {
 // its REST descriptors. Call once per manifest at startup, before RegisterFunctions.
 func RegisterManifest(m Manifest) {
 	if VendorFor(m.Vendor) == nil {
-		Vendors = append(Vendors, VendorSpec{
+		appendVendor(VendorSpec{
 			Vendor:       m.Vendor,
 			Label:        orDefault(m.Label, m.Vendor),
 			MultiAccount: m.MultiAccount,
@@ -168,4 +190,52 @@ func manifestRegions(region string) []string {
 		return []string{RegionIntl}
 	}
 	return []string{region}
+}
+
+// vendorNameRe restricts a vendor name to a safe filename + bronze discriminator.
+var vendorNameRe = regexp.MustCompile(`^[a-z0-9_-]{1,40}$`)
+
+// ParseManifest unmarshals raw YAML into a Manifest.
+func ParseManifest(b []byte) (Manifest, error) {
+	var m Manifest
+	if err := yaml.Unmarshal(b, &m); err != nil {
+		return m, fmt.Errorf("parse manifest: %w", err)
+	}
+	return m, nil
+}
+
+// ValidateManifest checks a manifest is safe to persist + register: a filename-safe
+// vendor, a base URL, and at least one collection with a kind + endpoint.
+func ValidateManifest(m Manifest) error {
+	if !vendorNameRe.MatchString(m.Vendor) {
+		return fmt.Errorf("vendor must match %s (got %q)", vendorNameRe, m.Vendor)
+	}
+	if strings.TrimSpace(m.BaseURL) == "" {
+		return fmt.Errorf("baseUrl required")
+	}
+	if len(m.Collections) == 0 {
+		return fmt.Errorf("at least one collection required")
+	}
+	for i, c := range m.Collections {
+		if strings.TrimSpace(c.Kind) == "" {
+			return fmt.Errorf("collection[%d]: kind required", i)
+		}
+		if strings.TrimSpace(c.Endpoint) == "" {
+			return fmt.Errorf("collection[%d] %q: endpoint required", i, c.Kind)
+		}
+	}
+	return nil
+}
+
+// SaveManifest writes the raw manifest YAML to ~/.1agents/connectors/<vendor>.yaml
+// (mode 0644, dir 0755). vendor must already be validated (filename-safe).
+func SaveManifest(vendor string, b []byte) error {
+	if !vendorNameRe.MatchString(vendor) {
+		return fmt.Errorf("unsafe vendor name %q", vendor)
+	}
+	dir := ConnectorsDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, vendor+".yaml"), b, 0o644)
 }
