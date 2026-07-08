@@ -228,6 +228,27 @@ export const sourceService = {
         return (await res.json()) as ScheduleRow[];
     },
 
+    /** GET /api/sources/{source}/bearer — whether a Bearer token is stored for a
+     * manifest REST source (authKind=bearer). */
+    async bearerStatus(source: string, accountId?: string): Promise<{ configured: boolean }> {
+        const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/bearer${qs}`);
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { configured: boolean };
+    },
+
+    /** PUT /api/sources/{source}/bearer — store (or clear, if token='') the Bearer
+     * token for a manifest REST source. Stored server-side, never echoed back. */
+    async setBearerToken(source: string, token: string, accountId?: string): Promise<{ configured: boolean }> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/bearer`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId, token }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return (await res.json()) as { configured: boolean };
+    },
+
     /** GET /api/sources/oauth/microsoft/config — current app registration for a
      * region (to prefill the in-UI settings form). Never returns a secret. */
     async msOAuthGetConfig(region: string): Promise<MSOAuthConfig> {

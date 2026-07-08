@@ -33,6 +33,8 @@ export function SourceAuthZone({ account, authKind }: { account: SourceAccount; 
             return <CliZone tool={VENDOR_CLI_TOOL[account.vendor]} language={language} />;
         case 'credentials':
             return <CredentialsAuthZone account={account} language={language} />;
+        case 'bearer':
+            return <BearerAuthZone account={account} language={language} />;
         default:
             return (
                 <div class="contacts-privacy-banner">
@@ -177,6 +179,98 @@ function ICloudCredentialsSection({ account, language }: { account: SourceAccoun
                             onClick={savePassword}
                         >
                             {busy ? t('contacts.icloud.saving', language) : t('contacts.icloud.saveAndSync', language)}
+                        </button>
+                        {reentry && (
+                            <button
+                                class="contacts-btn contacts-btn-sm"
+                                disabled={busy}
+                                onClick={() => setReentry(false)}
+                            >
+                                {t('datasource.add.back', language)}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── bearer → manifest REST sources (静态 token) ───────────────────────────────
+
+// BearerAuthZone stores the static Bearer token for a manifest-declared REST
+// source (authKind=bearer, e.g. 训记). The token is written server-side (a 0600
+// per-account file) and never echoed back — the UI only knows configured/not.
+function BearerAuthZone({ account, language }: { account: SourceAccount; language: Lang }) {
+    const [configured, setConfigured] = useState<boolean | null>(null);
+    const [token, setToken] = useState('');
+    const [reentry, setReentry] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [toast, setToast] = useState('');
+
+    useEffect(() => {
+        let active = true;
+        sourceService
+            .bearerStatus(account.vendor, account.id)
+            .then(s => active && setConfigured(s.configured))
+            .catch(e => active && setError((e as Error).message));
+        return () => {
+            active = false;
+        };
+    }, [account.vendor, account.id]);
+
+    const save = async () => {
+        setError('');
+        setToast('');
+        setBusy(true);
+        try {
+            const s = await sourceService.setBearerToken(account.vendor, token.trim(), account.id);
+            setConfigured(s.configured);
+            setToken('');
+            setReentry(false);
+            setToast(t('datasource.bearer.saved', language));
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div class="contacts-section">
+            <div class="contacts-section-head">
+                <span class="contacts-section-title">{account.label}</span>
+            </div>
+            {error && <div class="contacts-error">{error}</div>}
+            {toast && <div class="contacts-channels-toast">{toast}</div>}
+            {configured && !reentry ? (
+                <div class="contacts-icloud-connected">
+                    <span class="contacts-icloud-hint">{t('datasource.bearer.configured', language)}</span>
+                    <button class="contacts-btn contacts-btn-sm" disabled={busy} onClick={() => setReentry(true)}>
+                        {t('datasource.bearer.replace', language)}
+                    </button>
+                </div>
+            ) : (
+                <div class="contacts-icloud-setup">
+                    <label class="contacts-field">
+                        <span>{t('datasource.bearer.token', language)}</span>
+                        <input
+                            type="password"
+                            autocomplete="off"
+                            spellcheck={false}
+                            placeholder="xjllm_..."
+                            value={token}
+                            onInput={(e: Event) => setToken((e.target as HTMLInputElement).value)}
+                        />
+                    </label>
+                    <div class="contacts-modal-actions">
+                        <button
+                            class="contacts-btn contacts-btn-primary"
+                            disabled={busy || !token.trim()}
+                            onClick={save}
+                        >
+                            {busy ? t('datasource.bearer.saving', language) : t('datasource.bearer.save', language)}
                         </button>
                         {reentry && (
                             <button
