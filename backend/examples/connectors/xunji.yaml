@@ -1,0 +1,38 @@
+# 训记 (Xunji) 训练数据连接器 — 声明式 REST 源示例。
+# 用法: cp 本文件到 ~/.1agents/connectors/xunji.yaml，重启后端即注册；
+# 然后在「数据源」里为 xunji 填入 Bearer token（PUT /api/sources/xunji/bearer）。
+# 只读接入；写回(api_upsert)是带确认的 agent 动作，走 skill 层，不在连接器内。
+vendor: xunji
+label: 训记
+region: cn
+multiAccount: false
+authKind: bearer
+baseUrl: https://trains.xunjiapp.cn
+collections:
+  - kind: xunji_train
+    domain: fitness
+    label: 训练记录
+    method: POST
+    endpoint: /api_trains_for_llm_v2
+    # 常量 JSON body（typed —— include_full_data 保持布尔）。datestr 由 date-window 游标注入。
+    body:
+      schema_version: train_open_api_v2
+      include_full_data: false
+    auth:
+      scheme: bearer
+      headerName: Authorization
+      prefix: "Bearer "
+    successPath: success        # 期望 success === true
+    itemPath: res.trains        # 训练数组
+    uidField: localid           # 稳定外部 id
+    cursor:
+      flavor: date-window       # 按 datestr 从 today-lookback 遍历到 today，逐日一请求
+      dateParam: datestr
+      dateLayout: "2006-01-02"
+      lookbackDays: 30
+      minIntervalSeconds: 2     # 限频，防 too frequent（读 15s 一次，这里留足余量）
+    defaults:
+      enabled: true
+      incrementalMinutes: 720   # 每 12h 增量
+      pageSize: 0
+      initialLookbackDays: 30
