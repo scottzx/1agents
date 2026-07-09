@@ -964,6 +964,10 @@ body {
         }
       }
 
+      &.ws-active {
+        max-height: none;
+      }
+
       &.ws-active .project-folder {
         background-color: var(--bg-sidebar-active);
         color: var(--text-main);
@@ -15259,7 +15263,6 @@ body {
 }
 
 .chat-bubble-user .chat-bubble-body {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -16216,7 +16219,8 @@ body {
   @include md-render;
 }
 
-.chat-bubble-assistant .markdown-body {
+.chat-bubble-assistant .markdown-body,
+.chat-bubble-user .markdown-body {
   font-size: 14px;
   line-height: 1.68;
 

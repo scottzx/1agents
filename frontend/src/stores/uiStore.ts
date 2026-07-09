@@ -104,5 +104,20 @@ export const toggleLeftSidebar = () => {
         leftSidebarWidth.value = 260;
     }
     leftSidebarOpen.value = opening;
+    if (!opening) {
+        // Collapse → sidebar-rail mode: the +新对话 button in the sidebar is
+        // out of reach, so jump the main pane onto NewChatHome and lock it
+        // to the currently-selected project. Defer to a microtask and use
+        // dynamic imports so the stores (which already import uiStore)
+        // resolve through the module cache rather than a static cycle.
+        queueMicrotask(() => {
+            Promise.all([import('./sessionStore'), import('./workspaceStore'), import('./tabsStore')])
+                .then(([sess, ws, tabs]) => {
+                    sess.lockedNewChatWorkspaceId.value = ws.activeWorkspaceId.value || null;
+                    tabs.activeTab.value = 'new_chat';
+                })
+                .catch(() => {});
+        });
+    }
     triggerTerminalFit();
 };

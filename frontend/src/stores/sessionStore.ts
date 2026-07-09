@@ -319,7 +319,11 @@ export const killChatSession = async (sessionId: string) => {
         const active = activeSession.value;
         if (active && isChat(active) && active.id === sessionId) {
             activeSession.value = null;
-            tabsStore.activeTab.value = 'terminal';
+            // Park the main pane on the NewChatHome for the currently-selected
+            // project, instead of dropping back onto the (often empty) terminal
+            // tab's "暂无终端" placeholder.
+            lockedNewChatWorkspaceId.value = wsStore.activeWorkspaceId.value || null;
+            tabsStore.activeTab.value = 'new_chat';
         }
         ui.showToast('会话已归档 ✓');
     } catch (err) {

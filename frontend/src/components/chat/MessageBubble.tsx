@@ -125,9 +125,24 @@ function UserBubble({
     onCancel?: (queueRequestId: string) => void;
 }) {
     const isQueued = queueStatus === 'queued';
+    const html = renderMarkdown(content, { projectName: activeProjectName() });
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const currentTheme = theme.value;
+
+    useEffect(() => {
+        if (isQueued) return;
+        renderMermaidBlocks(bodyRef.current, currentTheme);
+    }, [html, isQueued, currentTheme]);
+
     return (
         <div class={`chat-bubble chat-bubble-user${isQueued ? ' chat-bubble-user-queued' : ''}`}>
-            <div class={`chat-bubble-body${isQueued ? ' chat-bubble-body-queued' : ''}`}>{content}</div>
+            {isQueued ? (
+                <div class="chat-bubble-body chat-bubble-body-queued">{content}</div>
+            ) : (
+                <div class="chat-bubble-body">
+                    <div ref={bodyRef} class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                </div>
+            )}
             {isQueued && (
                 <>
                     <span class="chat-bubble-queue-badge">{t('chat.queue.queued', getLang())}</span>
