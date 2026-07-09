@@ -6,7 +6,7 @@ import { t } from '../../../i18n';
 import { agentService } from '../../../services/agentService';
 import { projectItemService } from '@1agents/core/services/taskService';
 import type { AgentType, ChatSession, Session } from '../../types';
-import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
+import { AGENT_OPTIONS, getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
 import type { ChecklistItem, LinkRel, Reply, ReplyMode, SessionMetadata, ProjectItem, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
@@ -337,6 +337,7 @@ export function TaskDetail({
         status?: ProjectItem['status'];
         userConfirm?: boolean;
         checklist?: ChecklistItem[];
+        assignee?: string;
     }) => {
         setTask(await projectItemService.patch(taskId, patch));
     };
@@ -451,7 +452,7 @@ export function TaskDetail({
         const rec = await agentService.index({
             workspace_id: workspaceId,
             name: `${task.title} - 智能体`,
-            agent_type: 'claudecode',
+            agent_type: (task.assignee || 'claudecode') as AgentType,
             task_id: task.id,
         });
         onSelectSession({ ...rec, taskId: task.id, initialMessage, active: true });
@@ -1416,7 +1417,21 @@ export function TaskDetail({
                             <div class="gh-sidebar-body">
                                 <div class="gh-assignee-row">
                                     <span class="gh-avatar">{getInitials(task.assignee || 'claudecode')}</span>
-                                    <span>{task.assignee || 'claudecode'}</span>
+                                    <select
+                                        class="gh-assignee-select"
+                                        value={task.assignee || 'claudecode'}
+                                        onChange={(e: Event) =>
+                                            patchTask({
+                                                assignee: (e.target as HTMLSelectElement).value,
+                                            }).catch(err => alert((err as Error).message))
+                                        }
+                                    >
+                                        {AGENT_OPTIONS.map(a => (
+                                            <option key={a} value={a}>
+                                                {a}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                         </div>

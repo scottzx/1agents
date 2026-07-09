@@ -35,6 +35,7 @@ import { ProjectConfigPanel, ProjectConfigView, PROJECT_CONFIG_TABS, type Config
 import { ShellNav, CrumbTrail, type ShellTab, type Crumb } from './ShellNav';
 
 import * as appStore from '../../stores/appManifestStore';
+import * as tabPrefs from '../../stores/projectTabPrefs';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,12 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
 
     // Project-tab mount points from enabled apps
     const projectTabs = appStore.projectTabMounts.value;
+    // Per-project hidden tabs (toggled in 设置), persisted project-local. Load once;
+    // getHiddenTabs is a reactive read that re-renders when it lands / changes.
+    useEffect(() => {
+        tabPrefs.ensureLoaded(workspaceId, ws?.path ?? '');
+    }, [workspaceId, ws?.path]);
+    const hiddenTabs = tabPrefs.getHiddenTabs(workspaceId);
 
     // Update co-pilot context when this shell is active
     useEffect(() => {
@@ -117,7 +124,7 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
         // Detail folds the 项目配置 sub-tabs (指令/连接器/…) into the main bar.
         ...(isDetail ? PROJECT_CONFIG_TABS.map(c => ({ id: c.id, label: c.label })) : []),
         ...(isDetail ? [{ id: 'settings' as BuiltinTab, label: t('assistant.detail.tab.settings', language) }] : []),
-    ];
+    ].filter(tb => tb.id === 'settings' || !hiddenTabs.has(tb.id)); // 项目设置里勾掉的 tab 隐藏（settings 恒显以便恢复）
     const isConfigTab = PROJECT_CONFIG_TABS.some(c => c.id === activeTab);
 
     // Start a fresh conversation scoped to this project (locks the picker +

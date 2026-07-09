@@ -5,6 +5,8 @@
  * unreachable, all functions degrade gracefully (empty list / no-op).
  */
 
+import * as wsStore from '../stores/workspaceStore';
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type MountPoint =
@@ -73,30 +75,58 @@ export async function disableApp(id: string): Promise<boolean> {
     }
 }
 
+// Per-project config lives in the project-local file <project>/.1agents/
+// project_config.json (via /api/project/local-config), sharing that file with
+// other project-local prefs (e.g. tab visibility). Each writer PUTs only its own
+// keys; the backend shallow-merges. Replaces the old meta.db /api/project/config
+// round-trip (whose path/query styles never matched).
+const localConfigUrl = (workspacePath: string) =>
+    `/api/project/local-config?workspacePath=${encodeURIComponent(workspacePath)}`;
+
+function resolveWorkspacePath(workspaceId: string): string {
+    return wsStore.findWorkspaceAnyStatus(workspaceId)?.path ?? '';
+}
+
 /**
- * Fetch per-project configuration (GET /api/project/config).
- * Returns null on error.
+ * Fetch per-project configuration from the project-local file. Returns null on
+ * error; fills defaults so the shape is always complete for consumers.
  */
 export async function getProjectConfig(workspaceId: string): Promise<ProjectConfig | null> {
+    const path = resolveWorkspacePath(workspaceId);
+    if (!path) return null;
     try {
-        const res = await fetch(`/api/project/${workspaceId}/config`, { credentials: 'same-origin' });
+        const res = await fetch(localConfigUrl(path), { credentials: 'same-origin' });
         if (!res.ok) return null;
-        return await res.json();
+        const raw = (await res.json()) as Partial<ProjectConfig>;
+        return {
+            instructions: '',
+            connectors: [],
+            experts: [],
+            skills: [],
+            automation: '',
+            ...raw,
+            workspaceId,
+        };
     } catch {
         return null;
     }
 }
 
 /**
- * Update per-project configuration (PUT /api/project/config).
+ * Persist per-project configuration to the project-local file. Only the config
+ * fields are sent (the backend merges, preserving sibling keys like hiddenTabs).
  */
 export async function putProjectConfig(workspaceId: string, config: Partial<ProjectConfig>): Promise<boolean> {
+    const path = resolveWorkspacePath(workspaceId);
+    if (!path) return false;
+    const { instructions, connectors, experts, skills, automation } = config;
+    const payload = { instructions, connectors, experts, skills, automation };
     try {
-        const res = await fetch(`/api/project/${workspaceId}/config`, {
+        const res = await fetch(localConfigUrl(path), {
             method: 'PUT',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config),
+            body: JSON.stringify(payload),
         });
         return res.ok;
     } catch {

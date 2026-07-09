@@ -8001,6 +8001,28 @@ body {
       gap: 8px;
     }
 
+    .gh-assignee-select {
+      flex: 1;
+      min-width: 0;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--text-main);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: border-color var(--bento-transition);
+
+      &:hover {
+        border-color: var(--text-main);
+      }
+
+      &:focus {
+        outline: none;
+        border-color: var(--accent-color);
+      }
+    }
+
     .gh-label-list {
       display: flex;
       gap: 4px;
@@ -21080,3 +21102,58 @@ body {
 .gov-tpl-info { display: flex; flex-direction: column; gap: 2px; }
 .gov-tpl-name { font-size: 14px; color: var(--text-main); }
 .gov-tpl-kind { font-size: 11px; color: var(--text-muted); }
+
+// ── 口播剪辑 (speech_clip) project-tab ──────────────────────────────────────
+.speech-clip { display: flex; flex-direction: column; gap: 12px; padding: 16px; height: 100%; box-sizing: border-box; min-height: 0; }
+.speech-clip-empty, .speech-clip-hint { color: var(--text-muted); font-size: 13px; padding: 12px; }
+.speech-clip-error { color: var(--danger-fg); background: rgba(var(--danger-rgb), 0.08); border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); padding: 8px 12px; font-size: 12px; }
+
+.speech-clip-steps { display: flex; gap: 8px; }
+.speech-clip-step { flex: 1; text-align: center; padding: 8px 12px; font-size: 13px; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 999px; }
+.speech-clip-step.is-active { color: var(--on-accent); background: var(--accent-color); border-color: var(--accent-color); }
+.speech-clip-step.is-done { color: var(--accent-fg); border-color: var(--accent-color); }
+
+.speech-clip-import { display: flex; gap: 8px; align-items: center; }
+.speech-clip-input { flex: 1; padding: 8px 12px; font-size: 13px; color: var(--text-main); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 999px; }
+.speech-clip-input:focus { outline: none; border-color: var(--accent-color); }
+.speech-clip-input-label { flex: 0 0 200px; }
+
+.speech-clip-btn { padding: 8px 16px; font-size: 13px; color: var(--on-accent); background: var(--accent-color); border: 1px solid var(--accent-color); border-radius: 999px; cursor: pointer; }
+.speech-clip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.speech-clip-btn-sm { padding: 3px 10px; font-size: 12px; color: var(--text-main); background: transparent; border: 1px solid var(--border-color); border-radius: 999px; cursor: pointer; }
+.speech-clip-btn-sm:hover { border-color: var(--text-main); }
+.speech-clip-btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.speech-clip-body { display: flex; gap: 12px; flex: 1; min-height: 0; }
+.speech-clip-assets { flex: 0 0 240px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.speech-clip-asset { padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); cursor: pointer; background: var(--bg-card); }
+.speech-clip-asset:hover { border-color: var(--text-main); }
+.speech-clip-asset.is-sel { border-color: var(--accent-color); }
+.speech-clip-asset-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.speech-clip-asset-label { font-size: 13px; color: var(--text-main); }
+.speech-clip-asset-id { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.speech-clip-asset-status { font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px; }
+.speech-clip-asset-actions { display: flex; gap: 6px; }
+
+.speech-clip-table-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); overflow: hidden; }
+.speech-clip-table-head { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); }
+.speech-clip-table-scroll { flex: 1; overflow: auto; }
+.speech-clip-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.speech-clip-table th { position: sticky; top: 0; background: var(--bg-panel); color: var(--text-muted); font-weight: 500; font-size: 11px; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border-color); }
+.speech-clip-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-color); color: var(--text-main); vertical-align: top; }
+.speech-clip-table tr.is-picked { background: rgba(var(--accent-rgb), 0.06); }
+.speech-clip-td-pick { width: 36px; text-align: center; }
+.speech-clip-td-time { width: 56px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.speech-clip-td-src { width: 48px; color: var(--text-muted); font-family: var(--font-mono); }
+.speech-clip-td-reason { width: 160px; color: var(--text-secondary); font-size: 12px; }
+.speech-clip-orig { color: var(--text-secondary); }
+.speech-clip-corr { color: var(--text-main); margin-top: 2px; }
+.speech-clip-btn-rec { color: var(--danger-fg); background: transparent; border-color: var(--danger-fg); }
+.speech-clip-btn-recording { color: var(--on-accent); background: var(--danger-emphasis, var(--danger-fg)); border-color: var(--danger-fg); animation: speech-clip-pulse 1.2s ease-in-out infinite; }
+@keyframes speech-clip-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.65; } }
+.speech-clip-busy { font-size: 12px; color: var(--text-muted); align-self: center; }
+
+// 项目设置：标签页显隐勾选
+.settings-row-block { flex-direction: column; align-items: stretch; gap: 12px; }
+.settings-tab-toggles { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.settings-tab-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-main); cursor: pointer; }

@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/scottzx/1Agents/backend/internal/appregistry"
@@ -136,12 +138,51 @@ func Scaffold(templateID, projectID, workspacePath string) (ScaffoldResult, erro
 		created = append(created, dir)
 	}
 
-	// 3. Seed project_config.
-	if err := SaveProjectConfig(projectID, t.PresetConfig); err != nil {
+	// 3. Seed project config into the project-local file
+	// (<workspace>/.1agents/project_config.json) — the same store the config UI
+	// reads/writes. Shallow-merge so a re-scaffold or a pre-set file keeps sibling
+	// keys (e.g. tab visibility).
+	if err := seedProjectLocalConfig(workspacePath, t.PresetConfig); err != nil {
 		return ScaffoldResult{}, fmt.Errorf("templateregistry: seed project config: %w", err)
 	}
 
 	return ScaffoldResult{ArtifactDirs: created}, nil
+}
+
+// seedProjectLocalConfig writes the template's preset into the project-local
+// config file in the frontend's shape. Only type-compatible fields are seeded
+// (instructions/connectors/skills); experts/automation default empty because the
+// preset's Go shape ([]string) differs from the UI's (Expert[] / string).
+func seedProjectLocalConfig(workspacePath string, preset ProjectConfig) error {
+	path := filepath.Join(workspacePath, ".1agents", "project_config.json")
+	merged := map[string]any{}
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &merged)
+	}
+	merged["instructions"] = preset.Instructions
+	merged["connectors"] = orEmptyStrings(preset.Connectors)
+	merged["skills"] = orEmptyStrings(preset.Skills)
+	if _, ok := merged["experts"]; !ok {
+		merged["experts"] = []any{}
+	}
+	if _, ok := merged["automation"]; !ok {
+		merged["automation"] = ""
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	out, err := json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+func orEmptyStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // ── Project config (§327) ─────────────────────────────────────────────────
