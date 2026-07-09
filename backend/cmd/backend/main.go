@@ -56,6 +56,13 @@ func main() {
 	// running daemon's HTTP API, locked to one workspace via env. "mcp-tasks" is
 	// kept as a legacy alias so any stale invocation still resolves.
 	if len(os.Args) > 1 && (os.Args[1] == "project-items" || os.Args[1] == "mcp-tasks") {
+		// A verb (e.g. `project-items list`) runs the Bash-facing CLI; a bare
+		// invocation (what the MCP bridge spawns, no verb) runs the stdio MCP
+		// server. Both share the same daemon HTTP endpoints via projectitems.Client.
+		rest := os.Args[2:]
+		if len(rest) > 0 && projectitems.IsCLIVerb(rest[0]) {
+			os.Exit(projectitems.RunCLI(rest))
+		}
 		if err := projectitems.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, "project-items:", err)
 			os.Exit(1)

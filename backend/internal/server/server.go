@@ -77,6 +77,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// ── Workspace API ────────────────────────────────────────────────────────
 	wsHandler := workspace.NewHandler(cfg.TmuxSession)
 	wsHandler.SetSkillsAddr(cfg.SkillsAddr)
+	// Seed embedded builtin skills (e.g. "pm") into the skill-manager shared store
+	// before any project create auto-attaches them.
+	workspace.EnsureBuiltinSkills()
 	if err := wsHandler.EnsureDefaultWorkspace(); err != nil {
 		log.Printf("[server] ensure default workspace: %v", err)
 	}
