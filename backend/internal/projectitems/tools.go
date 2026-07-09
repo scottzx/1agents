@@ -162,13 +162,14 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "update_project_item",
-		"description": "Update fields of an existing project item in the current project. status may only be set to 'completed' or 'cancelled' (runnable states stay scheduler-owned). Only the fields you pass are changed. See create_project_item for the GitHub field mapping and the `assignee` (executing agent, local) vs `githubAssignees` (GitHub logins) distinction. The github* reference fields are the sync anchor and are normally written by the sync pass.",
+		"description": "Update fields of an existing project item in the current project. Two distinct 'done' dimensions: `status` is the TASK lifecycle (only 'completed'/'cancelled' settable; runnable states stay scheduler-owned) — use it for executable tasks; `issueState` is the issue OPEN/CLOSED state — this is how you close a **requirement or bug** (a non-executable issue item whose 'done' is issueState='closed', not status). Set issueState='closed' to close/archive an item on the board, 'open' to reopen. Only the fields you pass are changed. See create_project_item for the GitHub field mapping and the `assignee` (executing agent, local) vs `githubAssignees` (GitHub logins) distinction. The github* reference fields are the sync anchor and are normally written by the sync pass.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"id"},
 			"properties": map[string]any{
 				"id":                 map[string]any{"type": "string"},
-				"status":             map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}},
+				"status":             map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}, "description": "Task lifecycle (executable tasks). Only 'completed'/'cancelled' are settable here."},
+				"issueState":         map[string]any{"type": "string", "enum": []string{"open", "closed"}, "description": "Issue open/closed state. Set 'closed' to close a requirement/bug (their 'done' is closing, not status='completed'); 'open' to reopen. Independent of status."},
 				"description":        map[string]any{"type": "string"},
 				"acceptanceCriteria": map[string]any{"type": "string", "description": "Concrete, checkable acceptance criteria. Fill this in to move an executable task out of the not_ready hold and into the scheduler queue."},
 				"priority":           map[string]any{"type": "string", "enum": []string{"urgent", "high", "medium", "low"}, "description": "Local scheduling priority (maps to a Projects v2 field, not a native Issue field)."},
@@ -747,7 +748,7 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	}
 
 	patch := map[string]json.RawMessage{}
-	for _, f := range []string{"status", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier",
+	for _, f := range []string{"status", "issueState", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier",
 		"githubAssignees", "githubRepo", "githubKind", "githubNumber", "githubNodeId", "githubUrl", "githubState", "lastSyncedAt"} {
 		if v, ok := raw[f]; ok {
 			patch[f] = v

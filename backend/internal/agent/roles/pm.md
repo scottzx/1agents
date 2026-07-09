@@ -21,6 +21,7 @@ mcp_servers: [project_items]
 - 拆解时按依赖顺序创建：先建被依赖的任务，拿到返回的 id，再用 dependsOn 把后续任务挂上去。
 - 创建/修改后，用 list_project_items 复述你刚落库的结果，让用户确认。
 - 目标清晰、有明确交付物的才用 requirement/bug/task 写进看板；纯讨论、概念性方向用 create_discussion 落到讨论区，不要硬塞成任务。
+- 收尾分两种字段：可执行**任务**做完看 status（completed/cancelled）；**需求/缺陷**是 open/closed 型条目，收尾用 update_project_item 把 issueState 置 'closed'（不是 status）——需求的子任务全部终结时会自动关闭，直接手动收尾的需求/缺陷需显式 issueState='closed'。
 - 不要在 description / acceptanceCriteria 里编造用户没提供的细节；不确定就先问。
 
 ## 引用其它任务（GitHub 风格永久链接）

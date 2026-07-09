@@ -198,9 +198,11 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// the package fires its init() (manifest + template + RegisterFunction);
 			// here we wire its HTTP surface over the live task API.
 			speechClipHandler := speechclip.NewHandler(taskAPI)
-			mux.HandleFunc("/api/speech_clip/assets", speechClipHandler.HandleAssets)         // POST  import asset
+			mux.HandleFunc("/api/speech_clip/assets", speechClipHandler.HandleAssets)             // POST  import asset (server path)
+			mux.HandleFunc("/api/speech_clip/assets/upload", speechClipHandler.HandleUpload)      // POST  upload recorded blob
 			mux.HandleFunc("/api/speech_clip/transcribe", speechClipHandler.HandleTranscribe) // POST  dispatch transcribe task
 			mux.HandleFunc("/api/speech_clip/highlights", speechClipHandler.HandleHighlights) // POST dispatch / GET rows
+			mux.HandleFunc("/api/speech_clip/pick", speechClipHandler.HandlePick)             // POST toggle 金句
 			mux.HandleFunc("/api/speech_clip/project", speechClipHandler.HandleProject)       // GET   project.json + status
 			mux.HandleFunc("/api/speech_clip/transcript", speechClipHandler.HandleTranscript) // GET   sentence rows
 
@@ -314,7 +316,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/data/gold/todos/promote", dataHandler.HandlePromoteTodo) // POST {id, workspaceId, assignee}
 			}
 
-			mux.HandleFunc("/api/studio/save-assets", handleStudioSaveAssets) // POST
+			mux.HandleFunc("/api/project/local-config", handleProjectLocalConfig) // GET/PUT project-local config json
+			mux.HandleFunc("/api/studio/save-assets", handleStudioSaveAssets)     // POST
 			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)  // POST
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
@@ -1443,6 +1446,73 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 			"embed bundle not found; tried: %s\nbuild it with `yarn build:embed` (1skills) or `npm run build:embed` (cc-connect) inside the submodule",
 			strings.Join(candidates, ", "),
 		)
+	}
+}
+
+// handleProjectLocalConfig reads/writes a project-local config blob at
+// <workspacePath>/.1agents/project_config.json. Generic passthrough — the
+// frontend owns the schema (e.g. hiddenTabs). Server-persisted and travels with
+// the project directory, so it works cross-device without a DB.
+func handleProjectLocalConfig(w http.ResponseWriter, r *http.Request) {
+	ws := r.URL.Query().Get("workspacePath")
+	if ws == "" {
+		http.Error(w, "workspacePath required", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(ws, ".1agents", "project_config.json")
+
+	switch r.Method {
+	case http.MethodGet:
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("{}"))
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	case http.MethodPut:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var incoming map[string]any
+		if err := json.Unmarshal(body, &incoming); err != nil {
+			http.Error(w, "body must be a JSON object: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Shallow-merge into the existing file so independent writers (e.g. tab
+		// visibility vs project config) each own their own top-level keys without
+		// clobbering the others.
+		merged := map[string]any{}
+		if existing, rerr := os.ReadFile(path); rerr == nil {
+			_ = json.Unmarshal(existing, &merged)
+		}
+		for k, v := range incoming {
+			merged[k] = v
+		}
+		out, err := json.MarshalIndent(merged, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(path, out, 0o644); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
