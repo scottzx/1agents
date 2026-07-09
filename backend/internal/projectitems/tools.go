@@ -387,21 +387,15 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 	}
 }
 
+// cl returns a workspace-scoped Client view of this server's transport, so the
+// MCP handlers and the CLI (cli.go) share one request-construction core.
+func (s *server) cl() *Client {
+	return &Client{api: s.api, workspaceID: s.workspaceID}
+}
+
 // listTasks fetches every task in the locked workspace.
 func (s *server) listTasks() ([]task, error) {
-	q := url.Values{"workspace_id": {s.workspaceID}}
-	status, body, err := s.api.do("GET", "/api/agent/project-items", q, nil)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("list tasks failed (%d): %s", status, strings.TrimSpace(string(body)))
-	}
-	var tasks []task
-	if err := json.Unmarshal(body, &tasks); err != nil {
-		return nil, err
-	}
-	return tasks, nil
+	return s.cl().ListTasks()
 }
 
 func (s *server) toolListTasks(args json.RawMessage) map[string]any {
@@ -443,7 +437,7 @@ func (s *server) toolGetTask(args json.RawMessage) map[string]any {
 	if !s.idInScope(a.ID) {
 		return toolErr("task not accessible in this session: " + a.ID)
 	}
-	status, body, err := s.api.do("GET", "/api/agent/project-items/"+url.PathEscape(a.ID), nil, nil)
+	status, body, err := s.cl().GetTask(a.ID)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -463,7 +457,7 @@ func (s *server) toolGetTaskGraph(args json.RawMessage) map[string]any {
 	if !s.idInScope(a.ID) {
 		return toolErr("task not accessible in this session: " + a.ID)
 	}
-	status, body, err := s.api.do("GET", "/api/agent/project-items/"+url.PathEscape(a.ID)+"/graph", nil, nil)
+	status, body, err := s.cl().GetTaskGraph(a.ID)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -474,8 +468,7 @@ func (s *server) toolGetTaskGraph(args json.RawMessage) map[string]any {
 }
 
 func (s *server) toolListMilestones() map[string]any {
-	q := url.Values{"workspace_id": {s.workspaceID}}
-	status, body, err := s.api.do("GET", "/api/agent/milestones", q, nil)
+	status, body, err := s.cl().ListMilestones()
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -490,28 +483,14 @@ func (s *server) toolListMilestones() map[string]any {
 }
 
 func (s *server) toolCreateMilestone(args json.RawMessage) map[string]any {
-	var a struct {
-		Name          string `json:"name"`
-		Description   string `json:"description"`
-		TargetDate    string `json:"targetDate"`
-		PredecessorID string `json:"predecessorId"`
-	}
+	var a CreateMilestoneArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return toolErr("invalid arguments: " + err.Error())
 	}
 	if strings.TrimSpace(a.Name) == "" {
 		return toolErr("name is required")
 	}
-	body := map[string]any{
-		"workspace_id":  s.workspaceID,
-		"name":          a.Name,
-		"description":   a.Description,
-		"predecessorId": a.PredecessorID,
-	}
-	if a.TargetDate != "" {
-		body["targetDate"] = a.TargetDate
-	}
-	status, resp, err := s.api.do("POST", "/api/agent/milestones", nil, body)
+	status, resp, err := s.cl().CreateMilestone(a)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -543,7 +522,7 @@ func (s *server) toolUpdateMilestone(args json.RawMessage) map[string]any {
 	if len(patch) == 1 {
 		return toolErr("no updatable fields provided")
 	}
-	status, resp, err := s.api.do("PATCH", "/api/agent/milestones/"+url.PathEscape(id), nil, patch)
+	status, resp, err := s.cl().UpdateMilestone(id, patch)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -554,107 +533,14 @@ func (s *server) toolUpdateMilestone(args json.RawMessage) map[string]any {
 }
 
 func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
-	var a struct {
-		Title               string   `json:"title"`
-		Description         string   `json:"description"`
-		AcceptanceCriteria  string   `json:"acceptanceCriteria"`
-		Type                string   `json:"type"`
-		Priority            string   `json:"priority"`
-		Milestone           string   `json:"milestone"`
-		Assignee            string   `json:"assignee"`
-		Verifier            string   `json:"verifier"`
-		VerifierCount       int      `json:"verifierCount"`
-		VerifyPassThreshold int      `json:"verifyPassThreshold"`
-		DependsOn           []string `json:"dependsOn"`
-		// Links are peer cross-references (task 归口), set at creation so no
-		// follow-up update_project_item is needed. Forwarded verbatim to the REST create,
-		// which parses []{target, rel}.
-		Links json.RawMessage `json:"links"`
-		// Personal (assignee='user') scheduling: dueAt becomes the calendar
-		// trigger time, recurrence makes it repeat. Ignored by the scheduler for
-		// agent-assigned tasks (they run on dependency readiness, not the clock).
-		DueAt      string          `json:"dueAt"`
-		Recurrence json.RawMessage `json:"recurrence"`
-		// Checklist is the task's embedded progress ledger — ordered items each
-		// with a done flag. Optional; the agent ticks them as it works.
-		Checklist json.RawMessage `json:"checklist"`
-		// GitHub Issue/PR mapping (#74). githubAssignees is the human-collaborator
-		// dimension (distinct from assignee); the github* refs are the sync anchor.
-		GithubAssignees []string `json:"githubAssignees"`
-		GithubRepo      string   `json:"githubRepo"`
-		GithubKind      string   `json:"githubKind"`
-		GithubNumber    int      `json:"githubNumber"`
-		GithubNodeId    string   `json:"githubNodeId"`
-		GithubUrl       string   `json:"githubUrl"`
-		GithubState     string   `json:"githubState"`
-		LastSyncedAt    string   `json:"lastSyncedAt"`
-	}
+	var a CreateTaskArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return toolErr("invalid arguments: " + err.Error())
 	}
 	if strings.TrimSpace(a.Title) == "" {
 		return toolErr("title is required")
 	}
-	body := map[string]any{
-		"workspace_id":       s.workspaceID,
-		"title":              a.Title,
-		"description":        a.Description,
-		"acceptanceCriteria": a.AcceptanceCriteria,
-		"type":               a.Type,
-		"priority":           a.Priority,
-		"milestone":          a.Milestone,
-		"assignee":           a.Assignee,
-		"verifier":           a.Verifier,
-		"dependsOn":          a.DependsOn,
-	}
-	if a.VerifierCount > 0 {
-		body["verifierCount"] = a.VerifierCount
-	}
-	if a.VerifyPassThreshold > 0 {
-		body["verifyPassThreshold"] = a.VerifyPassThreshold
-	}
-	// Personal-task scheduling (assignee='user'): dueAt → a scheduled trigger,
-	// recurrence → a repeat rule. Mirrors the old create_reminder mapping.
-	if strings.TrimSpace(a.DueAt) != "" {
-		body["scheduleType"] = "scheduled"
-		body["scheduledAt"] = a.DueAt
-	}
-	if len(a.Recurrence) > 0 && string(a.Recurrence) != "null" {
-		body["recurrence"] = a.Recurrence
-	}
-	if len(a.Links) > 0 && string(a.Links) != "null" {
-		body["links"] = a.Links
-	}
-	if len(a.Checklist) > 0 && string(a.Checklist) != "null" {
-		body["checklist"] = a.Checklist
-	}
-	// Forward GitHub mapping fields only when provided, so a normal create never
-	// writes empty anchors over a row a future sync pass might populate.
-	if len(a.GithubAssignees) > 0 {
-		body["githubAssignees"] = a.GithubAssignees
-	}
-	if a.GithubRepo != "" {
-		body["githubRepo"] = a.GithubRepo
-	}
-	if a.GithubKind != "" {
-		body["githubKind"] = a.GithubKind
-	}
-	if a.GithubNumber != 0 {
-		body["githubNumber"] = a.GithubNumber
-	}
-	if a.GithubNodeId != "" {
-		body["githubNodeId"] = a.GithubNodeId
-	}
-	if a.GithubUrl != "" {
-		body["githubUrl"] = a.GithubUrl
-	}
-	if a.GithubState != "" {
-		body["githubState"] = a.GithubState
-	}
-	if a.LastSyncedAt != "" {
-		body["lastSyncedAt"] = a.LastSyncedAt
-	}
-	status, resp, err := s.api.do("POST", "/api/agent/project-items", nil, body)
+	status, resp, err := s.cl().CreateTask(a)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -686,13 +572,7 @@ func (s *server) toolCreateDiscussion(args json.RawMessage) map[string]any {
 	if strings.TrimSpace(a.Title) == "" {
 		return toolErr("title is required")
 	}
-	body := map[string]any{
-		"workspace_id": s.workspaceID,
-		"title":        a.Title,
-		"description":  a.Description,
-		"type":         "discussion",
-	}
-	status, resp, err := s.api.do("POST", "/api/agent/project-items", nil, body)
+	status, resp, err := s.cl().CreateDiscussion(a.Title, a.Description)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -748,8 +628,7 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	}
 
 	patch := map[string]json.RawMessage{}
-	for _, f := range []string{"status", "issueState", "description", "acceptanceCriteria", "priority", "milestone", "type", "assignee", "verifier",
-		"githubAssignees", "githubRepo", "githubKind", "githubNumber", "githubNodeId", "githubUrl", "githubState", "lastSyncedAt"} {
+	for _, f := range updatableItemFields {
 		if v, ok := raw[f]; ok {
 			patch[f] = v
 		}
@@ -757,7 +636,7 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	if len(patch) == 0 {
 		return toolErr("no updatable fields provided")
 	}
-	status, resp, err := s.api.do("PATCH", "/api/agent/project-items/"+url.PathEscape(id), nil, patch)
+	status, resp, err := s.cl().UpdateTask(id, patch)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -809,16 +688,8 @@ func (s *server) toolSubmitReview(args json.RawMessage) map[string]any {
 // single-task and PATCH endpoints are addressable by global id, so this guard
 // keeps the workspace lock honest for get/update.
 func (s *server) idInWorkspace(id string) bool {
-	tasks, err := s.listTasks()
-	if err != nil {
-		return false
-	}
-	for _, t := range tasks {
-		if t.ID == id {
-			return true
-		}
-	}
-	return false
+	ok, err := s.cl().InWorkspace(id)
+	return err == nil && ok
 }
 
 // toolCompleteHumanTask marks a human-executor task (status=awaiting_human) as
