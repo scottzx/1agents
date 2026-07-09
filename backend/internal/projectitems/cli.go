@@ -31,6 +31,7 @@ import (
 var cliVerbs = map[string]bool{
 	"list": true, "get": true, "graph": true, "create": true, "update": true,
 	"close": true, "reopen": true, "discussion": true, "milestones": true,
+	"pdf":  true,
 	"help": true, "-h": true, "--help": true,
 }
 
@@ -53,6 +54,7 @@ const cliUsage = `usage: 1agents project-items <verb> [flags]   (run inside a pr
   milestones list
   milestones create    --name N [--description D] [--target-date RFC3339] [--predecessor ID]
   milestones update <id> [--name N] [--description D] [--target-date RFC3339] [--predecessor ID]
+  pdf                  [--out PATH] [--font TTF] (导出当前项目看板为 PDF 报告)
 
 common: --project <id|name|path> overrides cwd-based project resolution; --json prints machine output.
 status values: completed|cancelled (runnable states are scheduler-owned). type: task|requirement|bug|discussion.`
@@ -85,6 +87,8 @@ func RunCLI(args []string) int {
 		return cliCloseReopen(args[1:], "open")
 	case "milestones":
 		return cliMilestones(args[1:])
+	case "pdf":
+		return cliPDF(args[1:])
 	default:
 		return cliFail("unknown verb %q\n%s", args[0], cliUsage)
 	}
