@@ -22,6 +22,7 @@ const (
 	AuthCLI         = "cli"         // lark-cli manages the token
 	AuthOAuth       = "oauth"       // OAuth authorization-code flow (骨架/占位 for now)
 	AuthBearer      = "bearer"      // static Bearer token, stored per-account (manifest REST sources)
+	AuthPush        = "push"        // inbound push: local agents POST records, no scheduled pull (shared secret reuses the bearer store)
 )
 
 // VendorSpec is one vendor's add-time capability surface.

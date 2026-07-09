@@ -21,11 +21,17 @@ type RESTDescriptor struct {
 	Label  string // UI display name
 
 	// Transport selects how a page is fetched: "" | "rest" → HTTP; "cli" → shell out
-	// to a local command (like agently-cli / lark-cli), reusing the same JSON parsing.
+	// to a local command (like agently-cli / lark-cli), reusing the same JSON parsing;
+	// "push" → not fetched at all, records arrive via POST /api/data/push (Schema then
+	// validates each inbound item).
 	Transport string
 	Command   string   // cli: the binary to run (e.g. "agently-cli")
 	Args      []string // cli: static args (e.g. ["message","+list","--dir","inbox"])
 	CursorArg string   // cli: flag that carries the cursor value (e.g. "--after")
+
+	// Schema is the declared table structure for a push collection (transport=push):
+	// the fields an inbound record may/must carry. Empty ⇒ accept any JSON object.
+	Schema []PushField
 
 	Method     string            // GET | POST (default GET)
 	Endpoint   string            // absolute URL, or path joined onto the source BaseURL

@@ -20463,6 +20463,65 @@ body {
   padding: 4px 2px 24px;
 }
 
+// 推送式数据源 (authKind=push): endpoint + curl + 密钥 (认证), 表结构 (配置).
+.push-endpoints,
+.push-example,
+.push-key,
+.push-schema-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.push-endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.push-endpoint-url {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.push-curl {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+  margin: 0;
+}
+
+.push-schema-zone {
+  gap: 14px;
+}
+
+.push-schema-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  th {
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    color: var(--text-main);
+  }
+}
+
 // 配置 tab: 定时任务 / 执行情况 两个子页面.
 .source-config-tab {
   display: flex;

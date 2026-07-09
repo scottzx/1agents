@@ -27,12 +27,18 @@ func (h *Handler) RegisterManifestGovernance(ms []sources.Manifest) {
 			if domain == "" {
 				domain = c.Domain
 			}
+			// A push collection can declare its silver columns implicitly via its
+			// schema; fall back to that when no explicit promote map is given.
+			promote := c.Silver.Promote
+			if len(promote) == 0 {
+				promote = c.SchemaPromote()
+			}
 			h.manifestSilver = append(h.manifestSilver, govern.ManifestSilverSpec{
 				Source:  m.Vendor,
 				Kind:    c.Kind,
 				Table:   table,
 				Domain:  domain,
-				Promote: c.Silver.Promote,
+				Promote: promote,
 			})
 			data.RegisterViewerTable(domain, m.Vendor, table)
 		}
