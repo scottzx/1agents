@@ -44,6 +44,7 @@ export interface GroupedToolCall {
 
 export type ToolGroupElement =
     | { kind: 'thinking'; id: string; content: string }
+    | { kind: 'assistant_text'; id: string; content: string }
     | { kind: 'call'; call: GroupedToolCall };
 
 export type GroupedChatItem =
@@ -126,7 +127,7 @@ function UserBubble({
     const isQueued = queueStatus === 'queued';
     return (
         <div class={`chat-bubble chat-bubble-user${isQueued ? ' chat-bubble-user-queued' : ''}`}>
-            <div class="chat-bubble-body chat-bubble-body-queued">{content}</div>
+            <div class={`chat-bubble-body${isQueued ? ' chat-bubble-body-queued' : ''}`}>{content}</div>
             {isQueued && (
                 <>
                     <span class="chat-bubble-queue-badge">{t('chat.queue.queued', getLang())}</span>
@@ -286,6 +287,40 @@ function callStatus(call: GroupedToolCall, active: boolean): CallStatus {
     return active ? 'running' : 'incomplete';
 }
 
+function agenticGroupTitle(
+    calls: GroupedToolCall[],
+    thinkingBlocks: string[],
+    pending: boolean,
+    lang: ReturnType<typeof getLang>
+): string {
+    if (pending) return t('chat.tool.groupPending', lang);
+
+    const readNames = new Set(['Read', 'read', 'Glob', 'glob', 'Grep', 'grep', 'LS', 'ls', 'List', 'list']);
+    const commandCount = calls.filter(call => (call.kind ?? deriveToolKind(call.toolName)) === 'execute').length;
+    const readFileCount = calls.reduce((count, call) => {
+        if (!readNames.has(call.toolName)) return count;
+        if (call.locations && call.locations.length > 0) return count + call.locations.length;
+        return count + 1;
+    }, 0);
+
+    if (thinkingBlocks.length > 0 && calls.length > 0) {
+        return t('chat.tool.groupTitleAgenticWithThinking', lang, {
+            thoughts: String(thinkingBlocks.length),
+            files: String(readFileCount),
+            commands: String(commandCount),
+            tools: String(calls.length),
+        });
+    }
+    if (calls.length > 0) {
+        return t('chat.tool.groupTitleAgentic', lang, {
+            files: String(readFileCount),
+            commands: String(commandCount),
+            tools: String(calls.length),
+        });
+    }
+    return t('chat.tool.groupTitleThinkingOnly', lang, { thoughts: String(thinkingBlocks.length) });
+}
+
 function ToolGroupBubble({
     calls,
     thinkingBlocks = [],
@@ -306,7 +341,7 @@ function ToolGroupBubble({
     // app re-renders through @preact/signals, and a plain useState setter
     // in these chat bubbles fired its updater but didn't re-render, so the
     // header click did nothing. Reading `.value` subscribes this component.
-    const isExpanded = useSignal(key && groupCollapseChoice.has(key) ? groupCollapseChoice.get(key)! : true);
+    const isExpanded = useSignal(key && groupCollapseChoice.has(key) ? groupCollapseChoice.get(key)! : !!active);
     const lang = getLang();
 
     const statuses = calls.map(c => callStatus(c, !!active));
@@ -326,6 +361,20 @@ function ToolGroupBubble({
         if (hasWaiting) isExpanded.value = true;
     }, [hasWaiting]);
 
+    const prevActive = useRef(!!active);
+    useEffect(() => {
+        if (prevActive.current === !!active) return;
+        prevActive.current = !!active;
+        if (active) {
+            isExpanded.value = true;
+            return;
+        }
+        if (!hasWaiting) {
+            isExpanded.value = false;
+            if (key) groupCollapseChoice.set(key, false);
+        }
+    }, [active, hasWaiting, key]);
+
     const toggle = () => {
         const next = !isExpanded.value;
         isExpanded.value = next;
@@ -341,29 +390,6 @@ function ToolGroupBubble({
         summary = { cls: 'status-running', text: t('chat.tool.summary.running', lang, { n: String(runningCount) }) };
     } else if (errorCount > 0) {
         summary = { cls: 'status-error', text: t('chat.tool.summary.error', lang, { n: String(errorCount) }) };
-    }
-
-    const totalItemsCount = calls.length + thinkingBlocks.length;
-
-    if (totalItemsCount === 1) {
-        if (calls.length === 1) {
-            return (
-                <div class={`chat-bubble chat-bubble-tool-group is-single ${pending ? 'is-pending' : ''}`}>
-                    <GroupedToolCallItem
-                        call={calls[0]}
-                        status={statuses[0]}
-                        onRespondPermission={onRespondPermission}
-                    />
-                </div>
-            );
-        }
-        if (thinkingBlocks.length === 1) {
-            return (
-                <div class={`chat-bubble chat-bubble-tool-group is-single ${pending ? 'is-pending' : ''}`}>
-                    <GroupedThinkingItem content={thinkingBlocks[0]} streaming={!!active} />
-                </div>
-            );
-        }
     }
 
     return (
@@ -385,17 +411,9 @@ function ToolGroupBubble({
                 <span class="chat-bubble-caret" aria-hidden="true">
                     {expanded ? '▾' : '▸'}
                 </span>
-                <span class="chat-tool-group-title">
-                    {pending
-                        ? t('chat.tool.groupPending', lang)
-                        : thinkingBlocks.length > 0
-                          ? t('chat.tool.groupTitleWithThinking', lang, {
-                                x: String(thinkingBlocks.length),
-                                n: String(calls.length),
-                            })
-                          : t('chat.tool.groupTitle', lang)}
-                </span>
+                <span class="chat-tool-group-title">{agenticGroupTitle(calls, thinkingBlocks, !!pending, lang)}</span>
                 {!pending && thinkingBlocks.length === 0 && <span class="chat-tool-group-count">{calls.length}</span>}
+                {!pending && !active && <span class="chat-tool-group-processed">{t('chat.process.done', lang)}</span>}
                 {summary && (
                     <span class={`chat-tool-group-summary ${summary.cls}`}>
                         {(hasWaiting || runningCount > 0) && <span class="chat-tool-spinner" aria-hidden="true" />}
@@ -415,6 +433,8 @@ function ToolGroupBubble({
                                     streaming={!!active && isLastThinking}
                                 />
                             );
+                        } else if (el.kind === 'assistant_text') {
+                            return <GroupedAssistantTextItem key={el.id || idx} content={el.content} />;
                         } else {
                             const callIdx = calls.indexOf(el.call);
                             return (
@@ -429,6 +449,18 @@ function ToolGroupBubble({
                     })}
                 </div>
             )}
+        </div>
+    );
+}
+
+function GroupedAssistantTextItem({ content }: { content: string }) {
+    const html = renderMarkdown(content, { projectName: activeProjectName() });
+
+    return (
+        <div class="chat-tool-row">
+            <div class="chat-tool-row-body">
+                <div class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
         </div>
     );
 }
@@ -476,32 +508,21 @@ function GroupedThinkingItem({ content, streaming }: { content: string; streamin
                 {streaming ? (
                     <span class="chat-tool-status-icon chat-tool-spinner" aria-hidden="true" />
                 ) : (
-                    <span class="chat-tool-status-icon" style="color: var(--warning-fg);" aria-hidden="true">
-                        💭
+                    <span class="chat-tool-status-icon is-thinking" aria-hidden="true">
+                        ·
                     </span>
                 )}
-                <span
-                    class="chat-tool-name-badge"
-                    style="background: rgba(var(--warning-rgb), 0.1); color: var(--warning-fg);"
-                >
+                <span class="chat-tool-name-badge is-thinking">
                     {streaming ? t('chat.thinking.streaming', lang) : t('chat.thinking.label', lang)}
                 </span>
-                {!expanded && preview && (
-                    <span class="chat-tool-row-summary" style="font-style: italic; font-family: inherit;">
-                        {preview}
-                    </span>
-                )}
+                {!expanded && preview && <span class="chat-tool-row-summary is-thinking-preview">{preview}</span>}
                 <span class="chat-tool-row-caret" aria-hidden="true">
                     {expanded ? '▾' : '▸'}
                 </span>
             </div>
             {expanded && (
-                <div class="chat-tool-row-body" style="background: rgba(var(--warning-rgb), 0.02);">
-                    <div
-                        class="chat-thinking-body markdown-body"
-                        style="margin-top: 0; padding-right: 0;"
-                        dangerouslySetInnerHTML={{ __html: html }}
-                    />
+                <div class="chat-tool-row-body is-thinking">
+                    <div class="chat-thinking-body markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
                 </div>
             )}
         </div>

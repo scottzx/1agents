@@ -16,6 +16,10 @@
 // name) stays an ordinary code span, which doubles as the escape hatch.
 
 import { Marked, type RendererObject, type TokenizerAndRendererExtension } from 'marked';
+import hljs from 'highlight.js/lib/core';
+import yaml from 'highlight.js/lib/languages/yaml';
+
+hljs.registerLanguage('yaml', yaml);
 
 export interface MarkdownContext {
     /** Active project (display name) used to build same-project `#N` links. */
@@ -149,6 +153,42 @@ const fileRefExtension: TokenizerAndRendererExtension = {
     },
 };
 
+const yamlLangs = new Set(['yaml', 'yml']);
+
+function renderYamlBlock(src: string, frontmatter = false): string {
+    let html = escapeHtml(src);
+    try {
+        html = hljs.highlight(src, { language: 'yaml', ignoreIllegals: true }).value;
+    } catch {
+        // Keep the escaped fallback above.
+    }
+    return (
+        `<div class="md-yaml-block${frontmatter ? ' md-yaml-frontmatter' : ''}">` +
+        `<div class="md-yaml-label">${frontmatter ? 'frontmatter' : 'yaml'}</div>` +
+        `<pre><code class="hljs language-yaml">${html}</code></pre></div>`
+    );
+}
+
+export const frontmatterExtension: TokenizerAndRendererExtension = {
+    name: 'frontmatter',
+    level: 'block',
+    start(src: string) {
+        return src.startsWith('---\n') || src.startsWith('---\r\n') ? 0 : undefined;
+    },
+    tokenizer(src: string) {
+        const m = /^(?:---\r?\n)([\s\S]*?)(?:\r?\n---)(?=\r?\n|$)/.exec(src);
+        if (!m) return undefined;
+        return {
+            type: 'frontmatter',
+            raw: m[0],
+            text: m[1],
+        };
+    },
+    renderer(token) {
+        return renderYamlBlock(token.text as string, true);
+    },
+};
+
 // A ```mermaid fenced block is emitted as an inert placeholder carrying the
 // diagram source (URI-encoded so newlines survive the attribute). The raw code
 // is kept inside as a <pre> fallback — that's what shows until a consumer with
@@ -156,13 +196,15 @@ const fileRefExtension: TokenizerAndRendererExtension = {
 // what stays put in contexts that never run that step (task descriptions etc.).
 export const mermaidRenderer: RendererObject = {
     code(token) {
-        if ((token.lang || '').trim().split(/\s+/)[0] === 'mermaid') {
+        const lang = (token.lang || '').trim().split(/\s+/)[0].toLowerCase();
+        if (lang === 'mermaid') {
             const src = token.text;
             return (
                 `<div class="mermaid-block" data-mermaid="${encodeURIComponent(src)}">` +
                 `<pre class="mermaid-fallback"><code>${escapeHtml(src)}</code></pre></div>`
             );
         }
+        if (yamlLangs.has(lang)) return renderYamlBlock(token.text);
         // Returning false defers to marked's default code renderer.
         return false;
     },
@@ -171,7 +213,7 @@ export const mermaidRenderer: RendererObject = {
 const instance = new Marked({ gfm: true, breaks: true });
 // taskRef must be registered first so `project#N` is captured before fileRef
 // can see the backtick.
-instance.use({ extensions: [taskRefExtension, fileRefExtension], renderer: mermaidRenderer });
+instance.use({ extensions: [frontmatterExtension, taskRefExtension, fileRefExtension], renderer: mermaidRenderer });
 
 /**
  * Render Markdown to an HTML string, autolinking task references using `c`.

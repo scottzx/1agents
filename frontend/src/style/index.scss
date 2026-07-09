@@ -81,6 +81,87 @@
     }
   }
 
+  .md-yaml-block {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 1em 0;
+    border: 1px solid var(--border-color);
+    border-top: 3px solid var(--accent-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    overflow: hidden;
+
+    .md-yaml-label {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 30px;
+      box-sizing: border-box;
+      padding: 6px 14px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-terminal-inner);
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    pre {
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      overflow-x: hidden;
+    }
+
+    code {
+      color: var(--text-main);
+      display: block;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .hljs-attr {
+      color: var(--accent-color);
+      font-weight: 600;
+    }
+
+    .hljs-string,
+    .hljs-meta-string {
+      color: var(--success-fg);
+    }
+
+    .hljs-number,
+    .hljs-literal,
+    .hljs-symbol,
+    .hljs-bullet {
+      color: var(--orange-fg);
+    }
+
+    .hljs-comment {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+  }
+
+  .md-yaml-frontmatter {
+    border-color: var(--border-color);
+    border-top-color: var(--warning-fg);
+    background: var(--bg-card);
+
+    .md-yaml-label {
+      border-bottom-color: var(--border-color);
+      background: var(--bg-terminal-inner);
+      color: var(--text-secondary);
+    }
+  }
+
   /* Mermaid diagrams: centered SVG once rendered; the inner <pre> source
      fallback inherits the fenced-code styling above until that swap happens.
      The whole diagram is always shown in the bubble — a tall one is scaled
@@ -14966,13 +15047,22 @@ body {
 // ════════════════════════════════════════════════════════════════════
 
 .chat-panel {
+  --chat-bg-page: #fbfcfd;
+  --chat-bg-panel: rgba(255, 255, 255, 0.9);
+  --chat-bg-card: #ffffff;
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-page);
+  background: var(--chat-bg-page);
   color: var(--text-main);
   position: relative;
   overflow: hidden;
+}
+
+[data-theme="dark"] .chat-panel {
+  --chat-bg-page: var(--bg-page);
+  --chat-bg-panel: var(--bg-panel);
+  --chat-bg-card: var(--bg-card);
 }
 
 // Banner shown when the session was taken over by a newer connection
@@ -15096,10 +15186,11 @@ body {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 24px;
+  padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  background: var(--chat-bg-page);
 }
 
 .chat-empty {
@@ -15136,7 +15227,7 @@ body {
 .chat-bubble {
   max-width: 80%;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 14px;
   line-height: 1.5;
   word-wrap: break-word;
@@ -15150,22 +15241,26 @@ body {
   color: var(--text-secondary);
   margin-bottom: 4px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
 }
 
 .chat-bubble-user {
   align-self: flex-end;
-  background: var(--accent-color);
-  color: var(--on-accent);
-  border-bottom-right-radius: 2px;
+  background: var(--chat-bg-panel);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-bottom-right-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
 
-  // The global ::selection uses the same blue + white as this bubble,
-  // so text selection is invisible here. Invert to white bg / blue text
-  // for a clearly visible highlight.
   ::selection {
     background-color: #ffffff;
     color: var(--accent-color);
   }
+}
+
+.chat-bubble-user .chat-bubble-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 // Queued state: the bridge accepted the prompt but couldn't start it
@@ -15225,7 +15320,7 @@ body {
   align-items: flex-start;
   gap: 10px;
   width: 100%;
-  max-width: 92%;
+  max-width: 100%;
 
   .chat-bubble-assistant {
     flex: 1;
@@ -15248,14 +15343,17 @@ body {
 
 .chat-bubble-assistant {
   align-self: flex-start;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-bottom-left-radius: 2px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--border-color);
+  border-radius: 0;
+  padding: 2px 0 2px 16px;
 }
 
 .chat-bubble-thinking {
   align-self: flex-start;
-  background: rgba(var(--warning-rgb), 0.08);
+  background: var(--chat-bg-panel);
+  border: 1px solid rgba(var(--warning-rgb), 0.24);
   border-left: 3px solid var(--warning-fg);
   font-size: 13px;
   padding: 0;
@@ -15264,7 +15362,7 @@ body {
   // Cap thinking content so very long reasoning doesn't push the bubble
   // out of the viewport; the body becomes scrollable past this limit.
   width: 100%;
-  max-width: 92%;
+  max-width: 100%;
 
   &.is-collapsed {
     padding: 8px 12px;
@@ -15406,14 +15504,15 @@ body {
   align-self: flex-start;
   font-size: 13px;
   width: 100%;
-  max-width: 92%;
+  max-width: 100%;
   padding: 0;
   overflow: hidden;
-  background: var(--bg-panel);
+  background: transparent;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 
   // Holding pen for orphan results / permission requests that haven't
   // been matched to a tool_use yet — visually provisional.
@@ -15427,11 +15526,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
+  padding: 8px 12px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   transition: background-color 0.15s ease;
+  background: var(--chat-bg-panel);
 
   &:hover {
     background-color: var(--btn-hover);
@@ -15455,6 +15555,11 @@ body {
 }
 
 .chat-tool-group-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -15473,6 +15578,20 @@ body {
   font-size: 10.5px;
   font-weight: 700;
   line-height: 1;
+}
+
+.chat-tool-group-processed {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--chat-bg-card);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .chat-tool-group-summary {
@@ -15505,6 +15624,7 @@ body {
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border-color);
+  background: var(--chat-bg-card);
 }
 
 .chat-tool-row {
@@ -15526,7 +15646,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
+  padding: 8px 12px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -15557,6 +15677,7 @@ body {
   &.is-error { color: var(--danger-fg); }
   &.is-waiting { color: var(--warning-fg); }
   &.is-incomplete { color: var(--text-muted); }
+  &.is-thinking { color: var(--warning-fg); font-size: 18px; }
 
   &.chat-tool-spinner {
     color: var(--accent-color);
@@ -15598,7 +15719,16 @@ body {
   gap: 10px;
   padding: 10px 12px 12px 34px;
   border-top: 1px dashed var(--border-color);
-  background: var(--bg-card);
+  background: var(--chat-bg-card);
+
+  &.is-thinking {
+    background: rgba(var(--warning-rgb), 0.025);
+
+    .chat-thinking-body {
+      margin-top: 0;
+      padding-right: 0;
+    }
+  }
 }
 
 .chat-tool-section {
@@ -15720,7 +15850,7 @@ body {
 }
 
 .chat-tool-name-badge {
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
   color: var(--accent-color);
@@ -15730,6 +15860,17 @@ body {
   border: 1px solid rgba(var(--accent-color-rgb), 0.12);
   flex-shrink: 0;
   line-height: 1.4;
+
+  &.is-thinking {
+    background: rgba(var(--warning-rgb), 0.1);
+    border-color: rgba(var(--warning-rgb), 0.18);
+    color: var(--warning-fg);
+  }
+}
+
+.chat-tool-row-summary.is-thinking-preview {
+  font-family: inherit;
+  font-style: italic;
 }
 
 .status-badge {
@@ -15760,7 +15901,7 @@ body {
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
 }
 
 // ── Tool kind icon (Phase 6) — sits left of the tool-name badge ──
@@ -15979,13 +16120,18 @@ body {
 .chat-permission-inline {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(var(--warning-rgb), 0.07);
+  border: 1px solid rgba(var(--warning-rgb), 0.26);
+  border-radius: 8px;
 }
 
 .chat-permission-inline-label {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--warning-fg);
+  font-family: var(--font-mono);
 }
 
 .chat-permission-inline .chat-permission-actions {
@@ -16063,12 +16209,71 @@ body {
   50% { opacity: 0; }
 }
 
-// Markdown body — styles the HTML emitted by `marked` inside an assistant
-// bubble. Keep this scoped to chat to avoid leaking into the rest of the app.
-// Shared with the file browser's `.fb-md-render` — see `md-render` mixin
-// at the top of this file. Keep them visually identical.
+// Markdown body styles the HTML emitted by `marked`. The shared mixin gives
+// file previews and chat the same baseline; assistant replies below add a
+// tighter conversation-specific heading scale.
 .markdown-body {
   @include md-render;
+}
+
+.chat-bubble-assistant .markdown-body {
+  font-size: 14px;
+  line-height: 1.68;
+
+  p {
+    margin: 0.45em 0 0.75em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    margin: 1em 0 0.45em;
+    padding: 0;
+    border: 0;
+    line-height: 1.35;
+    letter-spacing: 0;
+  }
+
+  h1 {
+    font-size: 1.16em;
+    font-weight: 700;
+  }
+
+  h2 {
+    font-size: 1.1em;
+    font-weight: 700;
+  }
+
+  h3 {
+    font-size: 1.04em;
+    font-weight: 650;
+  }
+
+  h4, h5, h6 {
+    font-size: 1em;
+    font-weight: 650;
+    color: var(--text-main);
+  }
+
+  h1 + p,
+  h2 + p,
+  h3 + p,
+  h4 + p,
+  h5 + p,
+  h6 + p {
+    margin-top: 0.25em;
+  }
+
+  ul, ol {
+    margin: 0.35em 0 0.75em;
+    padding-left: 1.35em;
+  }
+
+  li {
+    margin: 0.18em 0;
+  }
+
+  pre {
+    margin: 0.75em 0;
+  }
 }
 
 // GitHub-style task reference autolinks (#N / 项目名#N) inside any rendered
@@ -16093,7 +16298,7 @@ body {
   display: flex;
   padding: 12px 16px;
   border-top: 1px solid var(--border-color);
-  background: var(--bg-panel);
+  background: var(--chat-bg-page);
 }
 
 // Outer frame that draws the rounded border once, with the textarea and
@@ -16104,7 +16309,7 @@ body {
   min-width: 0;
   position: relative;
   border: 1px solid var(--border-color);
-  background: var(--bg-card);
+  background: var(--chat-bg-card);
   border-radius: 10px;
   display: flex;
   flex-direction: column;

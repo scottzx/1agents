@@ -58,27 +58,65 @@ function isCallRenderable(call: GroupedToolCall): boolean {
     }
 }
 
+function isProcessItem(item: ChatItem): boolean {
+    return (
+        item.kind === 'thinking' ||
+        item.kind === 'tool_use' ||
+        item.kind === 'tool_result' ||
+        item.kind === 'permission_request'
+    );
+}
+
+function assistantTextToFold(items: ChatItem[]): Set<string> {
+    const foldIds = new Set<string>();
+    let turnStart = 0;
+
+    const visitTurn = (start: number, end: number) => {
+        const turn = items.slice(start, end);
+        if (!turn.some(isProcessItem)) return;
+        const assistantItems = turn.filter(
+            (item): item is Extract<ChatItem, { kind: 'assistant_text' }> => item.kind === 'assistant_text'
+        );
+        if (assistantItems.length <= 1) return;
+        const visibleFinalId = assistantItems[assistantItems.length - 1].id;
+        for (const item of assistantItems) {
+            if (item.id !== visibleFinalId) foldIds.add(item.id);
+        }
+    };
+
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].kind !== 'user') continue;
+        visitTurn(turnStart, i);
+        turnStart = i;
+    }
+    visitTurn(turnStart, items.length);
+
+    return foldIds;
+}
+
 function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     const grouped: GroupedChatItem[] = [];
     const pendingCalls: GroupedToolCall[] = [];
+    const foldedAssistantIds = assistantTextToFold(items);
+    let currentProcessGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
+
+    const ensureProcessGroup = (id: string, createdAt: number): Extract<GroupedChatItem, { kind: 'tool_group' }> => {
+        if (currentProcessGroup) return currentProcessGroup;
+        currentProcessGroup = {
+            id: `group-${id}`,
+            kind: 'tool_group',
+            calls: [],
+            thinkingBlocks: [],
+            elements: [],
+            createdAt,
+        };
+        grouped.push(currentProcessGroup);
+        return currentProcessGroup;
+    };
 
     for (const item of items) {
         if (item.kind === 'tool_use') {
-            let lastGroup = grouped[grouped.length - 1];
-            if (!lastGroup || lastGroup.kind !== 'tool_group' || lastGroup.pending) {
-                // Don't fold new tool_use items into the pending group
-                // — it only collects orphan results / permission
-                // requests waiting to be matched. Start a fresh group.
-                lastGroup = {
-                    id: `group-${item.id}`,
-                    kind: 'tool_group',
-                    calls: [],
-                    thinkingBlocks: [],
-                    elements: [],
-                    createdAt: item.createdAt,
-                };
-                grouped.push(lastGroup);
-            }
+            const lastGroup = ensureProcessGroup(item.id, item.createdAt);
 
             if (!lastGroup.thinkingBlocks) lastGroup.thinkingBlocks = [];
             if (!lastGroup.elements) lastGroup.elements = [];
@@ -118,18 +156,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 }
             }
         } else if (item.kind === 'thinking') {
-            let lastGroup = grouped[grouped.length - 1];
-            if (!lastGroup || lastGroup.kind !== 'tool_group' || lastGroup.pending) {
-                lastGroup = {
-                    id: `group-${item.id}`,
-                    kind: 'tool_group',
-                    calls: [],
-                    thinkingBlocks: [],
-                    elements: [],
-                    createdAt: item.createdAt,
-                };
-                grouped.push(lastGroup);
-            }
+            const lastGroup = ensureProcessGroup(item.id, item.createdAt);
 
             if (!lastGroup.thinkingBlocks) lastGroup.thinkingBlocks = [];
             if (!lastGroup.elements) lastGroup.elements = [];
@@ -148,6 +175,19 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
             lastGroup.thinkingBlocks = lastGroup.elements
                 .filter(el => el.kind === 'thinking')
                 .map(el => (el as Extract<ToolGroupElement, { kind: 'thinking' }>).content);
+        } else if (item.kind === 'assistant_text' && foldedAssistantIds.has(item.id)) {
+            const lastGroup = ensureProcessGroup(item.id, item.createdAt);
+            if (!lastGroup.elements) lastGroup.elements = [];
+            const existingElement = lastGroup.elements.find(el => el.kind === 'assistant_text' && el.id === item.id);
+            if (existingElement && existingElement.kind === 'assistant_text') {
+                existingElement.content = item.content;
+            } else {
+                lastGroup.elements.push({
+                    kind: 'assistant_text',
+                    id: item.id,
+                    content: item.content,
+                });
+            }
         } else if (item.kind === 'tool_result') {
             const callId = item.toolCallId;
             let matchedCall: GroupedToolCall | null = null;
@@ -252,6 +292,9 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 });
             }
         } else {
+            if (item.kind === 'user' || item.kind === 'error') {
+                currentProcessGroup = null;
+            }
             grouped.push(item as GroupedChatItem);
         }
     }
@@ -347,6 +390,7 @@ export function MessageList({
             const renderableCallIds = new Set(renderable.map(c => c.id));
             const filteredElements = item.elements?.filter(el => {
                 if (el.kind === 'thinking') return true;
+                if (el.kind === 'assistant_text') return true;
                 return renderableCallIds.has(el.call.id);
             });
             groupedItems.push({
@@ -362,6 +406,16 @@ export function MessageList({
     // blocks exist, they carry their own streaming affordances.
     const lastItem = groupedItems[groupedItems.length - 1];
     const showTyping = !!typing && !!lastItem && lastItem.kind === 'user';
+    let activeProcessIndex = -1;
+    if (typing) {
+        for (let i = groupedItems.length - 1; i >= 0; i--) {
+            if (groupedItems[i].kind === 'user') break;
+            if (groupedItems[i].kind === 'tool_group') {
+                activeProcessIndex = i;
+                break;
+            }
+        }
+    }
 
     return (
         <div
@@ -383,7 +437,7 @@ export function MessageList({
                     key={item.id}
                     item={item}
                     isLast={index === groupedItems.length - 1}
-                    active={typing}
+                    active={typing && index === activeProcessIndex}
                     onRespondPermission={onRespondPermission}
                     onCancelQueued={onCancelQueued}
                 />
