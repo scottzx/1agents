@@ -1,0 +1,28 @@
+# Agent 推送接入示例 — 声明式「推送式」数据源。
+# 与拉取源(如 xunji.yaml)对称:不主动抓取,由本地 Agent 把处理好的数据 POST 进来。
+# 用法: 在「数据源 → 添加 → 自定义连接器」粘贴本 YAML(或 cp 到 ~/.1agents/connectors/
+# 后重启后端注册);然后在该源的「认证」页设置推送密钥,本地 Agent 即可推送:
+#   curl -X POST http://<host>:<port>/api/data/push/agent_push/insight \
+#        -H "Authorization: Bearer <推送密钥>" \
+#        -d '[{"id":"i-1","title":"周报摘要","score":0.92,"tags":["ok"]}]'
+# 数据原样留存进 bronze(source_records),再按下方 silver 声明落成结构化治理表。
+vendor: agent_push
+label: Agent 推送
+multiAccount: false
+# authKind 省略时,含 transport=push 的源会自动推断为 push(共享密钥复用 bearer 存储)。
+collections:
+  - kind: insight
+    domain: insights
+    label: Agent 洞察
+    transport: push          # ← 推送式:无 endpoint / 无游标 / 无定时同步
+    uidField: id             # ← 去重/留存键(缺省时按内容哈希,相同内容重推幂等)
+    # 表结构声明:用于入站校验(必填/类型),并在声明 silver 表时自动派生列。
+    schema:
+      - { name: id,    type: string, required: true }
+      - { name: title, type: string }
+      - { name: score, type: number }
+      - { name: tags,  type: array }
+    # 可选:声明后另建结构化治理表(不声明就纯留存在 bronze)。promote 省略时按 schema 派生。
+    silver:
+      table: silver_agent_insight
+      domain: insights

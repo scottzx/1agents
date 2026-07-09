@@ -38,10 +38,11 @@ func (h *Handler) AddConnector(yamlBytes []byte) (sources.Manifest, error) {
 		return m, err
 	}
 	h.RegisterManifestGovernance([]sources.Manifest{m})
-	// Arm recurring sync for enabled collections (idempotent).
+	// Arm recurring sync for enabled collections (idempotent). Push collections are
+	// inbound-only — no cursor, no periodic pull — so skip them.
 	if h.disp != nil {
 		for _, c := range m.Collections {
-			if c.Defaults.Enabled {
+			if c.Defaults.Enabled && c.Transport != "push" {
 				_ = h.disp.EnsureRecurring(m.Vendor, c.Kind, c.Defaults.IncrementalMinutes)
 			}
 		}
@@ -101,6 +102,8 @@ func (h *Handler) HandleManifestRoute(w http.ResponseWriter, r *http.Request) {
 		h.HandleSchedules(w, r)
 	case "bearer":
 		h.HandleBearer(w, r)
+	case "push":
+		h.HandlePushInfo(w, r) // GET push metadata (kinds + schema); data lands via /api/data/push
 	default:
 		http.NotFound(w, r)
 	}

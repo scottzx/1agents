@@ -8,6 +8,7 @@ import { icloudService } from '@1agents/core/services/contactService';
 import { CliZone } from './FeishuSourceCard';
 import { IMessageSection } from './IMessageSection';
 import { useChannelModules, ConsentSubmodule } from './ConsentGate';
+import { PushAuthZone } from './PushZone';
 
 // SourceAuthZone — the single, authKind-driven 认证与授权 zone. Instead of each
 // vendor shipping its own auth panel, the backend's VendorSpec.authKind
@@ -35,6 +36,8 @@ export function SourceAuthZone({ account, authKind }: { account: SourceAccount; 
             return <CredentialsAuthZone account={account} language={language} />;
         case 'bearer':
             return <BearerAuthZone account={account} language={language} />;
+        case 'push':
+            return <PushAuthZone account={account} language={language} />;
         default:
             return (
                 <div class="contacts-privacy-banner">

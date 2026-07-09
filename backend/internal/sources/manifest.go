@@ -66,10 +66,12 @@ type ManifestColl struct {
 	Kind   string `yaml:"kind"`
 	Domain string `yaml:"domain"`
 	Label  string `yaml:"label"`
-	// Transport: "" | "rest" → HTTP; "cli" → shell out to Command with Args.
+	// Transport: "" | "rest" → HTTP; "cli" → shell out to Command with Args;
+	// "push" → inbound (POST /api/data/push), driven by Schema not endpoint/cursor.
 	Transport   string            `yaml:"transport"`
 	Command     string            `yaml:"command"` // cli: binary (e.g. agently-cli)
 	Args        []string          `yaml:"args"`    // cli: static args
+	Schema      []ManifestField   `yaml:"schema"`  // push: declared table structure (validate inbound + derive silver columns)
 	Method      string            `yaml:"method"`
 	Endpoint    string            `yaml:"endpoint"`
 	BaseParams  map[string]string `yaml:"baseParams"`
@@ -82,6 +84,15 @@ type ManifestColl struct {
 	Cursor      ManifestCursor    `yaml:"cursor"`
 	Defaults    ManifestDefaults  `yaml:"defaults"`
 	Silver      ManifestSilver    `yaml:"silver"`
+}
+
+// ManifestField is one declared field of a push collection's table structure. It
+// validates inbound pushes (presence + coarse JSON type) and, when the collection
+// declares a silver table, seeds its promoted columns.
+type ManifestField struct {
+	Name     string `yaml:"name"`
+	Type     string `yaml:"type"`     // string|number|bool|object|array|any ("" ⇒ any)
+	Required bool   `yaml:"required"` // reject an inbound record missing this field
 }
 
 // ManifestSilver declares the generic bronze→silver landing for a collection: the
@@ -163,9 +174,13 @@ func RegisterManifest(m Manifest) {
 		cliTool, isCLI := m.cliTool()
 		authKind := m.AuthKind
 		if authKind == "" {
-			authKind = AuthBearer
-			if isCLI {
+			switch {
+			case isCLI:
 				authKind = AuthCLI // a CLI transport manages its own credential
+			case m.hasPush():
+				authKind = AuthPush // inbound push: the agent presents a shared secret
+			default:
+				authKind = AuthBearer
 			}
 		}
 		appendVendor(VendorSpec{
@@ -193,6 +208,45 @@ func (m Manifest) cliTool() (string, bool) {
 	return "", false
 }
 
+// hasPush reports whether any collection is inbound-push (transport=push).
+func (m Manifest) hasPush() bool {
+	for _, c := range m.Collections {
+		if c.Transport == "push" {
+			return true
+		}
+	}
+	return false
+}
+
+// pushFields maps the manifest field declarations onto the descriptor's schema
+// used by the push receiver for validation.
+func (c ManifestColl) pushFields() []PushField {
+	if len(c.Schema) == 0 {
+		return nil
+	}
+	out := make([]PushField, 0, len(c.Schema))
+	for _, f := range c.Schema {
+		out = append(out, PushField{Name: f.Name, Type: f.Type, Required: f.Required})
+	}
+	return out
+}
+
+// SchemaPromote derives the silver promoted-column map from a push collection's
+// declared schema (each field → same-named payload path), used when a silver table
+// is declared without an explicit promote block. Nil when no schema is declared.
+func (c ManifestColl) SchemaPromote() map[string]string {
+	if len(c.Schema) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(c.Schema))
+	for _, f := range c.Schema {
+		if f.Name != "" {
+			m[f.Name] = f.Name
+		}
+	}
+	return m
+}
+
 // descriptor maps a manifest collection onto a RESTDescriptor.
 func (c ManifestColl) descriptor() RESTDescriptor {
 	return RESTDescriptor{
@@ -202,6 +256,7 @@ func (c ManifestColl) descriptor() RESTDescriptor {
 		Transport:          c.Transport,
 		Command:            c.Command,
 		Args:               c.Args,
+		Schema:             c.pushFields(),
 		CursorArg:          c.Cursor.Arg,
 		Method:             c.Method,
 		Endpoint:           c.Endpoint,
@@ -363,6 +418,17 @@ func ValidateManifest(m Manifest) error {
 			// CLI transport: needs a command; baseUrl/endpoint are irrelevant.
 			if strings.TrimSpace(c.Command) == "" {
 				return fmt.Errorf("collection[%d] %q: command required for transport=cli", i, c.Kind)
+			}
+			continue
+		}
+		if c.Transport == "push" {
+			// Push transport: inbound, no baseUrl/endpoint/cursor. Each declared field
+			// needs a name; a silver table (if declared) needs safe column identifiers,
+			// which the govern layer validates at landing time.
+			for j, f := range c.Schema {
+				if strings.TrimSpace(f.Name) == "" {
+					return fmt.Errorf("collection[%d] %q: schema field[%d] needs a name", i, c.Kind, j)
+				}
 			}
 			continue
 		}

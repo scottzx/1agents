@@ -197,6 +197,9 @@ func (h *Handler) EnsureRecurringForEnabled() error {
 			if d := sources.CatalogItemFor(source, c.Kind); d == nil || !d.Implemented {
 				continue
 			}
+			if sources.IsPushKind(source, c.Kind) {
+				continue // inbound-push: no cursor, no periodic pull to arm
+			}
 			if err := h.disp.EnsureRecurring(source, c.Kind, c.IncrementalMinutes); err != nil {
 				return err
 			}

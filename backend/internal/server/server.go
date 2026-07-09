@@ -198,8 +198,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 			// the package fires its init() (manifest + template + RegisterFunction);
 			// here we wire its HTTP surface over the live task API.
 			speechClipHandler := speechclip.NewHandler(taskAPI)
-			mux.HandleFunc("/api/speech_clip/assets", speechClipHandler.HandleAssets)             // POST  import asset (server path)
-			mux.HandleFunc("/api/speech_clip/assets/upload", speechClipHandler.HandleUpload)      // POST  upload recorded blob
+			mux.HandleFunc("/api/speech_clip/assets", speechClipHandler.HandleAssets)         // POST  import asset (server path)
+			mux.HandleFunc("/api/speech_clip/assets/upload", speechClipHandler.HandleUpload)  // POST  upload recorded blob
 			mux.HandleFunc("/api/speech_clip/transcribe", speechClipHandler.HandleTranscribe) // POST  dispatch transcribe task
 			mux.HandleFunc("/api/speech_clip/highlights", speechClipHandler.HandleHighlights) // POST dispatch / GET rows
 			mux.HandleFunc("/api/speech_clip/pick", speechClipHandler.HandlePick)             // POST toggle 金句
@@ -215,20 +215,20 @@ func NewRouter(cfg *config.Config) http.Handler {
 			catalogStore := agent.DefaultCatalog()
 
 			agentHandler := agent.NewHandler(agentStore, tasksStore, acpxClient, scheduler, catalogStore, selfBaseURL)
-			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)      // GET
-			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)        // GET (?refresh=1)
-			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)       // GET, POST
-			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)      // GET, DELETE /{id}
+			mux.HandleFunc("/api/agent/agent-types", agentHandler.HandleAgentTypes)            // GET
+			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)              // GET (?refresh=1)
+			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)             // GET, POST
+			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)            // GET, DELETE /{id}
 			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)           // GET, POST
 			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve) // GET ?project=&number= (more specific than the subtree below)
 			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)          // DELETE /{id}
-			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)           // GET (cross-workspace agenda, #192)
-			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)   // GET, POST
-			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)  // PATCH, DELETE /{id}, POST /reorder
-			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot) // POST — create a discussion thread (#189)
-			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem) // POST /{id}/cards, /{id}/conclude (#189)
-			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)              // WebSocket upgrade & bridge
-			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)         // GET — cross-project cockpit aggregate (read-only)
+			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)                 // GET (cross-workspace agenda, #192)
+			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)         // GET, POST
+			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)        // PATCH, DELETE /{id}, POST /reorder
+			mux.HandleFunc("/api/agent/discussions", agentHandler.HandleDiscussionsRoot)       // POST — create a discussion thread (#189)
+			mux.HandleFunc("/api/agent/discussions/", agentHandler.HandleDiscussionItem)       // POST /{id}/cards, /{id}/conclude (#189)
+			mux.HandleFunc("/api/agent/chat/ws", agentHandler.HandleChatWs)                    // WebSocket upgrade & bridge
+			mux.HandleFunc("/api/agent/dashboard", agentHandler.HandleDashboard)               // GET — cross-project cockpit aggregate (read-only)
 
 			// Chat-digest: Feishu message sync (sync.db) + value-extraction
 			// templates (meta.db v15) + single-batch analysis tasks (run by the
@@ -318,7 +318,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 
 			mux.HandleFunc("/api/project/local-config", handleProjectLocalConfig) // GET/PUT project-local config json
 			mux.HandleFunc("/api/studio/save-assets", handleStudioSaveAssets)     // POST
-			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)  // POST
+			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)      // POST
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
 			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
@@ -396,6 +396,10 @@ func NewRouter(cfg *config.Config) http.Handler {
 				mux.HandleFunc("/api/sources/agentmail/sync", ingestHandler.HandleSync)
 				mux.HandleFunc("/api/sources/agentmail/history", ingestHandler.HandleHistory)
 				mux.HandleFunc("/api/sources/agentmail/schedules", ingestHandler.HandleSchedules)
+				// 推送接入: local agents POST processed records here (transport=push
+				// collections). One static prefix serves every push source, so a
+				// hot-added push connector needs no new route. See push_http.go.
+				mux.HandleFunc("/api/data/push/", ingestHandler.HandlePush) // POST /{source}/{kind} — 落 bronze + 治理
 				// 自定义连接器: add/list manifests from the UI (hot-registered, no restart).
 				mux.HandleFunc("/api/sources/connectors", ingestHandler.HandleConnectors) // GET list, POST add
 				mux.HandleFunc("/api/sources/templates", ingestHandler.HandleTemplates)   // GET embedded templates, POST install

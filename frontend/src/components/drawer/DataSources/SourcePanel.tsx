@@ -9,6 +9,7 @@ import { SourceAuthZone } from './SourceAuthZone';
 import { ScheduleList } from './ScheduleList';
 import { TaskRunsGrid } from './TaskRunsGrid';
 import { SourceDataZone } from './SourceDataZone';
+import { PushSchemaZone } from './PushZone';
 
 // SourcePanel — the single, source-agnostic panel for every 数据源. It replaces
 // the per-vendor FeishuSourcePanel / AppleSourcePanel / SourceInstancePanel: one
@@ -55,7 +56,12 @@ export function SourcePanel({
         <div class="source-panel">
             {tab === 'auth' && <SourceAuthZone account={account} authKind={authKind} />}
 
-            {tab === 'config' && <SourceConfigTab source={account.vendor} language={language} />}
+            {tab === 'config' &&
+                (authKind === 'push' ? (
+                    <PushSchemaZone source={account.vendor} language={language} />
+                ) : (
+                    <SourceConfigTab source={account.vendor} language={language} />
+                ))}
 
             {tab === 'data' && (
                 <SourceDataZone

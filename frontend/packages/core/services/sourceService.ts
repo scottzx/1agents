@@ -109,6 +109,19 @@ export interface SourceAccount {
     updatedAt: string;
 }
 
+// 推送式数据源的一个 kind + 其声明的表结构 (authKind=push). Mirrors sources.PushField.
+export interface PushFieldSpec {
+    name: string;
+    type: string; // string|number|bool|object|array|any
+    required: boolean;
+}
+export interface PushKindInfo {
+    kind: string;
+    label: string;
+    uidField: string;
+    schema: PushFieldSpec[];
+}
+
 export interface CreateAccountInput {
     vendor: string;
     region: string;
@@ -260,6 +273,15 @@ export const sourceService = {
         });
         if (!res.ok) throw new Error(await res.text());
         return (await res.json()) as { configured: boolean };
+    },
+
+    /** GET /api/sources/{source}/push — the declared push kinds + table schema for a
+     * push source (authKind=push). Data itself lands via POST /api/data/push. */
+    async pushInfo(source: string): Promise<PushKindInfo[]> {
+        const res = await apiFetch(`/sources/${encodeURIComponent(source)}/push`);
+        if (!res.ok) throw new Error(await res.text());
+        const j = (await res.json()) as { kinds?: PushKindInfo[] };
+        return j.kinds ?? [];
     },
 
     /** GET /api/sources/oauth/microsoft/config — current app registration for a
