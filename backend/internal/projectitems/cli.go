@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,6 +57,7 @@ const cliUsage = `usage: 1agents project-items <verb> [flags]   (run inside a pr
   milestones update <id> [--name N] [--description D] [--target-date RFC3339] [--predecessor ID]
   pdf                  [--out PATH] [--font TTF] (导出当前项目看板为 PDF 报告)
 
+<id> accepts the item UUID or the short #N shown by list (e.g. #3).
 common: --project <id|name|path> overrides cwd-based project resolution; --json prints machine output.
 status values: completed|cancelled (runnable states are scheduler-owned). type: task|requirement|bug|discussion.`
 
@@ -176,6 +178,10 @@ func cliGetLike(args []string, graph bool) int {
 		return cliFail("requires <id>\n%s", cliUsage)
 	}
 	c, wsID, code := cliClient(*project)
+	if code >= 0 {
+		return code
+	}
+	id, code = resolveRef(c, id)
 	if code >= 0 {
 		return code
 	}
@@ -323,6 +329,10 @@ func cliUpdate(args []string) int {
 	if code >= 0 {
 		return code
 	}
+	id, code = resolveRef(c, id)
+	if code >= 0 {
+		return code
+	}
 	if ok, err := c.InWorkspace(id); err != nil {
 		return cliFail("%v", err)
 	} else if !ok {
@@ -343,6 +353,10 @@ func cliCloseReopen(args []string, state string) int {
 		return cliFail("requires <id>\n%s", cliUsage)
 	}
 	c, wsID, code := cliClient(*project)
+	if code >= 0 {
+		return code
+	}
+	id, code = resolveRef(c, id)
 	if code >= 0 {
 		return code
 	}
@@ -484,6 +498,28 @@ func emitUpdated(id string, status int, resp []byte, err error) int {
 	}
 	fmt.Printf("updated %s\n", id)
 	return 0
+}
+
+// resolveRef turns an item reference into the item's UUID. ONLY an explicit `#N`
+// (the short number `list` prints, e.g. `#3`) is resolved via the daemon within
+// the client's workspace; a bare number or any other form is treated as a UUID
+// and returned unchanged — requiring the `#` guards against a bare digit being
+// misread as a short id. Returns (id, -1) on success, or ("", exitCode) after
+// printing an error (mirrors cliClient's code convention).
+func resolveRef(c *Client, ref string) (string, int) {
+	s := strings.TrimSpace(ref)
+	if !strings.HasPrefix(s, "#") {
+		return ref, -1 // no leading '#' → treat as a UUID (bare N is not a short ref)
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(s, "#"))
+	if err != nil {
+		return ref, -1
+	}
+	id, err := c.ResolveNumber(n)
+	if err != nil {
+		return "", cliFail("%v", err)
+	}
+	return id, -1
 }
 
 // splitLeadingID pops a leading non-flag positional <id> (Go's flag package

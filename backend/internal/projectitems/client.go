@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -208,6 +209,32 @@ func (c *Client) CreateMilestone(a CreateMilestoneArgs) (int, []byte, error) {
 // UpdateMilestone PATCHes a milestone. patch already carries workspace_id.
 func (c *Client) UpdateMilestone(id string, patch map[string]any) (int, []byte, error) {
 	return c.api.do("PATCH", "/api/agent/milestones/"+url.PathEscape(id), nil, patch)
+}
+
+// ResolveNumber maps a per-project short number (the `#N` shown by `list`) to the
+// item's UUID via the daemon's resolve endpoint, scoped to this client's
+// workspace. Returns a not-found error when the workspace has no such number.
+func (c *Client) ResolveNumber(number int) (string, error) {
+	q := url.Values{"project": {c.workspaceID}, "number": {strconv.Itoa(number)}}
+	status, body, err := c.api.do("GET", "/api/agent/project-items/resolve", q, nil)
+	if err != nil {
+		return "", err
+	}
+	if status != 200 {
+		return "", fmt.Errorf("resolve #%d failed (%d): %s", number, status, strings.TrimSpace(string(body)))
+	}
+	var r struct {
+		Task struct {
+			ID string `json:"id"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
+		return "", err
+	}
+	if r.Task.ID == "" {
+		return "", fmt.Errorf("resolve #%d: no id in response", number)
+	}
+	return r.Task.ID, nil
 }
 
 // InWorkspace reports whether id belongs to the client's workspace — the guard
