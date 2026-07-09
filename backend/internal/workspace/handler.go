@@ -471,6 +471,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Always attach the builtin "pm" skill so every project ships with
+	// project-management capability out of the box (the AI PM playbook + the
+	// `1agents project-items` CLI). Idempotent and seeded at startup by
+	// EnsureBuiltinSkills; a no-op if the shared package is somehow absent.
+	if _, sErr := syncSkillsToWorkspace(ws.Path, []string{"pm"}); sErr != nil {
+		log.Printf("[workspace] attach pm skill for project %s: %v", ws.ID, sErr)
+	}
+
 	// Optional agent weak-copy into <ws>/.claude/agents — parallel to skills.
 	// Non-fatal: a copy failure is surfaced but the workspace still exists.
 	if len(body.Agents) > 0 {
