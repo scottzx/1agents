@@ -19,7 +19,7 @@ type Handler struct {
 	store *Store
 	// selfBaseURL is this daemon's own loopback HTTP base (e.g.
 	// http://127.0.0.1:8080). Promotion posts to the full-featured
-	// POST /api/agent/tasks over loopback so it keeps package data decoupled
+	// POST /api/agent/project-items over loopback so it keeps package data decoupled
 	// from the task store.
 	selfBaseURL string
 }
@@ -167,7 +167,7 @@ func (h *Handler) HandlePromoteTodo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	resp, err := http.Post(h.selfBaseURL+"/api/agent/tasks", "application/json", bytes.NewReader(payload))
+	resp, err := http.Post(h.selfBaseURL+"/api/agent/project-items", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		http.Error(w, "create task: "+err.Error(), http.StatusBadGateway)
 		return

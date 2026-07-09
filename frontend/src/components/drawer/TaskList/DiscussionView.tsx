@@ -1,9 +1,9 @@
 import { h } from 'preact';
 
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 interface DiscussionViewProps {
-    tasks: Task[];
+    tasks: ProjectItem[];
     onSelectTask: (taskId: string) => void;
 }
 

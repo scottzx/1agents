@@ -1,4 +1,4 @@
-package mcptasks
+package projectitems
 
 import (
 	"encoding/json"
@@ -12,8 +12,8 @@ import (
 // the env-injected workspace.
 var toolDefs = []map[string]any{
 	{
-		"name":        "list_tasks",
-		"description": "List tasks in the current project. Optionally filter by status (pending, queued, running, completed, failed, cancelled, blocked) and/or type (task, requirement, bug). Returns a compact summary of each task including its short number, status, and dependencies.",
+		"name":        "list_project_items",
+		"description": "List project items (需求/缺陷/任务/讨论) in the current project. Optionally filter by status (pending, queued, running, completed, failed, cancelled, blocked) and/or type (task, requirement, bug). Returns a compact summary of each item including its short number, status, and dependencies.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -23,8 +23,8 @@ var toolDefs = []map[string]any{
 		},
 	},
 	{
-		"name":        "get_task",
-		"description": "Fetch the full details of a single task in the current project by its id, including description, acceptance criteria, and dependencies.",
+		"name":        "get_project_item",
+		"description": "Fetch the full details of a single project item in the current project by its id, including description, acceptance criteria, and dependencies.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"id"},
@@ -34,8 +34,8 @@ var toolDefs = []map[string]any{
 		},
 	},
 	{
-		"name":        "get_task_graph",
-		"description": "Fetch the cross-reference knowledge graph around a task (#136): `outgoing` are the tasks it references (via `#N` mentions or explicit links), `incoming` are the tasks that reference it (backlinks). Walk this to trace why a task exists — e.g. from a task up to the requirement/bug it implements. Each edge carries the relation (relates/closes) and the peer task's id, number, title, type, and status.",
+		"name":        "get_project_item_graph",
+		"description": "Fetch the cross-reference knowledge graph around a project item (#136): `outgoing` are the items it references (via `#N` mentions or explicit links), `incoming` are the items that reference it (backlinks). Walk this to trace why an item exists — e.g. from a task up to the requirement/bug it implements. Each edge carries the relation (relates/closes) and the peer item's id, number, title, type, and status.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"id"},
@@ -51,7 +51,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "create_milestone",
-		"description": "Create a new milestone (roadmap stage) in the current project. It is appended to the end of the roadmap. Assign tasks to it by passing its name as the `milestone` field of create_task / update_task. Pass predecessorId to place it after another milestone — milestones sharing a predecessor branch in parallel on the roadmap.",
+		"description": "Create a new milestone (roadmap stage) in the current project. It is appended to the end of the roadmap. Assign tasks to it by passing its name as the `milestone` field of create_project_item / update_project_item. Pass predecessorId to place it after another milestone — milestones sharing a predecessor branch in parallel on the roadmap.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"name"},
@@ -79,8 +79,8 @@ var toolDefs = []map[string]any{
 		},
 	},
 	{
-		"name":        "create_task",
-		"description": "Create a new task in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_task calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — either set parentId to the source requirement, pass its id in the `links` field (rel 'relates') right here at creation, or reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates the same relates link); otherwise it is held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nDecomposition flow: once the user has agreed on a top-level requirement, you may break it down into sub-requirements and executable tasks and schedule them directly — small sub-items do NOT need a separate user-confirmation round. When every task decomposed under a requirement (its ParentID children) reaches a terminal state, the requirement auto-closes.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
+		"name":        "create_project_item",
+		"description": "Create a new project item (type task/requirement/bug) in the current project. Use dependsOn to express ordering when decomposing a PRD/Epic into dependent subtasks (pass the ids returned by earlier create_project_item calls). type defaults to 'task'; use 'requirement' or 'bug' for the requirement pool. IMPORTANT: an executable task (type 'task') MUST include acceptanceCriteria — without it the task is held as 未就绪 (not_ready) and never enters the scheduler queue. 任务归口 (#68): an executable task in a real project MUST also trace to a requirement or bug — either set parentId to the source requirement, pass its id in the `links` field (rel 'relates') right here at creation, or reference the source's #N in the description (e.g. \"实现 #5 ...\", which auto-creates the same relates link); otherwise it is held as not_ready until sourced. Subtasks inherit their parent's sourcing. Personal-bucket tasks (no project) are exempt.\n\nDecomposition flow: once the user has agreed on a top-level requirement, you may break it down into sub-requirements and executable tasks and schedule them directly — small sub-items do NOT need a separate user-confirmation round. When every task decomposed under a requirement (its ParentID children) reaches a terminal state, the requirement auto-closes.\n\nA personal reminder/todo/deadline for the USER is just a task with assignee='user': it is never dispatched to an agent, it lives on the user's calendar until they mark it done, and dueAt/recurrence schedule it. Use assignee='user' (with dueAt for a deadline) when the user asks you to remember something.\n\nGitHub mapping (#74): title/description/type/milestone map to native GitHub Issue fields; priority maps to a GitHub Projects v2 custom field (not an Issue field). NOTE the two distinct assignee dimensions: `assignee` is WHO executes this task — either an AI agent type (claudecode/codex, dispatched by the scheduler) or 'user' (a human/personal task, never dispatched) — and is local-only; `githubAssignees` are GitHub login names (issue.assignees[].login) for human collaborators. The github* reference fields (githubRepo/githubKind/githubNumber/githubNodeId/githubUrl/githubState/lastSyncedAt) are the sync anchor to a GitHub Issue/PR — normally backfilled by the sync pass, accept-only here, and not something you set when authoring a task.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"title"},
@@ -99,11 +99,11 @@ var toolDefs = []map[string]any{
 				"dependsOn":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ids of tasks this one depends on."},
 				"links": map[string]any{
 					"type":        "array",
-					"description": "Peer cross-reference links to other tasks, set here at creation so you don't need a follow-up update_task. Use this to trace an executable task back to the requirement/bug it implements (任务归口 #68): pass {target: <the source requirement's id>, rel: 'relates'}. Referencing the source's #N in the description auto-creates the same 'relates' link, so links and #N are one and the same relation — pick whichever is convenient.",
+					"description": "Peer cross-reference links to other tasks, set here at creation so you don't need a follow-up update_project_item. Use this to trace an executable task back to the requirement/bug it implements (任务归口 #68): pass {target: <the source requirement's id>, rel: 'relates'}. Referencing the source's #N in the description auto-creates the same 'relates' link, so links and #N are one and the same relation — pick whichever is convenient.",
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"target": map[string]any{"type": "string", "description": "The peer task's id (e.g. the requirement returned by an earlier create_task)."},
+							"target": map[string]any{"type": "string", "description": "The peer task's id (e.g. the requirement returned by an earlier create_project_item)."},
 							"rel":    map[string]any{"type": "string", "enum": []string{"relates"}, "description": "Relation kind. 'relates' is a plain cross-reference / sourcing link."},
 						},
 						"required": []string{"target"},
@@ -161,8 +161,8 @@ var toolDefs = []map[string]any{
 		},
 	},
 	{
-		"name":        "update_task",
-		"description": "Update fields of an existing task in the current project. status may only be set to 'completed' or 'cancelled' (runnable states stay scheduler-owned). Only the fields you pass are changed. See create_task for the GitHub field mapping and the `assignee` (executing agent, local) vs `githubAssignees` (GitHub logins) distinction. The github* reference fields are the sync anchor and are normally written by the sync pass.",
+		"name":        "update_project_item",
+		"description": "Update fields of an existing project item in the current project. status may only be set to 'completed' or 'cancelled' (runnable states stay scheduler-owned). Only the fields you pass are changed. See create_project_item for the GitHub field mapping and the `assignee` (executing agent, local) vs `githubAssignees` (GitHub logins) distinction. The github* reference fields are the sync anchor and are normally written by the sync pass.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"id"},
@@ -176,7 +176,7 @@ var toolDefs = []map[string]any{
 				"type":               map[string]any{"type": "string", "enum": []string{"task", "requirement", "bug"}},
 				"assignee":           map[string]any{"type": "string", "description": "Executing AGENT type, e.g. 'claudecode' or 'codex' (local only, NOT a GitHub user). Empty defaults to claudecode."},
 				"githubAssignees":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "GitHub login names (human collaborators). Distinct from `assignee`. Sync field."},
-				"verifier":           map[string]any{"type": "string", "description": "Reviewing agent type for post-execution verification; empty disables verification. See create_task."},
+				"verifier":           map[string]any{"type": "string", "description": "Reviewing agent type for post-execution verification; empty disables verification. See create_project_item."},
 				"githubRepo":         map[string]any{"type": "string", "description": "Sync anchor: 'owner/repo'."},
 				"githubKind":         map[string]any{"type": "string", "enum": []string{"issue", "pr"}, "description": "Sync anchor: issue or pr."},
 				"githubNumber":       map[string]any{"type": "integer", "description": "Sync anchor: remote #N."},
@@ -214,11 +214,11 @@ var toolDefs = []map[string]any{
 	},
 }
 
-// complete_human_task tool definition (appended to toolDefs at init time).
+// complete_human_project_item tool definition (appended to toolDefs at init time).
 func init() {
 	toolDefs = append(toolDefs, map[string]any{
-		"name":        "complete_human_task",
-		"description": "Mark a human-executor task (executor=human, status=awaiting_human) as completed, optionally recording a decision payload. Calling this tool unlocks all downstream tasks that depend on it. Use this to record human decisions (e.g. 'approved', 'selected option B') and advance the pipeline.",
+		"name":        "complete_human_project_item",
+		"description": "Mark a human-executor project item (executor=human, status=awaiting_human) as completed, optionally recording a decision payload. Calling this tool unlocks all downstream items that depend on it. Use this to record human decisions (e.g. 'approved', 'selected option B') and advance the pipeline.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"id"},
@@ -240,20 +240,20 @@ const reviewVerifier = "verifier"
 // update its own task. The PM-only create_*/milestone tools are withheld so the
 // lock cannot be sidestepped by creating sibling tasks. See #50.
 var executorScopedTools = map[string]bool{
-	"list_tasks":          true,
-	"get_task":            true,
-	"get_task_graph":      true,
-	"update_task":         true,
-	"complete_human_task": true,
+	"list_project_items":          true,
+	"get_project_item":            true,
+	"get_project_item_graph":      true,
+	"update_project_item":         true,
+	"complete_human_project_item": true,
 }
 
 // verifierScopedTools is the hard read-only review subset: read the task, list
-// (filtered to itself), and submit a verdict. update_task is deliberately
+// (filtered to itself), and submit a verdict. update_project_item is deliberately
 // absent — a verifier judges, it never edits the task. See #50.
 var verifierScopedTools = map[string]bool{
-	"list_tasks":     true,
-	"get_task":       true,
-	"get_task_graph": true,
+	"list_project_items":     true,
+	"get_project_item":       true,
+	"get_project_item_graph": true,
 	"submit_review":  true,
 }
 
@@ -287,11 +287,11 @@ func (s *server) listedTools() []map[string]any {
 		if !allowed[name] {
 			continue
 		}
-		// #132: in executor scope, update_task must not advertise `completed` —
+		// #132: in executor scope, update_project_item must not advertise `completed` —
 		// an executor cannot self-report done (the run-finish artifact event does).
 		// Swap in the cancel-only variant so the agent isn't told to try a status
 		// the server will reject.
-		if name == "update_task" && s.taskRole != reviewVerifier {
+		if name == "update_project_item" && s.taskRole != reviewVerifier {
 			out = append(out, executorUpdateTaskDef)
 			continue
 		}
@@ -300,11 +300,11 @@ func (s *server) listedTools() []map[string]any {
 	return out
 }
 
-// executorUpdateTaskDef is the executor-scoped advertisement of update_task: the
+// executorUpdateTaskDef is the executor-scoped advertisement of update_project_item: the
 // settable status is narrowed to `cancelled` only, since completion is driven by
 // the artifact/verification path, not by the agent (#132).
 var executorUpdateTaskDef = map[string]any{
-	"name":        "update_task",
+	"name":        "update_project_item",
 	"description": "Update fields of your assigned task. NOTE: you cannot mark it completed — finish your run and the system routes it to verification/completion based on the artifact you produced. status may only be set to 'cancelled' (give up, with a reason). Only the fields you pass are changed.",
 	"inputSchema": map[string]any{
 		"type":     "object",
@@ -359,11 +359,11 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return toolErr(fmt.Sprintf("tool %q is not available in this task-scoped session", p.Name))
 	}
 	switch p.Name {
-	case "list_tasks":
+	case "list_project_items":
 		return s.toolListTasks(p.Arguments)
-	case "get_task":
+	case "get_project_item":
 		return s.toolGetTask(p.Arguments)
-	case "get_task_graph":
+	case "get_project_item_graph":
 		return s.toolGetTaskGraph(p.Arguments)
 	case "list_milestones":
 		return s.toolListMilestones()
@@ -371,15 +371,15 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 		return s.toolCreateMilestone(p.Arguments)
 	case "update_milestone":
 		return s.toolUpdateMilestone(p.Arguments)
-	case "create_task":
+	case "create_project_item":
 		return s.toolCreateTask(p.Arguments)
 	case "create_discussion":
 		return s.toolCreateDiscussion(p.Arguments)
-	case "update_task":
+	case "update_project_item":
 		return s.toolUpdateTask(p.Arguments)
 	case "submit_review":
 		return s.toolSubmitReview(p.Arguments)
-	case "complete_human_task":
+	case "complete_human_project_item":
 		return s.toolCompleteHumanTask(p.Arguments)
 	default:
 		return toolErr("unknown tool: " + p.Name)
@@ -389,7 +389,7 @@ func (s *server) onToolCall(params json.RawMessage) map[string]any {
 // listTasks fetches every task in the locked workspace.
 func (s *server) listTasks() ([]task, error) {
 	q := url.Values{"workspace_id": {s.workspaceID}}
-	status, body, err := s.api.do("GET", "/api/agent/tasks", q, nil)
+	status, body, err := s.api.do("GET", "/api/agent/project-items", q, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +429,7 @@ func (s *server) toolListTasks(args json.RawMessage) map[string]any {
 		t.AcceptanceCriteria = ""
 		out = append(out, t)
 	}
-	return toolJSON(map[string]any{"count": len(out), "tasks": out})
+	return toolJSON(map[string]any{"count": len(out), "items": out})
 }
 
 func (s *server) toolGetTask(args json.RawMessage) map[string]any {
@@ -442,7 +442,7 @@ func (s *server) toolGetTask(args json.RawMessage) map[string]any {
 	if !s.idInScope(a.ID) {
 		return toolErr("task not accessible in this session: " + a.ID)
 	}
-	status, body, err := s.api.do("GET", "/api/agent/tasks/"+url.PathEscape(a.ID), nil, nil)
+	status, body, err := s.api.do("GET", "/api/agent/project-items/"+url.PathEscape(a.ID), nil, nil)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -462,7 +462,7 @@ func (s *server) toolGetTaskGraph(args json.RawMessage) map[string]any {
 	if !s.idInScope(a.ID) {
 		return toolErr("task not accessible in this session: " + a.ID)
 	}
-	status, body, err := s.api.do("GET", "/api/agent/tasks/"+url.PathEscape(a.ID)+"/graph", nil, nil)
+	status, body, err := s.api.do("GET", "/api/agent/project-items/"+url.PathEscape(a.ID)+"/graph", nil, nil)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -566,7 +566,7 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 		VerifyPassThreshold int      `json:"verifyPassThreshold"`
 		DependsOn           []string `json:"dependsOn"`
 		// Links are peer cross-references (task 归口), set at creation so no
-		// follow-up update_task is needed. Forwarded verbatim to the REST create,
+		// follow-up update_project_item is needed. Forwarded verbatim to the REST create,
 		// which parses []{target, rel}.
 		Links json.RawMessage `json:"links"`
 		// Personal (assignee='user') scheduling: dueAt becomes the calendar
@@ -653,7 +653,7 @@ func (s *server) toolCreateTask(args json.RawMessage) map[string]any {
 	if a.LastSyncedAt != "" {
 		body["lastSyncedAt"] = a.LastSyncedAt
 	}
-	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
+	status, resp, err := s.api.do("POST", "/api/agent/project-items", nil, body)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -691,7 +691,7 @@ func (s *server) toolCreateDiscussion(args json.RawMessage) map[string]any {
 		"description":  a.Description,
 		"type":         "discussion",
 	}
-	status, resp, err := s.api.do("POST", "/api/agent/tasks", nil, body)
+	status, resp, err := s.api.do("POST", "/api/agent/project-items", nil, body)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -756,7 +756,7 @@ func (s *server) toolUpdateTask(args json.RawMessage) map[string]any {
 	if len(patch) == 0 {
 		return toolErr("no updatable fields provided")
 	}
-	status, resp, err := s.api.do("PATCH", "/api/agent/tasks/"+url.PathEscape(id), nil, patch)
+	status, resp, err := s.api.do("PATCH", "/api/agent/project-items/"+url.PathEscape(id), nil, patch)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -794,7 +794,7 @@ func (s *server) toolSubmitReview(args json.RawMessage) map[string]any {
 		"needsHuman": a.NeedsHuman,
 		"summary":    a.Summary,
 	}
-	status, resp, err := s.api.do("POST", "/api/agent/tasks/"+url.PathEscape(s.taskID)+"/review", nil, body)
+	status, resp, err := s.api.do("POST", "/api/agent/project-items/"+url.PathEscape(s.taskID)+"/review", nil, body)
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -843,12 +843,12 @@ func (s *server) toolCompleteHumanTask(args json.RawMessage) map[string]any {
 	if a.Payload != "" {
 		body["result"] = a.Payload
 	}
-	status, resp, err := s.api.do("PATCH", "/api/agent/tasks/"+url.PathEscape(a.ID), nil, body)
+	status, resp, err := s.api.do("PATCH", "/api/agent/project-items/"+url.PathEscape(a.ID), nil, body)
 	if err != nil {
 		return toolErr(err.Error())
 	}
 	if status != 200 {
-		return toolErr(fmt.Sprintf("complete_human_task failed (%d): %s", status, strings.TrimSpace(string(resp))))
+		return toolErr(fmt.Sprintf("complete_human_project_item failed (%d): %s", status, strings.TrimSpace(string(resp))))
 	}
 	return toolText("human task " + a.ID + " completed")
 }

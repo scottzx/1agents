@@ -1,4 +1,4 @@
-package mcptasks
+package projectitems
 
 import (
 	"bufio"
@@ -81,13 +81,13 @@ func TestInitializeAndToolsList(t *testing.T) {
 }
 
 // A default conversation session (no task lock, no role) exposes the full PM
-// tool set — create_reminder is gone; a personal todo is a create_task with
+// tool set — create_reminder is gone; a personal todo is a create_project_item with
 // assignee='user', which maps dueAt → a scheduled trigger (the old reminder
-// mapping, now unified into create_task).
+// mapping, now unified into create_project_item).
 func TestConversationExposesPMToolsAndPersonalTask(t *testing.T) {
 	var gotBody map[string]any
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks" {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/project-items" {
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &gotBody)
 			w.Write([]byte(`{"id":"r1","number":7,"title":"交报告","status":"pending"}`))
@@ -108,7 +108,7 @@ func TestConversationExposesPMToolsAndPersonalTask(t *testing.T) {
 			}
 		}
 	}
-	if !names["create_task"] || !names["create_milestone"] || !names["create_discussion"] {
+	if !names["create_project_item"] || !names["create_milestone"] || !names["create_discussion"] {
 		t.Errorf("conversation should expose the PM tool set, got %v", names)
 	}
 	if names["create_reminder"] {
@@ -118,10 +118,10 @@ func TestConversationExposesPMToolsAndPersonalTask(t *testing.T) {
 		t.Error("submit_review is verifier-only, not advertised project-wide")
 	}
 
-	// A personal todo: create_task with assignee='user' + dueAt → scheduled.
-	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"交报告","assignee":"user","dueAt":"2026-06-25T15:00:00+08:00"}}}`)
+	// A personal todo: create_project_item with assignee='user' + dueAt → scheduled.
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"交报告","assignee":"user","dueAt":"2026-06-25T15:00:00+08:00"}}}`)
 	if _, isErr := resultText(t, env); isErr {
-		t.Fatalf("create_task returned error: %v", env)
+		t.Fatalf("create_project_item returned error: %v", env)
 	}
 	if gotBody["assignee"] != "user" {
 		t.Errorf("assignee = %v, want user", gotBody["assignee"])
@@ -142,7 +142,7 @@ func TestCreateTaskMapsToPost(t *testing.T) {
 	var gotBody map[string]any
 	var gotAuth string
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks" {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/project-items" {
 			gotAuth = r.Header.Get("Authorization")
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &gotBody)
@@ -152,7 +152,7 @@ func TestCreateTaskMapsToPost(t *testing.T) {
 		http.Error(w, "unexpected", 400)
 	})
 
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"New","dependsOn":["t1"],"type":"requirement"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"New","dependsOn":["t1"],"type":"requirement"}}}`)
 	text, isErr := resultText(t, env)
 	if isErr {
 		t.Fatalf("unexpected tool error: %s", text)
@@ -178,7 +178,7 @@ func TestCreateTaskMapsToPost(t *testing.T) {
 func TestCreateTaskForwardsGithubFields(t *testing.T) {
 	var gotBody map[string]any
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks" {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/project-items" {
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &gotBody)
 			w.Write([]byte(`{"id":"t9","number":9,"title":"New","status":"pending"}`))
@@ -187,7 +187,7 @@ func TestCreateTaskForwardsGithubFields(t *testing.T) {
 		http.Error(w, "unexpected", 400)
 	})
 
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"New","assignee":"codex","githubAssignees":["alice","bob"],"githubRepo":"o/r","githubKind":"issue","githubNumber":74}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"New","assignee":"codex","githubAssignees":["alice","bob"],"githubRepo":"o/r","githubKind":"issue","githubNumber":74}}}`)
 	if text, isErr := resultText(t, env); isErr {
 		t.Fatalf("unexpected tool error: %s", text)
 	}
@@ -209,13 +209,13 @@ func TestCreateTaskForwardsGithubFields(t *testing.T) {
 
 func TestGetTaskRejectsForeignId(t *testing.T) {
 	s, buf, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/agent/tasks" {
+		if r.URL.Path == "/api/agent/project-items" {
 			w.Write([]byte(twoTasks()))
 			return
 		}
-		t.Errorf("get_task must not hit single-task endpoint for a foreign id (path %s)", r.URL.Path)
+		t.Errorf("get_project_item must not hit single-task endpoint for a foreign id (path %s)", r.URL.Path)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_task","arguments":{"id":"foreign"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_project_item","arguments":{"id":"foreign"}}}`)
 	text, isErr := resultText(t, env)
 	if !isErr {
 		t.Fatalf("expected lock error, got: %s", text)
@@ -225,25 +225,25 @@ func TestGetTaskRejectsForeignId(t *testing.T) {
 func TestGetTaskGraphMapsToGraphEndpoint(t *testing.T) {
 	const graphJSON = `{"outgoing":[{"rel":"relates","task":{"id":"t9","number":9}}],"incoming":[]}`
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/agent/tasks/t1/graph" {
-			t.Errorf("get_task_graph hit wrong path %s", r.URL.Path)
+		if r.URL.Path != "/api/agent/project-items/t1/graph" {
+			t.Errorf("get_project_item_graph hit wrong path %s", r.URL.Path)
 		}
 		w.Write([]byte(graphJSON))
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_task_graph","arguments":{"id":"t1"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_project_item_graph","arguments":{"id":"t1"}}}`)
 	text, isErr := resultText(t, env)
 	if isErr {
-		t.Fatalf("get_task_graph errored: %s", text)
+		t.Fatalf("get_project_item_graph errored: %s", text)
 	}
 	if text != graphJSON {
-		t.Fatalf("get_task_graph body = %s, want passthrough of graph JSON", text)
+		t.Fatalf("get_project_item_graph body = %s, want passthrough of graph JSON", text)
 	}
 
 	// A foreign id is rejected before any API call (task-scoped lock).
 	s2, buf2, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("get_task_graph must not hit API for a foreign id (path %s)", r.URL.Path)
+		t.Errorf("get_project_item_graph must not hit API for a foreign id (path %s)", r.URL.Path)
 	})
-	env = call(t, s2, buf2, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_task_graph","arguments":{"id":"other"}}}`)
+	env = call(t, s2, buf2, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_project_item_graph","arguments":{"id":"other"}}}`)
 	if text, isErr := resultText(t, env); !isErr {
 		t.Fatalf("expected lock rejection for foreign id, got: %s", text)
 	}
@@ -277,9 +277,9 @@ func TestTaskScopedToolsListIsNarrowed(t *testing.T) {
 
 func TestTaskScopedBlocksPMTools(t *testing.T) {
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("create_task must not hit the API in a task-scoped session (path %s)", r.URL.Path)
+		t.Errorf("create_project_item must not hit the API in a task-scoped session (path %s)", r.URL.Path)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"X"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"X"}}}`)
 	if text, isErr := resultText(t, env); !isErr {
 		t.Fatalf("expected task-scope rejection, got: %s", text)
 	}
@@ -290,15 +290,15 @@ func TestTaskScopedRejectsForeignTask(t *testing.T) {
 		// A foreign id must be rejected before any single-task API call.
 		t.Errorf("must not hit API for a foreign id (path %s)", r.URL.Path)
 	})
-	// get_task on the other task
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_task","arguments":{"id":"t2"}}}`)
+	// get_project_item on the other task
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_project_item","arguments":{"id":"t2"}}}`)
 	if text, isErr := resultText(t, env); !isErr {
-		t.Fatalf("get_task foreign: expected rejection, got: %s", text)
+		t.Fatalf("get_project_item foreign: expected rejection, got: %s", text)
 	}
-	// update_task on the other task
-	env = call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t2","status":"completed"}}}`)
+	// update_project_item on the other task
+	env = call(t, s, buf, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t2","status":"completed"}}}`)
 	if text, isErr := resultText(t, env); !isErr {
-		t.Fatalf("update_task foreign: expected rejection, got: %s", text)
+		t.Fatalf("update_project_item foreign: expected rejection, got: %s", text)
 	}
 }
 
@@ -306,7 +306,7 @@ func TestTaskScopedListFiltersToSelf(t *testing.T) {
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(twoTasks()))
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_tasks","arguments":{}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_project_items","arguments":{}}}`)
 	text, isErr := resultText(t, env)
 	if isErr {
 		t.Fatalf("unexpected error: %s", text)
@@ -315,7 +315,7 @@ func TestTaskScopedListFiltersToSelf(t *testing.T) {
 		Count int `json:"count"`
 		Tasks []struct {
 			ID string `json:"id"`
-		} `json:"tasks"`
+		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(text), &payload); err != nil {
 		t.Fatalf("decode: %v (%s)", err, text)
@@ -328,7 +328,7 @@ func TestTaskScopedListFiltersToSelf(t *testing.T) {
 func TestTaskScopedAllowsOwnUpdate(t *testing.T) {
 	var patched bool
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
+		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/project-items/t1" {
 			patched = true
 			w.Write([]byte(`{"id":"t1","priority":"high"}`))
 			return
@@ -336,12 +336,12 @@ func TestTaskScopedAllowsOwnUpdate(t *testing.T) {
 		http.Error(w, "unexpected", 400)
 	})
 	// A non-status edit on the executor's own task is allowed.
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","priority":"high"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t1","priority":"high"}}}`)
 	if text, isErr := resultText(t, env); isErr {
 		t.Fatalf("own-task update should succeed, got error: %s", text)
 	}
 	if !patched {
-		t.Fatal("expected PATCH /api/agent/tasks/t1")
+		t.Fatal("expected PATCH /api/agent/project-items/t1")
 	}
 }
 
@@ -351,9 +351,9 @@ func TestTaskScopedAllowsOwnUpdate(t *testing.T) {
 // PATCH must never reach the API.
 func TestExecutorCannotSelfReportCompleted(t *testing.T) {
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("update_task(status=completed) must not hit the API in executor scope (path %s)", r.URL.Path)
+		t.Errorf("update_project_item(status=completed) must not hit the API in executor scope (path %s)", r.URL.Path)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t1","status":"completed"}}}`)
 	if text, isErr := resultText(t, env); !isErr {
 		t.Fatalf("executor status=completed should be rejected, got: %s", text)
 	}
@@ -364,24 +364,24 @@ func TestExecutorCannotSelfReportCompleted(t *testing.T) {
 func TestExecutorCanCancelOwnTask(t *testing.T) {
 	var patched bool
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/tasks/t1" {
+		if r.Method == http.MethodPatch && r.URL.Path == "/api/agent/project-items/t1" {
 			patched = true
 			w.Write([]byte(`{"id":"t1","status":"cancelled"}`))
 			return
 		}
 		http.Error(w, "unexpected", 400)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"cancelled"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t1","status":"cancelled"}}}`)
 	if text, isErr := resultText(t, env); isErr {
 		t.Fatalf("executor status=cancelled should succeed, got error: %s", text)
 	}
 	if !patched {
-		t.Fatal("expected PATCH /api/agent/tasks/t1 for cancel")
+		t.Fatal("expected PATCH /api/agent/project-items/t1 for cancel")
 	}
 }
 
 // TestExecutorUpdateTaskDoesNotAdvertiseCompleted asserts the executor-scoped
-// update_task schema offers only `cancelled` as a settable status, so the agent
+// update_project_item schema offers only `cancelled` as a settable status, so the agent
 // is never told to try a completion the server will reject (#132).
 func TestExecutorUpdateTaskDoesNotAdvertiseCompleted(t *testing.T) {
 	s, buf, _ := newTaskScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {})
@@ -391,7 +391,7 @@ func TestExecutorUpdateTaskDoesNotAdvertiseCompleted(t *testing.T) {
 	var found bool
 	for _, tl := range tools {
 		m, _ := tl.(map[string]any)
-		if m["name"] != "update_task" {
+		if m["name"] != "update_project_item" {
 			continue
 		}
 		found = true
@@ -400,11 +400,11 @@ func TestExecutorUpdateTaskDoesNotAdvertiseCompleted(t *testing.T) {
 		statusProp, _ := props["status"].(map[string]any)
 		enum, _ := statusProp["enum"].([]any) // JSON round-trip → []any
 		if len(enum) != 1 || enum[0] != "cancelled" {
-			t.Fatalf("executor update_task status enum = %v, want [cancelled]", statusProp["enum"])
+			t.Fatalf("executor update_project_item status enum = %v, want [cancelled]", statusProp["enum"])
 		}
 	}
 	if !found {
-		t.Fatal("update_task not advertised in executor scope")
+		t.Fatal("update_project_item not advertised in executor scope")
 	}
 }
 
@@ -460,28 +460,28 @@ func TestVerifierScopeToolsList(t *testing.T) {
 		name, _ := tl.(map[string]any)["name"].(string)
 		got[name] = true
 	}
-	if len(got) != 4 || !got["list_tasks"] || !got["get_task"] || !got["get_task_graph"] || !got["submit_review"] {
-		t.Fatalf("verifier scope tools = %v, want {list_tasks, get_task, get_task_graph, submit_review}", got)
+	if len(got) != 4 || !got["list_project_items"] || !got["get_project_item"] || !got["get_project_item_graph"] || !got["submit_review"] {
+		t.Fatalf("verifier scope tools = %v, want {list_project_items, get_project_item, get_project_item_graph, submit_review}", got)
 	}
-	if got["update_task"] {
-		t.Error("update_task must NOT be advertised to a verifier (hard read-only)")
+	if got["update_project_item"] {
+		t.Error("update_project_item must NOT be advertised to a verifier (hard read-only)")
 	}
 }
 
 func TestVerifierScopeBlocksUpdateTask(t *testing.T) {
 	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("update_task must not hit the API in verifier scope (path %s)", r.URL.Path)
+		t.Errorf("update_project_item must not hit the API in verifier scope (path %s)", r.URL.Path)
 	})
-	env := call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`)
+	env := call(t, s, buf, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t1","status":"completed"}}}`)
 	if text, isErr := resultText(t, env); !isErr {
-		t.Fatalf("expected verifier update_task rejection, got: %s", text)
+		t.Fatalf("expected verifier update_project_item rejection, got: %s", text)
 	}
 }
 
 func TestVerifierSubmitReviewPostsVerdict(t *testing.T) {
 	var posted bool
 	s, buf, _ := newVerifierScopedServer(t, "t1", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/tasks/t1/review" {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/agent/project-items/t1/review" {
 			posted = true
 			w.Write([]byte(`{"id":"t1","status":"completed"}`))
 			return
@@ -493,7 +493,7 @@ func TestVerifierSubmitReviewPostsVerdict(t *testing.T) {
 		t.Fatalf("submit_review should succeed, got error: %s", text)
 	}
 	if !posted {
-		t.Fatal("expected POST /api/agent/tasks/t1/review")
+		t.Fatal("expected POST /api/agent/project-items/t1/review")
 	}
 }
 

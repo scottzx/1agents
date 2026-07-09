@@ -1,4 +1,4 @@
-package mcptasks
+package projectitems
 
 import (
 	"bufio"
@@ -18,11 +18,11 @@ func runStdio(t *testing.T, lockedTask string, reqs []string) []string {
 
 	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/agent/tasks" && r.Method == http.MethodGet:
+		case r.URL.Path == "/api/agent/project-items" && r.Method == http.MethodGet:
 			w.Write([]byte(twoTasks()))
-		case r.URL.Path == "/api/agent/tasks/t1" && r.Method == http.MethodGet:
+		case r.URL.Path == "/api/agent/project-items/t1" && r.Method == http.MethodGet:
 			w.Write([]byte(`{"id":"t1","number":1,"title":"A","status":"pending","type":"task","description":"do the thing","acceptanceCriteria":"it works"}`))
-		case strings.HasPrefix(r.URL.Path, "/api/agent/tasks/") && r.Method == http.MethodPatch:
+		case strings.HasPrefix(r.URL.Path, "/api/agent/project-items/") && r.Method == http.MethodPatch:
 			w.Write([]byte(`{"id":"t1","status":"completed"}`))
 		default:
 			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, 400)
@@ -80,7 +80,7 @@ func TestInterfacePMScope(t *testing.T) {
 	reqs := []string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_task","arguments":{"id":"t1"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_project_item","arguments":{"id":"t1"}}}`,
 	}
 	resp := runStdio(t, "", reqs)
 	t.Log("───────── PM (project-wide) scope ─────────")
@@ -93,22 +93,22 @@ func TestInterfacePMScope(t *testing.T) {
 	if len(resp) != 3 {
 		t.Fatalf("expected 3 responses, got %d", len(resp))
 	}
-	// PM advertises the create_* tools and get_task returns the full body.
-	if !strings.Contains(resp[1], `"name":"create_task"`) || !strings.Contains(resp[1], `"name":"create_milestone"`) {
-		t.Error("PM tools/list should include create_task and create_milestone")
+	// PM advertises the create_* tools and get_project_item returns the full body.
+	if !strings.Contains(resp[1], `"name":"create_project_item"`) || !strings.Contains(resp[1], `"name":"create_milestone"`) {
+		t.Error("PM tools/list should include create_project_item and create_milestone")
 	}
 	if !strings.Contains(resp[2], "acceptanceCriteria") {
-		t.Error("PM get_task should return the full task body")
+		t.Error("PM get_project_item should return the full task body")
 	}
 }
 
 func TestInterfaceExecutorScope(t *testing.T) {
 	reqs := []string{
 		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task","arguments":{"title":"sneak"}}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_task","arguments":{"id":"t2"}}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","priority":"high"}}}`,
-		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"update_task","arguments":{"id":"t1","status":"completed"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_project_item","arguments":{"title":"sneak"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_project_item","arguments":{"id":"t2"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t1","priority":"high"}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"update_project_item","arguments":{"id":"t1","status":"completed"}}}`,
 	}
 	resp := runStdio(t, "t1", reqs)
 	t.Log("───────── Executor scope (ONEAGENTS_TASK_ID=t1) ─────────")
@@ -121,19 +121,19 @@ func TestInterfaceExecutorScope(t *testing.T) {
 	if len(resp) != 5 {
 		t.Fatalf("expected 5 responses, got %d", len(resp))
 	}
-	if strings.Contains(resp[0], `"name":"create_task"`) || strings.Contains(resp[0], `"name":"create_milestone"`) {
+	if strings.Contains(resp[0], `"name":"create_project_item"`) || strings.Contains(resp[0], `"name":"create_milestone"`) {
 		t.Error("executor tools/list must NOT advertise create_* tools")
 	}
-	if !strings.Contains(resp[1], `"isError":true`) { // create_task blocked
-		t.Error("executor create_task should be rejected")
+	if !strings.Contains(resp[1], `"isError":true`) { // create_project_item blocked
+		t.Error("executor create_project_item should be rejected")
 	}
-	if !strings.Contains(resp[2], `"isError":true`) { // foreign get_task rejected
-		t.Error("executor get_task on a foreign id should be rejected")
+	if !strings.Contains(resp[2], `"isError":true`) { // foreign get_project_item rejected
+		t.Error("executor get_project_item on a foreign id should be rejected")
 	}
 	if strings.Contains(resp[3], `"isError":true`) { // own non-status update allowed
-		t.Error("executor update_task (non-status) on its own task should succeed")
+		t.Error("executor update_project_item (non-status) on its own task should succeed")
 	}
 	if !strings.Contains(resp[4], `"isError":true`) { // #132: self-report completed blocked
-		t.Error("executor update_task status=completed must be rejected (#132)")
+		t.Error("executor update_project_item status=completed must be rejected (#132)")
 	}
 }

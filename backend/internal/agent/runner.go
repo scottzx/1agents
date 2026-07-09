@@ -200,7 +200,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 //
 // Adversarial panel (#131): when the task configures VerifierCount > 1, Verify
 // runs that many independent verifier sessions sequentially. Each verifier gets
-// a hard read-only tasks MCP (no update_task; submit_review only) and submits
+// a hard read-only tasks MCP (no update_project_item; submit_review only) and submits
 // its own verdict; the server (applyReviewVerdict) pools the verdicts and, once
 // the panel is complete, aggregates them by threshold to drive the state machine
 // (#50). A verifier that ends without submitting counts as a rejecting verdict

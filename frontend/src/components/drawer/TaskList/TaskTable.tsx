@@ -6,20 +6,20 @@ import { PRIORITY_RANK } from './constants';
 import { GridCell } from './TaskGridCell';
 import { DataGrid, type GridColumn } from './DataGrid';
 import { getAllColumns, compareTasks, groupValue, isSortable, getGroupOptions } from './gridConfig';
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 interface TaskTableProps {
     /** Tasks to render (already filtered by the shared TaskFilterBar). */
-    tasks: Task[];
+    tasks: ProjectItem[];
     /** Full task set for dependency resolution and empty-state messaging. */
-    allTasks: Task[];
+    allTasks: ProjectItem[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
     onDeleteTask: (taskId: string) => void;
     onPatchTask: (taskId: string, patch: Record<string, unknown>) => Promise<void>;
 }
 
-const rank = (task: Task) => PRIORITY_RANK[task.priority || 'medium'] ?? 2;
+const rank = (task: ProjectItem) => PRIORITY_RANK[task.priority || 'medium'] ?? 2;
 
 export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask, onPatchTask }: TaskTableProps) {
     const lang = ui.language.value;
@@ -35,7 +35,7 @@ export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask
     }));
 
     return (
-        <DataGrid<Task>
+        <DataGrid<ProjectItem>
             rows={tasks}
             totalCount={allTasks.length}
             columns={taskColumns}

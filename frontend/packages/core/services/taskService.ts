@@ -8,12 +8,12 @@
 
 import { apiFetch } from './apiClient';
 import { workspaceService } from './workspaceService';
-import type { Task, Milestone, Reply, ReplyMode } from '../types/task';
+import type { ProjectItem, Milestone, Reply, ReplyMode } from '../types/task';
 
 /** Resolve a GitHub-style project#number reference to its task + workspace. */
-export interface TaskRef {
+export interface ProjectItemRef {
     workspaceId: string;
-    task: Task;
+    task: ProjectItem;
 }
 
 const q = encodeURIComponent;
@@ -23,11 +23,11 @@ async function ok(res: Response): Promise<Response> {
     return res;
 }
 
-export const taskService = {
+export const projectItemService = {
     // ---- tasks ----
 
-    async list(workspaceId: string): Promise<Task[]> {
-        const res = await apiFetch(`/agent/tasks?workspace_id=${q(workspaceId)}`);
+    async list(workspaceId: string): Promise<ProjectItem[]> {
+        const res = await apiFetch(`/agent/project-items?workspace_id=${q(workspaceId)}`);
         if (!res.ok) throw new Error(`Failed to load tasks: ${res.statusText}`);
         return (await res.json()) || [];
     },
@@ -40,7 +40,7 @@ export const taskService = {
      * single project failing to load is skipped, not fatal, so one bad meta
      * file can't blank the whole board.
      */
-    async listAll(): Promise<Task[]> {
+    async listAll(): Promise<ProjectItem[]> {
         const workspaces = (await workspaceService.list()).filter(ws => !ws.builtin);
         const perProject = await Promise.all(
             workspaces.map(async ws => {
@@ -48,7 +48,7 @@ export const taskService = {
                     const tasks = await this.list(ws.id);
                     return tasks.map(t => ({ ...t, workspaceId: ws.id, workspaceName: ws.name }));
                 } catch {
-                    return [] as Task[];
+                    return [] as ProjectItem[];
                 }
             })
         );
@@ -60,18 +60,18 @@ export const taskService = {
      * payload is byte-identical to the last (Go's encoding is deterministic).
      */
     async getText(id: string): Promise<string> {
-        const res = await apiFetch(`/agent/tasks/${q(id)}`);
+        const res = await apiFetch(`/agent/project-items/${q(id)}`);
         if (!res.ok) throw new Error(`Failed to load task: ${res.statusText}`);
         return res.text();
     },
 
-    async get(id: string): Promise<Task> {
-        return JSON.parse(await this.getText(id)) as Task;
+    async get(id: string): Promise<ProjectItem> {
+        return JSON.parse(await this.getText(id)) as ProjectItem;
     },
 
-    async create(body: Record<string, unknown>): Promise<Task> {
+    async create(body: Record<string, unknown>): Promise<ProjectItem> {
         const res = await ok(
-            await apiFetch('/agent/tasks', {
+            await apiFetch('/agent/project-items', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -80,9 +80,9 @@ export const taskService = {
         return res.json();
     },
 
-    async patch(id: string, patch: Record<string, unknown>): Promise<Task> {
+    async patch(id: string, patch: Record<string, unknown>): Promise<ProjectItem> {
         const res = await ok(
-            await apiFetch(`/agent/tasks/${q(id)}`, {
+            await apiFetch(`/agent/project-items/${q(id)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(patch),
@@ -92,18 +92,18 @@ export const taskService = {
     },
 
     async remove(id: string, workspaceId: string): Promise<void> {
-        await ok(await apiFetch(`/agent/tasks/${q(id)}?workspace_id=${q(workspaceId)}`, { method: 'DELETE' }));
+        await ok(await apiFetch(`/agent/project-items/${q(id)}?workspace_id=${q(workspaceId)}`, { method: 'DELETE' }));
     },
 
-    async resolve(project: string, number: number): Promise<TaskRef | null> {
-        const res = await apiFetch(`/agent/tasks/resolve?project=${q(project)}&number=${number}`);
+    async resolve(project: string, number: number): Promise<ProjectItemRef | null> {
+        const res = await apiFetch(`/agent/project-items/resolve?project=${q(project)}&number=${number}`);
         if (!res.ok) return null;
         return res.json();
     },
 
     async addReply(id: string, text: string, mode: ReplyMode = 'pure_comment'): Promise<void> {
         await ok(
-            await apiFetch(`/agent/tasks/${q(id)}/replies`, {
+            await apiFetch(`/agent/project-items/${q(id)}/replies`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text, mode }),
@@ -144,4 +144,4 @@ export const taskService = {
     },
 };
 
-export type { Task, Milestone, Reply };
+export type { ProjectItem, Milestone, Reply };

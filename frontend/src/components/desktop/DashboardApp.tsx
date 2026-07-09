@@ -1,8 +1,8 @@
 import { h, Component } from 'preact';
 import { Workspace } from '../types';
-import { Task } from '../drawer/TaskList/types';
+import { ProjectItem } from '../drawer/TaskList/types';
 
-export interface GamifiedTask extends Task {
+export interface GamifiedTask extends ProjectItem {
     progress?: number;
 }
 import * as wsStore from '../../stores/workspaceStore';
@@ -130,7 +130,7 @@ const mainAppRoot = () => window.location.origin + (__BASE_PATH__ || '') + '/';
 
 interface TooltipData {
     workspace: Workspace;
-    tasks: Task[];
+    tasks: ProjectItem[];
     status: string;
     progressPercent: number;
     dept: string;
@@ -140,7 +140,7 @@ interface TooltipData {
 
 interface DashboardAppState {
     workspaces: Workspace[];
-    tasksMap: Record<string, Task[]>;
+    tasksMap: Record<string, ProjectItem[]>;
     loading: boolean;
     useMock: boolean;
     companyName: string;
@@ -263,7 +263,7 @@ const MOCK_WORKSPACES: Workspace[] = [
     },
 ];
 
-const MOCK_TASKS: Record<string, Task[]> = {
+const MOCK_TASKS: Record<string, ProjectItem[]> = {
     'mock-ws-01': [
         // Completed project
         {
@@ -987,7 +987,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         window.location.href = mainAppRoot();
     };
 
-    getProjectStatus(wsId: string, customTasksMap?: Record<string, Task[]>): string {
+    getProjectStatus(wsId: string, customTasksMap?: Record<string, ProjectItem[]>): string {
         const tasks = customTasksMap ? customTasksMap[wsId] : this.state.tasksMap[wsId];
         if (!tasks || tasks.length === 0) return 'pending';
         const completedCount = tasks.filter(t => t.status === 'completed').length;
@@ -1003,7 +1003,7 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
         this.setState(prevState => ({ showRosterModal: !prevState.showRosterModal }));
     };
 
-    generateRandomTasksForWorkspace(wsId: string): Task[] {
+    generateRandomTasksForWorkspace(wsId: string): ProjectItem[] {
         const softwareTasks = [
             ['主模块编写', 'API 接口对接', '单元测试覆盖', 'Bug 修复与审查'],
             ['前端组件开发', '响应式布局优化', '主题样式集成', '性能专项测试'],

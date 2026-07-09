@@ -80,7 +80,7 @@ const (
 	ActionRequeue EventActionKind = "requeue"
 	// ActionAwaitHuman parks a task at awaiting_human, carrying Note as the
 	// escalation reason. Used by the verify-needs-human chain: the task waits
-	// for a human decision (complete_human_task / board completion) rather than
+	// for a human decision (complete_human_project_item / board completion) rather than
 	// being re-executed. Downstream deps stay blocked until it completes.
 	ActionAwaitHuman EventActionKind = "await-human"
 )
@@ -286,7 +286,7 @@ func applyEventActions(t *Task, actions []EventAction, now time.Time) (modified 
 			// Park for a human decision. Keep StartedAt (the task already ran +
 			// verified) so its elapsed time reflects the real work. The
 			// scheduler skips awaiting_human, so this holds until a human
-			// completes it via complete_human_task / board completion.
+			// completes it via complete_human_project_item / board completion.
 			t.Status = TaskStatusAwaitingHuman
 			t.UpdatedAt = now
 			if strings.TrimSpace(a.Note) != "" {

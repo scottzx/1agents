@@ -56,7 +56,7 @@ func TestReplyCreateAcceptsSessionRef(t *testing.T) {
 	seedTask(t, h, ws)
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/project-items/task-1/replies",
 		strings.NewReader(`{"text":"追问","mode":"follow_up","sessionRef":"sess-9"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {

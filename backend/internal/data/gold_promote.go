@@ -22,7 +22,7 @@ type PromotableTodo struct {
 	Source       string
 	ExternalID   string
 	LinkedTaskID string         // non-empty when already promoted (idempotency)
-	Body         map[string]any // POST /api/agent/tasks body (minus workspace_id/assignee)
+	Body         map[string]any // POST /api/agent/project-items body (minus workspace_id/assignee)
 }
 
 // TodoForPromotion loads a gold to-do by id, reads its field-complete silver

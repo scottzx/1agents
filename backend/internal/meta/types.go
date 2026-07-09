@@ -229,7 +229,7 @@ const (
 	// and runs the verifier headlessly instead of completing it. See #50.
 	TaskStatusPendingReview TaskStatus = "pending_review"
 	// TaskStatusAwaitingHuman marks a task with executor=human that is waiting for
-	// user action (click-done, dialog backfill, or MCP complete_human_task). Once
+	// user action (click-done, dialog backfill, or MCP complete_human_project_item). Once
 	// the user completes it, the scheduler's ready gate releases downstream tasks
 	// that depend on this one — identical to completing any other task.
 	TaskStatusAwaitingHuman TaskStatus = "awaiting_human"

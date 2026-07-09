@@ -7,7 +7,7 @@
 // The web today encodes the same status→color mapping inline in SCSS class
 // names; this lifts that single source of truth up so the 小程序 stays in sync.
 
-import type { Task, TaskPriority, TaskType } from '../types/task';
+import type { ProjectItem, TaskPriority, TaskType } from '../types/task';
 
 /** Semantic color families — mirror the SCSS token families in index.scss. */
 export type Tone = 'accent' | 'success' | 'danger' | 'warning' | 'orange' | 'purple' | 'muted';
@@ -15,7 +15,7 @@ export type Tone = 'accent' | 'success' | 'danger' | 'warning' | 'orange' | 'pur
 // Status → tone. Lifted verbatim from `.task-card-item.status-*` in index.scss:
 // running=success, completed=accent, failed/cancelled=danger, blocked=warning,
 // queued/pending=muted.
-const STATUS_TONE: Record<Task['status'], Tone> = {
+const STATUS_TONE: Record<ProjectItem['status'], Tone> = {
     running: 'success',
     completed: 'accent',
     failed: 'danger',
@@ -36,7 +36,7 @@ const PRIORITY_TONE: Record<TaskPriority, Tone> = {
 };
 
 /** Statuses past which a task no longer runs — drives dimming/strike-through. */
-const TERMINAL: ReadonlySet<Task['status']> = new Set(['completed', 'cancelled', 'failed']);
+const TERMINAL: ReadonlySet<ProjectItem['status']> = new Set(['completed', 'cancelled', 'failed']);
 
 export interface TaskCardVM {
     id: string;
@@ -44,7 +44,7 @@ export interface TaskCardVM {
     /** `#12` when the task has a number, else '' (suggestions before adoption). */
     numberLabel: string;
     type: TaskType;
-    status: Task['status'];
+    status: ProjectItem['status'];
     statusTone: Tone;
     /** Defaulted to 'medium' when the task omits priority (matches board sort). */
     priority: TaskPriority;
@@ -58,7 +58,7 @@ export interface TaskCardVM {
 }
 
 /** Derive the render-ready card descriptor for a task. Pure, no I/O. */
-export function taskCardVM(task: Task): TaskCardVM {
+export function taskCardVM(task: ProjectItem): TaskCardVM {
     const priority: TaskPriority = task.priority || 'medium';
     return {
         id: task.id,

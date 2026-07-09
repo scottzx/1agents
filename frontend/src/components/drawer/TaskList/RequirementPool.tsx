@@ -4,13 +4,13 @@ import { useState } from 'preact/hooks';
 import { taskCardVM } from '@1agents/core/view/taskCard';
 import { PRIORITY_LABELS, TYPE_LABELS } from './constants';
 import { parseFrontmatter } from '../../../utils/frontmatter';
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 interface RequirementPoolProps {
     // Board requirement/bug cards (non-suggestion); the parent passes boardTasks.
-    tasks: Task[];
+    tasks: ProjectItem[];
     // AI suggestions (source === 'agent-suggested') merged into this pool.
-    suggestions: Task[];
+    suggestions: ProjectItem[];
     onSelectTask: (taskId: string) => void;
     // 采纳 / 忽略 for suggestion cards (issue #47).
     onAdopt: (taskId: string) => void;
@@ -37,7 +37,7 @@ export function RequirementPool({ tasks, suggestions, onSelectTask, onAdopt, onD
         ['suggestion', 'AI 建议', suggestions.length],
     ];
 
-    let visible: Task[];
+    let visible: ProjectItem[];
     if (filter === 'requirement') visible = reqBug.filter(t => t.type === 'requirement');
     else if (filter === 'bug') visible = reqBug.filter(t => t.type === 'bug');
     else if (filter === 'suggestion') visible = suggestions;

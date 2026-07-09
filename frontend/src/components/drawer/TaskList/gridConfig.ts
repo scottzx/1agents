@@ -1,6 +1,6 @@
 import { t, type Lang } from '../../../i18n';
 import { getPriorityLabels, PRIORITY_LABELS, PRIORITY_RANK, STATUS_LABELS, TYPE_LABELS } from './constants';
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 // Airtable-style column model. `type` drives which inline editor renders;
 // `editable` is the BASE flag — `status` is editable but scheduler-constrained
@@ -110,7 +110,7 @@ export function getGroupOptions(lang: Lang): Array<[GroupKey, string]> {
 }
 
 /** Stable, human-readable group bucket for a task under the active group key. */
-export function groupValue(task: Task, key: GroupKey, lang?: Lang): string {
+export function groupValue(task: ProjectItem, key: GroupKey, lang?: Lang): string {
     const statusLabels = lang
         ? {
               pending: t('task.status.pending', lang),
@@ -145,7 +145,7 @@ const TYPE_ORDER = ['task', 'requirement', 'bug'];
 
 const ts = (iso?: string): number => (iso ? new Date(iso).getTime() : Number.POSITIVE_INFINITY);
 
-export function compareTasks(a: Task, b: Task, key: string): number {
+export function compareTasks(a: ProjectItem, b: ProjectItem, key: string): number {
     switch (key) {
         case 'id':
             return (a.number || 0) - (b.number || 0);

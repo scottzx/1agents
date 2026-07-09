@@ -1,11 +1,11 @@
 import { PRIORITY_RANK } from './constants';
-import type { Task, TaskRecurrence } from './types';
+import type { ProjectItem, TaskRecurrence } from './types';
 
 /** Order tasks for the table: top-level by priority then creation; each
  *  parent immediately followed by its (indented) subtasks. */
-export function orderForTable(tasks: Task[]): Array<{ task: Task; isChild: boolean }> {
-    const byParent = new Map<string, Task[]>();
-    const tops: Task[] = [];
+export function orderForTable(tasks: ProjectItem[]): Array<{ task: ProjectItem; isChild: boolean }> {
+    const byParent = new Map<string, ProjectItem[]>();
+    const tops: ProjectItem[] = [];
     for (const t of tasks) {
         if (t.parentId && tasks.some(p => p.id === t.parentId)) {
             const list = byParent.get(t.parentId) || [];
@@ -15,9 +15,9 @@ export function orderForTable(tasks: Task[]): Array<{ task: Task; isChild: boole
             tops.push(t);
         }
     }
-    const rank = (t: Task) => PRIORITY_RANK[t.priority || 'medium'] ?? 2;
+    const rank = (t: ProjectItem) => PRIORITY_RANK[t.priority || 'medium'] ?? 2;
     tops.sort((a, b) => rank(a) - rank(b) || a.createdAt.localeCompare(b.createdAt));
-    const out: Array<{ task: Task; isChild: boolean }> = [];
+    const out: Array<{ task: ProjectItem; isChild: boolean }> = [];
     for (const t of tops) {
         out.push({ task: t, isChild: false });
         for (const c of byParent.get(t.id) || []) {

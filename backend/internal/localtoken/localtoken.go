@@ -1,5 +1,5 @@
 // Package localtoken holds a process-scoped random bearer token used by
-// loopback helper subprocesses (e.g. the `1agents mcp-tasks` MCP server that
+// loopback helper subprocesses (e.g. the `1agents project-items` MCP server that
 // the AI Project Manager session spawns) to authenticate back to this
 // backend's own HTTP API.
 //

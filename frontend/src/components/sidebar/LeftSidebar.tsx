@@ -31,7 +31,7 @@ import {
     showProjectContext,
     showAssistantContext,
 } from '../../stores/stageStore';
-import { taskService } from '@1agents/core/services/taskService';
+import { projectItemService } from '@1agents/core/services/taskService';
 import { inboxService } from '@1agents/core/services/inboxService';
 import { openSearch } from '../../stores/searchStore';
 
@@ -201,7 +201,7 @@ export function LeftSidebar({
             for (const folder of folders) {
                 if (!folder.sessions.some(s => isChat(s) && Boolean(s.taskId))) continue;
                 try {
-                    const tasks = await taskService.list(folder.id);
+                    const tasks = await projectItemService.list(folder.id);
                     for (const task of tasks) {
                         titles[task.id] = task.title;
                     }

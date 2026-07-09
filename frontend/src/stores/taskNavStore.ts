@@ -14,7 +14,7 @@ import * as tabsStore from './tabsStore';
 import * as ui from './uiStore';
 import * as fsStore from './fsStore';
 import { fsService } from '../services/fsService';
-import { taskService } from '@1agents/core/services/taskService';
+import { projectItemService } from '@1agents/core/services/taskService';
 import { parseTaskPermalink } from '../utils/markdown';
 
 /**
@@ -91,7 +91,7 @@ export const openTaskById = (workspaceId: string, taskId: string): void => {
  */
 export const openTaskByRef = async (project: string, number: number): Promise<void> => {
     try {
-        const ref = await taskService.resolve(project, number);
+        const ref = await projectItemService.resolve(project, number);
         if (!ref) {
             ui.showToast(`未找到任务：${project}#${number}`);
             return;

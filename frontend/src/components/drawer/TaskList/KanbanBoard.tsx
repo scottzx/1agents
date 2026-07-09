@@ -4,10 +4,10 @@ import { useState } from 'preact/hooks';
 import { taskCardVM } from '@1agents/core/view/taskCard';
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
 import { recurrenceLabel } from './utils';
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 interface KanbanBoardProps {
-    tasks: Task[];
+    tasks: ProjectItem[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
     /** Drag-to-retire a card. Only terminal states are reachable by drag. */
@@ -21,7 +21,7 @@ type DropStatus = 'completed' | 'cancelled';
 interface Column {
     key: string;
     label: string;
-    statuses: Array<Task['status']>;
+    statuses: Array<ProjectItem['status']>;
     /** When set, the column accepts drops and moves the card to this status. */
     dropStatus?: DropStatus;
 }
@@ -105,7 +105,7 @@ export function KanbanBoard({ tasks, loading, onSelectTask, onStatusChange, show
 }
 
 interface KanbanCardProps {
-    task: Task;
+    task: ProjectItem;
     dragging: boolean;
     showProject?: boolean;
     onSelect: () => void;

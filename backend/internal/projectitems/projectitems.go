@@ -1,11 +1,11 @@
-// Package mcptasks is a minimal Model Context Protocol (MCP) server exposed
-// as the `1agents mcp-tasks` subcommand. It gives the in-app AI Project
-// Manager chat session a small set of task-management tools, all locked to a
-// single workspace.
+// Package projectitems is a minimal Model Context Protocol (MCP) server exposed
+// as the `1agents project-items` subcommand. It gives the in-app AI Project
+// Manager chat session a small set of project-item management tools (需求/缺陷/
+// 任务/讨论), all locked to a single workspace.
 //
 // Transport is stdio with newline-delimited JSON-RPC 2.0 (the MCP stdio
 // transport). The server holds no state of its own: every tool call proxies
-// to the running daemon's existing HTTP task API. The target workspace is
+// to the running daemon's existing HTTP project-item API. The target workspace is
 // fixed by the ONEAGENTS_WORKSPACE_ID env var injected by the backend at
 // bridge time, so the agent can neither read nor write any other project —
 // the tools deliberately expose no workspace/project parameter.
@@ -20,10 +20,10 @@
 //	                          PM-only create/milestone tools are withheld.
 //	ONEAGENTS_TASK_ROLE       optional: "executor" (default when task-locked) or
 //	                          "verifier". The verifier scope is hard read-only —
-//	                          update_task is withheld and submit_review is added,
+//	                          update_project_item is withheld and submit_review is added,
 //	                          so a reviewer can only judge, never edit (#50).
 //	ONEAGENTS_INTERNAL_TOKEN  loopback bearer accepted by authMiddleware
-package mcptasks
+package projectitems
 
 import (
 	"bufio"
@@ -85,8 +85,8 @@ type server struct {
 	// withheld. Empty means project-wide PM scope.
 	taskID string
 	// taskRole selects the task-locked tool surface: "verifier" is hard
-	// read-only (no update_task, plus submit_review); anything else ("executor"
-	// or unset) keeps the read+update_task executor surface. Ignored when
+	// read-only (no update_project_item, plus submit_review); anything else ("executor"
+	// or unset) keeps the read+update_project_item executor surface. Ignored when
 	// taskID is empty (PM scope).
 	taskRole string
 	out      *bufio.Writer
@@ -154,7 +154,7 @@ func (s *server) onInitialize(params json.RawMessage) map[string]any {
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities":    map[string]any{"tools": map[string]any{}},
-		"serverInfo":      map[string]any{"name": "1agents-tasks", "version": "1.0.0"},
+		"serverInfo":      map[string]any{"name": "1agents-project-items", "version": "1.0.0"},
 	}
 }
 

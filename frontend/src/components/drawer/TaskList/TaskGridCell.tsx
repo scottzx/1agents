@@ -3,13 +3,13 @@ import { h } from 'preact';
 import { t, type Lang } from '../../../i18n';
 import { AGENT_OPTIONS, getPriorityLabels, getStatusLabels, getTypeLabels } from './constants';
 import type { ColumnDef } from './gridConfig';
-import type { Task, TaskType } from './types';
+import type { ProjectItem, TaskType } from './types';
 import { fmtDateOnly, recurrenceLabel } from './utils';
 
 interface GridCellProps {
-    task: Task;
+    task: ProjectItem;
     col: ColumnDef;
-    allTasks: Task[];
+    allTasks: ProjectItem[];
     isChild: boolean;
     editing: boolean;
     onStartEdit: () => void;

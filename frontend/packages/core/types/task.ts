@@ -86,7 +86,7 @@ export interface ChecklistItem {
     done?: boolean;
 }
 
-export interface Task {
+export interface ProjectItem {
     id: string;
     title: string;
     description?: string;

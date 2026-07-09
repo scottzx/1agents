@@ -23,7 +23,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/cert"
 	"github.com/scottzx/1Agents/backend/internal/cli"
 	"github.com/scottzx/1Agents/backend/internal/config"
-	"github.com/scottzx/1Agents/backend/internal/mcptasks"
+	"github.com/scottzx/1Agents/backend/internal/projectitems"
 	"github.com/scottzx/1Agents/backend/internal/server"
 	"github.com/scottzx/1Agents/backend/internal/supervisor"
 	"github.com/scottzx/1Agents/backend/internal/system"
@@ -48,15 +48,16 @@ func get1AgentsHome() string {
 }
 
 func main() {
-	// ── `1agents mcp-tasks` MCP subcommand ─────────────────────────────────────
+	// ── `1agents project-items` MCP subcommand ─────────────────────────────────
 	// Dispatched before flag parsing and the daemon check so stdout stays a
 	// clean JSON-RPC channel (all logging goes to stderr). The AI Project
 	// Manager session spawns this via the resolved binary path; it speaks the
-	// Model Context Protocol over stdio and proxies task CRUD back to the
-	// running daemon's HTTP API, locked to one workspace via env.
-	if len(os.Args) > 1 && os.Args[1] == "mcp-tasks" {
-		if err := mcptasks.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "mcp-tasks:", err)
+	// Model Context Protocol over stdio and proxies project-item CRUD back to the
+	// running daemon's HTTP API, locked to one workspace via env. "mcp-tasks" is
+	// kept as a legacy alias so any stale invocation still resolves.
+	if len(os.Args) > 1 && (os.Args[1] == "project-items" || os.Args[1] == "mcp-tasks") {
+		if err := projectitems.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "project-items:", err)
 			os.Exit(1)
 		}
 		return

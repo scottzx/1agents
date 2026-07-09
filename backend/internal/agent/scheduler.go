@@ -566,7 +566,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 		// Human tasks are decision points, not agent work: park every ready human
 		// task at awaiting_human (no lock, no dispatch — it waits for the person,
 		// and its dependents stay blocked until it is completed via
-		// complete_human_task / the board), then dispatch the highest-priority
+		// complete_human_project_item / the board), then dispatch the highest-priority
 		// remaining agent/function task. Parking is lock-free, so a queue of human
 		// todos never monopolises the runner slot.
 		var runnable []readyTask

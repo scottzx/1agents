@@ -15,7 +15,7 @@
 // split:
 //
 //	auto-allow — tools already context-locked by the backend (e.g. the
-//	             project-locked mcp__tasks__* server), pure reads, and
+//	             project-locked mcp__project_items__* server), pure reads, and
 //	             idempotent / reversible operations
 //	prompt     — genuinely irreversible / externally-visible side effects:
 //	             deletes, git push, chmod, sending messages, network writes,
@@ -97,10 +97,10 @@ type Annotations struct {
 // Request describes one tool invocation the agent wants to make.
 type Request struct {
 	// ToolName is the fully-qualified tool name, e.g. "Read", "Bash",
-	// "mcp__tasks__create_task".
+	// "mcp__project_items__create_project_item".
 	ToolName string
 	// ServerName is the MCP server the tool belongs to, when known (e.g.
-	// "tasks"). Derived from ToolName when empty.
+	// "project_items"). Derived from ToolName when empty.
 	ServerName string
 	// Annotations are the MCP tool annotations, when the agent advertised them.
 	Annotations Annotations
@@ -132,9 +132,11 @@ func mcpServerOf(toolName string) string {
 // contextLockedServers are MCP servers the backend hard-locks to the current
 // project/task via env injection, so the agent cannot escalate scope through
 // them. Their tools are safe to auto-allow under "auto" — this is exactly the
-// PM tasks-tool case from issue #63 that approve-reads wrongly prompted on.
+// PM project-items-tool case from issue #63 that approve-reads wrongly prompted on.
+// "tasks" is kept as a legacy alias for the pre-rename server name.
 var contextLockedServers = map[string]bool{
-	"tasks": true,
+	"project_items": true,
+	"tasks":         true,
 }
 
 // readOnlyTools are built-in tools known to be pure reads (no annotations

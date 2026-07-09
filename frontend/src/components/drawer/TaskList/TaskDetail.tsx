@@ -4,10 +4,10 @@ import { useSignal } from '@preact/signals';
 
 import { t } from '../../../i18n';
 import { agentService } from '../../../services/agentService';
-import { taskService } from '@1agents/core/services/taskService';
+import { projectItemService } from '@1agents/core/services/taskService';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
-import type { ChecklistItem, LinkRel, Reply, ReplyMode, SessionMetadata, Task, TaskLink } from './types';
+import type { ChecklistItem, LinkRel, Reply, ReplyMode, SessionMetadata, ProjectItem, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
 import { renderMermaidBlocks } from '../../../utils/mermaid';
@@ -113,7 +113,7 @@ const StatusIcon = ({ closed }: { closed: boolean }) =>
 interface TaskDetailProps {
     workspaceId: string;
     taskId: string;
-    allTasks: Task[];
+    allTasks: ProjectItem[];
     onBack?: () => void;
     onDelete: (taskId: string) => void;
     onNavigate?: (taskId: string) => void;
@@ -161,7 +161,7 @@ export function TaskDetail({
     onNavigate,
     onSelectSession,
 }: TaskDetailProps) {
-    const [task, setTask] = useState<Task | null>(null);
+    const [task, setTask] = useState<ProjectItem | null>(null);
     const [error, setError] = useState('');
 
     // Add-link form
@@ -313,7 +313,7 @@ export function TaskDetail({
             // Skip the state update (and the full re-render + markdown re-parse it
             // triggers) when the polled payload is byte-identical to the last one.
             // Go's JSON encoding is deterministic, so unchanged state → same bytes.
-            const text = await taskService.getText(taskId);
+            const text = await projectItemService.getText(taskId);
             setError('');
             if (text === lastRawRef.current) return;
             lastRawRef.current = text;
@@ -334,11 +334,11 @@ export function TaskDetail({
         issueState?: 'open' | 'closed';
         acceptanceCriteria?: string;
         links?: TaskLink[];
-        status?: Task['status'];
+        status?: ProjectItem['status'];
         userConfirm?: boolean;
         checklist?: ChecklistItem[];
     }) => {
-        setTask(await taskService.patch(taskId, patch));
+        setTask(await projectItemService.patch(taskId, patch));
     };
 
     // Checklist edits: toggle a single item's done, append, or remove — each
@@ -535,7 +535,7 @@ export function TaskDetail({
                 setReplyText('');
                 await openNewSession(text);
             } else {
-                await taskService.addReply(taskId, text, 'pure_comment');
+                await projectItemService.addReply(taskId, text, 'pure_comment');
                 setReplyText('');
             }
             fetchTask();
@@ -646,7 +646,7 @@ export function TaskDetail({
     const outgoing = task.links || [];
     const backlinks = allTasks.filter(t => t.id !== task.id && (t.links || []).some(l => l.target === task.id));
     const linkOptions = allTasks.filter(t => t.id !== task.id);
-    const linkLabel = (tgt?: Task) =>
+    const linkLabel = (tgt?: ProjectItem) =>
         tgt ? `${tgt.number ? `#${tgt.number} ` : ''}${tgt.title}` : t('task.detail.unknownTask', lang);
 
     // Subtask checks calculation

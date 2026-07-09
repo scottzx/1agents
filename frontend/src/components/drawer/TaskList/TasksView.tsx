@@ -6,10 +6,10 @@ import { KanbanBoard } from './KanbanBoard';
 import { TaskFilterBar } from './TaskFilterBar';
 import type { TaskView } from './TaskFilterBar';
 import { TaskTable } from './TaskTable';
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 interface TasksViewProps {
-    tasks: Task[];
+    tasks: ProjectItem[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
     onDeleteTask: (taskId: string) => void;

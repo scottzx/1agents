@@ -201,7 +201,7 @@ func TestHandlerTaskGraph(t *testing.T) {
 
 	// req's graph: no outgoing, one incoming backlink from impl.
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/tasks/req/graph", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/project-items/req/graph", nil)
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("graph status %d: %s", rr.Code, rr.Body.String())
@@ -219,7 +219,7 @@ func TestHandlerTaskGraph(t *testing.T) {
 
 	// Unknown task → 404.
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/agent/tasks/nope/graph", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/agent/project-items/nope/graph", nil)
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("missing graph status %d, want 404", rr.Code)
@@ -233,7 +233,7 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// GET single task
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/agent/tasks/task-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/project-items/task-1", nil)
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("get task status %d: %s", rr.Code, rr.Body.String())
@@ -248,7 +248,7 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// GET missing → 404
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/agent/tasks/nope", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/agent/project-items/nope", nil)
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("get missing status %d, want 404", rr.Code)
@@ -256,7 +256,7 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// POST a user reply
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/project-items/task-1/replies",
 		strings.NewReader(`{"text":"先调研","mode":"new","author":"scott"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {
@@ -272,7 +272,7 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// Empty text → 400
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/project-items/task-1/replies",
 		strings.NewReader(`{"text":"  "}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -281,7 +281,7 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// PATCH description + close the issue
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPatch, "/api/agent/tasks/task-1",
+	req = httptest.NewRequest(http.MethodPatch, "/api/agent/project-items/task-1",
 		strings.NewReader(`{"description":"新描述","issueState":"closed"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {
@@ -300,14 +300,14 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// Closed issue: new-session reply rejected with 422, pure comment OK
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/project-items/task-1/replies",
 		strings.NewReader(`{"text":"再来一轮","mode":"new"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("closed new-session status %d, want 422", rr.Code)
 	}
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/agent/tasks/task-1/replies",
+	req = httptest.NewRequest(http.MethodPost, "/api/agent/project-items/task-1/replies",
 		strings.NewReader(`{"text":"纯评论可以","mode":"pure_comment"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {
@@ -316,7 +316,7 @@ func TestHandlerTaskGetPatchReply(t *testing.T) {
 
 	// Invalid issueState → 400
 	rr = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPatch, "/api/agent/tasks/task-1",
+	req = httptest.NewRequest(http.MethodPatch, "/api/agent/project-items/task-1",
 		strings.NewReader(`{"issueState":"banana"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -333,7 +333,7 @@ func TestManualStatusOverrideLeavesAuditTrail(t *testing.T) {
 	seedTask(t, h, ws) // starts pending
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPatch, "/api/agent/tasks/task-1",
+	req := httptest.NewRequest(http.MethodPatch, "/api/agent/project-items/task-1",
 		strings.NewReader(`{"status":"completed"}`))
 	h.HandleTasksItem(rr, req)
 	if rr.Code != http.StatusOK {

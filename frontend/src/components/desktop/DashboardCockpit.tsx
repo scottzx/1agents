@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 import { DashboardData, DashboardProject, ProjectHealth } from '@1agents/core/services/dashboardService';
-import { taskService } from '@1agents/core/services/taskService';
+import { projectItemService } from '@1agents/core/services/taskService';
 import { AGENT_TYPES, AGENT_TYPE_LABELS, type AgentType } from '../types';
 import * as ui from '../../stores/uiStore';
 
@@ -10,7 +10,7 @@ import * as ui from '../../stores/uiStore';
 // Phase 1 rendered the read-only cross-project board. Phase 2 adds a control
 // affordance to each card: dispatch an instruction / 派工 to a project's agent
 // without leaving the big screen. It reuses the existing task-create path
-// (POST /api/agent/tasks via taskService.create) — no new orchestration engine,
+// (POST /api/agent/project-items via projectItemService.create) — no new orchestration engine,
 // no new backend semantics. A dispatched instruction is just an immediate task
 // assigned to the chosen agent, which the scheduler picks up like any other.
 
@@ -42,7 +42,7 @@ function lastActiveText(iso?: string): string {
 }
 
 // DispatchComposer is the per-card 下指令/派工 panel. It is a thin form over
-// taskService.create: instruction → task title, agent → assignee, immediate
+// projectItemService.create: instruction → task title, agent → assignee, immediate
 // schedule so the scheduler runs it right away.
 function DispatchComposer({
     project,
@@ -63,7 +63,7 @@ function DispatchComposer({
         if (!title || busy) return;
         setBusy(true);
         try {
-            await taskService.create({
+            await projectItemService.create({
                 workspace_id: project.id,
                 title,
                 assignee: agent,

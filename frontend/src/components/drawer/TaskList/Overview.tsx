@@ -6,11 +6,11 @@ import { t } from '../../../i18n';
 import { language, theme } from '../../../stores/uiStore';
 import { EChart } from './EChart';
 import { getPriorityLabels } from './constants';
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 import { fmtDateOnly } from './utils';
 
 interface OverviewProps {
-    tasks: Task[];
+    tasks: ProjectItem[];
     // Live count of active sessions + opener for the sessions popup (the 会话
     // tab was folded into this overview card).
     sessionCount: number;
@@ -19,8 +19,8 @@ interface OverviewProps {
 
 // ── KPI card helpers ────────────────────────────────────────────────────────
 // 未完成 = 未开始(pending/queued) + 未完成(running/blocked); terminal states excluded.
-const isTaskType = (t: Task) => (t.type ?? 'task') === 'task';
-const isUncompleted = (t: Task) =>
+const isTaskType = (t: ProjectItem) => (t.type ?? 'task') === 'task';
+const isUncompleted = (t: ProjectItem) =>
     t.status === 'pending' || t.status === 'queued' || t.status === 'running' || t.status === 'blocked';
 
 // Read a CSS custom property off :root — lets ECharts borrow the active
@@ -29,7 +29,7 @@ function cssVar(name: string): string {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-const PRIORITY_ORDER: Array<Task['priority']> = ['urgent', 'high', 'medium', 'low'];
+const PRIORITY_ORDER: Array<ProjectItem['priority']> = ['urgent', 'high', 'medium', 'low'];
 
 export function Overview({ tasks, sessionCount, onOpenSessions }: OverviewProps) {
     const lang = language.value;
@@ -41,31 +41,31 @@ export function Overview({ tasks, sessionCount, onOpenSessions }: OverviewProps)
             key: 'todo',
             label: t('task.overview.stat.todo', lang),
             cls: 'todo',
-            match: (s: Task['status']) => s === 'pending' || s === 'queued',
+            match: (s: ProjectItem['status']) => s === 'pending' || s === 'queued',
         },
         {
             key: 'running',
             label: t('task.overview.stat.running', lang),
             cls: 'running',
-            match: (s: Task['status']) => s === 'running',
+            match: (s: ProjectItem['status']) => s === 'running',
         },
         {
             key: 'completed',
             label: t('task.overview.stat.completed', lang),
             cls: 'completed',
-            match: (s: Task['status']) => s === 'completed',
+            match: (s: ProjectItem['status']) => s === 'completed',
         },
         {
             key: 'blocked',
             label: t('task.overview.stat.blocked', lang),
             cls: 'blocked',
-            match: (s: Task['status']) => s === 'blocked',
+            match: (s: ProjectItem['status']) => s === 'blocked',
         },
         {
             key: 'failed',
             label: t('task.overview.stat.failed', lang),
             cls: 'failed',
-            match: (s: Task['status']) => s === 'failed' || s === 'cancelled',
+            match: (s: ProjectItem['status']) => s === 'failed' || s === 'cancelled',
         },
     ];
 

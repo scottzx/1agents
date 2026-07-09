@@ -1,10 +1,10 @@
 import { h } from 'preact';
 import { useSignal } from '@preact/signals';
 
-import type { Task } from './types';
+import type { ProjectItem } from './types';
 
 interface CalendarBoardProps {
-    tasks: Task[];
+    tasks: ProjectItem[];
     loading: boolean;
     onSelectTask: (taskId: string) => void;
     /** Global board (#91): prefix each event with its owning project tag. */
@@ -16,7 +16,7 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 // Anchor a task to a single calendar day. Prefer the scheduled run time, then
 // the planned start, falling back to creation time so every task lands somewhere.
-function anchorDate(t: Task): Date | null {
+function anchorDate(t: ProjectItem): Date | null {
     const raw = t.scheduledAt || t.plannedStart || t.createdAt;
     if (!raw) return null;
     const d = new Date(raw);
@@ -40,7 +40,7 @@ export function CalendarBoard({ tasks, loading, onSelectTask, showProject }: Cal
     const { y, m } = cursor.value;
 
     // Bucket every task onto its anchor day.
-    const byDay = new Map<string, Task[]>();
+    const byDay = new Map<string, ProjectItem[]>();
     for (const t of tasks) {
         const d = anchorDate(t);
         if (!d) continue;

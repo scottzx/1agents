@@ -288,7 +288,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	// AI Project Manager sessions default to "auto" (issue #63): the task tools
 	// are already hard-locked to this project via env injection, so "auto"
-	// auto-approves those context-locked mcp__tasks__* calls (keeping the
+	// auto-approves those context-locked mcp__project_items__* calls (keeping the
 	// conversation flowing) while still prompting on genuinely risky writes —
 	// unlike the old approve-all default, which waved everything through. The
 	// user can still switch the mode manually afterwards (persisted via
@@ -310,7 +310,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 // ── Tasks REST API ─────────────────────────────────────────────────────────
 
-// HandleTasksRoot handles GET and POST /api/agent/tasks
+// HandleTasksRoot handles GET and POST /api/agent/project-items
 func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -504,7 +504,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 
 // HandleTaskResolve resolves a permalink reference to a task:
 //
-//	GET /api/agent/tasks/resolve?project={name|id}&number={n}
+//	GET /api/agent/project-items/resolve?project={name|id}&number={n}
 //	  → {workspaceId, task}   (404 when the project or number is unknown)
 //
 // The frontend uses it to turn `#N` / `项目名#N` references and
@@ -560,15 +560,15 @@ func (h *Handler) workspaceIDForPath(path string) string {
 	return ""
 }
 
-// HandleTasksItem handles /api/agent/tasks/{id} and its sub-resources:
+// HandleTasksItem handles /api/agent/project-items/{id} and its sub-resources:
 //
-//	GET    /api/agent/tasks/{id}          → single task incl. description + replies
-//	PATCH  /api/agent/tasks/{id}          → edit description / toggle issue state
-//	DELETE /api/agent/tasks/{id}          → remove task (legacy, needs workspace_id)
-//	POST   /api/agent/tasks/{id}/replies  → append a user reply to the timeline
-//	GET    /api/agent/tasks/{id}/graph    → cross-reference graph (outgoing + backlinks)
+//	GET    /api/agent/project-items/{id}          → single item incl. description + replies
+//	PATCH  /api/agent/project-items/{id}          → edit description / toggle issue state
+//	DELETE /api/agent/project-items/{id}          → remove item (legacy, needs workspace_id)
+//	POST   /api/agent/project-items/{id}/replies  → append a user reply to the timeline
+//	GET    /api/agent/project-items/{id}/graph    → cross-reference graph (outgoing + backlinks)
 func (h *Handler) HandleTasksItem(w http.ResponseWriter, r *http.Request) {
-	const prefix = "/api/agent/tasks/"
+	const prefix = "/api/agent/project-items/"
 	rest := r.URL.Path[len(prefix):]
 	if rest == "" {
 		http.Error(w, "missing id", http.StatusBadRequest)
@@ -1334,7 +1334,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// Resumed sessions already carry their own conversation history.
 		if targetTask.Type == TaskTypeDiscussion {
 			// A discussion-linked session is a PM conversation, NOT an
-			// executor: the agent acts as PM (create_task / create_discussion)
+			// executor: the agent acts as PM (create_project_item / create_discussion)
 			// with the discussion thread as background. Its user prompts and
 			// final replies are recorded back to this discussion's timeline
 			// (writeUserReply / writeAgentReply, keyed on task_id). Persona +
@@ -1438,7 +1438,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Default conversation session: PM-capable — the full project task MCP
 		// (create/update tasks, milestones, discussions). A personal todo is just
-		// a create_task with assignee='user' (never dispatched, calendar-only), so
+		// a create_project_item with assignee='user' (never dispatched, calendar-only), so
 		// no separate reminder surface is needed. The persona is prepended centrally
 		// below; systemContext stays empty here (an empty primary injects nothing).
 		mcpServers = h.buildPMMcpServers(wsID)

@@ -26,7 +26,7 @@ func TestParseBuiltinPM(t *testing.T) {
 	if tpl.Name != "pm" {
 		t.Errorf("Name = %q, want %q", tpl.Name, "pm")
 	}
-	if got, want := tpl.McpServers, []string{"tasks"}; !reflect.DeepEqual(got, want) {
+	if got, want := tpl.McpServers, []string{"project_items"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("McpServers = %v, want %v", got, want)
 	}
 	if tpl.Engine != "claude-code" {
@@ -118,8 +118,8 @@ func TestBuiltinExecutorVerifierTemplates(t *testing.T) {
 		if tpl.Source != "builtin" || tpl.Name != name {
 			t.Errorf("%s: Source=%q Name=%q", name, tpl.Source, tpl.Name)
 		}
-		if len(tpl.McpServers) != 1 || tpl.McpServers[0] != "tasks" {
-			t.Errorf("%s: McpServers=%v, want [tasks]", name, tpl.McpServers)
+		if len(tpl.McpServers) != 1 || tpl.McpServers[0] != "project_items" {
+			t.Errorf("%s: McpServers=%v, want [project_items]", name, tpl.McpServers)
 		}
 		if tpl.Prompt == "" {
 			t.Errorf("%s: empty prompt", name)

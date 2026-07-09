@@ -20,7 +20,7 @@ func TestBuiltinExpertRoles(t *testing.T) {
 			wantAllow:  []string{"Read", "WebSearch"},
 			wantDeny:   []string{"Bash", "Write", "Edit"},
 			wantSkills: []string{"writing-plans"},
-			wantMcp:    []string{"tasks"},
+			wantMcp:    []string{"project_items"},
 		},
 		{
 			name:       "content-operator",

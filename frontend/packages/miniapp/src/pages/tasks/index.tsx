@@ -6,9 +6,9 @@ import { View, Text } from '@tarojs/components';
 import { useEffect, useState } from 'react';
 
 import { workspaceService } from '@1agents/core/services/workspaceService';
-import { taskService } from '@1agents/core/services/taskService';
+import { projectItemService } from '@1agents/core/services/taskService';
 import { taskCardVM, type Tone } from '@1agents/core/view/taskCard';
-import type { Task } from '@1agents/core/types/task';
+import type { ProjectItem } from '@1agents/core/types/task';
 
 import { Screen } from '../../components/Screen';
 import { Card } from '../../components/ui/Card';
@@ -34,7 +34,7 @@ const TAG_TONE: Record<Tone, TagTone> = {
 
 export default function Tasks() {
   const t = useT();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<ProjectItem[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +44,7 @@ export default function Tasks() {
 
     const load = async (wsId: string) => {
       try {
-        const list = await taskService.list(wsId);
+        const list = await projectItemService.list(wsId);
         if (!cancelled) {
           setTasks(list);
           setError('');

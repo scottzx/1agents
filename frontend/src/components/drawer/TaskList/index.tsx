@@ -6,11 +6,11 @@ import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
 import * as sessionStore from '../../../stores/sessionStore';
 import { agentService } from '../../../services/agentService';
-import { taskService } from '@1agents/core/services/taskService';
+import { projectItemService } from '@1agents/core/services/taskService';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import type { MilestoneFields } from './MilestoneForm';
-import type { Task, Milestone } from './types';
+import type { ProjectItem, Milestone } from './types';
 import { TaskDetail } from './TaskDetail';
 import { TasksView } from './TasksView';
 import { Overview } from './Overview';
@@ -19,7 +19,7 @@ import { RequirementPool } from './RequirementPool';
 import { DiscussionView } from './DiscussionView';
 import { SessionsView } from './SessionsView';
 
-const cachedTasks = signal<Record<string, Task[]>>({});
+const cachedTasks = signal<Record<string, ProjectItem[]>>({});
 const cachedMilestones = signal<Record<string, Milestone[]>>({});
 
 export interface TaskListProps {
@@ -36,7 +36,7 @@ export function TaskList({
     selectedTaskId: externalSelectedTaskId,
     onTaskSelect,
 }: TaskListProps) {
-    const [tasks, setTasksState] = useState<Task[]>(cachedTasks.value[workspaceId] || []);
+    const [tasks, setTasksState] = useState<ProjectItem[]>(cachedTasks.value[workspaceId] || []);
     const [milestones, setMilestonesState] = useState<Milestone[]>(cachedMilestones.value[workspaceId] || []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -51,7 +51,7 @@ export function TaskList({
     const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'milestone'>('tasks');
 
     const setTasks = useCallback(
-        (newTasks: Task[]) => {
+        (newTasks: ProjectItem[]) => {
             setTasksState(newTasks);
             cachedTasks.value = {
                 ...cachedTasks.value,
@@ -72,7 +72,7 @@ export function TaskList({
     const fetchMilestones = useCallback(async () => {
         if (!workspaceId) return;
         try {
-            setMilestones(await taskService.listMilestones(workspaceId));
+            setMilestones(await projectItemService.listMilestones(workspaceId));
         } catch {
             // milestones are non-critical; the task list still renders
         }
@@ -83,7 +83,7 @@ export function TaskList({
         setLoading(true);
         setError('');
         try {
-            setTasks(await taskService.list(workspaceId));
+            setTasks(await projectItemService.list(workspaceId));
         } catch (err) {
             setError((err as Error).message);
         } finally {
@@ -138,7 +138,7 @@ export function TaskList({
     const handleStatusChange = useCallback(
         async (taskId: string, status: 'completed' | 'cancelled') => {
             try {
-                await taskService.patch(taskId, { status });
+                await projectItemService.patch(taskId, { status });
                 fetchTasks();
             } catch (err) {
                 alert((err as Error).message);
@@ -152,7 +152,7 @@ export function TaskList({
     // between the 5s polls). The backend rejects scheduler-owned fields.
     const handlePatchTask = useCallback(
         async (taskId: string, patch: Record<string, unknown>) => {
-            const updated = await taskService.patch(taskId, patch);
+            const updated = await projectItemService.patch(taskId, patch);
             const cur = cachedTasks.value[workspaceId] || [];
             setTasks(cur.map(t => (t.id === taskId ? updated : t)));
         },
@@ -162,7 +162,7 @@ export function TaskList({
     const handleDeleteTask = async (taskId: string) => {
         if (!confirm('确定要删除该任务吗？')) return;
         try {
-            await taskService.remove(taskId, workspaceId);
+            await projectItemService.remove(taskId, workspaceId);
             if (selectedTaskId === taskId) setSelectedTaskId(null);
             fetchTasks();
         } catch (err) {
@@ -200,7 +200,7 @@ export function TaskList({
         async (taskId: string) => {
             if (!confirm('忽略这条 AI 建议？将从建议列表中移除。')) return;
             try {
-                await taskService.remove(taskId, workspaceId);
+                await projectItemService.remove(taskId, workspaceId);
                 fetchTasks();
             } catch (err) {
                 alert((err as Error).message);
@@ -232,7 +232,7 @@ export function TaskList({
 
     const createMilestone = useCallback(
         async (fields: MilestoneFields) => {
-            await taskService.createMilestone(workspaceId, fields as unknown as Record<string, unknown>);
+            await projectItemService.createMilestone(workspaceId, fields as unknown as Record<string, unknown>);
             await fetchMilestones();
         },
         [workspaceId, fetchMilestones]
@@ -240,7 +240,7 @@ export function TaskList({
 
     const patchMilestone = useCallback(
         async (id: string, patch: Record<string, unknown>) => {
-            await taskService.patchMilestone(id, workspaceId, patch);
+            await projectItemService.patchMilestone(id, workspaceId, patch);
             await Promise.all([fetchMilestones(), fetchTasks()]);
         },
         [workspaceId, fetchMilestones, fetchTasks]
@@ -248,7 +248,7 @@ export function TaskList({
 
     const deleteMilestone = useCallback(
         async (id: string) => {
-            await taskService.removeMilestone(id, workspaceId);
+            await projectItemService.removeMilestone(id, workspaceId);
             await Promise.all([fetchMilestones(), fetchTasks()]);
         },
         [workspaceId, fetchMilestones, fetchTasks]

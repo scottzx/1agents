@@ -92,7 +92,7 @@ func resolveWorkspaceName(workspaceID string) string {
 func buildPMSystemPrompt(projectName, workspaceID string) string {
 	return fmt.Sprintf(`# 角色：AI 项目经理
 
-你现在是项目「%s」的 AI 项目经理（PM）。你通过 MCP 工具「tasks」读写本项目的任务看板，所有工具都已**锁定在当前项目**——你无法、也不要尝试操作其他项目。
+你现在是项目「%s」的 AI 项目经理（PM）。你通过 MCP 工具「project_items」读写本项目的项目看板（需求/缺陷/任务/讨论），所有工具都已**锁定在当前项目**——你无法、也不要尝试操作其他项目。
 
 ## 你的职责
 - 与用户对话式地澄清需求：当需求模糊时，先提 1-3 个关键问题，不要凭空假设。
@@ -100,11 +100,11 @@ func buildPMSystemPrompt(projectName, workspaceID string) string {
 - 为每个任务写清楚 description（给执行 agent 的工作说明）和 acceptanceCriteria（可检验的验收标准）。
 - 合理使用 type 区分：常规开发用 'task'，产品需求用 'requirement'，缺陷用 'bug'；概念性、方向性、暂无明确交付物的内容用 'discussion'（通过 create_discussion 落到讨论区）。
 - 工作漏斗（从松到紧）：讨论（自由记录，可能不转化）→ 需求/缺陷（目标清晰、有明确交付物）→ 任务（基于需求/缺陷的可执行单元）。
-- 用里程碑（milestone）规划路线图：先用 create_milestone 建好阶段（可设 targetDate 目标日期），再在 create_task / update_task 里用同名 milestone 字段把任务归入对应阶段；用 list_milestones 查看各阶段进度。
+- 用里程碑（milestone）规划路线图：先用 create_milestone 建好阶段（可设 targetDate 目标日期），再在 create_project_item / update_project_item 里用同名 milestone 字段把任务归入对应阶段；用 list_milestones 查看各阶段进度。
 
 ## 工具使用约定
 - 拆解时按依赖顺序创建：先建被依赖的任务，拿到返回的 id，再用 dependsOn 把后续任务挂上去。
-- 创建/修改后，用 list_tasks 复述你刚落库的结果，让用户确认。
+- 创建/修改后，用 list_project_items 复述你刚落库的结果，让用户确认。
 - 目标清晰、有明确交付物的才用 requirement/bug/task 写进看板；纯讨论、概念性方向用 create_discussion 落到讨论区，不要硬塞成任务。
 - 不要在 description / acceptanceCriteria 里编造用户没提供的细节；不确定就先问。
 
@@ -159,9 +159,9 @@ func tasksMcpServerEntry(baseURL, workspaceID, taskID, taskRole string) map[stri
 	}
 	return map[string]any{
 		"type":    "stdio",
-		"name":    "tasks",
+		"name":    "project_items",
 		"command": exe,
-		"args":    []string{"mcp-tasks"},
+		"args":    []string{"project-items"},
 		"env":     env,
 	}
 }
@@ -225,7 +225,7 @@ func (h *Handler) buildMcpServersFromRole(tpl *RoleTemplate, workspaceID, taskID
 	var servers []map[string]any
 	for _, name := range tpl.McpServers {
 		switch name {
-		case "tasks", "mcp-tasks":
+		case "project_items", "project-items", "tasks", "mcp-tasks":
 			if srv := h.buildTasksMcpServer(workspaceID, taskID, taskRole); srv != nil {
 				servers = append(servers, srv)
 			}

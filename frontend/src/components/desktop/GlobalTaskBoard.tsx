@@ -2,8 +2,8 @@ import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
-import { taskService } from '@1agents/core/services/taskService';
-import type { Task } from '../drawer/TaskList/types';
+import { projectItemService } from '@1agents/core/services/taskService';
+import type { ProjectItem } from '../drawer/TaskList/types';
 import { TaskFilterBar } from '../drawer/TaskList/TaskFilterBar';
 import type { TaskView } from '../drawer/TaskList/TaskFilterBar';
 import { KanbanBoard } from '../drawer/TaskList/KanbanBoard';
@@ -14,7 +14,7 @@ import * as taskNav from '../../stores/taskNavStore';
 //
 // Reuses the single-project work-item views (KanbanBoard / CalendarBoard) and
 // the shared TaskFilterBar verbatim, only feeding them a cross-project task set
-// (taskService.listAll) annotated with each task's owning workspace. A project
+// (projectItemService.listAll) annotated with each task's owning workspace. A project
 // filter is layered on top of the existing search + status/priority filters, and
 // clicking any card routes to the owning project's task detail via the same
 // permalink navigation the single-project board uses.
@@ -24,12 +24,12 @@ import * as taskNav from '../../stores/taskNavStore';
 
 // Discussions and AI suggestions live in the same table but are board noise —
 // drop them, matching the single-project split in TaskList/index.tsx.
-function isBoardTask(t: Task): boolean {
+function isBoardTask(t: ProjectItem): boolean {
     return t.type !== 'discussion' && t.source !== 'agent-suggested';
 }
 
 export function GlobalTaskBoard() {
-    const [tasks, setTasks] = useState<Task[]>([]);
+    const [tasks, setTasks] = useState<ProjectItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -45,7 +45,7 @@ export function GlobalTaskBoard() {
     const fetchTasks = useCallback(async () => {
         setError('');
         try {
-            setTasks((await taskService.listAll()).filter(isBoardTask));
+            setTasks((await projectItemService.listAll()).filter(isBoardTask));
         } catch (err) {
             setError((err as Error).message);
         } finally {

@@ -100,7 +100,7 @@ export function AgendaItemPopover({ item, draft, onClose }: AgendaItemPopoverPro
                     body.scheduledAt = whenDate.toISOString();
                 }
                 if (recurrence) body.recurrence = recurrence;
-                const res = await fetch('/api/agent/tasks', {
+                const res = await fetch('/api/agent/project-items', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
@@ -112,7 +112,7 @@ export function AgendaItemPopover({ item, draft, onClose }: AgendaItemPopoverPro
                     body.scheduleType = 'scheduled';
                     body.scheduledAt = whenDate.toISOString();
                 }
-                const res = await fetch(`/api/agent/tasks/${item.id}`, {
+                const res = await fetch(`/api/agent/project-items/${item.id}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
@@ -130,7 +130,7 @@ export function AgendaItemPopover({ item, draft, onClose }: AgendaItemPopoverPro
         if (!item) return;
         setBusy(true);
         try {
-            const res = await fetch(`/api/agent/tasks/${item.id}`, {
+            const res = await fetch(`/api/agent/project-items/${item.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'completed' }),
@@ -148,7 +148,7 @@ export function AgendaItemPopover({ item, draft, onClose }: AgendaItemPopoverPro
         setBusy(true);
         try {
             const res = await fetch(
-                `/api/agent/tasks/${item.id}?workspace_id=${encodeURIComponent(item.workspaceId)}`,
+                `/api/agent/project-items/${item.id}?workspace_id=${encodeURIComponent(item.workspaceId)}`,
                 { method: 'DELETE' }
             );
             if (!res.ok) throw new Error(await res.text());

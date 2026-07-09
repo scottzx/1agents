@@ -4,8 +4,8 @@ import { Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 
 import { AGENT_OPTIONS, TYPE_ACCEPTANCE_TEMPLATES } from './constants';
-import { taskService } from '@1agents/core/services/taskService';
-import type { Task, TaskPriority, TaskRecurrence, TaskType } from './types';
+import { projectItemService } from '@1agents/core/services/taskService';
+import type { ProjectItem, TaskPriority, TaskRecurrence, TaskType } from './types';
 
 // Set of all type templates, so switching type can recognise an untouched
 // template (and replace it) versus criteria the user actually wrote.
@@ -13,7 +13,7 @@ const ACCEPTANCE_TEMPLATE_VALUES = new Set(Object.values(TYPE_ACCEPTANCE_TEMPLAT
 
 interface CreateTaskFormProps {
     workspaceId: string;
-    tasks: Task[];
+    tasks: ProjectItem[];
     onCreated: () => void;
 }
 
@@ -116,7 +116,7 @@ export function CreateTaskForm({ workspaceId, tasks, onCreated }: CreateTaskForm
 
         try {
             const items = checklist.map(s => s.trim()).filter(Boolean);
-            await taskService.create({
+            await projectItemService.create({
                 workspace_id: workspaceId,
                 title: title.trim(),
                 type,

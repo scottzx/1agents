@@ -1,8 +1,8 @@
 import { h, Component } from 'preact';
 import { Workspace } from '../types';
-import { Task } from '../drawer/TaskList/types';
+import { ProjectItem } from '../drawer/TaskList/types';
 
-export interface GamifiedTask extends Task {
+export interface GamifiedTask extends ProjectItem {
     progress?: number;
 }
 
@@ -21,7 +21,7 @@ export interface MockEmployee {
 
 interface DashboardWorkshopProps {
     workspace: Workspace;
-    tasks: Task[];
+    tasks: ProjectItem[];
     onClick: () => void;
     onHover: (e: MouseEvent, visible: boolean, data: unknown) => void;
     onPlaySound?: (type: 'coin' | 'blip') => void;

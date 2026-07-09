@@ -4,10 +4,10 @@ import { useSignal } from '@preact/signals';
 import { Modal } from '../../modal';
 import { MilestoneForm } from './MilestoneForm';
 import { PRIORITY_LABELS, STATUS_LABELS } from './constants';
-import type { Task, Milestone } from './types';
+import type { ProjectItem, Milestone } from './types';
 
 interface MilestoneViewProps {
-    tasks: Task[];
+    tasks: ProjectItem[];
     milestones: Milestone[];
     onSelectTask: (taskId: string) => void;
     onPatchMilestone: (id: string, patch: Record<string, unknown>) => Promise<void>;
@@ -23,7 +23,7 @@ interface Node {
     id: string;
     name: string;
     milestone: Milestone | null;
-    tasks: Task[];
+    tasks: ProjectItem[];
     done: number;
     total: number;
     pct: number;
@@ -49,11 +49,11 @@ export function MilestoneView({
     // milestone. Progress/"done" then means closed for issues, completed for tasks.
     const typeFilter = useSignal<'task' | 'requirement' | 'bug'>('task');
     const isTask = typeFilter.value === 'task';
-    const isDone = (t: Task) => (isTask ? t.status === 'completed' : t.issueState === 'closed');
+    const isDone = (t: ProjectItem) => (isTask ? t.status === 'completed' : t.issueState === 'closed');
 
     // Group the selected kind by milestone name (kept in sync on rename, so name
     // is a stable key).
-    const byName = new Map<string, Task[]>();
+    const byName = new Map<string, ProjectItem[]>();
     for (const t of tasks) {
         if ((t.type || 'task') !== typeFilter.value) continue;
         const key = t.milestone || UNGROUPED;

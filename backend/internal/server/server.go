@@ -19,6 +19,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/appkit"
 	"github.com/scottzx/1Agents/backend/internal/appregistry"
+	"github.com/scottzx/1Agents/backend/internal/apps/speechclip"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
@@ -192,6 +193,17 @@ func NewRouter(cfg *config.Config) http.Handler {
 			})
 			appkit.RunInits(taskAPI)
 
+			// 口播剪辑 (speech_clip) app: project-scoped pipeline whose heavy steps
+			// (transcribe/highlight) dispatch through the task kernel above. Importing
+			// the package fires its init() (manifest + template + RegisterFunction);
+			// here we wire its HTTP surface over the live task API.
+			speechClipHandler := speechclip.NewHandler(taskAPI)
+			mux.HandleFunc("/api/speech_clip/assets", speechClipHandler.HandleAssets)         // POST  import asset
+			mux.HandleFunc("/api/speech_clip/transcribe", speechClipHandler.HandleTranscribe) // POST  dispatch transcribe task
+			mux.HandleFunc("/api/speech_clip/highlights", speechClipHandler.HandleHighlights) // POST dispatch / GET rows
+			mux.HandleFunc("/api/speech_clip/project", speechClipHandler.HandleProject)       // GET   project.json + status
+			mux.HandleFunc("/api/speech_clip/transcript", speechClipHandler.HandleTranscript) // GET   sentence rows
+
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
@@ -205,9 +217,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/agent/catalog", agentHandler.HandleAgentCatalog)        // GET (?refresh=1)
 			mux.HandleFunc("/api/agent/sessions", agentHandler.HandleSessionsRoot)       // GET, POST
 			mux.HandleFunc("/api/agent/sessions/", agentHandler.HandleSessionsItem)      // GET, DELETE /{id}
-			mux.HandleFunc("/api/agent/tasks", agentHandler.HandleTasksRoot)             // GET, POST
-			mux.HandleFunc("/api/agent/tasks/resolve", agentHandler.HandleTaskResolve)   // GET ?project=&number= (more specific than the subtree below)
-			mux.HandleFunc("/api/agent/tasks/", agentHandler.HandleTasksItem)            // DELETE /{id}
+			mux.HandleFunc("/api/agent/project-items", agentHandler.HandleTasksRoot)           // GET, POST
+			mux.HandleFunc("/api/agent/project-items/resolve", agentHandler.HandleTaskResolve) // GET ?project=&number= (more specific than the subtree below)
+			mux.HandleFunc("/api/agent/project-items/", agentHandler.HandleTasksItem)          // DELETE /{id}
 			mux.HandleFunc("/api/agent/agenda", agentHandler.HandleAgendaRoot)           // GET (cross-workspace agenda, #192)
 			mux.HandleFunc("/api/agent/milestones", agentHandler.HandleMilestonesRoot)   // GET, POST
 			mux.HandleFunc("/api/agent/milestones/", agentHandler.HandleMilestonesItem)  // PATCH, DELETE /{id}, POST /reorder
@@ -813,7 +825,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// ── Layer 0: internal loopback bearer ───────────────────────────────
-		// Loopback helper subprocesses (e.g. the `1agents mcp-tasks` MCP server
+		// Loopback helper subprocesses (e.g. the `1agents project-items` MCP server
 		// the AI Project Manager session spawns) present the process-scoped
 		// internal token. Accept it only from localhost so the bypass can never
 		// be reached over the tunnel, then skip both auth layers below.
