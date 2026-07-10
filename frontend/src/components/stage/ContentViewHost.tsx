@@ -128,7 +128,8 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         display: 'flex',
                         flexDirection: 'column',
                         padding: '12px 16px',
-                        overflow: 'auto',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
@@ -163,7 +164,8 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         display: 'flex',
                         flexDirection: 'column',
                         padding: '12px 16px',
-                        overflow: 'auto',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
@@ -199,7 +201,8 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         display: 'flex',
                         flexDirection: 'column',
                         padding: '12px 16px',
-                        overflow: 'auto',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >
@@ -217,7 +220,8 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                         display: 'flex',
                         flexDirection: 'column',
                         padding: '12px 16px',
-                        overflow: 'auto',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
                         backgroundColor: 'var(--bg-panel)',
                     }}
                 >

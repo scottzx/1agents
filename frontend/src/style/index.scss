@@ -19572,7 +19572,8 @@ body {
 .project-shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   background-color: var(--bg-panel);
 }
 
@@ -19653,7 +19654,7 @@ body {
 .project-shell-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -19664,7 +19665,8 @@ body {
   display: flex;
   flex-direction: column;
   padding: 12px 16px;
-  overflow: auto;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .project-shell-app-tab {
