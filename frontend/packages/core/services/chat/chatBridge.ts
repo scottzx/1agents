@@ -158,6 +158,14 @@ export interface SessionBridgeState {
      * connect() (i.e. when the user hits 重试).
      */
     takenOver: boolean;
+    /**
+     * True from the moment the user hits 停止 (cancel_turn) until the turn
+     * actually ends (`done`/`error`). While set, streaming events are dropped
+     * instead of rendered — the agent may keep emitting a few deltas before it
+     * honors the cancel, and we must not let those (or the adopt path below)
+     * resurrect a turn the user just stopped. Reset on the next prompt/connect.
+     */
+    cancelling: boolean;
 }
 
 export class ChatBridgeManager {
@@ -199,6 +207,7 @@ export class ChatBridgeManager {
                 reconnectTimer: null,
                 closedByUser: false,
                 takenOver: false,
+                cancelling: false,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
@@ -247,6 +256,9 @@ export class ChatBridgeManager {
         // A fresh connect (incl. the user hitting 重试 after being taken
         // over) reclaims ownership, so clear the takeover flag/banner.
         state.takenOver = false;
+        // A reconnect re-attaches to whatever turn the session is in; clear any
+        // stale cancel intent so acceptTurnEvent can adopt a live turn again.
+        state.cancelling = false;
         this.notify(state);
 
         // Pick the transport by how the backend is reached: relay mode tunnels the
@@ -419,7 +431,7 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'text_delta': {
-                    if (!state.turnStarted) break;
+                    if (!this.acceptTurnEvent(state)) break;
                     const delta = payload.text;
                     if (!delta) break;
                     state.items = applyTextDelta(state.items, delta, payload.type || 'output');
@@ -427,7 +439,7 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'tool_call': {
-                    if (!state.turnStarted) break;
+                    if (!this.acceptTurnEvent(state)) break;
                     // Backend's SSE safety fallback may emit tool_call events
                     // without `arguments` (omitted) or with `arguments: {}` (the
                     // runtime's no-input placeholder); neither carries renderable
@@ -444,7 +456,7 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'tool_result': {
-                    if (!state.turnStarted) break;
+                    if (!this.acceptTurnEvent(state)) break;
                     const next = applyToolResult(state, payload);
                     state.items = next.items;
                     state.pendingResults = next.pendingResults;
@@ -453,7 +465,7 @@ export class ChatBridgeManager {
                     break;
                 }
                 case 'permission_request': {
-                    if (!state.turnStarted) break;
+                    if (!this.acceptTurnEvent(state)) break;
                     const next = applyPermissionRequest(state, payload);
                     state.items = next.items;
                     state.pendingResults = next.pendingResults;
@@ -471,6 +483,9 @@ export class ChatBridgeManager {
                     state.items = applyDone(state.items);
                     state.typing = false;
                     state.turnStarted = false;
+                    // Turn is over — a pending 停止 has been honored (or the turn
+                    // finished on its own), so drop the cancel guard.
+                    state.cancelling = false;
                     this.notify(state);
                     this.reloadHistory(session, state);
                     break;
@@ -501,6 +516,7 @@ export class ChatBridgeManager {
                     const wasInTurn = state.turnStarted;
                     state.typing = false;
                     state.turnStarted = false;
+                    state.cancelling = false;
                     this.notify(state);
                     if (wasInTurn) {
                         this.reloadHistory(session, state);
@@ -555,6 +571,9 @@ export class ChatBridgeManager {
         // with an orphan user bubble in the stream.
         if (!state.ready) return;
         state.turnStarted = true;
+        // A new prompt starts a fresh turn — clear any lingering cancel intent
+        // from a previous 停止 so its streamed output isn't dropped.
+        state.cancelling = false;
         const msgId = cryptoId();
         state.items = [
             ...state.items,
@@ -581,9 +600,15 @@ export class ChatBridgeManager {
         // action in bridgeManager.destroy.) The bridge answers a cancelled
         // turn with a normal `done`; we optimistically clear the running flags
         // here so the composer flips back to Send without waiting for it.
+        //
+        // `cancelling` holds until that `done` arrives: the agent can still emit
+        // a few frames before it honors the cancel, and without this guard
+        // acceptTurnEvent would re-adopt them (turnStarted back to true) and the
+        // stopped turn would visibly resume — the "点了停止还在继续" symptom.
         state.ws.send(JSON.stringify(cancelTurnAction(session.id)));
         state.typing = false;
         state.turnStarted = false;
+        state.cancelling = true;
         this.notify(state);
     }
 
@@ -728,6 +753,33 @@ export class ChatBridgeManager {
                 )
             );
         }
+    }
+
+    /**
+     * Gate a streaming event (text_delta / tool_call / tool_result /
+     * permission_request). Returns false when the event must be dropped.
+     *
+     * The old inline `if (!state.turnStarted) break` dropped every streamed
+     * frame unless THIS client had itself sent the prompt (send() is the only
+     * place that set turnStarted). That silently blanked any client which
+     * JOINED a turn it didn't start — e.g. opening a running headless auto-run
+     * from the task timeline: the bridge forwarded the deltas, but the observer
+     * threw them all away. Here we instead ADOPT the in-flight turn (takeover
+     * semantics — this connection now drives the session) so its output renders.
+     *
+     * Two cases still drop the event rather than adopt:
+     *   - before session_ready (`!ready`): stray frames in the init window must
+     *     not fabricate a turn;
+     *   - after the user hit 停止 (`cancelling`): the agent may keep emitting a
+     *     few deltas before it honors the cancel, and re-adopting them would
+     *     resurrect a turn the user just stopped.
+     */
+    private acceptTurnEvent(state: SessionBridgeState): boolean {
+        if (state.turnStarted) return true;
+        if (!state.ready || state.cancelling) return false;
+        state.turnStarted = true;
+        state.typing = true;
+        return true;
     }
 
     private notify(state: SessionBridgeState) {
