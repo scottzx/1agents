@@ -33,7 +33,6 @@
   align-items: center;
   justify-content: space-around;
   flex-shrink: 0;
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.05);
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   box-sizing: content-box;
@@ -730,7 +729,7 @@
     border-radius: 10px;
     border: none;
     background-color: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -1035,7 +1034,7 @@
   padding: 2px 6px;
   border-radius: 8px;
   background-color: var(--accent-color);
-  color: #fff;
+  color: var(--on-accent);
   margin-right: 8px;
 }
 
