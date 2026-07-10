@@ -316,7 +316,7 @@ export function GridCell({
                 <td class="col-deps">
                     {deps.length > 0
                         ? deps.map(d => (
-                              <span key={d.id} class="dep-tag">
+                              <span key={d.id} class="dep-tag" title={d.title}>
                                   {d.status === 'completed' ? '✓ ' : ''}
                                   {d.title}
                               </span>

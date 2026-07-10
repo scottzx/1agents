@@ -73,14 +73,16 @@ function assistantTextToFold(items: ChatItem[]): Set<string> {
 
     const visitTurn = (start: number, end: number) => {
         const turn = items.slice(start, end);
-        if (!turn.some(isProcessItem)) return;
-        const assistantItems = turn.filter(
-            (item): item is Extract<ChatItem, { kind: 'assistant_text' }> => item.kind === 'assistant_text'
-        );
-        if (assistantItems.length <= 1) return;
-        const visibleFinalId = assistantItems[assistantItems.length - 1].id;
-        for (const item of assistantItems) {
-            if (item.id !== visibleFinalId) foldIds.add(item.id);
+        // Find the index of the last process item in this turn.
+        // Any assistant text appearing before it is a preamble / intermediate
+        // explanation that belongs in the process block, not the main stream.
+        let lastProcessIdx = -1;
+        for (let i = 0; i < turn.length; i++) {
+            if (isProcessItem(turn[i])) lastProcessIdx = i;
+        }
+        if (lastProcessIdx === -1) return;
+        for (let i = 0; i <= lastProcessIdx; i++) {
+            if (turn[i].kind === 'assistant_text') foldIds.add(turn[i].id);
         }
     };
 

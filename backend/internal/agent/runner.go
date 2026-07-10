@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -57,20 +58,10 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	// Card content is YAML-frontmatter Markdown: execute against the prose body,
 	// and treat acceptance from the frontmatter (or the legacy column) as the
 	// self-check gate.
-	_, instruction := SplitFrontmatter(task.Description)
-	if instruction == "" {
-		instruction = task.Title
-	}
+	instruction := buildTaskInstruction(task)
 	if instruction == "" {
 		r.finish(workspacePath, task.ID, "", TaskStatusFailed, "task has no description/title to execute")
 		return
-	}
-	acceptance := task.AcceptanceCriteria
-	if fm := FrontmatterAcceptance(task.Description); fm != "" {
-		acceptance = fm
-	}
-	if acceptance != "" {
-		instruction += "\n\n完成后请对照验收标准自查；若未达标，请明确说明原因。\n\n=== 验收标准 ===\n" + acceptance
 	}
 
 	agentType := task.Assignee
@@ -193,6 +184,40 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 		}
 	}
 }
+
+func buildTaskInstruction(task Task) string {
+	_, instruction := SplitFrontmatter(task.Description)
+	if instruction == "" {
+		instruction = task.Title
+	}
+	instruction = strings.TrimSpace(instruction)
+	if instruction == "" {
+		return ""
+	}
+
+	acceptance := task.AcceptanceCriteria
+	if fm := FrontmatterAcceptance(task.Description); fm != "" {
+		acceptance = fm
+	}
+	if acceptance != "" {
+		instruction += "\n\n完成后请对照验收标准自查；若未达标，请明确说明原因。\n\n=== 验收标准 ===\n" + acceptance
+	}
+	return instruction + "\n\n" + projectExecutorPrompt
+}
+
+const projectExecutorPrompt = `=== project_executor ===
+你是当前项目里被调度执行这一条任务的执行者。请专注完成任务正文和验收标准要求的交付物,并通过 Bash 调用内置 CLI 了解和更新任务状态。
+
+## 任务看板 CLI
+- 开始前用 1agents project-items get <任务ID> 查看当前任务详情、description、acceptanceCriteria、dependsOn 和 timeline。
+- 需要确认上下文或依赖时,用 1agents project-items list、1agents project-items graph <任务ID> 阅读同项目条目和引用关系。
+- 执行过程中如需记录进展、卡点或取消,用 1agents project-items update <任务ID> ... 更新当前任务。不要创建新任务、不要修改其他任务、不要调整里程碑;这些属于 PM。
+- 完成后不要依赖口头自报。先运行必要检查,再在最终回复里简明说明改了什么、验证结果、是否仍有未达标项。系统会根据执行结果和核验流程推进任务状态。
+
+## 执行原则
+- 先读任务,再动手;以 acceptanceCriteria 为准逐项自查。
+- 只做当前任务要求的最小改动,不顺手重构无关代码。
+- 遇到缺信息、依赖未完成或需要人做产品/架构取舍时,明确写出阻塞原因和需要谁决定什么,不要编造。`
 
 // Verify runs a headless verification cycle over a task whose executor finished
 // (status pending_review). Blocking — the scheduler invokes it in a goroutine

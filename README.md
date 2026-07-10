@@ -1,10 +1,6 @@
-# 一万 1agents 🚀
+# 1agents
 
-### A2A 智能体自主协作项目管理系统 · One Person, Infinite Agents
-
-**一万(1agents)** 是一套开源、自托管的 **A2A 智能体自主协作项目管理系统**。你把工作拆成**任务**,交给一支会协作的数字班底——**智能体(agent)、确定性程序(function)、你自己(human)**——在一套**三层内核**上自动编排、调度、执行,关键节点由你拍板。
-
-一个人,指挥一支智能体军团,活成一支军队。
+**1agents** 是一个开源、自托管的智能体工作台。它把 Web 终端、文件管理、项目/任务管理、AI 会话、数据源、联系人、日程和插件式应用放在同一个前端里，用于管理本机或远程工作区中的 AI Agent 工作流。
 
 **简体中文** | [English](README_EN.md)
 
@@ -14,82 +10,172 @@
 
 ---
 
-## 🧠 方案 / 架构
+## 主要功能
 
-1agents 的内核是**三层**(自下而上),应用就跑在这三层之上:
+### 智能体工作台
 
+- Web 前端访问本机或远程 1agents 后端。
+- 支持本机直连和 Relay 中转连接。
+- 支持 Access Token 门禁和 Relay 配对门禁。
+- 桌面端提供左侧工作区树、顶部上下文栏、主工作区画布和右侧内容面板。
+- 移动端提供单列布局、触控导航和移动端 Chat/终端/设置入口。
+- 支持多标签页、内置浏览器、文件预览、全局搜索和可拖拽分栏。
+
+### 项目与工作区管理
+
+- 创建、切换、删除和归档工作区。
+- 一个工作区对应一个目录，也是终端和 Agent 执行任务的工作目录。
+- 项目首页展示项目列表、归档项目和项目模板入口。
+- 项目详情页包含会话、团队、任务、文件、渠道、动态、计划、资产和设置等标签。
+- 项目配置支持指令、连接器、可见标签页和项目级设置。
+
+### AI 会话
+
+- 新建 Chat 会话时可选择工作区、Agent 类型、角色、权限模式和初始 Prompt。
+- 支持普通会话和 PM 会话。
+- 支持会话列表、会话重命名、删除、任务关联和项目上下文锁定。
+- 消息区支持 Markdown、代码块、表格、链接、Mermaid 和任务引用。
+- 展示 Agent 的工具调用、命令输出、文件 diff、计划清单和权限确认。
+- 支持附件、语音输入和 Slash Command。
+
+### Web 终端
+
+- 基于 `ttyd`、`xterm.js` 和 WebSocket 提供浏览器终端。
+- 使用 `tmux` 维护终端会话，刷新或断线后可恢复。
+- 支持多终端窗口、指定工作区和 cwd 创建终端。
+- 支持初始命令、tmux 鼠标模式、浅色/深色终端主题和移动端终端适配。
+
+### PMO、任务与路线图
+
+- 项目内置讨论、需求、任务、缺陷、AI 建议和里程碑管理。
+- 任务视图支持列表、看板、日历和里程碑路线图。
+- 任务表格支持搜索、筛选、排序、分组、列显隐和内联编辑。
+- 任务详情展示描述、验收标准、checklist、子任务、关系、评论、会话分支和属性。
+- 支持 `#编号` 任务引用和任务深链。
+- Inbox 内容可以分发到项目需求池。
+
+### 文件、预览与 Git
+
+- 文件浏览器支持工作区文件树、平铺视图和文件搜索。
+- 支持文本、图片、Markdown、HTML、PDF 等内容预览。
+- Chat 和 Git 相关流程支持 diff 展示。
+- Git 面板围绕当前工作区展示版本控制相关操作。
+- 内置浏览器可打开 URL、Dashboard 或外部页面。
+
+### 数据源与数据治理
+
+- 数据源模块支持外部账号接入、授权、配置和数据查看。
+- 数据接入层按 source/account 管理原始数据。
+- 数据治理层展示清洗、融合后的治理表。
+- 支持治理表详情、依赖关系和执行记录。
+
+### 联系人、消息、Inbox 与日程
+
+- 联系人模块可聚合外部渠道身份，支持联系人表格、搜索、分组、详情和编辑。
+- 消息模块展示外部渠道消息和群聊内容。
+- Inbox 支持手动捕获文本或 URL，标记已读/未读、归档，以及分发到项目。
+- 日程模块聚合个人提醒、项目任务和里程碑日期，支持月历视图和提醒创建。
+
+### 助理、技能与 Agent 能力管理
+
+- 助理页管理 Assistant 工作区。
+- 助理详情包含会话、团队、任务、文件、渠道和设置。
+- 团队与技能页用于管理项目/助理关联的技能配置。
+- 集成 1skills 面板，用于管理 Skills、Agents、Slash Commands、MCP 和 Marketplace。
+- Agent Catalog 展示可用 Agent 类型和安装命令。
+
+### 插件式应用
+
+- 支持 App Manifest 和 Mount Point。
+- 应用可以贡献一级页面、项目标签页和 Lens overlay。
+- 发现中心展示应用、精选推荐和开源项目。
+- Studio 提供录制和列表视图。
+- 内置口播剪辑应用支持素材导入、录制、转录、金句提取和纠错。
+
+### cc-connect、Provider 与渠道
+
+- 集成 `cc-connect`，用于连接 Feishu、Telegram、Discord、Slack、DingTalk 等消息平台。
+- Provider 面板用于管理通信和 Agent 执行平台配置。
+- 项目渠道页展示项目相关渠道状态。
+- Relay 模式下嵌入模块请求会走统一中转。
+
+### 系统设置与更新
+
+- 支持语言、主题、初学者/高级模式设置。
+- 支持 Relay 配对、设备状态、账户/订阅和本机模式设置。
+- 支持前端和后端版本检查与更新。
+- 支持清空浏览器缓存和重置本地 App 数据。
+
+### Dashboard
+
+- Dashboard 用于查看项目和团队运行状态。
+- 包含项目列表、进度、最近活动、全局任务板和大屏视图。
+- 可作为独立页面或内置浏览器标签打开。
+
+---
+
+## 架构概览
+
+1agents 的工作流按三类对象组织：
+
+- **项目 / 工作区**：承载一个目录、一组会话、一组任务和项目配置。
+- **任务**：描述可执行工作、依赖关系、计划时间、状态和验收标准。
+- **执行者**：包括 AI Agent、确定性程序和用户本人。
+
+主要代码结构：
+
+```text
+frontend/        Web 前端，包含工作台、Chat、任务、文件、数据源、设置等界面
+backend/         1agents 后端服务
+modules/ttyd/    Web 终端服务
+modules/cc-connect/  消息平台和 Agent 桥接
+build/           本地构建产物
+docs/            产品、设计和架构文档
 ```
-   应用层    内嵌/扩展应用(CRM · 视觉创作 · 自媒体 …)= 跑在内核上的"专业项目"
-  ───────────────────────────────────────────────────────────
-   ③ 项目层   把一摊任务组织成一个项目,有目标、有节奏地推进
-   ② 任务层   把活编排成任务:定时 / 周期 / 依赖 / 重试 / 调度
-   ① 执行层   把活真正做掉:agent(智能体)· function(确定性程序)· human(人)
-```
 
-- **A2A 自主协作**:多个智能体围绕同一个项目,按**任务依赖**自主分工、交接、验收;`function` 处理确定的活(0 token、可靠),`human` 在关键节点拍板。
-- **三种执行者,刚 / 柔 / 裁**:确定的步骤交给 `function`(刚),要判断的交给 `agent`(柔),要担责的留给 `human`(裁)。依赖与调度执行者无关,只有"谁来干"那一步分流。
-- **固化(柔 → 刚)**:摸索过的活,从对话 / agent 逐步固化成 **skill → 定时任务 → function 代码**——越用越快、越省、越可靠。
+更多设计文档：
 
-> 完整架构设计见 **[docs/agentsOS-架构设计.md](docs/agentsOS-架构设计.md)**;实施进度见 Epic [#317](https://github.com/scottzx/1Agents/issues/317)。
+- [docs/frontend-product-features.md](docs/frontend-product-features.md)
+- [docs/design_rules/app-agentic-workbench-design-standard.md](docs/design_rules/app-agentic-workbench-design-standard.md)
+- [docs/agentsOS-架构设计.md](docs/agentsOS-架构设计.md)
 
 ---
 
-## 🎯 内嵌应用:CRM(已落地)
+## 前置依赖
 
-1agents 内置的第一个应用,直接演示这套底座能干嘛:
-
-- **定时把每个飞书群的人和关键信息抓下来**(`function`,准、省、不掉链子);不只你的好友,连群里没加过的人也自动入库——瞬间织出一张几千人的关系网(**一度 / 二度**,飞书 + 微信按手机号合并成**同一个人**)。
-- 再让 **AI 把几万字聊天嚼成一张张决策卡**(`agent`):谁在找什么、哪条像商机、值不值得跟。
-- 你看汇总后的卡,点**跟**还是**弃**(`human`)。
-
-**抓取 = function、分析 = agent、决策 = 你**——一条龙就是三层内核的活样板。
-
-> **已上线**:飞书联系人聚合(一/二度、跨渠道按手机号合并、公司表、多维表格、群聊气泡)+ 单批价值提取卡(经任务层 + agent)。
-> **在建**:微信 / 钉钉 / 邮箱 / Mac 通讯录扩展、通讯录导入导出、按线索自动起市场调研、视觉创作合成画布。
-
----
-
-## 🧱 功能特性(运行底座)
-
-- ⚡ **零延迟 Web 终端 (ttyd + tmux)**:`xterm.js` + WebSocket,内置 `tmux` 状态管理,断网/刷新后终端会话毫秒级还原。
-- 📂 **全功能文件浏览器 & 编辑器**:树形 + 平铺视图,极速检索;文本/图片预览,**HTML & PDF 原生高清渲染 + 16:9 全屏预览**;零配置高亮编辑器。
-- 📁 **动态多工作区 (workspace)**:创建/切换/删除多工作区,集成浏览器原生 **Folder Picker** 导入本地文件夹。**一个工作区就是一个目录**,也是智能体执行任务的工作目录(`cwd`)。
-- 🎙️ **原生语音输入 (Speech-to-Text)**:内置 Web Speech 识别,中英文快捷听写。
-- 🔒 **全自动 SSL/TLS**:`--ssl` 无证书时自动生成 10 年期 ECDSA P-256 自签名证书;自动识别 Tailscale 官方证书。
-- 🤖 **CC-Connect 多渠道桥接**:集成 [cc-connect](https://github.com/scottzx/cc-connect),与飞书、Telegram、Discord、Slack 等双向通信。
-- 🌐 **按需公网安全通道**:`--tunnel` 一键拉起 Cloudflare 隧道,免端口映射/公网 IP,生成会话 Token 与扫码二维码。
-
----
-
-## ⚙️ 前置依赖 (Prerequisites)
-
-终端会话自动持久化(断线重连)依赖 **`tmux`**,请先用系统包管理器安装:
+终端会话恢复依赖 `tmux`：
 
 ```bash
 brew install tmux                              # macOS (Homebrew)
-sudo apt update && sudo apt install -y tmux    # Linux (Ubuntu/Debian)
-sudo dnf install -y tmux                       # Linux (CentOS/RHEL/Fedora)
+sudo apt update && sudo apt install -y tmux    # Ubuntu / Debian
+sudo dnf install -y tmux                       # Fedora / CentOS / RHEL
 ```
 
 ---
 
-## 🚀 安装 (Installation)
+## 安装
 
-### 方法一:NPM(推荐 ⚡)
-
-预编译 NPM 包自动检测架构并下载匹配的平台二进制。**`ttyd` 与 `cloudflared` 官方二进制已直接预包进 `@scottzx/1agents`**,安装即 100% 离线开箱即用。
+### NPM
 
 ```bash
-npm install -g @scottzx/1agents   # 全局安装（含守护进程、ttyd、Web 前端、cloudflared）
-npx @scottzx/1agents [参数]        # 或免安装直接运行
+npm install -g @scottzx/1agents
+npx @scottzx/1agents [参数]
 ```
 
-> **要求**:Node.js >= 22(兼容 Node 24)｜**架构**:macOS (x64/arm64)、Linux (x64/arm64)、Windows (x64/arm64)
+要求：
 
-### 方法二:手动下载预编译二进制
-访问 [GitHub Releases](https://github.com/scottzx/1Agents/releases) 下载对应架构的静态包,解压即用。
+- Node.js >= 22
+- macOS x64/arm64
+- Linux x64/arm64
+- Windows x64/arm64
 
-### 方法三:Docker
+NPM 包包含后端、Web 前端、`ttyd` 和 `cloudflared` 等运行所需组件。
+
+### 预编译二进制
+
+从 [GitHub Releases](https://github.com/scottzx/1Agents/releases) 下载对应平台的压缩包，解压后运行。
+
+### Docker
 
 ```bash
 docker run -d -p 8080:8080 \
@@ -97,56 +183,101 @@ docker run -d -p 8080:8080 \
   --name 1agents scottzx/1Agents:latest
 ```
 
-### 方法四:从源码构建
+### 从源码构建
 
 ```bash
 git clone --recursive https://github.com/scottzx/1Agents.git
 cd 1agents_app
-make all      # 一键构建 frontend、ttyd、cc-connect、backend（详见 Makefile / CLAUDE.md）
+make all
+```
+
+常用构建命令：
+
+```bash
+make help
+make frontend
+make ttyd
+make cc-connect
+make backend
+make package
 ```
 
 ---
 
-## 🔗 关联项目
+## 开发
 
-**1Hive**(曾用名 iClaw虾窝)—— 保障 AI Agent 7×24 长时间在线运行的配套硬件方案:[https://00claw.com/](https://00claw.com/)。
+前端：
+
+```bash
+cd frontend
+yarn install
+yarn start
+yarn build
+yarn check
+```
+
+后端：
+
+```bash
+cd backend
+go build ./cmd/backend
+```
+
+cc-connect：
+
+```bash
+cd modules/cc-connect
+make build
+go test ./...
+```
 
 ---
 
-## 📄 许可证 (License)
+## 关联项目
 
-本项目基于 [MIT License](LICENSE) 协议开源。
+- [cc-connect](https://github.com/scottzx/cc-connect)：多平台消息桥接和 Agent 集成。
+- [1Hive](https://00claw.com/)：用于长期运行 AI Agent 的配套硬件方案。
 
 ---
 
-## 🙏 鸣谢 (Acknowledgements)
+## 许可证
 
-`1agents` 站在巨人的肩膀上,下列开源项目共同支撑了本应用,在此向所有作者与维护者表达诚挚感谢:
+本项目基于 [MIT License](LICENSE) 开源。
+
+---
+
+## 鸣谢
+
+1agents 使用了多个开源项目和库。主要依赖包括：
 
 **终端与前端**
-- [ttyd](https://github.com/tsl0922/ttyd) (MIT) — 基于 Web 的终端服务,本项目前端及 `modules/ttyd` 子模块均 fork 自此项目
-- [xterm.js](https://github.com/xtermjs/xterm.js) (MIT) — 高性能 Web 终端模拟器
-- [Preact](https://github.com/preactjs/preact) (MIT) — 3KB 体积的 React 兼容运行时,驱动整个 UI
-- [Marked](https://github.com/markedjs/marked) (MIT) — AI 输出消息的 Markdown 渲染器
-- [trzsz](https://github.com/trzsz/trzsz.js) (MIT) — 基于 Web 的 trzsz 文件传输实现
-- [webpack](https://github.com/webpack/webpack) (MIT) — 前端打包与 dev-server
 
-**AI / 消息平台桥接 (cc-connect)**
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) (MIT) — Charm 团队出品的 Go TUI 框架
-- [discordgo](https://github.com/bwmarrin/discordgo) (BSD-3) · [go-telegram/bot](https://github.com/go-telegram/bot) (MIT) · [slack-go](https://github.com/slack-go/slack) (BSD-2) · [line-bot-sdk-go](https://github.com/line/line-bot-sdk-go) (Apache-2.0)
-- [larksuite/oapi-sdk-go](https://github.com/larksuite/oapi-sdk-go) (MIT) — 飞书开放平台官方 SDK
-- [dingtalk-stream-sdk-go](https://github.com/open-dingtalk/dingtalk-stream-sdk-go) (Apache-2.0) — 钉钉流式接入 SDK
-- [gorilla/websocket](https://github.com/gorilla/websocket) (BSD-2) — WebSocket 传输基础
+- [ttyd](https://github.com/tsl0922/ttyd) (MIT)
+- [xterm.js](https://github.com/xtermjs/xterm.js) (MIT)
+- [Preact](https://github.com/preactjs/preact) (MIT)
+- [Marked](https://github.com/markedjs/marked) (MIT)
+- [trzsz](https://github.com/trzsz/trzsz.js) (MIT)
+- [webpack](https://github.com/webpack/webpack) (MIT)
 
-**AI Agent 工具链**
-- [cc-switch](https://github.com/farion1231/cc-switch) (MIT) — farion1231 出品的 Claude Code / Codex / Gemini 多账号配置切换原型
-- [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli) (MIT) — cc-switch 的 Rust TUI/CLI 衍生版,作为 sidecar 被编译并随发行版分发,负责供应商与会话管理
-- [skill-manager](https://github.com/mode-io/skill-manager) (MIT) — 本地优先的 Skill / MCP / Slash 命令管理面板,以 git submodule 形式集成在 `modules/1skills`
+**AI / 消息平台桥接**
 
-**数据与基础设施**
-- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3) — 纯 Go 实现的 SQLite,支撑工作空间与会话持久化
-- [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT) — TOML 配置解析
-- [creack/pty](https://github.com/creack/pty) (MIT) — Unix 伪终端绑定,远端终端会话的核心依赖
-- [robfig/cron](https://github.com/robfig/cron) (MIT) — Go 的 cron 表达式调度器
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) (MIT)
+- [discordgo](https://github.com/bwmarrin/discordgo) (BSD-3)
+- [go-telegram/bot](https://github.com/go-telegram/bot) (MIT)
+- [slack-go](https://github.com/slack-go/slack) (BSD-2)
+- [line-bot-sdk-go](https://github.com/line/line-bot-sdk-go) (Apache-2.0)
+- [larksuite/oapi-sdk-go](https://github.com/larksuite/oapi-sdk-go) (MIT)
+- [dingtalk-stream-sdk-go](https://github.com/open-dingtalk/dingtalk-stream-sdk-go) (Apache-2.0)
+- [gorilla/websocket](https://github.com/gorilla/websocket) (BSD-2)
 
-跨渠道 AI 消息桥接与智能体集成方案由子模块 [cc-connect](https://github.com/scottzx/cc-connect) 驱动。如有遗漏,欢迎通过 issue 告知补充。
+**Agent 工具链与数据基础设施**
+
+- [cc-switch](https://github.com/farion1231/cc-switch) (MIT)
+- [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli) (MIT)
+- [skill-manager](https://github.com/mode-io/skill-manager) (MIT)
+- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (BSD-3)
+- [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT)
+- [creack/pty](https://github.com/creack/pty) (MIT)
+- [robfig/cron](https://github.com/robfig/cron) (MIT)
+
+如需完整第三方依赖说明，请查看 [THIRD_PARTY.md](THIRD_PARTY.md)。

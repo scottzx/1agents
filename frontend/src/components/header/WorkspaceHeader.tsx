@@ -5,7 +5,7 @@ import { t, type Lang } from '../i18n';
 import type { ModuleManifest } from '../../modules/module-types';
 import type { ConnectionState } from '@1agents/core/protocol/types';
 import { AgentAvatar } from '../chat/AgentAvatar';
-import { CrumbTrail } from '../platform/ShellNav';
+import { CrumbTrail, type Crumb } from '../platform/ShellNav';
 import * as stage from '../../stores/stageStore';
 import * as tabsStore from '../../stores/tabsStore';
 import { isBeginnerMode, isMobile } from '../../stores/uiStore';
@@ -53,6 +53,18 @@ interface WorkspaceHeaderProps {
     agentType?: AgentType;
     sessionRole?: string;
     connection?: ConnectionState;
+    /**
+     * When set, overrides the default session/entity title with a fixed
+     * breadcrumb trail (e.g. for project-overview and project-detail modes
+     * where there is no active session to surface).
+     */
+    customCrumbs?: Crumb[];
+    /**
+     * When false, hides the right-side column control buttons (chat/tasks/
+     * files/git toggles). Pass false for layout modes where the two-column
+     * workbench controls are not applicable (project-overview, project-detail).
+     */
+    showControls?: boolean;
 }
 
 // Focus panes that live under the 助手 context (gated to it in the sidebar) —
@@ -90,6 +102,8 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         agentType,
         sessionRole,
         connection,
+        customCrumbs,
+        showControls = true,
     } = props;
 
     // Mobile hamburger menu open state
@@ -169,6 +183,22 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <line x1="9" y1="9" x2="15" y2="9" />
             <line x1="9" y1="13" x2="15" y2="13" />
             <line x1="9" y1="17" x2="15" y2="17" />
+        </svg>
+    );
+
+    // Data sources (database cylinder) icon
+    const IconDataSources = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <ellipse cx="12" cy="5" rx="9" ry="3" />
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
         </svg>
     );
 
@@ -319,7 +349,13 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )
                     )}
-                    {isFullPageTab(activeDrawerTab) ? (
+                    {customCrumbs ? (
+                        // Layout-mode override (project-overview / project-detail):
+                        // show a fixed breadcrumb trail instead of session context.
+                        <div class="header-title-group header-crumb-group">
+                            <CrumbTrail crumbs={customCrumbs} />
+                        </div>
+                    ) : isFullPageTab(activeDrawerTab) ? (
                         <div class="header-title-group header-crumb-group">
                             <CrumbTrail
                                 crumbs={
@@ -397,7 +433,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     )}
                 </div>
 
-                {!isFullPageTab(activeDrawerTab) && (
+                {!isFullPageTab(activeDrawerTab) && showControls && (
                     <div class="header-right">
                         {onTmuxMouseToggle && isTerminalView && (
                             <button
@@ -546,6 +582,18 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconGit}</span>
                     <span class="mob-menu-label">{t('header.mobile.git', language)}</span>
                     {activeDrawerTab === 'git' && (
+                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
+                    )}
+                </button>
+
+                <button
+                    id="mob-menu-datasources"
+                    class={`mobile-menu-item ${activeDrawerTab === 'datasources' ? 'active' : ''}`}
+                    onClick={() => handleDrawerToggle('datasources')}
+                >
+                    <span class="mob-menu-icon">{IconDataSources}</span>
+                    <span class="mob-menu-label">{t('sidebar.datasources', language)}</span>
+                    {activeDrawerTab === 'datasources' && (
                         <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>

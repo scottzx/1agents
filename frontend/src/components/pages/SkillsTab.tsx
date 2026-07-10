@@ -39,23 +39,9 @@ function TagBadges({
 }) {
     if (!primaryTag && !secondaryTag) return null;
     return (
-        <div class="skill-tags" style={`display:flex; gap:6px; margin-top:${mt}px; flex-wrap:wrap;`}>
-            {primaryTag && (
-                <span
-                    class="tag-badge"
-                    style="background:rgba(0,200,255,0.15); color:#00c8ff; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
-                >
-                    {primaryTag}
-                </span>
-            )}
-            {secondaryTag && (
-                <span
-                    class="tag-badge"
-                    style="background:rgba(255,200,0,0.15); color:#ffc800; font-size:10px; padding:2px 6px; border-radius:3px; font-weight:bold;"
-                >
-                    {secondaryTag}
-                </span>
-            )}
+        <div class="skill-tags" style={`margin-top:${mt}px`}>
+            {primaryTag && <span class="tag-badge tag-badge-primary">{primaryTag}</span>}
+            {secondaryTag && <span class="tag-badge tag-badge-secondary">{secondaryTag}</span>}
         </div>
     );
 }

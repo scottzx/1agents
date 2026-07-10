@@ -730,7 +730,7 @@ export class FileDetailView extends Component<FileDetailViewProps> {
                         </div>
                     ) : isMd ? (
                         <div
-                            class="fb-md-render"
+                            class="fb-md-render md-doc"
                             ref={el => {
                                 this.mdRenderEl = el;
                             }}

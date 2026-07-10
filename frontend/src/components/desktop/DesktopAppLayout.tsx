@@ -225,19 +225,16 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
 
                     {/* [WORKSPACE MAIN CONTENT]: Occupies rest of screen */}
                     <div class="workspace-main-content">
-                        {/* [项目总览]: the 项目 card wall (empty drill stack). */}
-                        {isShell && mode === 'project-overview' && <ProjectHome />}
-
-                        {/* [项目详情]: a drilled-in project's detail page. */}
-                        {isShell && mode === 'project' && <ProjectDetailShell app={app} />}
-
                         {/*
-                          [SHELL HEADER]: shown for both 'tasks' (project
-                          landing) and 'terminal' (workbench), so the user
-                          always has access to theme / language / drawer tabs
-                          regardless of which view is on top.
+                          [SHELL HEADER]: always shown when the shell is active
+                          (all four layout modes), so the top bar stays stable
+                          across mode switches — no 48px jump when navigating
+                          between split/focus/project-overview/project-detail.
+                          In project-overview and project modes, the header shows
+                          a fixed breadcrumb instead of session context and hides
+                          the workbench column controls.
                         */}
-                        {isShell && isFocusOrSplit && !isNewChat && (
+                        {isShell && !isNewChat && (
                             <WorkspaceHeader
                                 leftSidebarOpen={leftSidebarOpen}
                                 toggleLeftSidebar={ui.toggleLeftSidebar}
@@ -266,8 +263,31 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 hasChatSession={folders.some(
                                     f => f.id === activeWorkspaceId && f.sessions.some(isChat)
                                 )}
+                                customCrumbs={
+                                    mode === 'project-overview'
+                                        ? [{ label: t('projectHome.title', language) }]
+                                        : mode === 'project' && stage.projectStack.value.length > 0
+                                          ? [
+                                                {
+                                                    label: t('projectHome.title', language),
+                                                    onClick: stage.projectOverview,
+                                                },
+                                                {
+                                                    label: stage.projectStack.value[stage.projectStack.value.length - 1]
+                                                        .name,
+                                                },
+                                            ]
+                                          : undefined
+                                }
+                                showControls={isFocusOrSplit}
                             />
                         )}
+
+                        {/* [项目总览]: the 项目 card wall (empty drill stack). */}
+                        {isShell && mode === 'project-overview' && <ProjectHome />}
+
+                        {/* [项目详情]: a drilled-in project's detail page. */}
+                        {isShell && mode === 'project' && <ProjectDetailShell app={app} />}
 
                         {/*
                           [WORKBENCH BODY]: the unified two-column shell —

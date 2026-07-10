@@ -15,6 +15,7 @@ import * as tabPrefs from '../../stores/projectTabPrefs';
  */
 export function SettingsTab({ workspaceId, language }: { workspaceId: string; language: Lang }) {
     const [busy, setBusy] = useState(false);
+    const [confirmArchive, setConfirmArchive] = useState(false);
 
     const wsPath = wsStore.findWorkspaceAnyStatus(workspaceId)?.path ?? '';
 
@@ -41,6 +42,7 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
 
     const onArchive = async () => {
         setBusy(true);
+        setConfirmArchive(false);
         try {
             await wsStore.archiveWorkspace(workspaceId);
             ui.showToast(t('assistant.detail.settings.archived', language));
@@ -64,26 +66,6 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
 
     return (
         <div class="settings-tab">
-            <div class="settings-row">
-                <div class="settings-row-info">
-                    <span class="settings-row-title">{t('assistant.detail.settings.archiveTitle', language)}</span>
-                    <span class="settings-row-desc">
-                        {archived
-                            ? t('assistant.detail.settings.activateDesc', language)
-                            : t('assistant.detail.settings.archiveDesc', language)}
-                    </span>
-                </div>
-                {archived ? (
-                    <button class="assistant-btn assistant-btn-primary" disabled={busy} onClick={() => void onReopen()}>
-                        {t('assistant.detail.settings.activate', language)}
-                    </button>
-                ) : (
-                    <button class="assistant-btn assistant-btn-ghost" disabled={busy} onClick={() => void onArchive()}>
-                        {t('assistant.detail.settings.archive', language)}
-                    </button>
-                )}
-            </div>
-
             <div class="settings-row settings-row-block">
                 <div class="settings-row-info">
                     <span class="settings-row-title">显示的标签页</span>
@@ -91,7 +73,7 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
                 </div>
                 <div class="settings-tab-toggles">
                     {toggleableTabs.map(tb => (
-                        <label class="settings-tab-toggle">
+                        <label key={tb.id} class="settings-tab-toggle">
                             <input
                                 type="checkbox"
                                 checked={!hidden.has(tb.id)}
@@ -107,6 +89,56 @@ export function SettingsTab({ workspaceId, language }: { workspaceId: string; la
                             <span>{tb.label}</span>
                         </label>
                     ))}
+                </div>
+            </div>
+
+            <div class="settings-zone-danger">
+                <div class="settings-zone-danger-title">危险操作</div>
+                <div class="settings-row">
+                    <div class="settings-row-info">
+                        <span class="settings-row-title">{t('assistant.detail.settings.archiveTitle', language)}</span>
+                        <span class="settings-row-desc">
+                            {archived
+                                ? t('assistant.detail.settings.activateDesc', language)
+                                : confirmArchive
+                                  ? '确认后将从活跃列表移除，可在"已归档"中找回。'
+                                  : t('assistant.detail.settings.archiveDesc', language)}
+                        </span>
+                    </div>
+                    {archived ? (
+                        <button
+                            class="assistant-btn assistant-btn-primary"
+                            disabled={busy}
+                            onClick={() => void onReopen()}
+                        >
+                            {t('assistant.detail.settings.activate', language)}
+                        </button>
+                    ) : confirmArchive ? (
+                        <div class="settings-confirm-row">
+                            <button
+                                class="assistant-btn assistant-btn-danger"
+                                disabled={busy}
+                                onClick={() => void onArchive()}
+                            >
+                                确认归档
+                            </button>
+                            <button
+                                class="assistant-btn assistant-btn-ghost"
+                                disabled={busy}
+                                onClick={() => setConfirmArchive(false)}
+                            >
+                                取消
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            class="assistant-btn assistant-btn-ghost"
+                            disabled={busy}
+                            onClick={() => setConfirmArchive(true)}
+                        >
+                            {t('assistant.detail.settings.archive', language)}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

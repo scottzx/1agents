@@ -9,6 +9,7 @@ import { CliZone } from './FeishuSourceCard';
 import { IMessageSection } from './IMessageSection';
 import { useChannelModules, ConsentSubmodule } from './ConsentGate';
 import { PushAuthZone } from './PushZone';
+import { DetailSection, PermissionDecision, StatusRow, InlineBadge } from '../../shared/primitives';
 
 // SourceAuthZone — the single, authKind-driven 认证与授权 zone. Instead of each
 // vendor shipping its own auth panel, the backend's VendorSpec.authKind
@@ -318,6 +319,7 @@ function BearerAuthZone({ account, language }: { account: SourceAccount; languag
 // (大陆/21Vianet vs 国际) in a popup, and polls until the callback stores a token.
 // The in-UI app-registration form (clientId/tenant) is part of this variant so
 // the user never hand-edits microsoft_oauth.json.
+// Disconnect uses PermissionDecision (sensitive auth change) rather than a bare button.
 function OAuthAuthZone({ account, language }: { account: SourceAccount; language: Lang }) {
     const [status, setStatus] = useState<MSOAuthStatus | null>(null);
     const [busy, setBusy] = useState(false);
@@ -325,6 +327,8 @@ function OAuthAuthZone({ account, language }: { account: SourceAccount; language
     const [clientId, setClientId] = useState('');
     const [tenant, setTenant] = useState('');
     const [savingCfg, setSavingCfg] = useState(false);
+    const [pendingDisconnect, setPendingDisconnect] = useState(false);
+    const [disconnectDecision, setDisconnectDecision] = useState<'allow' | 'deny' | undefined>(undefined);
 
     const refresh = () =>
         sourceService
@@ -397,15 +401,28 @@ function OAuthAuthZone({ account, language }: { account: SourceAccount; language
         }
     };
 
-    const disconnect = async () => {
+    const doDisconnect = () => {
+        setDisconnectDecision('allow');
         setBusy(true);
-        try {
-            await sourceService.msOAuthDisconnect(account.id);
-            await refresh();
-        } catch (e) {
-            setError((e as Error).message);
-        }
-        setBusy(false);
+        sourceService
+            .msOAuthDisconnect(account.id)
+            .then(() => refresh())
+            .catch(e => setError((e as Error).message))
+            .finally(() => {
+                setBusy(false);
+                window.setTimeout(() => {
+                    setPendingDisconnect(false);
+                    setDisconnectDecision(undefined);
+                }, 600);
+            });
+    };
+
+    const cancelDisconnect = () => {
+        setDisconnectDecision('deny');
+        window.setTimeout(() => {
+            setPendingDisconnect(false);
+            setDisconnectDecision(undefined);
+        }, 400);
     };
 
     const regionLabel =
@@ -418,93 +435,103 @@ function OAuthAuthZone({ account, language }: { account: SourceAccount; language
     return (
         <div class="source-instance-auth">
             {!status.configured && (
-                <div class="bento-card sys-settings-card">
-                    <div class="bento-zone-body">
-                        <h3 class="bento-card-title">{t('datasource.ms.appConfigTitle', language)}</h3>
-                        <p class="bento-card-desc">{t('datasource.ms.appConfigHint', language)}</p>
-                        <label class="contacts-field">
-                            <span>{t('datasource.ms.clientId', language)}</span>
-                            <input
-                                type="text"
-                                autocomplete="off"
-                                spellcheck={false}
-                                placeholder="00000000-0000-0000-0000-000000000000"
-                                value={clientId}
-                                onInput={e => setClientId((e.target as HTMLInputElement).value)}
-                            />
-                        </label>
-                        <label class="contacts-field">
-                            <span>{t('datasource.ms.tenant', language)}</span>
-                            <input
-                                type="text"
-                                autocomplete="off"
-                                spellcheck={false}
-                                placeholder={account.region === 'cn' ? 'xxx.partner.onmschina.cn / 租户GUID' : 'common'}
-                                value={tenant}
-                                onInput={e => setTenant((e.target as HTMLInputElement).value)}
-                            />
-                        </label>
-                        <button
-                            class="contacts-btn contacts-btn-primary"
-                            disabled={savingCfg || !clientId.trim()}
-                            onClick={saveConfigAndConnect}
-                        >
-                            {savingCfg
-                                ? t('datasource.ms.connecting', language)
-                                : t('datasource.ms.saveAndConnect', language)}
-                        </button>
-                        {error && <div class="contacts-error">{error}</div>}
-                    </div>
-                </div>
+                <DetailSection
+                    title={t('datasource.ms.appConfigTitle', language)}
+                    description={t('datasource.ms.appConfigHint', language)}
+                >
+                    <label class="contacts-field">
+                        <span>{t('datasource.ms.clientId', language)}</span>
+                        <input
+                            type="text"
+                            autocomplete="off"
+                            spellcheck={false}
+                            placeholder="00000000-0000-0000-0000-000000000000"
+                            value={clientId}
+                            onInput={e => setClientId((e.target as HTMLInputElement).value)}
+                        />
+                    </label>
+                    <label class="contacts-field">
+                        <span>{t('datasource.ms.tenant', language)}</span>
+                        <input
+                            type="text"
+                            autocomplete="off"
+                            spellcheck={false}
+                            placeholder={account.region === 'cn' ? 'xxx.partner.onmschina.cn / 租户GUID' : 'common'}
+                            value={tenant}
+                            onInput={e => setTenant((e.target as HTMLInputElement).value)}
+                        />
+                    </label>
+                    <button
+                        class="contacts-btn contacts-btn-primary"
+                        disabled={savingCfg || !clientId.trim()}
+                        onClick={saveConfigAndConnect}
+                    >
+                        {savingCfg
+                            ? t('datasource.ms.connecting', language)
+                            : t('datasource.ms.saveAndConnect', language)}
+                    </button>
+                    {error && <div class="contacts-error">{error}</div>}
+                </DetailSection>
             )}
 
             {status.configured && (
-                <div class="bento-card sys-settings-card">
-                    <div class="bento-zone-body">
-                        <h3 class="bento-card-title">Microsoft · {regionLabel}</h3>
-                        {status.connected ? (
-                            <Fragment>
-                                <span class="datasource-card-badge">{t('datasource.ms.connected', language)}</span>
-                                <p class="bento-card-desc">
-                                    {account.label}
-                                    {status.expiresAt > 0 && (
-                                        <Fragment>
-                                            {' · '}
-                                            {t('datasource.ms.expires', language)}{' '}
-                                            {new Date(status.expiresAt * 1000).toLocaleString()}
-                                        </Fragment>
-                                    )}
-                                </p>
-                                <div class="datasource-region-choices">
-                                    <button
-                                        class="contacts-btn contacts-btn-sm"
-                                        disabled={busy || !status.configured}
-                                        onClick={connect}
-                                    >
-                                        {t('datasource.ms.reconnect', language)}
-                                    </button>
-                                    <button class="contacts-btn contacts-btn-sm" disabled={busy} onClick={disconnect}>
-                                        {t('datasource.ms.disconnect', language)}
-                                    </button>
-                                </div>
-                            </Fragment>
-                        ) : (
-                            <Fragment>
-                                <p class="bento-card-desc">{t('datasource.ms.connectHint', language)}</p>
-                                <button
-                                    class="contacts-btn contacts-btn-primary"
-                                    disabled={busy || !status.configured}
-                                    onClick={connect}
-                                >
-                                    {busy
-                                        ? t('datasource.ms.connecting', language)
-                                        : t('datasource.ms.connect', language)}
-                                </button>
-                            </Fragment>
-                        )}
-                        {error && <div class="contacts-error">{error}</div>}
-                    </div>
-                </div>
+                <DetailSection title={`Microsoft · ${regionLabel}`}>
+                    {status.connected ? (
+                        <Fragment>
+                            <StatusRow
+                                status="success"
+                                title={account.label}
+                                summary={
+                                    status.expiresAt > 0
+                                        ? `${t('datasource.ms.expires', language)} ${new Date(status.expiresAt * 1000).toLocaleString()}`
+                                        : undefined
+                                }
+                                badge={
+                                    <InlineBadge variant="success">
+                                        {t('datasource.ms.connected', language)}
+                                    </InlineBadge>
+                                }
+                                actions={
+                                    <Fragment>
+                                        <button class="contacts-btn contacts-btn-sm" disabled={busy} onClick={connect}>
+                                            {t('datasource.ms.reconnect', language)}
+                                        </button>
+                                        <button
+                                            class="contacts-btn contacts-btn-sm"
+                                            disabled={busy}
+                                            onClick={() => setPendingDisconnect(true)}
+                                        >
+                                            {t('datasource.ms.disconnect', language)}
+                                        </button>
+                                    </Fragment>
+                                }
+                            />
+                            {pendingDisconnect && (
+                                <PermissionDecision
+                                    description={t('datasource.ms.disconnectConfirm', language)}
+                                    scope={t('datasource.ms.disconnectScope', language)}
+                                    resolved={disconnectDecision}
+                                    onDeny={cancelDisconnect}
+                                    onAllow={doDisconnect}
+                                    labels={{
+                                        deny: t('datasource.ms.disconnectCancel', language),
+                                        allow: t('datasource.ms.disconnectConfirmBtn', language),
+                                        resolvedAllow: t('datasource.ms.disconnect', language),
+                                        resolvedDeny: t('datasource.ms.disconnectCancel', language),
+                                    }}
+                                />
+                            )}
+                        </Fragment>
+                    ) : (
+                        <Fragment>
+                            <p class="bento-card-desc">{t('datasource.ms.connectHint', language)}</p>
+                            <button class="contacts-btn contacts-btn-primary" disabled={busy} onClick={connect}>
+                                {busy ? t('datasource.ms.connecting', language) : t('datasource.ms.connect', language)}
+                            </button>
+                        </Fragment>
+                    )}
+                    {error && <div class="contacts-error">{error}</div>}
+                </DetailSection>
             )}
         </div>
     );

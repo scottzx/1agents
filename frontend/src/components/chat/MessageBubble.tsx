@@ -140,7 +140,7 @@ function UserBubble({
                 <div class="chat-bubble-body chat-bubble-body-queued">{content}</div>
             ) : (
                 <div class="chat-bubble-body">
-                    <div ref={bodyRef} class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                    <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
                 </div>
             )}
             {isQueued && (
@@ -184,7 +184,7 @@ function AssistantBubble({ content, streaming }: { content: string; streaming: b
         <div class="chat-message-row chat-message-row-assistant">
             <div class="chat-bubble chat-bubble-assistant">
                 <div class="chat-bubble-body">
-                    <div ref={bodyRef} class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                    <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
                     {streaming && <span class="chat-cursor">▍</span>}
                 </div>
             </div>
@@ -474,7 +474,7 @@ function GroupedAssistantTextItem({ content }: { content: string }) {
     return (
         <div class="chat-tool-row">
             <div class="chat-tool-row-body">
-                <div class="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                <div class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
             </div>
         </div>
     );

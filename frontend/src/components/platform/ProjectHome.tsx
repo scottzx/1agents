@@ -8,6 +8,7 @@ import * as modal from '../../stores/modalStore';
 import * as stage from '../../stores/stageStore';
 import * as tabsStore from '../../stores/tabsStore';
 import * as appStore from '../../stores/appManifestStore';
+import { StatusRow } from '../shared/primitives';
 
 /**
  * 项目总览 — the 项目 context landing (L1). Codex-minimal, matching the 助理
@@ -74,27 +75,9 @@ export function ProjectHome() {
             <rect x="3" y="14" width="7" height="7" rx="1" />
         </svg>
     );
-    const Chevron = (
-        <svg
-            class="project-card-chevron"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-        >
-            <polyline points="9 6 15 12 9 18" />
-        </svg>
-    );
 
     return (
         <div class="project-home">
-            <div class="project-detail-breadcrumb">
-                <span class="project-crumb-current">{t('projectHome.title', language)}</span>
-            </div>
-
             <div class="project-home-scroll">
                 <div class="assistants-toolbar">
                     <p class="assistants-subtitle">
@@ -149,22 +132,15 @@ export function ProjectHome() {
                     {projects.length === 0 ? (
                         <div class="assistants-empty">{t('projectHome.empty', language)}</div>
                     ) : (
-                        <div class="project-grid">
+                        <div class="project-home-list">
                             {projects.map(ws => (
-                                <button
+                                <StatusRow
                                     key={ws.id}
-                                    class="project-card"
+                                    icon={FolderIcon}
+                                    title={ws.name}
+                                    summary={ws.path}
                                     onClick={() => stage.enterProjectDetail(ws.id, ws.name)}
-                                >
-                                    <span class="project-card-icon">{FolderIcon}</span>
-                                    <div class="project-card-body">
-                                        <div class="project-card-name">{ws.name}</div>
-                                        <div class="project-card-meta" title={ws.path}>
-                                            {ws.path}
-                                        </div>
-                                    </div>
-                                    {Chevron}
-                                </button>
+                                />
                             ))}
                         </div>
                     )}
@@ -193,22 +169,15 @@ export function ProjectHome() {
                             </span>
                         </button>
                         {archivedOpen && (
-                            <div class="project-grid">
+                            <div class="project-home-list">
                                 {archivedProjects.map(ws => (
-                                    <button
+                                    <StatusRow
                                         key={ws.id}
-                                        class="project-card is-archived"
+                                        icon={FolderIcon}
+                                        title={ws.name}
+                                        summary={t('overview.archivedTag', language)}
                                         onClick={() => stage.enterProjectDetail(ws.id, ws.name)}
-                                    >
-                                        <span class="project-card-icon">{FolderIcon}</span>
-                                        <div class="project-card-body">
-                                            <div class="project-card-name">{ws.name}</div>
-                                            <div class="project-card-meta" title={ws.path}>
-                                                {t('overview.archivedTag', language)}
-                                            </div>
-                                        </div>
-                                        {Chevron}
-                                    </button>
+                                    />
                                 ))}
                             </div>
                         )}
@@ -220,16 +189,15 @@ export function ProjectHome() {
                         <div class="project-home-section-head">
                             <h2 class="project-home-section-title">{t('projectHome.templates', language)}</h2>
                         </div>
-                        <div class="project-grid">
+                        <div class="project-home-list">
                             {apps.map(app => (
-                                <button key={app.id} class="project-card" onClick={modal.openCreateWorkspacePicker}>
-                                    <span class="project-card-icon">{TemplateIcon}</span>
-                                    <div class="project-card-body">
-                                        <div class="project-card-name">{app.name}</div>
-                                        <div class="project-card-meta">{t('projectHome.templateLabel', language)}</div>
-                                    </div>
-                                    {Chevron}
-                                </button>
+                                <StatusRow
+                                    key={app.id}
+                                    icon={TemplateIcon}
+                                    title={app.name}
+                                    summary={t('projectHome.templateLabel', language)}
+                                    onClick={modal.openCreateWorkspacePicker}
+                                />
                             ))}
                         </div>
                     </section>

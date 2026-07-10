@@ -1,34 +1,20 @@
 import { h } from 'preact';
 
 import type { App } from '../app';
-import { t } from '../../i18n';
-import * as ui from '../../stores/uiStore';
 import * as stage from '../../stores/stageStore';
 import { ProjectShell } from './ProjectShell';
 
 /**
- * 项目详情 — the drilled-in project page (#redesign). A thin adapter that feeds
- * the drill stack into ProjectShell as a breadcrumb; ProjectShell's ShellNav
- * renders one unified bar (项目总览 → project + 动态/计划/任务/资产 + gear).
- * Rendered by DesktopAppLayout when `layoutMode === 'project'`. Drilling further
- * (opening a conversation from a panel) flips to the split workbench.
+ * 项目详情 — the drilled-in project page (#redesign). A thin adapter that
+ * feeds the drill stack into ProjectShell. Breadcrumbs live in WorkspaceHeader
+ * (DesktopAppLayout passes customCrumbs), so ShellNav gets no crumbs here.
+ * Rendered by DesktopAppLayout when `layoutMode === 'project'`. Drilling
+ * further (opening a conversation) flips to the split workbench.
  */
 export function ProjectDetailShell({ app }: { app?: App }) {
-    const language = ui.language.value;
     const stack = stage.projectStack.value;
     const top = stack[stack.length - 1];
     if (!top) return null;
 
-    return (
-        <ProjectShell
-            workspaceId={top.workspaceId}
-            workspaceName={top.name}
-            variant="detail"
-            app={app}
-            crumbs={[
-                { label: t('projectHome.title', language), onClick: () => stage.projectOverview() },
-                { label: top.name },
-            ]}
-        />
-    );
+    return <ProjectShell workspaceId={top.workspaceId} workspaceName={top.name} variant="detail" app={app} />;
 }

@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { useSignal } from '@preact/signals';
 import type { ToolCallDiff, ToolCallLocation } from '@1agents/core/protocol/types';
 
 // Derive the file(s) a tool touched from its parsed input, so the locations
@@ -93,6 +94,10 @@ function computeLineDiff(oldText: string, newText: string): DiffLine[] {
     return lines;
 }
 
+// Large diffs collapse to a preview; the fold toggle expands/collapses.
+const DIFF_COLLAPSE_THRESHOLD = 40;
+const DIFF_PREVIEW_LINES = 20;
+
 function DiffBlock({ diff }: { diff: ToolCallDiff }) {
     // A brand-new file (no oldText) shows every line as an addition.
     const lines: DiffLine[] =
@@ -100,19 +105,50 @@ function DiffBlock({ diff }: { diff: ToolCallDiff }) {
             ? diff.newText.split('\n').map(text => ({ type: 'add', text }))
             : computeLineDiff(diff.oldText, diff.newText);
 
+    const isLarge = lines.length > DIFF_COLLAPSE_THRESHOLD;
+    const collapsed = useSignal(isLarge);
+    const displayed = collapsed.value ? lines.slice(0, DIFF_PREVIEW_LINES) : lines;
+    const hiddenCount = lines.length - DIFF_PREVIEW_LINES;
+
     return (
         <div class="chat-tool-diff">
             <div class="chat-tool-diff-path">{diff.path}</div>
             <pre class="chat-tool-diff-body">
-                {lines.map((line, i) => (
+                {displayed.map((line, i) => (
                     <div key={i} class={`chat-tool-diff-line is-${line.type}`}>
                         <span class="chat-tool-diff-gutter" aria-hidden="true">
                             {line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' '}
                         </span>
-                        <span class="chat-tool-diff-text">{line.text || ' '}</span>
+                        <span class="chat-tool-diff-text">{line.text || ' '}</span>
                     </div>
                 ))}
+                {isLarge && collapsed.value && (
+                    <div class="chat-tool-diff-fold">
+                        <button
+                            type="button"
+                            class="chat-tool-diff-fold-btn"
+                            onClick={() => {
+                                collapsed.value = false;
+                            }}
+                        >
+                            展开剩余 {hiddenCount} 行…
+                        </button>
+                    </div>
+                )}
             </pre>
+            {isLarge && !collapsed.value && (
+                <div class="chat-tool-diff-fold-footer">
+                    <button
+                        type="button"
+                        class="chat-tool-diff-fold-btn"
+                        onClick={() => {
+                            collapsed.value = true;
+                        }}
+                    >
+                        折叠
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

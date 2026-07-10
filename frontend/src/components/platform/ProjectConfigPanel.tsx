@@ -16,6 +16,9 @@ import { h, Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { getProjectConfig, putProjectConfig, type ProjectConfig } from '../../services/appManifestService';
 import * as ui from '../../stores/uiStore';
+import * as wsStore from '../../stores/workspaceStore';
+import * as stage from '../../stores/stageStore';
+import { DetailSection } from '../shared/primitives';
 
 export type ConfigTab = 'instructions' | 'connectors' | 'experts' | 'skills' | 'automation';
 
@@ -64,6 +67,62 @@ function useProjectConfig(workspaceId: string) {
     };
 
     return { config, setConfig, loading, saving, save };
+}
+
+/** Danger zone: archive or delete the project. Isolated at the bottom of config. */
+function DangerZone({ workspaceId, onDone }: { workspaceId: string; onDone: () => void }) {
+    const [confirming, setConfirming] = useState<'archive' | 'delete' | null>(null);
+
+    const handleArchive = async () => {
+        await wsStore.archiveWorkspace(workspaceId);
+        onDone();
+    };
+
+    const handleDelete = async () => {
+        await wsStore.deleteWorkspace(workspaceId);
+        stage.projectOverview();
+        onDone();
+    };
+
+    return (
+        <DetailSection title="危险操作" danger={true}>
+            <div class="project-config-danger-actions">
+                {confirming === 'archive' ? (
+                    <Fragment>
+                        <span class="project-config-danger-confirm">确认归档项目？</span>
+                        <button class="assistant-btn assistant-btn-danger" onClick={() => void handleArchive()}>
+                            确认归档
+                        </button>
+                        <button class="assistant-btn assistant-btn-ghost" onClick={() => setConfirming(null)}>
+                            取消
+                        </button>
+                    </Fragment>
+                ) : confirming === 'delete' ? (
+                    <Fragment>
+                        <span class="project-config-danger-confirm">删除后无法恢复，请确认</span>
+                        <button class="assistant-btn assistant-btn-danger" onClick={() => void handleDelete()}>
+                            确认删除
+                        </button>
+                        <button class="assistant-btn assistant-btn-ghost" onClick={() => setConfirming(null)}>
+                            取消
+                        </button>
+                    </Fragment>
+                ) : (
+                    <Fragment>
+                        <button class="assistant-btn assistant-btn-ghost" onClick={() => setConfirming('archive')}>
+                            归档项目
+                        </button>
+                        <button
+                            class="assistant-btn assistant-btn-ghost assistant-btn-danger"
+                            onClick={() => setConfirming('delete')}
+                        >
+                            删除项目
+                        </button>
+                    </Fragment>
+                )}
+            </div>
+        </DetailSection>
+    );
 }
 
 /** The form body for one config section (pure — driven by config + setConfig). */
@@ -244,7 +303,12 @@ export function ProjectConfigPanel({ workspaceId, onClose }: ProjectConfigPanelP
                             <div class="fb-loading-spinner" />
                         </div>
                     ) : (
-                        <ConfigSectionBody section={activeTab} config={config} setConfig={setConfig} />
+                        <Fragment>
+                            <ConfigSectionBody section={activeTab} config={config} setConfig={setConfig} />
+                            <div class="project-config-danger-zone">
+                                <DangerZone workspaceId={workspaceId} onDone={onClose} />
+                            </div>
+                        </Fragment>
                     )}
                 </div>
 

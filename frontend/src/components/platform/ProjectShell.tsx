@@ -33,6 +33,7 @@ import { SettingsTab } from '../pages/SettingsTab';
 import { MountPointRenderer } from './MountPointRenderer';
 import { ProjectConfigPanel, ProjectConfigView, PROJECT_CONFIG_TABS, type ConfigTab } from './ProjectConfigPanel';
 import { ShellNav, CrumbTrail, type ShellTab, type Crumb } from './ShellNav';
+import { EmptyState, DetailSection } from '../shared/primitives';
 
 import * as appStore from '../../stores/appManifestStore';
 import * as tabPrefs from '../../stores/projectTabPrefs';
@@ -256,26 +257,8 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
 function ProjectActivityTab(props: { workspaceId: string }) {
     void props;
     return (
-        <div class="project-tab-scaffold">
-            <div class="project-tab-scaffold-header">
-                <span class="project-tab-scaffold-title">动态</span>
-                <span class="project-tab-scaffold-hint">项目最近的事件、评论和状态变更</span>
-            </div>
-            <div class="project-tab-scaffold-empty">
-                <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                </svg>
-                <p>暂无动态记录</p>
-                <span>任务状态变更、评论和 AI 操作日志将显示在这里</span>
-            </div>
+        <div class="project-tab-scroll">
+            <EmptyState title="暂无动态记录" description="任务状态变更、评论和 AI 操作日志将以时间线形式显示在这里" />
         </div>
     );
 }
@@ -283,28 +266,10 @@ function ProjectActivityTab(props: { workspaceId: string }) {
 function ProjectPlanTab(props: { workspaceId: string }) {
     void props;
     return (
-        <div class="project-tab-scaffold">
-            <div class="project-tab-scaffold-header">
-                <span class="project-tab-scaffold-title">计划</span>
-                <span class="project-tab-scaffold-hint">里程碑、排期与阶段目标</span>
-            </div>
-            <div class="project-tab-scaffold-empty">
-                <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                    <line x1="16" y1="2" x2="16" y2="6" />
-                    <line x1="8" y1="2" x2="8" y2="6" />
-                    <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                <p>尚未创建里程碑</p>
-                <span>在任务视图中创建里程碑，或让 AI 助理帮你制定计划</span>
-            </div>
+        <div class="project-tab-scroll">
+            <DetailSection title="里程碑" description="排期与阶段目标">
+                <EmptyState title="尚未创建里程碑" description="在任务视图中创建里程碑，或让 AI 助理帮你制定计划" />
+            </DetailSection>
         </div>
     );
 }
@@ -312,25 +277,10 @@ function ProjectPlanTab(props: { workspaceId: string }) {
 function ProjectAssetsTab(props: { workspaceId: string }) {
     void props;
     return (
-        <div class="project-tab-scaffold">
-            <div class="project-tab-scaffold-header">
-                <span class="project-tab-scaffold-title">资产</span>
-                <span class="project-tab-scaffold-hint">项目产物、素材与文件</span>
-            </div>
-            <div class="project-tab-scaffold-empty">
-                <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-                <p>暂无资产</p>
-                <span>AI 任务产出的文件、生成内容和素材将展示在这里</span>
-            </div>
+        <div class="project-tab-scroll">
+            <DetailSection title="项目产物" description="AI 任务产出的文件、生成内容和素材">
+                <EmptyState title="暂无资产" description="完成的任务产物和素材将展示在这里" />
+            </DetailSection>
         </div>
     );
 }

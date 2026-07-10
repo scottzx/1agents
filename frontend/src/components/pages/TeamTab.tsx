@@ -221,7 +221,17 @@ export function TeamTab({ workspaceId, app, language }: { workspaceId: string; a
                     {meta.tools && (
                         <div class="team-meta-tools">
                             <span class="team-meta-label">{t('assistant.detail.team.tools', language)}</span>
-                            <span class="team-meta-value">{meta.tools}</span>
+                            <div class="team-tool-chips">
+                                {meta.tools
+                                    .split(',')
+                                    .map(s => s.trim())
+                                    .filter(Boolean)
+                                    .map(tool => (
+                                        <span key={tool} class="team-tool-chip">
+                                            {tool}
+                                        </span>
+                                    ))}
+                            </div>
                         </div>
                     )}
                 </div>
