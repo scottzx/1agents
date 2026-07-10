@@ -1561,3 +1561,219 @@
 
   &:hover:not(:disabled) { background-color: var(--accent-hover); }
 }
+
+/* ── Operational Dashboard — compact metrics bar & status-row sections ──────
+ * Replaces the old cockpit-hud stat-card wall with:
+ *   op-metrics-bar  — single-line key numbers, no colored boxes
+ *   op-section      — labeled section (需关注 / 最近活动 / 项目一览)
+ *   op-status-row   — process block: dot + name + tags + time + action
+ */
+
+.op-metrics-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.op-metrics-company {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.op-metrics-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.op-metric {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.op-metric-num {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main);
+
+  &--success { color: var(--success-fg); }
+  &--danger  { color: var(--danger-fg); }
+}
+
+.op-section {
+  padding: 14px 20px 4px;
+}
+
+.op-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.op-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  &--danger { color: var(--danger-fg); }
+}
+
+.op-section-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 1.7;
+
+  &--danger {
+    color: var(--danger-fg);
+    background-color: var(--danger-bg);
+    border-color: transparent;
+  }
+}
+
+.op-status-list {
+  border: 1px solid var(--border-color);
+  border-radius: var(--bento-radius);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.op-status-row {
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+
+  &:last-child { border-bottom: none; }
+
+  &--open { background-color: var(--bg-panel); }
+}
+
+.op-status-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: background-color 0.12s;
+
+  .op-status-row:not(.op-status-row--open) &:hover {
+    background-color: var(--bg-panel);
+  }
+
+  .op-status-row--open & { cursor: default; }
+}
+
+.op-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--border-color);
+
+  &--running { background-color: var(--success-fg); }
+  &--blocked { background-color: var(--danger-fg); animation: op-dot-pulse 1.6s ease-in-out infinite; }
+  &--stalled { background-color: var(--text-muted); }
+  &--done    { background-color: var(--warning-fg); }
+  &--idle    { background-color: var(--border-color); }
+}
+
+@keyframes op-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+.op-status-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.op-status-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.op-status-tag {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+
+  &--danger {
+    color: var(--danger-fg);
+    background-color: var(--danger-bg);
+    border-color: transparent;
+  }
+}
+
+.op-status-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.op-status-action {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-color);
+  background-color: transparent;
+  border: 1px solid var(--accent-color);
+  border-radius: var(--bento-radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+
+  .op-status-row-main:hover & { opacity: 1; }
+
+  &:hover {
+    color: var(--on-accent);
+    background-color: var(--accent-color);
+  }
+}
+
+/* Subtle topbar button — for secondary/hidden features like the pixel demo toggle */
+.cockpit-topbar-btn--subtle {
+  color: var(--text-muted);
+  background-color: transparent;
+  border-color: transparent;
+  font-size: 12px;
+
+  &:hover {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    background-color: var(--bg-card);
+  }
+}

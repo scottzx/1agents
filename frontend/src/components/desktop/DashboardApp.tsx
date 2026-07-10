@@ -1244,8 +1244,12 @@ export class DashboardApp extends Component<{}, DashboardAppState> {
                                 📋 全局看板
                             </button>
                         </div>
-                        <button class="cockpit-topbar-btn" onClick={this.toggleMock}>
-                            🎮 加载模拟演示
+                        <button
+                            class="cockpit-topbar-btn cockpit-topbar-btn--subtle"
+                            onClick={this.toggleMock}
+                            title="加载像素模拟演示（游戏模式）"
+                        >
+                            演示模式
                         </button>
                         <button class="cockpit-topbar-btn" onClick={this.handleExit}>
                             ↩️ 返回工作台

@@ -5,14 +5,10 @@ import { projectItemService } from '@1agents/core/services/taskService';
 import { AGENT_TYPES, AGENT_TYPE_LABELS, type AgentType } from '../types';
 import * as ui from '../../stores/uiStore';
 
-// Company cockpit (公司驾驶舱) Phase 2 — 看→控.
+// Company cockpit (公司驾驶舱) — Operational Dashboard.
 //
-// Phase 1 rendered the read-only cross-project board. Phase 2 adds a control
-// affordance to each card: dispatch an instruction / 派工 to a project's agent
-// without leaving the big screen. It reuses the existing task-create path
-// (POST /api/agent/project-items via projectItemService.create) — no new orchestration engine,
-// no new backend semantics. A dispatched instruction is just an immediate task
-// assigned to the chosen agent, which the scheduler picks up like any other.
+// Layout priority: risk/blocked → recent activity → project grid.
+// Status rows (op-status-row) surface actionable info without stat-card walls.
 
 interface CockpitProps {
     data: DashboardData;
@@ -26,24 +22,23 @@ const HEALTH_LABEL: Record<ProjectHealth, string> = {
     stalled: '停滞',
     running: '进行中',
     done: '可发射',
-    idle: '休息中',
+    idle: '待机',
 };
 
 function lastActiveText(iso?: string): string {
-    if (!iso) return '暂无活动';
+    if (!iso) return '—';
     const t = new Date(iso).getTime();
-    if (!t) return '暂无活动';
+    if (!t) return '—';
     const mins = Math.floor((Date.now() - t) / 60000);
-    if (mins < 1) return '刚刚活跃';
+    if (mins < 1) return '刚刚';
     if (mins < 60) return `${mins} 分钟前`;
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs} 小时前`;
     return `${Math.floor(hrs / 24)} 天前`;
 }
 
-// DispatchComposer is the per-card 下指令/派工 panel. It is a thin form over
-// projectItemService.create: instruction → task title, agent → assignee, immediate
-// schedule so the scheduler runs it right away.
+// DispatchComposer: per-card 下指令/派工 form. Reuses projectItemService.create
+// (immediate schedule) — no new backend semantics.
 function DispatchComposer({
     project,
     onClose,
@@ -118,10 +113,48 @@ function DispatchComposer({
     );
 }
 
+// StatusRow: compact process-block row used in "需关注" and "最近活动" sections.
+function StatusRow({ p, onOpen, onRefresh }: { p: DashboardProject; onOpen: () => void; onRefresh: () => void }) {
+    const [dispatching, setDispatching] = useState(false);
+    return (
+        <div class={`op-status-row${dispatching ? ' op-status-row--open' : ''}`}>
+            <div class="op-status-row-main" onClick={!dispatching ? onOpen : undefined}>
+                <span class={`op-status-dot op-status-dot--${p.health}`} />
+                <span class="op-status-name">{p.name}</span>
+                <span class="op-status-tags">
+                    {p.blockedTasks > 0 && (
+                        <span class="op-status-tag op-status-tag--danger">⛔ {p.blockedTasks} 阻塞</span>
+                    )}
+                    {p.runningTasks > 0 && p.health !== 'blocked' && (
+                        <span class="op-status-tag">▶ {p.runningTasks} 进行中</span>
+                    )}
+                </span>
+                <span class="op-status-time">{lastActiveText(p.lastEventAt)}</span>
+                {!dispatching && (
+                    <button
+                        class="op-status-action"
+                        title="派工"
+                        onClick={e => {
+                            e.stopPropagation();
+                            setDispatching(true);
+                        }}
+                    >
+                        派工
+                    </button>
+                )}
+            </div>
+            {dispatching && (
+                <DispatchComposer project={p} onClose={() => setDispatching(false)} onDispatched={onRefresh} />
+            )}
+        </div>
+    );
+}
+
+// ProjectCard: bento grid card for the "项目一览" section.
 function ProjectCard({ p, onOpen, onRefresh }: { p: DashboardProject; onOpen: () => void; onRefresh: () => void }) {
     const [dispatching, setDispatching] = useState(false);
     // blocked / stalled cards get the salience treatment (pulse + halo);
-    // stalled additionally dims (降灰) to read as "stuck, no heartbeat".
+    // stalled additionally dims to read as "stuck, no heartbeat".
     const salient = p.health === 'blocked' || p.health === 'stalled';
     const cls = [
         'cockpit-project',
@@ -181,66 +214,93 @@ function ProjectCard({ p, onOpen, onRefresh }: { p: DashboardProject; onOpen: ()
     );
 }
 
-function HudStat({
-    icon,
-    label,
-    value,
-    tone,
-    pulse,
-}: {
-    icon: string;
-    label: string;
-    value: number;
-    tone?: 'danger' | 'success' | 'accent';
-    pulse?: boolean;
-}) {
-    const cls = ['cockpit-hud-stat', tone ? `tone-${tone}` : '', pulse ? 'is-pulse' : ''].filter(Boolean).join(' ');
-    return (
-        <div class={cls}>
-            <span class="cockpit-hud-icon">{icon}</span>
-            <span class="cockpit-hud-value">{value}</span>
-            <span class="cockpit-hud-label">{label}</span>
-        </div>
-    );
-}
-
 export function DashboardCockpit({ data, companyName, onOpenProject, onRefresh }: CockpitProps) {
     const { summary, projects } = data;
 
+    // Risk-first: blocked/stalled items need immediate attention.
+    const attentionItems = projects.filter(p => p.health === 'blocked' || p.health === 'stalled');
+
+    // Recent activity: top 6 projects sorted by lastEventAt desc.
+    const recentItems = [...projects]
+        .filter(p => p.lastEventAt)
+        .sort((a, b) => new Date(b.lastEventAt!).getTime() - new Date(a.lastEventAt!).getTime())
+        .slice(0, 6);
+
     return (
         <div class="cockpit-root">
-            <header class="cockpit-hud">
-                <div class="cockpit-hud-title">
-                    <span class="cockpit-company">🏢 {companyName}</span>
-                    <span class="cockpit-subtitle">公司驾驶舱 · 项目大盘</span>
-                </div>
-                <div class="cockpit-hud-stats">
-                    <HudStat icon="🟢" label="在跑" value={summary.runningProjects} tone="success" />
-                    <HudStat
-                        icon="⛔"
-                        label="阻塞"
-                        value={summary.blockedProjects}
-                        tone="danger"
-                        pulse={summary.blockedProjects > 0}
-                    />
-                    <HudStat icon="👤" label="在岗 Agent" value={summary.activeAgents} tone="accent" />
-                    <HudStat icon="🚀" label="可发射" value={summary.doneProjects} />
-                    <HudStat icon="✅" label="今日交付" value={summary.deliveredTasks} />
+            {/* Compact metrics bar — no stat-card wall */}
+            <div class="op-metrics-bar">
+                <span class="op-metrics-company">{companyName}</span>
+                <div class="op-metrics-stats">
+                    <span class="op-metric">
+                        <span class={`op-metric-num${summary.runningProjects > 0 ? ' op-metric-num--success' : ''}`}>
+                            {summary.runningProjects}
+                        </span>{' '}
+                        在跑
+                    </span>
+                    <span class="op-metric">
+                        <span class={`op-metric-num${summary.blockedProjects > 0 ? ' op-metric-num--danger' : ''}`}>
+                            {summary.blockedProjects}
+                        </span>{' '}
+                        阻塞
+                    </span>
+                    <span class="op-metric">
+                        <span class="op-metric-num">{summary.activeAgents}</span> Agent
+                    </span>
+                    <span class="op-metric">
+                        <span class="op-metric-num">{summary.deliveredTasks}</span> 今日交付
+                    </span>
                 </div>
                 <button class="cockpit-refresh-btn" onClick={onRefresh} title="刷新大盘数据">
                     ↻ 刷新
                 </button>
-            </header>
+            </div>
 
-            {projects.length === 0 ? (
-                <div class="cockpit-empty">还没有项目。去工作台创建一个项目，它就会出现在这里。</div>
-            ) : (
-                <main class="cockpit-board bento-grid">
-                    {projects.map(p => (
-                        <ProjectCard key={p.id} p={p} onOpen={() => onOpenProject(p.id)} onRefresh={onRefresh} />
-                    ))}
-                </main>
+            {/* Risk / blocked — priority section */}
+            {attentionItems.length > 0 && (
+                <section class="op-section">
+                    <div class="op-section-header">
+                        <span class="op-section-title op-section-title--danger">需关注</span>
+                        <span class="op-section-badge op-section-badge--danger">{attentionItems.length}</span>
+                    </div>
+                    <div class="op-status-list">
+                        {attentionItems.map(p => (
+                            <StatusRow key={p.id} p={p} onOpen={() => onOpenProject(p.id)} onRefresh={onRefresh} />
+                        ))}
+                    </div>
+                </section>
             )}
+
+            {/* Recent activity — status-row process block */}
+            {recentItems.length > 0 && (
+                <section class="op-section">
+                    <div class="op-section-header">
+                        <span class="op-section-title">最近活动</span>
+                    </div>
+                    <div class="op-status-list">
+                        {recentItems.map(p => (
+                            <StatusRow key={p.id} p={p} onOpen={() => onOpenProject(p.id)} onRefresh={onRefresh} />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* Project grid overview */}
+            <section class="op-section">
+                <div class="op-section-header">
+                    <span class="op-section-title">项目一览</span>
+                    {projects.length > 0 && <span class="op-section-badge">{projects.length}</span>}
+                </div>
+                {projects.length === 0 ? (
+                    <div class="cockpit-empty">还没有项目。去工作台创建一个项目，它就会出现在这里。</div>
+                ) : (
+                    <main class="cockpit-board bento-grid">
+                        {projects.map(p => (
+                            <ProjectCard key={p.id} p={p} onOpen={() => onOpenProject(p.id)} onRefresh={onRefresh} />
+                        ))}
+                    </main>
+                )}
+            </section>
         </div>
     );
 }
