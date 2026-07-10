@@ -47,10 +47,20 @@ const runnerIdleTimeout = 10 * time.Minute
 // marked the task running; Execute releases the lock and persists the
 // terminal status on exit.
 func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
+	// When an interactive client takes the session over (the
+	// "session_taken_over" case in the read loop below), it becomes the owner
+	// of both the run and the workspace lock — so this runner must NOT release
+	// the lock on the way out, or the workspace would be free for a concurrent
+	// run while the browser session is still driving the agent. The browser
+	// bridge's readFromServerLoop releases the lock when that session ends.
+	handedOff := false
 	// Release the workspace lock, then immediately re-tick so any task that
 	// was blocked on this one advances at once instead of waiting up to 5s
 	// for the next scheduler tick (即时接力).
 	defer func() {
+		if handedOff {
+			return
+		}
 		r.scheduler.Lock.Release(workspacePath)
 		r.scheduler.Tick()
 	}()
@@ -177,6 +187,20 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 			// Politely close the agent session so the runtime doesn't keep
 			// an idle process around for a finished scheduled task.
 			_ = conn.WriteJSON(WsMessage{Action: "close_session", SessionID: sessionID})
+			return
+		case "session_taken_over":
+			// A browser opened this running session from the task timeline and
+			// took over the 1acp connection (ensure_session reassigned
+			// session.ws to it). Every further turn event — including the final
+			// `done` — now goes to that browser, which owns finalization via the
+			// chat-WS bridge (handleTaskSessionDone records the reply and, unless
+			// the user hit 停止, completes the task). Hand off cleanly instead of
+			// blocking here until idleTimeout and then recording a false failure:
+			// leave the task and its session branch running as-is, keep the lock
+			// (handedOff → the browser bridge releases it when its session ends),
+			// and step back. No close_session — the user is driving it now.
+			log.Printf("[runner] Task %s session %s taken over by an interactive client; handing off", task.ID, sessionID)
+			handedOff = true
 			return
 		case "error":
 			r.finish(workspacePath, task.ID, sessionID, TaskStatusFailed, "agent error: "+msg.Message)
