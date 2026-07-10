@@ -720,10 +720,10 @@ export function TaskDetail({
                         <span class="topic-dot">·</span>
                         <span class={`task-status-badge ${task.status}`}>{statusLabel}</span>
                         {task.milestone && (
-                            <>
+                            <Fragment>
                                 <span class="topic-dot">·</span>
                                 <span>{task.milestone}</span>
-                            </>
+                            </Fragment>
                         )}
                     </div>
                     <h3 class="gh-title">
