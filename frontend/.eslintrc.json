@@ -4,10 +4,20 @@
     {
       "files": ["**/*.ts", "**/*.tsx"],
       "parserOptions": {
-        "jsxPragma": "h"
+        "jsxPragma": "h",
+        "jsxFragmentFactory": "Fragment"
       },
       "rules": {
         "@typescript-eslint/no-duplicate-enum-values": "off"
+      }
+    },
+    {
+      "files": ["**/RemotionPlayerIsland.tsx"],
+      "parserOptions": {
+        "jsxPragma": "React"
+      },
+      "rules": {
+        "@typescript-eslint/no-unused-vars": ["error", { "args": "none", "varsIgnorePattern": "^_" }]
       }
     },
     {

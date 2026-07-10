@@ -1,11 +1,14 @@
 import { h } from 'preact';
-import { useState, useEffect, useMemo } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
+import { mountRemotionIsland } from './RemotionPlayerIsland';
+import type { RemotionIslandHandle } from './RemotionPlayerIsland';
 
 import * as wsStore from '../../stores/workspaceStore';
 import type { AppViewProps } from '../../modules/appViewRegistry';
 import { StudioRecorder } from '../../utils/studioRecorder';
 import { scApi } from './api';
 import type { SCProject, SCSentence, SCHighlight } from './api';
+import type { Timeline, TimelineClip } from './timeline';
 
 /** A transcript sentence merged with its 1acp highlight grading (by index). */
 interface Row extends SCSentence {
@@ -51,6 +54,18 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
     const [isRecording, setIsRecording] = useState(false);
     const [busy, setBusy] = useState('');
 
+    // ── timeline draft state (#19) ─────────────────────────────────────────────
+    const [draftTimeline, setDraftTimeline] = useState<Timeline | null>(null);
+    const [savedTimeline, setSavedTimeline] = useState<Timeline | null>(null);
+    const [skippedRows, setSkippedRows] = useState<Row[]>([]);
+    const [timelineSaving, setTimelineSaving] = useState(false);
+    const [timelineLoading, setTimelineLoading] = useState(true);
+    const [previewErr, setPreviewErr] = useState('');
+    const [invalidTimeline, setInvalidTimeline] = useState(false);
+
+    const remotionContainerRef = useRef<HTMLDivElement | null>(null);
+    const islandRef = useRef<RemotionIslandHandle | null>(null);
+
     const loadProject = async () => {
         if (!ws) return;
         try {
@@ -93,6 +108,50 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
         const id = setInterval(() => loadRows(sel), 4000);
         return () => clearInterval(id);
     }, [ws, sel]);
+
+    // Mount the Remotion React island; unmount when tab is hidden/closed.
+    useEffect(() => {
+        const container = remotionContainerRef.current;
+        if (!container) return;
+        const island = mountRemotionIsland(container, msg => setPreviewErr(msg));
+        islandRef.current = island;
+        return () => {
+            island.unmount();
+            islandRef.current = null;
+        };
+    }, []);
+
+    // Sync active timeline + asset URL to the Remotion island whenever either changes.
+    useEffect(() => {
+        const activeTimeline = draftTimeline ?? savedTimeline;
+        const assetUrl = ws && activeTimeline ? scApi.assetFileUrl(ws, activeTimeline.assetId) : null;
+        islandRef.current?.update(activeTimeline, assetUrl);
+    }, [draftTimeline, savedTimeline, ws]);
+
+    // Reset draft/preview state when selected asset changes.
+    useEffect(() => {
+        setDraftTimeline(null);
+        setSkippedRows([]);
+        setPreviewErr('');
+        setInvalidTimeline(false);
+    }, [sel]);
+
+    // Load the persisted timeline when the workspace path is resolved.
+    useEffect(() => {
+        if (!ws) return;
+        setTimelineLoading(true);
+        const load = async () => {
+            try {
+                const { timeline } = await scApi.getTimeline(ws);
+                setSavedTimeline(timeline);
+            } catch {
+                setSavedTimeline(null);
+            } finally {
+                setTimelineLoading(false);
+            }
+        };
+        void load();
+    }, [ws]);
 
     const doImport = async () => {
         if (!ws || !importPath) return;
@@ -162,6 +221,67 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
         }
     };
 
+    /**
+     * Build a draft Timeline (#19) from the currently picked rows of the
+     * selected asset. Rows with missing or invalid start/end go to skippedRows.
+     * Generation: join by `i` (already in `rows`), sort by start asc, 1 clip per
+     * row, no merge. text = corrected_text || transcript.text.
+     */
+    const buildDraft = () => {
+        if (!sel) return;
+        const picked = rows
+            .filter(r => r.picked)
+            .slice()
+            .sort((a, b) => a.start - b.start);
+        const clips: TimelineClip[] = [];
+        const skipped: Row[] = [];
+        for (const r of picked) {
+            if (Number.isFinite(r.start) && Number.isFinite(r.end) && r.start >= 0 && r.start < r.end) {
+                clips.push({
+                    startMs: r.start,
+                    endMs: r.end,
+                    text: r.corrected || r.text,
+                    sourceSentenceIds: [r.i],
+                });
+            } else {
+                skipped.push(r);
+            }
+        }
+        setSkippedRows(skipped);
+        setPreviewErr('');
+        if (clips.length === 0) {
+            setErr('没有可用片段（所有选中行时间戳缺失或非法）。');
+            setInvalidTimeline(true);
+            setDraftTimeline(null);
+            return;
+        }
+        setInvalidTimeline(false);
+        setDraftTimeline({ version: 1, id: 'main', assetId: sel, clips });
+        setErr('');
+    };
+
+    const saveDraft = async () => {
+        if (!draftTimeline || !ws) return;
+        setTimelineSaving(true);
+        try {
+            const { timeline } = await scApi.saveTimeline(ws, draftTimeline);
+            setSavedTimeline(timeline);
+            setDraftTimeline(null);
+            setPreviewErr('');
+        } catch (e) {
+            setErr(errMsg(e));
+        } finally {
+            setTimelineSaving(false);
+        }
+    };
+
+    const retryPreview = () => {
+        setPreviewErr('');
+        const activeTimeline = draftTimeline ?? savedTimeline;
+        if (!activeTimeline || !ws) return;
+        islandRef.current?.update(activeTimeline, scApi.assetFileUrl(ws, activeTimeline.assetId));
+    };
+
     const togglePick = async (row: Row) => {
         const next = !row.picked;
         setRows(rs => rs.map(r => (r.i === row.i ? { ...r, picked: next } : r)));
@@ -215,6 +335,30 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
                         {label}
                     </div>
                 ))}
+            </div>
+
+            <div class="speech-clip-preview-zone">
+                <div class="speech-clip-preview-header">
+                    <span class="speech-clip-preview-label">预览</span>
+                    {timelineLoading && <span class="speech-clip-timeline-badge is-loading">加载中…</span>}
+                    {!timelineLoading && draftTimeline && (
+                        <span class="speech-clip-timeline-badge is-draft">草稿 · 未保存</span>
+                    )}
+                    {!timelineLoading && savedTimeline && !draftTimeline && (
+                        <span class="speech-clip-timeline-badge is-saved">已持久化</span>
+                    )}
+                    {!timelineLoading && !draftTimeline && !savedTimeline && !invalidTimeline && (
+                        <span class="speech-clip-timeline-badge is-empty">暂无时间轴</span>
+                    )}
+                    {invalidTimeline && <span class="speech-clip-timeline-badge is-invalid">时间轴无效</span>}
+                    {previewErr && (
+                        <button class="speech-clip-btn-sm" onClick={retryPreview}>
+                            重试预览
+                        </button>
+                    )}
+                </div>
+                {previewErr && <div class="speech-clip-preview-error">预览失败：{previewErr}</div>}
+                <div class="speech-clip-remotion-preview" ref={remotionContainerRef} />
             </div>
 
             {err && <div class="speech-clip-error">{err}</div>}
@@ -332,6 +476,52 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
                         </table>
                     </div>
                 </div>
+            </div>
+
+            {/* Timeline controls — #19 */}
+            <div class="speech-clip-timeline">
+                <div class="speech-clip-timeline-actions">
+                    <button class="speech-clip-btn-sm" disabled={pickedCount === 0 || !sel} onClick={buildDraft}>
+                        {draftTimeline ? '重新生成' : '生成 Draft Timeline'}
+                    </button>
+                    {draftTimeline && (
+                        <button class="speech-clip-btn-sm" disabled={timelineSaving} onClick={saveDraft}>
+                            {timelineSaving ? '保存中…' : '保存 Timeline'}
+                        </button>
+                    )}
+                </div>
+
+                {draftTimeline && (
+                    <div class="speech-clip-timeline-panel is-draft">
+                        <span>
+                            素材 {draftTimeline.assetId} · {draftTimeline.clips.length} 片段
+                        </span>
+                    </div>
+                )}
+
+                {savedTimeline && !draftTimeline && (
+                    <div class="speech-clip-timeline-panel is-saved">
+                        <span>
+                            素材 {savedTimeline.assetId} · {savedTimeline.clips.length} 片段
+                        </span>
+                    </div>
+                )}
+
+                {skippedRows.length > 0 && (
+                    <div class="speech-clip-timeline-skipped">
+                        <div class="speech-clip-timeline-skipped-title">
+                            跳过 {skippedRows.length} 行（缺少或非法时间戳）
+                        </div>
+                        {skippedRows.map(r => (
+                            <div class="speech-clip-timeline-skipped-row">
+                                <span class="speech-clip-td-time">
+                                    {fmtTime(r.start)} → {fmtTime(r.end)}
+                                </span>
+                                <span>{r.corrected || r.text}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

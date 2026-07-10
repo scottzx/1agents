@@ -2,7 +2,11 @@
  * speech_clip (口播剪辑) API client — thin fetch wrappers over the backend
  * /api/speech_clip/* routes. Domain data is filesystem jsonl on the backend;
  * these calls read/trigger it via the task kernel.
+ *
+ * Timeline helpers implement #19: getTimeline / saveTimeline / assetFileUrl.
  */
+
+import type { Timeline } from './timeline';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -99,4 +103,19 @@ export const scApi = {
             headers: JSON_HEADERS,
             body: JSON.stringify({ workspacePath: ws, assetId: asset, i, picked }),
         }),
+
+    // ── timeline (#19) ────────────────────────────────────────────────────────
+
+    getTimeline: (ws: string): Promise<{ timeline: Timeline | null }> =>
+        req(`/api/speech_clip/timeline?${q({ workspacePath: ws })}`),
+
+    saveTimeline: (ws: string, timeline: Timeline): Promise<{ ok: boolean; timeline: Timeline }> =>
+        req('/api/speech_clip/timeline', {
+            method: 'POST',
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ workspacePath: ws, timeline }),
+        }),
+
+    assetFileUrl: (ws: string, assetId: string): string =>
+        `/api/speech_clip/assets/file?${q({ workspacePath: ws, assetId })}`,
 };
