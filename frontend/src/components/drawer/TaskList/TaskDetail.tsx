@@ -183,6 +183,16 @@ export function TaskDetail({
     const followUpText = useSignal('');
     const followUpBusy = useSignal(false);
 
+    // Which session branches are expanded. Default collapsed; running branches
+    // auto-expand so in-progress work is always visible.
+    const expandedBranches = useSignal(new Set<string>());
+    const toggleBranch = (id: string) => {
+        const next = new Set(expandedBranches.value);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        expandedBranches.value = next;
+    };
+
     // GitHub detail view tabs & preview state
     const [activeTab, setActiveTab] = useState<'conversation' | 'subtasks' | 'relations'>('conversation');
     const [composerTab, setComposerTab] = useState<'write' | 'preview'>('write');
@@ -627,13 +637,13 @@ export function TaskDetail({
         const children = (childrenBySession.get(s.id) || [])
             .slice()
             .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        if (children.length === 0) return; // session not linked to any reply yet
+        if (children.length === 0 && s.status !== 'running') return;
         timelineNodes.push({
             kind: 'branch',
             session: s,
             num: i + 1,
             children,
-            anchor: children[0].createdAt,
+            anchor: children[0]?.createdAt ?? s.createdAt,
         });
     });
     for (const rp of looseReplies) {
@@ -841,105 +851,87 @@ export function TaskDetail({
                                 </div>
                             </div>
 
-                            {/* Pinned Acceptance Criteria Card. Requirements/bugs need it
-                                (it gates 确认,可排期); only fuzzy discussions hide it. */}
+                            {/* Acceptance criteria — compact L1 section (edited via description frontmatter). */}
                             {!isDiscussion && (
-                                <div class="gh-comment-card is-user">
-                                    <div class="gh-comment-header">
-                                        <div class="gh-comment-header-left">
-                                            <span>
-                                                ✅ <strong>{t('task.detail.acceptanceTitle', lang)}</strong>
-                                            </span>
-                                        </div>
-                                        {/* Acceptance lives in the description's YAML frontmatter
-                                            (acceptance:) — edit it via 描述 编辑, not here. */}
+                                <div class="task-l1-section">
+                                    <div class="task-l1-section-header">
+                                        <span class="task-l1-section-title">
+                                            {t('task.detail.acceptanceTitle', lang)}
+                                        </span>
                                         <span class="gh-acceptance-hint">在「描述」的 frontmatter 中编辑</span>
                                     </div>
-                                    <div class="gh-comment-body">
-                                        {acceptanceLines.length > 0 ? (
-                                            <ul class="acceptance-list">
-                                                {acceptanceLines.map((a, i) => (
-                                                    <li key={i}>{a}</li>
-                                                ))}
-                                            </ul>
-                                        ) : task.acceptanceCriteria ? (
-                                            <div
-                                                class="markdown-body task-desc-md"
-                                                dangerouslySetInnerHTML={{
-                                                    __html: renderMarkdown(task.acceptanceCriteria, mdCtx),
-                                                }}
-                                            />
-                                        ) : (
-                                            <span class="task-desc-empty">
-                                                {t('task.detail.acceptanceEmpty', lang)}
-                                            </span>
-                                        )}
-                                    </div>
+                                    {acceptanceLines.length > 0 ? (
+                                        <ul class="acceptance-list">
+                                            {acceptanceLines.map((a, i) => (
+                                                <li key={i}>{a}</li>
+                                            ))}
+                                        </ul>
+                                    ) : task.acceptanceCriteria ? (
+                                        <div
+                                            class="markdown-body task-desc-md"
+                                            dangerouslySetInnerHTML={{
+                                                __html: renderMarkdown(task.acceptanceCriteria, mdCtx),
+                                            }}
+                                        />
+                                    ) : (
+                                        <span class="task-desc-empty">{t('task.detail.acceptanceEmpty', lang)}</span>
+                                    )}
                                 </div>
                             )}
 
-                            {/* Embedded checklist — the task's in-progress ledger.
-                                Interactive: tick / add / remove, persisted via PATCH. */}
+                            {/* Checklist — compact L1 section: tick / add / remove, persisted via PATCH. */}
                             {!isDiscussion && (
-                                <div class="gh-comment-card is-user task-checklist-card">
-                                    <div class="gh-comment-header">
-                                        <div class="gh-comment-header-left">
-                                            <span>
-                                                ☑️ <strong>清单</strong>
-                                                {(task.checklist?.length ?? 0) > 0 && (
-                                                    <span class="task-checklist-progress">
-                                                        {`  ${task.checklist!.filter(c => c.done).length}/${
-                                                            task.checklist!.length
-                                                        }`}
-                                                    </span>
-                                                )}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div class="gh-comment-body">
+                                <div class="task-l1-section task-l1-checklist">
+                                    <div class="task-l1-section-header">
+                                        <span class="task-l1-section-title">清单</span>
                                         {(task.checklist?.length ?? 0) > 0 && (
-                                            <ul class="task-checklist-view">
-                                                {task.checklist!.map((c, i) => (
-                                                    <li key={i} class={c.done ? 'done' : ''}>
-                                                        <label>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={c.done}
-                                                                onChange={() => toggleChecklistItem(i)}
-                                                            />
-                                                            <span>{c.text}</span>
-                                                        </label>
-                                                        <button
-                                                            type="button"
-                                                            class="task-checklist-remove"
-                                                            title="删除"
-                                                            onClick={() => removeChecklistItem(i)}
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </li>
-                                                ))}
-                                            </ul>
+                                            <span class="task-checklist-progress">
+                                                {task.checklist!.filter(c => c.done).length}/{task.checklist!.length}
+                                            </span>
                                         )}
-                                        <div class="task-checklist-add-row">
-                                            <input
-                                                type="text"
-                                                placeholder="添加子项…"
-                                                value={newChecklistText}
-                                                onInput={(e: Event) =>
-                                                    setNewChecklistText((e.target as HTMLInputElement).value)
+                                    </div>
+                                    {(task.checklist?.length ?? 0) > 0 && (
+                                        <ul class="task-checklist-view">
+                                            {task.checklist!.map((c, i) => (
+                                                <li key={i} class={c.done ? 'done' : ''}>
+                                                    <label>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={c.done}
+                                                            onChange={() => toggleChecklistItem(i)}
+                                                        />
+                                                        <span>{c.text}</span>
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        class="task-checklist-remove"
+                                                        title="删除"
+                                                        onClick={() => removeChecklistItem(i)}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                    <div class="task-checklist-add-row">
+                                        <input
+                                            type="text"
+                                            placeholder="添加子项…"
+                                            value={newChecklistText}
+                                            onInput={(e: Event) =>
+                                                setNewChecklistText((e.target as HTMLInputElement).value)
+                                            }
+                                            onKeyDown={(e: KeyboardEvent) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    addChecklistItem();
                                                 }
-                                                onKeyDown={(e: KeyboardEvent) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        addChecklistItem();
-                                                    }
-                                                }}
-                                            />
-                                            <button type="button" onClick={addChecklistItem}>
-                                                添加
-                                            </button>
-                                        </div>
+                                            }}
+                                        />
+                                        <button type="button" onClick={addChecklistItem}>
+                                            添加
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -953,9 +945,18 @@ export function TaskDetail({
                                     const { session, num, children } = node;
                                     const lastChildId = children[children.length - 1]?.id;
                                     const running = session.status === 'running';
+                                    // Running branches auto-expand so in-progress work is always visible.
+                                    const isExpanded = expandedBranches.value.has(session.id) || running;
                                     return (
-                                        <div key={session.id} class="task-branch">
-                                            <div class="task-branch-header">
+                                        <div key={session.id} class={`task-branch${isExpanded ? ' is-expanded' : ''}`}>
+                                            <button
+                                                type="button"
+                                                class="task-branch-header"
+                                                onClick={() => {
+                                                    if (!running) toggleBranch(session.id);
+                                                }}
+                                            >
+                                                <span class="task-branch-caret">{isExpanded ? '▾' : '▸'}</span>
                                                 <span class="task-branch-badge">
                                                     {t('task.detail.sessionBadge', lang).replace('{num}', String(num))}
                                                 </span>
@@ -965,72 +966,83 @@ export function TaskDetail({
                                                         ? t('task.detail.sessionRunning', lang)
                                                         : t('task.detail.sessionIdle', lang)}
                                                 </span>
-                                            </div>
-                                            <div class="task-branch-children">
-                                                {children.map(rp => renderReplyCard(rp))}
-                                            </div>
-                                            <div class="task-branch-actions">
-                                                {!closed && (
-                                                    <button
-                                                        type="button"
-                                                        class="task-branch-followup-btn"
-                                                        onClick={() => {
-                                                            followUpOpen.value =
-                                                                followUpOpen.value === session.id ? '' : session.id;
-                                                            followUpText.value = '';
-                                                        }}
-                                                    >
-                                                        {t('task.detail.followupBtn', lang)}
-                                                    </button>
+                                                {!running && children.length > 0 && (
+                                                    <span class="task-branch-summary">{children.length} 条记录</span>
                                                 )}
-                                                <button
-                                                    type="button"
-                                                    class="timeline-session-link"
-                                                    onClick={() =>
-                                                        openSession(
-                                                            session.id,
-                                                            session.agentType || 'claudecode',
-                                                            lastChildId
-                                                        )
-                                                    }
-                                                >
-                                                    {t('task.detail.openSession', lang)}
-                                                </button>
-                                            </div>
-                                            {followUpOpen.value === session.id && (
-                                                <div class="task-branch-followup">
-                                                    <textarea
-                                                        rows={3}
-                                                        placeholder={t('task.detail.followupPlaceholder', lang).replace(
-                                                            '{num}',
-                                                            String(num)
+                                            </button>
+                                            {isExpanded && (
+                                                <div class="task-branch-body">
+                                                    <div class="task-branch-children">
+                                                        {children.map(rp => renderReplyCard(rp))}
+                                                    </div>
+                                                    <div class="task-branch-actions">
+                                                        {!closed && (
+                                                            <button
+                                                                type="button"
+                                                                class="task-branch-followup-btn"
+                                                                onClick={() => {
+                                                                    followUpOpen.value =
+                                                                        followUpOpen.value === session.id
+                                                                            ? ''
+                                                                            : session.id;
+                                                                    followUpText.value = '';
+                                                                }}
+                                                            >
+                                                                {t('task.detail.followupBtn', lang)}
+                                                            </button>
                                                         )}
-                                                        value={followUpText.value}
-                                                        onInput={(e: Event) =>
-                                                            (followUpText.value = (
-                                                                e.target as HTMLTextAreaElement
-                                                            ).value)
-                                                        }
-                                                    />
-                                                    <div class="task-branch-followup-actions">
                                                         <button
                                                             type="button"
-                                                            class="gh-close-btn"
-                                                            onClick={() => (followUpOpen.value = '')}
+                                                            class="timeline-session-link"
+                                                            onClick={() =>
+                                                                openSession(
+                                                                    session.id,
+                                                                    session.agentType || 'claudecode',
+                                                                    lastChildId
+                                                                )
+                                                            }
                                                         >
-                                                            {t('common.cancel', lang)}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            class="gh-submit-btn"
-                                                            disabled={followUpBusy.value || !followUpText.value.trim()}
-                                                            onClick={() => submitBranchFollowUp(session)}
-                                                        >
-                                                            {followUpBusy.value
-                                                                ? t('task.detail.followupSubmitting', lang)
-                                                                : t('task.detail.followupRun', lang)}
+                                                            {t('task.detail.openSession', lang)}
                                                         </button>
                                                     </div>
+                                                    {followUpOpen.value === session.id && (
+                                                        <div class="task-branch-followup">
+                                                            <textarea
+                                                                rows={3}
+                                                                placeholder={t(
+                                                                    'task.detail.followupPlaceholder',
+                                                                    lang
+                                                                ).replace('{num}', String(num))}
+                                                                value={followUpText.value}
+                                                                onInput={(e: Event) =>
+                                                                    (followUpText.value = (
+                                                                        e.target as HTMLTextAreaElement
+                                                                    ).value)
+                                                                }
+                                                            />
+                                                            <div class="task-branch-followup-actions">
+                                                                <button
+                                                                    type="button"
+                                                                    class="gh-close-btn"
+                                                                    onClick={() => (followUpOpen.value = '')}
+                                                                >
+                                                                    {t('common.cancel', lang)}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    class="gh-submit-btn"
+                                                                    disabled={
+                                                                        followUpBusy.value || !followUpText.value.trim()
+                                                                    }
+                                                                    onClick={() => submitBranchFollowUp(session)}
+                                                                >
+                                                                    {followUpBusy.value
+                                                                        ? t('task.detail.followupSubmitting', lang)
+                                                                        : t('task.detail.followupRun', lang)}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1076,7 +1088,7 @@ export function TaskDetail({
 
                                         <div class="gh-check-item">
                                             <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
-                                                {hasAcceptance ? '✓' : 'warn'}
+                                                {hasAcceptance ? '✓' : '⚠'}
                                             </span>
                                             <span>
                                                 {t('task.detail.acceptanceLabel', lang)}
@@ -1088,7 +1100,7 @@ export function TaskDetail({
 
                                         <div class="gh-check-item">
                                             <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>
-                                                {allDepsDone ? '✓' : 'fail'}
+                                                {allDepsDone ? '✓' : '✕'}
                                             </span>
                                             <span>
                                                 {t('task.detail.depsLabel', lang)}

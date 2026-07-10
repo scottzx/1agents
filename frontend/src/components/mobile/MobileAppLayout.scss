@@ -154,7 +154,6 @@
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 20px;
-  box-shadow: var(--shadow-sm);
 }
 
 .mobile-menu-row {
@@ -162,6 +161,7 @@
   align-items: center;
   gap: 14px;
   width: 100%;
+  min-height: 44px;
   padding: 14px 16px;
   background: transparent;
   border: none;
@@ -247,8 +247,10 @@
     font-size: 14px;
     font-weight: 500;
     gap: 4px;
-    padding: 6px;
-    margin-right: 12px;
+    padding: 0;
+    min-width: 44px;
+    min-height: 44px;
+    margin-right: 4px;
     outline: none;
     flex-shrink: 0;
 
@@ -604,7 +606,6 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: var(--shadow-sm);
 
   .banner-icon {
     width: 32px;
@@ -724,6 +725,7 @@
     justify-content: center;
     width: 100%;
     max-width: 240px;
+    min-height: 44px;
     padding: 12px;
     border-radius: 10px;
     border: none;
@@ -732,7 +734,6 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: var(--shadow-sm);
     transition: all 0.2s ease;
     outline: none;
 
@@ -826,6 +827,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 44px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
@@ -966,7 +968,7 @@
 
       &.active, &.running {
         background-color: rgba(var(--success-rgb), 0.15);
-        color: #22c55e;
+        color: var(--success-fg);
       }
     }
 
