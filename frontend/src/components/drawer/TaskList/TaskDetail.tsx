@@ -1,4 +1,4 @@
-import { h, Fragment } from 'preact';
+import { h } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
@@ -291,6 +291,15 @@ export function TaskDetail({
         return clean.slice(0, 2).toUpperCase();
     };
 
+    const replyExcerpt = (text: string, max = 50) => {
+        const plain = text
+            .replace(/```[\s\S]*?```/g, ' ')
+            .replace(/[#*_`>\-[\]()]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return plain.length > max ? `${plain.slice(0, max)}...` : plain;
+    };
+
     // A single reply bubble, reused for standalone comments and branch children.
     const renderReplyCard = (rp: Reply) => {
         const isAgent = rp.author.kind === 'agent';
@@ -316,6 +325,161 @@ export function TaskDetail({
             </div>
         );
     };
+
+    const renderBranchNode = (session: SessionMetadata, num: number, children: Reply[]) => {
+        const lastChildId = children[children.length - 1]?.id;
+        const running = session.status === 'running';
+        // Running branches auto-expand so in-progress work is always visible.
+        const isExpanded = expandedBranches.value.has(session.id) || running;
+        const toggleFollowUp = () => {
+            followUpOpen.value = followUpOpen.value === session.id ? '' : session.id;
+            followUpText.value = '';
+        };
+
+        return (
+            <div key={session.id} class={`task-branch${isExpanded ? ' is-expanded' : ''}`}>
+                <button
+                    type="button"
+                    class="task-branch-header"
+                    onClick={() => {
+                        if (!running) toggleBranch(session.id);
+                    }}
+                >
+                    <span class="task-branch-caret">{isExpanded ? '▾' : '▸'}</span>
+                    <span class="task-branch-badge">#{num} Agent 回帖</span>
+                    <span class="task-branch-agent">{session.agentType}</span>
+                    <span class={`task-branch-status${running ? ' running' : ''}`}>
+                        {running ? '正在处理' : '已处理'}
+                    </span>
+                    {children.length > 0 && <span class="task-branch-summary">{replyExcerpt(children[0].text)}</span>}
+                </button>
+                {isExpanded && children.length > 0 && (
+                    <div class="task-branch-children">{children.map(rp => renderReplyCard(rp))}</div>
+                )}
+                {isExpanded && (
+                    <div class="task-branch-actions">
+                        {!closed && (
+                            <button type="button" class="task-branch-followup-btn" onClick={toggleFollowUp}>
+                                {t('task.detail.followupBtn', lang)}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            class="timeline-session-link"
+                            onClick={() => openSession(session.id, session.agentType || 'claudecode', lastChildId)}
+                        >
+                            {t('task.detail.openSession', lang)}
+                        </button>
+                    </div>
+                )}
+                {isExpanded && followUpOpen.value === session.id && (
+                    <div class="task-branch-followup">
+                        <textarea
+                            rows={3}
+                            placeholder={t('task.detail.followupPlaceholder', lang).replace('{num}', String(num))}
+                            value={followUpText.value}
+                            onInput={(e: Event) => (followUpText.value = (e.target as HTMLTextAreaElement).value)}
+                        />
+                        <div class="task-branch-followup-actions">
+                            <button type="button" class="gh-close-btn" onClick={() => (followUpOpen.value = '')}>
+                                {t('common.cancel', lang)}
+                            </button>
+                            <button
+                                type="button"
+                                class="gh-submit-btn"
+                                disabled={followUpBusy.value || !followUpText.value.trim()}
+                                onClick={() => submitBranchFollowUp(session)}
+                            >
+                                {followUpBusy.value
+                                    ? t('task.detail.followupSubmitting', lang)
+                                    : t('task.detail.followupRun', lang)}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderExecutionBox = () => (
+        <div class="gh-merge-box topic-execution-box">
+            <div class={`gh-merge-icon-col status-${task!.status}`}>
+                {task!.status === 'completed' && '✓'}
+                {task!.status === 'running' && '●'}
+                {task!.status === 'failed' && '✗'}
+                {(task!.status === 'pending' || task!.status === 'queued') && '◷'}
+                {task!.status === 'cancelled' && '⊘'}
+                {task!.status === 'blocked' && '⚠'}
+            </div>
+            <div class="gh-merge-content">
+                <h4 class="gh-merge-title">
+                    {task!.status === 'completed' && t('task.detail.mergeTitle.completed', lang)}
+                    {task!.status === 'running' && t('task.detail.mergeTitle.running', lang)}
+                    {task!.status === 'failed' && t('task.detail.mergeTitle.failed', lang)}
+                    {(task!.status === 'pending' || task!.status === 'queued') &&
+                        t('task.detail.mergeTitle.queued', lang)}
+                    {task!.status === 'cancelled' && t('task.detail.mergeTitle.cancelled', lang)}
+                    {task!.status === 'blocked' && t('task.detail.mergeTitle.blocked', lang)}
+                </h4>
+                <p class="gh-merge-desc">{t('task.detail.checksDesc', lang)}</p>
+
+                <div class="gh-check-item">
+                    <span class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}>
+                        {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
+                    </span>
+                    <span>
+                        {t('task.detail.subtaskCheck', lang)
+                            .replace('{done}', String(completedSubtasks))
+                            .replace('{total}', String(totalSubtasks))}
+                    </span>
+                </div>
+
+                <div class="gh-check-item">
+                    <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
+                        {hasAcceptance ? '✓' : '⚠'}
+                    </span>
+                    <span>
+                        {t('task.detail.acceptanceLabel', lang)}
+                        {hasAcceptance
+                            ? t('task.detail.acceptanceDefined', lang)
+                            : t('task.detail.acceptanceNotSet', lang)}
+                    </span>
+                </div>
+
+                <div class="gh-check-item">
+                    <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>{allDepsDone ? '✓' : '✕'}</span>
+                    <span>
+                        {t('task.detail.depsLabel', lang)}
+                        {allDepsDone
+                            ? t('task.detail.depsOk', lang)
+                            : t('task.detail.depsPending', lang).replace('{n}', String(pendingDeps))}
+                    </span>
+                </div>
+            </div>
+            <div class="gh-merge-actions">
+                {task!.status === 'completed' && (
+                    <button class="gh-merge-btn btn-todo" onClick={toggleIssueState}>
+                        {t('task.detail.reopenTask', lang)}
+                    </button>
+                )}
+                {task!.status === 'running' && (
+                    <button class="gh-merge-btn btn-running" onClick={() => patchTask({ status: 'cancelled' })}>
+                        {t('task.detail.cancelExec', lang)}
+                    </button>
+                )}
+                {task!.status === 'failed' && (
+                    <button class="gh-merge-btn btn-todo" onClick={() => openNewSession('retry')}>
+                        {t('task.detail.retryExec', lang)}
+                    </button>
+                )}
+                {(task!.status === 'pending' || task!.status === 'queued') && (
+                    <button class="gh-merge-btn" onClick={() => openNewSession('start')}>
+                        {t('task.detail.startAgent', lang)}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
 
     const fetchTask = useCallback(async () => {
         try {
@@ -702,11 +866,6 @@ export function TaskDetail({
         <div class="task-dashboard-container task-detail-view" ref={containerRef}>
             {/* GitHub style title header — status icon · title · permalink */}
             <div class="gh-header-top">
-                {onBack && (
-                    <button class="task-back-btn" onClick={onBack}>
-                        {t('task.detail.back', lang)}
-                    </button>
-                )}
                 <span
                     class={`gh-status-icon ${closed ? 'closed' : 'open'}`}
                     title={closed ? t('task.detail.statusClosed', lang) : t('task.detail.statusOpen', lang)}
@@ -715,31 +874,34 @@ export function TaskDetail({
                 </span>
                 <div class="topic-title-group">
                     <div class="topic-kicker">
+                        {onBack && (
+                            <button class="task-back-btn" title={t('task.detail.back', lang)} onClick={onBack} />
+                        )}
                         <span class="topic-type-chip">{typeLabel}</span>
                         <span>{issueStateLabel}</span>
                         <span class="topic-dot">·</span>
                         <span class={`task-status-badge ${task.status}`}>{statusLabel}</span>
-                        {task.milestone && (
-                            <Fragment>
-                                <span class="topic-dot">·</span>
-                                <span>{task.milestone}</span>
-                            </Fragment>
-                        )}
+{task.milestone && (
+                             <span class="topic-meta-pair">
+                                 <span class="topic-dot">·</span>
+                                 <span>{task.milestone}</span>
+                             </span>
+                          )}
+                        {task.number ? (
+                            <button
+                                class="task-permalink-btn"
+                                title={t('task.detail.permalink', lang)}
+                                onClick={copyPermalink}
+                            >
+                                <PermalinkIcon />
+                            </button>
+                        ) : null}
                     </div>
                     <h3 class="gh-title">
                         {task.title} <span class="gh-number">#{task.number || ''}</span>
                     </h3>
                 </div>
                 <div class="gh-actions">
-                    {task.number ? (
-                        <button
-                            class="task-permalink-btn"
-                            title={t('task.detail.permalink', lang)}
-                            onClick={copyPermalink}
-                        >
-                            <PermalinkIcon />
-                        </button>
-                    ) : null}
                     {task.type === 'discussion' && (
                         <button class="task-convert-btn" onClick={convertToRequirement}>
                             {t('task.discussion.convert', lang)}
@@ -966,210 +1128,14 @@ export function TaskDetail({
                                     {replies.length} 条回复 · {task.sessions.length} 个执行分支
                                 </span>
                             </div>
-                            <div class="task-timeline topic-reply-timeline">
+                            <div class="topic-replies">
                                 {timelineNodes.map(node => {
                                     if (node.kind === 'comment') {
                                         return renderReplyCard(node.reply);
                                     }
-                                    const { session, num, children } = node;
-                                    const lastChildId = children[children.length - 1]?.id;
-                                    const running = session.status === 'running';
-                                    // Running branches auto-expand so in-progress work is always visible.
-                                    const isExpanded = expandedBranches.value.has(session.id) || running;
-                                    return (
-                                        <div key={session.id} class={`task-branch${isExpanded ? ' is-expanded' : ''}`}>
-                                            <button
-                                                type="button"
-                                                class="task-branch-header"
-                                                onClick={() => {
-                                                    if (!running) toggleBranch(session.id);
-                                                }}
-                                            >
-                                                <span class="task-branch-caret">{isExpanded ? '▾' : '▸'}</span>
-                                                <span class="task-branch-badge">#{num} Agent 回帖</span>
-                                                <span class="task-branch-agent">{session.agentType}</span>
-                                                <span class={`task-branch-status${running ? ' running' : ''}`}>
-                                                    {running ? '正在处理' : '已处理'}
-                                                </span>
-                                                {!running && children.length > 0 && (
-                                                    <span class="task-branch-summary">
-                                                        {children.length} 条过程记录
-                                                    </span>
-                                                )}
-                                            </button>
-                                            {isExpanded && (
-                                                <div class="task-branch-body">
-                                                    <div class="task-branch-children">
-                                                        {children.map(rp => renderReplyCard(rp))}
-                                                    </div>
-                                                    <div class="task-branch-actions">
-                                                        {!closed && (
-                                                            <button
-                                                                type="button"
-                                                                class="task-branch-followup-btn"
-                                                                onClick={() => {
-                                                                    followUpOpen.value =
-                                                                        followUpOpen.value === session.id
-                                                                            ? ''
-                                                                            : session.id;
-                                                                    followUpText.value = '';
-                                                                }}
-                                                            >
-                                                                {t('task.detail.followupBtn', lang)}
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            type="button"
-                                                            class="timeline-session-link"
-                                                            onClick={() =>
-                                                                openSession(
-                                                                    session.id,
-                                                                    session.agentType || 'claudecode',
-                                                                    lastChildId
-                                                                )
-                                                            }
-                                                        >
-                                                            {t('task.detail.openSession', lang)}
-                                                        </button>
-                                                    </div>
-                                                    {followUpOpen.value === session.id && (
-                                                        <div class="task-branch-followup">
-                                                            <textarea
-                                                                rows={3}
-                                                                placeholder={t(
-                                                                    'task.detail.followupPlaceholder',
-                                                                    lang
-                                                                ).replace('{num}', String(num))}
-                                                                value={followUpText.value}
-                                                                onInput={(e: Event) =>
-                                                                    (followUpText.value = (
-                                                                        e.target as HTMLTextAreaElement
-                                                                    ).value)
-                                                                }
-                                                            />
-                                                            <div class="task-branch-followup-actions">
-                                                                <button
-                                                                    type="button"
-                                                                    class="gh-close-btn"
-                                                                    onClick={() => (followUpOpen.value = '')}
-                                                                >
-                                                                    {t('common.cancel', lang)}
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    class="gh-submit-btn"
-                                                                    disabled={
-                                                                        followUpBusy.value || !followUpText.value.trim()
-                                                                    }
-                                                                    onClick={() => submitBranchFollowUp(session)}
-                                                                >
-                                                                    {followUpBusy.value
-                                                                        ? t('task.detail.followupSubmitting', lang)
-                                                                        : t('task.detail.followupRun', lang)}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
+                                    return renderBranchNode(node.session, node.num, node.children);
                                 })}
                             </div>
-
-                            {/* Merge / Checks Status Box (hidden for discussions — not executable) */}
-                            {!isNonExecutable && (
-                                <div class="gh-merge-box topic-execution-box">
-                                    <div class={`gh-merge-icon-col status-${task.status}`}>
-                                        {task.status === 'completed' && '✓'}
-                                        {task.status === 'running' && '●'}
-                                        {task.status === 'failed' && '✗'}
-                                        {(task.status === 'pending' || task.status === 'queued') && '◷'}
-                                        {task.status === 'cancelled' && '⊘'}
-                                        {task.status === 'blocked' && '⚠'}
-                                    </div>
-                                    <div class="gh-merge-content">
-                                        <h4 class="gh-merge-title">
-                                            {task.status === 'completed' && t('task.detail.mergeTitle.completed', lang)}
-                                            {task.status === 'running' && t('task.detail.mergeTitle.running', lang)}
-                                            {task.status === 'failed' && t('task.detail.mergeTitle.failed', lang)}
-                                            {(task.status === 'pending' || task.status === 'queued') &&
-                                                t('task.detail.mergeTitle.queued', lang)}
-                                            {task.status === 'cancelled' && t('task.detail.mergeTitle.cancelled', lang)}
-                                            {task.status === 'blocked' && t('task.detail.mergeTitle.blocked', lang)}
-                                        </h4>
-                                        <p class="gh-merge-desc">{t('task.detail.checksDesc', lang)}</p>
-
-                                        <div class="gh-check-item">
-                                            <span
-                                                class={`gh-check-status ${allSubtasksDone || totalSubtasks === 0 ? 'pass' : 'warn'}`}
-                                            >
-                                                {allSubtasksDone || totalSubtasks === 0 ? '✓' : '⚠'}
-                                            </span>
-                                            <span>
-                                                {t('task.detail.subtaskCheck', lang)
-                                                    .replace('{done}', String(completedSubtasks))
-                                                    .replace('{total}', String(totalSubtasks))}
-                                            </span>
-                                        </div>
-
-                                        <div class="gh-check-item">
-                                            <span class={`gh-check-status ${hasAcceptance ? 'pass' : 'warn'}`}>
-                                                {hasAcceptance ? '✓' : '⚠'}
-                                            </span>
-                                            <span>
-                                                {t('task.detail.acceptanceLabel', lang)}
-                                                {hasAcceptance
-                                                    ? t('task.detail.acceptanceDefined', lang)
-                                                    : t('task.detail.acceptanceNotSet', lang)}
-                                            </span>
-                                        </div>
-
-                                        <div class="gh-check-item">
-                                            <span class={`gh-check-status ${allDepsDone ? 'pass' : 'fail'}`}>
-                                                {allDepsDone ? '✓' : '✕'}
-                                            </span>
-                                            <span>
-                                                {t('task.detail.depsLabel', lang)}
-                                                {allDepsDone
-                                                    ? t('task.detail.depsOk', lang)
-                                                    : t('task.detail.depsPending', lang).replace(
-                                                          '{n}',
-                                                          String(pendingDeps)
-                                                      )}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div class="gh-merge-actions">
-                                        {task.status === 'completed' && (
-                                            <button class="gh-merge-btn btn-todo" onClick={toggleIssueState}>
-                                                {t('task.detail.reopenTask', lang)}
-                                            </button>
-                                        )}
-                                        {task.status === 'running' && (
-                                            <button
-                                                class="gh-merge-btn btn-running"
-                                                onClick={() => patchTask({ status: 'cancelled' })}
-                                            >
-                                                {t('task.detail.cancelExec', lang)}
-                                            </button>
-                                        )}
-                                        {task.status === 'failed' && (
-                                            <button
-                                                class="gh-merge-btn btn-todo"
-                                                onClick={() => openNewSession('retry')}
-                                            >
-                                                {t('task.detail.retryExec', lang)}
-                                            </button>
-                                        )}
-                                        {(task.status === 'pending' || task.status === 'queued') && (
-                                            <button class="gh-merge-btn" onClick={() => openNewSession('start')}>
-                                                {t('task.detail.startAgent', lang)}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
                             {/* GitHub style composer (hidden for discussions — replies happen
                                 via the PM conversation opened by 讨论需求, not an inline form) */}
@@ -1445,6 +1411,9 @@ export function TaskDetail({
                             </button>
                         </div>
                     </div>
+
+                    {/* Execution checks live in the sidebar so the main thread stays conversation-first. */}
+                    {!isNonExecutable && renderExecutionBox()}
 
                     {/* Assignees (hidden for discussions — nobody executes a discussion) */}
                     {!isNonExecutable && (
