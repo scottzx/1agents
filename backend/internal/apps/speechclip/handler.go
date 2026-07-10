@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -418,6 +419,113 @@ func (h *Handler) HandleTranscript(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"asset": assetID, "sentences": rows})
 }
 
+// HandleTimeline: GET/POST /api/speech_clip/timeline
+//
+// GET  ?workspacePath= → {timeline: <Timeline>|null}  (null when file absent)
+// POST {workspacePath, timeline}
+//   success → {ok:true, timeline:<Timeline>}
+//   invalid schema → 400 {error:"...", code:"invalid_schema"}
+func (h *Handler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		ws := r.URL.Query().Get("workspacePath")
+		if ws == "" {
+			http.Error(w, "workspacePath required", http.StatusBadRequest)
+			return
+		}
+		tl, err := loadTimeline(ws)
+		if os.IsNotExist(err) {
+			writeJSON(w, map[string]any{"timeline": nil})
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"timeline": tl})
+	case http.MethodPost:
+		var req struct {
+			WorkspacePath string   `json:"workspacePath"`
+			Timeline      Timeline `json:"timeline"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSONError(w, "invalid request body: "+err.Error(), "bad_request", http.StatusBadRequest)
+			return
+		}
+		if req.WorkspacePath == "" {
+			writeJSONError(w, "workspacePath required", "bad_request", http.StatusBadRequest)
+			return
+		}
+		if err := ValidateTimeline(&req.Timeline); err != nil {
+			writeJSONError(w, err.Error(), "invalid_schema", http.StatusBadRequest)
+			return
+		}
+		if err := saveTimeline(req.WorkspacePath, &req.Timeline); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "timeline": &req.Timeline})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleAssetFile: GET /api/speech_clip/assets/file?workspacePath=&assetId=
+//
+// Serves the file belonging to the given assetId. The assetId must be
+// registered in project.assets[]; arbitrary paths are never accepted.
+// Path traversal is rejected: the resolved path must stay inside
+// <appDir(ws)>/assets/.
+func (h *Handler) HandleAssetFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ws := r.URL.Query().Get("workspacePath")
+	assetID := r.URL.Query().Get("assetId")
+	if ws == "" || assetID == "" {
+		http.Error(w, "workspacePath and assetId required", http.StatusBadRequest)
+		return
+	}
+
+	h.mu.Lock()
+	proj, err := h.loadProject(ws)
+	h.mu.Unlock()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var found *Asset
+	for i := range proj.Assets {
+		if proj.Assets[i].ID == assetID {
+			found = &proj.Assets[i]
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, "asset not found", http.StatusNotFound)
+		return
+	}
+
+	assetsDir, err := filepath.Abs(filepath.Join(appDir(ws), "assets"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	filePath, err := filepath.Abs(filepath.Join(assetsDir, found.File))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Guard against path traversal encoded in the stored file name.
+	if !strings.HasPrefix(filePath, assetsDir+string(filepath.Separator)) {
+		http.Error(w, "path traversal rejected", http.StatusForbidden)
+		return
+	}
+	http.ServeFile(w, r, filePath)
+}
+
 // ── small helpers ────────────────────────────────────────────────────────────
 
 func copyFile(src, dst string) error {
@@ -493,4 +601,10 @@ func toFloat(v any) float64 {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeJSONError(w http.ResponseWriter, msg, code string, status int) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": msg, "code": code})
 }

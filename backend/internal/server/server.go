@@ -208,6 +208,8 @@ func NewRouter(cfg *config.Config) http.Handler {
 			mux.HandleFunc("/api/speech_clip/pick", speechClipHandler.HandlePick)             // POST toggle 金句
 			mux.HandleFunc("/api/speech_clip/project", speechClipHandler.HandleProject)       // GET   project.json + status
 			mux.HandleFunc("/api/speech_clip/transcript", speechClipHandler.HandleTranscript) // GET   sentence rows
+			mux.HandleFunc("/api/speech_clip/timeline", speechClipHandler.HandleTimeline)     // GET/POST timeline
+			mux.HandleFunc("/api/speech_clip/assets/file", speechClipHandler.HandleAssetFile) // GET   serve registered asset
 
 			scheduler.Start(context.Background())
 

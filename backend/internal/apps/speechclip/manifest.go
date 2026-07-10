@@ -39,7 +39,7 @@ func init() {
 		ID:        "speech_clip.project",
 		Name:      "Vlog & Clip 项目",
 		AppID:     AppID,
-		Subdirs:   []string{"assets", "transcripts", "clips", "output"},
+		Subdirs:   []string{"assets", "transcripts", "clips", "output", "timelines"},
 		DomainDDL: nil,
 		PresetConfig: templateregistry.ProjectConfig{
 			Instructions: "Vlog 与短视频剪辑项目：录屏/导入 → FunClip 转录 → 1acp 提金句/纠错 → 跨素材混剪 → 成片。",
