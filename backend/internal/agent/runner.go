@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -68,7 +70,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	// Card content is YAML-frontmatter Markdown: execute against the prose body,
 	// and treat acceptance from the frontmatter (or the legacy column) as the
 	// self-check gate.
-	instruction := buildTaskInstruction(task)
+	instruction := buildTaskInstruction(task, workspaceID, workspacePath)
 	if instruction == "" {
 		r.finish(workspacePath, task.ID, "", TaskStatusFailed, "task has no description/title to execute")
 		return
@@ -209,7 +211,7 @@ func (r *TaskRunner) Execute(workspacePath, workspaceID string, task Task) {
 	}
 }
 
-func buildTaskInstruction(task Task) string {
+func buildTaskInstruction(task Task, workspaceID, workspacePath string) string {
 	_, instruction := SplitFrontmatter(task.Description)
 	if instruction == "" {
 		instruction = task.Title
@@ -226,16 +228,96 @@ func buildTaskInstruction(task Task) string {
 	if acceptance != "" {
 		instruction += "\n\n完成后请对照验收标准自查；若未达标，请明确说明原因。\n\n=== 验收标准 ===\n" + acceptance
 	}
-	return instruction + "\n\n" + projectExecutorPrompt
+	return instruction + "\n\n" + buildProjectExecutorPrompt(task, workspaceID, workspacePath)
 }
 
-const projectExecutorPrompt = `=== project_executor ===
+func buildProjectExecutorPrompt(task Task, workspaceID, workspacePath string) string {
+	taskRef := task.ID
+	if task.Number > 0 {
+		taskRef = fmt.Sprintf("#%d / %s", task.Number, task.ID)
+	}
+	cli := projectItemsCLI()
+	workspaceEnv := shellEnvQuote(workspaceID)
+	taskID := shellArgQuote(task.ID)
+	workspaceArg := shellArgQuote(workspacePath)
+	return fmt.Sprintf(projectExecutorPromptTemplate,
+		taskRef,
+		task.ID,
+		task.Number,
+		workspaceID,
+		workspacePath,
+		cli,
+		workspaceEnv,
+		cli,
+		taskID,
+		workspaceEnv,
+		cli,
+		taskID,
+		cli,
+		taskID,
+		workspaceArg,
+	)
+}
+
+func projectItemsCLI() string {
+	if cli := strings.TrimSpace(os.Getenv("ONEAGENTS_CLI")); cli != "" {
+		return shellArgQuote(cli) + " project-items"
+	}
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return "1agents project-items"
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return shellArgQuote(exe) + " project-items"
+}
+
+func shellEnvQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return shellArgQuote(s)
+}
+
+func shellArgQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	safe := true
+	for _, r := range s {
+		if !(r == '/' || r == '.' || r == '-' || r == '_' ||
+			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r > 127) {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+const projectExecutorPromptTemplate = `=== project_executor ===
 你是当前项目里被调度执行这一条任务的执行者。请专注完成任务正文和验收标准要求的交付物,并通过 Bash 调用内置 CLI 了解和更新任务状态。
 
+当前任务:
+- Task: %s
+- Task UUID: %s
+- Task Number: #%d
+- Workspace ID: %s
+- Workspace Path: %s
+
 ## 任务看板 CLI
-- 开始前用 1agents project-items get <任务ID> 查看当前任务详情、description、acceptanceCriteria、dependsOn 和 timeline。
-- 需要确认上下文或依赖时,用 1agents project-items list、1agents project-items graph <任务ID> 阅读同项目条目和引用关系。
-- 执行过程中如需记录进展、卡点或取消,用 1agents project-items update <任务ID> ... 更新当前任务。不要创建新任务、不要修改其他任务、不要调整里程碑;这些属于 PM。
+- CLI 入口: %s
+- 推荐先用 ONEAGENTS_WORKSPACE_ID 锁定当前项目,避免 cwd 或项目名解析错误:
+  ONEAGENTS_WORKSPACE_ID=%s %s get %s --json
+- 如需确认依赖或引用关系:
+  ONEAGENTS_WORKSPACE_ID=%s %s graph %s --json
+- 如果要用项目路径而不是环境变量,请传当前 Workspace Path:
+  %s get %s --project %s --json
+- 短编号必须带 #,例如 #25;裸数字 25 会被当成 UUID。优先使用上面的 Task UUID。
+- 执行过程中如需记录进展、卡点或取消,用 update 更新当前任务。不要创建新任务、不要修改其他任务、不要调整里程碑;这些属于 PM。
 - 完成后不要依赖口头自报。先运行必要检查,再在最终回复里简明说明改了什么、验证结果、是否仍有未达标项。系统会根据执行结果和核验流程推进任务状态。
 
 ## 执行原则
