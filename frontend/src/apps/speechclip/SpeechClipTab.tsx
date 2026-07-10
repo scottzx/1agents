@@ -33,9 +33,9 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /**
- * SpeechClipTab — 口播剪辑 project-tab. Stepper workspace over the file-based
- * pipeline: 素材 → 转录(FunClip) → 金句/纠错(1acp). Both heavy steps run as tasks;
- * this view triggers them and polls the resulting jsonl.
+ * SpeechClipTab — Vlog & Clip content studio project-tab. Stepper workspace over
+ * the file-based pipeline: 录制/导入 → 转录(FunClip) → 金句/纠错(1acp) → 成片.
+ * Both heavy steps run as tasks; this view triggers them and polls the resulting jsonl.
  */
 export function SpeechClipTab({ workspaceId }: AppViewProps) {
     const workspaces = wsStore.workspaces.value;
@@ -181,11 +181,34 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
     const step = assets.length === 0 ? 1 : assets.some(a => !a.transcribed) ? 2 : 3;
     const selAsset = assets.find(a => a.id === sel);
     const pickedCount = rows.filter(r => r.picked).length;
+    const transcribedCount = assets.filter(a => a.transcribed).length;
 
     return (
         <div class="speech-clip">
+            <div class="speech-clip-hero">
+                <div>
+                    <div class="speech-clip-kicker">Project extension</div>
+                    <h2>Vlog & Clip 内容工作室</h2>
+                    <p>把项目里的演示录屏、口播素材和短视频片段收进同一条生产线。</p>
+                </div>
+                <div class="speech-clip-metrics" aria-label="内容工作室统计">
+                    <div>
+                        <strong>{assets.length}</strong>
+                        <span>素材</span>
+                    </div>
+                    <div>
+                        <strong>{transcribedCount}</strong>
+                        <span>已转录</span>
+                    </div>
+                    <div>
+                        <strong>{pickedCount}</strong>
+                        <span>金句</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="speech-clip-steps">
-                {['① 素材', '② 转录', '③ 金句 / 混剪'].map((label, i) => (
+                {['① 录制 / 导入', '② 转录', '③ 金句 / 成片'].map((label, i) => (
                     <div
                         class={`speech-clip-step ${i + 1 === step ? 'is-active' : ''} ${i + 1 < step ? 'is-done' : ''}`}
                     >
@@ -199,7 +222,7 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
             <div class="speech-clip-import">
                 <input
                     class="speech-clip-input"
-                    placeholder="素材文件绝对路径 (mp3/mp4/wav…)"
+                    placeholder="导入已有 vlog / clip 素材绝对路径 (mp3/mp4/wav...)"
                     value={importPath}
                     onInput={e => setImportPath((e.target as HTMLInputElement).value)}
                 />
@@ -214,7 +237,7 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
                 </button>
                 {!isRecording ? (
                     <button class="speech-clip-btn speech-clip-btn-rec" onClick={startRec} disabled={!!busy}>
-                        ● 录制
+                        ● 录制 Vlog
                     </button>
                 ) : (
                     <button class="speech-clip-btn speech-clip-btn-recording" onClick={stopRec}>
@@ -226,7 +249,9 @@ export function SpeechClipTab({ workspaceId }: AppViewProps) {
 
             <div class="speech-clip-body">
                 <div class="speech-clip-assets">
-                    {assets.length === 0 && <div class="speech-clip-hint">还没有素材，先导入。</div>}
+                    {assets.length === 0 && (
+                        <div class="speech-clip-hint">还没有素材。可以录制一段项目演示 vlog，也可以导入现有 clip。</div>
+                    )}
                     {assets.map(a => (
                         <div class={`speech-clip-asset ${a.id === sel ? 'is-sel' : ''}`} onClick={() => setSel(a.id)}>
                             <div class="speech-clip-asset-head">

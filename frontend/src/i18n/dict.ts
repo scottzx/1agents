@@ -820,8 +820,14 @@ export const zhCN: Record<string, string> = {
     'discovery.catOpensource': '开源项目',
     'discovery.catApps': '应用中心',
     'discovery.studioDesc':
-        '双屏口播录像与剪辑工坊。支持同步录制摄像头人脸与网页操作画面，结合麦克风设备选择与音频优化，实现文本化可视化粗剪。',
-    'discovery.studioBadge': '口播录像',
+        '项目页里的 Vlog 与短视频内容工作室。支持录制项目演示、导入素材、转录、提取金句，并为后续混剪成片沉淀到同一条项目生产线。',
+    'discovery.studioBadge': '项目扩展',
+    'discovery.vlogLanding.title': '把项目过程直接变成可发布内容',
+    'discovery.vlogLanding.body':
+        'Vlog & Clip 是项目管理页的内容扩展。它把演示录屏、口播素材、转录文本和金句选择放在同一个项目上下文里，适合做功能演示、开发日志和短视频素材沉淀。',
+    'discovery.vlogLanding.pointRecord': '录制项目演示或导入已有视频、音频素材',
+    'discovery.vlogLanding.pointTranscript': '转录语音，提取可剪辑的句子和高光片段',
+    'discovery.vlogLanding.pointProject': '作为项目 tab 使用，素材和任务状态跟随当前项目',
     'discovery.intro': '精选各类实用的 AI 辅助工具与技能库，点击即可快速访问。',
     'discovery.exploreNow': '立即探索',
 
@@ -2504,8 +2510,14 @@ export const enUS: Record<string, string> = {
     'discovery.catOpensource': 'Open Source',
     'discovery.catApps': 'Apps & Tools',
     'discovery.studioDesc':
-        'Dual-screen presenter studio for synchronizing camera feed with webpage captures, enabling text-based editing from automated transcriptions.',
-    'discovery.studioBadge': 'Studio',
+        'A project-page Vlog & Clip studio for recording demos, importing media, transcribing, extracting highlights, and preparing clips on one project workflow.',
+    'discovery.studioBadge': 'Project App',
+    'discovery.vlogLanding.title': 'Turn project work into publishable content',
+    'discovery.vlogLanding.body':
+        'Vlog & Clip is a project-management extension for demos, voiceover material, transcripts, and highlight selection. It keeps content creation attached to the project where the work happens.',
+    'discovery.vlogLanding.pointRecord': 'Record a project demo or import existing video and audio assets',
+    'discovery.vlogLanding.pointTranscript': 'Transcribe speech and surface editable sentences and highlights',
+    'discovery.vlogLanding.pointProject': 'Use it as a project tab so assets and task status stay project-scoped',
     'discovery.intro': 'A curated collection of practical AI tools and apps — click to open.',
     'discovery.exploreNow': 'Explore now',
 

@@ -1,4 +1,4 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 
@@ -198,7 +198,7 @@ export function TaskDetail({
     const [composerTab, setComposerTab] = useState<'write' | 'preview'>('write');
 
     // Sidebar collapse toggle (desktop) / bottom-drawer open (mobile).
-    const sidebarCollapsed = useSignal(false);
+    const sidebarCollapsed = useSignal(true);
     const drawerOpen = useSignal(false);
 
     // One control, two behaviours: on narrow screens the properties panel is a
@@ -295,17 +295,16 @@ export function TaskDetail({
     const renderReplyCard = (rp: Reply) => {
         const isAgent = rp.author.kind === 'agent';
         return (
-            <div key={rp.id} class={`gh-comment-card ${isAgent ? 'is-agent' : 'is-user'}`}>
+            <div key={rp.id} class={`gh-comment-card topic-reply-card ${isAgent ? 'is-agent' : 'is-user'}`}>
                 <div class="gh-comment-header">
                     <div class="gh-comment-header-left">
                         <span class="gh-avatar">{getInitials(rp.author.name || rp.author.kind)}</span>
                         <span class="gh-author-name">{rp.author.name || rp.author.kind}</span>
-                        <span>{fmtDate(rp.createdAt)}</span>
+                        <span>{isAgent ? '回复并处理了这个话题' : '回复了这个话题'}</span>
+                        <span class="topic-reply-time">{fmtDate(rp.createdAt)}</span>
                     </div>
                     <div class="gh-comment-actions">
-                        <span class="gh-role-badge">
-                            {isAgent ? t('task.detail.roleAgent', lang) : t('task.detail.roleUser', lang)}
-                        </span>
+                        <span class="gh-role-badge">{isAgent ? 'Agent' : t('task.detail.roleUser', lang)}</span>
                     </div>
                 </div>
                 <div class="gh-comment-body">
@@ -688,6 +687,16 @@ export function TaskDetail({
     // acceptance/checks/assignee/composer. isNonExecutable gates those panels.
     const isIssueItem = task.type === 'requirement' || task.type === 'bug';
     const isNonExecutable = isDiscussion || isIssueItem;
+    const typeLabel =
+        task.type === 'discussion'
+            ? '讨论'
+            : task.type === 'requirement'
+              ? '需求'
+              : task.type === 'bug'
+                ? '缺陷'
+                : '任务';
+    const statusLabel = statusLabels[task.status] || task.status;
+    const issueStateLabel = closed ? t('task.detail.statusClosed', lang) : t('task.detail.statusOpen', lang);
 
     return (
         <div class="task-dashboard-container task-detail-view" ref={containerRef}>
@@ -704,9 +713,23 @@ export function TaskDetail({
                 >
                     <StatusIcon closed={closed} />
                 </span>
-                <h3 class="gh-title">
-                    {task.title} <span class="gh-number">#{task.number || ''}</span>
-                </h3>
+                <div class="topic-title-group">
+                    <div class="topic-kicker">
+                        <span class="topic-type-chip">{typeLabel}</span>
+                        <span>{issueStateLabel}</span>
+                        <span class="topic-dot">·</span>
+                        <span class={`task-status-badge ${task.status}`}>{statusLabel}</span>
+                        {task.milestone && (
+                            <>
+                                <span class="topic-dot">·</span>
+                                <span>{task.milestone}</span>
+                            </>
+                        )}
+                    </div>
+                    <h3 class="gh-title">
+                        {task.title} <span class="gh-number">#{task.number || ''}</span>
+                    </h3>
+                </div>
                 <div class="gh-actions">
                     {task.number ? (
                         <button
@@ -794,17 +817,17 @@ export function TaskDetail({
             <div class={`task-detail-scroller${sidebarCollapsed.value ? ' sidebar-collapsed' : ''}`}>
                 <div class="task-detail-main" ref={mainRef}>
                     {activeTab === 'conversation' && (
-                        <div>
-                            {/* Description Card */}
-                            <div class="gh-comment-card is-user">
+                        <div class="topic-stream">
+                            {/* Main topic post */}
+                            <div class="gh-comment-card topic-main-post is-user">
                                 <div class="gh-comment-header">
                                     <div class="gh-comment-header-left">
                                         <span class="gh-avatar">{getInitials(task.createdBy || 'scottzx')}</span>
                                         <span class="gh-author-name">{task.createdBy || 'scottzx'}</span>
-                                        <span>{t('task.detail.createdTask', lang)}</span>
+                                        <span>发布了主帖</span>
                                     </div>
                                     <div class="gh-comment-actions">
-                                        <span class="gh-role-badge">{t('task.detail.roleAuthor', lang)}</span>
+                                        <span class="gh-role-badge">楼主</span>
                                         {!editingDesc.value && (
                                             <button
                                                 class="task-desc-edit-btn"
@@ -937,7 +960,13 @@ export function TaskDetail({
                             )}
 
                             {/* Timeline: standalone comments + session branches */}
-                            <div class="task-timeline">
+                            <div class="topic-replies-head">
+                                <span>讨论与执行</span>
+                                <span>
+                                    {replies.length} 条回复 · {task.sessions.length} 个执行分支
+                                </span>
+                            </div>
+                            <div class="task-timeline topic-reply-timeline">
                                 {timelineNodes.map(node => {
                                     if (node.kind === 'comment') {
                                         return renderReplyCard(node.reply);
@@ -957,17 +986,15 @@ export function TaskDetail({
                                                 }}
                                             >
                                                 <span class="task-branch-caret">{isExpanded ? '▾' : '▸'}</span>
-                                                <span class="task-branch-badge">
-                                                    {t('task.detail.sessionBadge', lang).replace('{num}', String(num))}
-                                                </span>
+                                                <span class="task-branch-badge">#{num} Agent 回帖</span>
                                                 <span class="task-branch-agent">{session.agentType}</span>
                                                 <span class={`task-branch-status${running ? ' running' : ''}`}>
-                                                    {running
-                                                        ? t('task.detail.sessionRunning', lang)
-                                                        : t('task.detail.sessionIdle', lang)}
+                                                    {running ? '正在处理' : '已处理'}
                                                 </span>
                                                 {!running && children.length > 0 && (
-                                                    <span class="task-branch-summary">{children.length} 条记录</span>
+                                                    <span class="task-branch-summary">
+                                                        {children.length} 条过程记录
+                                                    </span>
                                                 )}
                                             </button>
                                             {isExpanded && (
@@ -1052,7 +1079,7 @@ export function TaskDetail({
 
                             {/* Merge / Checks Status Box (hidden for discussions — not executable) */}
                             {!isNonExecutable && (
-                                <div class="gh-merge-box">
+                                <div class="gh-merge-box topic-execution-box">
                                     <div class={`gh-merge-icon-col status-${task.status}`}>
                                         {task.status === 'completed' && '✓'}
                                         {task.status === 'running' && '●'}
@@ -1147,7 +1174,7 @@ export function TaskDetail({
                             {/* GitHub style composer (hidden for discussions — replies happen
                                 via the PM conversation opened by 讨论需求, not an inline form) */}
                             {!isNonExecutable && (
-                                <div class="gh-composer-card">
+                                <div class="gh-composer-card topic-composer-card">
                                     <div class="gh-composer-tabs">
                                         <button
                                             class={`gh-composer-tab ${composerTab === 'write' ? 'active' : ''}`}
@@ -1389,7 +1416,7 @@ export function TaskDetail({
                     {/* Drag handle + header — only rendered visually on the mobile sheet */}
                     <div class="task-drawer-handle">
                         <span class="task-drawer-grip" />
-                        <span class="task-drawer-title">{t('task.detail.propertiesTitle', lang)}</span>
+                        <span class="task-drawer-title">话题信息</span>
                         <button
                             class="task-drawer-close"
                             title={t('task.detail.drawerClose', lang)}
@@ -1402,7 +1429,7 @@ export function TaskDetail({
                     {/* Status: issue meta + open/close toggle (moved out of the header) */}
                     <div class="gh-sidebar-panel">
                         <div class="gh-sidebar-head">
-                            <span>{t('task.detail.sideStatus', lang)}</span>
+                            <span>话题状态</span>
                             <span class={`gh-status-icon ${closed ? 'closed' : 'open'}`}>
                                 <StatusIcon closed={closed} />
                             </span>
@@ -1411,7 +1438,7 @@ export function TaskDetail({
                             <div class="gh-meta-text">
                                 <strong>{task.createdBy || 'scottzx'}</strong>{' '}
                                 {closed ? t('task.detail.closedBy', lang) : t('task.detail.createdBy', lang)} ·{' '}
-                                {replies.length}
+                                {replies.length} 条回复
                             </div>
                             <button class="task-issue-toggle-btn" onClick={toggleIssueState}>
                                 {closed ? t('task.detail.reopen', lang) : t('task.detail.close', lang)}

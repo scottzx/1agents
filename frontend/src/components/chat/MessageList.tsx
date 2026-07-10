@@ -77,11 +77,17 @@ function assistantTextToFold(items: ChatItem[]): Set<string> {
         // Any assistant text appearing before it is a preamble / intermediate
         // explanation that belongs in the process block, not the main stream.
         let lastProcessIdx = -1;
+        let lastAssistantTextIdx = -1;
         for (let i = 0; i < turn.length; i++) {
             if (isProcessItem(turn[i])) lastProcessIdx = i;
+            if (turn[i].kind === 'assistant_text') lastAssistantTextIdx = i;
         }
         if (lastProcessIdx === -1) return;
         for (let i = 0; i <= lastProcessIdx; i++) {
+            // The turn's final assistant text is the agent's reply — keep it in
+            // the main stream even when a trailing tool call/result pushes the
+            // last process item past it. Only fold earlier (preamble) texts.
+            if (i === lastAssistantTextIdx) continue;
             if (turn[i].kind === 'assistant_text') foldIds.add(turn[i].id);
         }
     };

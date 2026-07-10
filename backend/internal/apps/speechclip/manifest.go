@@ -1,5 +1,5 @@
-// Package speechclip is the 口播剪辑 (voiceover-clip) business app: a project-scoped
-// pipeline over agentsOS — 录屏 → 转录(FunClip) → 提金句/纠错(1acp agent) → 混剪 → 成片.
+// Package speechclip is the Vlog & Clip content-studio app: a project-scoped
+// pipeline over agentsOS — 录屏/导入 → 转录(FunClip) → 提金句/纠错(1acp agent) → 混剪 → 成片.
 //
 // Domain data is filesystem-only (jsonl/json under <workspace>/.artifacts/speech_clip/),
 // so the manifest declares no domain tables. Both heavy steps (transcribe, highlight)
@@ -22,14 +22,14 @@ const AppID = "speech_clip"
 func init() {
 	appregistry.Register(appregistry.AppManifest{
 		ID:      AppID,
-		Name:    "口播剪辑",
+		Name:    "Vlog & Clip",
 		Version: "0.1.0",
 		Enabled: true,
 		MountPoints: []appregistry.MountPoint{{
 			Type:  "project-tab",
 			ID:    "pipeline",
-			Label: "口播剪辑",
-			View:  "SpeechClipTab",
+			Label: "内容工作室",
+			View:  "ContentStudioTab",
 		}},
 		TaskTypes:    []string{"speech_clip.transcribe", "speech_clip.extract_highlights"},
 		DomainTables: nil, // 文件系统(jsonl/json), 无域表
@@ -37,12 +37,12 @@ func init() {
 
 	templateregistry.Register(templateregistry.ProjectTemplate{
 		ID:        "speech_clip.project",
-		Name:      "口播剪辑项目",
+		Name:      "Vlog & Clip 项目",
 		AppID:     AppID,
-		Subdirs:   []string{"assets", "transcripts", "output"},
+		Subdirs:   []string{"assets", "transcripts", "clips", "output"},
 		DomainDDL: nil,
 		PresetConfig: templateregistry.ProjectConfig{
-			Instructions: "口播视频剪辑项目：多素材录屏 → FunClip 转录 → 1acp 提金句/纠错 → 跨素材混剪 → 成片。",
+			Instructions: "Vlog 与短视频剪辑项目：录屏/导入 → FunClip 转录 → 1acp 提金句/纠错 → 跨素材混剪 → 成片。",
 		},
 	})
 }
