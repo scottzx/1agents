@@ -87,3 +87,4 @@ cache/
 # Yarn install state cache (never commit)
 .yarn/install-state.gz
 .gstack/
+.tmp/

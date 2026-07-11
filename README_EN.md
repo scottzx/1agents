@@ -1,12 +1,27 @@
 # 1agents
 
-**1agents** is an open-source, self-hosted agent workbench. It combines a Web terminal, file management, project and task management, AI chat sessions, data sources, contacts, agenda, and app extensions in one frontend for local or remote AI agent workflows.
+**1agents** is an open-source, self-hosted AI-native work operating system. It puts tasks, context, executors, verification, and write-back into one loop, so one person can organize an AI team that keeps work moving.
+
+Traditional AI assistants improve one prompt or one chat turn. 1agents focuses on the full path from work entering the system to work being verified as done. It brings Inbox, IM, data sources, projects, tasks, agent sessions, terminals, files, agenda, and app extensions together not as a pile of features, but as a way to capture work, structure it, execute it, verify it, and preserve the context that made it happen.
 
 [简体中文](README.md) | **English**
 
 [![NPM Version](https://img.shields.io/npm/v/@scottzx/1agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/1agents)
 [![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/1Agents)
 [![License](https://img.shields.io/github/license/scottzx/1Agents)](LICENSE)
+
+---
+
+## Product Direction
+
+1agents is not just a larger Chat panel. It is a work loop:
+
+1. **Work enters the system**: ideas, requirements, bugs, reminders, and business objects can come from Inbox, IM, data sources, manual entry, agenda events, or app modules and become project issues or tasks.
+2. **The system organizes work**: Project / Task / Issue carries context, dependencies, schedule, priority, acceptance criteria, subtasks, and templates, so the system knows what should happen next.
+3. **Executors complete the work**: AI agents, deterministic programs, and humans are routed by task type. Judgment and open-ended execution go to agents, fixed repeatable steps go to functions, and final responsibility stays with humans.
+4. **Results close the loop**: discussions, sessions, tool calls, code diffs, verification, rework, and status changes all return to the task timeline, becoming context for the next run and data for future metrics.
+
+The goal is to move AI beyond "help me with this step" and into the collaboration chain: once work enters the system, it can keep moving, expose blockers explicitly, hand results back for human confirmation, and turn repeated experience into reusable capability.
 
 ---
 
@@ -117,11 +132,19 @@
 
 ## Architecture Overview
 
-1agents organizes work around three object types:
+1agents organizes work as a four-layer loop:
+
+- **Intake layer**: Inbox, IM channels, data sources, manual tasks, agenda, and app business objects turn external information into actionable work.
+- **Organization layer**: projects / workspaces, Task / Issue, dependencies, schedule, priority, milestones, and project configuration preserve context and decide the next step.
+- **Execution layer**: AI agents, deterministic functions, and humans run through the same task kernel and are selected by task type.
+- **Closure layer**: the task timeline records discussions, sessions, outputs, verification, rework, completion state, and metrics so results are traceable, recoverable, and improvable.
+
+Core objects:
 
 - **Project / workspace**: a directory, sessions, tasks, and project configuration.
 - **Task**: executable work with dependencies, schedule, status, and acceptance criteria.
 - **Executor**: AI agent, deterministic program, or human user.
+- **Timeline**: user feedback, agent replies, session branches, verification results, and status changes.
 
 Main code structure:
 
