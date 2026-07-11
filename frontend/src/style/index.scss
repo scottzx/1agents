@@ -15251,6 +15251,52 @@ body {
   }
 }
 
+// Persistent error banner above the Composer. Surfaces bridge `error`
+// events (auth failures, upstream 4xx/5xx). Page-persistent: only the ×
+// button or an F5 clears it — never auto-dismissed on a timer.
+.chat-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+
+  &__icon {
+    flex: 0 0 auto;
+    font-size: 13px;
+  }
+
+  &__text {
+    flex: 1 1 auto;
+    word-break: break-word;
+  }
+
+  &__code {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  &__dismiss {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--danger-fg);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    border-radius: 999px;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Agent Avatar Styles
 // ════════════════════════════════════════════════════════════════════

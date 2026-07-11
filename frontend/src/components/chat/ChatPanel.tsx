@@ -9,6 +9,7 @@ import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { PlanChecklist } from './PlanChecklist';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
+import { ChatErrorBanner } from './ChatErrorBanner';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -54,6 +55,8 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         setConfigOption,
         takenOver,
         retry,
+        lastError,
+        dismissError,
     } = useBridge(session);
 
     // Local dismiss state for the takeover banner. useSignal (not useState):
@@ -118,6 +121,11 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 onRespondPermission={respondPermission}
                 onCancelQueued={cancelQueued}
             />
+            {/* Page-persistent error banner — sits above the Composer. Cleared
+                by the × button or by an F5 reload; new errors overwrite old. */}
+            {lastError && (
+                <ChatErrorBanner message={lastError.message} code={lastError.code} onDismiss={dismissError} />
+            )}
             <Composer
                 onSend={send}
                 onCancel={cancel}

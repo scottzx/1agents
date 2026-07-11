@@ -166,6 +166,15 @@ export interface SessionBridgeState {
      * resurrect a turn the user just stopped. Reset on the next prompt/connect.
      */
     cancelling: boolean;
+    /**
+     * Last bridge `error` event surfaced for the persistent top-of-composer
+     * banner. Persists across re-renders and reconnects — only cleared by an
+     * explicit user dismiss (the banner × button) or a full page reload, per
+     * the requested "page-persistent, F5 / manual close only" UX. Newer
+     * errors overwrite older ones so the banner always reflects the latest
+     * upstream failure.
+     */
+    lastError: { message: string; code: string } | null;
 }
 
 export class ChatBridgeManager {
@@ -208,6 +217,7 @@ export class ChatBridgeManager {
                 closedByUser: false,
                 takenOver: false,
                 cancelling: false,
+                lastError: null,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
@@ -245,6 +255,19 @@ export class ChatBridgeManager {
         const state = this.sessions.get(session.id);
         if (!state) return;
         this.connect(session, state);
+    }
+
+    /**
+     * Clear the persistent error banner for `sessionId`. Called by the
+     * banner's × button; reconciles via `notify(state)` so listeners
+     * (and therefore the React render) re-evaluate visibility. Safe to
+     * call when there is no error or no live state — both are no-ops.
+     */
+    dismissError(sessionId: string) {
+        const state = this.sessions.get(sessionId);
+        if (!state || !state.lastError) return;
+        state.lastError = null;
+        this.notify(state);
     }
 
     private connect(session: ChatSession, state: SessionBridgeState) {
@@ -508,7 +531,12 @@ export class ChatBridgeManager {
                     if (payload.code === 'SESSION_NOT_FOUND' && !state.ready) {
                         break;
                     }
-                    state.items = appendError(state.items, payload.message || payload.code || 'Unknown error');
+                    const errorMessage = payload.message || payload.code || 'Unknown error';
+                    state.items = appendError(state.items, errorMessage);
+                    // Surface as a page-persistent banner above the composer.
+                    // Held until the user clicks × or refreshes the page —
+                    // newer errors replace older ones, never stack.
+                    state.lastError = { message: errorMessage, code: payload.code || '' };
                     // Only reload history when the error came from inside a turn —
                     // that's when on-disk state may be authoritative over memory.
                     // Out-of-turn control errors don't touch history; reloading

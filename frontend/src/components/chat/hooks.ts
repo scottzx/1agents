@@ -71,6 +71,14 @@ interface UseBridgeState {
     takenOver: boolean;
     /** Reconnect and reclaim ownership of the session (重试 button). */
     retry: () => void;
+    /**
+     * Latest bridge `error` for the persistent top-of-composer banner.
+     * null when there is no unsuppressed error to show. Survives
+     * reconnects; cleared only by user dismiss (×) or page reload.
+     */
+    lastError: { message: string; code: string } | null;
+    /** Clear `lastError` for this session (called from the banner × button). */
+    dismissError: () => void;
 }
 
 // The single web-host bridge manager. The store mirrors are wrapped in closures
@@ -131,6 +139,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const usage = state ? state.usage : null;
     const plan = state ? state.plan : null;
     const takenOver = state ? state.takenOver : false;
+    const lastError = state ? state.lastError : null;
 
     const send = useCallback(
         (content: string) => {
@@ -190,6 +199,11 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         globalBridgeManager.retry(session);
     }, [session]);
 
+    const dismissError = useCallback(() => {
+        if (!session) return;
+        globalBridgeManager.dismissError(session.id);
+    }, [session]);
+
     return {
         items,
         connection,
@@ -210,5 +224,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         setConfigOption,
         takenOver,
         retry,
+        lastError,
+        dismissError,
     };
 }
