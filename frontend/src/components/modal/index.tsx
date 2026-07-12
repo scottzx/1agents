@@ -31,5 +31,6 @@ export { DirPickerModal } from './DirPickerModal';
 export { AccessTokenModal } from './AccessTokenModal';
 export { SessionRenameModal } from './SessionRenameModal';
 export { FsRenameModal } from './FsRenameModal';
+export { FsCreateModal } from './FsCreateModal';
 export { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
 export { PushPreviewModal } from './PushPreviewModal';

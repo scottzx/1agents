@@ -88,6 +88,20 @@ export const fsService = {
         if (!res.ok) throw new Error(await res.text());
     },
 
+    async mkdir(path: string): Promise<void> {
+        const res = await fetch(`/api/fs/mkdir?path=${encodeURIComponent(path)}`, {
+            method: 'POST',
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
+    async copy(src: string, dst: string): Promise<void> {
+        const res = await fetch(`/api/fs/copy?src=${encodeURIComponent(src)}&dst=${encodeURIComponent(dst)}`, {
+            method: 'POST',
+        });
+        if (!res.ok) throw new Error(await res.text());
+    },
+
     async delete(path: string, recursive = false): Promise<void> {
         const res = await fetch(`/api/fs/delete?path=${encodeURIComponent(path)}&recursive=${recursive}`, {
             method: 'DELETE',

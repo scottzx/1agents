@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/scottzx/1Agents/backend/internal/meta"
@@ -188,6 +189,74 @@ func TestHandler_View(t *testing.T) {
 		bodyBytes := w.Body.Bytes()
 		if string(bodyBytes) != nestedContent {
 			t.Errorf("expected body %q, got %q", nestedContent, string(bodyBytes))
+		}
+	})
+}
+
+func TestIsUploadArtifact(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/tmp/1agents-jay_style_v1-3982749823.mp3", true},
+		{"/tmp/1agents-foo-abc123.txt", true},
+		{"/tmp/1agents-upload.mp3", true},
+		{"/tmp/jay_style_v1.mp3", false}, // renamed: lost "1agents-" prefix
+		{"/tmp/1agents-../etc/passwd", false},
+		{"/etc/passwd", false},
+		{"/var/tmp/1agents-x.dat", false}, // only /tmp, not /var/tmp
+		{"/tmp/", false},
+	}
+	for _, c := range cases {
+		if got := isUploadArtifact(c.path); got != c.want {
+			t.Errorf("isUploadArtifact(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
+func TestSafeAbs_AllowsUploadArtifact(t *testing.T) {
+	// Point meta.db at an isolated empty home so checkWorkspaces returns
+	// false (no registered workspaces), forcing safeAbs to fall through to
+	// the upload-artifact branch.
+	isolatedHome := t.TempDir()
+	t.Setenv("ONEAGENTS_HOME", isolatedHome)
+	t.Setenv("HOME", isolatedHome)
+	t.Setenv("USERPROFILE", isolatedHome)
+
+	// Create a fake upload artifact matching CreateTemp("/tmp", "1agents-...-*")
+	uploaded, err := os.CreateTemp("/tmp", "1agents-safetest-*")
+	if err != nil {
+		t.Fatalf("create upload artifact: %v", err)
+	}
+	defer os.Remove(uploaded.Name())
+	uploaded.WriteString("payload")
+	uploaded.Close()
+
+	h := &Handler{root: filepath.Join(isolatedHome, "nonexistent-root")}
+
+	t.Run("absolute upload artifact path is allowed", func(t *testing.T) {
+		abs, ok := h.safeAbs(uploaded.Name())
+		if !ok {
+			t.Fatalf("expected upload artifact %q to be allowed, got rejected", uploaded.Name())
+		}
+		if !strings.HasPrefix(abs, "/tmp/1agents-safetest-") {
+			t.Errorf("expected path under /tmp, got %q", abs)
+		}
+	})
+
+	t.Run("renamed file without 1agents- prefix is still rejected", func(t *testing.T) {
+		// Sanity check: the whitelist is strict, so a renamed artifact
+		// (e.g. /tmp/jay_style_v1.mp3) still falls through to 403.
+		_, ok := h.safeAbs("/tmp/jay_style_v1.mp3")
+		if ok {
+			t.Error("expected /tmp/jay_style_v1.mp3 to remain forbidden (no 1agents- prefix)")
+		}
+	})
+
+	t.Run("non-/tmp absolute path remains forbidden", func(t *testing.T) {
+		_, ok := h.safeAbs("/etc/passwd")
+		if ok {
+			t.Error("expected /etc/passwd to remain forbidden")
 		}
 	})
 }

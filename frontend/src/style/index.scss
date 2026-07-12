@@ -8894,7 +8894,18 @@ body {
       flex: 1;
       min-height: 0;
     }
-    
+
+    // The file browser / detail view manage their own internal layout and
+    // are designed to fill their container edge-to-edge (the project detail's
+    // .file-split-list has zero padding). Cancel the panel-body-scroll's
+    // 16px padding only for them, so the file UI sits flush against the
+    // drawer edges — matching how it looks in 项目详情 → 文件. GitPanel and
+    // ThemeSettings keep the breathing room.
+    > .flat-file-browser,
+    > .fb-detail-view {
+      margin: -16px;
+    }
+
     &::-webkit-scrollbar {
       width: 4px;
     }
@@ -12117,6 +12128,11 @@ body {
         flex-shrink: 0;
       }
 
+      // Keep the action container visible while it owns an open dropdown —
+      // otherwise the cursor leaving the row would `display: none` the parent
+      // and unmount the (position:fixed) menu as well, even though the menu
+      // itself is laid out outside the row's flow.
+      .fb-row-actions:has(.fb-actions-menu),
       &:hover .fb-row-actions {
         display: flex;
       }
@@ -12148,6 +12164,25 @@ body {
         &.fb-action-delete:hover {
           background-color: rgba(var(--danger-rgb), 0.12);
           color: var(--danger-fg);
+        }
+      }
+
+      // "..." trigger button — same shape as the legacy row buttons but with
+      // three dots instead of a single icon, and a slightly larger hit area so
+      // it's easy to hit on the already-narrow row.
+      .fb-actions-trigger {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+
+        svg {
+          width: 13px;
+          height: 13px;
+        }
+
+        &:hover {
+          background-color: rgba(var(--accent-color-rgb), 0.12);
+          color: var(--accent-color);
         }
       }
 
@@ -12224,6 +12259,75 @@ body {
       margin-top: 8px;
       padding: 6px 0;
       border-top: 1px dashed var(--border-color);
+    }
+  }
+
+  // Dropdown menu — `position: fixed`, anchored to the "..." trigger via
+  // inline top/right styles in the component. Sibling of `.fb-file-list` so
+  // it isn't affected by `.fb-file-list { overflow-y: auto }` clipping.
+  .fb-actions-menu {
+    min-width: 160px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.28),
+      0 6px 12px -4px rgba(0, 0, 0, 0.18);
+    padding: 4px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    animation: fb-slide-down 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .fb-actions-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 5px;
+    color: var(--text-main);
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s;
+
+    .fb-actions-menu-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .fb-actions-menu-label {
+      flex: 1;
+      white-space: nowrap;
+    }
+
+    &:hover {
+      background-color: var(--bg-sidebar-hover);
+    }
+
+    &:hover .fb-actions-menu-icon {
+      color: var(--accent-color);
+    }
+
+    &.fb-actions-menu-item-danger {
+      color: var(--danger-fg);
+
+      .fb-actions-menu-icon {
+        color: var(--danger-fg);
+      }
+
+      &:hover {
+        background-color: rgba(var(--danger-rgb), 0.12);
+      }
     }
   }
 

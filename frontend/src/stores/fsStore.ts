@@ -500,3 +500,106 @@ export const submitFsDelete = async () => {
         ui.showToast(t('fileBrowser.deleteFailed', ui.language.value, { err: String(err) }));
     }
 };
+
+/**
+ * Create a new folder or empty file inside the captured parent (or at the
+ * workspace root when no parent is set). The name comes from the modal signal.
+ */
+export const submitFsNewItem = async () => {
+    const kind = modal.fsNewItemKind.value;
+    const parent = modal.fsNewItemParent.value;
+    const name = modal.fsNewItemName.value.trim();
+    if (!name) {
+        modal.closeFsNewItemModal();
+        return;
+    }
+
+    const parentPath = parent ? parent.path.replace(/\/?$/, '/') : '';
+    const targetPath = `${parentPath}${name}`;
+
+    try {
+        if (kind === 'folder') {
+            await fsService.mkdir(targetPath);
+        } else {
+            await fsService.write(targetPath, '');
+        }
+        modal.closeFsNewItemModal();
+        ui.showToast(t('fileBrowser.createSuccess', ui.language.value));
+
+        // If the parent was a directory, force-expand it so the new entry shows
+        // up without a manual refresh.
+        if (parent && parent.isDir && !parent.expanded) {
+            toggleFsDir(parent);
+        } else {
+            loadDir('', null);
+        }
+    } catch (err) {
+        console.error('[fs] create error:', err);
+        ui.showToast(t('fileBrowser.createFailed', ui.language.value, { err: String(err) }));
+    }
+};
+
+/**
+ * Move a row entry to the chosen destination directory. Performed via
+ * /api/fs/rename so a single rename-with-different-parent gives us "move"
+ * for free (the backend already uses os.Rename).
+ */
+export const moveFsEntry = async (entry: FsEntry, dstDir: string) => {
+    const normalizedDir = dstDir.replace(/\/?$/, '/');
+    const newPath = `${normalizedDir}${entry.name}`;
+    if (newPath === entry.path) return;
+    try {
+        await fsService.rename(entry.path, newPath);
+        ui.showToast(t('fileBrowser.moveSuccess', ui.language.value));
+        if (selectedFsEntry.value) {
+            if (selectedFsEntry.value.path === entry.path) {
+                selectedFsEntry.value = { ...selectedFsEntry.value, path: newPath };
+            } else if (selectedFsEntry.value.path.startsWith(entry.path + '/')) {
+                const tail = selectedFsEntry.value.path.slice(entry.path.length);
+                selectedFsEntry.value = { ...selectedFsEntry.value, path: newPath + tail };
+            }
+        }
+        loadDir('', null);
+    } catch (err) {
+        console.error('[fs] move error:', err);
+        ui.showToast(t('fileBrowser.moveFailed', ui.language.value, { err: String(err) }));
+    }
+};
+
+/** Copy a row entry into the chosen destination directory. */
+export const copyFsEntry = async (entry: FsEntry, dstDir: string) => {
+    const normalizedDir = dstDir.replace(/\/?$/, '/');
+    const dstPath = `${normalizedDir}${entry.name}`;
+    if (dstPath === entry.path) return;
+    try {
+        await fsService.copy(entry.path, dstPath);
+        ui.showToast(t('fileBrowser.copySuccess', ui.language.value));
+        loadDir('', null);
+    } catch (err) {
+        console.error('[fs] copy error:', err);
+        ui.showToast(t('fileBrowser.copyFailed', ui.language.value, { err: String(err) }));
+    }
+};
+
+/**
+ * Open the directory picker with `select` semantics — once the user chooses
+ * a destination directory the entry is moved or copied into it (caller
+ * decides). Reuses the existing DirPickerModal via modalStore.
+ */
+export const openMovePickerForEntry = (entry: FsEntry) => {
+    modal.openDirPicker(
+        pickedPath => {
+            moveFsEntry(entry, pickedPath);
+        },
+        t('fileBrowser.moveTitle', ui.language.value, { name: entry.name })
+    );
+};
+
+export const openCopyPickerForEntry = (entry: FsEntry) => {
+    modal.openDirPicker(
+        pickedPath => {
+            copyFsEntry(entry, pickedPath);
+        },
+        t('fileBrowser.copyTitle', ui.language.value, { name: entry.name })
+    );
+};

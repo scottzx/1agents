@@ -6,6 +6,7 @@ import { DirPickerModal } from './DirPickerModal';
 import { AccessTokenModal } from './AccessTokenModal';
 import { SessionRenameModal } from './SessionRenameModal';
 import { FsRenameModal } from './FsRenameModal';
+import { FsCreateModal } from './FsCreateModal';
 import { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
 import { PushPreviewModal } from './PushPreviewModal';
 import { SessionCreateModal } from '../chat/SessionCreateModal';
@@ -161,6 +162,19 @@ export function ModalHost() {
                     onSubmit={fsStore.submitFsRename}
                     language={language}
                     isDir={modal.fsRenameTarget.value.isDir}
+                />
+            )}
+
+            {/* File System New Folder / New File Modal */}
+            {modal.fsNewItemModalOpen.value && (
+                <FsCreateModal
+                    name={modal.fsNewItemName.value}
+                    kind={modal.fsNewItemKind.value}
+                    parentName={modal.fsNewItemParent.value?.name ?? null}
+                    onNameChange={val => (modal.fsNewItemName.value = val)}
+                    onClose={modal.closeFsNewItemModal}
+                    onSubmit={fsStore.submitFsNewItem}
+                    language={language}
                 />
             )}
 

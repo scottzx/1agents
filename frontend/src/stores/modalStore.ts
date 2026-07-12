@@ -194,6 +194,15 @@ export const fsRenameModalOpen = signal(false);
 export const fsRenameTarget = signal<FsEntry | null>(null);
 export const fsRenameName = signal('');
 
+// ── File browser new-item modal (new folder / new file inside a directory) ──
+// Parent dir is captured here so the modal doesn't need access to activeWs etc.
+// — entry can be null meaning "create at the workspace root".
+export type FsNewItemKind = 'folder' | 'file';
+export const fsNewItemModalOpen = signal(false);
+export const fsNewItemParent = signal<FsEntry | null>(null);
+export const fsNewItemKind = signal<FsNewItemKind>('folder');
+export const fsNewItemName = signal('');
+
 export const fsDeleteModalOpen = signal(false);
 export const fsDeleteTarget = signal<FsEntry | null>(null);
 
@@ -207,6 +216,19 @@ export const closeFsRenameModal = () => {
     fsRenameModalOpen.value = false;
     fsRenameTarget.value = null;
     fsRenameName.value = '';
+};
+
+export const openFsNewItemModal = (kind: FsNewItemKind, parent: FsEntry | null) => {
+    fsNewItemModalOpen.value = true;
+    fsNewItemKind.value = kind;
+    fsNewItemParent.value = parent;
+    fsNewItemName.value = '';
+};
+
+export const closeFsNewItemModal = () => {
+    fsNewItemModalOpen.value = false;
+    fsNewItemParent.value = null;
+    fsNewItemName.value = '';
 };
 
 export const openFsDeleteModal = (entry: FsEntry) => {

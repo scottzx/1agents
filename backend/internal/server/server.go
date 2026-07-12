@@ -71,6 +71,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/fs/upload-to", fsHandler.UploadTo)     // POST multipart/form-data (field "file") → saves to specified path
 	mux.HandleFunc("/api/fs/open-folder", fsHandler.OpenFolder) // POST ?path=... → opens folder in Finder/Explorer
 	mux.HandleFunc("/api/fs/rename", fsHandler.Rename)          // POST ?oldPath=...&newPath=...
+	mux.HandleFunc("/api/fs/copy", fsHandler.Copy)              // POST ?src=...&dst=... (file or directory tree)
 	mux.HandleFunc("/api/fs/mkdir", fsHandler.Mkdir)            // POST ?path=./newdir
 	mux.HandleFunc("/api/fs/delete", fsHandler.Delete)          // DELETE ?path=./main.go
 

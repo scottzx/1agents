@@ -633,6 +633,105 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
+// Copy handles POST /api/fs/copy?src=<relative-path>&dst=<relative-path>
+// Copies a file or directory tree to the destination. If the source is a
+// directory the entire subtree is copied. Refuses to copy a directory into
+// one of its own descendants, and never overwrites the source itself.
+func (h *Handler) Copy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	srcRel := r.URL.Query().Get("src")
+	dstRel := r.URL.Query().Get("dst")
+
+	srcAbs, srcOk := h.safeAbs(srcRel)
+	dstAbs, dstOk := h.safeAbs(dstRel)
+
+	if !srcOk || !dstOk {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	if srcAbs == h.root || dstAbs == h.root {
+		http.Error(w, "cannot use the workspace root", http.StatusForbidden)
+		return
+	}
+
+	if srcAbs == dstAbs {
+		http.Error(w, "source and destination are the same", http.StatusBadRequest)
+		return
+	}
+
+	srcInfo, err := os.Stat(srcAbs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	if srcInfo.IsDir() {
+		// Refuse to copy a directory into itself or any of its descendants —
+		// an io.Copy loop would happily recurse forever otherwise.
+		relDst, relErr := filepath.Rel(srcAbs, dstAbs)
+		if relErr == nil && (relDst == "" || relDst == "." || !strings.HasPrefix(relDst, ".."+string(os.PathSeparator))) {
+			http.Error(w, "cannot copy a directory into itself or a subdirectory", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err := copyRecursive(srcAbs, dstAbs, srcInfo); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
+// copyRecursive copies either a single file or a directory tree (preserving
+// permissions and mode bits) from src to dst. dst must not exist yet.
+func copyRecursive(src, dst string, srcInfo os.FileInfo) error {
+	if srcInfo.IsDir() {
+		if err := os.MkdirAll(dst, srcInfo.Mode().Perm()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			childInfo, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if err := copyRecursive(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), childInfo); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
 // Rename handles POST /api/fs/rename?oldPath=<relative-path>&newPath=<relative-path>
 // Renames or moves a file or directory.
 func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
@@ -704,6 +803,13 @@ func (h *Handler) safeAbs(rel string) (string, bool) {
 		if checkWorkspaces(cleaned) {
 			return cleaned, true
 		}
+		// Allow files this server placed in /tmp via POST /api/fs/upload —
+		// the Upload handler uses os.CreateTemp("/tmp", "1agents-<name>-*<ext>"),
+		// so any basename starting with "1agents-" under /tmp is server-owned
+		// and safe to serve even though /tmp itself isn't a workspace.
+		if isUploadArtifact(cleaned) {
+			return cleaned, true
+		}
 		log.Printf("[fs] absolute path traversal blocked: %q (not in any registered workspace)", cleaned)
 		return "", false
 	}
@@ -742,6 +848,17 @@ func sizeOf(info fs.FileInfo) int64 {
 		return 0
 	}
 	return info.Size()
+}
+
+// isUploadArtifact reports whether absPath is a file this server's Upload
+// handler created in /tmp (CreateTemp prefix "1agents-<name>-*<ext>"). These
+// are server-owned and safe to serve even though /tmp isn't a registered
+// workspace; refusing them forces callers to re-upload after every rename.
+func isUploadArtifact(absPath string) bool {
+	if !strings.HasPrefix(absPath, "/tmp/") {
+		return false
+	}
+	return strings.HasPrefix(filepath.Base(absPath), "1agents-")
 }
 
 // writeJSON serialises v to JSON and writes it to w with the correct

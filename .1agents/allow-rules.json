@@ -1,1 +1,1 @@
-["Tool ","Bash build/1agents project-items","Tool cat ~/.mmx/config.json"]
+["Tool ","Bash build/1agents project-items","Tool cat ~/.mmx/config.json","Tool cp build/1agents"]
