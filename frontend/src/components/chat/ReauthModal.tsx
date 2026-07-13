@@ -1,6 +1,6 @@
 // Re-auth modal — opened automatically when the bridge pushes `auth_required`
 // (so the user lands on the form the moment the agent demands credentials)
-// AND manually from the ChatHeader's 重新认证 / 登录 button.
+// AND manually from the session auth badge's 重新认证 / 登录 button.
 //
 // Per-method forms are inline-expanded (no separate page); the modal keeps
 // the user's input across auth_failed retries so a bad password doesn't

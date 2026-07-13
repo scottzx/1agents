@@ -280,7 +280,7 @@ export const closePushPreviewModal = () => {
 // ── Re-auth modal (task #106) ──────────────────────────────────────────────
 // Triggered automatically when the chat bridge pushes `auth_required` (so
 // the user lands on the form the moment the agent demands credentials) AND
-// manually from the ChatHeader badge / 登录 button. `methods` is the agent-
+// manually from the session auth badge / 登录 button. `methods` is the agent-
 // advertised list (oauth / api_key / credentials); the modal renders one
 // expandable row per method. `message` is the optional bridge-side reason
 // (e.g. "Token expired") shown as a banner above the method list.

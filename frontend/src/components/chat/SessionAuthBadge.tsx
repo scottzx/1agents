@@ -1,4 +1,4 @@
-// ChatHeader auth badge — three states driven by the bridge's `authState`:
+// Session auth badge — three states driven by the bridge's `authState`:
 //
 //   - authenticated: badge hidden entirely (acceptance #6 — agents that
 //     never require auth add zero visual noise)
@@ -19,7 +19,7 @@ import { openAuthRequiredModal } from '../../stores/modalStore';
 
 export interface SessionAuthBadgeProps {
     sessionId: string;
-    /** Called by the user-menu logout entry on the right of the header. */
+    /** Called by the user-menu logout entry next to the badge. */
     onLogout?: () => void;
 }
 

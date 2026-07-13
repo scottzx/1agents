@@ -17,6 +17,7 @@ import {
     setLiveSessionConnection,
     setLiveSessionAuthState,
     handleSessionForked,
+    handleSessionCapabilities,
     handleSessionDeleted,
     handleSessionsList,
 } from '../../stores/sessionStore';
@@ -113,6 +114,7 @@ export const globalBridgeManager = new ChatBridgeManager({
     onStatus: (sessionId, status) => setLiveSessionStatus(sessionId, status),
     onConnection: (sessionId, conn) => setLiveSessionConnection(sessionId, conn),
     onAuthState: (sessionId, auth) => setLiveSessionAuthState(sessionId, auth),
+    onSessionCapabilities: (sessionId, capabilities) => handleSessionCapabilities(sessionId, capabilities),
     onSessionForked: (parentId, session) => handleSessionForked(parentId, session),
     onSessionDeleted: sessionId => handleSessionDeleted(sessionId),
     onSessionsList: (workspaceId, sessions) => handleSessionsList(workspaceId, sessions),

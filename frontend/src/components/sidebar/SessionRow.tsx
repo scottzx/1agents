@@ -148,7 +148,7 @@ function buildSessionActions(session: Session, props: SessionRowProps): FsRowAct
         },
     ];
 
-    if (isChat(session)) {
+    if (isChat(session) && session.forkSupported === true) {
         actions.push({
             id: 'fork',
             labelKey: 'sidebar.forkSession',

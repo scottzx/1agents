@@ -91,6 +91,8 @@ export interface ChatBridgeOptions {
      * any pre-emptive login entry. Cleared on destroy().
      */
     onAuthState?(sessionId: string, auth: AuthState | null): void;
+    /** Mirror live ACP session capabilities into the host session index. */
+    onSessionCapabilities?(sessionId: string, capabilities: { forkSupported: boolean }): void;
     /**
      * Bridge answered a `fork_session` request — the host store drops the
      * new ChatSession into the sidebar and runs the row-highlight animation.
@@ -215,6 +217,8 @@ export interface SessionBridgeState {
      * pre-emptive "登录" entry.
      */
     auth: AuthState | null;
+    /** Whether ACP advertised session fork support; null until session_meta. */
+    forkSupported: boolean | null;
 }
 
 export class ChatBridgeManager {
@@ -259,6 +263,7 @@ export class ChatBridgeManager {
                 cancelling: false,
                 lastError: null,
                 auth: null,
+                forkSupported: session.forkSupported ?? (session.agentType === 'claudecode' ? true : null),
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
@@ -399,6 +404,7 @@ export class ChatBridgeManager {
                               availableCommands?: AvailableCommand[];
                               configOptions?: SessionConfigOption[];
                               authMethods?: AuthMethod[];
+                              forkSupported?: boolean;
                           }
                         | undefined;
                     let changed = false;
@@ -433,6 +439,13 @@ export class ChatBridgeManager {
                         } else {
                             state.auth = { ...state.auth, methods };
                         }
+                        changed = true;
+                    }
+                    if (typeof meta?.forkSupported === 'boolean') {
+                        state.forkSupported = meta.forkSupported;
+                        this.opts.onSessionCapabilities?.(session.id, {
+                            forkSupported: meta.forkSupported,
+                        });
                         changed = true;
                     }
                     if (changed) {

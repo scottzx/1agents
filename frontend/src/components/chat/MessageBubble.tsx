@@ -228,8 +228,12 @@ function AssistantContent({
     streaming: boolean;
     showActions: boolean;
 }) {
+    // Keep expansion local to this AssistantContent instance. Each assistant
+    // message mounts its own instance, so one block's button never changes
+    // another block's expanded state.
     const isExpanded = useSignal(true);
-    const expanded = isExpanded.value;
+    const isCollapsible = useSignal(false);
+    const blockRef = useRef<HTMLDivElement>(null);
     const lang = getLang();
     const projectName = activeProjectName();
     const html = useMemo(() => renderMarkdown(content, { projectName }), [content, projectName]);
@@ -237,9 +241,37 @@ function AssistantContent({
     const currentTheme = theme.value;
 
     useEffect(() => {
+        if (!showActions) return;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            if (!blockRef.current?.contains(event.target as Node)) {
+                isExpanded.value = false;
+            }
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown);
+        return () => document.removeEventListener('pointerdown', handlePointerDown);
+    }, [showActions]);
+
+    useEffect(() => {
         if (streaming) return;
         renderMermaidBlocks(bodyRef.current, currentTheme);
     }, [html, streaming, currentTheme]);
+
+    useEffect(() => {
+        if (!showActions || !bodyRef.current) return;
+
+        const body = bodyRef.current;
+        const updateCollapsible = () => {
+            const collapsedMaxHeight = parseFloat(getComputedStyle(body).fontSize) * 30;
+            isCollapsible.value = body.scrollHeight > collapsedMaxHeight + 1;
+        };
+
+        updateCollapsible();
+        const observer = new ResizeObserver(updateCollapsible);
+        observer.observe(body);
+        return () => observer.disconnect();
+    }, [html, showActions]);
 
     const copy = async () => {
         const copied = await copyToClipboard(content);
@@ -250,23 +282,15 @@ function AssistantContent({
         isExpanded.value = !isExpanded.value;
     };
 
+    const canCollapse = showActions && isCollapsible.value;
+    const expanded = !canCollapse || isExpanded.value;
+
     return (
-        <div class="chat-assistant-block">
+        <div ref={blockRef} class="chat-assistant-block">
             <div class={`chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
                 <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
                 {streaming && <span class="chat-cursor">▍</span>}
             </div>
-            {!expanded && showActions && (
-                <button
-                    type="button"
-                    class="chat-assistant-more"
-                    onClick={toggle}
-                    aria-label={t('chat.bubble.expand', lang)}
-                    title={t('chat.bubble.expand', lang)}
-                >
-                    ...
-                </button>
-            )}
             {showActions && (
                 <div class="chat-assistant-actions">
                     <button
@@ -278,15 +302,17 @@ function AssistantContent({
                     >
                         <CopyIcon />
                     </button>
-                    <button
-                        type="button"
-                        class="chat-assistant-action"
-                        onClick={toggle}
-                        aria-label={t(expanded ? 'chat.bubble.collapse' : 'chat.bubble.expand', lang)}
-                        title={t(expanded ? 'chat.bubble.collapse' : 'chat.bubble.expand', lang)}
-                    >
-                        <FoldIcon expanded={expanded} />
-                    </button>
+                    {canCollapse && (
+                        <button
+                            type="button"
+                            class="chat-assistant-action"
+                            onClick={toggle}
+                            aria-label={t(expanded ? 'chat.bubble.collapse' : 'chat.bubble.expand', lang)}
+                            title={t(expanded ? 'chat.bubble.collapse' : 'chat.bubble.expand', lang)}
+                        >
+                            <FoldIcon expanded={expanded} />
+                        </button>
+                    )}
                 </div>
             )}
         </div>
@@ -582,11 +608,47 @@ function ToolGroupBubble({
 }
 
 function GroupedAssistantTextItem({ content }: { content: string }) {
+    const isExpanded = useSignal(false);
+    const lang = getLang();
+    const preview = useMemo(() => {
+        const firstLine = content.trim().split(/\r?\n/)[0] ?? '';
+        return firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
+    }, [content]);
+
+    const toggle = () => {
+        isExpanded.value = !isExpanded.value;
+    };
+
+    const expanded = isExpanded.value;
+
     return (
-        <div class="chat-tool-row">
-            <div class="chat-tool-row-body">
-                <AssistantContent content={content} streaming={false} showActions={false} />
+        <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-assistant-text`}>
+            <div
+                class="chat-tool-row-header"
+                role="button"
+                tabIndex={0}
+                onClick={toggle}
+                onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggle();
+                    }
+                }}
+            >
+                <span class="chat-tool-status-icon is-assistant-text" aria-hidden="true">
+                    ·
+                </span>
+                <span class="chat-tool-name-badge is-assistant-text">{t('chat.assistant.label', lang)}</span>
+                {!expanded && preview && <span class="chat-tool-row-summary is-assistant-text-preview">{preview}</span>}
+                <span class="chat-tool-row-caret" aria-hidden="true">
+                    {expanded ? '▾' : '▸'}
+                </span>
             </div>
+            {expanded && (
+                <div class="chat-tool-row-body">
+                    <AssistantContent content={content} streaming={false} showActions={false} />
+                </div>
+            )}
         </div>
     );
 }

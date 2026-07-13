@@ -103,7 +103,7 @@ export const setLiveSessionConnection = (sessionId: string, conn: ConnectionStat
 
 /**
  * Live auth state keyed by session id. Mirrored from the chat bridge so the
- * ChatHeader badge can render even when the user has backgrounded the chat
+ * Session auth badge can render even when the user has backgrounded the chat
  * (no active useBridge listener). `null` = bridge hasn't spoken (UI hides the
  * badge entirely, so agents that never require auth add zero visual noise).
  */
@@ -239,7 +239,13 @@ export const loadChatSessions = async (workspaceId?: string) => {
         // Merge into the cross-workspace aggregate instead of replacing it, so
         // other workspaces' sessions aren't wiped (the session-first mobile
         // home lists every conversation across all projects).
-        chatSessions.value = [...chatSessions.value.filter(c => c.workspaceId !== wsId), ...chats];
+        chatSessions.value = [
+            ...chatSessions.value.filter(c => c.workspaceId !== wsId),
+            ...chats.map(c => ({
+                ...c,
+                forkSupported: c.forkSupported ?? (c.agentType === 'claudecode' ? true : undefined),
+            })),
+        ];
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {
         console.error('[agent] list error:', err);
@@ -261,7 +267,10 @@ export const loadAllChatSessions = async () => {
         const lists = await Promise.all(
             wss.filter(w => w.id).map(w => agentService.list(w.id, true).catch(() => [] as ChatSession[]))
         );
-        chatSessions.value = lists.flat();
+        chatSessions.value = lists.flat().map(c => ({
+            ...c,
+            forkSupported: c.forkSupported ?? (c.agentType === 'claudecode' ? true : undefined),
+        }));
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {
         console.error('[agent] list-all error:', err);
@@ -426,6 +435,15 @@ function normalizeBridgeSession(raw: Record<string, unknown>): ChatSession | nul
             (raw as { workspace_id?: unknown }).workspace_id ??
             ''
     );
+    const agentType = ((raw as { agentType?: unknown; agent_type?: unknown }).agentType ??
+        (raw as { agent_type?: unknown }).agent_type ??
+        'claudecode') as AgentType;
+    let forkSupported: boolean | undefined;
+    if (typeof (raw as { forkSupported?: unknown }).forkSupported === 'boolean') {
+        forkSupported = (raw as { forkSupported: boolean }).forkSupported;
+    } else if (agentType === 'claudecode') {
+        forkSupported = true;
+    }
     return {
         kind: 'chat',
         id,
@@ -434,9 +452,8 @@ function normalizeBridgeSession(raw: Record<string, unknown>): ChatSession | nul
             ((raw as { taskId?: unknown; task_id?: unknown }).taskId as string | undefined) ??
             ((raw as { task_id?: unknown }).task_id as string | undefined),
         name: String((raw as { name?: unknown }).name ?? ''),
-        agentType: ((raw as { agentType?: unknown; agent_type?: unknown }).agentType ??
-            (raw as { agent_type?: unknown }).agent_type ??
-            'claudecode') as AgentType,
+        agentType,
+        forkSupported,
         ccProject: String(
             (raw as { ccProject?: unknown; cc_project?: unknown }).ccProject ??
                 (raw as { cc_project?: unknown }).cc_project ??
@@ -483,6 +500,16 @@ export const requestForkSession = (sessionId: string) => {
     }
     globalBridgeManager.forkSession(session);
     ui.showToast('正在 Fork 会话…');
+};
+
+/** Mirror live ACP capability metadata onto the sidebar session row. */
+export const handleSessionCapabilities = (sessionId: string, capabilities: { forkSupported: boolean }) => {
+    const session = chatSessions.value.find(c => c.id === sessionId);
+    if (!session || session.forkSupported === capabilities.forkSupported) return;
+    chatSessions.value = chatSessions.value.map(c =>
+        c.id === sessionId ? { ...c, forkSupported: capabilities.forkSupported } : c
+    );
+    mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
 };
 
 export const requestDeleteSession = (sessionId: string) => {

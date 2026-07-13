@@ -119,6 +119,8 @@ export interface ChatSession {
     active: boolean;
     /** Per-session permission policy. Persisted via PATCH /api/agent/sessions/{id}. */
     permissionMode?: PermissionMode;
+    /** Transient ACP capability mirrored from the live bridge session. */
+    forkSupported?: boolean;
     /**
      * Conversation role, declared at creation (New Conversation). Drives the
      * avatar's role ring and, for 'pm', the project-locked task tools + PM

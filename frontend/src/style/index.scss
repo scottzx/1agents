@@ -15292,25 +15292,9 @@ body {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// Chat header — auth badge + per-session chrome (task #106)
+// Auth badge — three states driven by the bridge's auth state.
 // ════════════════════════════════════════════════════════════════════
-
-.chat-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-page);
-  flex: 0 0 auto;
-  min-height: 40px;
-}
-
-.chat-header-spacer {
-  flex: 1 1 auto;
-}
-
-// Auth badge — three states:
+// Three states:
 //   - authenticated: not rendered (acceptance #6 — agents that don't require
 //     auth add zero visual noise)
 //   - auth_required: red dot + 重新认证 button
@@ -15883,31 +15867,31 @@ body {
   min-width: 0;
 }
 
-.chat-assistant-content.is-collapsed {
-  max-height: 30em;
-  overflow: hidden;
-}
+.chat-assistant-content {
+  max-height: 320px;
+  overflow-y: auto;
 
-.chat-assistant-more {
-  display: block;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  line-height: 1.5;
-
-  &:hover {
-    background: var(--btn-hover);
-    color: var(--text-main);
+  &::-webkit-scrollbar {
+    width: 6px;
   }
 
-  &:focus-visible {
-    outline: 2px solid var(--accent-color);
-    outline-offset: 1px;
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  &.is-collapsed {
+    max-height: 30em;
+    overflow-y: auto;
+  }
+
+  &.is-expanded {
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -16315,6 +16299,11 @@ body {
   &.is-waiting { color: var(--warning-fg); }
 }
 
+.chat-tool-status-icon.is-assistant-text {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
 .chat-tool-row-caret {
   flex-shrink: 0;
   margin-left: auto;
@@ -16489,6 +16478,17 @@ body {
 .chat-tool-row-summary.is-thinking-preview {
   font-family: inherit;
   font-style: italic;
+}
+
+.chat-tool-name-badge.is-assistant-text {
+  color: var(--text-secondary);
+  background: var(--btn-hover);
+  border-color: var(--border-color);
+}
+
+.chat-tool-row-summary.is-assistant-text-preview {
+  font-family: var(--font-sans);
+  font-size: 12px;
 }
 
 .status-badge {

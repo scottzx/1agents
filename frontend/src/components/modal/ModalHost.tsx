@@ -208,10 +208,10 @@ export function ModalHost() {
             )}
 
             {/* Re-auth modal (task #106) — triggered automatically when the
-                bridge pushes auth_required (see ChatHeader) and manually from
-                the ChatHeader badge. Submit forwards to the bridge's
+                bridge pushes auth_required and manually from the session auth
+                badge. Submit forwards to the bridge's
                 authenticate action; auth_completed auto-closes via the
-                status->useEffect loop in ChatHeader. */}
+                status->useEffect loop in ChatPanel. */}
             {modal.authRequiredModalOpen.value && <ReauthHost onClose={modal.closeAuthRequiredModal} />}
         </Fragment>
     );

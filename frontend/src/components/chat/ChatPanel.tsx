@@ -10,7 +10,8 @@ import { Composer } from './Composer';
 import { PlanChecklist } from './PlanChecklist';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 import { ChatErrorBanner } from './ChatErrorBanner';
-import { ChatHeader } from './ChatHeader';
+import { SessionAuthBadge } from './SessionAuthBadge';
+import { closeAuthRequiredModal, openAuthRequiredModal } from '../../stores/modalStore';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -38,6 +39,7 @@ export class ChatPanel extends Component<ChatPanelProps> {
 function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialMessage }: ChatPanelProps) {
     const {
         items,
+        authState,
         connection,
         typing,
         ready,
@@ -48,6 +50,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         usage,
         plan,
         send,
+        logout,
         cancel,
         cancelQueued,
         respondPermission,
@@ -72,6 +75,16 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // brand-new session would race `session_ready` and bounce with
     // SESSION_NOT_FOUND.
     const composerDisabled = (connection !== 'connected' && connection !== 'reconnecting') || !ready;
+
+    // Keep authentication modal orchestration close to the auth badge after
+    // removing the redundant header wrapper.
+    useEffect(() => {
+        if (authState?.status === 'auth_required' && authState.methods.length > 0) {
+            openAuthRequiredModal(session.id, authState.methods, authState.message);
+        } else if (authState?.status === 'authenticated' || authState?.status === 'logged_out') {
+            closeAuthRequiredModal();
+        }
+    }, [authState?.status, authState?.methods, authState?.message, session.id]);
 
     // New-chat home flow (192ab6a): fire the pending initial message once
     // the session is usable, then clear it so reconnects don't resend.
@@ -106,10 +119,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                     }}
                 />
             )}
-            {/* Auth badge + logout entry. Lives above the message list so
-                the badge is always visible regardless of scroll position.
-                The header also auto-opens the ReauthModal on auth_required. */}
-            <ChatHeader session={session} />
+            <SessionAuthBadge sessionId={session.id} onLogout={logout} />
             {currentModeId === 'plan' && (
                 <div class="chat-plan-banner">{t('chat.sessionMode.planBanner', ui.language.value)}</div>
             )}
