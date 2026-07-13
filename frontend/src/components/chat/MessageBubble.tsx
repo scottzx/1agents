@@ -822,6 +822,19 @@ function GroupedToolCallItem({
     const isTerminal = kind === 'execute';
     const command = isTerminal ? terminalCommandLine(args) : undefined;
 
+    // switch_mode 在工具标题区追加副文本 "<label>: <from> → <to>"（取自 rawInput 的
+    // fromMode/toMode）。Claude Code 走 ExitPlanMode 工作流时推 tool_call.kind='switch_mode'。
+    const modeSwitch =
+        kind === 'switch_mode'
+            ? (() => {
+                  const from = typeof args.fromMode === 'string' ? args.fromMode : '';
+                  const to = typeof args.toMode === 'string' ? args.toMode : '';
+                  if (!from && !to) return null;
+                  const fromTo = t('chat.toolKind.modeFromTo', lang, { from, to });
+                  return `${t('chat.toolKind.switchMode', lang)}: ${fromTo}`;
+              })()
+            : null;
+
     return (
         <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-${status}`}>
             <div
@@ -839,6 +852,7 @@ function GroupedToolCallItem({
                 <StatusIcon status={status} />
                 <ToolKindIcon kind={kind} />
                 <span class="chat-tool-name-badge">{call.toolName}</span>
+                {modeSwitch && <span class="chat-tool-row-mode-switch">{modeSwitch}</span>}
                 {summary && <span class="chat-tool-row-summary">{summary}</span>}
                 {status === 'waiting' && (
                     <span class="chat-tool-row-status is-waiting">{t('chat.tool.status.waiting', lang)}</span>

@@ -12,8 +12,16 @@ import type { ChatSession, PermissionDecision, PermissionMode } from '../types';
 // Imported for its side-effecting setter only; referenced exclusively inside
 // closures (never at module-eval time) so the sessionStore ⇄ hooks import cycle
 // stays safe — see the cycle note in stores/sessionStore.ts.
-import { setLiveSessionStatus, setLiveSessionConnection } from '../../stores/sessionStore';
+import {
+    setLiveSessionStatus,
+    setLiveSessionConnection,
+    setLiveSessionAuthState,
+    handleSessionForked,
+    handleSessionDeleted,
+    handleSessionsList,
+} from '../../stores/sessionStore';
 import type {
+    AuthState,
     ChatItem,
     ConnectionState,
     SessionModesState,
@@ -79,6 +87,22 @@ interface UseBridgeState {
     lastError: { message: string; code: string } | null;
     /** Clear `lastError` for this session (called from the banner × button). */
     dismissError: () => void;
+    /**
+     * Live auth state for the header badge + re-auth modal. null when the
+     * bridge hasn't surfaced an auth state yet — the UI hides the badge
+     * entirely in that case (so agents that never require auth don't add
+     * visual noise to the header).
+     */
+    authState: AuthState | null;
+    /**
+     * Submit credentials for one of the methods the agent advertised.
+     * The bridge answers with `auth_completed` (modal auto-closes) or an
+     * `error` with code `auth_failed` (modal shows the error and keeps
+     * the user's input).
+     */
+    authenticate: (methodId: string, credentials?: Record<string, string>) => void;
+    /** Drop the agent's stored credentials. The bridge answers with `logged_out`. */
+    logout: () => void;
 }
 
 // The single web-host bridge manager. The store mirrors are wrapped in closures
@@ -88,6 +112,10 @@ export const globalBridgeManager = new ChatBridgeManager({
     directWsOrigin: () => `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`,
     onStatus: (sessionId, status) => setLiveSessionStatus(sessionId, status),
     onConnection: (sessionId, conn) => setLiveSessionConnection(sessionId, conn),
+    onAuthState: (sessionId, auth) => setLiveSessionAuthState(sessionId, auth),
+    onSessionForked: (parentId, session) => handleSessionForked(parentId, session),
+    onSessionDeleted: sessionId => handleSessionDeleted(sessionId),
+    onSessionsList: (workspaceId, sessions) => handleSessionsList(workspaceId, sessions),
 });
 
 export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {
@@ -140,6 +168,7 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
     const plan = state ? state.plan : null;
     const takenOver = state ? state.takenOver : false;
     const lastError = state ? state.lastError : null;
+    const authState = state ? state.auth : null;
 
     const send = useCallback(
         (content: string) => {
@@ -204,6 +233,19 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         globalBridgeManager.dismissError(session.id);
     }, [session]);
 
+    const authenticate = useCallback(
+        (methodId: string, credentials?: Record<string, string>) => {
+            if (!session) return;
+            globalBridgeManager.authenticate(session, methodId, credentials);
+        },
+        [session]
+    );
+
+    const logout = useCallback(() => {
+        if (!session) return;
+        globalBridgeManager.logout(session);
+    }, [session]);
+
     return {
         items,
         connection,
@@ -226,5 +268,8 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         retry,
         lastError,
         dismissError,
+        authState,
+        authenticate,
+        logout,
     };
 }

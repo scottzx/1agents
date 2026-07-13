@@ -200,3 +200,56 @@ export interface AvailableCommand {
     description?: string;
     hasInput?: boolean;
 }
+
+/**
+ * One authentication method the agent advertised (ACP authMethods). The
+ * bridge delivers the full list in `session_meta.payload.authMethods` (so
+ * the UI can render a pre-emptive "登录" entry even before the agent has
+ * actually demanded auth) and re-broadcasts it in the `auth_required` event
+ * when the agent requests credentials mid-session.
+ *
+ *   - `type: 'oauth'`     — click opens `authUrl` in a new tab; user pastes
+ *                           the resulting code back into the form.
+ *   - `type: 'api_key'`   — single secret string (PAT, API key).
+ *   - `type: 'credentials'` — username + password (or multi-field secret).
+ *
+ * `name` is the agent-supplied display name (e.g. "GitHub", "Acme OAuth").
+ */
+export interface AuthMethod {
+    id: string;
+    name?: string;
+    description?: string;
+    type: 'oauth' | 'api_key' | 'credentials';
+    /** OAuth only — URL the user opens in a browser to complete the flow. */
+    authUrl?: string;
+    /**
+     * Credential field hints (credentials/api_key methods). Used to render
+     * labeled inputs when the agent needs more than one value. Free-form
+     * for the wire layer — the UI just renders `label` + `type='password'|'text'`
+     * for each entry and POSTs the map back as `credentials`.
+     */
+    fields?: Array<{ name: string; label?: string; type?: 'text' | 'password' }>;
+}
+
+/** Live auth-state mirror tracked by the chat bridge. */
+export type AuthStatus = 'authenticated' | 'auth_required' | 'logged_out';
+
+/**
+ * Snapshot of the auth state for one session. `status` drives the header
+ * badge; `methods` is the list to render in the re-auth modal (empty when
+ * the agent doesn't require auth — the badge stays hidden).
+ */
+export interface AuthState {
+    status: AuthStatus;
+    methods: AuthMethod[];
+    /** Free-form reason from the bridge (e.g. "Token expired", shown in modal). */
+    message?: string;
+    /**
+     * Last auth attempt's error (set when the bridge answers an `authenticate`
+     * with code `auth_failed`). Cleared on every new submit so a retry
+     * doesn't show a stale message. Lives on `auth` (not on `lastError`)
+     * because auth failures should ONLY show inside the ReauthModal —
+     * surfacing them as a generic banner would compete with the modal.
+     */
+    lastError?: { message: string; code: string } | null;
+}

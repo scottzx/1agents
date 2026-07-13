@@ -88,7 +88,7 @@ export const agentService = {
      */
     async list(workspaceId: string, includeArchived = false): Promise<ChatSession[]> {
         const qs = `workspace_id=${encodeURIComponent(workspaceId)}${includeArchived ? '&include_archived=1' : ''}`;
-        const res = await apiFetch(`/agent/sessions?${qs}`);
+        const res = await apiFetch(`/agent/sessions?${qs}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as RawChatSession[];
         return data.map(normalizeChatSession);
@@ -116,7 +116,7 @@ export const agentService = {
      * Returns the indexed record, or null when the id is unknown.
      */
     async get(id: string): Promise<ChatSession | null> {
-        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`);
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`, { cache: 'no-store' });
         if (res.status === 404) return null;
         if (!res.ok) throw new Error(await res.text());
         return normalizeChatSession((await res.json()) as RawChatSession);

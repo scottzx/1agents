@@ -15291,6 +15291,304 @@ body {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════
+// Chat header — auth badge + per-session chrome (task #106)
+// ════════════════════════════════════════════════════════════════════
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-page);
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
+.chat-header-spacer {
+  flex: 1 1 auto;
+}
+
+// Auth badge — three states:
+//   - authenticated: not rendered (acceptance #6 — agents that don't require
+//     auth add zero visual noise)
+//   - auth_required: red dot + 重新认证 button
+//   - logged_out:    gray dot + 登录 button
+// Semantic color tokens only — adapts to light/dark for free.
+.chat-auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+
+  &__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+  }
+
+  &__dot--required {
+    background: var(--danger-emphasis);
+    box-shadow: 0 0 0 3px var(--danger-bg);
+  }
+
+  &__dot--logged-out {
+    background: var(--text-muted);
+  }
+
+  &__label {
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  &__action {
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-main);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s;
+
+    &:hover {
+      border-color: var(--text-main);
+    }
+  }
+
+  &[data-status='auth_required'] &__action {
+    background: var(--danger-emphasis);
+    color: var(--on-accent);
+    border-color: var(--danger-emphasis);
+
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+}
+
+// User avatar menu — minimal; lives next to the auth badge so the
+// logout entry has a discoverable home even though there's no global
+// account menu elsewhere in the app.
+.chat-header-user-menu {
+  position: relative;
+  display: inline-flex;
+
+  &__trigger {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+
+    &:hover {
+      border-color: var(--text-main);
+      color: var(--text-main);
+    }
+  }
+
+  &__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 140px;
+    padding: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 50;
+  }
+
+  &__item {
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+
+    &:hover:not(:disabled) {
+      background: var(--btn-hover);
+    }
+
+    &:disabled {
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+  }
+}
+
+// Re-auth modal — sits on top of the project's ws-modal-* primitives (see
+// SessionRenameModal for the canonical pattern), no Radix Dialog.
+.reauth-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reauth-modal-banner {
+  padding: 10px 12px;
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.reauth-modal-error {
+  padding: 10px 12px;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.reauth-modal-prompt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.reauth-modal-methods {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reauth-modal-method {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-page);
+  overflow: hidden;
+  transition: border-color 0.15s;
+
+  &--expanded {
+    border-color: var(--accent-color);
+  }
+
+  &__head {
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    color: var(--text-main);
+    font-size: 13px;
+    text-align: left;
+    transition: background-color 0.15s;
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+  }
+
+  &__name {
+    font-weight: 500;
+  }
+
+  &__type {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+  }
+
+  &__form {
+    padding: 12px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+.reauth-modal-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.reauth-modal-input {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--badge-glow);
+  }
+}
+
+.reauth-modal-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  &__link {
+    align-self: flex-start;
+    color: var(--accent-color);
+    font-size: 12px;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--accent-color);
+
+    &:hover {
+      background: var(--btn-hover);
+    }
+  }
+}
+
+.reauth-modal-submit {
+  align-self: flex-end;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
 // Persistent error banner above the Composer. Surfaces bridge `error`
 // events (auth failures, upstream 4xx/5xx). Page-persistent: only the ×
 // button or an F5 clears it — never auto-dismissed on a timer.
@@ -15999,6 +16297,15 @@ body {
   white-space: nowrap;
 }
 
+// switch_mode 副文本（"切换模式: plan → default"），与图标同色，弱于主标题
+.chat-tool-row-mode-switch {
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
 .chat-tool-row-status {
   flex-shrink: 0;
   font-size: 11px;
@@ -16220,7 +16527,8 @@ body {
   flex-shrink: 0;
   color: var(--text-secondary);
   &[data-kind="edit"],
-  &[data-kind="move"] {
+  &[data-kind="move"],
+  &[data-kind="switch_mode"] {
     color: var(--accent-color);
   }
   &[data-kind="delete"] {

@@ -15,6 +15,12 @@ import {
     sessionDefaultCompare,
     sessionGroupValue,
 } from './sessionGrid';
+import {
+    chatSessions,
+    mergeSessionsIntoFolders,
+    terminalWindows,
+    loadChatSessions
+} from '../../../stores/sessionStore';
 
 interface SessionsViewProps {
     workspaceId: string;
@@ -41,7 +47,7 @@ const OpenIcon = () => (
 // 「恢复对话」：未归档会话直接打开；已归档会话先取消归档再打开，于是下次在侧
 // 边栏关闭即是关闭一个活跃会话，而非二次关闭。
 export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: SessionsViewProps) {
-    const [sessions, setSessions] = useState<ChatSession[]>([]);
+    const sessions = chatSessions.value.filter(s => s.workspaceId === workspaceId);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const query = useSignal('');
@@ -51,8 +57,7 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
         setLoading(true);
         setError('');
         try {
-            const data = await agentService.list(workspaceId, /* includeArchived */ true);
-            setSessions(data);
+            await loadChatSessions(workspaceId);
         } catch (err) {
             setError((err as Error).message);
         } finally {
@@ -70,17 +75,27 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
         async (s: ChatSession) => {
             if (!onSelectSession) return;
             if (s.archived) {
+                // Optimistic UI update: unarchive locally immediately
+                s.archived = false;
+                s.archivedAt = undefined;
+                chatSessions.value = [...chatSessions.value];
+                mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+
                 try {
                     await agentService.setArchived(s.id, false);
                 } catch (err) {
+                    // Rollback on error
+                    s.archived = true;
+                    s.archivedAt = new Date().toISOString();
+                    chatSessions.value = [...chatSessions.value];
+                    mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
                     setError((err as Error).message);
                     return;
                 }
-                fetchSessions();
             }
             onSelectSession({ ...s, archived: false, archivedAt: undefined, active: true });
         },
-        [onSelectSession, fetchSessions]
+        [onSelectSession]
     );
 
     const q = query.value.trim().toLowerCase();

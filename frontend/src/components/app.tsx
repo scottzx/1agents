@@ -229,7 +229,7 @@ export class App extends Component<{}, AppState> {
         if (wsStore.activeWorkspaceId.value) {
             await sess.loadChatSessions(wsStore.activeWorkspaceId.value);
         }
-        const chats = sess.chatSessions.value;
+        const chats = sess.chatSessions.value.filter(c => !c.archived);
         if (chats.length > 0) {
             await sess.selectSession(chats[0]);
         } else {

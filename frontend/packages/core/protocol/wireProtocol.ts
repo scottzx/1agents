@@ -29,9 +29,15 @@ export type BridgeEvent =
     | 'tool_result'
     | 'permission_request'
     | 'permission_timeout'
+    | 'auth_required'
+    | 'auth_completed'
+    | 'logged_out'
     | 'done'
     | 'history_response'
-    | 'error';
+    | 'error'
+    | 'session_forked'
+    | 'session_deleted'
+    | 'sessions_list';
 
 /** Union of every field the bridge may put on an inbound event. */
 export interface BridgeEventPayload {
@@ -40,6 +46,8 @@ export interface BridgeEventPayload {
     type?: string;
     arguments?: unknown;
     requestId?: string;
+    /** Session id on cross-session events (session_deleted, session_forked, …). */
+    sessionId?: string;
     message?: string;
     code?: string;
     toolName?: string;
@@ -116,4 +124,44 @@ export function setSessionModeAction(sessionId: string, modeId: string) {
 // model, reasoning effort). The "mode" option has its own set_session_mode.
 export function setConfigOptionAction(sessionId: string, key: string, value: string) {
     return { action: 'set_config_option', sessionId, payload: { key, value } };
+}
+
+// Submit credentials for a method the bridge advertised in `auth_required`
+// (or, on first session_meta, in `authMethods`). The bridge forwards to the
+// agent's authenticate call and answers with `auth_completed` or an `error`
+// whose `code === 'auth_failed'`. `credentials` is opaque to the wire layer
+// — the agent decides what fields it accepts per method.
+export function authenticateAction(sessionId: string, methodId: string, credentials?: Record<string, string>) {
+    return { action: 'authenticate', sessionId, methodId, credentials };
+}
+
+// Drop the agent's stored credentials and reset the session's auth state.
+// The bridge answers with `logged_out`; a later `auth_required` re-prompts.
+export function logoutAction(sessionId: string) {
+    return { action: 'logout', sessionId };
+}
+
+// Issue #96 block A: ask the bridge-server to fork the given session into a
+// new one (new id, snapshot of conversation so far). The bridge answers with
+// `session_forked`, carrying the new session record under `payload.session`
+// (and the parent id under `payload.parentSessionId` for the caller's
+// convenience — the row highlight + scroll then runs on the new id).
+export function forkSessionAction(sessionId: string) {
+    return { action: 'fork_session', sessionId };
+}
+
+// Permanently delete a session (and its underlying agent conversation). The
+// bridge tears down the live ACP session first, then answers with
+// `session_deleted` carrying `sessionId` so the sidebar can drop the row.
+export function deleteSessionAction(sessionId: string) {
+    return { action: 'delete_session', sessionId };
+}
+
+// Pull the full session list for the current workspace. Used by the sidebar
+// "Switch Session" popover to enumerate every session without an extra REST
+// round trip. The bridge answers with `sessions_list` carrying an array of
+// session records under `payload.sessions`. `workspaceId` is optional — when
+// omitted the bridge uses the WS connection's workspace.
+export function listSessionsAction(workspaceId?: string) {
+    return { action: 'list_sessions', workspaceId };
 }

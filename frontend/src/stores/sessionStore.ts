@@ -10,7 +10,7 @@ import {
     type ChatStatus,
     type AgentType,
 } from '../components/types';
-import type { ConnectionState } from '@1agents/core/protocol/types';
+import type { AuthState, ConnectionState } from '@1agents/core/protocol/types';
 import { terminalService } from '../services/terminalService';
 import { agentService } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
@@ -101,6 +101,62 @@ export const setLiveSessionConnection = (sessionId: string, conn: ConnectionStat
     liveSessionConnection.value = { ...liveSessionConnection.value, [sessionId]: conn };
 };
 
+/**
+ * Live auth state keyed by session id. Mirrored from the chat bridge so the
+ * ChatHeader badge can render even when the user has backgrounded the chat
+ * (no active useBridge listener). `null` = bridge hasn't spoken (UI hides the
+ * badge entirely, so agents that never require auth add zero visual noise).
+ */
+export const liveSessionAuthState = signal<Record<string, AuthState>>({});
+
+/** Set or clear a session's live auth state (no-op when unchanged). */
+export const setLiveSessionAuthState = (sessionId: string, auth: AuthState | null) => {
+    const cur = liveSessionAuthState.value[sessionId];
+    if (auth === null) {
+        if (cur === undefined) return;
+        const next = { ...liveSessionAuthState.value };
+        delete next[sessionId];
+        liveSessionAuthState.value = next;
+        return;
+    }
+    if (cur === auth) return;
+    liveSessionAuthState.value = { ...liveSessionAuthState.value, [sessionId]: auth };
+};
+
+/**
+ * Session id to flash-highlight for ~1.5s after a fork succeeds. Sidebar rows
+ * read this signal to add the `.chat-item-highlight` class; the class itself
+ * carries the animation + auto-clear, so callers only need to set the id and
+ * the row's CSS handles the rest. Cleared by `clearHighlightedSession` when
+ * the animation ends or the user navigates away.
+ */
+export const highlightedSessionId = signal<string | null>(null);
+let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Mark `sessionId` as the freshly-forked row; auto-clears after 1.5s. */
+export const setHighlightedSession = (sessionId: string) => {
+    if (highlightTimer) {
+        clearTimeout(highlightTimer);
+        highlightTimer = null;
+    }
+    highlightedSessionId.value = sessionId;
+    highlightTimer = setTimeout(() => {
+        highlightedSessionId.value = null;
+        highlightTimer = null;
+    }, 1500);
+};
+
+/**
+ * Bridge-side session list cache, keyed by workspace id. Populated lazily by
+ * `requestSessionsList` (sidebar "Switch Session" popover) and stale-cleared
+ * 5s after the last request so repeated opens don't hammer the bridge. The
+ * popover reads `sessionListByWorkspace[wsId]`; missing entry = nothing
+ * fetched yet.
+ */
+export const sessionListByWorkspace = signal<Record<string, ChatSession[]>>({});
+export const SESSION_LIST_TTL_MS = 5_000;
+const sessionListFetchedAt: Record<string, number> = {};
+
 /** Sync tmux windows + chat sessions into workspace folders as sessions */
 export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSession[]) => {
     // Always keep the currently-active chat session in the list, even when the
@@ -126,7 +182,10 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
                 waitingFor: w.waitingFor,
                 agent: w.agent,
             }));
-        const chatSessionList: Session[] = chatList.filter(c => c.workspaceId === f.id).map(c => ({ ...c }));
+        const chatSessionList: Session[] = chatList
+            .filter(c => c.workspaceId === f.id)
+            .filter(c => !c.archived)
+            .map(c => ({ ...c }));
         // Chat sessions first (newer), then terminals.
         return { ...f, sessions: [...chatSessionList, ...termSessions] };
     });
@@ -173,7 +232,7 @@ export const loadChatSessions = async (workspaceId?: string) => {
     const wsId = workspaceId ?? wsStore.activeWorkspaceId.value;
     if (!wsId) return;
     try {
-        const chats = await agentService.list(wsId);
+        const chats = await agentService.list(wsId, true);
         // All chats (incl. role='pm' AI 项目经理) show in the normal sidebar /
         // chat column now — PM is created via New Conversation, not a 副屏.
         // Merge into the cross-workspace aggregate instead of replacing it, so
@@ -199,7 +258,7 @@ export const loadAllChatSessions = async () => {
         // Skip any workspace with a blank id — the backend rejects
         // workspace_id= with 400, and a blank-id row is never a real workspace.
         const lists = await Promise.all(
-            wss.filter(w => w.id).map(w => agentService.list(w.id).catch(() => [] as ChatSession[]))
+            wss.filter(w => w.id).map(w => agentService.list(w.id, true).catch(() => [] as ChatSession[]))
         );
         chatSessions.value = lists.flat();
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
@@ -308,27 +367,184 @@ export const clearPendingInitialMessage = () => {
  * of the sidebar but stays in the 会话 archive view, and can be reopened — the
  * bridge re-establishes from acpSessionId).
  */
+export const selectNextAvailableSession = (deletedSessionId: string, workspaceId: string) => {
+    const active = activeSession.value;
+    if (active && isChat(active) && active.id === deletedSessionId) {
+        activeSession.value = null;
+        lockedNewChatWorkspaceId.value = workspaceId || null;
+        tabsStore.activeTab.value = 'new_chat';
+    }
+};
+
 export const killChatSession = async (sessionId: string) => {
     const session = chatSessions.value.find(c => c.id === sessionId);
     if (!session) return;
     try {
         // Clean up global WebSocket bridge session
         globalBridgeManager.destroy(sessionId);
+        selectNextAvailableSession(sessionId, session.workspaceId);
         await agentService.setArchived(sessionId, true);
         await loadChatSessions(session.workspaceId);
-        const active = activeSession.value;
-        if (active && isChat(active) && active.id === sessionId) {
-            activeSession.value = null;
-            // Park the main pane on the NewChatHome for the currently-selected
-            // project, instead of dropping back onto the (often empty) terminal
-            // tab's "暂无终端" placeholder.
-            lockedNewChatWorkspaceId.value = wsStore.activeWorkspaceId.value || null;
-            tabsStore.activeTab.value = 'new_chat';
-        }
         ui.showToast('会话已归档 ✓');
     } catch (err) {
         ui.showToast(`归档失败: ${(err as Error).message}`);
     }
+};
+
+// ── Issue #96 block A — fork / delete / list_sessions via the bridge WS ──
+// These three actions are sent through the chat WebSocket (not REST) because
+// the underlying 1acp runtime owns session lifecycle and can only mutate the
+// live conversation from inside its own loop. The frontend triggers them via
+// `globalBridgeManager.forkSession/deleteSession/listSessions`, then waits for
+// the corresponding event (`session_forked` / `session_deleted` /
+// `sessions_list`) which the handlers below wire into the sessionStore.
+
+// Normalize the wire payload the bridge returns for a fork / list call into
+// the canonical ChatSession shape the sidebar expects. Defensive: backend may
+// still emit the older snake_case shape during the rollout window, so accept
+// both. Unknown / missing fields fall through to safe defaults — a partial
+// row is still useful (the user can click it; ChatPanel will resync on its
+// first history_response).
+function normalizeBridgeSession(raw: Record<string, unknown>): ChatSession | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String((raw as { id?: unknown }).id ?? '');
+    if (!id) return null;
+    const workspaceId = String(
+        (raw as { workspaceId?: unknown; workspace_id?: unknown }).workspaceId ??
+            (raw as { workspace_id?: unknown }).workspace_id ??
+            ''
+    );
+    return {
+        kind: 'chat',
+        id,
+        workspaceId,
+        taskId:
+            ((raw as { taskId?: unknown; task_id?: unknown }).taskId as string | undefined) ??
+            ((raw as { task_id?: unknown }).task_id as string | undefined),
+        name: String((raw as { name?: unknown }).name ?? ''),
+        agentType: ((raw as { agentType?: unknown; agent_type?: unknown }).agentType ??
+            (raw as { agent_type?: unknown }).agent_type ??
+            'claudecode') as AgentType,
+        ccProject: String(
+            (raw as { ccProject?: unknown; cc_project?: unknown }).ccProject ??
+                (raw as { cc_project?: unknown }).cc_project ??
+                ''
+        ),
+        ccSessionId: String(
+            (raw as { ccSessionId?: unknown; cc_session_id?: unknown }).ccSessionId ??
+                (raw as { cc_session_id?: unknown }).cc_session_id ??
+                ''
+        ),
+        acpSessionId: ((raw as { acpSessionId?: unknown; acp_session_id?: unknown }).acpSessionId ??
+            (raw as { acp_session_id?: unknown }).acp_session_id) as string | undefined,
+        sessionKey: String(
+            (raw as { sessionKey?: unknown; session_key?: unknown }).sessionKey ??
+                (raw as { session_key?: unknown }).session_key ??
+                ''
+        ),
+        status: ((raw as { status?: unknown }).status ?? 'idle') as ChatSession['status'],
+        createdAt: ((raw as { createdAt?: unknown; created_at?: unknown }).createdAt ??
+            (raw as { created_at?: unknown }).created_at) as string | undefined,
+        lastEventAt: ((raw as { lastEventAt?: unknown; last_event_at?: unknown }).lastEventAt ??
+            (raw as { last_event_at?: unknown }).last_event_at) as string | undefined,
+        archivedAt: ((raw as { archivedAt?: unknown; archived_at?: unknown }).archivedAt ??
+            (raw as { archived_at?: unknown }).archived_at) as string | undefined,
+        active: Boolean((raw as { active?: unknown }).active),
+        role: (raw as { role?: unknown }).role as string | undefined,
+        permissionMode: ((raw as { permissionMode?: unknown; permission_mode?: unknown }).permissionMode ??
+            (raw as { permission_mode?: unknown }).permission_mode) as ChatSession['permissionMode'],
+    };
+}
+
+/** Send a `fork_session` action over the chat WS. The bridge answers with
+ *  `session_forked` → `handleSessionForked` → sidebar row + 1.5s highlight. */
+export const requestForkSession = (sessionId: string) => {
+    const session = chatSessions.value.find(c => c.id === sessionId);
+    if (!session) {
+        ui.showToast('会话不存在');
+        return;
+    }
+    globalBridgeManager.forkSession(session);
+    ui.showToast('正在 Fork 会话…');
+};
+
+export const requestDeleteSession = (sessionId: string) => {
+    const session = chatSessions.value.find(c => c.id === sessionId);
+    if (!session) {
+        ui.showToast('会话不存在');
+        return;
+    }
+    // 1. Send delete session action to the bridge
+    globalBridgeManager.deleteSession(session);
+
+    // 2. Perform optimistic UI updates immediately
+    chatSessions.value = chatSessions.value.filter(c => c.id !== sessionId);
+    globalBridgeManager.destroy(sessionId);
+    selectNextAvailableSession(sessionId, session.workspaceId);
+    mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+    ui.showToast('会话已删除 ✓');
+    sessionListFetchedAt[session.workspaceId] = 0;
+};
+
+/** Ask the bridge for the full session list of `workspaceId`. Cached for 5s
+ *  per workspace so re-opening the Switch Session popover doesn't hammer the
+ *  bridge. No-op when no chat session exists for the workspace (the popover
+ *  has no parent to ride on). */
+export const requestSessionsList = (workspaceId: string) => {
+    const anySession = chatSessions.value.find(c => c.workspaceId === workspaceId);
+    if (!anySession) {
+        // Popover was opened from a terminal-only workspace — nothing to ride.
+        return;
+    }
+    const cachedAt = sessionListFetchedAt[workspaceId];
+    if (cachedAt && Date.now() - cachedAt < SESSION_LIST_TTL_MS) return;
+    sessionListFetchedAt[workspaceId] = Date.now();
+    globalBridgeManager.listSessions(anySession, workspaceId);
+};
+
+/** Bridge answered `session_forked` — prepend the new row, kick the
+ *  highlight, and scroll it into view. The parent id is informational only
+ *  (we don't navigate away from the parent). */
+export const handleSessionForked = (_parentId: string, sessionRaw: unknown) => {
+    const session = normalizeBridgeSession(sessionRaw as Record<string, unknown>);
+    if (!session) return;
+    const next = [session, ...chatSessions.value.filter(c => c.id !== session.id)];
+    chatSessions.value = next;
+    mergeSessionsIntoFolders(terminalWindows.value, next);
+    setHighlightedSession(session.id);
+    ui.showToast(`已 Fork 出新会话：${session.name || session.id} ✓`);
+    // Drop the cached "Switch Session" list — it now has a new entry.
+    sessionListFetchedAt[session.workspaceId] = 0;
+};
+
+/** Bridge answered `session_deleted` — drop the row, the bridge state, and
+ *  any active-session pointers pointing at it. */
+export const handleSessionDeleted = (sessionId: string) => {
+    const session = chatSessions.value.find(c => c.id === sessionId);
+    if (!session) {
+        // Already gone (race with another action). Still clear the bridge
+        // state to avoid a stale ghost row.
+        globalBridgeManager.destroy(sessionId);
+        return;
+    }
+    chatSessions.value = chatSessions.value.filter(c => c.id !== sessionId);
+    globalBridgeManager.destroy(sessionId);
+    selectNextAvailableSession(sessionId, session.workspaceId);
+    mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+    ui.showToast('会话已删除 ✓');
+    // Drop the cached list — row no longer exists.
+    sessionListFetchedAt[session.workspaceId] = 0;
+};
+
+/** Bridge answered `sessions_list` — refresh the per-workspace cache used by
+ *  the Switch Session popover. */
+export const handleSessionsList = (workspaceId: string | undefined, sessionsRaw: unknown) => {
+    if (!workspaceId) return;
+    if (!Array.isArray(sessionsRaw)) return;
+    const normalized = sessionsRaw
+        .map(r => normalizeBridgeSession(r as Record<string, unknown>))
+        .filter((s): s is ChatSession => !!s);
+    sessionListByWorkspace.value = { ...sessionListByWorkspace.value, [workspaceId]: normalized };
 };
 
 /**

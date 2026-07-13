@@ -308,6 +308,9 @@ export const zhCN: Record<string, string> = {
     'sidebar.closeSession': '关闭会话',
     'sidebar.archiveSession': '归档会话',
     'sidebar.renameSession': '重命名会话',
+    'sidebar.forkSession': 'Fork 会话',
+    'sidebar.deleteSession': '删除会话',
+    'sidebar.switchSession': '切换会话',
     'sidebar.providersTitle': '模型与服务商管理',
     'sidebar.providers': '模型管理',
     'sidebar.skillsTitle': '技能与 MCP 管理',
@@ -717,6 +720,47 @@ export const zhCN: Record<string, string> = {
     'chat.tool.outputMissing': '未返回结果',
     'chat.tool.outputEmpty': '执行完成，无返回内容',
     'chat.tool.permission': '权限确认',
+    // 工具 kind 标签（与 ToolKindIcon 配套；用于工具卡片副文本等）
+    'chat.toolKind.switchMode': '切换模式',
+    'chat.toolKind.modeFromTo': '{from} → {to}',
+
+    // ── Chat auth badge + re-auth modal (SessionAuthBadge / ReauthModal) ──
+    // Header badge states (acceptance #1 / #2 / #6) — when `null`/missing
+    // the badge is hidden entirely so agents that don't require auth add
+    // zero visual noise.
+    'chat.auth.status.authenticated': '',
+    'chat.auth.status.auth_required': '需要认证',
+    'chat.auth.status.logged_out': '已登出',
+    // Header badge action buttons.
+    'chat.auth.reauth': '重新认证',
+    'chat.auth.login': '登录',
+    'chat.auth.logout': '登出',
+    // Method-type labels in the re-auth modal list.
+    'chat.auth.method.oauth': 'OAuth',
+    'chat.auth.method.api_key': 'API Key',
+    'chat.auth.method.credentials': '用户名 / 密码',
+    // Fallback label when the agent didn't supply a name for the method.
+    'chat.auth.methodLabel.placeholder': '未命名认证方式',
+    // Re-auth modal copy.
+    'chat.auth.modal.title': '完成认证以继续',
+    'chat.auth.modal.choosePrompt': '选择该代理支持的认证方式：',
+    'chat.auth.modal.noMethods': '该代理未声明可用的认证方式。',
+    'chat.auth.modal.openBrowser': '在浏览器中打开',
+    'chat.auth.modal.codePlaceholder': '粘贴浏览器中显示的回调码…',
+    'chat.auth.modal.codeLabel': '回调码',
+    'chat.auth.modal.apiKeyPlaceholder': '输入 API Key…',
+    'chat.auth.modal.apiKeyLabel': 'API Key',
+    'chat.auth.modal.usernamePlaceholder': '用户名',
+    'chat.auth.modal.usernameLabel': '用户名',
+    'chat.auth.modal.passwordPlaceholder': '密码',
+    'chat.auth.modal.passwordLabel': '密码',
+    'chat.auth.modal.submit': '提交',
+    'chat.auth.modal.submitting': '提交中…',
+    'chat.auth.modal.cancel': '取消',
+    // Toasts triggered by the auth lifecycle.
+    'chat.auth.completed': '认证成功',
+    'chat.auth.failed': '认证失败：{message}',
+    'chat.auth.loggedOut': '已登出',
 
     // ── Auth (AccessTokenGate.tsx) ────────────────────────────────────────
     'auth.title': '需要访问令牌',
@@ -2004,6 +2048,9 @@ export const enUS: Record<string, string> = {
     'sidebar.closeSession': 'Close session',
     'sidebar.archiveSession': 'Archive session',
     'sidebar.renameSession': 'Rename session',
+    'sidebar.forkSession': 'Fork session',
+    'sidebar.deleteSession': 'Delete session',
+    'sidebar.switchSession': 'Switch session',
     'sidebar.providersTitle': 'Model & Provider Management',
     'sidebar.providers': 'Models',
     'sidebar.skillsTitle': 'Skill & MCP Management',
@@ -2421,6 +2468,39 @@ export const enUS: Record<string, string> = {
     'chat.tool.outputMissing': 'No result recorded',
     'chat.tool.outputEmpty': 'Completed with no output',
     'chat.tool.permission': 'Permission',
+    // Tool kind labels (paired with ToolKindIcon; used for tool card subtext)
+    'chat.toolKind.switchMode': 'Switch mode',
+    'chat.toolKind.modeFromTo': '{from} → {to}',
+
+    // ── Chat auth badge + re-auth modal (SessionAuthBadge / ReauthModal) ──
+    'chat.auth.status.authenticated': '',
+    'chat.auth.status.auth_required': 'Auth required',
+    'chat.auth.status.logged_out': 'Logged out',
+    'chat.auth.reauth': 'Re-authenticate',
+    'chat.auth.login': 'Sign in',
+    'chat.auth.logout': 'Sign out',
+    'chat.auth.method.oauth': 'OAuth',
+    'chat.auth.method.api_key': 'API Key',
+    'chat.auth.method.credentials': 'Username / Password',
+    'chat.auth.methodLabel.placeholder': 'Unnamed authentication method',
+    'chat.auth.modal.title': 'Authenticate to continue',
+    'chat.auth.modal.choosePrompt': 'Choose an authentication method supported by this agent:',
+    'chat.auth.modal.noMethods': 'This agent does not advertise any authentication methods.',
+    'chat.auth.modal.openBrowser': 'Open in browser',
+    'chat.auth.modal.codePlaceholder': 'Paste the callback code shown in the browser…',
+    'chat.auth.modal.codeLabel': 'Callback code',
+    'chat.auth.modal.apiKeyPlaceholder': 'Enter API key…',
+    'chat.auth.modal.apiKeyLabel': 'API key',
+    'chat.auth.modal.usernamePlaceholder': 'Username',
+    'chat.auth.modal.usernameLabel': 'Username',
+    'chat.auth.modal.passwordPlaceholder': 'Password',
+    'chat.auth.modal.passwordLabel': 'Password',
+    'chat.auth.modal.submit': 'Submit',
+    'chat.auth.modal.submitting': 'Submitting…',
+    'chat.auth.modal.cancel': 'Cancel',
+    'chat.auth.completed': 'Authenticated',
+    'chat.auth.failed': 'Authentication failed: {message}',
+    'chat.auth.loggedOut': 'Signed out',
 
     // ── Auth ─────────────────────────────────────────────────────────────
     'auth.title': 'Access token required',

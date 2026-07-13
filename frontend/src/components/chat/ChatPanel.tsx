@@ -10,6 +10,7 @@ import { Composer } from './Composer';
 import { PlanChecklist } from './PlanChecklist';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 import { ChatErrorBanner } from './ChatErrorBanner';
+import { ChatHeader } from './ChatHeader';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -105,6 +106,10 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                     }}
                 />
             )}
+            {/* Auth badge + logout entry. Lives above the message list so
+                the badge is always visible regardless of scroll position.
+                The header also auto-opens the ReauthModal on auth_required. */}
+            <ChatHeader session={session} />
             {currentModeId === 'plan' && (
                 <div class="chat-plan-banner">{t('chat.sessionMode.planBanner', ui.language.value)}</div>
             )}

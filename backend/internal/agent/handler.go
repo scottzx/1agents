@@ -101,6 +101,7 @@ func (h *Handler) HandleSessionsRoot(w http.ResponseWriter, r *http.Request) {
 
 // HandleSessionsItem handles /api/agent/sessions/{id} (with trailing slash).
 func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	const prefix = "/api/agent/sessions/"
 	id := r.URL.Path[len(prefix):]
 	if id == "" {
@@ -206,6 +207,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	wsID := r.URL.Query().Get("workspace_id")
 	if wsID == "" {
 		http.Error(w, "workspace_id query parameter is required", http.StatusBadRequest)

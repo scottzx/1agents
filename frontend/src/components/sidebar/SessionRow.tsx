@@ -2,7 +2,7 @@ import { h } from 'preact';
 import { Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
 import { AgentAvatar } from '../chat/AgentAvatar';
-import { liveSessionStatus } from '../../stores/sessionStore';
+import { liveSessionStatus, requestForkSession, requestDeleteSession } from '../../stores/sessionStore';
 import { FsRowActionsMenu, type FsRowAction } from '../drawer/FsRowActionsMenu';
 
 interface SessionRowProps {
@@ -84,32 +84,117 @@ const SESSION_ACTION_ICONS = {
             <line x1="10" y1="12" x2="14" y2="12" />
         </svg>
     ),
+    fork: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M18 15V9a4 4 0 0 0-4-4H9" />
+            <line x1="6" y1="9" x2="6" y2="15" />
+        </svg>
+    ),
+    delete: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+    ),
+    switch: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 16 16 12 12 8" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+        </svg>
+    ),
 };
 
-/** Build the "..." dropdown items for a session row: rename + archive. */
+/** Build the "..." dropdown items for a session row: rename + fork + delete + switch + archive. */
 function buildSessionActions(session: Session, props: SessionRowProps): FsRowAction[] {
-    return [
+    const actions: FsRowAction[] = [
         {
             id: 'rename',
             labelKey: 'sidebar.renameSession',
             icon: SESSION_ACTION_ICONS.rename,
             onSelect: () => props.onRename(session),
         },
-        {
-            id: 'archive',
-            labelKey: isChat(session) ? 'sidebar.archiveSession' : 'sidebar.closeSession',
-            icon: SESSION_ACTION_ICONS.archive,
+    ];
+
+    if (isChat(session)) {
+        actions.push({
+            id: 'fork',
+            labelKey: 'sidebar.forkSession',
+            icon: SESSION_ACTION_ICONS.fork,
+            onSelect: () => requestForkSession(session.id),
+        });
+    }
+
+    actions.push({
+        id: 'archive',
+        labelKey: isChat(session) ? 'sidebar.archiveSession' : 'sidebar.closeSession',
+        icon: SESSION_ACTION_ICONS.archive,
+        danger: false,
+        onSelect: () => {
+            // Synthesize a MouseEvent so the existing onKill handler works unchanged
+            const ev = { stopPropagation: () => {} } as MouseEvent;
+            props.onKill(ev, session);
+        },
+    });
+
+    if (isChat(session)) {
+        actions.push({
+            id: 'delete',
+            labelKey: 'sidebar.deleteSession',
+            icon: SESSION_ACTION_ICONS.delete,
             danger: true,
             onSelect: () => {
-                // Synthesize a MouseEvent so the existing onKill handler (which
-                // expects the stopPropagation + animation-timer pattern) works
-                // unchanged. The event is never dispatched — we just need a
-                // value to pass.
-                const ev = { stopPropagation: () => {} } as MouseEvent;
-                props.onKill(ev, session);
+                const isZh = props.language === 'zh-CN';
+                const msg = isZh ? '确定要永久删除该会话吗？此操作不可撤销。' : 'Are you sure you want to permanently delete this session? This action cannot be undone.';
+                if (window.confirm(msg)) {
+                    requestDeleteSession(session.id);
+                }
             },
-        },
-    ];
+        });
+    }
+
+    /*
+    actions.push({
+        id: 'switch',
+        labelKey: 'sidebar.switchSession',
+        icon: SESSION_ACTION_ICONS.switch,
+        onSelect: () => props.onSelect(session),
+    });
+    */
+
+    return actions;
 }
 
 /**

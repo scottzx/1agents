@@ -13,6 +13,8 @@
 // the mini-program. Relay mode is unchanged (RelayChatSocket over socket.io).
 
 import type {
+    AuthMethod,
+    AuthState,
     AvailableCommand,
     ChatItem,
     ConnectionState,
@@ -48,6 +50,17 @@ import {
     setPermissionModeAction,
     setSessionModeAction,
     setConfigOptionAction,
+    authenticateAction,
+    logoutAction,
+    // #96 block A imports — staged here by a parallel session's wire-protocol
+    // additions. Will be consumed by fork/delete/list case handlers; suppress
+    // the unused-vars lint until that lands.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    forkSessionAction,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    deleteSessionAction,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    listSessionsAction,
     type BridgeEventPayload,
 } from '../../protocol/wireProtocol';
 import { getPlatformBridge } from '../../platform/bridge';
@@ -72,6 +85,24 @@ export interface ChatBridgeOptions {
     onStatus?(sessionId: string, status: ChatStatus | null): void;
     /** Mirror the raw connection state into a host store (e.g. the header). */
     onConnection?(sessionId: string, conn: ConnectionState | null): void;
+    /**
+     * Mirror the session's auth state (authenticated | auth_required | logged_out)
+     * plus the methods advertised by the agent. Drives the header badge and
+     * any pre-emptive login entry. Cleared on destroy().
+     */
+    onAuthState?(sessionId: string, auth: AuthState | null): void;
+    /**
+     * Bridge answered a `fork_session` request — the host store drops the
+     * new ChatSession into the sidebar and runs the row-highlight animation.
+     * `session` is the full ChatSessionRecord shape from the bridge; `parentId`
+     * echoes the id we asked to fork. Undefined `session` is treated as a
+     * silent no-op (the bridge answered with no payload).
+     */
+    onSessionForked?(parentId: string, session: unknown): void;
+    /** Bridge answered a `delete_session` request — drop the row from the sidebar. */
+    onSessionDeleted?(sessionId: string): void;
+    /** Bridge answered a `list_sessions` request — refresh the cached session list. */
+    onSessionsList?(workspaceId: string | undefined, sessions: unknown): void;
 }
 
 export interface SessionBridgeState {
@@ -175,6 +206,15 @@ export interface SessionBridgeState {
      * upstream failure.
      */
     lastError: { message: string; code: string } | null;
+    /**
+     * Live auth state for the badge + re-auth modal. `null` until the bridge
+     * has spoken — the UI hides the badge entirely in that case (so agents
+     * that never require auth don't add visual noise). The agent's
+     * `authMethods` are mirrored here as soon as `session_meta` carries them,
+     * even before the first `auth_required`, so the header can show a
+     * pre-emptive "登录" entry.
+     */
+    auth: AuthState | null;
 }
 
 export class ChatBridgeManager {
@@ -218,6 +258,7 @@ export class ChatBridgeManager {
                 takenOver: false,
                 cancelling: false,
                 lastError: null,
+                auth: null,
             };
             this.sessions.set(session.id, state);
             this.connect(session, state);
@@ -242,6 +283,7 @@ export class ChatBridgeManager {
             this.sessions.delete(sessionId);
             this.opts.onStatus?.(sessionId, null);
             this.opts.onConnection?.(sessionId, null);
+            this.opts.onAuthState?.(sessionId, null);
         }
     }
 
@@ -356,6 +398,7 @@ export class ChatBridgeManager {
                               modes?: SessionModesState;
                               availableCommands?: AvailableCommand[];
                               configOptions?: SessionConfigOption[];
+                              authMethods?: AuthMethod[];
                           }
                         | undefined;
                     let changed = false;
@@ -369,6 +412,27 @@ export class ChatBridgeManager {
                     }
                     if (Array.isArray(meta?.configOptions)) {
                         state.configOptions = meta.configOptions;
+                        changed = true;
+                    }
+                    // Mirror authMethods even before any auth_required fires —
+                    // a pre-emptive "登录" entry needs the method list, and a
+                    // session whose agent doesn't require auth keeps
+                    // `state.auth === null` (the badge stays hidden).
+                    if (Array.isArray(meta?.authMethods)) {
+                        const methods = meta.authMethods;
+                        if (!state.auth) {
+                            // First time we see the methods list. Status starts
+                            // as 'authenticated' for sessions the bridge has
+                            // already opened without an auth challenge; the
+                            // bridge will downgrade to 'auth_required' if/when
+                            // the agent actually demands credentials.
+                            state.auth = {
+                                status: 'authenticated',
+                                methods,
+                            };
+                        } else {
+                            state.auth = { ...state.auth, methods };
+                        }
                         changed = true;
                     }
                     if (changed) {
@@ -502,6 +566,82 @@ export class ChatBridgeManager {
                     this.notify(state);
                     break;
                 }
+                case 'auth_required': {
+                    // The agent detected an expired token (or never had one).
+                    // The host's ReauthModal subscribes to this through
+                    // modalStore; here we just keep the bridge-side mirror in
+                    // sync so the header badge switches to red + 重新认证.
+                    const methods =
+                        (payload.payload as { methods?: AuthMethod[] } | undefined)?.methods ??
+                        state.auth?.methods ??
+                        [];
+                    state.auth = {
+                        status: 'auth_required',
+                        methods,
+                        message: payload.message,
+                    };
+                    this.notify(state);
+                    break;
+                }
+                case 'auth_completed': {
+                    // Credentials accepted — badge returns to "authenticated".
+                    // Methods stay cached so a later `auth_required` can
+                    // re-prompt without re-fetching the capability list.
+                    state.auth = {
+                        status: 'authenticated',
+                        methods: state.auth?.methods ?? [],
+                    };
+                    this.notify(state);
+                    break;
+                }
+                case 'logged_out': {
+                    // Bridge cleared the agent's stored credentials. Keep the
+                    // method list so the user can log back in from the same
+                    // header entry.
+                    state.auth = {
+                        status: 'logged_out',
+                        methods: state.auth?.methods ?? [],
+                        message: payload.message,
+                    };
+                    this.notify(state);
+                    break;
+                }
+                case 'session_forked': {
+                    // Bridge answered a `fork_session` action. Hand the new
+                    // session record (and the parent id we asked to fork) up
+                    // to the host store, which is the single owner of the
+                    // sidebar row list — we don't mirror it into the chat
+                    // bridge state. Unknown parent (no `parentSessionId`
+                    // echoed by the bridge) falls back to the WS-owning
+                    // session id so the caller's request can still correlate.
+                    const forked = payload.payload as { session?: unknown; parentSessionId?: string } | undefined;
+                    if (forked?.session) {
+                        this.opts.onSessionForked?.(forked.parentSessionId ?? session.id, forked.session);
+                    }
+                    break;
+                }
+                case 'session_deleted': {
+                    // Bridge answered a `delete_session` action. The host
+                    // store drops the row from `chatSessions` and removes the
+                    // matching bridge state; we don't touch `state.items`
+                    // because the WS is about to close.
+                    const del = payload.payload as { sessionId?: string } | undefined;
+                    const sid = del?.sessionId || payload.sessionId || session.id;
+                    this.opts.onSessionDeleted?.(sid);
+                    break;
+                }
+                case 'sessions_list': {
+                    // Bridge answered a `list_sessions` action with the full
+                    // session list for the requested workspace. Used by the
+                    // sidebar's "Switch Session" popover — keeps the bridge
+                    // as the single source of truth so the popover doesn't
+                    // have to fall back to REST for archived sessions.
+                    const list = payload.payload as { sessions?: unknown; workspaceId?: string } | undefined;
+                    if (list && Array.isArray(list.sessions)) {
+                        this.opts.onSessionsList?.(list.workspaceId, list.sessions);
+                    }
+                    break;
+                }
                 case 'done': {
                     state.items = applyDone(state.items);
                     state.typing = false;
@@ -529,6 +669,20 @@ export class ChatBridgeManager {
                     // (the UI gates input on `ready`, so the user can't trigger
                     // these). Swallow it so the stream doesn't flash a banner.
                     if (payload.code === 'SESSION_NOT_FOUND' && !state.ready) {
+                        break;
+                    }
+                    // auth_failed belongs to the ReauthModal — drop the
+                    // generic composer banner so the modal stays the single
+                    // source of truth for auth errors (and the user's input
+                    // isn't wiped by a hard-to-dismiss top banner).
+                    if (payload.code === 'auth_failed') {
+                        if (state.auth) {
+                            state.auth = {
+                                ...state.auth,
+                                lastError: { message: payload.message || '', code: 'auth_failed' },
+                            };
+                            this.notify(state);
+                        }
                         break;
                     }
                     const errorMessage = payload.message || payload.code || 'Unknown error';
@@ -769,6 +923,74 @@ export class ChatBridgeManager {
         state.ws.send(JSON.stringify(setConfigOptionAction(session.id, key, value)));
     }
 
+    /**
+     * Submit credentials for one of the methods the agent advertised. The
+     * bridge answers with `auth_completed` (clears the badge) or an
+     * `error` with code `auth_failed` (the modal keeps the user's input
+     * and shows the error). Safe to call before `ready` — the bridge
+     * accepts authenticate out-of-band once the session has been opened.
+     */
+    authenticate(session: ChatSession, methodId: string, credentials?: Record<string, string>) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        // Clear any stale error from the previous attempt so the modal can
+        // re-show "submitting…" without flashing the prior failure.
+        if (state.auth) {
+            state.auth = { ...state.auth, lastError: null };
+            this.notify(state);
+        }
+        state.ws.send(JSON.stringify(authenticateAction(session.id, methodId, credentials)));
+    }
+
+    /**
+     * Drop the agent's stored credentials. The bridge answers with
+     * `logged_out`; a later `auth_required` re-prompts with the cached
+     * method list.
+     */
+    logout(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        state.ws.send(JSON.stringify(logoutAction(session.id)));
+    }
+
+    /**
+     * Ask the bridge-server to fork `session` into a new ACP session.
+     * The bridge answers with `session_forked`, which the manager fans
+     * out via `opts.onSessionForked` so the host store can drop the new
+     * row into the sidebar. Safe to call before `session_ready` — the
+     * bridge queues control actions the same way it queues prompts.
+     */
+    forkSession(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        state.ws.send(JSON.stringify(forkSessionAction(session.id)));
+    }
+
+    /**
+     * Permanently delete a session. The bridge tears down the live ACP
+     * session first, then answers with `session_deleted`, which fans out
+     * via `opts.onSessionDeleted` — the host store drops the row and the
+     * bridge state. No-op when the WS isn't open.
+     */
+    deleteSession(session: ChatSession) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        state.ws.send(JSON.stringify(deleteSessionAction(session.id)));
+    }
+
+    /**
+     * Pull the full session list for `workspaceId` (defaults to the
+     * WS-owning session's workspace). The bridge answers with
+     * `sessions_list`, fanned out via `opts.onSessionsList`. Used by
+     * the sidebar's Switch Session popover to enumerate every session
+     * without a REST round trip.
+     */
+    listSessions(session: ChatSession, workspaceId?: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        state.ws.send(JSON.stringify(listSessionsAction(workspaceId ?? session.workspaceId)));
+    }
+
     private reloadHistory(session: ChatSession, state: SessionBridgeState) {
         if (state.ws && state.ws.readyState === WS_OPEN) {
             state.ws.send(
@@ -817,6 +1039,10 @@ export class ChatBridgeManager {
         // Also mirror the raw WS connection state so the workspace header can
         // show the active session's connection status.
         this.opts.onConnection?.(state.sessionId, state.connection);
+        // Mirror auth state too — the ChatHeader badge reads this to render
+        // its red/grey/green state and decide whether to show a 重新认证/登录
+        // button at all.
+        this.opts.onAuthState?.(state.sessionId, state.auth);
         for (const listener of state.listeners) {
             listener();
         }

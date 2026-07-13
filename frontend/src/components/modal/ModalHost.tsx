@@ -10,7 +10,9 @@ import { FsCreateModal } from './FsCreateModal';
 import { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
 import { PushPreviewModal } from './PushPreviewModal';
 import { SessionCreateModal } from '../chat/SessionCreateModal';
+import { ReauthModal } from '../chat/ReauthModal';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
+import { globalBridgeManager } from '../chat/hooks';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
@@ -204,6 +206,55 @@ export function ModalHost() {
                     language={language}
                 />
             )}
+
+            {/* Re-auth modal (task #106) — triggered automatically when the
+                bridge pushes auth_required (see ChatHeader) and manually from
+                the ChatHeader badge. Submit forwards to the bridge's
+                authenticate action; auth_completed auto-closes via the
+                status->useEffect loop in ChatHeader. */}
+            {modal.authRequiredModalOpen.value && <ReauthHost onClose={modal.closeAuthRequiredModal} />}
         </Fragment>
+    );
+}
+
+/**
+ * Thin wrapper that subscribes to the bridge for the session currently being
+ * re-authed (resolved from the modalStore's session id), so the modal can
+ * pull live `auth.lastError` and dispatch `authenticate` to the right
+ * session without prop-drilling the ChatSession down from the panel.
+ */
+function ReauthHost({ onClose }: { onClose: () => void }) {
+    const sessionId = modal.authRequiredSessionId.value;
+    const methods = modal.authRequiredMethods.value;
+    const message = modal.authRequiredMessage.value;
+    // Per-session mirror — the modal reads the live `lastError` from here so
+    // retries keep the input alive and the failure message sits next to the
+    // form rather than competing with the composer banner.
+    const auth = sess.liveSessionAuthState.value[sessionId] ?? null;
+    const submitting = auth?.status === 'auth_required';
+    const errorMessage = auth?.lastError?.message;
+
+    if (!sessionId) {
+        // Nothing to authenticate against — render a no-op close button.
+        return null;
+    }
+
+    return (
+        <ReauthModal
+            methods={methods}
+            message={message}
+            submitting={!!submitting && !errorMessage}
+            errorMessage={errorMessage}
+            onClose={onClose}
+            onSubmit={(methodId, credentials) => {
+                // Resolve the ChatSession object from the session id so the
+                // manager can forward through the live WebSocket. Falls back
+                // to a minimal synthetic if the session list hasn't loaded
+                // yet (rare — usually modal only opens for a known session).
+                const session = sess.chatSessions.value.find(s => s.id === sessionId);
+                if (!session) return;
+                globalBridgeManager.authenticate(session, methodId, credentials);
+            }}
+        />
     );
 }

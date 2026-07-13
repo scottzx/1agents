@@ -212,6 +212,7 @@ type WsMessage struct {
 	Type            string          `json:"type,omitempty"`
 	ResumeSessionID string          `json:"resumeSessionId,omitempty"`
 	AgentSessionID  string          `json:"agentSessionId,omitempty"`
+	Payload         json.RawMessage `json:"payload,omitempty"`
 	// McpServers carries the per-session MCP server config (a JSON array of
 	// ACP McpServer entries) forwarded to the bridge-server, which sets it on
 	// sessionOptions.mcpServers. Used by the AI Project Manager session to
@@ -424,12 +425,141 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 		}
 
 		// Intercept and update status
+		// Intercept and update status
 		if msg.Event == "session_ready" && msg.AgentSessionID != "" {
 			if chatStore != nil {
 				if err := chatStore.UpdateACP(bridge.SessionID, msg.AgentSessionID); err != nil {
 					log.Printf("[acpx_client] UpdateACP(%s, %s) failed: %v", bridge.SessionID, msg.AgentSessionID, err)
 				} else {
 					log.Printf("[acpx_client] Persisted acpSessionId=%s for chat session %s", msg.AgentSessionID, bridge.SessionID)
+				}
+			}
+		} else if msg.Type == "sessions_list" {
+			if chatStore != nil {
+				var listPayload struct {
+					Sessions []struct {
+						ID           string `json:"id"`
+						AcpxRecordId string `json:"acpxRecordId"`
+						AcpSessionId string `json:"acpSessionId"`
+						Cwd          string `json:"cwd"`
+						Name         string `json:"name"`
+						AgentCommand string `json:"agentCommand"`
+						CreatedAt    string `json:"createdAt"`
+						Status       string `json:"status"`
+						Closed       bool   `json:"closed"`
+					} `json:"sessions"`
+				}
+				if err := json.Unmarshal(msg.Payload, &listPayload); err == nil {
+					filtered := make([]any, 0)
+					for _, s := range listPayload.Sessions {
+						if cleanPath(s.Cwd) == cleanPath(bridge.WorkspacePath) {
+							rec, ok, err := chatStore.Get(s.ID)
+							role := ""
+							permissionMode := ""
+							archivedAt := ""
+							taskIdVal := ""
+							ccProject := ""
+							ccSessionId := ""
+							if err == nil && ok {
+								role = rec.Role
+								permissionMode = rec.PermissionMode
+								taskIdVal = rec.TaskID
+								ccProject = rec.CcProject
+								ccSessionId = rec.CcSessionID
+								if !rec.ArchivedAt.IsZero() {
+									archivedAt = rec.ArchivedAt.Format(time.RFC3339)
+								}
+							}
+							
+							filtered = append(filtered, map[string]any{
+								"id":              s.ID,
+								"workspaceId":     getWorkspaceId(chatStore, bridge.SessionID),
+								"taskId":          taskIdVal,
+								"name":            s.Name,
+								"agentType":       getAgentTypeFromCommand(s.AgentCommand),
+								"ccProject":       ccProject,
+								"ccSessionId":     ccSessionId,
+								"acpSessionId":    s.AcpSessionId,
+								"sessionKey":      s.ID,
+								"status":          s.Status,
+								"createdAt":       s.CreatedAt,
+								"role":            role,
+								"permissionMode":  permissionMode,
+								"archivedAt":      archivedAt,
+							})
+						}
+					}
+					var outer map[string]any
+					if err := json.Unmarshal(raw, &outer); err == nil {
+						outer["payload"] = map[string]any{
+							"sessions": filtered,
+						}
+						if rawUpdated, err := json.Marshal(outer); err == nil {
+							raw = rawUpdated
+						}
+					}
+				}
+			}
+		} else if msg.Type == "session_forked" {
+			if chatStore != nil {
+				var forkPayload struct {
+					ParentSessionId string `json:"parentSessionId"`
+					Session struct {
+						ID           string `json:"id"`
+						AcpSessionId string `json:"acpSessionId"`
+						Cwd          string `json:"cwd"`
+						Name         string `json:"name"`
+						AgentCommand string `json:"agentCommand"`
+						CreatedAt    string `json:"createdAt"`
+					} `json:"session"`
+				}
+				if err := json.Unmarshal(msg.Payload, &forkPayload); err == nil {
+					if parentRec, ok, err := chatStore.Get(forkPayload.ParentSessionId); err == nil && ok {
+						newRec := parentRec
+						newRec.ID = forkPayload.Session.ID
+						newRec.AcpSessionID = forkPayload.Session.AcpSessionId
+						newRec.SessionKey = forkPayload.Session.ID
+						newRec.Name = forkPayload.Session.Name
+						newRec.AgentType = getAgentTypeFromCommand(forkPayload.Session.AgentCommand)
+						newRec.CreatedAt = time.Now().UTC()
+						newRec.LastEventAt = time.Now().UTC()
+						newRec.ArchivedAt = time.Time{}
+						
+						if err := chatStore.Add(newRec); err != nil {
+							log.Printf("[acpx_client] Failed to insert forked session to meta.db: %v", err)
+						} else {
+							log.Printf("[acpx_client] Persisted forked session %s (parent: %s) to meta.db", newRec.ID, forkPayload.ParentSessionId)
+						}
+
+						outer := make(map[string]any)
+						if err := json.Unmarshal(raw, &outer); err == nil {
+							if payloadMap, ok := outer["payload"].(map[string]any); ok {
+								if sessionMap, ok := payloadMap["session"].(map[string]any); ok {
+									sessionMap["workspaceId"] = parentRec.WorkspaceID
+									sessionMap["taskId"] = parentRec.TaskID
+									sessionMap["ccProject"] = parentRec.CcProject
+									sessionMap["ccSessionId"] = parentRec.CcSessionID
+									sessionMap["role"] = parentRec.Role
+									sessionMap["permissionMode"] = parentRec.PermissionMode
+								}
+							}
+							if rawUpdated, err := json.Marshal(outer); err == nil {
+								raw = rawUpdated
+							}
+						}
+					}
+				}
+			}
+		} else if msg.Type == "session_deleted" {
+			if chatStore != nil {
+				targetSid := msg.SessionID
+				if targetSid == "" {
+					targetSid = bridge.SessionID
+				}
+				if err := chatStore.Delete(targetSid); err != nil {
+					log.Printf("[acpx_client] Failed to delete session %s from meta.db: %v", targetSid, err)
+				} else {
+					log.Printf("[acpx_client] Deleted session %s from meta.db", targetSid)
 				}
 			}
 		} else if msg.Event == "text_delta" {
@@ -715,3 +845,29 @@ func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, er
 		return false
 	})
 }
+
+func getWorkspaceId(store *Store, sessionID string) string {
+	if store == nil {
+		return ""
+	}
+	if rec, ok, err := store.Get(sessionID); err == nil && ok {
+		return rec.WorkspaceID
+	}
+	return ""
+}
+
+func cleanPath(p string) string {
+	p = strings.ReplaceAll(p, "\\", "/")
+	return strings.ToLower(strings.TrimRight(p, "/"))
+}
+
+func getAgentTypeFromCommand(cmd string) string {
+	if strings.Contains(strings.ToLower(cmd), "claude") {
+		return "claudecode"
+	}
+	if strings.Contains(strings.ToLower(cmd), "codex") {
+		return "codex"
+	}
+	return "claudecode"
+}
+

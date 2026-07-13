@@ -133,7 +133,8 @@ export function FsRowActionsMenu({
                     <circle cx="19" cy="12" r="1.4" />
                 </svg>
             </button>
-            {open && pos &&
+            {open &&
+                pos &&
                 createPortal(
                     <div
                         ref={menuRef}

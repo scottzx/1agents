@@ -3,6 +3,7 @@ import { signal } from '@preact/signals';
 import type { Workspace, Session, AgentType, FsEntry } from '../components/types';
 import { DEFAULT_AGENT_TYPE } from '../services/agentService';
 import type { SkillPushPreview } from '@1agents/core/services/skillService';
+import type { AuthMethod } from '@1agents/core/protocol/types';
 
 /**
  * Modal state (workspace create/rename modal, chat-create modal, directory
@@ -274,4 +275,30 @@ export const closePushPreviewModal = () => {
     pushPreviewWorkspaceId.value = '';
     pushPreviewSkillRef.value = '';
     pushPreviewOnDone.value = null;
+};
+
+// ── Re-auth modal (task #106) ──────────────────────────────────────────────
+// Triggered automatically when the chat bridge pushes `auth_required` (so
+// the user lands on the form the moment the agent demands credentials) AND
+// manually from the ChatHeader badge / 登录 button. `methods` is the agent-
+// advertised list (oauth / api_key / credentials); the modal renders one
+// expandable row per method. `message` is the optional bridge-side reason
+// (e.g. "Token expired") shown as a banner above the method list.
+export const authRequiredModalOpen = signal(false);
+export const authRequiredMethods = signal<AuthMethod[]>([]);
+export const authRequiredMessage = signal('');
+export const authRequiredSessionId = signal('');
+
+export const openAuthRequiredModal = (sessionId: string, methods: AuthMethod[], message?: string) => {
+    authRequiredSessionId.value = sessionId;
+    authRequiredMethods.value = Array.isArray(methods) ? methods : [];
+    authRequiredMessage.value = message || '';
+    authRequiredModalOpen.value = true;
+};
+
+export const closeAuthRequiredModal = () => {
+    authRequiredModalOpen.value = false;
+    authRequiredSessionId.value = '';
+    authRequiredMethods.value = [];
+    authRequiredMessage.value = '';
 };

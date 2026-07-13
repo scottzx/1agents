@@ -189,6 +189,16 @@ func (s *SessionStore) UpdateACP(id, acpSessionID string) error {
 		newAcp, newName, id)
 }
 
+// DeleteACP clears the acp_session_id and sets exec_status = 'closed' for the session with the given ID.
+func (s *SessionStore) DeleteACP(id string) error {
+	return s.execOne(`UPDATE sessions SET acp_session_id = '', exec_status = 'closed' WHERE id = ?`, id)
+}
+
+// UpdateAuthStatus is a stub method since auth status is only kept in memory on backend.
+func (s *SessionStore) UpdateAuthStatus(id string, status string) error {
+	return nil
+}
+
 func isDefaultSessionName(name string) bool {
 	return name == "" || name == "聊天会话" || name == "新建会话" ||
 		strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话")
