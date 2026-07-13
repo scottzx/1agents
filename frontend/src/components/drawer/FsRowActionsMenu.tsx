@@ -115,6 +115,7 @@ export function FsRowActionsMenu({
                 data-entry-path={entry.path}
                 onClick={(e: MouseEvent) => {
                     e.stopPropagation();
+                    setPos(null);
                     setOpen(o => !o);
                 }}
             >

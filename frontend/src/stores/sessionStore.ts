@@ -164,9 +164,10 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
     // (TaskDetail.openSession) may have no index record; without this it would
     // connect the bridge + load history but never appear in the sidebar, and a
     // subsequent loadChatSessions would even wipe it out of activeSession below.
+    // Guard: never re-inject an archived session — it was intentionally removed.
     const prevActive = activeSession.value;
     const chatList: ChatSession[] =
-        prevActive && isChat(prevActive) && !chats.some(c => c.id === prevActive.id) ? [prevActive, ...chats] : chats;
+        prevActive && isChat(prevActive) && !prevActive.archived && !chats.some(c => c.id === prevActive.id) ? [prevActive, ...chats] : chats;
     wsStore.folders.value = wsStore.folders.value.map(f => {
         const termSessions: Session[] = windows
             .filter(w => w.workspaceId === f.id)
@@ -382,11 +383,22 @@ export const killChatSession = async (sessionId: string) => {
     try {
         // Clean up global WebSocket bridge session
         globalBridgeManager.destroy(sessionId);
+        // Optimistic UI: mark archived locally so sidebar + project detail
+        // update immediately, before the API round-trip completes.
+        session.archived = true;
+        session.archivedAt = new Date().toISOString();
+        chatSessions.value = [...chatSessions.value];
         selectNextAvailableSession(sessionId, session.workspaceId);
-        await agentService.setArchived(sessionId, true);
-        await loadChatSessions(session.workspaceId);
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
         ui.showToast('会话已归档 ✓');
+        // Persist to backend (fire-and-forget; the optimistic state is canonical).
+        await agentService.setArchived(sessionId, true);
     } catch (err) {
+        // Rollback optimistic update on failure.
+        session.archived = false;
+        session.archivedAt = undefined;
+        chatSessions.value = [...chatSessions.value];
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
         ui.showToast(`归档失败: ${(err as Error).message}`);
     }
 };
@@ -449,6 +461,11 @@ function normalizeBridgeSession(raw: Record<string, unknown>): ChatSession | nul
             (raw as { last_event_at?: unknown }).last_event_at) as string | undefined,
         archivedAt: ((raw as { archivedAt?: unknown; archived_at?: unknown }).archivedAt ??
             (raw as { archived_at?: unknown }).archived_at) as string | undefined,
+        archived: Boolean(
+            (raw as { archived?: unknown }).archived ??
+            ((raw as { archivedAt?: unknown; archived_at?: unknown }).archivedAt ??
+                (raw as { archived_at?: unknown }).archived_at)
+        ),
         active: Boolean((raw as { active?: unknown }).active),
         role: (raw as { role?: unknown }).role as string | undefined,
         permissionMode: ((raw as { permissionMode?: unknown; permission_mode?: unknown }).permissionMode ??
