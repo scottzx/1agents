@@ -305,18 +305,6 @@ function AssistantBubble({ content, streaming }: { content: string; streaming: b
     );
 }
 
-function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
-    return (
-        <div class="chat-message-row chat-message-row-assistant">
-            <div class="chat-bubble chat-bubble-assistant">
-                <div class="chat-bubble-body">
-                    <AssistantContent content={content} streaming={streaming} />
-                </div>
-            </div>
-        </div>
-    );
-}
-
 /**
  * Reasoning block. While the model is actively thinking (this is the
  * last item of a running turn) the block stays expanded with a shimmer
