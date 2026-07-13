@@ -124,6 +124,12 @@ type ChatSessionRecord struct {
 	// the session was archived (closed from the sidebar). Archived sessions
 	// drop out of the sidebar list but stay in the 会话 archive view.
 	ArchivedAt time.Time `json:"archived_at,omitempty"`
+	// UserNamed marks whether the session's name was set by the user (via
+	// UpdateName) rather than by the AI title auto-resolution. When true, the
+	// list/get endpoint must NOT overwrite the name with the AI title, so a
+	// user rename such as "我的项目会话" (which happens to match the default
+	// "会话"-suffix pattern) survives subsequent list calls.
+	UserNamed bool `json:"user_named"`
 }
 
 type ScheduleType string

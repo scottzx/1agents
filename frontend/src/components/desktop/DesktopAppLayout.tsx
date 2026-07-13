@@ -173,7 +173,6 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 activeDrawerTab={activeDrawerTab}
                                 onCreateWorkspace={modal.openCreateWorkspacePicker}
                                 onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
-                                onDeleteWorkspace={wsStore.deleteWorkspace}
                                 onSelectWorkspace={ws => {
                                     wsStore.selectWorkspace(ws);
                                     // 点击文件夹 → 统一下钻到对应详情页:

@@ -7,6 +7,7 @@ import * as fs from '../../stores/fsStore';
 import { fsService } from '../../services/fsService';
 import { FilePreviewPane } from '../shared/WorkspacePanes';
 import { soulService, type TeamMember, type AvailableAgent } from '@1agents/core/services/soulService';
+import { looksLikeFrontmatterYaml } from '../../utils/frontmatter';
 
 /**
  * 团队 tab — the persona home (the 灵魂 tab was retired into this). Mirrors the
@@ -22,10 +23,28 @@ const AGENTS_DIR = '.claude/agents';
 /** Pull `tools:` (and a description fallback) out of an agent .md frontmatter. */
 function parseFrontmatter(md: string): { description: string; tools: string } {
     const s = md.replace(/^\uFEFF/, '');
-    if (!s.startsWith('---')) return { description: '', tools: '' };
-    const end = s.indexOf('\n---', 3);
-    if (end < 0) return { description: '', tools: '' };
-    const block = s.slice(s.indexOf('\n') + 1, end);
+    // Require `---` to be on its own line so it isn't confused with thematic
+    // breaks (`--- / # Title / ---` is a common README header shape, not
+    // frontmatter). Mirrors utils/frontmatter.ts to stay consistent with the
+    // task-card parser.
+    if (!s.startsWith('---\n') && !s.startsWith('---\r\n')) {
+        return { description: '', tools: '' };
+    }
+    const rest = s.slice(s.indexOf('\n') + 1);
+    const lines = rest.split('\n');
+    let endIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].replace(/\r$/, '') === '---') {
+            endIdx = i;
+            break;
+        }
+    }
+    if (endIdx < 0) return { description: '', tools: '' };
+    const candidate = lines.slice(0, endIdx);
+    if (!looksLikeFrontmatterYaml(candidate)) {
+        return { description: '', tools: '' };
+    }
+    const block = candidate.join('\n');
     let description = '';
     let tools = '';
     for (const line of block.split('\n')) {

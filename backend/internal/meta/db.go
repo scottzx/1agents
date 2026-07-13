@@ -105,7 +105,7 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 20
+const schemaVersion = 21
 
 func (db *DB) migrateSchema() error {
 	var version int
@@ -208,6 +208,13 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v20: %w", err)
 		}
 	}
+	// v21 (#94) adds sessions.user_named. Handled by ensureSessionsColumns below
+	// (idempotent ADD COLUMN); the version gate only bumps the counter.
+	if version < 21 {
+		if _, err := db.sql.Exec(schemaV21); err != nil {
+			return fmt.Errorf("meta: apply schema v21: %w", err)
+		}
+	}
 	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
 	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
 	// with user_version bumped to the latest while the other branch's columns
@@ -248,6 +255,14 @@ func (db *DB) migrateSchema() error {
 	// unconditionally (CREATE IF NOT EXISTS), same rationale as above. Idempotent.
 	if err := db.ensureSourceAccounts(); err != nil {
 		return fmt.Errorf("meta: ensure source_accounts: %w", err)
+	}
+	// v21 (#94) adds sessions.user_named so a session renamed by the user is
+	// not silently overwritten by the list endpoint's AI-title auto-resolution.
+	// Reconciled unconditionally (same rationale as the other ensure* helpers):
+	// an idempotent ADD COLUMN that heals a DB whose user_version was bumped by
+	// a sibling branch before this column landed.
+	if err := db.ensureSessionsColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile sessions columns: %w", err)
 	}
 	if version < schemaVersion {
 		if _, err := db.sql.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
@@ -402,6 +417,32 @@ func (db *DB) ensureContactsColumns() error {
 // tasksColumns returns the set of column names currently on the tasks table.
 func (db *DB) tasksColumns() (map[string]bool, error) {
 	return db.tableColumns("tasks")
+}
+
+// ensureSessionsColumns adds the sessions.user_named column when missing (#94).
+// The flag marks a session whose name was set by the user (UpdateName) so the
+// list/get endpoint's AI-title auto-resolution skips it — a user rename like
+// "我的项目会话" (which matches the default "会话"-suffix pattern) would
+// otherwise be silently overwritten by the AI title on every list call.
+// Idempotent and independent of user_version, mirroring ensureProjectsColumns.
+func (db *DB) ensureSessionsColumns() error {
+	have, err := db.tableColumns("sessions")
+	if err != nil {
+		return err
+	}
+	type col struct{ name, ddl string }
+	wanted := []col{
+		{"user_named", "ALTER TABLE sessions ADD COLUMN user_named INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, c := range wanted {
+		if have[c.name] {
+			continue
+		}
+		if _, err := db.sql.Exec(c.ddl); err != nil {
+			return fmt.Errorf("add sessions.%s: %w", c.name, err)
+		}
+	}
+	return nil
 }
 
 // tableColumns returns the set of column names currently on the given table.
@@ -772,6 +813,11 @@ CREATE INDEX IF NOT EXISTS idx_company_tenants_company ON company_tenants(compan
 // (ensureTasksColumns runs unconditionally so new DBs and existing DBs both get
 // the columns regardless of which version path applies.)
 const schemaV20 = ``
+
+// schemaV21 (#94) adds sessions.user_named. The column is added by
+// ensureSessionsColumns (idempotent ADD COLUMN); the const body is
+// intentionally empty — the version counter is what matters here.
+const schemaV21 = ``
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 

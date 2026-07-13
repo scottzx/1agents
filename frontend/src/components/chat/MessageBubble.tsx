@@ -11,7 +11,7 @@ import type { PermissionDecision } from '../types';
 import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
-import { theme } from '../../stores/uiStore';
+import { showToast, theme } from '../../stores/uiStore';
 import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
 import { ToolKindIcon, deriveToolKind } from './ToolKindIcon';
 import { terminalCommandLine } from './terminalCommand';
@@ -163,29 +163,154 @@ function UserBubble({
     );
 }
 
-function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
-    // Render through the shared renderer so GitHub-style task references
-    // (#N, `项目名#N`) autolink. Numbers are optimistic in chat (the task list
-    // isn't loaded here); a dead reference falls back to a not-found toast.
-    const html = renderMarkdown(content, { projectName: activeProjectName() });
+function copyToClipboardFallback(text: string): boolean {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        return document.execCommand('copy');
+    } catch {
+        return false;
+    } finally {
+        textarea.remove();
+    }
+}
 
-    // Draw any ```mermaid blocks once the text is in the DOM. Reading the theme
-    // signal here subscribes this bubble, so a light/dark toggle re-renders the
-    // diagram. We hold off while streaming — a partially-arrived diagram is a
-    // parse error, so the raw-source fallback shows until the turn completes.
+async function copyToClipboard(text: string): Promise<boolean> {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {
+            return copyToClipboardFallback(text);
+        }
+    }
+
+    return copyToClipboardFallback(text);
+}
+
+function CopyIcon() {
+    return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+            <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
+        </svg>
+    );
+}
+
+function FoldIcon({ expanded }: { expanded: boolean }) {
+    return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+            {expanded ? (
+                <>
+                    <path d="M5 4v8l3-4z" />
+                    <path d="M11 4v8l-3-4z" />
+                </>
+            ) : (
+                <>
+                    <path d="M8 3 5 6h6z" />
+                    <path d="M8 13l-3-3h6z" />
+                </>
+            )}
+        </svg>
+    );
+}
+
+function AssistantContent({
+    content,
+    streaming,
+    showActions,
+}: {
+    content: string;
+    streaming: boolean;
+    showActions: boolean;
+}) {
+    const isExpanded = useSignal(true);
+    const expanded = isExpanded.value;
+    const lang = getLang();
+    const projectName = activeProjectName();
+    const html = useMemo(() => renderMarkdown(content, { projectName }), [content, projectName]);
     const bodyRef = useRef<HTMLDivElement>(null);
     const currentTheme = theme.value;
+
     useEffect(() => {
         if (streaming) return;
         renderMermaidBlocks(bodyRef.current, currentTheme);
     }, [html, streaming, currentTheme]);
 
+    const copy = async () => {
+        const copied = await copyToClipboard(content);
+        showToast(t(copied ? 'app.toast.copySuccess' : 'app.toast.copyFailed', lang));
+    };
+
+    const toggle = () => {
+        isExpanded.value = !isExpanded.value;
+    };
+
+    return (
+        <div class="chat-assistant-block">
+            <div class={`chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
+                <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
+                {streaming && <span class="chat-cursor">▍</span>}
+            </div>
+            {!expanded && showActions && (
+                <button
+                    type="button"
+                    class="chat-assistant-more"
+                    onClick={toggle}
+                    aria-label={t('chat.bubble.expand', lang)}
+                    title={t('chat.bubble.expand', lang)}
+                >
+                    ...
+                </button>
+            )}
+            {showActions && (
+                <div class="chat-assistant-actions">
+                    <button
+                        type="button"
+                        class="chat-assistant-action"
+                        onClick={() => void copy()}
+                        aria-label={t('common.copy', lang)}
+                        title={t('common.copy', lang)}
+                    >
+                        <CopyIcon />
+                    </button>
+                    <button
+                        type="button"
+                        class="chat-assistant-action"
+                        onClick={toggle}
+                        aria-label={t(expanded ? 'chat.bubble.collapse' : 'chat.bubble.expand', lang)}
+                        title={t(expanded ? 'chat.bubble.collapse' : 'chat.bubble.expand', lang)}
+                    >
+                        <FoldIcon expanded={expanded} />
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
     return (
         <div class="chat-message-row chat-message-row-assistant">
             <div class="chat-bubble chat-bubble-assistant">
                 <div class="chat-bubble-body">
-                    <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
-                    {streaming && <span class="chat-cursor">▍</span>}
+                    <AssistantContent content={content} streaming={streaming} showActions />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function AssistantBubble({ content, streaming }: { content: string; streaming: boolean }) {
+    return (
+        <div class="chat-message-row chat-message-row-assistant">
+            <div class="chat-bubble chat-bubble-assistant">
+                <div class="chat-bubble-body">
+                    <AssistantContent content={content} streaming={streaming} />
                 </div>
             </div>
         </div>
@@ -469,12 +594,10 @@ function ToolGroupBubble({
 }
 
 function GroupedAssistantTextItem({ content }: { content: string }) {
-    const html = renderMarkdown(content, { projectName: activeProjectName() });
-
     return (
         <div class="chat-tool-row">
             <div class="chat-tool-row-body">
-                <div class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
+                <AssistantContent content={content} streaming={false} showActions={false} />
             </div>
         </div>
     );

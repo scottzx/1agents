@@ -881,12 +881,12 @@ export function TaskDetail({
                         <span>{issueStateLabel}</span>
                         <span class="topic-dot">·</span>
                         <span class={`task-status-badge ${task.status}`}>{statusLabel}</span>
-{task.milestone && (
-                             <span class="topic-meta-pair">
-                                 <span class="topic-dot">·</span>
-                                 <span>{task.milestone}</span>
-                             </span>
-                          )}
+                        {task.milestone && (
+                            <span class="topic-meta-pair">
+                                <span class="topic-dot">·</span>
+                                <span>{task.milestone}</span>
+                            </span>
+                        )}
                         {task.number ? (
                             <button
                                 class="task-permalink-btn"

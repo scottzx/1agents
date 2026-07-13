@@ -21,6 +21,71 @@ func TestSplitFrontmatter(t *testing.T) {
 	}
 }
 
+func TestSplitFrontmatterDecorativeHeader(t *testing.T) {
+	// Regression for #83: the README-header triple `--- / # Title / ---` used
+	// to be parsed as YAML frontmatter, swallowing `# Title`. It must now be
+	// treated as a thematic break + H1 + thematic break.
+	doc := "---\n# Title\n---\n\nbody content here"
+	fm, body := SplitFrontmatter(doc)
+	if fm != "" {
+		t.Fatalf("frontmatter = %q, want empty", fm)
+	}
+	// Opening `---` dropped as decoration; the inner `---` stays as a thematic break.
+	if body != "# Title\n---\n\nbody content here" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestSplitFrontmatterRealFrontmatterCoexists(t *testing.T) {
+	// Legitimate acceptance list must still parse cleanly.
+	doc := "---\nacceptance:\n  - 分页正确\n  - 空态有提示\n---\n## 背景\n正文"
+	fm, body := SplitFrontmatter(doc)
+	if fm != "acceptance:\n  - 分页正确\n  - 空态有提示" {
+		t.Fatalf("frontmatter = %q", fm)
+	}
+	if body != "## 背景\n正文" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestSplitFrontmatterMalformedNoClose(t *testing.T) {
+	// No closing fence at all → preserve the original doc (legacy behavior).
+	doc := "---\nacceptance: still body"
+	fm, body := SplitFrontmatter(doc)
+	if fm != "" {
+		t.Fatalf("frontmatter = %q, want empty", fm)
+	}
+	if body != doc {
+		t.Fatalf("body = %q, want original doc", body)
+	}
+}
+
+func TestSplitFrontmatterNonYamlInsideFences(t *testing.T) {
+	// Real prose between the fences must NOT be parsed as frontmatter.
+	doc := "---\nreal prose\n---\nreal body"
+	fm, body := SplitFrontmatter(doc)
+	if fm != "" {
+		t.Fatalf("frontmatter = %q, want empty", fm)
+	}
+	if body != "real prose\n---\nreal body" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestSplitFrontmatterBOM(t *testing.T) {
+	// ·built without a literal BOM in this source file (which Go's
+	// compiler rejects). Compose the BOM by hand so we can verify the parser
+	// tolerates a leading U+FEFF.
+	doc := string([]byte{0xef, 0xbb, 0xbf}) + "---\nacceptance: x\n---\nbody"
+	fm, body := SplitFrontmatter(doc)
+	if fm != "acceptance: x" {
+		t.Fatalf("frontmatter = %q", fm)
+	}
+	if body != "body" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
 func TestRenderCardDoc(t *testing.T) {
 	task := Task{
 		Number:      7,
@@ -60,6 +125,8 @@ func TestFrontmatterAcceptance(t *testing.T) {
 		{"block", "---\nacceptance: |\n  第一行\n  第二行\n---\nbody", "第一行\n第二行"},
 		{"absent", "---\npriority: high\n---\nbody", ""},
 		{"no-frontmatter", "## 背景\n正文", ""},
+		// Regression for #83: the decoy `# Title` must not become frontmatter.
+		{"markdown-decoy", "---\n# Title\n---\n\nbody", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

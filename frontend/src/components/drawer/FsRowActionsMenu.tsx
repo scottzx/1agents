@@ -1,7 +1,7 @@
 import { h, Fragment } from 'preact';
+import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t, type Lang } from '../i18n';
-import type { FsEntry } from '../types';
 
 export interface FsRowAction {
     id: string;
@@ -14,15 +14,38 @@ export interface FsRowAction {
 
 /**
  * Single "..." trigger button + dropdown menu used in every FlatFileBrowser
- * row. Click-outside / Escape closes the dropdown.
+ * row, and (re-used) by the sidebar workspace / chat rows. Click-outside /
+ * Escape closes the dropdown.
  *
- * The menu is rendered as a sibling of the trigger inside `.fb-row-actions`.
- * `.fb-actions-menu` is `position: fixed`, so the row's `display: none` on
- * un-hover doesn't hide the menu visually — but it WOULD unmount the menu
- * (parent display:none tears down all descendants). So we also keep the
- * row-actions container visible via the `:has(.fb-actions-menu)` CSS rule.
+ * The menu is portalled to `document.body` rather than rendered next to the
+ * trigger. Two reasons:
+ *  1. The trigger's parent (`display: none` on un-hover) would otherwise
+ *     unmount the menu mid-open — see the `:has(.fb-actions-menu)` rule on
+ *     the row actions container.
+ *  2. Ancestor `transform`/`filter`/`perspective` (e.g. sidebar's
+ *     `.project-node { transform: translateX(0) scale(1) }`) creates a
+ *     containing block that pins `position: fixed` to the wrong box.
+ *     Portalling out restores true viewport-relative positioning.
  */
-export function FsRowActionsMenu({ entry, items, language }: { entry: FsEntry; items: FsRowAction[]; language: Lang }) {
+export function FsRowActionsMenu({
+    entry,
+    items,
+    language,
+    triggerClassName,
+}: {
+    /**
+     * Source row the menu is attached to. Only `path` is read (as a
+     * `data-entry-path` attribute on the trigger) — Workspace and Session
+     * are accepted alongside FsEntry so the same component can host
+     * sidebar row actions without an adapter type.
+     */
+    entry: { path?: string };
+    items: FsRowAction[];
+    language: Lang;
+    /** Extra class merged into the "..." trigger button — used by callers
+     *  (sidebar rows, etc.) to size/style the trigger per their context. */
+    triggerClassName?: string;
+}) {
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -86,7 +109,7 @@ export function FsRowActionsMenu({ entry, items, language }: { entry: FsEntry; i
             <button
                 ref={triggerRef}
                 type="button"
-                class="fb-row-action-btn fb-actions-trigger"
+                class={`fb-row-action-btn fb-actions-trigger${triggerClassName ? ' ' + triggerClassName : ''}`}
                 title={t('fileBrowser.actionsMenu', language)}
                 aria-label={t('fileBrowser.actionsMenu', language)}
                 data-entry-path={entry.path}
@@ -110,33 +133,35 @@ export function FsRowActionsMenu({ entry, items, language }: { entry: FsEntry; i
                     <circle cx="19" cy="12" r="1.4" />
                 </svg>
             </button>
-            {open && pos && (
-                <div
-                    ref={menuRef}
-                    class="fb-actions-menu"
-                    style={`position: fixed; top: ${pos.top}px; right: ${pos.right}px;`}
-                    role="menu"
-                    onMouseDown={(e: MouseEvent) => e.stopPropagation()}
-                    onClick={(e: MouseEvent) => e.stopPropagation()}
-                >
-                    {items.map(item => (
-                        <button
-                            key={item.id}
-                            type="button"
-                            class={`fb-actions-menu-item ${item.danger ? 'fb-actions-menu-item-danger' : ''}`}
-                            role="menuitem"
-                            onMouseDown={(e: MouseEvent) => e.stopPropagation()}
-                            onClick={() => {
-                                setOpen(false);
-                                item.onSelect();
-                            }}
-                        >
-                            <span class="fb-actions-menu-icon">{item.icon}</span>
-                            <span class="fb-actions-menu-label">{t(item.labelKey, language)}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
+            {open && pos &&
+                createPortal(
+                    <div
+                        ref={menuRef}
+                        class="fb-actions-menu"
+                        style={`position: fixed; top: ${pos.top}px; right: ${pos.right}px;`}
+                        role="menu"
+                        onMouseDown={(e: MouseEvent) => e.stopPropagation()}
+                        onClick={(e: MouseEvent) => e.stopPropagation()}
+                    >
+                        {items.map(item => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                class={`fb-actions-menu-item ${item.danger ? 'fb-actions-menu-item-danger' : ''}`}
+                                role="menuitem"
+                                onMouseDown={(e: MouseEvent) => e.stopPropagation()}
+                                onClick={() => {
+                                    setOpen(false);
+                                    item.onSelect();
+                                }}
+                            >
+                                <span class="fb-actions-menu-icon">{item.icon}</span>
+                                <span class="fb-actions-menu-label">{t(item.labelKey, language)}</span>
+                            </button>
+                        ))}
+                    </div>,
+                    document.body
+                )}
         </Fragment>
     );
 }

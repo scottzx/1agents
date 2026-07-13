@@ -3,6 +3,7 @@ import { Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
 import { AgentAvatar } from '../chat/AgentAvatar';
 import { liveSessionStatus } from '../../stores/sessionStore';
+import { FsRowActionsMenu, type FsRowAction } from '../drawer/FsRowActionsMenu';
 
 interface SessionRowProps {
     /** Session to render. `kind` ('chat' | 'terminal') drives the type-specific bits. */
@@ -16,15 +17,12 @@ interface SessionRowProps {
     selected: boolean;
     /** Currently collapsing (kill animation) — adds `chat-item-killing`. */
     killing: boolean;
-    /** Pointer is over this row — gates the terminal rename action. */
-    isHovered: boolean;
     /** Task id -> title map, used by the chat task badge tooltip/label. */
     taskTitles: Record<string, string>;
     language: Lang;
     onSelect: (session: Session) => void;
     onKill: (e: MouseEvent, session: Session) => void;
     onRename: (session: Session) => void;
-    onHoverChange: (id: string | null) => void;
 }
 
 // Terminal `agent` values come from backend detection ('claude', 'codex',
@@ -34,21 +32,6 @@ interface SessionRowProps {
 const TERM_AGENT_LOGO_KEY: Record<string, string> = {
     claude: 'claudecode',
 };
-
-const CloseIcon = () => (
-    <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-    >
-        <line x1="18" x2="6" y1="6" y2="18" />
-        <line x1="6" x2="18" y1="6" y2="18" />
-    </svg>
-);
 
 const TerminalIcon = () => (
     <span class="chat-sidebar-avatar chat-terminal-icon" aria-hidden="true">
@@ -68,23 +51,84 @@ const TerminalIcon = () => (
     </span>
 );
 
+// 12px SVG icons used by the chat/terminal "..." menu (重命名 / 归档).
+const SESSION_ACTION_ICONS = {
+    rename: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+    ),
+    archive: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <polyline points="21 8 21 21 3 21 3 8" />
+            <rect x="1" y="3" width="22" height="5" />
+            <line x1="10" y1="12" x2="14" y2="12" />
+        </svg>
+    ),
+};
+
+/** Build the "..." dropdown items for a session row: rename + archive. */
+function buildSessionActions(session: Session, props: SessionRowProps): FsRowAction[] {
+    return [
+        {
+            id: 'rename',
+            labelKey: 'sidebar.renameSession',
+            icon: SESSION_ACTION_ICONS.rename,
+            onSelect: () => props.onRename(session),
+        },
+        {
+            id: 'archive',
+            labelKey: isChat(session) ? 'sidebar.archiveSession' : 'sidebar.closeSession',
+            icon: SESSION_ACTION_ICONS.archive,
+            danger: true,
+            onSelect: () => {
+                // Synthesize a MouseEvent so the existing onKill handler (which
+                // expects the stopPropagation + animation-timer pattern) works
+                // unchanged. The event is never dispatched — we just need a
+                // value to pass.
+                const ev = { stopPropagation: () => {} } as MouseEvent;
+                props.onKill(ev, session);
+            },
+        },
+    ];
+}
+
 /**
  * Unified sidebar session row. A single `.chat-item` template renders both chat
  * and terminal sessions with the same shape — agent avatar + title + trailing
- * status dot + close button. The `session.kind` discriminator only selects the
- * leading icon source, the status palette, and the terminal-only rename action.
+ * status dot + "..." actions menu. The `session.kind` discriminator only
+ * selects the leading icon source and the status palette; the rename / archive
+ * actions are shared and accessed via the dropdown triggered by the trailing
+ * `.chat-actions-trigger` button.
  */
 export function SessionRow({
     session,
     selected,
     killing,
-    isHovered,
     taskTitles,
     language,
     onSelect,
     onKill,
     onRename,
-    onHoverChange,
 }: SessionRowProps) {
     const chat = isChat(session);
     const chatFallback = t('sidebar.chatSession', language) || '聊天会话';
@@ -144,8 +188,6 @@ export function SessionRow({
                 e.stopPropagation();
                 onSelect(session);
             }}
-            onMouseEnter={() => onHoverChange(session.id)}
-            onMouseLeave={() => onHoverChange(null)}
         >
             <div class="chat-item-left">
                 {leadingIcon}
@@ -164,38 +206,22 @@ export function SessionRow({
 
             <span class={statusClass} />
 
-            <div class="session-actions">
-                {!chat && isHovered && (
-                    <button
-                        class="session-action-btn"
-                        title={t('sidebar.renameSession', language)}
-                        onClick={(e: MouseEvent) => {
-                            e.stopPropagation();
-                            onRename(session);
-                        }}
-                    >
-                        <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                    </button>
-                )}
-                <button
-                    class="session-kill-btn"
-                    title={t(chat ? 'sidebar.archiveSession' : 'sidebar.closeSession', language)}
-                    onClick={(e: MouseEvent) => onKill(e, session)}
-                >
-                    <CloseIcon />
-                </button>
+            <div class="chat-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                <FsRowActionsMenu
+                    entry={session as unknown as { path?: string }}
+                    items={buildSessionActions(session, {
+                        session,
+                        selected,
+                        killing,
+                        taskTitles,
+                        language,
+                        onSelect,
+                        onKill,
+                        onRename,
+                    })}
+                    language={language}
+                    triggerClassName="chat-actions-trigger"
+                />
             </div>
         </div>
     );

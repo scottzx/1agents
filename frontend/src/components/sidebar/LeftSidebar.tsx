@@ -5,6 +5,8 @@ import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat, isTerminal
 import { t, type Lang } from '../i18n';
 import { SessionRow } from './SessionRow';
 import { ModuleNav } from './ModuleNav';
+import { FsRowActionsMenu, type FsRowAction } from '../drawer/FsRowActionsMenu';
+import { archiveWorkspace } from '../../stores/workspaceStore';
 import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
@@ -76,6 +78,92 @@ function DeviceOsIcon({ os }: { os?: string }) {
     );
 }
 
+// 12px SVG icons used by the folder "..." menu (新建会话 / 重命名 / 归档).
+const WS_ACTION_ICONS = {
+    newChat: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <line x1="12" y1="8" x2="12" y2="14" />
+            <line x1="9" y1="11" x2="15" y2="11" />
+        </svg>
+    ),
+    rename: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+    ),
+    archive: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <polyline points="21 8 21 21 3 21 3 8" />
+            <rect x="1" y="3" width="22" height="5" />
+            <line x1="10" y1="12" x2="14" y2="12" />
+        </svg>
+    ),
+};
+
+/** Build the "..." dropdown items for a workspace row. Built-in workspaces
+ *  can't be archived, so the danger entry is hidden for them. */
+function buildFolderActions(
+    ws: Workspace,
+    onChatCreate: (id: string) => void,
+    onRename: (ws: Workspace) => void
+): FsRowAction[] {
+    const items: FsRowAction[] = [
+        {
+            id: 'newChat',
+            labelKey: 'sidebar.newSession',
+            icon: WS_ACTION_ICONS.newChat,
+            onSelect: () => onChatCreate(ws.id),
+        },
+        {
+            id: 'rename',
+            labelKey: 'common.edit',
+            icon: WS_ACTION_ICONS.rename,
+            onSelect: () => onRename(ws),
+        },
+    ];
+    if (!ws.builtin) {
+        items.push({
+            id: 'archive',
+            labelKey: 'assistant.detail.settings.archive',
+            icon: WS_ACTION_ICONS.archive,
+            danger: true,
+            onSelect: () => {
+                void archiveWorkspace(ws.id);
+            },
+        });
+    }
+    return items;
+}
+
 interface LeftSidebarProps {
     folders: WorkspaceFolder[];
     workspaces: Workspace[];
@@ -89,7 +177,6 @@ interface LeftSidebarProps {
     activeDrawerTab: RightDrawerTab;
     onCreateWorkspace: () => void;
     onRenameWorkspace: (ws: Workspace) => void;
-    onDeleteWorkspace: (id: string) => void;
     onSelectWorkspace: (ws: Workspace) => void;
     onSelectSession: (session: Session) => void;
     onTerminalCreate: (workspaceId: string, cwd: string) => void;
@@ -131,7 +218,6 @@ export function LeftSidebar({
     activeDrawerTab,
     onCreateWorkspace,
     onRenameWorkspace,
-    onDeleteWorkspace,
     onSelectWorkspace,
     onSelectSession,
     onTerminalKill,
@@ -139,6 +225,7 @@ export function LeftSidebar({
     onReorderFolders,
     language,
     moduleNav,
+    onChatCreate,
     onChatKill,
     onStartNewChat,
     activeTab,
@@ -157,8 +244,6 @@ export function LeftSidebar({
         }
         return false;
     };
-    const [hoveredId, setHoveredId] = useState<string | null>(null);
-    const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
     const [projectSearch, setProjectSearch] = useState('');
     const [projectSearchOpen, setProjectSearchOpen] = useState(false);
     // Footer utility entries (模型/技能/发现/数据源/系统设置) are collapsed
@@ -217,18 +302,12 @@ export function LeftSidebar({
         // folders identity churns every render; folderIdsKey is the stable signal.
     }, [folderIdsKey, hasTaskLinkedSession]);
 
-    const confirmDeleteId = useSignal<string | null>(null);
-    const deletingId = useSignal<string | null>(null);
     const killingSessionId = useSignal<string | null>(null);
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
     const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null);
 
     const handleDragStart = (e: DragEvent, id: string) => {
-        if (confirmDeleteId.value === id) {
-            e.preventDefault();
-            return;
-        }
         setDraggedId(id);
         if (e.dataTransfer) {
             e.dataTransfer.effectAllowed = 'move';
@@ -276,34 +355,6 @@ export function LeftSidebar({
         setDragOverPosition(null);
     };
 
-    useEffect(() => {
-        deletingId.value = null;
-    }, [folders]);
-
-    const handleDeleteClick = (e: MouseEvent, id: string) => {
-        e.stopPropagation();
-        confirmDeleteId.value = id;
-    };
-
-    const confirmDelete = (e: MouseEvent, id: string) => {
-        e.stopPropagation();
-        if (workspaces.length <= 1) {
-            confirmDeleteId.value = null;
-            onDeleteWorkspace(id);
-            return;
-        }
-        confirmDeleteId.value = null;
-        deletingId.value = id;
-        setTimeout(() => {
-            onDeleteWorkspace(id);
-        }, 300);
-    };
-
-    const cancelDelete = (e: MouseEvent) => {
-        e.stopPropagation();
-        confirmDeleteId.value = null;
-    };
-
     const handleSessionKill = (e: MouseEvent, session: Session) => {
         e.stopPropagation();
         killingSessionId.value = session.id;
@@ -319,13 +370,11 @@ export function LeftSidebar({
             session={session}
             selected={isSelectedSession(session)}
             killing={killingSessionId.value === session.id}
-            isHovered={hoveredSessionId === session.id}
             taskTitles={taskTitles}
             language={language}
             onSelect={onSelectSession}
             onKill={handleSessionKill}
             onRename={onRenameSession}
-            onHoverChange={setHoveredSessionId}
         />
     );
 
@@ -618,12 +667,7 @@ export function LeftSidebar({
                                         const chatSessions = folder.sessions.filter(isChat);
                                         const termSessions = folder.sessions.filter(s => !isChat(s));
                                         return (
-                                            <div
-                                                key={ws.id}
-                                                class={`project-node${isActive ? ' ws-active' : ''}`}
-                                                onMouseEnter={() => setHoveredId(ws.id)}
-                                                onMouseLeave={() => setHoveredId(null)}
-                                            >
+                                            <div key={ws.id} class={`project-node${isActive ? ' ws-active' : ''}`}>
                                                 <div
                                                     class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
                                                     onClick={() => {
@@ -659,6 +703,21 @@ export function LeftSidebar({
                                                         </svg>
                                                     )}
                                                     <span class="ws-name">{ws.name}</span>
+                                                    <div
+                                                        class="ws-actions"
+                                                        onClick={(e: MouseEvent) => e.stopPropagation()}
+                                                    >
+                                                        <FsRowActionsMenu
+                                                            entry={ws}
+                                                            items={buildFolderActions(
+                                                                ws,
+                                                                onChatCreate,
+                                                                onRenameWorkspace
+                                                            )}
+                                                            language={language}
+                                                            triggerClassName="ws-actions-trigger"
+                                                        />
+                                                    </div>
                                                 </div>
                                                 {folder.expanded && (
                                                     <div class="project-children">
@@ -812,148 +871,79 @@ export function LeftSidebar({
                                         })
                                         .map(folder => {
                                             const ws = workspaces.find(w => w.id === folder.id);
-                                            const isHovered = hoveredId === folder.id;
-                                            const isConfirmingDelete = confirmDeleteId.value === folder.id;
                                             const isActive = folder.id === activeWorkspaceId;
-                                            const isDeleting = deletingId.value === folder.id;
 
                                             return (
                                                 <div
                                                     key={folder.id}
-                                                    class={`project-node${isActive ? ' ws-active' : ''}${
-                                                        isDeleting ? ' ws-deleting' : ''
-                                                    }`}
-                                                    onMouseEnter={() => setHoveredId(folder.id)}
-                                                    onMouseLeave={() => {
-                                                        setHoveredId(null);
-                                                        if (confirmDeleteId.value === folder.id)
-                                                            confirmDeleteId.value = null;
-                                                    }}
+                                                    class={`project-node${isActive ? ' ws-active' : ''}`}
                                                 >
-                                                    {isConfirmingDelete ? (
-                                                        /* Delete confirm inline */
-                                                        <div class="ws-delete-confirm">
-                                                            <span>
-                                                                {t('sidebar.deleteConfirm', language, {
-                                                                    name: folder.name,
-                                                                })}
-                                                            </span>
-                                                            <button
-                                                                class="ws-del-yes"
-                                                                onClick={(e: MouseEvent) => confirmDelete(e, folder.id)}
-                                                            >
-                                                                {t('common.delete', language)}
-                                                            </button>
-                                                            <button class="ws-del-no" onClick={cancelDelete}>
-                                                                {t('common.cancel', language)}
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div
-                                                            class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
-                                                                draggedId === folder.id ? 'dragging' : ''
-                                                            } ${
-                                                                dragOverId === folder.id &&
-                                                                dragOverPosition === 'before'
-                                                                    ? 'drag-over-before'
-                                                                    : ''
-                                                            } ${
-                                                                dragOverId === folder.id && dragOverPosition === 'after'
-                                                                    ? 'drag-over-after'
-                                                                    : ''
-                                                            }`}
-                                                            draggable={true}
-                                                            onDragStart={e => handleDragStart(e, folder.id)}
-                                                            onDragOver={e => handleDragOver(e, folder.id)}
-                                                            onDragLeave={e => handleDragLeave(e, folder.id)}
-                                                            onDrop={e => handleDrop(e, folder.id)}
-                                                            onDragEnd={handleDragEnd}
-                                                            onClick={() => {
-                                                                toggleFolder(folder.id);
-                                                                if (ws) onSelectWorkspace(ws);
-                                                            }}
+                                                    <div
+                                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
+                                                            draggedId === folder.id ? 'dragging' : ''
+                                                        } ${
+                                                            dragOverId === folder.id && dragOverPosition === 'before'
+                                                                ? 'drag-over-before'
+                                                                : ''
+                                                        } ${
+                                                            dragOverId === folder.id && dragOverPosition === 'after'
+                                                                ? 'drag-over-after'
+                                                                : ''
+                                                        }`}
+                                                        draggable={true}
+                                                        onDragStart={e => handleDragStart(e, folder.id)}
+                                                        onDragOver={e => handleDragOver(e, folder.id)}
+                                                        onDragLeave={e => handleDragLeave(e, folder.id)}
+                                                        onDrop={e => handleDrop(e, folder.id)}
+                                                        onDragEnd={handleDragEnd}
+                                                        onClick={() => {
+                                                            toggleFolder(folder.id);
+                                                            if (ws) onSelectWorkspace(ws);
+                                                        }}
+                                                    >
+                                                        <svg
+                                                            class="chevron"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2.5"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
                                                         >
-                                                            <svg
-                                                                class="chevron"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2.5"
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
-                                                            >
-                                                                <polyline points="9 18 15 12 9 6" />
-                                                            </svg>
-                                                            <svg
-                                                                class="folder-icon"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                stroke-width="2"
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
-                                                            >
-                                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                            </svg>
-                                                            <span class="ws-name" title={ws?.path || folder.name}>
-                                                                {folder.name}
-                                                            </span>
-
-                                                            {/* Action buttons */}
+                                                            <polyline points="9 18 15 12 9 6" />
+                                                        </svg>
+                                                        <svg
+                                                            class="folder-icon"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                        </svg>
+                                                        <span class="ws-name" title={ws?.path || folder.name}>
+                                                            {folder.name}
+                                                        </span>
+                                                        {ws && (
                                                             <div
                                                                 class="ws-actions"
-                                                                draggable={false}
-                                                                onDragStart={e => e.preventDefault()}
                                                                 onClick={(e: MouseEvent) => e.stopPropagation()}
                                                             >
-                                                                {isHovered &&
-                                                                    ws &&
-                                                                    !ws.builtin && [
-                                                                        <button
-                                                                            class="ws-action-btn"
-                                                                            title={t('common.edit', language)}
-                                                                            onClick={(e: MouseEvent) => {
-                                                                                e.stopPropagation();
-                                                                                onRenameWorkspace(ws);
-                                                                            }}
-                                                                        >
-                                                                            <svg
-                                                                                viewBox="0 0 24 24"
-                                                                                fill="none"
-                                                                                stroke="currentColor"
-                                                                                stroke-width="2"
-                                                                                stroke-linecap="round"
-                                                                                stroke-linejoin="round"
-                                                                            >
-                                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                                                            </svg>
-                                                                        </button>,
-                                                                        <button
-                                                                            class="ws-action-btn ws-action-delete"
-                                                                            title={t('common.delete', language)}
-                                                                            onClick={(e: MouseEvent) =>
-                                                                                handleDeleteClick(e, folder.id)
-                                                                            }
-                                                                        >
-                                                                            <svg
-                                                                                viewBox="0 0 24 24"
-                                                                                fill="none"
-                                                                                stroke="currentColor"
-                                                                                stroke-width="2"
-                                                                                stroke-linecap="round"
-                                                                                stroke-linejoin="round"
-                                                                            >
-                                                                                <polyline points="3 6 5 6 21 6" />
-                                                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                                                                <path d="M10 11v6M14 11v6" />
-                                                                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                                                                            </svg>
-                                                                        </button>,
-                                                                    ]}
+                                                                <FsRowActionsMenu
+                                                                    entry={ws}
+                                                                    items={buildFolderActions(
+                                                                        ws,
+                                                                        onChatCreate,
+                                                                        onRenameWorkspace
+                                                                    )}
+                                                                    language={language}
+                                                                    triggerClassName="ws-actions-trigger"
+                                                                />
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        )}
+                                                    </div>
 
                                                     {folder.expanded &&
                                                         (() => {

@@ -84,25 +84,112 @@ func yamlScalar(s string) string {
 
 // SplitFrontmatter splits a document into its raw frontmatter block (without the
 // `---` fences) and the body. When the doc has no leading `---` fence, it
-// returns ("", doc).
+// returns ("", doc). When the leading fence is decorative (`--- / # Title / ---
+// triple), the opening line is dropped (it stays as a thematic break) and the
+// rest of the document is returned as body — mirroring the TS parser so render
+// and parse agree.
 func SplitFrontmatter(doc string) (frontmatter, body string) {
 	s := strings.TrimPrefix(doc, "\uFEFF") // tolerate a leading BOM
 	if !strings.HasPrefix(s, "---\n") && !strings.HasPrefix(s, "---\r\n") {
 		return "", doc
 	}
-	// Drop the opening fence line.
 	nl := strings.IndexByte(s, '\n')
 	rest := s[nl+1:]
 	lines := strings.Split(rest, "\n")
+
+	// Locate the first `---` after the opening fence.
+	firstCloseIdx := -1
 	for i, ln := range lines {
 		if strings.TrimRight(ln, "\r") == "---" {
-			fm := strings.Join(lines[:i], "\n")
-			bd := strings.Join(lines[i+1:], "\n")
-			return fm, strings.TrimLeft(bd, "\r\n")
+			firstCloseIdx = i
+			break
 		}
 	}
-	// No closing fence — treat the whole thing as body (malformed frontmatter).
-	return "", doc
+	if firstCloseIdx < 0 {
+		// No closing fence at all → preserve the original doc as body.
+		return "", doc
+	}
+
+	// Walk every `---` we find; accept the first whose leading block reads as
+	// a YAML mapping. Lines that start with `#`, plain prose, or top-level
+	// bullets defeat the candidate so the common README header
+	// (`---\n# Title\n---\n`) is treated as a thematic break, not frontmatter.
+	for i := firstCloseIdx; i < len(lines); i++ {
+		if strings.TrimRight(lines[i], "\r") != "---" {
+			continue
+		}
+		candidate := lines[:i]
+		if !looksLikeFrontmatterYaml(candidate) {
+			continue
+		}
+		fm := strings.Join(candidate, "\n")
+		bd := strings.Join(lines[i+1:], "\n")
+		return fm, strings.TrimLeft(bd, "\r\n")
+	}
+	// A `---` was present but never closed onto YAML-shaped content. Drop the
+	// opening fence line so both `---`s render as thematic breaks downstream.
+	return "", rest
+}
+
+// looksLikeFrontmatterYaml reports whether `lines` could be the body of a YAML
+// frontmatter mapping. Empty input is valid (empty frontmatter). Each non-empty
+// line must either be a top-level `key:` mapping or an indented continuation.
+// Lines that look like Markdown (headers `# …`, bare prose) defeat the
+// candidate. The check is intentionally conservative — we'd rather refuse a
+// real but weird frontmatter than swallow actual Markdown body. Mirrors the TS
+// side in frontend/src/utils/frontmatter.ts.
+func looksLikeFrontmatterYaml(lines []string) bool {
+	for _, raw := range lines {
+		line := strings.TrimRight(raw, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			continue // indented continuation
+		}
+		if !topLevelYAMLKey(line) {
+			return false
+		}
+	}
+	return true
+}
+
+// topLevelYAMLKey reports whether `line` is an unindented `key:` mapping with
+// an optional inline value (key starts with a letter or underscore, then may
+// contain letters/digits/`-`/`_`, optional whitespace, then `:`).
+func topLevelYAMLKey(line string) bool {
+	if len(line) == 0 || !isYAMLKeyStart(line[0]) {
+		return false
+	}
+	rest := line[1:]
+	for i := 0; i < len(rest); i++ {
+		c := rest[i]
+		if c == ':' {
+			return true
+		}
+		if c == ' ' || c == '\t' {
+			for j := i; j < len(rest); j++ {
+				cj := rest[j]
+				if cj == ':' {
+					return true
+				}
+				if cj != ' ' && cj != '\t' {
+					return false
+				}
+			}
+			return false
+		}
+		if !(c == '-' || c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+			return false
+		}
+	}
+	return false
+}
+
+func isYAMLKeyStart(b byte) bool {
+	return (b >= 'a' && b <= 'z') ||
+		(b >= 'A' && b <= 'Z') ||
+		b == '_'
 }
 
 // FrontmatterAcceptance extracts the `acceptance` key from a document's

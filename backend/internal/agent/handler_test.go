@@ -356,3 +356,110 @@ func TestManualStatusOverrideLeavesAuditTrail(t *testing.T) {
 		t.Fatalf("expected exactly one audit reply, got %d: %+v", audits, patched.Replies)
 	}
 }
+
+// TestSessionUserRenamePreservedByList covers #94: a session whose name the
+// user set to something that matches the default "会话"-suffix pattern (and
+// therefore would have been overwritten by the list endpoint's AI title
+// auto-resolution before the fix) must survive a subsequent GET and list.
+// The handler reads wsPath from the workspace registry (empty in tests), and
+// resolveAcpSessionTitle returns the existing name as a fallback, so the
+// title is left alone — but user_named must gate the entire branch.
+func TestSessionUserRenamePreservedByList(t *testing.T) {
+	h, s := newTestHandler(t)
+
+	// Seed a default-named session with an AcpSessionID so the AI-title
+	// auto-resolution branch is on the code path.
+	rec := ChatSessionRecord{
+		ID:          "user-1",
+		WorkspaceID: "ws-1",
+		Name:        "新建会话",
+		AgentType:   AgentTypeClaudecode,
+		AcpSessionID: "uuid-1",
+	}
+	if err := s.Add(rec); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// User renames the session to a value that still matches the default
+	// suffix pattern. UpdateName sets user_named=1.
+	const userName = "我的项目会话"
+	if err := s.UpdateName(rec.ID, userName); err != nil {
+		t.Fatalf("UpdateName: %v", err)
+	}
+
+	// GET single session: handler must not overwrite the user's title.
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/sessions/"+rec.ID, nil)
+	h.HandleSessionsItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get status %d: %s", rr.Code, rr.Body.String())
+	}
+	var got ChatSessionRecord
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Name != userName {
+		t.Fatalf("get overwrote user-renamed name: %q (want %q)", got.Name, userName)
+	}
+	if !got.UserNamed {
+		t.Fatalf("get should surface user_named=true, got false")
+	}
+
+	// LIST workspace sessions: same protection applies.
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/agent/sessions?workspace_id=ws-1", nil)
+	h.HandleSessionsRoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list status %d", rr.Code)
+	}
+	var listed []ChatSessionRecord
+	if err := json.NewDecoder(rr.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Name != userName {
+		t.Fatalf("list overwrote user-renamed name: %+v", listed)
+	}
+	if !listed[0].UserNamed {
+		t.Fatalf("list should surface user_named=true, got false")
+	}
+}
+
+// TestSessionDefaultNameStillAutoTitle covers the backward-compat side of #94:
+// a session the user has NOT renamed keeps auto AI-title resolution (gated
+// only by isDefaultSessionName). In the test environment wsPath is empty so
+// resolveAcpSessionTitle falls back to the existing name; we assert the
+// default name survives unchanged and user_named stays false.
+func TestSessionDefaultNameStillAutoTitle(t *testing.T) {
+	h, s := newTestHandler(t)
+
+	rec := ChatSessionRecord{
+		ID:          "auto-1",
+		WorkspaceID: "ws-1",
+		Name:        "新建会话",
+		AgentType:   AgentTypeClaudecode,
+		AcpSessionID: "uuid-auto",
+	}
+	if err := s.Add(rec); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/sessions?workspace_id=ws-1", nil)
+	h.HandleSessionsRoot(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list status %d", rr.Code)
+	}
+	var listed []ChatSessionRecord
+	if err := json.NewDecoder(rr.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("got %d records, want 1", len(listed))
+	}
+	if listed[0].UserNamed {
+		t.Fatalf("default-named session should keep user_named=false after list")
+	}
+	if listed[0].Name != "新建会话" {
+		t.Fatalf("default-named session was overwritten unexpectedly: %q", listed[0].Name)
+	}
+}

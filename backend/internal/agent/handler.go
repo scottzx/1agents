@@ -124,7 +124,7 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
-		if rec.AcpSessionID != "" {
+		if rec.AcpSessionID != "" && !rec.UserNamed {
 			name := rec.Name
 			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
 				if wsPath, err := h.resolveWorkspacePath(rec.WorkspaceID); err == nil {
@@ -245,7 +245,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 
 	for i := range recs {
 		rec := &recs[i]
-		if rec.AcpSessionID != "" {
+		// #94: skip the AI-title auto-resolution when the session was named by
+		// the user, even if the new name happens to match the default pattern
+		// (e.g. "我的项目会话" ends in "会话"). UpdateName sets user_named=1 so
+		// subsequent list calls leave the title alone.
+		if rec.AcpSessionID != "" && !rec.UserNamed {
 			name := rec.Name
 			if name == "" || name == "聊天会话" || name == "新建会话" || strings.HasPrefix(name, "Chat") || strings.HasSuffix(name, "会话") {
 				if title := resolveAcpSessionTitle(wsPath, rec.AcpSessionID, name); title != "" && title != name {

@@ -20,19 +20,21 @@ func NewSessionStore(db *DB) *SessionStore {
 
 const sessionCols = `id, project_id, task_id, name, agent_type, cc_project,
 	cc_session_id, acp_session_id, session_key, permission_mode, role,
-	created_at, last_event_at, archived_at`
+	created_at, last_event_at, archived_at, user_named`
 
 func scanSession(r rowScanner) (ChatSessionRecord, error) {
 	var rec ChatSessionRecord
 	var createdAt, lastEventAt, archivedAt string
+	var userNamed int
 	if err := r.Scan(&rec.ID, &rec.WorkspaceID, &rec.TaskID, &rec.Name, &rec.AgentType,
 		&rec.CcProject, &rec.CcSessionID, &rec.AcpSessionID, &rec.SessionKey,
-		&rec.PermissionMode, &rec.Role, &createdAt, &lastEventAt, &archivedAt); err != nil {
+		&rec.PermissionMode, &rec.Role, &createdAt, &lastEventAt, &archivedAt, &userNamed); err != nil {
 		return ChatSessionRecord{}, err
 	}
 	rec.CreatedAt = strToTime(createdAt)
 	rec.LastEventAt = strToTime(lastEventAt)
 	rec.ArchivedAt = strToTime(archivedAt)
+	rec.UserNamed = userNamed != 0
 	return rec, nil
 }
 
@@ -82,12 +84,13 @@ func (s *SessionStore) Add(rec ChatSessionRecord) error {
 	res, err := s.db.sql.Exec(`
 		INSERT INTO sessions (id, project_id, task_id, name, agent_type, cc_project,
 			cc_session_id, acp_session_id, session_key, permission_mode, role,
-			created_at, last_event_at, archived_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			created_at, last_event_at, archived_at, user_named)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`,
 		rec.ID, rec.WorkspaceID, rec.TaskID, rec.Name, rec.AgentType, rec.CcProject,
 		rec.CcSessionID, rec.AcpSessionID, rec.SessionKey, rec.PermissionMode, rec.Role,
-		timeToStr(rec.CreatedAt), timeToStr(rec.LastEventAt), timeToStr(rec.ArchivedAt))
+		timeToStr(rec.CreatedAt), timeToStr(rec.LastEventAt), timeToStr(rec.ArchivedAt),
+		boolToInt(rec.UserNamed))
 	if err != nil {
 		return err
 	}
@@ -122,9 +125,19 @@ func (s *SessionStore) Touch(id string) error {
 		timeToStr(time.Now().UTC()), id)
 }
 
-// UpdateName updates the name/title of the session with the given id.
+// UpdateName updates the name/title of the session with the given id. The
+// user_named flag is set to 1 so subsequent list/get calls do not overwrite
+// the user's chosen title with an AI-resolved default (#94).
 func (s *SessionStore) UpdateName(id, name string) error {
-	return s.execOne(`UPDATE sessions SET name = ? WHERE id = ?`, name, id)
+	return s.execOne(`UPDATE sessions SET name = ?, user_named = 1 WHERE id = ?`, name, id)
+}
+
+// ClearUserNamed resets the user_named flag for a session, allowing the next
+// list/get to overwrite the title with an AI-resolved default. Not currently
+// exposed via HTTP (no reset-to-AI-title endpoint yet); reserved for future
+// use.
+func (s *SessionStore) ClearUserNamed(id string) error {
+	return s.execOne(`UPDATE sessions SET user_named = 0 WHERE id = ?`, id)
 }
 
 // UpdateTask sets the task soft-link on a session record.
@@ -164,7 +177,7 @@ func (s *SessionStore) UpdateACP(id, acpSessionID string) error {
 		newAcp = acpSessionID
 	}
 	newName := rec.Name
-	if isDefaultSessionName(rec.Name) {
+	if !rec.UserNamed && isDefaultSessionName(rec.Name) {
 		if title, err := ResolveClaudeSessionName(acpSessionID); err == nil && title != "" {
 			newName = title
 		}

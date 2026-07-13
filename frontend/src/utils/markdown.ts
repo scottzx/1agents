@@ -18,6 +18,7 @@
 import { Marked, type RendererObject, type TokenizerAndRendererExtension } from 'marked';
 import hljs from 'highlight.js/lib/core';
 import yaml from 'highlight.js/lib/languages/yaml';
+import { looksLikeFrontmatterYaml } from './frontmatter';
 
 hljs.registerLanguage('yaml', yaml);
 
@@ -176,13 +177,24 @@ export const frontmatterExtension: TokenizerAndRendererExtension = {
         return src.startsWith('---\n') || src.startsWith('---\r\n') ? 0 : undefined;
     },
     tokenizer(src: string) {
-        const m = /^(?:---\r?\n)([\s\S]*?)(?:\r?\n---)(?=\r?\n|$)/.exec(src);
-        if (!m) return undefined;
-        return {
-            type: 'frontmatter',
-            raw: m[0],
-            text: m[1],
-        };
+        // Match `--- / <text> / ---` only when the inner text looks like a YAML
+        // mapping. Otherwise the `---`s are thematic breaks (very common in
+        // README headers: `---\n# Title\n---\n`) and the rest of the parse must
+        // see them as such.
+        const openMatch = /^---(?:\r?\n|$)/.exec(src);
+        if (!openMatch || openMatch[0].length === src.length) return undefined;
+        const after = src.slice(openMatch[0].length);
+        if (!after.length) return undefined;
+        const lines = after.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].replace(/\r$/, '') !== '---') continue;
+            const candidate = lines.slice(0, i);
+            if (!looksLikeFrontmatterYaml(candidate)) continue;
+            const innerLines = candidate.join('\n');
+            const raw = openMatch[0] + lines.slice(0, i + 1).join('\n');
+            return { type: 'frontmatter', raw, text: innerLines };
+        }
+        return undefined;
     },
     renderer(token) {
         return renderYamlBlock(token.text as string, true);
