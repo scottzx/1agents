@@ -12,6 +12,7 @@ import * as modal from '../../stores/modalStore';
 import * as taskNav from '../../stores/taskNavStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as tabs from '../../stores/tabsStore';
+import type { Crumb } from '../platform/ShellNav';
 
 /**
  * 技能 tab of the 助理 详情. A skill is a *folder* under
@@ -46,7 +47,24 @@ function TagBadges({
     );
 }
 
-export function SkillsTab({ workspaceId, app, language }: { workspaceId: string; app: App; language: Lang }) {
+export function SkillsTab({
+    workspaceId,
+    app,
+    language,
+    /**
+     * Override the parent crumb prepended to the global breadcrumb trail.
+     * Default (omitted) = the 助理 crumb that the 助理 detail uses. Pass a
+     * Crumb to integrate with a different host page (e.g. 项目详情 uses
+     * { 项目总览, onClick=projectOverview }) — when set, SkillsTab clears the
+     * trail on unmount so the host's own breadcrumb (customCrumbs) reclaims it.
+     */
+    crumbsParent,
+}: {
+    workspaceId: string;
+    app: App;
+    language: Lang;
+    crumbsParent?: Crumb;
+}) {
     const [skills, setSkills] = useState<WorkspaceSkillStatus[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -79,12 +97,13 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
 
     const wsName = wsStore.workspaces.value.find(w => w.id === workspaceId)?.name ?? '';
 
-    // Drive back-navigation through the global header breadcrumb (助理 › <name> ›
-    // <skill>) instead of an in-pane back button: clicking <name> returns to the
-    // skill list. Restores the base assistant trail on tab switch; leaves it to
-    // AssistantsPage when navigating out of the assistant entirely.
+    // Drive back-navigation through the global header breadcrumb (助理/项目总览 ›
+    // <name> › <skill>) instead of an in-pane back button: clicking <name>
+    // returns to the skill list. On unmount, the global trail is either reset
+    // (default 助理 crumb, if still in the assistant detail) or cleared
+    // (custom parent — host reclaims via its own customCrumbs).
     useEffect(() => {
-        const assistantsCrumb = {
+        const parentCrumb: Crumb = crumbsParent ?? {
             label: t('sidebar.assistants', language),
             onClick: () => {
                 tabs.assistantDetailId.value = null;
@@ -92,17 +111,30 @@ export function SkillsTab({ workspaceId, app, language }: { workspaceId: string;
         };
         taskNav.headerCrumbs.value = selected
             ? [
-                  assistantsCrumb,
+                  parentCrumb,
                   { label: wsName, onClick: () => setSelected(null) },
                   { label: selected.name || selected.dir },
               ]
-            : [assistantsCrumb, { label: wsName }];
+            : [parentCrumb, { label: wsName }];
         return () => {
+            if (crumbsParent !== undefined) {
+                // Custom parent: clear so the host page's customCrumbs wins.
+                taskNav.headerCrumbs.value = null;
+                return;
+            }
             if (tabs.assistantDetailId.value === workspaceId) {
-                taskNav.headerCrumbs.value = [assistantsCrumb, { label: wsName }];
+                taskNav.headerCrumbs.value = [
+                    {
+                        label: t('sidebar.assistants', language),
+                        onClick: () => {
+                            tabs.assistantDetailId.value = null;
+                        },
+                    },
+                    { label: wsName },
+                ];
             }
         };
-    }, [selected, wsName, language, workspaceId]);
+    }, [selected, wsName, language, workspaceId, crumbsParent]);
 
     const openPicker = async () => {
         setPickerOpen(true);

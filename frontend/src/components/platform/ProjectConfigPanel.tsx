@@ -14,11 +14,14 @@
 
 import { h, Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
+import type { App } from '../app';
+import { t, type Lang } from '../i18n';
 import { getProjectConfig, putProjectConfig, type ProjectConfig } from '../../services/appManifestService';
 import * as ui from '../../stores/uiStore';
 import * as wsStore from '../../stores/workspaceStore';
 import * as stage from '../../stores/stageStore';
 import { DetailSection } from '../shared/primitives';
+import { SkillsTab } from '../pages/SkillsTab';
 
 export type ConfigTab = 'instructions' | 'connectors' | 'experts' | 'skills' | 'automation';
 
@@ -229,7 +232,37 @@ function ConfigSectionBody({
 }
 
 /** Inline single-section config, rendered as a top-level tab in 项目详情. */
-export function ProjectConfigView({ workspaceId, section }: { workspaceId: string; section: ConfigTab }) {
+export function ProjectConfigView({
+    workspaceId,
+    section,
+    app,
+    language,
+}: {
+    workspaceId: string;
+    section: ConfigTab;
+    /** Required when section === 'skills' — the skills tab reuses SkillsTab,
+     *  which needs the App for FilePreviewPane. Other sections ignore it. */
+    app?: App;
+    language?: Lang;
+}) {
+    // Skills reuse the shared SkillsTab (same surface as the 助理 detail) —
+    // it's fully service-driven (add/remove/push/pull) and bypasses the
+    // project-config save flow. We pass a 项目总览 parent crumb so the
+    // drill-in breadcrumb reads [项目总览, <project>, <skill>] — same shape
+    // the 助理 detail uses ([助理, <name>, <skill>]).
+    if (section === 'skills' && app && language) {
+        return (
+            <SkillsTab
+                workspaceId={workspaceId}
+                app={app}
+                language={language}
+                crumbsParent={{
+                    label: t('projectHome.title', language),
+                    onClick: stage.projectOverview,
+                }}
+            />
+        );
+    }
     const { config, setConfig, loading, saving, save } = useProjectConfig(workspaceId);
     return (
         <div class="project-config-inline">

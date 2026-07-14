@@ -4,6 +4,7 @@
 
 ## 通用
 
+- **`<id>` 参数接受条目 UUID 或 `list` 显示的短号 `#N`**（如 `` `#3` ``；`get`/`graph`/`update`/`close`/`reopen` 都支持）。写 `#N` 时注意：Markdown 里裸写 `#3` 会被当标题，引用条目/给用户看时用反引号包成 `` `#3` ``。
 - `--project <id|name|path>`：覆盖 cwd 解析的项目（默认自动按当前目录逐级上找）。
 - `--json`：机器可读输出。读命令输出原始 JSON；写命令的 create 也可加。
 - 项目解析优先级：`ONEAGENTS_WORKSPACE_ID` 环境变量 → `--project` → 当前目录逐级上找匹配。

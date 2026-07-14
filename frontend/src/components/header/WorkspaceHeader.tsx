@@ -349,7 +349,16 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             </button>
                         )
                     )}
-                    {customCrumbs ? (
+                    {taskNav.headerCrumbs.value ? (
+                        // Drill-in breadcrumb published by a per-tab surface
+                        // (SkillsTab, AssistantsPage, DataSources, …) — wins over
+                        // the layout-mode customCrumbs so any mode (助理 detail,
+                        // 项目 detail, full-page modules) shows the same drill
+                        // trail through one mechanism.
+                        <div class="header-title-group header-crumb-group">
+                            <CrumbTrail crumbs={taskNav.headerCrumbs.value} />
+                        </div>
+                    ) : customCrumbs ? (
                         // Layout-mode override (project-overview / project-detail):
                         // show a fixed breadcrumb trail instead of session context.
                         <div class="header-title-group header-crumb-group">

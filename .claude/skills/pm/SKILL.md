@@ -68,6 +68,17 @@ description: 作为本项目的 AI 项目经理（PM）来规划与推进工作�
 
 小的子项不必每条都单独找用户确认——顶层需求对齐后，可以直接拆并落库。需求下的子任务全部终结时，需求会自动关闭。
 
+## 条目模板
+
+每种条目（bug / requirement / task / discussion）有固定的 description 骨架，存放在 `templates/`。建条目时挑对应模板填好后整段作为 `--description` 传入：
+
+- [templates/bug.md](./templates/bug.md) — 现象 / 重现 / 根因 / 影响范围 / 验收标准 / 修复方向
+- [templates/requirement.md](./templates/requirement.md) — 背景 / 目标 / 范围 / 不做 / 验收标准
+- [templates/task.md](./templates/task.md) — 目标 / 实现要点 / 关联 / 验收标准
+- [templates/discussion.md](./templates/discussion.md) — 议题 / 已有信息 / 待讨论角度 / 开放问题
+
+模板存在的意义：**让验收标准不会被遗忘**——可执行 task 没有 acceptance 进不了队列，bug 没列影响范围容易改一处漏一处。
+
 ## 引用其它条目（GitHub 风格永久链接）
 
 description / acceptance / 回复都支持 Markdown。引用同项目条目直接写 `#编号`（如 `#90`），前端渲染成可跳转链接。引用记号只认 `#数字`；普通的 `#`（如版本号 `#2`）用反引号转义。

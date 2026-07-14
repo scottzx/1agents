@@ -196,7 +196,12 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
             {activeTab === 'assets' && <ProjectAssetsTab workspaceId={workspaceId} />}
             {isDetail && isConfigTab && (
                 <div class="assistant-pane-fill assistant-pane-inset">
-                    <ProjectConfigView workspaceId={workspaceId} section={activeTab as ConfigTab} />
+                    <ProjectConfigView
+                        workspaceId={workspaceId}
+                        section={activeTab as ConfigTab}
+                        app={app}
+                        language={language}
+                    />
                 </div>
             )}
             {projectTabs.map(({ app: a, mount }) =>
