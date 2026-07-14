@@ -34,6 +34,7 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/localtoken"
 	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/sources"
+	"github.com/scottzx/1Agents/backend/internal/supervisor"
 	"github.com/scottzx/1Agents/backend/internal/system"
 	"github.com/scottzx/1Agents/backend/internal/taskapi"
 	"github.com/scottzx/1Agents/backend/internal/templateregistry"
@@ -562,6 +563,9 @@ func NewRouter(cfg *config.Config) http.Handler {
 	// Create the hidden anchor window (tmux index 0, root shell) at boot so it
 	// always exists before any user action and survives a backend restart.
 	termHandler.EnsureStartupSession()
+	// ttyd starts before the terminal handler creates the persistent tmux
+	// session, so refresh Claude's environment once the session exists.
+	supervisor.RefreshClaudeTmuxEnvironment(cfg.TmuxSession)
 	mux.HandleFunc("/api/terminal/create", termHandler.Create) // POST {workspaceId, cwd}
 	mux.HandleFunc("/api/terminal/list", termHandler.List)     // GET
 	mux.HandleFunc("/api/terminal/kill", termHandler.Kill)     // POST {windowIndex}

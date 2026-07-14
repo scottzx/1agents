@@ -113,9 +113,9 @@ func (s *Supervisor) startProcess(ctx context.Context) error {
 	// The port number is extracted from TtydAddr (e.g. "127.0.0.1:7681" → "7681").
 	port := portFrom(s.cfg.TtydAddr)
 	args := []string{
-		"-p", port,      // port
+		"-p", port, // port
 		"-i", "127.0.0.1", // bind to loopback only
-			"-W",               // writable mode
+		"-W", // writable mode
 	}
 	args = append(args, s.cfg.TtydArgs...)
 
@@ -125,6 +125,13 @@ func (s *Supervisor) startProcess(ctx context.Context) error {
 	// UTF-8, tmux replaces every multibyte char with '_' (so Chinese shows as
 	// "____"). Force a UTF-8 ctype for the ttyd subprocess when none is set.
 	cmd.Env = utf8Env()
+	claudeEnv, err := claudeEnvironment()
+	if err != nil {
+		log.Printf("[supervisor] Claude settings unavailable; using inherited environment: %v", err)
+	} else {
+		cmd.Env = mergeEnvironment(cmd.Env, claudeEnv)
+		refreshTmuxEnvironment(s.cfg.TmuxSession, claudeEnv)
+	}
 
 	// Mirror ttyd stdout/stderr into our own logs for easy debugging.
 	cmd.Stdout = os.Stdout
@@ -135,7 +142,7 @@ func (s *Supervisor) startProcess(ctx context.Context) error {
 	s.mu.Unlock()
 
 	log.Printf("[supervisor] exec: %s %v", s.cfg.TtydBinaryPath, args)
-	err := cmd.Run()
+	err = cmd.Run()
 
 	// Ignore errors that are simply a result of ctx cancellation.
 	if ctx.Err() != nil {
