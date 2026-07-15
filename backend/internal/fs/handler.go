@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
@@ -21,6 +23,34 @@ import (
 // (e.g. "../../etc/passwd") are rejected with 403 Forbidden.
 type Handler struct {
 	root string // absolute, cleaned root path
+
+	treeCacheMu sync.RWMutex
+	treeCache   map[string]treeCacheEntry // keyed by absolute project root
+}
+
+const treeCacheTTL = 5 * time.Minute
+
+var treeIgnoredDirs = map[string]bool{
+	"node_modules": true,
+	"dist":         true,
+	"build":        true,
+	"build-ttyd":   true,
+	"__pycache__":  true,
+	"vendor":       true,
+	".git":         true,
+	".bun":         true,
+	".yarn":        true,
+	".pnpm":        true,
+	".cache":       true,
+	".venv":        true,
+	"venv":         true,
+	"target":       true,
+	"coverage":     true,
+}
+
+type treeCacheEntry struct {
+	entries  []FileEntry
+	cachedAt time.Time
 }
 
 // NewHandler creates a Handler whose root is the given directory.
@@ -32,7 +62,7 @@ func NewHandler(root string) *Handler {
 	if err != nil {
 		log.Fatalf("[fs] cannot resolve root path %q: %v", root, err)
 	}
-	return &Handler{root: abs}
+	return &Handler{root: abs, treeCache: make(map[string]treeCacheEntry)}
 }
 
 // SetRoot changes the sandbox root directory at runtime.
@@ -72,17 +102,21 @@ func (h *Handler) Root() string {
 
 // FileEntry is the JSON representation of a single file or directory.
 type FileEntry struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"` // relative to root
-	IsDir   bool   `json:"isDir"`
-	Size    int64  `json:"size,omitempty"`
-	ModTime int64  `json:"modTime"` // Unix timestamp (seconds)
+	Name     string      `json:"name"`
+	Path     string      `json:"path"` // relative to root
+	IsDir    bool        `json:"isDir"`
+	Size     int64       `json:"size,omitempty"`
+	ModTime  int64       `json:"modTime"` // Unix timestamp (seconds)
+	Children []FileEntry `json:"children,omitempty"`
 }
 
 // --- Public HTTP handlers ---
 
-// List handles GET /api/fs/list?path=<relative-path>
-// Returns the immediate children of the given directory as a JSON array.
+// List handles GET /api/fs/list?path=<relative-path>&refresh=<bool>.
+// A root listing recursively returns the project tree and caches it for five
+// minutes. Generated/dependency directories are omitted to keep the one-shot
+// payload bounded. Non-root paths retain the old immediate-child behaviour for
+// compatibility with callers outside the main file explorer.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -96,21 +130,20 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if abs == h.root {
+		forceRefresh := r.URL.Query().Get("refresh") == "true"
+		entries, err := h.projectTree(forceRefresh)
+		if err != nil {
+			handleListError(w, err)
+			return
+		}
+		writeJSON(w, entries)
+		return
+	}
+
 	entries, err := os.ReadDir(abs)
 	if err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "directory not found", http.StatusNotFound)
-			return
-		}
-		if os.IsPermission(err) {
-			http.Error(w, "permission denied", http.StatusForbidden)
-			return
-		}
-		if strings.Contains(err.Error(), "not a directory") {
-			http.Error(w, "path is not a directory", http.StatusBadRequest)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleListError(w, err)
 		return
 	}
 
@@ -138,6 +171,99 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, result)
+}
+
+func (h *Handler) projectTree(forceRefresh bool) ([]FileEntry, error) {
+	root := h.root
+	if !forceRefresh {
+		h.treeCacheMu.RLock()
+		cached, ok := h.treeCache[root]
+		h.treeCacheMu.RUnlock()
+		if ok && time.Since(cached.cachedAt) < treeCacheTTL {
+			return cached.entries, nil
+		}
+	}
+
+	entries, err := readTree(root, root)
+	if err != nil {
+		return nil, err
+	}
+
+	h.treeCacheMu.Lock()
+	h.treeCache[root] = treeCacheEntry{entries: entries, cachedAt: time.Now()}
+	h.treeCacheMu.Unlock()
+	return entries, nil
+}
+
+func readTree(root, dir string) ([]FileEntry, error) {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]FileEntry, 0, len(dirEntries))
+	for _, entry := range dirEntries {
+		name := entry.Name()
+		if isNoiseFile(name) {
+			continue
+		}
+		if entry.IsDir() && treeIgnoredDirs[name] {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		absPath := filepath.Join(dir, name)
+		relPath, err := filepath.Rel(root, absPath)
+		if err != nil {
+			continue
+		}
+
+		item := FileEntry{
+			Name:    name,
+			Path:    filepath.ToSlash(relPath),
+			IsDir:   entry.IsDir(),
+			Size:    sizeOf(info),
+			ModTime: info.ModTime().Unix(),
+		}
+		if entry.IsDir() {
+			children, err := readTree(root, absPath)
+			if err == nil {
+				item.Children = children
+			}
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+func isNoiseFile(name string) bool {
+	return name == ".DS_Store" || name == ".Spotlight-V100" || name == ".Trashes" || name == ".fseventsd"
+}
+
+func handleListError(w http.ResponseWriter, err error) {
+	if os.IsNotExist(err) {
+		http.Error(w, "directory not found", http.StatusNotFound)
+		return
+	}
+	if os.IsPermission(err) {
+		http.Error(w, "permission denied", http.StatusForbidden)
+		return
+	}
+	if strings.Contains(err.Error(), "not a directory") {
+		http.Error(w, "path is not a directory", http.StatusBadRequest)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+func (h *Handler) invalidateTreeCache() {
+	h.treeCacheMu.Lock()
+	delete(h.treeCache, h.root)
+	h.treeCacheMu.Unlock()
 }
 
 // Read handles GET /api/fs/read?path=<relative-path>
@@ -220,7 +346,6 @@ func (h *Handler) View(w http.ResponseWriter, r *http.Request) {
 
 	http.ServeFile(w, r, abs)
 }
-
 
 // ImageStream handles GET /api/fs/image/<relative-path> (or /api/fs/image?path=<rel-path> as fallback).
 // Streams the image with its real MIME type so the browser can render it directly via <img src>.
@@ -375,6 +500,7 @@ func (h *Handler) Write(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.invalidateTreeCache()
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
@@ -515,6 +641,7 @@ func (h *Handler) UploadTo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	h.invalidateTreeCache()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -589,6 +716,7 @@ func (h *Handler) Mkdir(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.invalidateTreeCache()
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
@@ -628,6 +756,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.invalidateTreeCache()
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
@@ -684,6 +813,7 @@ func (h *Handler) Copy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.invalidateTreeCache()
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
@@ -761,6 +891,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.invalidateTreeCache()
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"ok":true}`))
@@ -988,4 +1119,3 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, results)
 }
-

@@ -1,34 +1,16 @@
 import type { FsEntry } from '../components/types';
 
 /**
- * Walk the tree and set `children` on the node whose path matches `targetPath`.
- * Returns a new array (immutable update).
- */
-export function mergeChildren(entries: FsEntry[], targetPath: string, children: FsEntry[]): FsEntry[] {
-    return entries.map(e => {
-        if (e.path === targetPath) {
-            return { ...e, children };
-        }
-        if (e.children) {
-            return { ...e, children: mergeChildren(e.children, targetPath, children) };
-        }
-        return e;
-    });
-}
-
-/**
  * Walk the tree and toggle `expanded` on the node whose path matches `targetPath`.
  * Returns a new array (immutable update).
  *
- * On collapse, the previously-loaded `children` array is dropped so it can be
- * garbage-collected. The next time the directory is expanded, `loadDir` will
- * re-fetch its children. This prevents the tree from holding onto every
- * expanded directory's contents for the lifetime of the App instance.
+ * Children are retained on collapse because the backend returns and caches the
+ * complete recursive tree. Re-expanding a directory must not trigger I/O.
  */
 export function setExpanded(entries: FsEntry[], targetPath: string, expanded: boolean): FsEntry[] {
     return entries.map(e => {
         if (e.path === targetPath) {
-            return { ...e, expanded, children: expanded ? e.children : undefined };
+            return { ...e, expanded };
         }
         if (e.children) {
             return { ...e, children: setExpanded(e.children, targetPath, expanded) };
@@ -53,7 +35,7 @@ export function mergeFreshEntries(existing: FsEntry[], fresh: FsEntry[]): FsEntr
             return {
                 ...f,
                 expanded: ext.expanded,
-                children: ext.children,
+                children: f.children && ext.children ? mergeFreshEntries(ext.children, f.children) : f.children,
             };
         }
         return f;

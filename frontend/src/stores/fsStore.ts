@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import type { FsEntry } from '../components/types';
 import type { Workspace } from '../components/types';
 import { fsService } from '../services/fsService';
-import { mergeChildren, setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
+import { setExpanded, mergeFreshEntries } from '../utils/fsTreeUtils';
 import { t } from '../i18n';
 import * as ui from './uiStore';
 import * as modal from './modalStore';
@@ -76,21 +76,18 @@ const cacheTree = (entries: FsEntry[]) => {
  * against a context switch that raced ahead — pass the generation captured at
  * the start of a switch; the result is dropped if it's no longer current.
  */
-export const loadDir = async (relPath: string, parent: FsEntry | null, gen?: number) => {
-    if (!parent && fsEntries.value.length === 0) {
+export const loadDir = async (relPath: string, parent: FsEntry | null, gen?: number, refresh = false) => {
+    if (!parent && (fsEntries.value.length === 0 || refresh)) {
         fsLoading.value = true;
     }
     try {
-        const entries = await fsService.list(relPath);
+        const entries = await fsService.list(relPath, refresh);
         // Root load superseded by a newer context switch — drop it.
         if (!parent && gen !== undefined && gen !== _fsGen) return;
         let next: FsEntry[];
         if (!parent) {
             next = fsEntries.value.length > 0 ? mergeFreshEntries(fsEntries.value, entries) : entries;
-        } else {
-            // Merge children into the existing tree
-            next = mergeChildren(fsEntries.value, parent.path, entries);
-        }
+        } else next = fsEntries.value;
         fsEntries.value = next;
         cacheTree(next);
         if (!parent) fsLoading.value = false;
@@ -107,10 +104,11 @@ export const toggleFsDir = (entry: FsEntry) => {
     const next = setExpanded(fsEntries.value, entry.path, willExpand);
     fsEntries.value = next;
     cacheTree(next);
-    // Lazy-load children only on first expand
-    if (willExpand && (!entry.children || entry.children.length === 0)) {
-        loadDir(entry.path, entry);
-    }
+};
+
+/** Force a complete backend rescan and reset the active project's cache TTL. */
+export const refreshFileTree = async () => {
+    await loadDir('', null, _fsGen, true);
 };
 
 /** Check if a filename has an image extension */

@@ -1,15 +1,103 @@
 package fs
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/meta"
 )
+
+func TestHandler_ListCachesRecursiveTreePerProject(t *testing.T) {
+	projectA := t.TempDir()
+	projectB := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(projectA, "src", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectA, "src", "nested", "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectA, "node_modules", "dependency"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectB, "README.md"), []byte("project b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewHandler(projectA)
+	list := func(refresh bool) []FileEntry {
+		t.Helper()
+		url := "/api/fs/list?path=."
+		if refresh {
+			url += "&refresh=true"
+		}
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+		h.List(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("list returned %d: %s", w.Code, w.Body.String())
+		}
+		var entries []FileEntry
+		if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
+			t.Fatal(err)
+		}
+		return entries
+	}
+
+	entriesA := list(false)
+	if len(entriesA) != 1 || entriesA[0].Name != "src" || len(entriesA[0].Children) != 1 || len(entriesA[0].Children[0].Children) != 1 {
+		t.Fatalf("expected complete recursive tree, got %#v", entriesA)
+	}
+	firstCachedAt := h.treeCache[projectA].cachedAt
+
+	if err := os.WriteFile(filepath.Join(projectA, "new.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := list(false); len(got) != 1 {
+		t.Fatalf("unexpired cache should hide external changes, got %#v", got)
+	}
+
+	time.Sleep(time.Millisecond)
+	if got := list(true); len(got) != 2 {
+		t.Fatalf("manual refresh should rebuild the tree, got %#v", got)
+	}
+	if !h.treeCache[projectA].cachedAt.After(firstCachedAt) {
+		t.Fatal("manual refresh should reset the cache timestamp")
+	}
+
+	if err := os.WriteFile(filepath.Join(projectA, "expired.txt"), []byte("expired"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cached := h.treeCache[projectA]
+	cached.cachedAt = time.Now().Add(-treeCacheTTL - time.Second)
+	h.treeCache[projectA] = cached
+	if got := list(false); len(got) != 3 {
+		t.Fatalf("expired cache should rebuild automatically, got %#v", got)
+	}
+
+	if err := h.SetRoot(projectB); err != nil {
+		t.Fatal(err)
+	}
+	entriesB := list(false)
+	if len(entriesB) != 1 || entriesB[0].Name != "README.md" {
+		t.Fatalf("expected independent project B tree, got %#v", entriesB)
+	}
+	if len(h.treeCache) != 2 {
+		t.Fatalf("expected one cache per project, got %d", len(h.treeCache))
+	}
+}
+
+func TestTreeCacheTTLIsFiveMinutes(t *testing.T) {
+	if treeCacheTTL != 5*time.Minute {
+		t.Fatalf("tree cache TTL = %s, want 5m", treeCacheTTL)
+	}
+}
 
 func TestHandler_View(t *testing.T) {
 	// Create a temporary sandbox directory

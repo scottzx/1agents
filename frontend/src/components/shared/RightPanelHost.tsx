@@ -52,7 +52,7 @@ export function RightPanelHost({
             closeDrawer={() => tabsStore.closeContentTab()}
             ccConnectUrl={wsStore.ccConnectUrl.value}
             onRefreshFlatFiles={async () => {
-                fs.loadDir('', null);
+                await fs.refreshFileTree();
                 const isSearching = fs.searchQuery.value !== '' || fs.selectedFilterTag.value !== 'all';
                 if (isSearching) {
                     fs.loadFlatFiles();

@@ -3,8 +3,10 @@ import { FsEntry } from '../types';
 import { getPlatformBridge } from '../platform/bridge';
 
 export const fsService = {
-    async list(relPath: string): Promise<FsEntry[]> {
-        const res = await apiFetch(`/fs/list?path=${encodeURIComponent(relPath || '.')}`);
+    async list(relPath: string, refresh = false): Promise<FsEntry[]> {
+        const params = new URLSearchParams({ path: relPath || '.' });
+        if (refresh) params.set('refresh', 'true');
+        const res = await apiFetch(`/fs/list?${params.toString()}`);
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     },
