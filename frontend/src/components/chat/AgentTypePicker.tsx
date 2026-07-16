@@ -14,8 +14,9 @@ interface AgentTypePickerProps {
  *
  * Options come from the live agent catalog (installed agents only). Before
  * the catalog loads — or if the probe failed — it falls back to the static
- * AGENT_TYPES list so the picker is never empty. The current value is always
- * kept selectable even when uninstalled, so an existing config still renders.
+ * AGENT_TYPES list except Grok, which must be positively detected as installed.
+ * The current value is always kept selectable even when uninstalled, so an
+ * existing config still renders.
  */
 export class AgentTypePicker extends Component<AgentTypePickerProps> {
     render() {
@@ -24,7 +25,10 @@ export class AgentTypePicker extends Component<AgentTypePickerProps> {
         const pickable = pickableAgents.value;
         const options: { type: AgentType; label: string }[] = pickable.length
             ? pickable.map(a => ({ type: a.type, label: a.label }))
-            : AGENT_TYPES.map(t => ({ type: t, label: AGENT_TYPE_LABELS[t] ?? t }));
+            : AGENT_TYPES.filter(t => t !== 'grok-build').map(t => ({
+                  type: t,
+                  label: AGENT_TYPE_LABELS[t] ?? t,
+              }));
 
         // Keep the selected value present even if it isn't installed.
         if (value && !options.some(o => o.type === value)) {

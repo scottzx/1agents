@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// CcTransport is how this system (cc-connect) actually drives an agent today.
+// CcTransport is how this system actually drives an agent today.
 type CcTransport = string
 
 const (
@@ -35,9 +35,9 @@ type AgentDescriptor struct {
 	AcpCapable  bool
 	CliCapable  bool
 	CcTransport CcTransport
-	// Integrated is true when this backend can actually drive the agent (it's
-	// blank-imported in backend/internal/ccconnect/runner.go). Only integrated
-	// agents are offered in the chat agent picker; the rest are detection-only.
+	// Integrated is true when this backend can actually drive the agent through
+	// either cc-connect or the 1acp web-chat bridge. Only integrated agents are
+	// offered in the chat agent picker; the rest are detection-only.
 	Integrated bool
 	// InstallCommand is the terminal command a user runs to install the agent.
 	// Surfaced as a copyable button when the agent isn't installed.
@@ -52,9 +52,8 @@ type AgentDescriptor struct {
 
 // AgentCatalog is the canonical capability table.
 //
-// The first block is the agents cc-connect is wired to drive (Integrated:
-// true) — these mirror SupportedAgentTypes / the blank imports in
-// backend/internal/ccconnect/runner.go. The second block is trendy agent
+// The first block is the agents the backend can drive through cc-connect or
+// the 1acp web-chat bridge (Integrated: true). The second block is trendy agent
 // frameworks we detect and offer install guidance for, but don't yet drive
 // (Integrated: false) — they appear in the settings detection list only, never
 // in the chat picker.
@@ -68,6 +67,10 @@ var AgentCatalog = []AgentDescriptor{
 	// codex also has an app_server (WebSocket RPC) mode, but cc-connect's
 	// default "exec" backend drives it as a CLI stream.
 	{Type: AgentTypeCodex, Label: "Codex", Binary: "codex", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @openai/codex", AdapterPackage: "@agentclientprotocol/codex-acp"},
+	// Grok Build exposes ACP natively through `grok agent stdio`; unlike the
+	// adapter-backed entries above, it is chat-ready only when the Grok CLI is
+	// actually installed on PATH.
+	{Type: AgentTypeGrokBuild, Label: "Grok", Binary: "grok", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://x.ai/cli/install.sh | bash"},
 	{Type: AgentTypeCursor, Label: "Cursor Agent", Binary: "agent", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "curl https://cursor.com/install -fsS | bash"},
 	{Type: AgentTypeGemini, Label: "Gemini", Binary: "gemini", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @google/gemini-cli"},
 	{Type: AgentTypeDevin, Label: "Devin", Binary: "devin", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://cli.devin.ai/install.sh | bash"},

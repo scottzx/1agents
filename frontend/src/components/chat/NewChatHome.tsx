@@ -226,13 +226,16 @@ export function NewChatHome({
         }
     );
 
-    // Offer only installed agents (falls back to the full static list before
-    // the catalog loads). Keep the current selection present even if it isn't
-    // installed, so a workspace's defaultAgent still renders.
+    // Offer only installed agents. Before the catalog loads, keep the legacy
+    // static fallback except for Grok, which must be positively detected as
+    // installed. Preserve the current selection so an existing config renders.
     const pickable = pickableAgents.value;
     const agentOptions: { type: AgentType; label: string }[] = pickable.length
         ? pickable.map(a => ({ type: a.type, label: AGENT_TYPE_LABELS[a.type as AgentType] ?? a.label }))
-        : AGENT_TYPES.map(ty => ({ type: ty, label: AGENT_TYPE_LABELS[ty] ?? ty }));
+        : AGENT_TYPES.filter(ty => ty !== 'grok-build').map(ty => ({
+              type: ty,
+              label: AGENT_TYPE_LABELS[ty] ?? ty,
+          }));
     if (selectedAgent.value && !agentOptions.some(o => o.type === selectedAgent.value)) {
         agentOptions.unshift({
             type: selectedAgent.value,

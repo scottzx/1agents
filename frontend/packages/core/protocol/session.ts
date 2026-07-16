@@ -6,12 +6,13 @@
 import type { PermissionMode } from './permission';
 
 /**
- * Agent plugin names registered in cc-connect. Keep in sync with
+ * Agent engine names accepted by the backend. Keep in sync with
  * backend/internal/agent/types.go SupportedAgentTypes.
  */
 export type AgentType =
     | 'claudecode'
     | 'codex'
+    | 'grok-build'
     | 'acp'
     | 'gemini'
     | 'cursor'
@@ -32,6 +33,7 @@ export type AgentType =
 export const AGENT_TYPES: AgentType[] = [
     'claudecode',
     'codex',
+    'grok-build',
     'acp',
     'gemini',
     'cursor',
@@ -48,6 +50,7 @@ export const AGENT_TYPES: AgentType[] = [
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
     claudecode: 'Claude',
     codex: 'Codex',
+    'grok-build': 'Grok',
     acp: 'ACP (通用)',
     gemini: 'Gemini CLI',
     cursor: 'Cursor',

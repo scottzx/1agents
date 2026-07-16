@@ -2,13 +2,15 @@ package agent
 
 import "github.com/scottzx/1Agents/backend/internal/meta"
 
-// AgentType is the agent plugin name registered in cc-connect.
-// Matches the import list in backend/internal/ccconnect/runner.go.
+// AgentType is an agent engine name accepted by the backend. Most types are
+// registered in cc-connect; ACP-native web-chat agents may be driven directly
+// through modules/1acp instead.
 type AgentType = string
 
 const (
 	AgentTypeClaudecode AgentType = "claudecode"
 	AgentTypeCodex      AgentType = "codex"
+	AgentTypeGrokBuild  AgentType = "grok-build"
 	AgentTypeAcp        AgentType = "acp"
 	AgentTypeGemini     AgentType = "gemini"
 	AgentTypeCursor     AgentType = "cursor"
@@ -22,11 +24,11 @@ const (
 )
 
 // SupportedAgentTypes is the canonical list served by /api/agent/agent-types.
-// Must stay in sync with the blank imports in
-// backend/internal/ccconnect/runner.go.
+// It includes both cc-connect plugins and ACP-native web-chat agents.
 var SupportedAgentTypes = []AgentType{
 	AgentTypeClaudecode,
 	AgentTypeCodex,
+	AgentTypeGrokBuild,
 	AgentTypeAcp,
 	AgentTypeGemini,
 	AgentTypeCursor,
