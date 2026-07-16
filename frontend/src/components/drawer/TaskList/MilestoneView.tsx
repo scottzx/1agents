@@ -296,16 +296,16 @@ export function MilestoneView({
                                 })
                             )}
                         </div>
+
+                        <TaskPreviewDrawer
+                            open={!!taskPreview.value}
+                            task={taskPreview.value}
+                            onClose={() => (taskPreview.value = null)}
+                            onOpenFull={onSelectTask}
+                        />
                     </div>
                 </Fragment>
             )}
-
-            <TaskPreviewDrawer
-                open={!!taskPreview.value}
-                task={taskPreview.value}
-                onClose={() => (taskPreview.value = null)}
-                onOpenFull={onSelectTask}
-            />
 
             <Modal show={!!editing.value}>
                 {editing.value && (

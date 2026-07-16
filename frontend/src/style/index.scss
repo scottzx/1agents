@@ -4840,20 +4840,13 @@ body {
 .milestone-view {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  // Positioning context for the absolutely-positioned task preview drawer so it
-  // stays visually scoped to this panel rather than escaping to the viewport.
-  // Scroll responsibility moves to .ms-tree below so the preview can't get
-  // clipped by an overflow boundary.
-  position: relative;
-  overflow: hidden;
 
   /* ── branching roadmap tree (left → right) ── */
   .ms-tree {
-    flex: 1;
-    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -5228,12 +5221,10 @@ body {
 }
 
 /* ── Task preview drawer (bottom-up half-screen popup) ── */
-// Opens from clicking a task row in the milestone drawer. Shows a quick
-// preview (status/priority/meta/description) without navigating; user can
-// escalate to full detail via the footer button. Backdrop closes on click.
-// Scoped to .milestone-view and absolutely positioned so the preview stays
-// inside the milestone panel instead of escaping to the viewport.
-.milestone-view .task-preview-backdrop {
+// Opens from clicking a task row in the milestone detail. Scoped inside
+// .milestone-detail so the preview is constrained to that right-side drawer
+// — it can't appear without an active milestone, and it can't escape it.
+.milestone-detail .task-preview-backdrop {
   position: absolute;
   inset: 0;
   background-color: rgba(15, 23, 42, 0.4);
@@ -5243,7 +5234,7 @@ body {
   animation: fadeIn 0.18s ease-out;
 }
 
-.milestone-view .task-preview-drawer {
+.milestone-detail .task-preview-drawer {
   position: absolute;
   left: 0;
   right: 0;
@@ -5465,7 +5456,7 @@ body {
 }
 
 @media (max-width: 768px) {
-  .milestone-view .task-preview-drawer {
+  .milestone-detail .task-preview-drawer {
     max-height: 80vh;
     min-height: 360px;
   }
