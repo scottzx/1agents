@@ -43,7 +43,7 @@ export function MilestoneView({
     onPatchMilestone,
     onDeleteMilestone,
 }: MilestoneViewProps) {
-    const expandedId = useSignal<string | null>(null); // null=default(current), COLLAPSED, or id
+    const expandedId = useSignal<string | null>(null); // null or COLLAPSED = closed, else milestone id
     const editing = useSignal<Milestone | null>(null); // milestone being edited (modal)
     // The task the user clicked in the milestone drawer. Opens a bottom-up
     // preview drawer first; full task detail only happens if they hit "打开完整".
@@ -121,8 +121,7 @@ export function MilestoneView({
     const findNode = (id: string | null) =>
         allNodes.find(n => n.id === id) || (id === UNGROUPED ? roots.find(r => r.id === UNGROUPED) : undefined);
 
-    const effectiveId =
-        expandedId.value === null ? currentId : expandedId.value === COLLAPSED ? null : expandedId.value;
+    const effectiveId = expandedId.value === COLLAPSED ? null : expandedId.value;
     const expanded = effectiveId ? findNode(effectiveId) : undefined;
     const today = new Date().toISOString().slice(0, 10);
 
