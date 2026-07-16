@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { t, type Lang } from '../i18n';
 
 type CategoryId = 'apps' | 'featured' | 'opensource';
@@ -21,15 +21,6 @@ const CATEGORIES: { id: CategoryId; titleKey: string }[] = [
 ];
 
 const QUICK_LINKS: LinkCard[] = [
-    {
-        title: 'Vlog & Clip 内容工作室',
-        descriptionKey: 'discovery.studioDesc',
-        badgeKey: 'discovery.studioBadge',
-        url: '#/studio',
-        iconColor: '#eb5757', // Studio Red
-        category: 'apps',
-        appId: 'studio',
-    },
     {
         title: 'NanoSkill.ai',
         descriptionKey: 'discovery.nanoDesc',
@@ -70,7 +61,6 @@ export function DiscoveryPanel({
     activeCategory,
 }: DiscoveryPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [activeLanding, setActiveLanding] = useState<string | null>(null);
 
     useEffect(() => {
         if (!scrollToCategory || !containerRef.current) return;
@@ -87,9 +77,7 @@ export function DiscoveryPanel({
             onClick={e => {
                 if (card.appId) {
                     e.preventDefault();
-                    if (card.appId === 'studio') {
-                        setActiveLanding('studio');
-                    } else if (onOpenApp) {
+                    if (onOpenApp) {
                         onOpenApp(card.appId);
                     }
                 } else if (onOpenBrowserTab) {
@@ -139,7 +127,7 @@ export function DiscoveryPanel({
     );
 
     return (
-        <div class={`discovery-container ${activeLanding ? 'has-landing-panel' : ''}`} ref={containerRef}>
+        <div class="discovery-container" ref={containerRef}>
             <div class="discovery-main">
                 <div class="discovery-header-desc">{t('discovery.intro', language)}</div>
 
@@ -154,36 +142,6 @@ export function DiscoveryPanel({
                     );
                 })}
             </div>
-
-            {activeLanding === 'studio' && (
-                <aside class="discovery-landing-panel" aria-label={t('discovery.vlogLanding.title', language)}>
-                    <button
-                        class="discovery-landing-close"
-                        onClick={() => setActiveLanding(null)}
-                        aria-label={t('common.close', language)}
-                        title={t('common.close', language)}
-                    >
-                        ×
-                    </button>
-                    <div class="discovery-landing-kicker">{t('discovery.studioBadge', language)}</div>
-                    <h2>{t('discovery.vlogLanding.title', language)}</h2>
-                    <p>{t('discovery.vlogLanding.body', language)}</p>
-                    <div class="discovery-landing-points">
-                        <div>
-                            <span>01</span>
-                            <strong>{t('discovery.vlogLanding.pointRecord', language)}</strong>
-                        </div>
-                        <div>
-                            <span>02</span>
-                            <strong>{t('discovery.vlogLanding.pointTranscript', language)}</strong>
-                        </div>
-                        <div>
-                            <span>03</span>
-                            <strong>{t('discovery.vlogLanding.pointProject', language)}</strong>
-                        </div>
-                    </div>
-                </aside>
-            )}
         </div>
     );
 }

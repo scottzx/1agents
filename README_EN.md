@@ -105,8 +105,6 @@ The goal is to move AI beyond "help me with this step" and into the collaboratio
 - Support App Manifest and mount points.
 - Apps can contribute top-level pages, project tabs, and lens overlays.
 - Discovery center shows apps, featured recommendations, and open-source projects.
-- Studio provides recording and list views.
-- Built-in Speech Clip app supports asset import, recording, transcription, highlight extraction, and correction.
 
 ### cc-connect, Providers, and Channels
 

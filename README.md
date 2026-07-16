@@ -102,7 +102,6 @@
 - 支持 App Manifest 和 Mount Point。
 - 应用可以贡献一级页面、项目标签页和 Lens overlay。
 - 发现中心展示应用、精选推荐和开源项目。
-- Vlog & Clip 内容工作室作为项目标签页扩展，合并项目演示录制、素材导入、转录、金句提取、纠错和后续混剪成片工作流。
 
 ### cc-connect、Provider 与渠道
 

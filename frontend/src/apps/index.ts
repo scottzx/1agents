@@ -3,4 +3,3 @@
  * registerAppView() runs before the platform renders any mount point. Add one
  * import line per app.
  */
-import './speechclip';

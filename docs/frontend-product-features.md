@@ -303,19 +303,15 @@ Chat 是用户与智能体协作的核心入口。它不仅是对话窗口，也
 - Project Tab：业务应用可贡献项目内标签页。
 - Lens Overlay：业务应用可叠加项目/首页维度的辅助视图。
 - 发现中心：展示应用、精选推荐、开源项目。
-- Vlog & Clip 内容工作室：作为 project-tab 合并项目演示录制、素材导入、转录、金句提取、纠错、选择金句和后续混剪成片。
 
 主要前端入口：
 
 - `frontend/src/modules/appViewRegistry.ts`
 - `frontend/src/modules/registry.ts`
 - `frontend/src/modules/discovery-manifest.ts`
-- `frontend/src/modules/studio-manifest.ts`
 - `frontend/src/components/platform/L1Shell.tsx`
 - `frontend/src/components/platform/MountPointRenderer.tsx`
 - `frontend/src/components/drawer/DiscoveryPanel.tsx`
-- `frontend/src/studio/VlogStudio.tsx`
-- `frontend/src/apps/speechclip/SpeechClipTab.tsx`
 
 ## 12. Provider、渠道与 cc-connect
 
@@ -421,7 +417,7 @@ Dashboard 是项目和团队运行状态的大屏入口，目前包含项目 coc
 | 数据源 | 接入和治理外部数据 | 数据接入、账号配置、raw table、治理表 |
 | 外部上下文 | 收束联系人、消息、资料和日程 | 联系人、消息、Inbox、提醒、日历 |
 | 助理与技能 | 管理 Agent 能力和协作对象 | 助理、团队、技能、1skills、Agent Catalog |
-| 插件应用 | 扩展业务工作流 | App Manifest、Discovery、Vlog & Clip 内容工作室 |
+| 插件应用 | 扩展业务工作流 | App Manifest、Discovery |
 | Provider/渠道 | 管理通信和执行平台连接 | cc-connect providers、渠道、Relay fetch |
 | 系统设置 | 管理 App 偏好和运维动作 | 主题、语言、模式、设备、更新、重置 |
 | Dashboard | 观察整体运行状态 | 项目 cockpit、任务板、大屏 |

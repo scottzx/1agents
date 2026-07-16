@@ -4,7 +4,7 @@ if (process.env.NODE_ENV === 'development') {
 import 'whatwg-fetch';
 import { h, render } from 'preact';
 import { App } from './components/app';
-import './apps'; // register business-app views (speech_clip …) before first render
+import './apps'; // register business-app views before first render
 import { initPlatformBridge } from '@1agents/core/platform/bridge';
 import { installRelayFetch } from '@1agents/core/services/relay/installRelayFetch';
 import './style/index.scss';

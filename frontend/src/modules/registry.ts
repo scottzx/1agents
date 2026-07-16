@@ -16,7 +16,6 @@ import type { RightDrawerTab } from '../components/types';
 import type { ModuleId, ModuleManifest } from './module-types';
 import { SETTINGS_MODULE_ID, SETTINGS_STATIC_MANIFEST, SETTINGS_ENTRY_PATH } from './settings-manifest';
 import { DISCOVERY_MODULE_ID, DISCOVERY_STATIC_MANIFEST, DISCOVERY_ENTRY_PATH } from './discovery-manifest';
-import { STUDIO_MODULE_ID, STUDIO_STATIC_MANIFEST, STUDIO_ENTRY_PATH } from './studio-manifest';
 
 export interface ModuleRegistration {
     moduleId: ModuleId;
@@ -152,13 +151,6 @@ export const MODULES: Record<ModuleId, ModuleRegistration> = {
         iframeBase: '',
         staticManifest: DISCOVERY_STATIC_MANIFEST,
         entryPath: DISCOVERY_ENTRY_PATH,
-    },
-    studio: {
-        moduleId: STUDIO_MODULE_ID,
-        ownerTab: 'studio',
-        iframeBase: '',
-        staticManifest: STUDIO_STATIC_MANIFEST,
-        entryPath: STUDIO_ENTRY_PATH,
     },
 };
 

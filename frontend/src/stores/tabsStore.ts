@@ -12,13 +12,6 @@ import {
     type SettingsCategory,
 } from '../modules/settings-manifest';
 import { DISCOVERY_MODULE_ID, pathToDiscoveryCategory, discoveryCategoryToPath } from '../modules/discovery-manifest';
-import {
-    STUDIO_MODULE_ID,
-    STUDIO_DEFAULT_CATEGORY,
-    pathToStudioCategory,
-    studioCategoryToPath,
-    type StudioCategory,
-} from '../modules/studio-manifest';
 import * as ui from './uiStore';
 import * as fs from './fsStore';
 import * as wsStore from './workspaceStore';
@@ -124,12 +117,6 @@ export const moduleManifests = signal<Record<string, ModuleManifest>>({});
  * overloading `activeModulePath`.
  */
 export const activeSettingsCategory = signal<SettingsCategory>(SETTINGS_DEFAULT_CATEGORY);
-export const activeStudioCategory = signal<StudioCategory>(STUDIO_DEFAULT_CATEGORY);
-export const setStudioCategory = (category: StudioCategory) => {
-    if (activeStudioCategory.value === category) return;
-    activeStudioCategory.value = category;
-};
-
 export const setActiveTab = (tab: 'terminal' | 'agents' | 'console' | 'folders' | 'new_chat') => {
     activeTab.value = tab;
     ui.triggerTerminalFit();
@@ -433,13 +420,6 @@ export const buildModuleNav = ():
             manifest,
             activePath: discoveryCategoryToPath(discoveryCategory.value),
             onNavigate: (to: string) => selectDiscoveryCategory(pathToDiscoveryCategory(to)),
-        };
-    }
-    if (mod.moduleId === STUDIO_MODULE_ID) {
-        return {
-            manifest,
-            activePath: studioCategoryToPath(activeStudioCategory.value),
-            onNavigate: (to: string) => setStudioCategory(pathToStudioCategory(to)),
         };
     }
     return {

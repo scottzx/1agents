@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,7 +18,6 @@ import (
 	"github.com/scottzx/1Agents/backend/internal/agent"
 	"github.com/scottzx/1Agents/backend/internal/appkit"
 	"github.com/scottzx/1Agents/backend/internal/appregistry"
-	"github.com/scottzx/1Agents/backend/internal/apps/speechclip"
 	"github.com/scottzx/1Agents/backend/internal/auth"
 	"github.com/scottzx/1Agents/backend/internal/ccconnect"
 	"github.com/scottzx/1Agents/backend/internal/config"
@@ -198,21 +196,6 @@ func NewRouter(cfg *config.Config) http.Handler {
 			})
 			appkit.RunInits(taskAPI)
 
-			// 口播剪辑 (speech_clip) app: project-scoped pipeline whose heavy steps
-			// (transcribe/highlight) dispatch through the task kernel above. Importing
-			// the package fires its init() (manifest + template + RegisterFunction);
-			// here we wire its HTTP surface over the live task API.
-			speechClipHandler := speechclip.NewHandler(taskAPI)
-			mux.HandleFunc("/api/speech_clip/assets", speechClipHandler.HandleAssets)         // POST  import asset (server path)
-			mux.HandleFunc("/api/speech_clip/assets/upload", speechClipHandler.HandleUpload)  // POST  upload recorded blob
-			mux.HandleFunc("/api/speech_clip/transcribe", speechClipHandler.HandleTranscribe) // POST  dispatch transcribe task
-			mux.HandleFunc("/api/speech_clip/highlights", speechClipHandler.HandleHighlights) // POST dispatch / GET rows
-			mux.HandleFunc("/api/speech_clip/pick", speechClipHandler.HandlePick)             // POST toggle 金句
-			mux.HandleFunc("/api/speech_clip/project", speechClipHandler.HandleProject)       // GET   project.json + status
-			mux.HandleFunc("/api/speech_clip/transcript", speechClipHandler.HandleTranscript) // GET   sentence rows
-			mux.HandleFunc("/api/speech_clip/timeline", speechClipHandler.HandleTimeline)     // GET/POST timeline
-			mux.HandleFunc("/api/speech_clip/assets/file", speechClipHandler.HandleAssetFile) // GET   serve registered asset
-
 			scheduler.Start(context.Background())
 
 			// Probe installed agent CLIs once at startup; cached behind an
@@ -324,8 +307,6 @@ func NewRouter(cfg *config.Config) http.Handler {
 			}
 
 			mux.HandleFunc("/api/project/local-config", handleProjectLocalConfig) // GET/PUT project-local config json
-			mux.HandleFunc("/api/studio/save-assets", handleStudioSaveAssets)     // POST
-			mux.HandleFunc("/api/studio/transcribe", handleStudioTranscribe)      // POST
 
 			// 数据源摄取编排 (ingestion orchestration): CLI 生命周期探针 + 每表爬取
 			// 配置 + 工单驱动的立刻/定时同步. Every pull runs as a work-order
@@ -1530,104 +1511,3 @@ func handleProjectLocalConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleStudioSaveAssets(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var req struct {
-		ID           string `json:"id"`
-		WebcamBase64 string `json:"webcamBase64"`
-		ScreenBase64 string `json:"screenBase64"`
-		AudioBase64  string `json:"audioBase64"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	dir := filepath.Join(home, ".1agents", "studio", req.ID)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	saveBase64File := func(filename, b64 string) error {
-		if b64 == "" {
-			return nil
-		}
-		data, err := base64.StdEncoding.DecodeString(b64)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(dir, filename), data, 0644)
-	}
-
-	if err := saveBase64File("webcam.webm", req.WebcamBase64); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := saveBase64File("screen.webm", req.ScreenBase64); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := saveBase64File("audio.webm", req.AudioBase64); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "path": dir})
-}
-
-func handleStudioTranscribe(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var req struct {
-		ID          string `json:"id"`
-		AudioBase64 string `json:"audioBase64"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	res := map[string]any{
-		"id":           req.ID,
-		"createdAt":    1717171717,
-		"duration":     60,
-		"speakerCount": 1,
-		"title":        "演示录制",
-		"fullText":     "这是一次双录屏的演示录制。我们将在这里展示摄像头和网页的同步录制，并进行粗剪测试。",
-		"summary":      "本次录制演示了摄像头与屏幕的双录功能。",
-		"utterances": []map[string]any{
-			{
-				"speaker": "speaker_0",
-				"start":   0.0,
-				"end":     5.0,
-				"text":    "这是一次双录屏的演示录制。",
-			},
-			{
-				"speaker": "speaker_0",
-				"start":   5.0,
-				"end":     10.0,
-				"text":    "我们将在这里展示摄像头和网页的同步录制，",
-			},
-			{
-				"speaker": "speaker_0",
-				"start":   10.0,
-				"end":     15.0,
-				"text":    "并进行粗剪测试。",
-			},
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(res)
-}
