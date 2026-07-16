@@ -5212,11 +5212,36 @@ body {
   }
 }
 
+@keyframes drawerSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 768px) {
+  // On narrow viewports the 50vw right-side drawer crowds out the rest of
+  // the UI; switch to a bottom-up sheet that takes the full width and
+  // ~60-80% height instead.
   .milestone-detail {
-    width: 100vw !important;
-    min-width: 0 !important;
-    max-width: none !important;
+    top: auto;
+    right: 0;
+    left: 0;
+    width: 100vw;
+    min-width: 0;
+    max-width: none;
+    height: 60vh;
+    min-height: 320px;
+    max-height: 80vh;
+    border-top: 1px solid var(--border-color);
+    border-top-left-radius: var(--bento-radius-lg, 14px);
+    border-top-right-radius: var(--bento-radius-lg, 14px);
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    animation: drawerSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 
