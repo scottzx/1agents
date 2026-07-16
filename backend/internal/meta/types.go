@@ -566,7 +566,7 @@ type Milestone struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 	// Total / Completed are computed at list time (not persisted): only executable tasks (type=task).
-	// Requirements/bugs/discussions are excluded (close via issueState).
+	// Requirements/bugs/discussions and cancelled tasks are excluded.
 	Total     int `json:"total"`
 	Completed int `json:"completed"`
 }

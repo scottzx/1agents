@@ -222,3 +222,31 @@ func TestMilestoneCountsExcludeIssueItems(t *testing.T) {
 		t.Fatalf("M1 counts = %d/%d, want 1/2", list[0].Completed, list[0].Total)
 	}
 }
+
+func TestMilestoneCountsExcludeCancelled(t *testing.T) {
+	s := NewTaskStore(newTestDB(t))
+	ws := t.TempDir()
+	if _, err := s.CreateMilestone(ws, "M1", "", nil, ""); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	err := s.Mutate(ws, func(cfg *TasksConfig) bool {
+		now := time.Now().UTC()
+		cfg.Tasks = append(cfg.Tasks,
+			Task{ID: "done", Title: "done", Type: TaskTypeTask, Milestone: "M1",
+				Status: TaskStatusCompleted, CreatedAt: now, UpdatedAt: now},
+			Task{ID: "cx", Title: "cancelled", Type: TaskTypeTask, Milestone: "M1",
+				Status: TaskStatusCancelled, CreatedAt: now, UpdatedAt: now},
+		)
+		return true
+	})
+	if err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+	list, err := s.ListMilestones(ws)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if list[0].Total != 1 || list[0].Completed != 1 {
+		t.Fatalf("M1 counts = %d/%d, want 1/1", list[0].Completed, list[0].Total)
+	}
+}
