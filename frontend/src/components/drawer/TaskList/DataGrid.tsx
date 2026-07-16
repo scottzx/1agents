@@ -1,8 +1,68 @@
 import { h, Fragment } from 'preact';
 import type { VNode } from 'preact';
+import { useEffect } from 'preact/hooks';
 import { useSignal, useSignalEffect } from '@preact/signals';
 
 import { GridToolbar, type ColState, type ToolbarColumn } from './GridToolbar';
+import * as viewPrefs from '../../../stores/projectViewPrefs';
+
+/** Parse a persisted JSON blob into a sanitized `ColState[]`. Tolerant of the
+ *  pre-width format (`{key, visible}` only) and of any shape mismatch — the
+ *  goal is "read should never throw, even on a corrupt or legacy entry".
+ *  Returns `[]` for null / empty / non-array / unparseable input; the caller
+ *  passes the result through `reconcileColState` which fills in defaults. */
+export function loadColState(raw: string | null): ColState[] {
+    if (!raw) return [];
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(parsed)) return [];
+    const out: ColState[] = [];
+    for (const item of parsed) {
+        if (!item || typeof item !== 'object') continue;
+        const k = (item as { key?: unknown }).key;
+        const v = (item as { visible?: unknown }).visible;
+        if (typeof k !== 'string' || !k) continue;
+        const w = (item as { width?: unknown }).width;
+        const next: ColState = {
+            key: k,
+            visible: typeof v === 'boolean' ? v : true,
+        };
+        if (typeof w === 'number' && Number.isFinite(w) && w > 0) {
+            next.width = w;
+        }
+        out.push(next);
+    }
+    return out;
+}
+
+/** Reconcile a previously-saved column state against the live column defs.
+ *  Pure: same inputs → same output, no DOM/storage reads.
+ *  - Keys still in `allColumns` keep their `prev` order, visibility, and width.
+ *  - Keys absent from `allColumns` are dropped (column was removed).
+ *  - Keys new in `allColumns` are appended as visible (no width yet — the
+ *    renderer falls back to `GridColumn.width` until the user resizes).
+ *  - Empty `prev` yields the all-visible baseline in `allColumns` order. */
+export function reconcileColState(prev: ColState[], allColumns: GridColumn[]): ColState[] {
+    const live = new Set(allColumns.map(c => c.key));
+    const savedKeys = new Set(prev.map(s => s.key));
+    const ordered: ColState[] = [];
+    for (const s of prev) if (live.has(s.key)) ordered.push({ ...s });
+    for (const c of allColumns) if (!savedKeys.has(c.key)) ordered.push({ key: c.key, visible: true });
+    return ordered.length ? ordered : allColumns.map(c => ({ key: c.key, visible: true }));
+}
+
+/** Initial load: read persisted JSON (if a `persistKey` is set) and reconcile
+ *  it with the live columns. Kept as a thin wrapper so the call site reads
+ *  the same way it always has — the two pure helpers above carry the logic. */
+function initColState(persistKey: string | undefined, allColumns: GridColumn[]): ColState[] {
+    const base = allColumns.map(c => ({ key: c.key, visible: true }));
+    if (!persistKey) return base;
+    return reconcileColState(loadColState(localStorage.getItem(persistKey)), allColumns);
+}
 
 /** Column metadata for a DataGrid. The matching cell content is produced by the
  *  consumer's `renderCell`; this only drives layout, sorting and grouping. */
@@ -30,28 +90,16 @@ export interface CellHelpers {
     openDetail: () => void;
 }
 
-// initColState builds the initial column visibility/order, restoring a persisted
-// selection when persistKey is set. Reconciles with the live columns: keeps the
-// saved order/visibility for keys still present, appends new keys (visible),
-// drops keys that no longer exist — so dynamic schemas stay stable across loads.
-function initColState(persistKey: string | undefined, allColumns: GridColumn[]): ColState[] {
-    const base = allColumns.map(c => ({ key: c.key, visible: true }));
-    if (!persistKey) return base;
-    try {
-        const saved = JSON.parse(localStorage.getItem(persistKey) || 'null') as ColState[] | null;
-        if (!Array.isArray(saved)) return base;
-        const live = new Set(allColumns.map(c => c.key));
-        const savedKeys = new Set(saved.map(s => s.key));
-        const ordered: ColState[] = [];
-        for (const s of saved) if (live.has(s.key)) ordered.push({ key: s.key, visible: s.visible });
-        for (const c of allColumns) if (!savedKeys.has(c.key)) ordered.push({ key: c.key, visible: true });
-        return ordered.length ? ordered : base;
-    } catch {
-        return base;
-    }
-}
-
 interface DataGridProps<T> {
+    /** Workspace that owns the persisted DataGrid prefs. Combined with
+     *  `prefsSurface` so the tasks grid and the sessions grid (both pass
+     *  the same workspaceId) keep independent sort/groupBy/collapsed state.
+     *  Omit both to keep that state in-memory only. */
+    workspaceId?: string;
+    /** Which DataGrid view is calling (`tasks`, `sessions`, ...). Required
+     *  for persistence: it scopes the slot under `grids[surface]` so two
+     *  consumers sharing a workspace don't clobber each other. */
+    prefsSurface?: string;
     /** Rows to render (already filtered by the view's own filter bar). */
     rows: T[];
     /** Total row count before filtering — drives the "empty" vs "no match" copy. */
@@ -88,6 +136,8 @@ const cellKey = (rowKey: string, colKey: string) => `${rowKey}:${colKey}`;
 // cell editing state, and the actions column. Both the task and session views
 // drive it with their own column config + cell renderers.
 export function DataGrid<T>({
+    workspaceId,
+    prefsSurface,
     rows,
     totalCount,
     columns: allColumns,
@@ -108,13 +158,53 @@ export function DataGrid<T>({
     persistKey,
 }: DataGridProps<T>) {
     const editingCell = useSignal<string | null>(null);
-    const groupBy = useSignal<string>('none');
-    const collapsed = useSignal<string[]>([]);
-    const sort = useSignal<{ key: string; dir: 'asc' | 'desc' } | null>(null);
-    const showHierarchy = useSignal(true);
+    // When workspaceId + prefsSurface are both set, hydrate from the
+    // surface-scoped persisted slot so each grid (tasks, sessions, ...)
+    // remembers its own sort/groupBy/collapsed/hierarchy choice independently
+    // of the others. Without prefsSurface we fall back to plain in-memory
+    // state — this keeps other DataGrid users (contacts, governance, ...)
+    // working without any per-surface wiring.
+    const initial = workspaceId && prefsSurface
+        ? viewPrefs.getGridPrefs(workspaceId, prefsSurface)
+        : {
+              sort: null as { key: string; dir: 'asc' | 'desc' } | null,
+              groupBy: 'none',
+              collapsed: [] as string[],
+              showHierarchy: true,
+          };
+    const groupBy = useSignal<string>(initial.groupBy);
+    const collapsed = useSignal<string[]>(initial.collapsed);
+    const sort = useSignal<{ key: string; dir: 'asc' | 'desc' } | null>(initial.sort);
+    const showHierarchy = useSignal<boolean>(initial.showHierarchy ?? true);
     const columns = useSignal<ColState[]>(initColState(persistKey, allColumns));
 
-    // Persist the user's column choice (visibility + order) across sessions.
+    // Reconcile `columns` whenever the live column set changes — language
+    // switch (label-only changes don't affect keys, but new keys from a future
+    // localization can), or a data source adding/dropping a column. Gated on
+    // the key signature so unrelated parent re-renders don't churn the signal
+    // (TaskTable builds a fresh `taskColumns` array on every render, so a
+    // reference-equality dep would fire constantly).
+    const liveKeySig = allColumns.map(c => c.key).join('|');
+    useEffect(() => {
+        columns.value = reconcileColState(columns.value, allColumns);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- allColumns is
+        // intentionally narrowed to its key signature; reading it inside would
+        // restart the loop on every parent render.
+    }, [liveKeySig]);
+
+    // Re-init sort / groupBy / collapsed / showHierarchy when the owning
+    // workspace or surface changes so we don't leak one project's view into
+    // another, or one surface's view into the other.
+    useEffect(() => {
+        if (!workspaceId || !prefsSurface) return;
+        const p = viewPrefs.getGridPrefs(workspaceId, prefsSurface);
+        sort.value = p.sort;
+        groupBy.value = p.groupBy;
+        collapsed.value = p.collapsed;
+        showHierarchy.value = p.showHierarchy ?? true;
+    }, [workspaceId, prefsSurface]);
+
+    // Persist the column choice (visibility + order) across sessions.
     useSignalEffect(() => {
         if (!persistKey) return;
         try {
@@ -124,15 +214,37 @@ export function DataGrid<T>({
         }
     });
 
+    // Persist sort / groupBy / collapsed / showHierarchy per (workspace, surface)
+    // so each grid keeps its own slot. Reads happen at mount via the
+    // useSignal seed above and on workspace/surface change via the effect
+    // above; this effect mirrors any in-memory change back into storage.
+    useEffect(() => {
+        if (!workspaceId || !prefsSurface) return;
+        viewPrefs.updateGridPrefs(workspaceId, prefsSurface, {
+            sort: sort.value,
+            groupBy: groupBy.value,
+            collapsed: collapsed.value,
+            showHierarchy: showHierarchy.value,
+        });
+    }, [workspaceId, prefsSurface, sort.value, groupBy.value, collapsed.value, showHierarchy.value]);
+
     if (loading && totalCount === 0) {
         return <div class="task-loading">正在载入...</div>;
     }
 
     const colDefs = new Map(allColumns.map(c => [c.key, c]));
+    // Join ColState with its GridColumn so the renderer can read either
+    // persisted state (width) or live state (label, sortable). Missing width
+    // falls back to the column default — that's how legacy / never-resized
+    // columns still get a sensible size.
     const visibleCols = columns.value
         .filter(c => c.visible)
-        .map(c => colDefs.get(c.key))
-        .filter((c): c is GridColumn => !!c);
+        .map(c => {
+            const def = colDefs.get(c.key);
+            if (!def) return null;
+            return { def, width: c.width ?? def.width };
+        })
+        .filter((c): c is { def: GridColumn; width: number } => !!c);
     const colSpan = visibleCols.length + (renderActions ? 1 : 0);
 
     const toolbarCols: ToolbarColumn[] = allColumns.map(c => ({ key: c.key, label: c.label, locked: c.locked }));
@@ -149,7 +261,7 @@ export function DataGrid<T>({
 
     const renderCells = (row: T, isChild: boolean, index: number) => {
         const rowKey = getRowKey(row);
-        return visibleCols.map(col =>
+        return visibleCols.map(({ def: col }) =>
             renderCell(row, col, {
                 isChild,
                 index,
@@ -236,7 +348,7 @@ export function DataGrid<T>({
                 <table class="task-table">
                     <thead>
                         <tr>
-                            {visibleCols.map(col => {
+                            {visibleCols.map(({ def: col, width }) => {
                                 const sortable = col.sortable !== false;
                                 const active = sort.value?.key === col.key;
                                 return (
@@ -245,7 +357,7 @@ export function DataGrid<T>({
                                         class={`col-${col.key}${sortable ? ' grid-sortable' : ''}${
                                             active ? ' sorted' : ''
                                         }`}
-                                        style={{ minWidth: `${col.width}px` }}
+                                        style={{ minWidth: `${width}px` }}
                                         onClick={sortable ? () => cycleSort(col.key) : undefined}
                                         title={sortable ? '点击按此列排序' : undefined}
                                     >

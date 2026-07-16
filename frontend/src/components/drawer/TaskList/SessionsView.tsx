@@ -117,6 +117,8 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
             {error && <div class="task-error">{error}</div>}
 
             <DataGrid<ChatSession>
+                workspaceId={workspaceId}
+                prefsSurface="sessions"
                 rows={filtered}
                 totalCount={sessions.length}
                 columns={getSessionColumns(language)}

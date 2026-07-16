@@ -9,6 +9,8 @@ import { getAllColumns, compareTasks, groupValue, isSortable, getGroupOptions } 
 import type { ProjectItem } from './types';
 
 interface TaskTableProps {
+    /** Workspace owning the sort/groupBy/collapsed prefs being persisted. */
+    workspaceId: string;
     /** Tasks to render (already filtered by the shared TaskFilterBar). */
     tasks: ProjectItem[];
     /** Full task set for dependency resolution and empty-state messaging. */
@@ -21,7 +23,15 @@ interface TaskTableProps {
 
 const rank = (task: ProjectItem) => PRIORITY_RANK[task.priority || 'medium'] ?? 2;
 
-export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask, onPatchTask }: TaskTableProps) {
+export function TaskTable({
+    workspaceId,
+    tasks,
+    allTasks,
+    loading,
+    onSelectTask,
+    onDeleteTask,
+    onPatchTask,
+}: TaskTableProps) {
     const lang = ui.language.value;
     const cols = getAllColumns(lang);
     const colDefs = new Map(cols.map(c => [c.key, c]));
@@ -36,6 +46,8 @@ export function TaskTable({ tasks, allTasks, loading, onSelectTask, onDeleteTask
 
     return (
         <DataGrid<ProjectItem>
+            workspaceId={workspaceId}
+            prefsSurface="tasks"
             rows={tasks}
             totalCount={allTasks.length}
             columns={taskColumns}

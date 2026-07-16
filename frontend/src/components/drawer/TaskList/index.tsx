@@ -5,6 +5,7 @@ import { useSignal, signal } from '@preact/signals';
 import type { Session } from '../../types';
 import * as taskNav from '../../../stores/taskNavStore';
 import * as sessionStore from '../../../stores/sessionStore';
+import * as viewPrefs from '../../../stores/projectViewPrefs';
 import { agentService } from '../../../services/agentService';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { Modal } from '../../modal';
@@ -48,7 +49,21 @@ export function TaskList({
     const showMsForm = useSignal(false); // create-milestone modal (small → stays a modal)
     const showSessions = useSignal(false); // sessions popup, opened from the 总览 会话 card
     const [sessionCount, setSessionCount] = useState(0);
-    const view = useSignal<'overview' | 'discussion' | 'requirements' | 'tasks' | 'milestone'>('tasks');
+    // Top-level view tab (overview/discussion/requirements/tasks/milestone) is
+    // per-workspace so each project remembers where you left it.
+    const view = useSignal<viewPrefs.TaskListView>(
+        (viewPrefs.allPrefs.value[workspaceId]?.activeView as viewPrefs.TaskListView) || 'tasks'
+    );
+
+    // Re-init the view from the new workspace's stored prefs when switching
+    // projects; otherwise we'd carry the prior project's tab across.
+    useEffect(() => {
+        view.value = (viewPrefs.allPrefs.value[workspaceId]?.activeView as viewPrefs.TaskListView) || 'tasks';
+    }, [workspaceId]);
+
+    useEffect(() => {
+        viewPrefs.updatePrefs(workspaceId, { activeView: view.value });
+    }, [workspaceId, view.value]);
 
     const setTasks = useCallback(
         (newTasks: ProjectItem[]) => {
@@ -336,6 +351,7 @@ export function TaskList({
 
             {view.value === 'tasks' && (
                 <TasksView
+                    workspaceId={workspaceId}
                     tasks={workItems}
                     loading={loading}
                     onSelectTask={setSelectedTaskId}
