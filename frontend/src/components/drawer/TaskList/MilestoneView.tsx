@@ -70,8 +70,8 @@ export function MilestoneView({
         // Server-side milestone totals count executable tasks, so only trust them
         // for the 任务 lens; for 需求/缺陷 derive counts from the filtered items.
         const progressItems = isTask ? items.filter(it => it.status !== 'cancelled') : items;
-        const total = isTask ? (m.total ?? progressItems.length) : progressItems.length;
-        const done = isTask ? (m.completed ?? progressItems.filter(isDone).length) : progressItems.filter(isDone).length;
+        const total = isTask ? m.total ?? progressItems.length : progressItems.length;
+        const done = isTask ? m.completed ?? progressItems.filter(isDone).length : progressItems.filter(isDone).length;
         return {
             id: m.id,
             name: m.name,
@@ -305,9 +305,7 @@ export function MilestoneView({
                 open={!!taskPreview.value}
                 task={taskPreview.value}
                 onClose={() => (taskPreview.value = null)}
-                onOpenFull={() => {
-                    if (taskPreview.value) onSelectTask(taskPreview.value.id);
-                }}
+                onOpenFull={onSelectTask}
             />
 
             <Modal show={!!editing.value}>

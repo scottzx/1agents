@@ -4840,13 +4840,20 @@ body {
 .milestone-view {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  // Positioning context for the absolutely-positioned task preview drawer so it
+  // stays visually scoped to this panel rather than escaping to the viewport.
+  // Scroll responsibility moves to .ms-tree below so the preview can't get
+  // clipped by an overflow boundary.
+  position: relative;
+  overflow: hidden;
 
   /* ── branching roadmap tree (left → right) ── */
   .ms-tree {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -5036,21 +5043,16 @@ body {
   }
 
   /* ── expanded detail panel (rendered as a half-screen drawer) ── */
-  // Backdrop: a pseudo-element on the milestone-view container that fades in
-  // whenever the detail panel is mounted (CSS :has() detects the descendant).
-  // Click on it = falls through to the milestone card, collapsing the panel.
-  &:has(> .milestone-detail)::before {
-    content: '';
+  // Backdrop: a real element rendered next to the detail panel so it can
+  // capture clicks and close the drawer. Clicking anywhere outside the
+  // drawer = close.
+  .milestone-drawer-backdrop {
     position: fixed;
     inset: 0;
     background-color: rgba(15, 23, 42, 0.32);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     z-index: 90;
-    // pointer-events: none lets clicks pass through to the milestone cards
-    // underneath, so users can still toggle via the same card click that opens
-    // the drawer (no separate close gesture needed).
-    pointer-events: none;
     animation: fadeIn 0.22s ease-out;
   }
 
@@ -5222,6 +5224,250 @@ body {
     width: 100vw !important;
     min-width: 0 !important;
     max-width: none !important;
+  }
+}
+
+/* ── Task preview drawer (bottom-up half-screen popup) ── */
+// Opens from clicking a task row in the milestone drawer. Shows a quick
+// preview (status/priority/meta/description) without navigating; user can
+// escalate to full detail via the footer button. Backdrop closes on click.
+// Scoped to .milestone-view and absolutely positioned so the preview stays
+// inside the milestone panel instead of escaping to the viewport.
+.milestone-view .task-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 95;
+  animation: fadeIn 0.18s ease-out;
+}
+
+.milestone-view .task-preview-drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 60vh;
+  min-height: 320px;
+  background-color: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+  border-top-left-radius: var(--bento-radius-lg, 14px);
+  border-top-right-radius: var(--bento-radius-lg, 14px);
+  box-shadow: var(--shadow-lg);
+  z-index: 96;
+  display: flex;
+  flex-direction: column;
+  animation: taskPreviewSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+
+  .task-preview-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 22px 12px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+  .task-preview-head-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .task-preview-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .task-type-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+
+    &.type-requirement {
+      color: var(--purple-emphasis, var(--accent-color));
+      border-color: var(--purple-emphasis, var(--accent-color));
+    }
+    &.type-bug {
+      color: var(--danger-fg);
+      border-color: var(--danger-fg);
+    }
+    &.type-task {
+      color: var(--accent-color);
+      border-color: var(--accent-color);
+    }
+  }
+  .task-preview-milestone {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .task-preview-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.4;
+    word-break: break-word;
+
+    .task-number {
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-right: 4px;
+      font-family: var(--font-mono);
+    }
+  }
+  .task-preview-close {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, color 0.15s;
+
+    &:hover {
+      border-color: var(--text-main);
+      color: var(--text-main);
+    }
+  }
+
+  .task-preview-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 22px 16px;
+  }
+  .task-preview-section {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+  .task-preview-section-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .task-preview-desc,
+  .task-preview-summary {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+  }
+  .task-preview-meta-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .task-preview-meta-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 12.5px;
+
+    .task-preview-meta-key {
+      flex-shrink: 0;
+      width: 64px;
+      color: var(--text-muted);
+    }
+    .task-preview-meta-val {
+      flex: 1;
+      color: var(--text-main);
+      word-break: break-word;
+    }
+    .task-preview-link {
+      color: var(--accent-color);
+      text-decoration: none;
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+    .task-preview-label-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      margin-right: 4px;
+      margin-bottom: 2px;
+      font-size: 11px;
+      border-radius: 999px;
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+  }
+
+  .task-preview-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 22px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--bg-panel);
+    flex-shrink: 0;
+
+    button {
+      padding: 6px 18px;
+      font-size: 13px;
+      border-radius: 999px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-card);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+
+      &:hover {
+        border-color: var(--text-main);
+        color: var(--text-main);
+      }
+      &.primary {
+        background-color: var(--accent-color);
+        border-color: var(--accent-color);
+        color: var(--on-accent);
+
+        &:hover {
+          background-color: var(--accent-hover);
+          border-color: var(--accent-hover);
+          color: var(--on-accent);
+        }
+      }
+    }
+  }
+}
+
+@keyframes taskPreviewSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .milestone-view .task-preview-drawer {
+    max-height: 80vh;
+    min-height: 360px;
   }
 }
 
@@ -6112,7 +6358,9 @@ body {
 
 /* ── Task table (multi-dimension list, the project landing main view) ── */
 /* ── Multi-dimensional grid (Airtable-style editable TaskTable) ── */
-.task-grid {
+.task-grid,
+.task-view-shell,
+.data-grid {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -6120,7 +6368,8 @@ body {
   gap: 10px;
 }
 
-.task-grid-toolbar {
+.task-grid-toolbar,
+.data-grid-toolbar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -6232,7 +6481,8 @@ body {
 /* Mobile: keep the filter toolbar on a single row — search/filter flex on the
    left, the view-toggle collapses to three icons pinned right. */
 @media (max-width: 768px) {
-  .task-grid-toolbar.task-filter-bar {
+  .task-grid-toolbar.task-filter-bar,
+  .data-grid-toolbar.task-filter-bar {
     flex-wrap: nowrap;
     gap: 6px;
 
@@ -6378,13 +6628,15 @@ body {
   }
 }
 
-.task-table-scroller {
+.task-table-scroller,
+.data-grid-scroller {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
-.task-table {
+.task-table,
+.data-grid-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -6613,9 +6865,10 @@ body {
   }
 
   /* Collapsible group header rows */
+  .data-grid-group-header,
   .task-group-header {
     cursor: pointer;
-    background-color: rgba(var(--bg-panel), 0.7);
+    background-color: var(--bg-panel);
 
     td {
       padding: 8px 14px;
@@ -22909,4 +23162,71 @@ body {
   transition: background 0.1s, border-color 0.1s;
 
   &:hover { background: var(--danger-bg); border-color: var(--danger-fg); }
+}
+
+/* DataGrid sticky + resize (A+B) */
+.data-grid-table,
+.task-table {
+  th.col-sticky-left,
+  td.col-sticky-left {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background-color: var(--bg-card);
+  }
+  thead th.col-sticky-left {
+    z-index: 3;
+    background-color: var(--bg-panel);
+  }
+  th.col-sticky-right,
+  td.col-sticky-right {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background-color: var(--bg-card);
+  }
+  thead th.col-sticky-right {
+    z-index: 3;
+    background-color: var(--bg-panel);
+  }
+  th.grid-col-resizable {
+    position: relative;
+  }
+  .grid-col-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+  }
+  .grid-cell-editable:hover {
+    box-shadow: inset 0 0 0 1px var(--text-main);
+  }
+}
+
+
+/* Locked column is always first — sticky first body cell without cell-renderer changes */
+.data-grid-table tbody td:first-child,
+.task-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-color: var(--bg-card);
+}
+.data-grid-table tbody tr:hover td:first-child,
+.task-table tbody tr:hover td:first-child {
+  background-color: var(--bg-sidebar-hover);
+}
+.data-grid-table tbody td.col-actions,
+.task-table tbody td.col-actions {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background-color: var(--bg-card);
+}
+.data-grid-table tbody tr:hover td.col-actions,
+.task-table tbody tr:hover td.col-actions {
+  background-color: var(--bg-sidebar-hover);
 }
