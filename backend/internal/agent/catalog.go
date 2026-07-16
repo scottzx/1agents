@@ -31,7 +31,7 @@ const (
 type AgentDescriptor struct {
 	Type        AgentType
 	Label       string
-	Binary      string // binary probed via exec.LookPath
+	Binary      string // binary probed via the process PATH and user agent bin dirs
 	AcpCapable  bool
 	CliCapable  bool
 	CcTransport CcTransport
@@ -69,7 +69,7 @@ var AgentCatalog = []AgentDescriptor{
 	{Type: AgentTypeCodex, Label: "Codex", Binary: "codex", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @openai/codex", AdapterPackage: "@agentclientprotocol/codex-acp"},
 	// Grok Build exposes ACP natively through `grok agent stdio`; unlike the
 	// adapter-backed entries above, it is chat-ready only when the Grok CLI is
-	// actually installed on PATH.
+	// discoverable on the host.
 	{Type: AgentTypeGrokBuild, Label: "Grok", Binary: "grok", AcpCapable: true, CliCapable: true, CcTransport: TransportACP, Integrated: true, InstallCommand: "curl -fsSL https://x.ai/cli/install.sh | bash"},
 	{Type: AgentTypeCursor, Label: "Cursor Agent", Binary: "agent", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "curl https://cursor.com/install -fsS | bash"},
 	{Type: AgentTypeGemini, Label: "Gemini", Binary: "gemini", AcpCapable: true, CliCapable: true, CcTransport: TransportCLIStream, Integrated: true, InstallCommand: "npm install -g @google/gemini-cli"},
@@ -109,8 +109,9 @@ type AgentStatus struct {
 }
 
 // CatalogStore holds the globally-detected agent install state. It probes the
-// system PATH once at startup and caches the result behind an RWMutex; callers
-// can force a re-probe via Scan (wired to the ?refresh=1 endpoint param).
+// process PATH and user agent bin directories once at startup and caches the
+// result behind an RWMutex; callers can force a re-probe via Scan (wired to the
+// ?refresh=1 endpoint param).
 type CatalogStore struct {
 	mu        sync.RWMutex
 	statuses  []AgentStatus
@@ -138,8 +139,8 @@ func DefaultCatalog() *CatalogStore {
 	return defaultCatalog
 }
 
-// Scan re-probes every descriptor's binary via exec.LookPath (instant; no
-// --version exec) and atomically replaces the cached snapshot.
+// Scan re-probes every descriptor's binary (instant; no --version exec) and
+// atomically replaces the cached snapshot.
 func (c *CatalogStore) Scan() []AgentStatus {
 	adapterDir := acpAdapterDir()
 	statuses := make([]AgentStatus, 0, len(AgentCatalog))
@@ -154,7 +155,7 @@ func (c *CatalogStore) Scan() []AgentStatus {
 			Integrated:     d.Integrated,
 			InstallCommand: d.InstallCommand,
 		}
-		if path, err := exec.LookPath(d.Binary); err == nil {
+		if path, err := findAgentBinary(d.Binary); err == nil {
 			st.Installed = true
 			st.Path = path
 		}
@@ -171,6 +172,27 @@ func (c *CatalogStore) Scan() []AgentStatus {
 	c.mu.Unlock()
 
 	return statuses
+}
+
+func findAgentBinary(binary string) (string, error) {
+	path, pathErr := exec.LookPath(binary)
+	if pathErr == nil {
+		return path, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", pathErr
+	}
+	for _, dir := range []string{
+		filepath.Join(home, ".local", "bin"),
+		filepath.Join(home, ".grok", "bin"),
+	} {
+		if path, err := exec.LookPath(filepath.Join(dir, binary)); err == nil {
+			return path, nil
+		}
+	}
+	return "", pathErr
 }
 
 // acpAdapterDir resolves modules/1acp/node_modules by walking up from the

@@ -47,6 +47,40 @@ func get1AgentsHome() string {
 	return home
 }
 
+func prependUserAgentBinDirs(pathValue, home string) string {
+	paths := []string{
+		filepath.Join(home, ".local", "bin"),
+		filepath.Join(home, ".grok", "bin"),
+	}
+	if pathValue != "" {
+		paths = append(paths, strings.Split(pathValue, string(os.PathListSeparator))...)
+	}
+
+	seen := make(map[string]struct{}, len(paths))
+	unique := paths[:0]
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		unique = append(unique, path)
+	}
+	return strings.Join(unique, string(os.PathListSeparator))
+}
+
+func ensureUserAgentBinDirs() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	if err := os.Setenv("PATH", prependUserAgentBinDirs(os.Getenv("PATH"), home)); err != nil {
+		log.Printf("[main] Unable to add user agent directories to PATH: %v", err)
+	}
+}
+
 func main() {
 	// ── `1agents project-items` MCP subcommand ─────────────────────────────────
 	// Dispatched before flag parsing and the daemon check so stdout stays a
@@ -69,6 +103,7 @@ func main() {
 		}
 		return
 	}
+	ensureUserAgentBinDirs()
 
 	cfg := config.Default()
 
