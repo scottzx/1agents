@@ -281,14 +281,10 @@ export function SessionRow({
                     type="button"
                     class="fb-row-action-btn chat-actions-archive"
                     title={
-                        isChat(session)
-                            ? t('sidebar.archiveSession', language)
-                            : t('sidebar.closeSession', language)
+                        isChat(session) ? t('sidebar.archiveSession', language) : t('sidebar.closeSession', language)
                     }
                     aria-label={
-                        isChat(session)
-                            ? t('sidebar.archiveSession', language)
-                            : t('sidebar.closeSession', language)
+                        isChat(session) ? t('sidebar.archiveSession', language) : t('sidebar.closeSession', language)
                     }
                     onClick={(e: MouseEvent) => onKill(e, session)}
                 >

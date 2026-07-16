@@ -19,7 +19,7 @@ import {
     chatSessions,
     mergeSessionsIntoFolders,
     terminalWindows,
-    loadChatSessions
+    loadChatSessions,
 } from '../../../stores/sessionStore';
 
 interface SessionsViewProps {

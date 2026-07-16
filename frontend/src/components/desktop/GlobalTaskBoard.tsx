@@ -88,7 +88,7 @@ export function GlobalTaskBoard() {
 
     return (
         <div class="global-board">
-            <div class="task-grid">
+            <div class="task-view-shell">
                 <TaskFilterBar
                     search={search}
                     statusFilter={statusFilter}

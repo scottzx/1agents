@@ -1608,6 +1608,17 @@ export const zhCN: Record<string, string> = {
     'task.table.hierarchyHint': '排序时子任务只在父任务内排序',
     'task.table.openDetail': '打开详情',
     'task.table.deleteTask': '删除任务',
+    'task.table.deleteConfirmTitle': '删除任务',
+    'task.table.deleteConfirmMessage': '确定删除该任务？此操作不可撤销。',
+    'grid.toolbar.group': '分组',
+    'grid.toolbar.columns': '列',
+    'grid.toolbar.columnPanel': '显示 / 排序列',
+    'grid.toolbar.pinned': '固定',
+    'grid.toolbar.moveUp': '上移',
+    'grid.toolbar.moveDown': '下移',
+    'grid.toolbar.restoreDefaults': '恢复默认列',
+    'grid.toolbar.hierarchy': '显示层级',
+    'grid.toolbar.sortHint': '点击按此列排序',
 
     // ── Task grid cell — edit mode ─────────────────────────────────────────
     'task.grid.statusHint': '运行态由调度器管理：此处仅可手动标记为「已完成」或「已取消」',
@@ -3377,6 +3388,17 @@ export const enUS: Record<string, string> = {
     'task.table.hierarchyHint': 'When sorting, subtasks only sort within their parent',
     'task.table.openDetail': 'Open details',
     'task.table.deleteTask': 'Delete task',
+    'task.table.deleteConfirmTitle': 'Delete task',
+    'task.table.deleteConfirmMessage': 'Delete this task? This cannot be undone.',
+    'grid.toolbar.group': 'Group',
+    'grid.toolbar.columns': 'Columns',
+    'grid.toolbar.columnPanel': 'Show / reorder columns',
+    'grid.toolbar.pinned': 'Pinned',
+    'grid.toolbar.moveUp': 'Move up',
+    'grid.toolbar.moveDown': 'Move down',
+    'grid.toolbar.restoreDefaults': 'Restore defaults',
+    'grid.toolbar.hierarchy': 'Show hierarchy',
+    'grid.toolbar.sortHint': 'Click to sort by this column',
 
     // ── Task grid cell — edit mode ─────────────────────────────────────────
     'task.grid.statusHint':

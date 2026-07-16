@@ -74,7 +74,7 @@ export function TasksView({
     });
 
     return (
-        <div class="task-grid">
+        <div class="task-view-shell">
             <TaskFilterBar
                 search={search}
                 statusFilter={statusFilter}

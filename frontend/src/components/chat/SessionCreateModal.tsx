@@ -55,16 +55,16 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
             <div class="ws-modal-overlay" onClick={onCancel}>
                 <div class="ws-modal" onClick={(e: MouseEvent) => e.stopPropagation()}>
                     <div class="ws-modal-header">
-                        <span>新建聊天会话 · {workspaceName}</span>
+                        <span>{t('modal.sessionSetup.legacy.title', lang, { workspace: workspaceName })}</span>
                         <button class="ws-modal-close" onClick={onCancel}>
                             ✕
                         </button>
                     </div>
                     <div class="ws-modal-body">
-                        <label class="ws-modal-label">会话名称（可选）</label>
+                        <label class="ws-modal-label">{t('modal.sessionSetup.nameOptional', lang)}</label>
                         <input
                             class="ws-modal-input"
-                            placeholder="留空将自动生成"
+                            placeholder={t('modal.sessionSetup.namePlaceholder', lang)}
                             value={name}
                             onInput={(e: Event) => this.setState({ name: (e.target as HTMLInputElement).value })}
                             onKeyDown={(e: KeyboardEvent) => {
@@ -72,10 +72,12 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
                             }}
                             autoFocus
                         />
-                        <label class="ws-modal-label">智能体类型</label>
+                        <label class="ws-modal-label">{t('sessionSetup.agent.label', lang)}</label>
                         <AgentTypePicker value={agentType} onChange={v => this.setState({ agentType: v })} />
                         <p class="ws-modal-hint">
-                            会话创建后将固定使用 {AGENT_TYPE_LABELS[agentType] ?? agentType}， 不可在会话过程中更换。
+                            {t('modal.sessionSetup.fixedHint', lang, {
+                                agent: AGENT_TYPE_LABELS[agentType] ?? agentType,
+                            })}
                         </p>
                         <label class="ws-modal-label">{t('newchat.role.aria', lang)}</label>
                         <div class="ws-modal-role-row">
@@ -104,13 +106,13 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
                     </div>
                     <div class="ws-modal-footer">
                         <button class="ws-modal-cancel" onClick={onCancel}>
-                            取消
+                            {t('modal.sessionSetup.legacy.cancel', lang)}
                         </button>
                         <button
                             class="ws-modal-confirm"
                             onClick={() => onSubmit(name, agentType, permissionMode, role)}
                         >
-                            创建
+                            {t('modal.sessionSetup.legacy.create', lang)}
                         </button>
                     </div>
                 </div>

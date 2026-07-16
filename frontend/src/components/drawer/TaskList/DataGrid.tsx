@@ -5,6 +5,8 @@ import { useSignal, useSignalEffect } from '@preact/signals';
 
 import { GridToolbar, type ColState, type ToolbarColumn } from './GridToolbar';
 import * as viewPrefs from '../../../stores/projectViewPrefs';
+import { t } from '../../../i18n';
+import * as ui from '../../../stores/uiStore';
 
 /** Parse a persisted JSON blob into a sanitized `ColState[]`. Tolerant of the
  *  pre-width format (`{key, visible}` only) and of any shape mismatch — the
@@ -164,14 +166,15 @@ export function DataGrid<T>({
     // of the others. Without prefsSurface we fall back to plain in-memory
     // state — this keeps other DataGrid users (contacts, governance, ...)
     // working without any per-surface wiring.
-    const initial = workspaceId && prefsSurface
-        ? viewPrefs.getGridPrefs(workspaceId, prefsSurface)
-        : {
-              sort: null as { key: string; dir: 'asc' | 'desc' } | null,
-              groupBy: 'none',
-              collapsed: [] as string[],
-              showHierarchy: true,
-          };
+    const initial =
+        workspaceId && prefsSurface
+            ? viewPrefs.getGridPrefs(workspaceId, prefsSurface)
+            : {
+                  sort: null as { key: string; dir: 'asc' | 'desc' } | null,
+                  groupBy: 'none',
+                  collapsed: [] as string[],
+                  showHierarchy: true,
+              };
     const groupBy = useSignal<string>(initial.groupBy);
     const collapsed = useSignal<string[]>(initial.collapsed);
     const sort = useSignal<{ key: string; dir: 'asc' | 'desc' } | null>(initial.sort);
@@ -187,8 +190,7 @@ export function DataGrid<T>({
     const liveKeySig = allColumns.map(c => c.key).join('|');
     useEffect(() => {
         columns.value = reconcileColState(columns.value, allColumns);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- allColumns is
-        // intentionally narrowed to its key signature; reading it inside would
+        // allColumns keyed via liveKeySig to avoid parent re-render churn.
         // restart the loop on every parent render.
     }, [liveKeySig]);
 
@@ -255,7 +257,7 @@ export function DataGrid<T>({
         try {
             await onPatchRow(rowId, patch);
         } catch (err) {
-            alert((err as Error).message);
+            ui.showToast((err as Error).message || String(err));
         }
     };
 
@@ -277,7 +279,7 @@ export function DataGrid<T>({
     const renderRow = (row: T, isChild: boolean, index: number) => (
         <tr key={getRowKey(row)} class={rowClass(row, isChild)}>
             {renderCells(row, isChild, index)}
-            {renderActions && <td class="col-actions">{renderActions(row)}</td>}
+            {renderActions && <td class="col-actions col-sticky-right">{renderActions(row)}</td>}
         </tr>
     );
 
@@ -332,8 +334,26 @@ export function DataGrid<T>({
         collapsed.value = collapsed.value.includes(g) ? collapsed.value.filter(x => x !== g) : [...collapsed.value, g];
     };
 
+    // Drag the header right edge to set ColState.width (min 48px). Clicks on
+    // the handle stopPropagation so they don't cycle sort.
+    const startResize = (e: MouseEvent, key: string, startW: number) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const onMove = (ev: MouseEvent) => {
+            const next = Math.max(48, Math.round(startW + (ev.clientX - startX)));
+            columns.value = columns.value.map(c => (c.key === key ? { ...c, width: next } : c));
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
     return (
-        <div class="task-grid">
+        <div class="data-grid">
             <GridToolbar
                 columnDefs={toolbarCols}
                 groupOptions={groupOptions}
@@ -342,33 +362,39 @@ export function DataGrid<T>({
                 showHierarchy={hierarchy ? showHierarchy : undefined}
                 hierarchyLabel={hierarchy?.label}
                 hierarchyHint={hierarchy?.hint}
+                allColumnKeys={allColumns.map(c => c.key)}
             />
 
-            <div class="task-table-scroller">
-                <table class="task-table">
+            <div class="data-grid-scroller">
+                <table class="data-grid-table">
                     <thead>
                         <tr>
                             {visibleCols.map(({ def: col, width }) => {
                                 const sortable = col.sortable !== false;
                                 const active = sort.value?.key === col.key;
+                                const stickyL = col.locked ? ' col-sticky-left' : '';
                                 return (
                                     <th
                                         key={col.key}
-                                        class={`col-${col.key}${sortable ? ' grid-sortable' : ''}${
+                                        class={`col-${col.key} grid-col-resizable${sortable ? ' grid-sortable' : ''}${
                                             active ? ' sorted' : ''
-                                        }`}
-                                        style={{ minWidth: `${width}px` }}
+                                        }${stickyL}`}
+                                        style={{ minWidth: `${width}px`, width: `${width}px` }}
                                         onClick={sortable ? () => cycleSort(col.key) : undefined}
-                                        title={sortable ? '点击按此列排序' : undefined}
+                                        title={sortable ? t('grid.toolbar.sortHint', ui.language.value) : undefined}
                                     >
                                         {col.label}
                                         {active && (
                                             <span class="sort-ind">{sort.value!.dir === 'asc' ? '▲' : '▼'}</span>
                                         )}
+                                        <span
+                                            class="grid-col-resize-handle"
+                                            onMouseDown={(e: MouseEvent) => startResize(e, col.key, width)}
+                                        />
                                     </th>
                                 );
                             })}
-                            {renderActions && <th class="col-actions" />}
+                            {renderActions && <th class="col-actions col-sticky-right" />}
                         </tr>
                     </thead>
                     <tbody>
@@ -388,7 +414,7 @@ export function DataGrid<T>({
                                 const isCollapsed = collapsed.value.includes(g);
                                 return (
                                     <Fragment key={g}>
-                                        <tr class="task-group-header" onClick={() => toggleGroup(g)}>
+                                        <tr class="data-grid-group-header" onClick={() => toggleGroup(g)}>
                                             <td colSpan={colSpan}>
                                                 <span class="group-caret">{isCollapsed ? '▶' : '▼'}</span>
                                                 <span class="group-name">{g}</span>

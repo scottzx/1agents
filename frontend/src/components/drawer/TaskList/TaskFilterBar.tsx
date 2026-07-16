@@ -100,7 +100,7 @@ export function TaskFilterBar({
     );
 
     return (
-        <div class="task-grid-toolbar task-filter-bar">
+        <div class="data-grid-toolbar task-filter-bar">
             <div class="grid-toolbar-search">
                 <input
                     type="text"

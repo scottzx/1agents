@@ -152,11 +152,7 @@ export const getGridPrefs = (workspaceId: string, surface: string): GridPrefs =>
 
 /** Write DataGrid prefs for a single surface. Does not touch the legacy flat
  *  fields or other surfaces — each surface keeps its own slot. */
-export const updateGridPrefs = (
-    workspaceId: string,
-    surface: string,
-    patch: Partial<GridPrefs>
-): void => {
+export const updateGridPrefs = (workspaceId: string, surface: string, patch: Partial<GridPrefs>): void => {
     const current = getGridPrefs(workspaceId, surface);
     const next: GridPrefs = { ...current, ...patch };
     const allCurrent = allPrefs.value[workspaceId] || DEFAULT_PREFS;

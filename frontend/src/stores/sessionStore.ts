@@ -167,7 +167,9 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
     // Guard: never re-inject an archived session — it was intentionally removed.
     const prevActive = activeSession.value;
     const chatList: ChatSession[] =
-        prevActive && isChat(prevActive) && !prevActive.archived && !chats.some(c => c.id === prevActive.id) ? [prevActive, ...chats] : chats;
+        prevActive && isChat(prevActive) && !prevActive.archived && !chats.some(c => c.id === prevActive.id)
+            ? [prevActive, ...chats]
+            : chats;
     wsStore.folders.value = wsStore.folders.value.map(f => {
         const termSessions: Session[] = windows
             .filter(w => w.workspaceId === f.id)
@@ -480,8 +482,8 @@ function normalizeBridgeSession(raw: Record<string, unknown>): ChatSession | nul
             (raw as { archived_at?: unknown }).archived_at) as string | undefined,
         archived: Boolean(
             (raw as { archived?: unknown }).archived ??
-            ((raw as { archivedAt?: unknown; archived_at?: unknown }).archivedAt ??
-                (raw as { archived_at?: unknown }).archived_at)
+                (raw as { archivedAt?: unknown; archived_at?: unknown }).archivedAt ??
+                (raw as { archived_at?: unknown }).archived_at
         ),
         active: Boolean((raw as { active?: unknown }).active),
         role: (raw as { role?: unknown }).role as string | undefined,

@@ -72,6 +72,8 @@ export const DEFAULT_PERMISSION_MODE: PermissionMode = 'approve-reads';
 
 /** Mirror WebSocket.OPEN without referencing the (weapp-absent) global. */
 const WS_OPEN = 1;
+/** Mirror WebSocket.CLOSED without referencing the (weapp-absent) global. */
+const WS_CLOSED = 3;
 
 /** Host-specific dependencies the manager needs but core can't supply itself. */
 export interface ChatBridgeOptions {
@@ -266,6 +268,21 @@ export class ChatBridgeManager {
                 forkSupported: session.forkSupported ?? (session.agentType === 'claudecode' ? true : null),
             };
             this.sessions.set(session.id, state);
+            this.connect(session, state);
+        } else if (
+            state.listeners.size === 0 &&
+            (state.connection === 'error' ||
+                state.connection === 'closed' ||
+                state.ws === null ||
+                state.ws.readyState === WS_CLOSED)
+        ) {
+            // A failed bridge stays cached so its history and UI state survive
+            // session switches. Re-entering that session must revive the
+            // transport instead of returning the permanently-dead socket.
+            if (state.reconnectTimer) {
+                clearTimeout(state.reconnectTimer);
+                state.reconnectTimer = null;
+            }
             this.connect(session, state);
         }
         return state;
