@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { Session, isChat } from '../types';
 import { t, type Lang } from '../i18n';
-import { AgentAvatar } from '../chat/AgentAvatar';
+import { AgentAvatar, normalizeAgentStatus } from '../chat/AgentAvatar';
 import { liveSessionStatus, requestForkSession, requestDeleteSession } from '../../stores/sessionStore';
 import { FsRowActionsMenu, type FsRowAction } from '../drawer/FsRowActionsMenu';
 
@@ -33,22 +33,21 @@ const TERM_AGENT_LOGO_KEY: Record<string, string> = {
     claude: 'claudecode',
 };
 
-const TerminalIcon = () => (
-    <span class="chat-sidebar-avatar chat-terminal-icon" aria-hidden="true">
-        <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-        </svg>
-    </span>
+const TerminalGlyph = () => (
+    <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+    >
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
 );
 
 // 12px SVG icons used by the chat/terminal "..." menu (重命名 / 归档).
@@ -137,7 +136,8 @@ const SESSION_ACTION_ICONS = {
     ),
 };
 
-/** Build the "..." dropdown items for a session row: rename + fork + delete + switch + archive. */
+/** Build the "..." dropdown items for a session row: rename + fork + delete.
+ *  Archive/close is a dedicated button to the left of "..." (high-frequency). */
 function buildSessionActions(session: Session, props: SessionRowProps): FsRowAction[] {
     const actions: FsRowAction[] = [
         {
@@ -157,18 +157,6 @@ function buildSessionActions(session: Session, props: SessionRowProps): FsRowAct
         });
     }
 
-    actions.push({
-        id: 'archive',
-        labelKey: isChat(session) ? 'sidebar.archiveSession' : 'sidebar.closeSession',
-        icon: SESSION_ACTION_ICONS.archive,
-        danger: false,
-        onSelect: () => {
-            // Synthesize a MouseEvent so the existing onKill handler works unchanged
-            const ev = { stopPropagation: () => {} } as MouseEvent;
-            props.onKill(ev, session);
-        },
-    });
-
     if (isChat(session)) {
         actions.push({
             id: 'delete',
@@ -177,7 +165,9 @@ function buildSessionActions(session: Session, props: SessionRowProps): FsRowAct
             danger: true,
             onSelect: () => {
                 const isZh = props.language === 'zh-CN';
-                const msg = isZh ? '确定要永久删除该会话吗？此操作不可撤销。' : 'Are you sure you want to permanently delete this session? This action cannot be undone.';
+                const msg = isZh
+                    ? '确定要永久删除该会话吗？此操作不可撤销。'
+                    : 'Are you sure you want to permanently delete this session? This action cannot be undone.';
                 if (window.confirm(msg)) {
                     requestDeleteSession(session.id);
                 }
@@ -199,11 +189,10 @@ function buildSessionActions(session: Session, props: SessionRowProps): FsRowAct
 
 /**
  * Unified sidebar session row. A single `.chat-item` template renders both chat
- * and terminal sessions with the same shape — agent avatar + title + trailing
- * status dot + "..." actions menu. The `session.kind` discriminator only
- * selects the leading icon source and the status palette; the rename / archive
- * actions are shared and accessed via the dropdown triggered by the trailing
- * `.chat-actions-trigger` button.
+ * and terminal sessions with the same shape — agent avatar (with run-status
+ * indicator) + title + "..." actions menu. The `session.kind` discriminator
+ * only selects the leading icon source; rename / archive actions are shared
+ * via the trailing `.chat-actions-trigger` dropdown.
  */
 export function SessionRow({
     session,
@@ -218,14 +207,28 @@ export function SessionRow({
     const chat = isChat(session);
     const chatFallback = t('sidebar.chatSession', language) || '聊天会话';
 
-    // Leading icon: agent avatar for chat and for agent-backed terminals;
-    // a generic terminal glyph when the terminal has no detected agent.
+    // Live bridge status (streaming / awaiting_permission) overrides the stale
+    // persisted snapshot; reading the signal's .value here subscribes the row
+    // so it repaints the moment the bridge publishes a change.
+    const liveStatus = chat ? liveSessionStatus.value[session.id] : undefined;
+    const effectiveStatus = liveStatus ?? session.status;
+    // Brand-new chat sessions (idle + no acpSessionId) show a hollow indicator.
+    const avatarStatus =
+        chat && effectiveStatus === 'idle' && !session.acpSessionId
+            ? 'none'
+            : chat
+              ? String(effectiveStatus ?? 'none')
+              : String(session.status || 'none');
+    const statusKey = normalizeAgentStatus(avatarStatus) ?? 'none';
+
+    // Leading icon: agent avatar (composite status indicator) for chat and
+    // agent-backed terminals; generic terminal glyph when no agent detected.
     let leadingIcon;
     if (chat) {
         leadingIcon = (
             <AgentAvatar
                 agentType={session.agentType}
-                role={session.role}
+                status={avatarStatus}
                 class="chat-sidebar-avatar"
                 title={chatFallback}
             />
@@ -234,35 +237,19 @@ export function SessionRow({
         leadingIcon = (
             <AgentAvatar
                 agentType={TERM_AGENT_LOGO_KEY[session.agent] || session.agent}
+                status={avatarStatus}
                 class="chat-sidebar-avatar"
                 title={session.agent}
             />
         );
     } else {
-        leadingIcon = <TerminalIcon />;
+        leadingIcon = (
+            <span class="chat-sidebar-avatar chat-terminal-icon" aria-hidden="true">
+                <TerminalGlyph />
+                <span class={`agent-avatar-status agent-avatar-status--${statusKey}`} />
+            </span>
+        );
     }
-
-    // Trailing status dot — same element/position for both kinds, only the
-    // colour palette differs (chat `chat-*` palette vs. terminal `term-*` palette).
-    // For chat sessions: a brand-new session (idle + no lastEventAt) shows as
-    // hollow ring (chat-none); once it has activity, idle → blue "completed" dot.
-    const CHAT_STATUS_CLASS: Record<string, string> = {
-        idle: 'chat-idle',
-        streaming: 'chat-busy',
-        awaiting_permission: 'chat-waiting',
-        error: 'chat-error',
-    };
-    // Live bridge status (streaming / awaiting_permission) overrides the stale
-    // persisted snapshot; reading the signal's .value here subscribes the row
-    // so it repaints the moment the bridge publishes a change.
-    const liveStatus = chat ? liveSessionStatus.value[session.id] : undefined;
-    const effectiveStatus = liveStatus ?? session.status;
-    const rawStatus = String(effectiveStatus ?? '');
-    const chatStatus =
-        chat && effectiveStatus === 'idle' && !session.acpSessionId
-            ? 'chat-none'
-            : CHAT_STATUS_CLASS[rawStatus] ?? `chat-${rawStatus}`;
-    const statusClass = chat ? `chat-status-dot ${chatStatus}` : `chat-status-dot term-${session.status || 'none'}`;
 
     return (
         <div
@@ -288,8 +275,6 @@ export function SessionRow({
                     </span>
                 )}
             </div>
-
-            <span class={statusClass} />
 
             <div class="chat-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
                 <FsRowActionsMenu

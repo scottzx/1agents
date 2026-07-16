@@ -248,7 +248,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 workspacePath={activeWorkspace?.path || ''}
                                 sessionName={activeSession?.name || ''}
                                 agentType={activeSession && isChat(activeSession) ? activeSession.agentType : undefined}
-                                sessionRole={activeSession && isChat(activeSession) ? activeSession.role : undefined}
+                                sessionStatus={
+                                    activeSession && isChat(activeSession)
+                                        ? sess.liveSessionStatus.value[activeSession.id] ?? activeSession.status
+                                        : undefined
+                                }
                                 connection={
                                     activeSession && isChat(activeSession)
                                         ? sess.liveSessionConnection.value[activeSession.id] ?? 'idle'

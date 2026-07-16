@@ -51,7 +51,8 @@ interface WorkspaceHeaderProps {
      * for terminal/tasks views, which fall back to just the name group.
      */
     agentType?: AgentType;
-    sessionRole?: string;
+    /** Active session run status for the agent avatar indicator. */
+    sessionStatus?: string;
     connection?: ConnectionState;
     /**
      * When set, overrides the default session/entity title with a fixed
@@ -100,7 +101,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         language,
         onBack,
         agentType,
-        sessionRole,
+        sessionStatus,
         connection,
         customCrumbs,
         showControls = true,
@@ -389,7 +390,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     ) : (
                         <div class={`header-title-group${isEntityCtx ? ' header-crumb-group' : ''}`}>
                             {agentType && (
-                                <AgentAvatar agentType={agentType} role={sessionRole} class="header-agent-avatar" />
+                                <AgentAvatar agentType={agentType} status={sessionStatus} class="header-agent-avatar" />
                             )}
                             {isEntityCtx ? (
                                 <CrumbTrail crumbs={entityCrumbs} />

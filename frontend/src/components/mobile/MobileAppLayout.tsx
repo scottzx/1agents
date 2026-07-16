@@ -697,8 +697,12 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                                                                             sessionAgent
                                                                                         ] || sessionAgent
                                                                                     }
-                                                                                    role={
-                                                                                        isChat(s) ? s.role : undefined
+                                                                                    status={
+                                                                                        isChat(s)
+                                                                                            ? sess.liveSessionStatus
+                                                                                                  .value[s.id] ??
+                                                                                              s.status
+                                                                                            : s.status
                                                                                     }
                                                                                     class="session-card-avatar"
                                                                                 />
@@ -803,8 +807,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         agentType={
                                             activeSession && isChat(activeSession) ? activeSession.agentType : undefined
                                         }
-                                        sessionRole={
-                                            activeSession && isChat(activeSession) ? activeSession.role : undefined
+                                        sessionStatus={
+                                            activeSession && isChat(activeSession)
+                                                ? sess.liveSessionStatus.value[activeSession.id] ?? activeSession.status
+                                                : undefined
                                         }
                                         connection={
                                             activeSession && isChat(activeSession)

@@ -79,7 +79,7 @@ export class SessionCreateModal extends Component<SessionCreateModalProps> {
                         </p>
                         <label class="ws-modal-label">{t('newchat.role.aria', lang)}</label>
                         <div class="ws-modal-role-row">
-                            <AgentAvatar agentType={agentType} role={role || 'general'} />
+                            <AgentAvatar agentType={agentType} />
                             <select
                                 class="ws-modal-select"
                                 value={role}
