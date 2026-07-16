@@ -5034,25 +5034,56 @@ body {
     }
   }
 
-  /* ── expanded detail panel ── */
+  /* ── expanded detail panel (rendered as a half-screen drawer) ── */
+  // Backdrop: a pseudo-element on the milestone-view container that fades in
+  // whenever the detail panel is mounted (CSS :has() detects the descendant).
+  // Click on it = falls through to the milestone card, collapsing the panel.
+  &:has(> .milestone-detail)::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.32);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 90;
+    // pointer-events: none lets clicks pass through to the milestone cards
+    // underneath, so users can still toggle via the same card click that opens
+    // the drawer (no separate close gesture needed).
+    pointer-events: none;
+    animation: fadeIn 0.22s ease-out;
+  }
+
   .milestone-detail {
-    border: 1px solid var(--border-color);
-    border-radius: var(--bento-radius, 10px);
+    // Half-screen drawer: fixed to the right edge, ~50% viewport width. The
+    // shadow + z-index put it above the rest of the milestone tree. The
+    // design system treats drawer/modal as genuinely floating overlays, so
+    // shadow here is for elevation, not decoration.
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 50vw;
+    min-width: 480px;
+    max-width: 720px;
     background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
-    // Don't let the flex column squeeze the detail below its natural height —
-    // otherwise overflow:hidden clips the task rows and they can't be scrolled
-    // to. Kept full height, the body's own max-height/overflow drives the scroll.
-    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    z-index: 91;
+    animation: drawerSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 
     .milestone-detail-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 12px 16px;
+      padding: 18px 24px 14px;
       border-bottom: 1px solid var(--border-color);
       background-color: var(--bg-panel);
+      flex-shrink: 0;
     }
     .milestone-detail-context {
       display: flex;
@@ -5065,7 +5096,7 @@ body {
         color: var(--text-muted);
 
         &.cur {
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 700;
           color: var(--text-main);
         }
@@ -5098,9 +5129,9 @@ body {
       }
 
       button {
-        padding: 4px 10px;
+        padding: 4px 14px;
         font-size: 12px;
-        border-radius: var(--bento-radius-sm, 8px);
+        border-radius: 999px;
         border: 1px solid var(--border-color);
         background-color: var(--bg-card);
         color: var(--text-secondary);
@@ -5117,28 +5148,30 @@ body {
       }
     }
     .milestone-detail-desc {
-      padding: 12px 16px;
+      padding: 14px 24px;
       font-size: 13px;
       line-height: 1.6;
       color: var(--text-secondary);
       border-bottom: 1px solid var(--border-color);
       white-space: pre-wrap;
+      flex-shrink: 0;
     }
     .milestone-detail-empty {
-      padding: 20px 16px;
+      padding: 32px 24px;
       font-size: 13px;
       color: var(--text-muted);
       text-align: center;
     }
     .milestone-form {
-      margin: 12px 16px;
+      margin: 12px 24px;
     }
   }
 
   .milestone-detail-body {
     display: flex;
     flex-direction: column;
-    max-height: 360px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
   }
 
@@ -5146,9 +5179,9 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 18px;
+    padding: 12px 24px;
     cursor: pointer;
-    border-bottom: 1px solid var(--border-glass, var(--border-color));
+    border-bottom: 1px solid var(--border-color);
     transition: background-color 0.15s, padding-left 0.15s;
 
     &:last-child {
@@ -5156,7 +5189,7 @@ body {
     }
     &:hover {
       background-color: var(--bg-sidebar-hover);
-      padding-left: 24px;
+      padding-left: 30px;
     }
 
     .milestone-task-title {
@@ -5169,6 +5202,25 @@ body {
         margin-right: 4px;
       }
     }
+  }
+}
+
+@keyframes drawerSlideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .milestone-detail {
+    width: 100vw !important;
+    min-width: 0 !important;
+    max-width: none !important;
   }
 }
 
@@ -11087,6 +11139,84 @@ body {
 }
 
 
+/* Unified SessionSetup modal (P0-2 / P0-3 of 统一新建会话, #116). Reuses the
+   .ws-modal primitive and overlays two additions:
+
+   1. .session-setup-modal — widens the panel a touch so the mode toggle and
+      terminal preset row sit comfortably without crowding the labels.
+   2. .session-setup-mode-toggle — a codex-minimal segmented pill (flat, hairline
+      divider, blue active fill). Resting surface is the page tone with a 1px
+      ink hairline; the active pill flips to --accent-color and --on-accent so
+      it reads as the primary action without ever lifting or glowing. Hover on
+      a non-active pill swaps to --text-main (the same ink-hairline rule used
+      by every other interactive card in the design system). */
+
+.session-setup-modal {
+  width: 420px;
+}
+
+.session-setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-setup-mode-toggle {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+
+  .session-setup-mode-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+
+    svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    &:hover:not(.active) {
+      color: var(--text-main);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--badge-glow);
+    }
+
+    &.active {
+      background: var(--accent-color);
+      color: var(--on-accent);
+    }
+  }
+
+  .session-setup-mode-label {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+  }
+}
+
+
 /* Skill push concurrent-edit conflict modal (issue #379). Reuses .ws-modal
    primitives (overlay/header/body/footer/input/cancel/confirm); this block
    only adds the description text, resolution radio choices, and error line. */
@@ -15630,7 +15760,9 @@ body {
   height: 28px;
   flex: 0 0 28px;
   border-radius: 6px;
-  overflow: hidden;
+  // Status badge sits on the corner — keep visible outside the logo box.
+  overflow: visible;
+  position: relative;
   background-color: var(--bg-panel);
   border: 1px solid var(--border-color);
   box-sizing: border-box;
@@ -15651,24 +15783,47 @@ body {
   }
 }
 
-/* Role classification — a colored ring around the avatar keyed to the
-   conversation role (declared at creation; see SessionRole). Baseline
-   ('general') gets none. Implemented as box-shadow (not border) so it wins
-   over the size-variant resets (`.chat-sidebar-avatar` sets
-   `border:none; box-shadow:none`) via the doubled-class specificity, and
-   so the ring sits outside the box without clipping the logo. Semantic tokens
-   only (adapt to light/dark). */
-.agent-avatar.agent-avatar--role-pm {
-  box-shadow: 0 0 0 2px var(--accent-color);
+/* Run-status indicator light — corner badge on the agent composite icon.
+   Replaces the former role-ring decoration. Palette mirrors the old sidebar
+   `.chat-status-dot` colors (none=hollow, idle=green, busy=blue wave,
+   waiting=orange, error=red, shell=purple). */
+.agent-avatar-status {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1.5px solid var(--bg-card);
+  pointer-events: none;
 }
-.agent-avatar.agent-avatar--role-pmo {
-  box-shadow: 0 0 0 2px var(--purple-fg);
+
+.agent-avatar-status--none {
+  background: transparent;
+  border-color: var(--border-color);
+  box-shadow: 0 0 0 1px var(--bg-card);
 }
-.agent-avatar.agent-avatar--role-executor {
-  box-shadow: 0 0 0 2px var(--orange-fg);
+
+.agent-avatar-status--idle {
+  background: var(--success-fg);
 }
-.agent-avatar.agent-avatar--role-verifier {
-  box-shadow: 0 0 0 2px var(--success-emphasis);
+
+.agent-avatar-status--busy {
+  background: var(--accent-color);
+  animation: chat-dot-wave 1.4s ease-in-out infinite;
+}
+
+.agent-avatar-status--waiting {
+  background: var(--orange-fg);
+}
+
+.agent-avatar-status--error {
+  background: var(--danger-fg);
+}
+
+.agent-avatar-status--shell {
+  background: var(--purple-fg);
 }
 
 // Agent avatar shown in the workspace header (merged-in chat status bar).
@@ -15677,6 +15832,8 @@ body {
   height: 24px;
   flex: 0 0 24px;
   border-radius: 5px;
+  overflow: visible;
+  position: relative;
 
   .agent-avatar-logo {
     width: 18px;
@@ -15686,6 +15843,11 @@ body {
   .agent-avatar-fallback {
     font-size: 9px;
     font-weight: 700;
+  }
+
+  .agent-avatar-status {
+    width: 7px;
+    height: 7px;
   }
 }
 
@@ -18847,7 +19009,9 @@ body {
   background: transparent;
   box-shadow: none;
   border-radius: 4px;
-  overflow: hidden;
+  // Status badge sits on the corner — must not clip.
+  overflow: visible;
+  position: relative;
 
   .agent-avatar-logo {
     width: 14px;
@@ -18861,6 +19025,15 @@ body {
     line-height: 1;
     color: var(--text-secondary);
   }
+
+  // Smaller corner light on the compact sidebar glyph.
+  .agent-avatar-status {
+    width: 6px;
+    height: 6px;
+    right: -2px;
+    bottom: -2px;
+    border-width: 1px;
+  }
 }
 
 // Generic terminal/shell glyph shown as the leading icon when a terminal
@@ -18870,6 +19043,8 @@ body {
   color: var(--text-sidebar-muted);
 }
 
+// Legacy trailing status-dot classes (status now lives on `.agent-avatar-status`).
+// Kept so any residual className bindings do not break styling mid-rollout.
 .chat-status-dot {
   display: inline-block;
   width: 6px;
@@ -18878,19 +19053,11 @@ body {
   margin-left: auto;
   flex-shrink: 0;
 }
-// Chat session status palette (chat-* mirrors terminal term-* naming):
-//   chat-none    = no messages yet → hollow ring
-//   chat-idle    = run finished / at rest → green
-//   chat-busy    = running → blue ripple wave animation
-//   chat-waiting = blocked on user action → orange-brown
-//   chat-error   = red
 .chat-status-dot.chat-none { background: transparent; border: 1.5px solid var(--border-color); }
 .chat-status-dot.chat-idle { background: var(--success-fg); }
 .chat-status-dot.chat-busy { background: var(--accent-color); animation: chat-dot-wave 1.4s ease-in-out infinite; }
 .chat-status-dot.chat-waiting { background: var(--orange-fg); }
 .chat-status-dot.chat-error { background: var(--danger-fg); }
-// Terminal status palette — same semantic colors as chat so both rows
-// read identically: none=hollow, idle=green, busy=blue wave, waiting=orange, shell=purple.
 .chat-status-dot.term-none { background: transparent; border: 1.5px solid var(--border-color); }
 .chat-status-dot.term-idle { background: var(--success-fg); }
 .chat-status-dot.term-busy { background: var(--accent-color); animation: chat-dot-wave 1.4s ease-in-out infinite; }
@@ -22045,134 +22212,6 @@ body {
 .gov-tpl-info { display: flex; flex-direction: column; gap: 2px; }
 .gov-tpl-name { font-size: 14px; color: var(--text-main); }
 .gov-tpl-kind { font-size: 11px; color: var(--text-muted); }
-
-// ── Vlog & Clip content studio (speech_clip) project-tab ─────────────────────
-.speech-clip { display: flex; flex-direction: column; gap: 12px; padding: 16px; height: 100%; box-sizing: border-box; min-height: 0; }
-.speech-clip-empty, .speech-clip-hint { color: var(--text-muted); font-size: 13px; padding: 12px; }
-.speech-clip-error { color: var(--danger-fg); background: rgba(var(--danger-rgb), 0.08); border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); padding: 8px 12px; font-size: 12px; }
-
-.speech-clip-hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--bento-radius-sm, 8px);
-  background: var(--bg-card);
-}
-.speech-clip-kicker {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 2px;
-}
-.speech-clip-hero h2 {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.25;
-  color: var(--text-main);
-}
-.speech-clip-hero p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-.speech-clip-metrics {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.speech-clip-metrics > div {
-  min-width: 64px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-.speech-clip-metrics strong {
-  font-size: 18px;
-  line-height: 1.2;
-  color: var(--text-main);
-}
-.speech-clip-metrics span {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.speech-clip-steps { display: flex; gap: 8px; }
-.speech-clip-step { flex: 1; text-align: center; padding: 8px 12px; font-size: 13px; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 999px; }
-.speech-clip-step.is-active { color: var(--on-accent); background: var(--accent-color); border-color: var(--accent-color); }
-.speech-clip-step.is-done { color: var(--accent-fg); border-color: var(--accent-color); }
-
-.speech-clip-import { display: flex; gap: 8px; align-items: center; }
-.speech-clip-input { flex: 1; padding: 8px 12px; font-size: 13px; color: var(--text-main); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 999px; }
-.speech-clip-input:focus { outline: none; border-color: var(--accent-color); }
-.speech-clip-input-label { flex: 0 0 200px; }
-
-.speech-clip-btn { padding: 8px 16px; font-size: 13px; color: var(--on-accent); background: var(--accent-color); border: 1px solid var(--accent-color); border-radius: 999px; cursor: pointer; }
-.speech-clip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.speech-clip-btn-sm { padding: 3px 10px; font-size: 12px; color: var(--text-main); background: transparent; border: 1px solid var(--border-color); border-radius: 999px; cursor: pointer; }
-.speech-clip-btn-sm:hover { border-color: var(--text-main); }
-.speech-clip-btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.speech-clip-body { display: flex; gap: 12px; flex: 1; min-height: 0; }
-.speech-clip-assets { flex: 0 0 240px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-.speech-clip-asset { padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); cursor: pointer; background: var(--bg-card); }
-.speech-clip-asset:hover { border-color: var(--text-main); }
-.speech-clip-asset.is-sel { border-color: var(--accent-color); }
-.speech-clip-asset-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.speech-clip-asset-label { font-size: 13px; color: var(--text-main); }
-.speech-clip-asset-id { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-.speech-clip-asset-status { font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px; }
-.speech-clip-asset-actions { display: flex; gap: 6px; }
-
-.speech-clip-table-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); overflow: hidden; }
-.speech-clip-table-head { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); }
-.speech-clip-table-scroll { flex: 1; overflow: auto; }
-.speech-clip-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.speech-clip-table th { position: sticky; top: 0; background: var(--bg-panel); color: var(--text-muted); font-weight: 500; font-size: 11px; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border-color); }
-.speech-clip-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-color); color: var(--text-main); vertical-align: top; }
-.speech-clip-table tr.is-picked { background: rgba(var(--accent-rgb), 0.06); }
-.speech-clip-td-pick { width: 36px; text-align: center; }
-.speech-clip-td-time { width: 56px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
-.speech-clip-td-src { width: 48px; color: var(--text-muted); font-family: var(--font-mono); }
-.speech-clip-td-reason { width: 160px; color: var(--text-secondary); font-size: 12px; }
-.speech-clip-orig { color: var(--text-secondary); }
-.speech-clip-corr { color: var(--text-main); margin-top: 2px; }
-.speech-clip-btn-rec { color: var(--danger-fg); background: transparent; border-color: var(--danger-fg); }
-.speech-clip-btn-recording { color: var(--on-accent); background: var(--danger-emphasis, var(--danger-fg)); border-color: var(--danger-fg); animation: speech-clip-pulse 1.2s ease-in-out infinite; }
-@keyframes speech-clip-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.65; } }
-.speech-clip-busy { font-size: 12px; color: var(--text-muted); align-self: center; }
-
-// ── speech-clip: preview zone + timeline controls (#19) ──────────────────────
-.speech-clip-preview-zone { display: flex; flex-direction: column; gap: 6px; }
-.speech-clip-preview-header { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-.speech-clip-preview-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
-.speech-clip-preview-error { font-size: 12px; color: var(--danger-fg); background: rgba(var(--danger-rgb), 0.08); border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); padding: 6px 10px; }
-.speech-clip-remotion-preview { background: #1a1a1a; border-radius: var(--bento-radius-sm, 8px); overflow: hidden; }
-
-.speech-clip-timeline { display: flex; flex-direction: column; gap: 6px; }
-.speech-clip-timeline-actions { display: flex; gap: 8px; align-items: center; }
-.speech-clip-timeline-panel { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--bento-radius-sm, 8px); font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border-color); }
-.speech-clip-timeline-panel.is-draft { border-color: var(--warning-fg, #d97706); background: rgba(var(--warning-rgb, 217,119,6), 0.06); }
-.speech-clip-timeline-panel.is-saved { border-color: var(--success-fg, #16a34a); background: rgba(var(--success-rgb, 22,163,74), 0.06); }
-
-.speech-clip-timeline-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
-.speech-clip-timeline-badge.is-draft { color: var(--warning-fg, #d97706); background: rgba(var(--warning-rgb, 217,119,6), 0.12); }
-.speech-clip-timeline-badge.is-saved { color: var(--success-fg, #16a34a); background: rgba(var(--success-rgb, 22,163,74), 0.12); }
-.speech-clip-timeline-badge.is-loading { color: var(--text-muted); background: var(--bg-panel); }
-.speech-clip-timeline-badge.is-empty { color: var(--text-muted); background: var(--bg-panel); }
-.speech-clip-timeline-badge.is-invalid { color: var(--danger-fg); background: rgba(var(--danger-rgb), 0.12); }
-
-.speech-clip-timeline-skipped { border: 1px solid var(--border-color); border-radius: var(--bento-radius-sm, 8px); padding: 8px 10px; background: var(--bg-card); }
-.speech-clip-timeline-skipped-title { font-size: 12px; color: var(--warning-fg, #d97706); margin-bottom: 4px; }
-.speech-clip-timeline-skipped-row { display: flex; gap: 10px; align-items: baseline; font-size: 12px; color: var(--text-secondary); padding: 2px 0; }
 
 // 项目设置：标签页显隐勾选
 .settings-row-block { flex-direction: column; align-items: stretch; gap: 12px; }
