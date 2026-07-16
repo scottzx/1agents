@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,7 +114,13 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, dir string) error {
 	}
 	cmd := exec.CommandContext(ctx, "npx", "tsx", "bridge-server.js")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "ACPX_PORT="+acpxPort)
+	cmd.Env = os.Environ()
+	if home, err := os.UserHomeDir(); err != nil {
+		log.Printf("[acpx-sup] Unable to resolve user home for agent PATH: %v", err)
+	} else {
+		cmd.Env = acpxEnvironment(cmd.Env, home)
+	}
+	cmd.Env = append(cmd.Env, "ACPX_PORT="+acpxPort)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -143,4 +150,40 @@ func (s *AcpxSupervisor) stopProcess() {
 		log.Println("[acpx-sup] Sending SIGINT to acpx-server...")
 		_ = s.cmd.Process.Signal(os.Interrupt)
 	}
+}
+
+func acpxEnvironment(base []string, home string) []string {
+	pathValue := ""
+	for _, entry := range base {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok && name == "PATH" {
+			pathValue = value
+			break
+		}
+	}
+
+	paths := []string{
+		filepath.Join(home, ".local", "bin"),
+		filepath.Join(home, ".grok", "bin"),
+	}
+	if pathValue != "" {
+		paths = append(paths, strings.Split(pathValue, string(os.PathListSeparator))...)
+	}
+
+	seen := make(map[string]struct{}, len(paths))
+	unique := paths[:0]
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		unique = append(unique, path)
+	}
+
+	return mergeEnvironment(base, map[string]string{
+		"PATH": strings.Join(unique, string(os.PathListSeparator)),
+	})
 }
