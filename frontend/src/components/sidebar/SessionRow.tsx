@@ -191,8 +191,8 @@ function buildSessionActions(session: Session, props: SessionRowProps): FsRowAct
  * Unified sidebar session row. A single `.chat-item` template renders both chat
  * and terminal sessions with the same shape — agent avatar (with run-status
  * indicator) + title + "..." actions menu. The `session.kind` discriminator
- * only selects the leading icon source; rename / archive actions are shared
- * via the trailing `.chat-actions-trigger` dropdown.
+ * Archive/close is a dedicated button (high-frequency); rename / fork / delete
+ * stay in the "..." dropdown.
  */
 export function SessionRow({
     session,
@@ -277,6 +277,23 @@ export function SessionRow({
             </div>
 
             <div class="chat-actions" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                <button
+                    type="button"
+                    class="fb-row-action-btn chat-actions-archive"
+                    title={
+                        isChat(session)
+                            ? t('sidebar.archiveSession', language)
+                            : t('sidebar.closeSession', language)
+                    }
+                    aria-label={
+                        isChat(session)
+                            ? t('sidebar.archiveSession', language)
+                            : t('sidebar.closeSession', language)
+                    }
+                    onClick={(e: MouseEvent) => onKill(e, session)}
+                >
+                    {SESSION_ACTION_ICONS.archive}
+                </button>
                 <FsRowActionsMenu
                     entry={session as unknown as { path?: string }}
                     items={buildSessionActions(session, {

@@ -1409,7 +1409,8 @@ body {
           gap: 2px;
           flex-shrink: 0;
 
-          .chat-actions-trigger {
+          .chat-actions-trigger,
+          .chat-actions-archive {
             width: 18px;
             height: 18px;
 
