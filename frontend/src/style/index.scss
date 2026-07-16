@@ -5050,26 +5050,32 @@ body {
   }
 
   .milestone-detail {
-    // Half-screen drawer: fixed to the right edge, ~50% viewport width. The
-    // shadow + z-index put it above the rest of the milestone tree. The
-    // design system treats drawer/modal as genuinely floating overlays, so
-    // shadow here is for elevation, not decoration.
+    // Bottom-anchored sheet that slides up over the milestone tree. Spans
+    // the full width so it works on any viewport size; the .task-preview
+    // popup inside still centers within it. Shadow + z-index keep it above
+    // the rest of the panel.
     position: fixed;
-    top: 0;
+    top: auto;
     right: 0;
     bottom: 0;
-    width: 50vw;
-    min-width: 480px;
-    max-width: 720px;
+    left: 0;
+    width: 100%;
+    height: 60vh;
+    min-height: 320px;
+    max-height: 80vh;
     background-color: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 0;
+    border-top: 1px solid var(--border-color);
+    border-top-left-radius: var(--bento-radius-lg, 14px);
+    border-top-right-radius: var(--bento-radius-lg, 14px);
+    border-bottom: none;
+    border-left: none;
+    border-right: none;
     box-shadow: var(--shadow-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     z-index: 91;
-    animation: drawerSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: drawerSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 
     .milestone-detail-head {
       display: flex;
@@ -5201,47 +5207,12 @@ body {
   }
 }
 
-@keyframes drawerSlideIn {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
 @keyframes drawerSlideUp {
   from {
     transform: translateY(100%);
   }
   to {
     transform: translateY(0);
-  }
-}
-
-@media (max-width: 768px) {
-  // On narrow viewports the 50vw right-side drawer crowds out the rest of
-  // the UI; switch to a bottom-up sheet that takes the full width and
-  // ~60-80% height instead.
-  .milestone-detail {
-    top: auto;
-    right: 0;
-    left: 0;
-    width: 100vw;
-    min-width: 0;
-    max-width: none;
-    height: 60vh;
-    min-height: 320px;
-    max-height: 80vh;
-    border-top: 1px solid var(--border-color);
-    border-top-left-radius: var(--bento-radius-lg, 14px);
-    border-top-right-radius: var(--bento-radius-lg, 14px);
-    border-left: none;
-    border-right: none;
-    border-bottom: none;
-    animation: drawerSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 
