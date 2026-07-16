@@ -32,8 +32,8 @@ func scanMilestone(r rowScanner) (Milestone, error) {
 }
 
 // ListMilestones returns the project's milestones in roadmap order (position,
-// then creation), each enriched with live task counts (total / completed) by
-// joining tasks on the milestone name. Empty milestones report 0/0.
+// then creation), each enriched with live executable-task counts (total / completed).
+// Issue items (requirement/bug/discussion) excluded; parent req no longer freezes at N-1/N.
 func (s *TaskStore) ListMilestones(workspacePath string) ([]Milestone, error) {
 	projectID, err := s.db.projectIDByPath(workspacePath)
 	if err != nil {
@@ -53,9 +53,10 @@ func (s *TaskStore) ListMilestones(workspacePath string) ([]Milestone, error) {
 	rows, err := s.db.sql.Query(`
 		SELECT `+milestoneCols+`,
 			(SELECT COUNT(1) FROM tasks t
-			   WHERE t.project_id = m.project_id AND t.milestone = m.name) AS total,
+			   WHERE t.project_id = m.project_id AND t.milestone = m.name AND (t.type = 'task' OR t.type = '')) AS total,
 			(SELECT COUNT(1) FROM tasks t
 			   WHERE t.project_id = m.project_id AND t.milestone = m.name
+			     AND (t.type = 'task' OR t.type = '')
 			     AND t.status = 'completed') AS completed
 		FROM milestones m
 		WHERE m.project_id = ?

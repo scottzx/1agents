@@ -46,7 +46,7 @@ var toolDefs = []map[string]any{
 	},
 	{
 		"name":        "list_milestones",
-		"description": "List the project's milestones in roadmap order, each with its target date, position, and task counts (total and completed). Use this to plan and group decomposed work into stages.",
+		"description": "List the project's milestones in roadmap order, each with its target date, position, and executable-task counts (total/completed; requirements/bugs excluded). Use this to plan and group decomposed work into stages.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	},
 	{

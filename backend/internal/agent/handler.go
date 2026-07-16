@@ -798,7 +798,20 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			target.Description = *body.Description
 		}
 		if body.IssueState != nil {
+			prevIssue := target.IssueState
 			target.IssueState = IssueState(*body.IssueState)
+			// Keep status aligned with scheduler auto-close when only issueState is set.
+			if body.Status == nil && target.IssueState == IssueClosed && target.Status != TaskStatusCompleted && target.Status != TaskStatusCancelled {
+				now := time.Now().UTC()
+				target.Status = TaskStatusCompleted
+				if target.CompletedAt == nil {
+					target.CompletedAt = &now
+				}
+			}
+			if body.Status == nil && prevIssue == IssueClosed && target.IssueState == IssueOpen && target.Status == TaskStatusCompleted {
+				target.Status = TaskStatusPending
+				target.CompletedAt = nil
+			}
 		}
 		if body.Status != nil {
 			// #132: this PATCH is the human-override lane (the board sets only the

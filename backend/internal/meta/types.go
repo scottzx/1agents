@@ -565,8 +565,8 @@ type Milestone struct {
 	PredecessorID string    `json:"predecessorId,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
-	// Total / Completed are computed by joining tasks on Name at list time
-	// (not persisted), so the roadmap can render a progress bar per stage.
+	// Total / Completed are computed at list time (not persisted): only executable tasks (type=task).
+	// Requirements/bugs/discussions are excluded (close via issueState).
 	Total     int `json:"total"`
 	Completed int `json:"completed"`
 }

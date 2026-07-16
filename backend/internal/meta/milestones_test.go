@@ -187,3 +187,38 @@ func TestMilestoneOrphanSelfHeal(t *testing.T) {
 		t.Fatalf("orphan not healed: %+v", list)
 	}
 }
+
+func TestMilestoneCountsExcludeIssueItems(t *testing.T) {
+	s := NewTaskStore(newTestDB(t))
+	ws := t.TempDir()
+	if _, err := s.CreateMilestone(ws, "M1", "", nil, ""); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	err := s.Mutate(ws, func(cfg *TasksConfig) bool {
+		now := time.Now().UTC()
+		cfg.Tasks = append(cfg.Tasks,
+			Task{ID: "req", Title: "parent req", Type: TaskTypeRequirement, Milestone: "M1",
+				Status: TaskStatusPending, IssueState: IssueClosed, CreatedAt: now, UpdatedAt: now},
+			Task{ID: "bug", Title: "a bug", Type: TaskTypeBug, Milestone: "M1",
+				Status: TaskStatusPending, IssueState: IssueOpen, CreatedAt: now, UpdatedAt: now},
+			Task{ID: "t1", Title: "done task", Type: TaskTypeTask, Milestone: "M1",
+				Status: TaskStatusCompleted, IssueState: IssueOpen, CreatedAt: now, UpdatedAt: now},
+			Task{ID: "t2", Title: "open task", Type: TaskTypeTask, Milestone: "M1",
+				Status: TaskStatusPending, IssueState: IssueOpen, CreatedAt: now, UpdatedAt: now},
+		)
+		return true
+	})
+	if err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+	list, err := s.ListMilestones(ws)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("list len = %d, want 1", len(list))
+	}
+	if list[0].Total != 2 || list[0].Completed != 1 {
+		t.Fatalf("M1 counts = %d/%d, want 1/2", list[0].Completed, list[0].Total)
+	}
+}
