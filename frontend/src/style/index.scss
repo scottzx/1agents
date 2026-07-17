@@ -14541,7 +14541,9 @@ body {
     }
   }
 
-  // Custom Clean State Card
+  // Clean working-tree banner. Standalone (non-interactive) keeps a light card;
+  // nested inside .git-commit-box it becomes a flush section body above the
+  // collapsible "提交说明" header — no second outer chrome.
   .git-clean-state-card {
     padding: 40px 24px;
     text-align: center;
@@ -14556,7 +14558,7 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 
     .git-clean-illustration {
-      color: var(--success-fg); // Green theme
+      color: var(--success-fg);
       margin-bottom: 16px;
       svg {
         width: 36px;
@@ -14602,6 +14604,24 @@ body {
         background-color: var(--border-color);
         border-color: var(--text-muted);
       }
+    }
+  }
+
+  // Unified commit section body: optional clean banner + commit form.
+  .git-commit-box {
+    .git-section-body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    &.is-clean .git-section-body > .git-clean-state-card {
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: none;
+      background: transparent;
+      padding: 28px 20px 20px;
     }
   }
 
@@ -15275,12 +15295,12 @@ body {
     margin-bottom: 2px;
   }
 
-  // Commit box collapsible body
+  // Commit form (textarea + actions) inside .git-section-body
   .git-commit-box-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 4px 16px 8px;
+    padding: 4px 16px 12px;
   }
 
   // Graph row ref count badge (compact: branch icon + count)

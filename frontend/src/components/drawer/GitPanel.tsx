@@ -1448,7 +1448,19 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
-    renderCleanState() {
+    /** Working tree has no staged / unstaged / untracked files. */
+    isWorkingTreeClean(): boolean {
+        const activeStatus = this.activeStatus();
+        if (!activeStatus?.isRepo) return false;
+        return (
+            (activeStatus.staged || []).length === 0 &&
+            (activeStatus.unstaged || []).length === 0 &&
+            (activeStatus.untracked || []).length === 0
+        );
+    }
+
+    /** Clean-tree illustration + refresh (used alone or inside the commit section). */
+    renderCleanStateCard() {
         const { language } = this.props;
         return (
             <div class="git-clean-state-card">
@@ -1493,7 +1505,12 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const staged = activeStatus.staged || [];
         const unstaged = activeStatus.unstaged || [];
         const untracked = activeStatus.untracked || [];
-        if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) return this.renderCleanState();
+        // Clean tree is shown inside the unified commit section (or alone when
+        // the panel is read-only / non-interactive).
+        if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) {
+            if (this.isInteractive()) return null;
+            return this.renderCleanStateCard();
+        }
 
         return (
             <div class="git-sections-container">
@@ -1522,6 +1539,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
+    /**
+     * Unified commit section: clean-state card (when tree is clean) + collapsible
+     * "提交说明" dropdown with message input and commit/push/pull actions.
+     */
     renderCommitBox() {
         if (!this.isInteractive()) return null;
         const { commitMsg, committing, pushPullLoading, commitBoxCollapsed } = this.state;
@@ -1529,9 +1550,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const staged = this.activeStatus()?.staged || [];
         const stagedCount = staged.length;
         const hasStaged = stagedCount > 0;
+        const isClean = this.isWorkingTreeClean();
 
         return (
-            <div class="git-section git-commit-box">
+            <div class={`git-section git-commit-box${isClean ? ' is-clean' : ''}`}>
                 <div
                     class="git-section-header git-section-header-clickable"
                     onClick={() => this.setState({ commitBoxCollapsed: !commitBoxCollapsed })}
@@ -1539,68 +1561,72 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     <span class="git-section-title">
                         {IconChevron(!commitBoxCollapsed)}
                         {t('git.commit.sectionTitle', language)}
+                        {hasStaged && <span class="git-section-count">{stagedCount}</span>}
                     </span>
                 </div>
                 {!commitBoxCollapsed && (
-                    <div class="git-commit-box-body">
-                        <textarea
-                            class="git-commit-input"
-                            placeholder={t(
-                                hasStaged ? 'git.commit.placeholderReady' : 'git.commit.placeholderEmpty',
-                                language
-                            )}
-                            disabled={!hasStaged}
-                            value={commitMsg}
-                            onInput={e => this.setState({ commitMsg: (e.target as HTMLTextAreaElement).value })}
-                            onKeyDown={(e: KeyboardEvent) => {
-                                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') this.commit();
-                            }}
-                            rows={2}
-                        />
-                        <div class="git-commit-actions">
-                            <button
-                                class="git-ai-commit-btn"
-                                onClick={this.generateAICommit}
-                                disabled={!hasStaged || this.state.aiLoading}
-                                title={t('git.commit.aiTitle', language)}
-                            >
-                                {this.state.aiLoading ? <div class="git-spinner" /> : IconSparkles}
-                            </button>
-                            <button
-                                class="git-commit-btn"
-                                onClick={this.commit}
-                                disabled={!hasStaged || !commitMsg.trim() || committing}
-                                title={t('git.commit.submitTitle', language)}
-                            >
-                                {committing ? (
-                                    t('git.commit.committing', language)
-                                ) : (
-                                    <Fragment>
-                                        {IconCommit}
-                                        <span>
-                                            {t('git.commit.commitLabel', language, {
-                                                n: stagedCount > 0 ? ` (${stagedCount})` : '',
-                                            })}
-                                        </span>
-                                    </Fragment>
+                    <div class="git-section-body">
+                        {isClean && this.renderCleanStateCard()}
+                        <div class="git-commit-box-body">
+                            <textarea
+                                class="git-commit-input"
+                                placeholder={t(
+                                    hasStaged ? 'git.commit.placeholderReady' : 'git.commit.placeholderEmpty',
+                                    language
                                 )}
-                            </button>
-                            <button
-                                class="git-push-btn"
-                                onClick={() => this.pushOrPull('push')}
-                                disabled={pushPullLoading !== null}
-                                title={t('git.action.push', language)}
-                            >
-                                {pushPullLoading === 'push' ? <div class="git-spinner" /> : IconPush}
-                            </button>
-                            <button
-                                class="git-pull-btn"
-                                onClick={() => this.pushOrPull('pull')}
-                                disabled={pushPullLoading !== null}
-                                title={t('git.action.pull', language)}
-                            >
-                                {pushPullLoading === 'pull' ? <div class="git-spinner" /> : IconPull}
-                            </button>
+                                disabled={!hasStaged}
+                                value={commitMsg}
+                                onInput={e => this.setState({ commitMsg: (e.target as HTMLTextAreaElement).value })}
+                                onKeyDown={(e: KeyboardEvent) => {
+                                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') this.commit();
+                                }}
+                                rows={2}
+                            />
+                            <div class="git-commit-actions">
+                                <button
+                                    class="git-ai-commit-btn"
+                                    onClick={this.generateAICommit}
+                                    disabled={!hasStaged || this.state.aiLoading}
+                                    title={t('git.commit.aiTitle', language)}
+                                >
+                                    {this.state.aiLoading ? <div class="git-spinner" /> : IconSparkles}
+                                </button>
+                                <button
+                                    class="git-commit-btn"
+                                    onClick={this.commit}
+                                    disabled={!hasStaged || !commitMsg.trim() || committing}
+                                    title={t('git.commit.submitTitle', language)}
+                                >
+                                    {committing ? (
+                                        t('git.commit.committing', language)
+                                    ) : (
+                                        <Fragment>
+                                            {IconCommit}
+                                            <span>
+                                                {t('git.commit.commitLabel', language, {
+                                                    n: stagedCount > 0 ? ` (${stagedCount})` : '',
+                                                })}
+                                            </span>
+                                        </Fragment>
+                                    )}
+                                </button>
+                                <button
+                                    class="git-push-btn"
+                                    onClick={() => this.pushOrPull('push')}
+                                    disabled={pushPullLoading !== null}
+                                    title={t('git.action.push', language)}
+                                >
+                                    {pushPullLoading === 'push' ? <div class="git-spinner" /> : IconPush}
+                                </button>
+                                <button
+                                    class="git-pull-btn"
+                                    onClick={() => this.pushOrPull('pull')}
+                                    disabled={pushPullLoading !== null}
+                                    title={t('git.action.pull', language)}
+                                >
+                                    {pushPullLoading === 'pull' ? <div class="git-spinner" /> : IconPull}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
