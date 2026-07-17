@@ -231,14 +231,17 @@ const IconSparkles = (
     </svg>
 );
 
-const IconOpen = (
+const IconOpenEl = () => (
     <svg
+        width="12"
+        height="12"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         stroke-width="2"
         stroke-linecap="round"
         stroke-linejoin="round"
+        aria-hidden="true"
     >
         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
         <polyline points="15 3 21 3 21 9" />
@@ -1294,14 +1297,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         <div class="git-file-actions">
                             {file.status !== 'D' && file.status !== '?' && (
                                 <button
-                                    class="git-action-btn"
+                                    class="git-action-btn git-action-open"
                                     onClick={e => {
                                         e.stopPropagation();
                                         this.openFile(file.path, file.status);
                                     }}
                                     title={t('git.action.openFile', language)}
                                 >
-                                    {IconOpen}
+                                    {IconOpenEl()}
                                 </button>
                             )}
                             {section === 'staged' ? (
@@ -1801,14 +1804,14 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                                             <span class="git-commit-file-path">{f.path}</span>
                                                             {f.status !== 'D' && (
                                                                 <button
-                                                                    class="git-action-btn"
+                                                                    class="git-action-btn git-action-open"
                                                                     onClick={e => {
                                                                         e.stopPropagation();
                                                                         this.openFile(f.path, f.status);
                                                                     }}
                                                                     title={t('git.action.openFile', language)}
                                                                 >
-                                                                    {IconOpen}
+                                                                    {IconOpenEl()}
                                                                 </button>
                                                             )}
                                                         </div>

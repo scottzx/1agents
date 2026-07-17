@@ -14577,45 +14577,57 @@ body {
       align-items: center;
       gap: 4px;
       transition: opacity 0.15s;
+    }
+  }
 
-      .git-action-btn {
-        background: none;
-        border: none;
-        color: var(--text-muted);
-        cursor: pointer;
-        width: 22px;
-        height: 22px;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s;
+  // Shared action icon button (file rows + commit file rows)
+  .git-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin: 0;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
 
-        svg {
-          width: 12px;
-          height: 12px;
-        }
+    svg {
+      width: 12px !important;
+      height: 12px !important;
+      min-width: 12px;
+      min-height: 12px;
+      display: block;
+    }
 
-        &:hover {
-          background-color: var(--border-color);
-          color: var(--text-main);
-        }
+    &:hover {
+      background-color: var(--border-color);
+      color: var(--text-main);
+    }
 
-        &.git-action-stage:hover {
-          color: var(--success-fg);
-          background-color: rgba(var(--success-rgb), 0.1);
-        }
+    &.git-action-stage:hover {
+      color: var(--success-fg);
+      background-color: rgba(var(--success-rgb), 0.1);
+    }
 
-        &.git-action-unstage:hover {
-          color: var(--danger-fg);
-          background-color: rgba(var(--danger-rgb), 0.1);
-        }
+    &.git-action-unstage:hover {
+      color: var(--danger-fg);
+      background-color: rgba(var(--danger-rgb), 0.1);
+    }
 
-        &.git-action-discard:hover {
-          color: var(--danger-fg);
-          background-color: rgba(var(--danger-rgb), 0.12);
-        }
-      }
+    &.git-action-discard:hover {
+      color: var(--danger-fg);
+      background-color: rgba(var(--danger-rgb), 0.12);
+    }
+
+    &.git-action-open:hover {
+      color: var(--accent-color);
+      background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
     }
   }
 
@@ -15450,8 +15462,17 @@ body {
     font-size: 12px;
     cursor: pointer;
 
+    .git-action-btn {
+      margin-left: auto;
+      opacity: 0;
+    }
+
     &:hover {
       background: var(--btn-hover);
+
+      .git-action-btn {
+        opacity: 1;
+      }
     }
   }
 
