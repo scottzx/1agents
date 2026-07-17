@@ -140,13 +140,14 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, rec)
 	case http.MethodPatch:
-		// PATCH body: { "permission_mode": "approve-reads" | "approve-all" | "deny-all" | "auto" }
-		// Used by the Composer's permission-mode toggle. Validates the
-		// enum to keep bad client data out of the JSON store (since the
-		// bridge-server later trusts this string).
+		// PATCH body fields (all optional, at least one required for a useful call):
+		//   permission_mode: "approve-reads" | "approve-all" | "deny-all" | "auto"
+		//   archived: true|false
+		//   name: user-chosen session title (sets user_named so AI auto-title won't overwrite)
 		var body struct {
 			PermissionMode *string `json:"permission_mode,omitempty"`
 			Archived       *bool   `json:"archived,omitempty"`
+			Name           *string `json:"name,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -175,6 +176,24 @@ func (h *Handler) HandleSessionsItem(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				log.Printf("[agent] set archived %s: %v", id, err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.Name != nil {
+			name := strings.TrimSpace(*body.Name)
+			if name == "" {
+				http.Error(w, "name must not be empty", http.StatusBadRequest)
+				return
+			}
+			// UpdateName flips user_named=1 so list/get AI-title resolution
+			// will not overwrite the user's chosen title (#94).
+			if err := h.store.UpdateName(id, name); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("[agent] update name %s: %v", id, err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}

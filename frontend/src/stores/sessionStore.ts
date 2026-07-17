@@ -819,10 +819,23 @@ export const submitRenameSession = async () => {
     const sessionRenameTarget = modal.sessionRenameTarget.value;
     if (!sessionRenameTarget) return;
     const trimmed = modal.sessionRenameName.value.trim();
+    if (!trimmed) return;
     try {
-        await terminalService.rename(sessionRenameTarget.id, trimmed);
+        if (isChat(sessionRenameTarget)) {
+            // Chat sessions live in the agent index, not tmux.
+            const updated = await agentService.rename(sessionRenameTarget.id, trimmed);
+            chatSessions.value = chatSessions.value.map(c =>
+                c.id === sessionRenameTarget.id ? { ...c, name: updated.name || trimmed } : c
+            );
+            if (activeSession.value && isChat(activeSession.value) && activeSession.value.id === sessionRenameTarget.id) {
+                activeSession.value = { ...activeSession.value, name: updated.name || trimmed };
+            }
+            mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+        } else {
+            await terminalService.rename(sessionRenameTarget.id, trimmed);
+            await loadTerminals();
+        }
         modal.closeSessionRenameModal();
-        await loadTerminals();
         ui.showToast(t('app.toast.sessionRenamed', ui.language.value));
     } catch (err) {
         ui.showToast(t('app.toast.sessionRenameFailed', ui.language.value, { err: String(err) }));

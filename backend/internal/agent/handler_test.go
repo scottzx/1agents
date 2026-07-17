@@ -357,6 +357,60 @@ func TestManualStatusOverrideLeavesAuditTrail(t *testing.T) {
 	}
 }
 
+// TestHandlerPatchRename covers the sidebar "重命名会话" path: PATCH
+// /api/agent/sessions/{id} with {"name":"..."} must persist the title and
+// set user_named so subsequent list/get won't overwrite it with AI titles.
+func TestHandlerPatchRename(t *testing.T) {
+	h, s := newTestHandler(t)
+
+	rec := ChatSessionRecord{
+		ID:          "rename-1",
+		WorkspaceID: "ws-1",
+		Name:        "新建会话",
+		AgentType:   AgentTypeClaudecode,
+	}
+	if err := s.Add(rec); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	const newName = "我的项目会话"
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/agent/sessions/"+rec.ID,
+		strings.NewReader(`{"name":"`+newName+`"}`))
+	h.HandleSessionsItem(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rr.Code, rr.Body.String())
+	}
+	var got ChatSessionRecord
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Name != newName {
+		t.Fatalf("name = %q, want %q", got.Name, newName)
+	}
+	if !got.UserNamed {
+		t.Fatalf("user_named should be true after rename")
+	}
+
+	// Empty / whitespace-only name is rejected.
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/agent/sessions/"+rec.ID,
+		strings.NewReader(`{"name":"   "}`))
+	h.HandleSessionsItem(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("empty name status %d, want 400", rr.Code)
+	}
+
+	// Name is unchanged after the rejected patch.
+	stored, ok, err := s.Get(rec.ID)
+	if err != nil || !ok {
+		t.Fatalf("Get after reject: ok=%v err=%v", ok, err)
+	}
+	if stored.Name != newName {
+		t.Fatalf("name mutated by rejected patch: %q", stored.Name)
+	}
+}
+
 // TestSessionUserRenamePreservedByList covers #94: a session whose name the
 // user set to something that matches the default "会话"-suffix pattern (and
 // therefore would have been overwritten by the list endpoint's AI title

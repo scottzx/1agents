@@ -112,6 +112,22 @@ export const agentService = {
     },
 
     /**
+     * PATCH /api/agent/sessions/{id} with {name}
+     *
+     * Renames a chat session. Backend sets user_named so AI auto-title will
+     * not overwrite the user's chosen name on subsequent list/get.
+     */
+    async rename(id: string, name: string): Promise<ChatSession> {
+        const res = await apiFetch(`/agent/sessions/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return normalizeChatSession((await res.json()) as RawChatSession);
+    },
+
+    /**
      * GET /api/agent/sessions/{id}
      * Returns the indexed record, or null when the id is unknown.
      */
