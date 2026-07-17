@@ -529,6 +529,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/git/pull", gitHandler.Pull)                      // POST
 	mux.HandleFunc("/api/git/fetch", gitHandler.Fetch)                    // POST
 	mux.HandleFunc("/api/git/worktrees", gitHandler.Worktrees)            // GET
+	mux.HandleFunc("/api/git/submodules", gitHandler.Submodules)           // GET
 	mux.HandleFunc("/api/git/graph", gitHandler.Graph)                    // GET ?limit=100
 	mux.HandleFunc("/api/git/commit-files", gitHandler.CommitFiles)       // GET ?hash=<hash>
 	mux.HandleFunc("/api/git/commit-diff", gitHandler.CommitDiff)         // GET ?hash=<hash>&file=<path>

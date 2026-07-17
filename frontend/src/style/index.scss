@@ -9271,7 +9271,9 @@ body {
   .panel-body-scroll {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    // 1 grid unit = 8px on all sides
+    margin: 8px;
+    padding: 0;
     display: flex;
     flex-direction: column;
 
@@ -9285,12 +9287,12 @@ body {
     // The file browser / detail view manage their own internal layout and
     // are designed to fill their container edge-to-edge (the project detail's
     // .file-split-list has zero padding). Cancel the panel-body-scroll's
-    // 16px padding only for them, so the file UI sits flush against the
+    // 8px margin only for them, so the file UI sits flush against the
     // drawer edges — matching how it looks in 项目详情 → 文件. GitPanel and
     // ThemeSettings keep the breathing room.
     > .flat-file-browser,
     > .fb-detail-view {
-      margin: -16px;
+      margin: -8px;
     }
 
     &::-webkit-scrollbar {
@@ -13498,6 +13500,186 @@ body {
   overflow-y: auto;
   box-sizing: border-box;
 
+  // ── Repo cards: single-line; main + worktrees peers; submodules under main ─
+  .git-repo-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px 8px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-panel);
+  }
+
+  // Single-line card: name · kind …… branch ↑↓
+  .git-repo-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+    min-width: 0;
+    box-sizing: border-box;
+
+    &:hover {
+      border-color: var(--text-main);
+    }
+
+    &.selected {
+      border-color: var(--accent-color);
+      background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+    }
+
+    &.conflict {
+      border-color: rgba(var(--danger-rgb, 220, 38, 38), 0.5);
+    }
+  }
+
+  .git-repo-card-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 42%;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .git-repo-card-kind {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    line-height: 1.3;
+  }
+
+  .git-repo-card-grow {
+    flex: 1 1 auto;
+    min-width: 4px;
+  }
+
+  .git-repo-card-branch {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 34%;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-main);
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    white-space: nowrap;
+
+    svg {
+      width: 12px !important;
+      height: 12px !important;
+      min-width: 12px;
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+  }
+
+  .git-repo-card-branch-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .git-card-origin {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-panel);
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    line-height: 1.35;
+    color: var(--text-secondary);
+  }
+
+  .git-card-ahead {
+    color: var(--text-muted);
+    &.active {
+      color: var(--success-fg, #16a34a);
+    }
+  }
+
+  .git-card-behind {
+    color: var(--text-muted);
+    &.active {
+      color: var(--danger-fg, #dc2626);
+    }
+  }
+
+  // Main-card chevron: expand / collapse nested submodules
+  .git-card-branch-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-panel);
+    color: var(--text-muted);
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 12px;
+      height: 12px;
+      display: block;
+    }
+
+    &:hover {
+      color: var(--text-main);
+      border-color: var(--text-main);
+    }
+  }
+
+  .git-repo-card-children {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0 0 2px 12px;
+    padding-left: 8px;
+    border-left: 2px solid var(--border-color);
+  }
+
+  .git-repo-card-child {
+    height: 28px;
+    min-height: 28px;
+    padding: 0 8px;
+
+    .git-repo-card-name {
+      font-size: 12px;
+      font-weight: 500;
+      max-width: 48%;
+    }
+  }
+
   // Custom Scrollbars
   &::-webkit-scrollbar {
     width: 6px;
@@ -14207,6 +14389,16 @@ body {
         color: #06b6d4;
         border-color: rgba(6, 182, 212, 0.15);
       }
+      &.git-status-conflict {
+        background-color: rgba(var(--danger-rgb), 0.14);
+        color: var(--danger-fg);
+        border-color: rgba(var(--danger-rgb), 0.35);
+        font-weight: 700;
+      }
+    }
+
+    .git-file-row.git-file-conflict {
+      border-left: 2px solid var(--danger-fg);
     }
 
     .git-file-path {
@@ -15137,6 +15329,9 @@ body {
     }
     &.git-status-u {
       background: var(--accent-emphasis);
+    }
+    &.git-status-conflict {
+      background: var(--danger-emphasis);
     }
   }
 

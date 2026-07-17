@@ -116,6 +116,7 @@ export const zhCN: Record<string, string> = {
     'header.col.tasks': '项目管理',
     'header.col.channels': '渠道',
     'header.col.files': '文件',
+    'header.col.browser': '浏览器',
     'header.col.git': 'Git',
     'header.col.expandChat': '展开聊天栏',
     'header.col.collapseChat': '收起聊天栏',
@@ -143,6 +144,7 @@ export const zhCN: Record<string, string> = {
     'header.mobile.current': '当前',
     'header.mobile.channels': '渠道',
     'header.mobile.opening': '打开中',
+    'header.mobile.browser': '浏览器',
     'header.mobile.files': '文件',
     'header.mobile.git': '版本',
     'header.mobile.manage': '管理',
@@ -854,7 +856,7 @@ export const zhCN: Record<string, string> = {
     'drawer.title.skills': '技能管理',
     'drawer.title.discovery': '发现中心',
     'drawer.refresh.files': '刷新资源',
-    'drawer.refresh.git': '刷新 Git 状态',
+    'drawer.refresh.git': '刷新 Git 状态（含 fetch）',
     'drawer.collapse': '收起面板',
 
     // ── Theme settings (ThemeSettings.tsx) ────────────────────────────────
@@ -969,6 +971,7 @@ export const zhCN: Record<string, string> = {
     'git.status.R': '已重命名',
     'git.status.C': '已复制',
     'git.status.?': '未跟踪',
+    'git.status.U': '冲突',
     'git.time.justNow': '刚刚',
     'git.time.minutesAgo': '{n} 分钟前',
     'git.time.hoursAgo': '{n} 小时前',
@@ -997,6 +1000,9 @@ export const zhCN: Record<string, string> = {
     'git.toast.fetchSuccess': '已同步远程状态 ✓',
     'git.toast.fetchFailedPrefix': '同步失败: {err}',
     'git.toast.hashCopied': '提交哈希已成功复制 📋',
+    'git.toast.stageFailed': '暂存失败: {err}',
+    'git.toast.unstageFailed': '取消暂存失败: {err}',
+    'git.toast.fileDeleted': '文件已删除，无法打开: {file}',
 
     'git.diff.close': '关闭差异',
     'git.diff.loading': '正在计算差异…',
@@ -1008,6 +1014,7 @@ export const zhCN: Record<string, string> = {
     'git.action.push': '推送 (Push)',
     'git.action.pull': '拉取 (Pull)',
     'git.action.fetch': '同步远程状态 (Fetch)',
+    'git.action.openFile': '打开文件',
 
     'git.clean.title': '工作区非常干净',
     'git.clean.desc': '没有任何未提交的更改。您可以安心开发新功能或切换到其他工作分支。',
@@ -1055,15 +1062,35 @@ export const zhCN: Record<string, string> = {
     'git.worktrees.current': '当前',
     'git.worktrees.detached': '(分离 HEAD)',
     'git.worktrees.clean': '没有未提交的更改',
+    'git.worktrees.switchTitle': '工作树',
+    'git.worktrees.sectionHint': '只读预览其它工作树',
+
+    // Unified context bar (branch + worktree)
+    'git.context.toggleTitle': '切换分支 / 工作树',
+
+    // Repo cards
+    'git.card.main': '主仓库',
+    'git.card.worktree': '工作树',
+    'git.card.submodule': '子模块',
+    'git.card.originTitle': '相对远程：领先 {ahead} / 落后 {behind}',
+
+    // Submodules
+    'git.submodules.title': '子模块',
+    'git.submodules.expand': '展开子模块',
+    'git.submodules.collapse': '折叠子模块',
+    'git.submodules.flag.clean': '与父仓库记录一致',
+    'git.submodules.flag.plus': '检出提交与父仓库记录不同',
+    'git.submodules.flag.minus': '未初始化',
+    'git.submodules.flag.conflict': '合并冲突',
 
     // Graph history
     'git.graph.title': '提交图形',
     'git.graph.empty': '暂无提交记录',
     'git.graph.noFiles': '该提交没有文件变更',
+    'git.graph.loadMore': '加载更多提交…',
 
     // Worktree switcher & commit box
     'git.commit.sectionTitle': '提交说明',
-    'git.worktrees.switchTitle': '切换 worktree',
 
     // ── Terminal (terminal/index.tsx) ─────────────────────────────────────
     'terminal.label.input': '输入',
@@ -1871,6 +1898,7 @@ export const enUS: Record<string, string> = {
     'header.col.tasks': 'Project',
     'header.col.channels': 'Channels',
     'header.col.files': 'Files',
+    'header.col.browser': 'Browser',
     'header.col.git': 'Git',
     'header.col.expandChat': 'Expand chat column',
     'header.col.collapseChat': 'Collapse chat column',
@@ -1900,6 +1928,7 @@ export const enUS: Record<string, string> = {
     'header.mobile.current': 'Current',
     'header.mobile.channels': 'Channels',
     'header.mobile.opening': 'Opening',
+    'header.mobile.browser': 'Browser',
     'header.mobile.files': 'Files',
     'header.mobile.git': 'Version',
     'header.mobile.manage': 'Manage',
@@ -2620,7 +2649,7 @@ export const enUS: Record<string, string> = {
     'drawer.title.skills': 'Skill Management',
     'drawer.title.discovery': 'Discovery',
     'drawer.refresh.files': 'Refresh files',
-    'drawer.refresh.git': 'Refresh Git status',
+    'drawer.refresh.git': 'Refresh Git status (includes fetch)',
     'drawer.collapse': 'Collapse panel',
 
     // ── Theme settings ───────────────────────────────────────────────────
@@ -2737,6 +2766,7 @@ export const enUS: Record<string, string> = {
     'git.status.R': 'Renamed',
     'git.status.C': 'Copied',
     'git.status.?': 'Untracked',
+    'git.status.U': 'Conflict',
     'git.time.justNow': 'just now',
     'git.time.minutesAgo': '{n} min ago',
     'git.time.hoursAgo': '{n} hr ago',
@@ -2765,6 +2795,9 @@ export const enUS: Record<string, string> = {
     'git.toast.fetchSuccess': 'Synced with remote ✓',
     'git.toast.fetchFailedPrefix': 'Fetch failed: {err}',
     'git.toast.hashCopied': 'Commit hash copied 📋',
+    'git.toast.stageFailed': 'Stage failed: {err}',
+    'git.toast.unstageFailed': 'Unstage failed: {err}',
+    'git.toast.fileDeleted': 'File deleted, cannot open: {file}',
 
     'git.diff.close': 'Close diff',
     'git.diff.loading': 'Computing diff…',
@@ -2776,6 +2809,7 @@ export const enUS: Record<string, string> = {
     'git.action.push': 'Push',
     'git.action.pull': 'Pull',
     'git.action.fetch': 'Fetch (sync with remote)',
+    'git.action.openFile': 'Open file',
 
     'git.clean.title': 'Working tree clean',
     'git.clean.desc': 'Nothing to commit. Feel free to start a new feature or switch to another branch.',
@@ -2823,15 +2857,35 @@ export const enUS: Record<string, string> = {
     'git.worktrees.current': 'current',
     'git.worktrees.detached': '(detached HEAD)',
     'git.worktrees.clean': 'No uncommitted changes',
+    'git.worktrees.switchTitle': 'Worktrees',
+    'git.worktrees.sectionHint': 'Read-only peek at other worktrees',
+
+    // Unified context bar (branch + worktree)
+    'git.context.toggleTitle': 'Switch branch / worktree',
+
+    // Repo cards
+    'git.card.main': 'Main',
+    'git.card.worktree': 'Worktree',
+    'git.card.submodule': 'Submodule',
+    'git.card.originTitle': 'vs remote: ahead {ahead} / behind {behind}',
+
+    // Submodules
+    'git.submodules.title': 'Submodules',
+    'git.submodules.expand': 'Expand submodules',
+    'git.submodules.collapse': 'Collapse submodules',
+    'git.submodules.flag.clean': 'Matches parent index',
+    'git.submodules.flag.plus': 'Checked-out SHA differs from parent',
+    'git.submodules.flag.minus': 'Not initialized',
+    'git.submodules.flag.conflict': 'Merge conflicts',
 
     // Graph history
     'git.graph.title': 'Commit Graph',
     'git.graph.empty': 'No commits found',
     'git.graph.noFiles': 'No file changes in this commit',
+    'git.graph.loadMore': 'Load more commits…',
 
     // Worktree switcher & commit box
     'git.commit.sectionTitle': 'Commit message',
-    'git.worktrees.switchTitle': 'Switch worktree',
 
     // ── Terminal ─────────────────────────────────────────────────────────
     'terminal.label.input': 'Input',

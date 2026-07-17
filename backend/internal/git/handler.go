@@ -100,6 +100,8 @@ type WorktreeEntry struct {
 	Message   string `json:"message"`
 	IsMain    bool   `json:"isMain"`
 	IsCurrent bool   `json:"isCurrent"`
+	Ahead     int    `json:"ahead"`
+	Behind    int    `json:"behind"`
 }
 
 // GraphCommit is a single commit entry for graph visualization.
@@ -117,6 +119,18 @@ type GraphCommit struct {
 type CommitFileEntry struct {
 	Status string `json:"status"`
 	Path   string `json:"path"`
+}
+
+// SubmoduleEntry is one git submodule from `git submodule status`.
+type SubmoduleEntry struct {
+	Path   string `json:"path"`
+	Hash   string `json:"hash"`
+	Short  string `json:"short"`
+	Desc   string `json:"desc"`   // describe string, e.g. heads/main or tag
+	Flag   string `json:"flag"`   // "" clean, "+" different SHA, "-" not initialized, "U" merge conflict
+	Branch string `json:"branch"` // current branch inside the submodule (when initialized)
+	Ahead  int    `json:"ahead"`
+	Behind int    `json:"behind"`
 }
 
 // --- HTTP handlers ---
@@ -480,6 +494,7 @@ func (h *Handler) Worktrees(w http.ResponseWriter, r *http.Request) {
 		if msg, err := h.git("-C", entry.Path, "log", "-1", "--format=%s"); err == nil {
 			entry.Message = strings.TrimSpace(msg)
 		}
+		entry.Ahead, entry.Behind = h.aheadBehindAt(entry.Path)
 
 		entries = append(entries, entry)
 	}
@@ -488,6 +503,103 @@ func (h *Handler) Worktrees(w http.ResponseWriter, r *http.Request) {
 		entries = []WorktreeEntry{}
 	}
 	writeJSON(w, entries)
+}
+
+// Submodules handles GET /api/git/submodules
+func (h *Handler) Submodules(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.isRepo() {
+		writeJSON(w, []SubmoduleEntry{})
+		return
+	}
+
+	out, err := h.git("submodule", "status")
+	if err != nil {
+		// No submodules / empty repo — return empty list, not an error.
+		writeJSON(w, []SubmoduleEntry{})
+		return
+	}
+
+	entries := parseSubmoduleStatus(out)
+	// Enrich with live branch / origin ahead-behind when the submodule is checked out.
+	for i := range entries {
+		if entries[i].Flag == "-" {
+			continue
+		}
+		abs := entries[i].Path
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(h.root, abs)
+		}
+		// .git may be a directory or a gitdir pointer file.
+		if _, err := os.Stat(filepath.Join(abs, ".git")); err != nil {
+			continue
+		}
+		entries[i].Branch = h.currentBranchAt(abs)
+		entries[i].Ahead, entries[i].Behind = h.aheadBehindAt(abs)
+	}
+	writeJSON(w, entries)
+}
+
+// parseSubmoduleStatus parses `git submodule status` lines:
+//
+//	" <40-hex> path (describe)"   clean
+//	"+<40-hex> path (describe)"   SHA differs from parent index
+//	"-<40-hex> path"              not initialized
+//	"U<40-hex> path"              merge conflicts
+func parseSubmoduleStatus(out string) []SubmoduleEntry {
+	entries := []SubmoduleEntry{}
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		// Need at least: flag + 40 hex + space + path
+		if len(line) < 43 {
+			continue
+		}
+		flag := string(line[0])
+		if flag == " " {
+			flag = ""
+		}
+		hash := line[1:41]
+		if !isHex40(hash) {
+			// Some git versions pad differently — try trimming
+			continue
+		}
+		rest := strings.TrimSpace(line[41:])
+		path, desc := rest, ""
+		if i := strings.LastIndex(rest, " ("); i >= 0 && strings.HasSuffix(rest, ")") {
+			path = strings.TrimSpace(rest[:i])
+			desc = rest[i+2 : len(rest)-1]
+		}
+		short := hash
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		entries = append(entries, SubmoduleEntry{
+			Path:  path,
+			Hash:  hash,
+			Short: short,
+			Desc:  desc,
+			Flag:  flag,
+		})
+	}
+	return entries
+}
+
+func isHex40(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for i := 0; i < 40; i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // Graph handles GET /api/git/graph?limit=100
@@ -545,7 +657,8 @@ func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 100
+	// Default 30 keeps the graph panel light; clients can request more via ?limit=.
+	limit := 30
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 {
 			limit = n
@@ -684,7 +797,6 @@ func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
 }
 
 // isWorktreePath reports whether path is one of this repo's registered worktrees.
-// Guards the worktree-status/diff endpoints against arbitrary -C targets.
 func (h *Handler) isWorktreePath(path string) bool {
 	clean := filepath.Clean(path)
 	out, err := h.git("worktree", "list", "--porcelain")
@@ -701,18 +813,59 @@ func (h *Handler) isWorktreePath(path string) bool {
 	return false
 }
 
+// isSubmodulePath reports whether path is a registered submodule of this repo
+// (absolute or relative to root). Guards path-scoped status/diff endpoints.
+func (h *Handler) isSubmodulePath(path string) bool {
+	clean := filepath.Clean(path)
+	out, err := h.git("submodule", "status")
+	if err != nil {
+		return false
+	}
+	for _, e := range parseSubmoduleStatus(out) {
+		abs := e.Path
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(h.root, abs)
+		}
+		if filepath.Clean(abs) == clean || filepath.Clean(e.Path) == clean {
+			return true
+		}
+	}
+	return false
+}
+
+// isAllowedRepoPath is true for a registered worktree or submodule directory.
+func (h *Handler) isAllowedRepoPath(path string) bool {
+	return h.isWorktreePath(path) || h.isSubmodulePath(path)
+}
+
+// resolveRepoPath normalizes a relative submodule path against the main root.
+func (h *Handler) resolveRepoPath(path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(h.root, path))
+}
+
 // WorktreeStatus handles GET /api/git/worktree-status?path=<path>
-// Returns the uncommitted changes (staged/unstaged/untracked) for one worktree.
+// Returns status for a worktree OR a submodule (path-scoped read-only view).
 func (h *Handler) WorktreeStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	path := r.URL.Query().Get("path")
-	if path == "" || !h.isWorktreePath(path) {
-		http.Error(w, "invalid worktree path", http.StatusBadRequest)
+	raw := r.URL.Query().Get("path")
+	if raw == "" {
+		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
+	}
+	path := h.resolveRepoPath(raw)
+	if !h.isAllowedRepoPath(path) && !h.isAllowedRepoPath(raw) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	if !h.isAllowedRepoPath(path) {
+		path = filepath.Clean(raw)
 	}
 
 	staged, unstaged, untracked := h.changedFilesAt(path)
@@ -729,19 +882,26 @@ func (h *Handler) WorktreeStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // WorktreeDiff handles GET /api/git/worktree-diff?path=<path>&file=<file>
-// Shows all uncommitted changes for one file in a worktree (vs HEAD), with an
-// untracked-file fallback so brand-new files still render as additions.
+// Diff for a file in a worktree OR submodule (vs HEAD), with untracked fallback.
 func (h *Handler) WorktreeDiff(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	path := r.URL.Query().Get("path")
+	raw := r.URL.Query().Get("path")
 	file := r.URL.Query().Get("file")
-	if path == "" || file == "" || !h.isWorktreePath(path) {
-		http.Error(w, "invalid worktree path or file", http.StatusBadRequest)
+	if raw == "" || file == "" {
+		http.Error(w, "invalid path or file", http.StatusBadRequest)
 		return
+	}
+	path := h.resolveRepoPath(raw)
+	if !h.isAllowedRepoPath(path) && !h.isAllowedRepoPath(raw) {
+		http.Error(w, "invalid path or file", http.StatusBadRequest)
+		return
+	}
+	if !h.isAllowedRepoPath(path) {
+		path = filepath.Clean(raw)
 	}
 
 	out, _ := h.git("-C", path, "diff", "HEAD", "--", file)
@@ -900,6 +1060,15 @@ func (h *Handler) changedFilesAt(dir string) (staged, unstaged, untracked []File
 			untracked = append(untracked, FileStatus{Path: path, Status: "?"})
 			continue
 		}
+
+		// Unmerged / conflict paths (UU, AA, DD, AU, UA, DU, UD, …).
+		// Surface once in unstaged with status "U" so the UI can highlight conflicts.
+		xy := x + y
+		if isUnmergedXY(xy) {
+			unstaged = append(unstaged, FileStatus{Path: path, Status: "U"})
+			continue
+		}
+
 		if x != " " && x != "?" {
 			staged = append(staged, FileStatus{Path: path, Status: x})
 		}
@@ -908,6 +1077,16 @@ func (h *Handler) changedFilesAt(dir string) (staged, unstaged, untracked []File
 		}
 	}
 	return
+}
+
+// isUnmergedXY reports porcelain XY codes for conflicted / unmerged paths.
+func isUnmergedXY(xy string) bool {
+	switch xy {
+	case "DD", "AU", "UD", "UA", "DU", "AA", "UU":
+		return true
+	default:
+		return false
+	}
 }
 
 // writeJSON serialises v to w with application/json content-type.

@@ -1,112 +1,26 @@
 import { h, Component, Fragment } from 'preact';
 import { t, type Lang } from '../i18n';
+import {
+    gitService,
+    type FileStatus,
+    type GitStatus,
+    type WorktreeEntry,
+    type GraphCommit,
+    type CommitFileEntry,
+    type SubmoduleEntry,
+} from '../../services/gitService';
+import { buildGraphLayout } from './git/buildGraphLayout';
+import { DiffPanel } from './git/DiffPanel';
+import type { GraphRow } from './git/types';
+import * as fsStore from '../../stores/fsStore';
+import * as tabsStore from '../../stores/tabsStore';
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
 
-interface FileStatus {
-    path: string;
-    status: string; // M, A, D, R, ?
-}
-
-interface GitStatus {
-    branch: string;
-    ahead: number;
-    behind: number;
-    staged: FileStatus[];
-    unstaged: FileStatus[];
-    untracked: FileStatus[];
-    isRepo: boolean;
-}
-
-interface WorktreeEntry {
-    path: string;
-    head: string;
-    short: string;
-    branch: string;
-    message: string;
-    isMain: boolean;
-    isCurrent: boolean;
-}
-
-interface GraphCommit {
-    hash: string;
-    short: string;
-    parents: string[];
-    refs: string[];
-    author: string;
-    time: number;
-    message: string;
-}
-
-interface GraphRow extends GraphCommit {
-    nodeLane: number;
-    onMain: boolean;
-    isMerge: boolean;
-    incomingLanes: number[]; // lanes (from above) that terminate at this commit
-    parentLanes: number[]; // lanes (below) this commit's parents continue in
-    aboveLanes: number[]; // every lane carrying a line into this row from above
-    belowLanes: number[]; // every lane carrying a line out of this row below
-}
-
-interface CommitFileEntry {
-    status: string;
-    path: string;
-}
-
-interface GitPanelProps {
-    workdir: string;
-    activeWorkspaceId: string;
-    onLoadingChange?: (loading: boolean) => void;
-    onRegisterRefresh?: (refreshFn: () => void) => void;
-    language: Lang;
-}
-
-interface GitPanelState {
-    status: GitStatus | null;
-    loading: boolean;
-    commitMsg: string;
-    committing: boolean;
-    pushPullLoading: 'push' | 'pull' | null;
-    fetching: boolean;
-    // diff (working-tree inline)
-    diffFile: string | null;
-    diffStaged: boolean;
-    diffContent: string;
-    diffLoading: boolean;
-    // toast
-    toast: string;
-    // collapsible sections
-    stagedCollapsed: boolean;
-    unstagedCollapsed: boolean;
-    untrackedCollapsed: boolean;
-    // ai commit message
-    aiLoading: boolean;
-    // worktrees
-    worktrees: WorktreeEntry[];
-    worktreesLoading: boolean;
-    // worktree switcher
-    selectedWorktreePath: string | null;
-    worktreeSwitcherOpen: boolean;
-    // selected worktree status (read-only view)
-    worktreeStatus: GitStatus | null;
-    worktreeStatusLoading: boolean;
-    // commit box collapsible
-    commitBoxCollapsed: boolean;
-    // graph history
-    graph: GraphCommit[];
-    graphLoading: boolean;
-    graphExpanded: boolean;
-    // commit detail (file list)
-    expandedCommitHash: string | null;
-    commitFiles: CommitFileEntry[];
-    commitFilesLoading: boolean;
-    // diff panel shared by commit-file and worktree-file diffs
-    commitDiffFile: string | null;
-    commitDiffContent: string;
-    commitDiffLoading: boolean;
-}
-
-// ── Status label map ───────────────────────────────────────────────────────
+const STATUS_POLL_MS = 15_000;
+const GRAPH_POLL_MS = 60_000;
+const DEFAULT_GRAPH_LIMIT = 30;
+const GRAPH_LIMIT_STEP = 30;
 
 const STATUS_KEY: Record<string, string> = {
     M: 'git.status.M',
@@ -114,6 +28,7 @@ const STATUS_KEY: Record<string, string> = {
     D: 'git.status.D',
     R: 'git.status.R',
     C: 'git.status.C',
+    U: 'git.status.U',
     '?': 'git.status.?',
 };
 
@@ -122,8 +37,15 @@ const STATUS_COLOR: Record<string, string> = {
     A: 'git-status-a',
     D: 'git-status-d',
     R: 'git-status-r',
+    U: 'git-status-conflict',
     '?': 'git-status-u',
 };
+
+const CONFLICT_CODES = new Set(['U', 'UU', 'AA', 'DD', 'AU', 'UA', 'DU', 'UD']);
+
+function isConflictStatus(status: string): boolean {
+    return CONFLICT_CODES.has(status) || status === 'U';
+}
 
 function relativeTime(ts: number, language: Lang): string {
     const diff = Math.floor(Date.now() / 1000) - ts;
@@ -139,7 +61,30 @@ function relativeTime(ts: number, language: Lang): string {
     });
 }
 
-// ── Beautiful Premium SVG Icons ────────────────────────────────────────────
+function joinWorkdir(workdir: string, relPath: string): string {
+    if (!relPath) return workdir;
+    if (relPath.startsWith('/')) return relPath;
+    const base = (workdir || '').replace(/\/+$/, '');
+    return base ? `${base}/${relPath}` : relPath;
+}
+
+function pathBaseName(p: string): string {
+    return p.split('/').filter(Boolean).pop() || p;
+}
+
+function samePath(a: string, b: string): boolean {
+    const norm = (p: string) =>
+        (p || '')
+            .replace(/\/+$/, '')
+            .replace(/^\/private/, '')
+            .toLowerCase();
+    return !!a && !!b && norm(a) === norm(b);
+}
+
+/** main + worktrees are peer cards; submodules nest under main. */
+type SelectedCtx = { kind: 'main' } | { kind: 'worktree'; path: string } | { kind: 'submodule'; path: string };
+
+// ── Icons ──────────────────────────────────────────────────────────────────
 
 const IconRefresh = (
     <svg
@@ -155,14 +100,18 @@ const IconRefresh = (
     </svg>
 );
 
-const IconBranch = (
+// Factory — never reuse one VNode across multiple cards (Preact would reparent the DOM node).
+const IconBranchEl = () => (
     <svg
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         stroke-width="2"
         stroke-linecap="round"
         stroke-linejoin="round"
+        aria-hidden="true"
     >
         <line x1="6" x2="6" y1="3" y2="15" />
         <circle cx="18" cy="6" r="3" />
@@ -267,7 +216,6 @@ const IconTrash = (
     </svg>
 );
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const IconSparkles = (
     <svg
         viewBox="0 0 24 24"
@@ -282,10 +230,80 @@ const IconSparkles = (
     </svg>
 );
 
-// ── Main Component ─────────────────────────────────────────────────────────
+const IconOpen = (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+);
+
+// ── Props / State ──────────────────────────────────────────────────────────
+
+interface GitPanelProps {
+    workdir: string;
+    activeWorkspaceId: string;
+    onLoadingChange?: (loading: boolean) => void;
+    onRegisterRefresh?: (refreshFn: () => void) => void;
+    language: Lang;
+}
+
+interface GitPanelState {
+    status: GitStatus | null;
+    loading: boolean;
+    commitMsg: string;
+    committing: boolean;
+    pushPullLoading: 'push' | 'pull' | null;
+    fetching: boolean;
+    diffFile: string | null;
+    diffStaged: boolean;
+    diffContent: string;
+    diffLoading: boolean;
+    toast: string;
+    stagedCollapsed: boolean;
+    unstagedCollapsed: boolean;
+    untrackedCollapsed: boolean;
+    aiLoading: boolean;
+    worktrees: WorktreeEntry[];
+    worktreesLoading: boolean;
+    selected: SelectedCtx;
+    selectedStatus: GitStatus | null;
+    selectedStatusLoading: boolean;
+    commitBoxCollapsed: boolean;
+    graph: GraphCommit[];
+    graphLoading: boolean;
+    graphExpanded: boolean;
+    graphLimit: number;
+    expandedCommitHash: string | null;
+    commitFiles: CommitFileEntry[];
+    commitFilesLoading: boolean;
+    commitDiffFile: string | null;
+    commitDiffContent: string;
+    commitDiffLoading: boolean;
+    submodules: SubmoduleEntry[];
+    submodulesLoading: boolean;
+    /** Collapse nested submodule cards under the main repo card. */
+    submodulesCollapsed: boolean;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 export class GitPanel extends Component<GitPanelProps, GitPanelState> {
-    private _refreshTimer: ReturnType<typeof setInterval> | null = null;
+    private _statusTimer: ReturnType<typeof setInterval> | null = null;
+    private _graphTimer: ReturnType<typeof setInterval> | null = null;
+    private _toastTimer: ReturnType<typeof setTimeout> | null = null;
+    private _abort: AbortController | null = null;
+    private _mounted = false;
+    private _gen = 0;
+    private _graphCacheKey = '';
+    private _graphLayout: { rows: GraphRow[]; maxLanes: number } = { rows: [], maxLanes: 1 };
 
     constructor(props: GitPanelProps) {
         super(props);
@@ -301,169 +319,300 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             diffContent: '',
             diffLoading: false,
             toast: '',
-            // collapsibles
             stagedCollapsed: false,
             unstagedCollapsed: false,
             untrackedCollapsed: false,
-            // AI loading state
             aiLoading: false,
-            // worktrees
             worktrees: [],
             worktreesLoading: false,
-            // worktree switcher
-            selectedWorktreePath: null,
-            worktreeSwitcherOpen: false,
-            // selected worktree status
-            worktreeStatus: null,
-            worktreeStatusLoading: false,
-            // commit box
+            selected: { kind: 'main' },
+            selectedStatus: null,
+            selectedStatusLoading: false,
             commitBoxCollapsed: true,
-            // graph history
             graph: [],
             graphLoading: false,
             graphExpanded: true,
-            // commit detail
+            graphLimit: DEFAULT_GRAPH_LIMIT,
             expandedCommitHash: null,
             commitFiles: [],
             commitFilesLoading: false,
-            // diff panel (commit/worktree file diffs)
             commitDiffFile: null,
             commitDiffContent: '',
             commitDiffLoading: false,
+            submodules: [],
+            submodulesLoading: false,
+            submodulesCollapsed: false,
         };
     }
 
     componentDidMount() {
-        if (this.props.onRegisterRefresh) {
-            this.props.onRegisterRefresh(this.refresh);
-        }
-        if (this.props.onLoadingChange) {
-            this.props.onLoadingChange(this.state.loading);
-        }
-        this.refresh();
-        this._refreshTimer = setInterval(() => {
-            this.refresh();
-        }, 15000);
+        this._mounted = true;
+        this.props.onRegisterRefresh?.(this.refreshManual);
+        this.props.onLoadingChange?.(this.state.loading);
+        this.refresh({ silent: false, includeGraph: true });
+        this.startTimers();
+        document.addEventListener('visibilitychange', this.onVisibility);
     }
 
     componentDidUpdate(prevProps: GitPanelProps, prevState: GitPanelState) {
         if (prevProps.activeWorkspaceId !== this.props.activeWorkspaceId) {
+            this.abortInFlight();
             this.setState({
                 diffFile: null,
                 diffContent: '',
-                worktreeSwitcherOpen: false,
-                selectedWorktreePath: null,
-                worktreeStatus: null,
+                selected: { kind: 'main' },
+                selectedStatus: null,
                 expandedCommitHash: null,
                 commitFiles: [],
                 commitDiffFile: null,
                 commitDiffContent: '',
                 commitBoxCollapsed: true,
+                submodules: [],
+                graphLimit: DEFAULT_GRAPH_LIMIT,
             });
-            this.refresh();
+            this.refresh({ silent: false, includeGraph: true });
         }
         if (prevState.loading !== this.state.loading) {
             this.props.onLoadingChange?.(this.state.loading);
         }
         if (prevProps.onRegisterRefresh !== this.props.onRegisterRefresh && this.props.onRegisterRefresh) {
-            this.props.onRegisterRefresh(this.refresh);
+            this.props.onRegisterRefresh(this.refreshManual);
         }
-        // When selectedWorktreePath changes to a non-current worktree, fetch its status.
-        if (prevState.selectedWorktreePath !== this.state.selectedWorktreePath) {
-            const { selectedWorktreePath } = this.state;
-            if (selectedWorktreePath !== null && !this.isViewingCurrent()) {
-                this.loadSelectedWorktreeStatus(selectedWorktreePath);
+        if (JSON.stringify(prevState.selected) !== JSON.stringify(this.state.selected)) {
+            const sel = this.state.selected;
+            if (sel.kind === 'main') {
+                this.setState({ selectedStatus: null });
             } else {
-                this.setState({ worktreeStatus: null });
+                this.loadSelectedPathStatus(sel.path);
             }
+        }
+        if (prevState.graphExpanded !== this.state.graphExpanded) {
+            this.restartGraphTimer();
+            if (this.state.graphExpanded) this.loadGraph(true);
         }
     }
 
     componentWillUnmount() {
-        if (this._refreshTimer) clearInterval(this._refreshTimer);
-        if (this.props.onRegisterRefresh) {
-            this.props.onRegisterRefresh(() => {});
+        this._mounted = false;
+        this.stopTimers();
+        this.abortInFlight();
+        document.removeEventListener('visibilitychange', this.onVisibility);
+        if (this._toastTimer) clearTimeout(this._toastTimer);
+        this.props.onRegisterRefresh?.(() => {});
+        this.props.onLoadingChange?.(false);
+    }
+
+    // ── Timers ─────────────────────────────────────────────────────────────
+
+    onVisibility = () => {
+        if (document.visibilityState === 'hidden') this.stopTimers();
+        else if (this._mounted) {
+            this.refresh({ silent: true, includeGraph: this.state.graphExpanded });
+            this.startTimers();
         }
-        if (this.props.onLoadingChange) {
-            this.props.onLoadingChange(false);
+    };
+
+    startTimers() {
+        this.stopTimers();
+        if (document.visibilityState === 'hidden') return;
+        this._statusTimer = setInterval(() => {
+            this.refresh({ silent: true, includeGraph: false });
+        }, STATUS_POLL_MS);
+        this.restartGraphTimer();
+    }
+
+    restartGraphTimer() {
+        if (this._graphTimer) {
+            clearInterval(this._graphTimer);
+            this._graphTimer = null;
         }
+        if (!this.state.graphExpanded || document.visibilityState === 'hidden') return;
+        this._graphTimer = setInterval(() => this.loadGraph(true), GRAPH_POLL_MS);
+    }
+
+    stopTimers() {
+        if (this._statusTimer) {
+            clearInterval(this._statusTimer);
+            this._statusTimer = null;
+        }
+        if (this._graphTimer) {
+            clearInterval(this._graphTimer);
+            this._graphTimer = null;
+        }
+    }
+
+    abortInFlight() {
+        if (this._abort) {
+            this._abort.abort();
+            this._abort = null;
+        }
+    }
+
+    signal(): AbortSignal {
+        this.abortInFlight();
+        this._abort = new AbortController();
+        return this._abort.signal;
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    currentWorktreePath(): string | null {
-        return this.state.worktrees.find(w => w.isCurrent)?.path ?? null;
+    isViewingMain(): boolean {
+        return this.state.selected.kind === 'main';
     }
 
-    isViewingCurrent(): boolean {
-        const { selectedWorktreePath } = this.state;
-        return selectedWorktreePath === null || selectedWorktreePath === this.currentWorktreePath();
+    isInteractive(): boolean {
+        return this.state.selected.kind === 'main';
     }
 
-    // ── Data fetching ──────────────────────────────────────────────────────
+    activeStatus(): GitStatus | null {
+        return this.isViewingMain() ? this.state.status : this.state.selectedStatus;
+    }
 
-    refresh = async () => {
-        this.setState({ loading: true });
+    repoDisplayName(): string {
+        return pathBaseName(this.props.workdir || '') || 'repo';
+    }
+
+    selectMain = () => {
+        this.setState({
+            selected: { kind: 'main' },
+            selectedStatus: null,
+            commitDiffFile: null,
+            commitDiffContent: '',
+        });
+    };
+
+    selectWorktree = (path: string, isCurrent: boolean) => {
+        if (isCurrent) {
+            this.selectMain();
+            return;
+        }
+        this.setState({
+            selected: { kind: 'worktree', path },
+            commitDiffFile: null,
+            commitDiffContent: '',
+        });
+    };
+
+    selectSubmodule = (path: string) => {
+        this.setState({
+            selected: { kind: 'submodule', path },
+            commitDiffFile: null,
+            commitDiffContent: '',
+        });
+    };
+
+    showToast = (msg: string) => {
+        if (this._toastTimer) clearTimeout(this._toastTimer);
+        this.setState({ toast: msg });
+        this._toastTimer = setTimeout(() => {
+            if (this._mounted) this.setState({ toast: '' });
+        }, 3000);
+    };
+
+    getLayout(): { rows: GraphRow[]; maxLanes: number } {
+        const { graph } = this.state;
+        const key = graph.map(c => c.hash).join(',');
+        if (key !== this._graphCacheKey) {
+            this._graphCacheKey = key;
+            this._graphLayout = graph.length > 0 ? buildGraphLayout(graph) : { rows: [], maxLanes: 1 };
+        }
+        return this._graphLayout;
+    }
+
+    // ── Data ───────────────────────────────────────────────────────────────
+
+    /** Header / clean-state refresh: fetch remote first, then reload local git views. */
+    refreshManual = async () => {
+        this.setState({ fetching: true, loading: true });
         try {
-            const res = await fetch('/api/git/status');
-            if (!res.ok) throw new Error(await res.text());
-            const status: GitStatus = await res.json();
+            await gitService.fetchRemote();
+        } catch (err) {
+            // Still reload local status even when fetch fails (offline / no upstream).
+            this.showToast(t('git.toast.fetchFailedPrefix', this.props.language, { err: String(err) }));
+        } finally {
+            if (this._mounted) this.setState({ fetching: false });
+        }
+        await this.refresh({ silent: false, includeGraph: true });
+    };
+
+    refresh = async (opts: { silent: boolean; includeGraph: boolean }) => {
+        const { silent, includeGraph } = opts;
+        const gen = ++this._gen;
+        if (!silent) this.setState({ loading: true });
+        const signal = this.signal();
+        try {
+            const status = await gitService.status({ signal });
+            if (!this._mounted || gen !== this._gen) return;
             this.setState({ status, loading: false });
         } catch (err) {
+            if ((err as Error)?.name === 'AbortError') return;
             console.error('[git] status error:', err);
-            this.setState({ loading: false });
+            if (this._mounted && gen === this._gen) this.setState({ loading: false });
         }
-        this.loadWorktrees();
-        this.loadGraph();
-        // Re-fetch worktree status on poll if viewing a non-current worktree.
-        const { selectedWorktreePath } = this.state;
-        if (selectedWorktreePath !== null && !this.isViewingCurrent()) {
-            this.loadSelectedWorktreeStatus(selectedWorktreePath);
-        }
+        if (gen !== this._gen) return;
+        this.loadWorktrees(gen);
+        this.loadSubmodules(gen);
+        if (includeGraph && this.state.graphExpanded) this.loadGraph(true, gen);
+        const sel = this.state.selected;
+        if (sel.kind !== 'main') this.loadSelectedPathStatus(sel.path, gen);
     };
 
-    loadWorktrees = async () => {
+    loadWorktrees = async (gen = this._gen) => {
         this.setState({ worktreesLoading: true });
         try {
-            const res = await fetch('/api/git/worktrees');
-            if (!res.ok) throw new Error(await res.text());
-            const worktrees: WorktreeEntry[] = await res.json();
-            this.setState({ worktrees, worktreesLoading: false });
+            const worktrees = await gitService.worktrees();
+            if (this._mounted && gen === this._gen) this.setState({ worktrees, worktreesLoading: false });
         } catch (err) {
+            if ((err as Error)?.name === 'AbortError') return;
             console.error('[git] worktrees error:', err);
-            this.setState({ worktreesLoading: false });
+            if (this._mounted && gen === this._gen) this.setState({ worktreesLoading: false });
         }
     };
 
-    loadSelectedWorktreeStatus = async (path: string) => {
-        this.setState({ worktreeStatusLoading: true });
+    loadSubmodules = async (gen = this._gen) => {
+        this.setState({ submodulesLoading: true });
         try {
-            const res = await fetch(`/api/git/worktree-status?path=${encodeURIComponent(path)}`);
-            if (!res.ok) throw new Error(await res.text());
-            const worktreeStatus: GitStatus = await res.json();
-            this.setState({ worktreeStatus, worktreeStatusLoading: false });
+            const submodules = await gitService.submodules();
+            if (this._mounted && gen === this._gen) this.setState({ submodules, submodulesLoading: false });
         } catch (err) {
-            console.error('[git] worktree-status error:', err);
-            this.setState({ worktreeStatusLoading: false });
+            console.error('[git] submodules error:', err);
+            if (this._mounted && gen === this._gen) this.setState({ submodulesLoading: false });
         }
     };
 
-    loadGraph = async () => {
-        this.setState({ graphLoading: true });
+    loadSelectedPathStatus = async (path: string, gen = this._gen) => {
+        this.setState({ selectedStatusLoading: true });
         try {
-            const res = await fetch('/api/git/graph?limit=100');
-            if (!res.ok) throw new Error(await res.text());
-            const raw: GraphCommit[] = await res.json();
-            // Normalize: root commits have no parents/refs → backend may emit null
-            const graph = raw.map(c => ({
-                ...c,
-                parents: c.parents || [],
-                refs: c.refs || [],
-            }));
-            this.setState({ graph, graphLoading: false });
+            const selectedStatus = await gitService.worktreeStatus(path);
+            if (this._mounted && gen === this._gen) this.setState({ selectedStatus, selectedStatusLoading: false });
         } catch (err) {
+            console.error('[git] path-status error:', err);
+            if (this._mounted && gen === this._gen) this.setState({ selectedStatusLoading: false });
+        }
+    };
+
+    loadGraph = async (silent = true, gen = this._gen) => {
+        if (!silent) this.setState({ graphLoading: true });
+        try {
+            const graph = await gitService.graph(this.state.graphLimit);
+            if (this._mounted && gen === this._gen) this.setState({ graph, graphLoading: false });
+        } catch (err) {
+            if ((err as Error)?.name === 'AbortError') return;
             console.error('[git] graph error:', err);
-            this.setState({ graphLoading: false });
+            if (this._mounted && gen === this._gen) this.setState({ graphLoading: false });
+        }
+    };
+
+    loadMoreGraph = async () => {
+        const next = this.state.graphLimit + GRAPH_LIMIT_STEP;
+        const gen = this._gen;
+        this.setState({ graphLimit: next, graphLoading: true });
+        try {
+            const graph = await gitService.graph(next);
+            if (this._mounted && gen === this._gen) this.setState({ graph, graphLoading: false });
+        } catch (err) {
+            console.error('[git] graph more error:', err);
+            if (this._mounted && gen === this._gen) this.setState({ graphLoading: false });
         }
     };
 
@@ -480,51 +629,39 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             commitDiffContent: '',
         });
         try {
-            const res = await fetch(`/api/git/commit-files?hash=${encodeURIComponent(hash)}`);
-            if (!res.ok) throw new Error(await res.text());
-            const commitFiles: CommitFileEntry[] = await res.json();
-            this.setState({ commitFiles, commitFilesLoading: false });
+            const commitFiles = await gitService.commitFiles(hash);
+            if (this._mounted) this.setState({ commitFiles, commitFilesLoading: false });
         } catch (err) {
             console.error('[git] commit-files error:', err);
-            this.setState({ commitFilesLoading: false });
+            if (this._mounted) this.setState({ commitFilesLoading: false });
         }
     };
 
     openCommitDiff = async (hash: string, file: string) => {
-        // Toggle off if clicking the same file again.
         if (this.state.commitDiffFile === file) {
             this.setState({ commitDiffFile: null, commitDiffContent: '' });
             return;
         }
         this.setState({ commitDiffFile: file, commitDiffLoading: true, commitDiffContent: '' });
         try {
-            const res = await fetch(
-                `/api/git/commit-diff?hash=${encodeURIComponent(hash)}&file=${encodeURIComponent(file)}`
-            );
-            if (!res.ok) throw new Error(await res.text());
-            const text = await res.text();
-            this.setState({ commitDiffContent: text, commitDiffLoading: false });
+            const text = await gitService.commitDiff(hash, file);
+            if (this._mounted) this.setState({ commitDiffContent: text, commitDiffLoading: false });
         } catch (err) {
-            this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
+            if (this._mounted) this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
         }
     };
 
-    openWorktreeDiff = async (wtPath: string, file: string) => {
-        // Toggle off if clicking the same file again.
+    openPathDiff = async (repoPath: string, file: string) => {
         if (this.state.commitDiffFile === file) {
             this.setState({ commitDiffFile: null, commitDiffContent: '' });
             return;
         }
         this.setState({ commitDiffFile: file, commitDiffLoading: true, commitDiffContent: '' });
         try {
-            const res = await fetch(
-                `/api/git/worktree-diff?path=${encodeURIComponent(wtPath)}&file=${encodeURIComponent(file)}`
-            );
-            if (!res.ok) throw new Error(await res.text());
-            const text = await res.text();
-            this.setState({ commitDiffContent: text, commitDiffLoading: false });
+            const text = await gitService.worktreeDiff(repoPath, file);
+            if (this._mounted) this.setState({ commitDiffContent: text, commitDiffLoading: false });
         } catch (err) {
-            this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
+            if (this._mounted) this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
         }
     };
 
@@ -535,48 +672,101 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
         this.setState({ diffFile: file, diffStaged: staged, diffLoading: true, diffContent: '' });
         try {
-            const res = await fetch(`/api/git/diff?file=${encodeURIComponent(file)}&staged=${staged}`);
-            if (!res.ok) throw new Error(await res.text());
-            const text = await res.text();
-            this.setState({ diffContent: text, diffLoading: false });
+            const text = await gitService.diff(file, staged);
+            if (this._mounted) this.setState({ diffContent: text, diffLoading: false });
         } catch (err) {
-            this.setState({ diffContent: `Error loading diff: ${err}`, diffLoading: false });
+            if (this._mounted) this.setState({ diffContent: `Error loading diff: ${err}`, diffLoading: false });
         }
     };
 
-    // ── Actions ────────────────────────────────────────────────────────────
+    // ── Actions (main interactive only) ────────────────────────────────────
+
+    applyOptimisticStage(file: string | null, direction: 'stage' | 'unstage') {
+        const status = this.state.status;
+        if (!status) return null;
+        const snap: GitStatus = {
+            ...status,
+            staged: [...status.staged],
+            unstaged: [...status.unstaged],
+            untracked: [...status.untracked],
+        };
+        if (file === null) {
+            if (direction === 'stage') {
+                const moved = [...status.unstaged, ...status.untracked];
+                this.setState({
+                    status: { ...status, staged: [...status.staged, ...moved], unstaged: [], untracked: [] },
+                });
+            } else {
+                this.setState({
+                    status: { ...status, staged: [], unstaged: [...status.unstaged, ...status.staged] },
+                });
+            }
+            return snap;
+        }
+        if (direction === 'stage') {
+            const fromUnstaged = status.unstaged.find(f => f.path === file);
+            const fromUntracked = status.untracked.find(f => f.path === file);
+            const entry = fromUnstaged || fromUntracked || { path: file, status: 'M' };
+            this.setState({
+                status: {
+                    ...status,
+                    staged: status.staged.some(f => f.path === file)
+                        ? status.staged
+                        : [...status.staged, { path: entry.path, status: entry.status === '?' ? 'A' : entry.status }],
+                    unstaged: status.unstaged.filter(f => f.path !== file),
+                    untracked: status.untracked.filter(f => f.path !== file),
+                },
+                diffFile: this.state.diffFile === file && !this.state.diffStaged ? null : this.state.diffFile,
+                diffContent: this.state.diffFile === file && !this.state.diffStaged ? '' : this.state.diffContent,
+            });
+        } else {
+            const fromStaged = status.staged.find(f => f.path === file);
+            const entry = fromStaged || { path: file, status: 'M' };
+            this.setState({
+                status: {
+                    ...status,
+                    staged: status.staged.filter(f => f.path !== file),
+                    unstaged: status.unstaged.some(f => f.path === file)
+                        ? status.unstaged
+                        : [...status.unstaged, entry],
+                },
+                diffFile: this.state.diffFile === file && this.state.diffStaged ? null : this.state.diffFile,
+                diffContent: this.state.diffFile === file && this.state.diffStaged ? '' : this.state.diffContent,
+            });
+        }
+        return snap;
+    }
 
     stage = async (file: string | null) => {
-        const url = file ? `/api/git/stage?file=${encodeURIComponent(file)}` : '/api/git/stage?all=true';
-        await fetch(url, { method: 'POST' });
-        if (file && this.state.diffFile === file && !this.state.diffStaged) {
-            this.setState({ diffFile: null, diffContent: '' });
+        const snap = this.applyOptimisticStage(file, 'stage');
+        try {
+            await gitService.stage(file);
+            this.refresh({ silent: true, includeGraph: false });
+        } catch (err) {
+            if (snap && this._mounted) this.setState({ status: snap });
+            this.showToast(t('git.toast.stageFailed', this.props.language, { err: String(err) }));
         }
-        this.refresh();
     };
 
     unstage = async (file: string | null) => {
-        const url = file ? `/api/git/unstage?file=${encodeURIComponent(file)}` : '/api/git/unstage?all=true';
-        await fetch(url, { method: 'POST' });
-        if (file && this.state.diffFile === file && this.state.diffStaged) {
-            this.setState({ diffFile: null, diffContent: '' });
+        const snap = this.applyOptimisticStage(file, 'unstage');
+        try {
+            await gitService.unstage(file);
+            this.refresh({ silent: true, includeGraph: false });
+        } catch (err) {
+            if (snap && this._mounted) this.setState({ status: snap });
+            this.showToast(t('git.toast.unstageFailed', this.props.language, { err: String(err) }));
         }
-        this.refresh();
     };
 
     discard = async (file: string) => {
-        const confirmDiscard = window.confirm(t('git.discardConfirm', this.props.language, { file }));
-        if (!confirmDiscard) return;
-
+        if (!window.confirm(t('git.discardConfirm', this.props.language, { file }))) return;
         this.setState({ loading: true });
         try {
-            const res = await fetch(`/api/git/discard?file=${encodeURIComponent(file)}`, { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
+            await gitService.discard(file);
             this.showToast(t('git.toast.discarded', this.props.language));
-            if (this.state.diffFile === file) {
-                this.setState({ diffFile: null, diffContent: '' });
-            }
-            this.refresh();
+            if (this.state.diffFile === file) this.setState({ diffFile: null, diffContent: '' });
+            this.refresh({ silent: false, includeGraph: false });
         } catch (err) {
             this.showToast(t('git.toast.discardFailed', this.props.language, { err: String(err) }));
             this.setState({ loading: false });
@@ -588,15 +778,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         if (!commitMsg.trim()) return;
         this.setState({ committing: true });
         try {
-            const res = await fetch('/api/git/commit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: commitMsg.trim() }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await gitService.commit(commitMsg.trim());
             this.setState({ commitMsg: '', committing: false });
             this.showToast(t('git.toast.committed', this.props.language));
-            this.refresh();
+            this.refresh({ silent: false, includeGraph: true });
         } catch (err) {
             this.setState({ committing: false });
             this.showToast(t('git.toast.commitFailed', this.props.language, { err: String(err) }));
@@ -607,35 +792,34 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         this.setState({ aiLoading: true });
         this.showToast(t('git.toast.aiAnalyzing', this.props.language));
         try {
-            const res = await fetch('/api/git/ai-commit', { method: 'POST' });
-            const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.error || t('git.toast.aiFailedFallback', this.props.language));
-            }
-            this.setState({ commitMsg: data.message, aiLoading: false });
+            const message = await gitService.aiCommit();
+            this.setState({ commitMsg: message, aiLoading: false });
             this.showToast(t('git.toast.aiSuccess', this.props.language));
         } catch (err) {
             this.setState({ aiLoading: false });
-            const errMsg = (err as Error)?.message || String(err);
-            this.showToast(t('git.toast.aiFailed', this.props.language, { msg: errMsg }));
+            this.showToast(
+                t('git.toast.aiFailed', this.props.language, { msg: (err as Error)?.message || String(err) })
+            );
         }
     };
 
     pushOrPull = async (action: 'push' | 'pull') => {
         this.setState({ pushPullLoading: action });
         try {
-            const res = await fetch(`/api/git/${action}`, { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
+            if (action === 'push') await gitService.push();
+            else await gitService.pull();
             this.showToast(
                 t(action === 'push' ? 'git.toast.pushSuccess' : 'git.toast.pullSuccess', this.props.language)
             );
-            this.refresh();
+            this.refresh({ silent: false, includeGraph: true });
         } catch (err) {
             this.showToast(
                 t(
                     action === 'push' ? 'git.toast.pushFailedPrefix' : 'git.toast.pullFailedPrefix',
                     this.props.language,
-                    { err: String(err) }
+                    {
+                        err: String(err),
+                    }
                 )
             );
         } finally {
@@ -643,242 +827,213 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
     };
 
-    fetchRemote = async () => {
-        this.setState({ fetching: true });
-        this.showToast(t('git.toast.fetching', this.props.language));
-        try {
-            const res = await fetch('/api/git/fetch', { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
-            this.showToast(t('git.toast.fetchSuccess', this.props.language));
-            this.refresh();
-        } catch (err) {
-            this.showToast(t('git.toast.fetchFailedPrefix', this.props.language, { err: String(err) }));
-        } finally {
-            this.setState({ fetching: false });
+    openFile = (relPath: string, status?: string, isDir = false) => {
+        if (status === 'D') {
+            this.showToast(t('git.toast.fileDeleted', this.props.language, { file: relPath }));
+            return;
         }
-    };
-
-    showToast = (msg: string) => {
-        this.setState({ toast: msg });
-        setTimeout(() => this.setState({ toast: '' }), 3000);
+        const abs = joinWorkdir(this.props.workdir, relPath);
+        const name = relPath.split('/').pop() || relPath;
+        tabsStore.openContentTab('files');
+        void fsStore.openFileDetail({ name, path: abs, isDir, size: 0, modTime: 0 });
     };
 
     toggleSection = (section: 'staged' | 'unstaged' | 'untracked') => {
-        if (section === 'staged') {
-            this.setState({ stagedCollapsed: !this.state.stagedCollapsed });
-        } else if (section === 'unstaged') {
-            this.setState({ unstagedCollapsed: !this.state.unstagedCollapsed });
-        } else if (section === 'untracked') {
-            this.setState({ untrackedCollapsed: !this.state.untrackedCollapsed });
-        }
+        if (section === 'staged') this.setState({ stagedCollapsed: !this.state.stagedCollapsed });
+        else if (section === 'unstaged') this.setState({ unstagedCollapsed: !this.state.unstagedCollapsed });
+        else this.setState({ untrackedCollapsed: !this.state.untrackedCollapsed });
     };
 
-    // ── Graph layout ───────────────────────────────────────────────────────
-    //
-    // Trunk-anchored lane assignment: the main branch's first-parent chain is
-    // pinned to lane 0 (the leftmost vertical trunk). Side branches occupy
-    // lanes ≥1, so a branch tip whose first parent is on main reads as a fork
-    // off the trunk, and a merge commit on main pulls a side lane back into 0.
-    // Per-row lane layout. Each row carries its own rail-drawing instructions
-    // (incoming/parent connectors + straight pass-through lanes) so the SVG rail
-    // can be rendered one row at a time — staying perfectly aligned with the text
-    // rows even when a commit is expanded. Lane 0 is the main trunk.
-    buildGraphLayout(commits: GraphCommit[]): { rows: GraphRow[]; maxLanes: number } {
-        const byHash = new Map(commits.map(c => [c.hash, c]));
-
-        const mainTip =
-            commits.find(c => c.refs.some(r => r === 'main' || r === 'master')) ||
-            commits.find(c => c.refs.some(r => r.endsWith('/main') || r.endsWith('/master'))) ||
-            commits[0];
-
-        const onMain = new Set<string>();
-        let cur: GraphCommit | undefined = mainTip;
-        while (cur && !onMain.has(cur.hash)) {
-            onMain.add(cur.hash);
-            cur = cur.parents[0] ? byHash.get(cur.parents[0]) : undefined;
-        }
-
-        const lanes: (string | null)[] = []; // lanes[i] = hash expected next in lane i
-        // Returns the first free lane index >= `from`, extending the array as
-        // needed. Must never return < from (else a side branch could seize the
-        // reserved main trunk lane 0).
-        const firstFree = (from: number): number => {
-            let i = from;
-            while (i < lanes.length && lanes[i] !== null) i++;
-            while (lanes.length <= i) lanes.push(null);
-            return i;
-        };
-
-        const rows: GraphRow[] = [];
-
-        commits.forEach(commit => {
-            const isOnMain = onMain.has(commit.hash);
-
-            const incomingLanes: number[] = [];
-            lanes.forEach((hh, i) => {
-                if (hh === commit.hash) incomingLanes.push(i);
-            });
-
-            let nodeLane: number;
-            if (isOnMain) nodeLane = 0;
-            else if (incomingLanes.length) nodeLane = Math.min(...incomingLanes);
-            else nodeLane = firstFree(1);
-            while (lanes.length <= nodeLane) lanes.push(null);
-
-            const aboveSnap = lanes.slice();
-
-            incomingLanes.forEach(i => {
-                lanes[i] = null;
-            });
-
-            const parentLanes: number[] = [];
-            commit.parents.forEach((p, idx) => {
-                if (onMain.has(p)) {
-                    lanes[0] = p;
-                    if (!parentLanes.includes(0)) parentLanes.push(0);
-                    return;
-                }
-                const existing = lanes.findIndex(h => h === p);
-                if (existing >= 0) {
-                    if (!parentLanes.includes(existing)) parentLanes.push(existing);
-                    return;
-                }
-                let lane: number;
-                if (idx === 0 && !isOnMain) lane = nodeLane;
-                else lane = firstFree(1); // extra/merge parents never take the trunk lane 0
-                lanes[lane] = p;
-                if (!parentLanes.includes(lane)) parentLanes.push(lane);
-            });
-
-            const belowSnap = lanes.slice();
-
-            // Every lane carrying a line into/out of this row. The renderer draws a
-            // segment for each active half independently, so lines never break and
-            // the trunk runs straight through fork/merge rows (diagonals layer on top).
-            const aboveLanes: number[] = [];
-            aboveSnap.forEach((hh, i) => {
-                if (hh !== null) aboveLanes.push(i);
-            });
-            const belowLanes: number[] = [];
-            belowSnap.forEach((hh, i) => {
-                if (hh !== null) belowLanes.push(i);
-            });
-
-            rows.push({
-                ...commit,
-                nodeLane,
-                onMain: isOnMain,
-                isMerge: commit.parents.length > 1,
-                incomingLanes,
-                parentLanes,
-                aboveLanes,
-                belowLanes,
-            });
-        });
-
-        let hi = 0;
-        rows.forEach(r => {
-            [r.nodeLane, ...r.aboveLanes, ...r.belowLanes].forEach(L => {
-                if (L > hi) hi = L;
-            });
-        });
-
-        return { rows, maxLanes: hi + 1 };
+    renderOriginBadge(ahead: number, behind: number, language: Lang) {
+        // Always show both counters so the right column never collapses.
+        return (
+            <span class="git-card-origin" title={t('git.card.originTitle', language, { ahead, behind })}>
+                <span
+                    class={`git-card-ahead ${ahead > 0 ? 'active' : ''}`}
+                    title={t('git.branch.ahead', language, { n: ahead })}
+                >
+                    ↑{ahead}
+                </span>
+                <span
+                    class={`git-card-behind ${behind > 0 ? 'active' : ''}`}
+                    title={t('git.branch.behind', language, { n: behind })}
+                >
+                    ↓{behind}
+                </span>
+            </span>
+        );
     }
 
-    // ── Render helpers ─────────────────────────────────────────────────────
-
-    parseDiffLines(content: string) {
-        if (!content) return [];
-        const lines = content.split('\n');
-        let oldLine = 0;
-        let newLine = 0;
-
-        const result: {
-            oldLineNum: number | '';
-            newLineNum: number | '';
-            type: 'ctx' | 'add' | 'del' | 'hunk' | 'header';
-            text: string;
-        }[] = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (i === lines.length - 1 && line === '') continue; // Skip final split newline
-
-            if (line.startsWith('@@ ')) {
-                const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-                if (match) {
-                    oldLine = parseInt(match[1], 10);
-                    newLine = parseInt(match[2], 10);
-                }
-                result.push({ oldLineNum: '', newLineNum: '', type: 'hunk', text: line });
-            } else if (line.startsWith('+++ ') || line.startsWith('--- ')) {
-                result.push({ oldLineNum: '', newLineNum: '', type: 'header', text: line });
-            } else if (line.startsWith('+')) {
-                result.push({ oldLineNum: '', newLineNum: newLine++, type: 'add', text: line });
-            } else if (line.startsWith('-')) {
-                result.push({ oldLineNum: oldLine++, newLineNum: '', type: 'del', text: line });
-            } else if (line.startsWith(' ')) {
-                result.push({ oldLineNum: oldLine++, newLineNum: newLine++, type: 'ctx', text: line });
-            } else {
-                result.push({ oldLineNum: '', newLineNum: '', type: 'header', text: line });
-            }
-        }
-        return result;
-    }
-
-    // Shared diff panel markup used by working-tree diffs, commit diffs, and worktree diffs.
-    renderDiffPanel(file: string, content: string, loading: boolean, onClose: () => void) {
+    /** Single-line repo card: [name] [kind] …… [branch] [↑↓] [extra] */
+    renderRepoCardRow(opts: {
+        key: string;
+        selected: boolean;
+        conflict?: boolean;
+        child?: boolean;
+        name: string;
+        nameTitle?: string;
+        kind: string;
+        branch: string;
+        ahead: number;
+        behind: number;
+        onClick: () => void;
+        trailing?: h.JSX.Element | null;
+    }) {
         const { language } = this.props;
-        const parsedLines = this.parseDiffLines(content);
+        return (
+            <div
+                key={opts.key}
+                class={`git-repo-card ${opts.child ? 'git-repo-card-child' : ''} ${opts.selected ? 'selected' : ''} ${
+                    opts.conflict ? 'conflict' : ''
+                }`}
+                onClick={opts.onClick}
+            >
+                <span class="git-repo-card-name" title={opts.nameTitle || opts.name}>
+                    {opts.name}
+                </span>
+                {opts.kind ? <span class="git-repo-card-kind">{opts.kind}</span> : null}
+                <span class="git-repo-card-grow" />
+                <span class="git-repo-card-branch" title={opts.branch}>
+                    {IconBranchEl()}
+                    <span class="git-repo-card-branch-text">{opts.branch}</span>
+                </span>
+                {this.renderOriginBadge(opts.ahead, opts.behind, language)}
+                {opts.trailing}
+            </div>
+        );
+    }
+
+    // ── Repo cards (main + worktrees peers; submodules under main) ─────────
+
+    renderRepoCards() {
+        const { worktrees, status, selected, submodules, submodulesCollapsed } = this.state;
+        const { language, workdir } = this.props;
+        const repoName = this.repoDisplayName();
+        const mainSelected = selected.kind === 'main';
+        const ahead = status?.ahead ?? 0;
+        const behind = status?.behind ?? 0;
+        const mainBranch = status?.branch || '…';
+
+        // Dedup: main card already represents isMain / isCurrent / workdir path.
+        // Path compare also covers macOS /private prefix mismatches on isCurrent.
+        const mainWt = worktrees.find(w => w.isMain) || worktrees.find(w => w.isCurrent);
+        const mainPath = mainWt?.path || workdir;
+        const peerWorktrees = worktrees.filter(w => {
+            if (w.isMain || w.isCurrent) return false;
+            if (samePath(w.path, mainPath) || samePath(w.path, workdir)) return false;
+            return true;
+        });
+
+        // Submodule expand/collapse lives on the main card chevron.
+        const submodulesToggle =
+            submodules.length > 0 ? (
+                <button
+                    type="button"
+                    class="git-card-branch-btn"
+                    onClick={e => {
+                        e.stopPropagation();
+                        this.setState({ submodulesCollapsed: !submodulesCollapsed });
+                    }}
+                    title={
+                        submodulesCollapsed
+                            ? t('git.submodules.expand', language)
+                            : t('git.submodules.collapse', language)
+                    }
+                    aria-expanded={!submodulesCollapsed}
+                >
+                    {IconChevron(!submodulesCollapsed)}
+                </button>
+            ) : null;
 
         return (
-            <div class="git-diff-panel" onClick={e => e.stopPropagation()}>
-                <div class="git-diff-header">
-                    <span class="git-diff-title">{file}</span>
-                    <button class="git-diff-close-btn" onClick={onClose} title={t('git.diff.close', language)}>
-                        ×
-                    </button>
-                </div>
-                {loading ? (
-                    <div class="git-diff-loading">
-                        <div class="git-spinner" />
-                        <span>{t('git.diff.loading', language)}</span>
+            <div class="git-repo-cards">
+                {/* Main card — single row; chevron toggles nested submodules */}
+                {this.renderRepoCardRow({
+                    key: 'main',
+                    selected: mainSelected,
+                    name: repoName,
+                    nameTitle: workdir,
+                    kind: t('git.card.main', language),
+                    branch: mainBranch,
+                    ahead,
+                    behind,
+                    onClick: this.selectMain,
+                    trailing: submodulesToggle,
+                })}
+
+                {/* Submodules under main (collapsed via main-card chevron) */}
+                {submodules.length > 0 && !submodulesCollapsed && (
+                    <div class="git-repo-card-children">
+                        {submodules.map(sm => {
+                            const sel =
+                                selected.kind === 'submodule' &&
+                                (selected.path === sm.path ||
+                                    selected.path.endsWith('/' + sm.path) ||
+                                    samePath(selected.path, sm.path));
+                            const branch = sm.branch || sm.desc || (sm.flag === '-' ? '—' : sm.short) || '…';
+                            return this.renderRepoCardRow({
+                                key: sm.path,
+                                selected: !!sel,
+                                conflict: sm.flag === 'U',
+                                child: true,
+                                name: sm.path,
+                                nameTitle: sm.path,
+                                kind: '', // nesting already marks submodule; no kind chip
+                                branch,
+                                ahead: sm.ahead ?? 0,
+                                behind: sm.behind ?? 0,
+                                onClick: () => this.selectSubmodule(sm.path),
+                            });
+                        })}
                     </div>
-                ) : parsedLines.length > 0 ? (
-                    <div class="git-diff-wrapper">
-                        <div class="git-diff-table">
-                            {parsedLines.map((line, idx) => {
-                                const lineCls = `diff-line-${line.type}`;
-                                return (
-                                    <div key={idx} class={`git-diff-row ${lineCls}`}>
-                                        <div class="diff-num diff-num-old">{line.oldLineNum}</div>
-                                        <div class="diff-num diff-num-new">{line.newLineNum}</div>
-                                        <div class="diff-char">
-                                            {line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' '}
-                                        </div>
-                                        <div class="diff-text">
-                                            {line.type === 'add' || line.type === 'del'
-                                                ? line.text.substring(1)
-                                                : line.text}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ) : (
-                    <div class="git-diff-empty">{t('git.diff.empty', language)}</div>
+                )}
+
+                {/* Peer worktrees only (main already shown above) */}
+                {peerWorktrees.map(wt =>
+                    this.renderRepoCardRow({
+                        key: wt.path,
+                        selected: selected.kind === 'worktree' && selected.path === wt.path,
+                        name: pathBaseName(wt.path),
+                        nameTitle: wt.path,
+                        kind: t('git.card.worktree', language),
+                        branch: wt.branch || t('git.worktrees.detached', language),
+                        ahead: wt.ahead ?? 0,
+                        behind: wt.behind ?? 0,
+                        onClick: () => this.selectWorktree(wt.path, wt.isCurrent),
+                    })
                 )}
             </div>
+        );
+    }
+
+    // ── Changes / commit ───────────────────────────────────────────────────
+
+    renderStatusBadge(status: string) {
+        const conflict = isConflictStatus(status);
+        const cls = STATUS_COLOR[status] || (conflict ? 'git-status-conflict' : 'git-status-u');
+        const label = STATUS_KEY[status]
+            ? t(STATUS_KEY[status], this.props.language)
+            : conflict
+              ? t('git.status.U', this.props.language)
+              : status;
+        return (
+            <span class={`git-file-status-badge ${cls}`} title={label}>
+                {status}
+            </span>
         );
     }
 
     renderDiff() {
         const { diffFile, diffContent, diffLoading } = this.state;
         if (!diffFile) return null;
-        return this.renderDiffPanel(diffFile, diffContent, diffLoading, () =>
-            this.setState({ diffFile: null, diffContent: '' })
+        return (
+            <DiffPanel
+                file={diffFile}
+                content={diffContent}
+                loading={diffLoading}
+                language={this.props.language}
+                onClose={() => this.setState({ diffFile: null, diffContent: '' })}
+            />
         );
     }
 
@@ -887,63 +1042,88 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const { language } = this.props;
         const isStaged = section === 'staged';
         const isOpen = diffFile === file.path && diffStaged === isStaged;
-        const statusCls = STATUS_COLOR[file.status] || 'git-status-u';
-        const label = STATUS_KEY[file.status] ? t(STATUS_KEY[file.status], language) : file.status;
+        const conflict = isConflictStatus(file.status);
+        const statusCls = STATUS_COLOR[file.status] || (conflict ? 'git-status-conflict' : 'git-status-u');
+        const label = STATUS_KEY[file.status]
+            ? t(STATUS_KEY[file.status], language)
+            : conflict
+              ? t('git.status.U', language)
+              : file.status;
+        const interactive = this.isInteractive();
 
         return (
             <Fragment key={`${section}-${file.path}`}>
-                <div class={`git-file-row ${isOpen ? 'open' : ''}`}>
+                <div class={`git-file-row ${isOpen ? 'open' : ''} ${conflict ? 'git-file-conflict' : ''}`}>
                     <span class={`git-file-status ${statusCls}`} title={label}>
                         {file.status}
                     </span>
                     <span
                         class="git-file-path"
-                        onClick={() => section !== 'untracked' && this.loadDiff(file.path, isStaged)}
+                        onClick={() => {
+                            if (!interactive) return;
+                            if (section !== 'untracked') this.loadDiff(file.path, isStaged);
+                        }}
                         title={file.path}
                     >
                         {file.path}
                     </span>
-                    <div class="git-file-actions">
-                        {section === 'staged' ? (
-                            <button
-                                class="git-action-btn git-action-unstage"
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    this.unstage(file.path);
-                                }}
-                                title={t('git.action.unstage', language)}
-                            >
-                                {IconMinus}
-                            </button>
-                        ) : section === 'unstaged' || section === 'untracked' ? (
-                            <Fragment>
-                                {section === 'unstaged' && (
-                                    <button
-                                        class="git-action-btn git-action-discard"
-                                        onClick={e => {
-                                            e.stopPropagation();
-                                            this.discard(file.path);
-                                        }}
-                                        title={t('git.action.discard', language)}
-                                    >
-                                        {IconTrash}
-                                    </button>
-                                )}
+                    {interactive && (
+                        <div class="git-file-actions">
+                            {file.status !== 'D' && file.status !== '?' && (
                                 <button
-                                    class="git-action-btn git-action-stage"
+                                    class="git-action-btn"
                                     onClick={e => {
                                         e.stopPropagation();
-                                        this.stage(file.path);
+                                        this.openFile(file.path, file.status);
                                     }}
-                                    title={t('git.action.stage', language)}
+                                    title={t('git.action.openFile', language)}
                                 >
-                                    {IconPlus}
+                                    {IconOpen}
                                 </button>
-                            </Fragment>
-                        ) : null}
-                    </div>
+                            )}
+                            {section === 'staged' ? (
+                                <button
+                                    class="git-action-btn git-action-unstage"
+                                    onClick={e => {
+                                        e.stopPropagation();
+                                        this.unstage(file.path);
+                                    }}
+                                    title={t('git.action.unstage', language)}
+                                >
+                                    {IconMinus}
+                                </button>
+                            ) : (
+                                <Fragment>
+                                    {section === 'unstaged' && !conflict && (
+                                        <button
+                                            class="git-action-btn git-action-discard"
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                this.discard(file.path);
+                                            }}
+                                            title={t('git.action.discard', language)}
+                                        >
+                                            {IconTrash}
+                                        </button>
+                                    )}
+                                    {!conflict && (
+                                        <button
+                                            class="git-action-btn git-action-stage"
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                this.stage(file.path);
+                                            }}
+                                            title={t('git.action.stage', language)}
+                                        >
+                                            {IconPlus}
+                                        </button>
+                                    )}
+                                </Fragment>
+                            )}
+                        </div>
+                    )}
                 </div>
-                {isOpen && section !== 'untracked' && this.renderDiff()}
+                {isOpen && section !== 'untracked' && interactive && this.renderDiff()}
             </Fragment>
         );
     }
@@ -956,13 +1136,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         allLabel?: string
     ) {
         if (files.length === 0) return null;
-
         const isCollapsed =
             section === 'staged'
                 ? this.state.stagedCollapsed
                 : section === 'unstaged'
                   ? this.state.unstagedCollapsed
                   : this.state.untrackedCollapsed;
+        const interactive = this.isInteractive();
 
         return (
             <div class="git-section">
@@ -975,7 +1155,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         {title}
                         <span class="git-section-count">{files.length}</span>
                     </span>
-                    {allAction && (
+                    {interactive && allAction && (
                         <button
                             class="git-section-action"
                             onClick={e => {
@@ -1012,194 +1192,26 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 </div>
                 <h3 class="git-clean-title">{t('git.clean.title', language)}</h3>
                 <p class="git-clean-desc">{t('git.clean.desc', language)}</p>
-                <button class="git-clean-refresh-btn" onClick={this.refresh}>
+                <button class="git-clean-refresh-btn" onClick={this.refreshManual}>
                     {IconRefresh} {t('git.clean.refresh', language)}
                 </button>
             </div>
         );
     }
 
-    // Styled status badge (filled background) shared by commit & worktree file lists.
-    renderStatusBadge(status: string) {
-        const cls = STATUS_COLOR[status] || 'git-status-u';
-        const label = STATUS_KEY[status] ? t(STATUS_KEY[status], this.props.language) : status;
-        return (
-            <span class={`git-file-status-badge ${cls}`} title={label}>
-                {status}
-            </span>
-        );
-    }
-
-    // §1 Worktree switcher (replaces branch selector at the top)
-    renderWorktreeSwitcher() {
-        const {
-            worktrees,
-            worktreeSwitcherOpen,
-            selectedWorktreePath,
-            worktreesLoading,
-            status,
-            pushPullLoading,
-            fetching,
-        } = this.state;
-        const { language } = this.props;
-
-        // Determine which worktree is active for display.
-        const activeWt = selectedWorktreePath
-            ? worktrees.find(w => w.path === selectedWorktreePath)
-            : worktrees.find(w => w.isCurrent);
-        const displayBranch = activeWt?.branch || status?.branch || '…';
-
-        // Active status for ahead/behind display (§2).
-        const viewingCurrent = this.isViewingCurrent();
-        const activeStatus = viewingCurrent ? status : this.state.worktreeStatus;
-        const ahead = activeStatus?.ahead ?? 0;
-        const behind = activeStatus?.behind ?? 0;
-
-        return (
-            <div class="git-branch-bar-container git-worktree-switcher-container">
-                {worktreeSwitcherOpen && (
-                    <div class="git-dropdown-overlay" onClick={() => this.setState({ worktreeSwitcherOpen: false })} />
-                )}
-                <div class="git-branch-bar">
-                    <div
-                        class={`git-branch-selector ${worktreeSwitcherOpen ? 'active' : ''}`}
-                        onClick={() => this.setState({ worktreeSwitcherOpen: !worktreeSwitcherOpen })}
-                        title={t('git.worktrees.switchTitle', language)}
-                    >
-                        <span class="git-branch-icon">{IconBranch}</span>
-                        <span class="git-branch-name">{displayBranch}</span>
-                        <span class="git-branch-arrow">▼</span>
-                    </div>
-
-                    {viewingCurrent ? (
-                        // Current worktree: ahead/behind double as one-click push/pull,
-                        // plus a Fetch button to sync the remote tracking state.
-                        <div class="git-sync-cluster">
-                            {behind > 0 && (
-                                <button
-                                    class="git-sync-badge git-behind"
-                                    onClick={() => this.pushOrPull('pull')}
-                                    disabled={pushPullLoading !== null || fetching}
-                                    title={t('git.branch.behind', language, { n: behind })}
-                                >
-                                    {pushPullLoading === 'pull' ? (
-                                        <div class="git-spinner git-spinner-sm" />
-                                    ) : (
-                                        `↓${behind}`
-                                    )}
-                                </button>
-                            )}
-                            {ahead > 0 && (
-                                <button
-                                    class="git-sync-badge git-ahead"
-                                    onClick={() => this.pushOrPull('push')}
-                                    disabled={pushPullLoading !== null || fetching}
-                                    title={t('git.branch.ahead', language, { n: ahead })}
-                                >
-                                    {pushPullLoading === 'push' ? (
-                                        <div class="git-spinner git-spinner-sm" />
-                                    ) : (
-                                        `↑${ahead}`
-                                    )}
-                                </button>
-                            )}
-                            <button
-                                class={`git-icon-btn ${fetching ? 'spinning' : ''}`}
-                                onClick={this.fetchRemote}
-                                disabled={fetching || pushPullLoading !== null}
-                                title={t('git.action.fetch', language)}
-                            >
-                                {IconRefresh}
-                            </button>
-                        </div>
-                    ) : (
-                        (ahead > 0 || behind > 0) && (
-                            <span class="git-ahead-behind">
-                                {ahead > 0 && (
-                                    <span class="git-ahead" title={t('git.branch.ahead', language, { n: ahead })}>
-                                        ↑{ahead}
-                                    </span>
-                                )}
-                                {behind > 0 && (
-                                    <span class="git-behind" title={t('git.branch.behind', language, { n: behind })}>
-                                        ↓{behind}
-                                    </span>
-                                )}
-                            </span>
-                        )
-                    )}
-
-                    {worktreesLoading && !viewingCurrent && (
-                        <div class="git-spinner git-spinner-sm" style="margin-left:auto" />
-                    )}
-                </div>
-
-                {/* Worktree dropdown */}
-                {worktreeSwitcherOpen && worktrees.length > 0 && (
-                    <div class="git-branch-dropdown git-worktree-switcher-dropdown">
-                        <div class="git-dropdown-header">
-                            <span>{t('git.worktrees.switchTitle', language)}</span>
-                        </div>
-                        <div class="git-branch-list git-worktree-switcher-list">
-                            {worktrees.map(wt => {
-                                const isSel =
-                                    selectedWorktreePath === wt.path || (selectedWorktreePath === null && wt.isCurrent);
-                                return (
-                                    <div
-                                        key={wt.path}
-                                        class={`git-worktree-switcher-item ${isSel ? 'selected' : ''}`}
-                                        onClick={() => {
-                                            const next = wt.isCurrent ? null : wt.path;
-                                            this.setState({
-                                                selectedWorktreePath: next,
-                                                worktreeSwitcherOpen: false,
-                                                commitDiffFile: null,
-                                                commitDiffContent: '',
-                                            });
-                                        }}
-                                    >
-                                        <div class="git-worktree-switcher-branch-row">
-                                            <span class="git-worktree-branch">
-                                                {wt.branch || t('git.worktrees.detached', language)}
-                                            </span>
-                                            {wt.isMain && (
-                                                <span class="git-worktree-tag">
-                                                    {t('git.worktrees.main', language)}
-                                                </span>
-                                            )}
-                                            {wt.isCurrent && (
-                                                <span class="git-worktree-tag git-worktree-tag-current">
-                                                    {t('git.worktrees.current', language)}
-                                                </span>
-                                            )}
-                                        </div>
-                                        {wt.message && (
-                                            <div class="git-worktree-msg">
-                                                <span class="git-worktree-short">{wt.short}</span>
-                                                <span class="git-worktree-commit-msg">{wt.message}</span>
-                                            </div>
-                                        )}
-                                        <div class="git-worktree-path" title={wt.path}>
-                                            {wt.path}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // §3 Changes section — current worktree (full interactive) or another (read-only).
     renderChangesSection() {
         const { language } = this.props;
-        const { status, worktreeStatus, worktreeStatusLoading, commitDiffFile, commitDiffContent, commitDiffLoading } =
-            this.state;
+        const {
+            status,
+            selectedStatus,
+            selectedStatusLoading,
+            commitDiffFile,
+            commitDiffContent,
+            commitDiffLoading,
+            selected,
+        } = this.state;
 
-        if (this.isViewingCurrent()) {
-            // Full interactive current-worktree view.
+        if (this.isViewingMain()) {
             const staged = status?.staged || [];
             const unstaged = status?.unstaged || [];
             const untracked = status?.untracked || [];
@@ -1233,9 +1245,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             );
         }
 
-        // Read-only view for a peeked worktree.
-        const selPath = this.state.selectedWorktreePath!;
-        if (worktreeStatusLoading) {
+        // Read-only: worktree or submodule
+        const repoPath = selected.kind === 'main' ? '' : selected.path;
+        if (selectedStatusLoading) {
             return (
                 <div class="git-commit-detail">
                     <div class="git-loading-row">
@@ -1244,8 +1256,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 </div>
             );
         }
-        const files = worktreeStatus
-            ? [...worktreeStatus.staged, ...worktreeStatus.unstaged, ...worktreeStatus.untracked]
+        const files = selectedStatus
+            ? [...selectedStatus.staged, ...selectedStatus.unstaged, ...selectedStatus.untracked]
             : [];
         if (files.length === 0) {
             return (
@@ -1268,15 +1280,20 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             <Fragment key={f.path}>
                                 <div
                                     class={`git-commit-file-row ${commitDiffFile === f.path ? 'open' : ''}`}
-                                    onClick={() => this.openWorktreeDiff(selPath, f.path)}
+                                    onClick={() => this.openPathDiff(repoPath, f.path)}
                                 >
                                     {this.renderStatusBadge(f.status)}
                                     <span class="git-commit-file-path">{f.path}</span>
                                 </div>
-                                {commitDiffFile === f.path &&
-                                    this.renderDiffPanel(f.path, commitDiffContent, commitDiffLoading, () =>
-                                        this.setState({ commitDiffFile: null, commitDiffContent: '' })
-                                    )}
+                                {commitDiffFile === f.path && (
+                                    <DiffPanel
+                                        file={f.path}
+                                        content={commitDiffContent}
+                                        loading={commitDiffLoading}
+                                        language={language}
+                                        onClose={() => this.setState({ commitDiffFile: null, commitDiffContent: '' })}
+                                    />
+                                )}
                             </Fragment>
                         ))}
                     </div>
@@ -1285,12 +1302,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
-    // §4 Commit box — collapsible, current worktree only.
     renderCommitBox() {
+        if (!this.isInteractive()) return null;
         const { commitMsg, committing, pushPullLoading, commitBoxCollapsed, status } = this.state;
         const { language } = this.props;
-        if (!this.isViewingCurrent()) return null;
-
         const staged = status?.staged || [];
         const stagedCount = staged.length;
         const hasStaged = stagedCount > 0;
@@ -1373,7 +1388,6 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
-    // §5 Graph section with redesigned commit row.
     renderGraphSection() {
         const {
             graph,
@@ -1386,28 +1400,25 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             commitDiffContent,
             commitDiffLoading,
             worktrees,
+            graphLimit,
         } = this.state;
         const { language } = this.props;
 
         const LANE_W = 16;
         const ROW_H = 28;
-        // Lane 0 = main trunk (blue); side branches cycle a warm/cool palette.
         const LANE_COLORS = ['#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#06b6d4', '#ef4444'];
-        const laneColor = (lane: number) => (lane === 0 ? '#3b82f6' : LANE_COLORS[(lane - 1) % LANE_COLORS.length]);
+        const laneColor = (lane: number) =>
+            lane === 0 ? 'var(--accent-color, #3b82f6)' : LANE_COLORS[(lane - 1) % LANE_COLORS.length];
         const cx = (lane: number) => lane * LANE_W + LANE_W / 2;
 
-        const layout = graphExpanded && graph.length > 0 ? this.buildGraphLayout(graph) : { rows: [], maxLanes: 1 };
+        const layout = graphExpanded && graph.length > 0 ? this.getLayout() : { rows: [] as GraphRow[], maxLanes: 1 };
         const rows = layout.rows;
         const railW = layout.maxLanes * LANE_W;
 
-        // Map every worktree's HEAD branch → its entry so each worktree tip gets
-        // a compact initials badge on the graph (full branch name on hover).
         const worktreeByBranch = new Map<string, WorktreeEntry>();
         for (const wt of worktrees) {
             if (wt.branch) worktreeByBranch.set(wt.branch, wt);
         }
-        // Initials of each segment, e.g. claude/hardcore-austin-1bbbeb → HA1,
-        // worktree-p6-ai-project-manager → WPAP. Capped at 4 chars.
         const branchInitials = (name: string): string => {
             const tail = name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
             const initials = tail
@@ -1443,7 +1454,6 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                             const incoming = new Set(rw.incomingLanes);
                             const parents = new Set(rw.parentLanes);
                             const above = new Set(rw.aboveLanes);
-                            // Connectors that touch the trunk keep the side branch's color.
                             const diagColor = (L: number) => laneColor(L === 0 ? rw.nodeLane : L);
                             const sw = (L: number) => (L === 0 ? 2.5 : 1.6);
                             const push = (key: string, d: string, color: string, width: number) =>
@@ -1452,10 +1462,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
                             for (let L = 0; L < maxL; L++) {
                                 const xl = cx(L);
-                                // ── TOP half (line entering this row from above) ──
                                 if (above.has(L) || (L === rw.nodeLane && incoming.has(L))) {
                                     if (L !== rw.nodeLane && incoming.has(L)) {
-                                        // a child branch in lane L converging into this node
                                         push(
                                             `i${L}`,
                                             `M${xl},0 C${xl},${ROW_H / 4} ${xn},${ROW_H / 4} ${xn},${yc}`,
@@ -1463,22 +1471,18 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                             sw(L)
                                         );
                                     } else if (above.has(L)) {
-                                        // node's own lane or a pass-through trunk: straight
                                         push(`ts${L}`, `M${xl},0 L${xl},${yc}`, laneColor(L), sw(L));
                                     }
                                 }
-                                // ── BOTTOM half (line leaving this row below) ──
                                 const botActive = rw.belowLanes.includes(L);
                                 if (botActive || (L === rw.nodeLane && parents.has(L))) {
                                     if (L !== rw.nodeLane && parents.has(L)) {
-                                        // this node's parent continues in lane L (fork / merge target)
                                         push(
                                             `p${L}`,
                                             `M${xn},${yc} C${xn},${(ROW_H * 3) / 4} ${xl},${(ROW_H * 3) / 4} ${xl},${ROW_H}`,
                                             diagColor(L),
                                             sw(L)
                                         );
-                                        // if the lane was already flowing (trunk), keep its straight line too
                                         if (above.has(L))
                                             push(`bs${L}`, `M${xl},${yc} L${xl},${ROW_H}`, laneColor(L), sw(L));
                                     } else if (botActive) {
@@ -1487,9 +1491,6 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 }
                             }
 
-                            // Badge main/master (green, full name) and every worktree
-                            // HEAD (initials, current worktree highlighted). Other refs
-                            // are left unbadged so the markers track worktrees only.
                             const refBadgeList = rw.refs
                                 .map(r => {
                                     if (r === 'main' || r === 'master') {
@@ -1507,16 +1508,12 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                             class={`git-ref-badge worktree ${wt.isCurrent ? 'current' : ''}`}
                                             title={wt.isCurrent ? `${r} · ${t('git.worktrees.current', language)}` : r}
                                         >
-                                            <span class="git-branch-icon-sm">{IconBranch}</span>
+                                            <span class="git-branch-icon-sm">{IconBranchEl()}</span>
                                             {branchInitials(r)}
                                         </span>
                                     );
                                 })
                                 .filter(Boolean);
-                            const refBadge =
-                                refBadgeList.length > 0 ? (
-                                    <span class="git-graph-ref-count">{refBadgeList}</span>
-                                ) : null;
 
                             return (
                                 <Fragment key={rw.hash}>
@@ -1550,7 +1547,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                         <div class="git-graph-line1">
                                             <span class="git-graph-short">{rw.short}</span>
                                             <span class="git-graph-msg">{rw.message}</span>
-                                            {refBadge}
+                                            {refBadgeList.length > 0 && (
+                                                <span class="git-graph-ref-count">{refBadgeList}</span>
+                                            )}
                                             <span class="git-graph-time">{relativeTime(rw.time, language)}</span>
                                         </div>
                                     </div>
@@ -1577,18 +1576,33 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                                         >
                                                             {this.renderStatusBadge(f.status)}
                                                             <span class="git-commit-file-path">{f.path}</span>
+                                                            {f.status !== 'D' && (
+                                                                <button
+                                                                    class="git-action-btn"
+                                                                    onClick={e => {
+                                                                        e.stopPropagation();
+                                                                        this.openFile(f.path, f.status);
+                                                                    }}
+                                                                    title={t('git.action.openFile', language)}
+                                                                >
+                                                                    {IconOpen}
+                                                                </button>
+                                                            )}
                                                         </div>
-                                                        {commitDiffFile === f.path &&
-                                                            this.renderDiffPanel(
-                                                                f.path,
-                                                                commitDiffContent,
-                                                                commitDiffLoading,
-                                                                () =>
+                                                        {commitDiffFile === f.path && (
+                                                            <DiffPanel
+                                                                file={f.path}
+                                                                content={commitDiffContent}
+                                                                loading={commitDiffLoading}
+                                                                language={language}
+                                                                onClose={() =>
                                                                     this.setState({
                                                                         commitDiffFile: null,
                                                                         commitDiffContent: '',
                                                                     })
-                                                            )}
+                                                                }
+                                                            />
+                                                        )}
                                                     </Fragment>
                                                 ))
                                             )}
@@ -1597,6 +1611,19 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 </Fragment>
                             );
                         })}
+                        {graph.length >= graphLimit && (
+                            <button
+                                class="git-section-action"
+                                style={{ margin: '8px auto', display: 'block' }}
+                                onClick={e => {
+                                    e.stopPropagation();
+                                    this.loadMoreGraph();
+                                }}
+                                disabled={graphLoading}
+                            >
+                                {t('git.graph.loadMore', language)}
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -1636,19 +1663,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
         return (
             <div class="git-panel">
-                {/* §1 Worktree switcher (replaces branch selector) */}
-                {this.renderWorktreeSwitcher()}
-
-                {/* §3 Changes section — current (full) or peeked worktree (read-only) */}
+                {this.renderRepoCards()}
                 {this.renderChangesSection()}
-
-                {/* §4 Commit box — collapsible, current worktree only */}
                 {this.renderCommitBox()}
-
-                {/* §5 Commit graph history */}
                 {this.renderGraphSection()}
-
-                {/* Toast notification */}
                 {toast && (
                     <div class="git-toast-wrapper">
                         <div class="git-toast">{toast}</div>
