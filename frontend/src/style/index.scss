@@ -3850,26 +3850,32 @@ body {
   }
 }
 
-// ── 项目总览 card wall (ProjectHome.tsx, #redesign) ───────────────────────
-// L1 项目总览 — codex-minimal, mirrors the 助理 概览 (breadcrumb + toolbar +
-// flat card grid). Shares the .assistant-btn / .assistants-toolbar primitives.
+// ── 项目总览 card wall (ProjectHome.tsx) ──────────────────────────────────
+// L1 项目总览 — multi-column Bento card registry. Explicit column counts
+// (not auto-fill alone) so the wall never collapses to a single full-width
+// column when the flex parent’s inline size is still resolving.
 .project-home {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 .project-home-scroll {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  overflow-x: hidden;
+  padding: 16px 24px 32px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 960px;
+  gap: 28px;
   width: 100%;
+  max-width: 1280px;
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -3878,12 +3884,21 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .project-home-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+}
+
+.project-home-section-templates {
+  padding-top: 4px;
+  border-top: 1px solid var(--border-color);
 }
 
 .project-home-section-head {
@@ -3891,19 +3906,22 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .project-home-section-title {
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-main);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .project-home-search {
-  width: 220px;
+  width: min(240px, 100%);
   height: 32px;
-  padding: 0 12px;
+  padding: 0 14px;
   font-size: 13px;
   font-family: inherit;
   color: var(--text-main);
@@ -3911,92 +3929,209 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 999px;
 
+  &::placeholder {
+    color: var(--text-muted);
+  }
+
   &:focus {
     outline: none;
     border-color: var(--text-main);
   }
 }
 
-.project-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+.project-home-empty-filter {
+  padding: 36px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--bento-radius);
 }
 
-.project-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  text-align: left;
-  cursor: pointer;
+// Fixed column count keyed to viewport (same pattern as discovery-cards-list).
+// minmax(0, 1fr) prevents long paths from forcing a single column.
+.project-grid {
+  display: grid !important;
   width: 100%;
-  padding: 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--bento-radius);
-  background: var(--bg-card);
+  min-width: 0;
+  box-sizing: border-box;
+  align-items: stretch;
+  gap: 12px;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+
+  @media (min-width: 560px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (min-width: 900px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (min-width: 1200px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+// Keep bento-grid class for token inheritance but override auto-fill columns.
+.project-grid.bento-grid {
+  --bento-min-col: 0;
+  gap: 12px;
+  container-type: normal;
+}
+
+// Vertical zoned project card (icon + title/path + meta footer).
+.project-card {
+  @extend %bento-card;
+  @extend %bento-card-interactive;
+  text-align: left;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 148px;
   color: var(--text-main);
   font: inherit;
-  transition: border-color 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
 
   &:hover {
-    border-color: var(--text-main);
-    .project-card-chevron {
-      transform: translateX(2px);
-      color: var(--text-secondary);
+    .project-card-action {
+      color: var(--text-main);
+
+      svg {
+        transform: translateX(2px);
+      }
     }
+
+    .project-card-name {
+      color: var(--text-main);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+
+  &.is-archived {
+    opacity: 0.72;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  &.is-template {
+    min-height: 136px;
+    background: var(--bg-page);
   }
 }
 
 .project-card-icon {
-  flex: none;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--bento-radius-sm);
+  color: var(--text-secondary);
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &.is-template {
+    color: var(--text-muted);
+  }
+}
+
+.project-card-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
   border-radius: 999px;
+  white-space: nowrap;
   color: var(--text-secondary);
   background: var(--bg-page);
   border: 1px solid var(--border-color);
 
-  svg {
-    width: 20px;
-    height: 20px;
+  &.is-planning {
+    color: var(--warning-fg);
+    background: var(--warning-bg);
+    border-color: transparent;
   }
-}
 
-.project-card-body {
-  min-width: 0;
-  flex: 1;
+  &.is-inactive,
+  &.is-archived {
+    color: var(--text-muted);
+  }
+
+  &.is-template {
+    color: var(--text-muted);
+    font-weight: 500;
+  }
 }
 
 .project-card-name {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-main);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s ease;
+}
+
+.project-card-path {
+  margin: 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.project-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .project-card-meta {
-  margin-top: 4px;
   font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
-.project-card-chevron {
-  width: 16px;
-  height: 16px;
+.project-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
-  transition: transform 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.15s ease;
+  }
 }
 
-// Operational list replacing card grid — each entry is a StatusRow.
+// Legacy list class kept so any external reference does not break layout.
 .project-home-list {
   display: flex;
   flex-direction: column;
