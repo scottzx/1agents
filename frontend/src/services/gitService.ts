@@ -61,6 +61,11 @@ export interface SubmoduleEntry {
 
 export type FetchOpts = { signal?: AbortSignal };
 
+function withRepoPath(url: string, path?: string | null): string {
+    if (!path) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}path=${encodeURIComponent(path)}`;
+}
+
 async function readError(res: Response): Promise<string> {
     try {
         const t = await res.text();
@@ -132,37 +137,37 @@ export const gitService = {
         return res.text();
     },
 
-    async diff(file: string, staged: boolean, opts?: FetchOpts): Promise<string> {
+    async diff(file: string, staged: boolean, path?: string | null, opts?: FetchOpts): Promise<string> {
         const res = await ensureOk(
-            await fetch(`/api/git/diff?file=${encodeURIComponent(file)}&staged=${staged}`, {
+            await fetch(withRepoPath(`/api/git/diff?file=${encodeURIComponent(file)}&staged=${staged}`, path), {
                 signal: opts?.signal,
             })
         );
         return res.text();
     },
 
-    async stage(file: string | null, opts?: FetchOpts): Promise<void> {
+    async stage(file: string | null, path?: string | null, opts?: FetchOpts): Promise<void> {
         const url = file ? `/api/git/stage?file=${encodeURIComponent(file)}` : '/api/git/stage?all=true';
-        await ensureOk(await fetch(url, { method: 'POST', signal: opts?.signal }));
+        await ensureOk(await fetch(withRepoPath(url, path), { method: 'POST', signal: opts?.signal }));
     },
 
-    async unstage(file: string | null, opts?: FetchOpts): Promise<void> {
+    async unstage(file: string | null, path?: string | null, opts?: FetchOpts): Promise<void> {
         const url = file ? `/api/git/unstage?file=${encodeURIComponent(file)}` : '/api/git/unstage?all=true';
-        await ensureOk(await fetch(url, { method: 'POST', signal: opts?.signal }));
+        await ensureOk(await fetch(withRepoPath(url, path), { method: 'POST', signal: opts?.signal }));
     },
 
-    async discard(file: string, opts?: FetchOpts): Promise<void> {
+    async discard(file: string, path?: string | null, opts?: FetchOpts): Promise<void> {
         await ensureOk(
-            await fetch(`/api/git/discard?file=${encodeURIComponent(file)}`, {
+            await fetch(withRepoPath(`/api/git/discard?file=${encodeURIComponent(file)}`, path), {
                 method: 'POST',
                 signal: opts?.signal,
             })
         );
     },
 
-    async commit(message: string, opts?: FetchOpts): Promise<void> {
+    async commit(message: string, path?: string | null, opts?: FetchOpts): Promise<void> {
         await ensureOk(
-            await fetch('/api/git/commit', {
+            await fetch(withRepoPath('/api/git/commit', path), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message }),
@@ -171,8 +176,11 @@ export const gitService = {
         );
     },
 
-    async aiCommit(opts?: FetchOpts): Promise<string> {
-        const res = await fetch('/api/git/ai-commit', { method: 'POST', signal: opts?.signal });
+    async aiCommit(path?: string | null, opts?: FetchOpts): Promise<string> {
+        const res = await fetch(withRepoPath('/api/git/ai-commit', path), {
+            method: 'POST',
+            signal: opts?.signal,
+        });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((data as { error?: string }).error || (await readError(res)));
         return (data as { message: string }).message;

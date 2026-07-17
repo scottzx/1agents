@@ -477,11 +477,25 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     }
 
     isInteractive(): boolean {
-        return this.state.selected.kind === 'main';
+        return this.activeStatus()?.isRepo === true;
     }
 
     activeStatus(): GitStatus | null {
         return this.isViewingMain() ? this.state.status : this.state.selectedStatus;
+    }
+
+    activeRepoPath(): string | null {
+        return this.state.selected.kind === 'main' ? null : this.state.selected.path;
+    }
+
+    activeRepoRoot(): string {
+        const path = this.activeRepoPath();
+        return path ? joinWorkdir(this.props.workdir, path) : this.props.workdir;
+    }
+
+    setActiveStatus(status: GitStatus) {
+        if (this.isViewingMain()) this.setState({ status });
+        else this.setState({ selectedStatus: status });
     }
 
     repoDisplayName(): string {
@@ -492,6 +506,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         this.setState({
             selected: { kind: 'main' },
             selectedStatus: null,
+            commitMsg: '',
+            diffFile: null,
+            diffContent: '',
             commitDiffFile: null,
             commitDiffContent: '',
         });
@@ -504,6 +521,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
         this.setState({
             selected: { kind: 'worktree', path },
+            selectedStatus: null,
+            commitMsg: '',
+            diffFile: null,
+            diffContent: '',
             commitDiffFile: null,
             commitDiffContent: '',
         });
@@ -512,6 +533,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     selectSubmodule = (path: string) => {
         this.setState({
             selected: { kind: 'submodule', path },
+            selectedStatus: null,
+            commitMsg: '',
+            diffFile: null,
+            diffContent: '',
             commitDiffFile: null,
             commitDiffContent: '',
         });
@@ -539,9 +564,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     /** Header / clean-state refresh: fetch remote first, then reload local git views. */
     refreshManual = async () => {
+        const path = this.activeRepoPath();
         this.setState({ fetching: true, loading: true });
         try {
-            await gitService.fetchRemote();
+            await gitService.fetchRemote(path);
         } catch (err) {
             // Still reload local status even when fetch fails (offline / no upstream).
             this.showToast(t('git.toast.fetchFailedPrefix', this.props.language, { err: String(err) }));
@@ -667,38 +693,25 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
     };
 
-    openPathDiff = async (repoPath: string, file: string) => {
-        if (this.state.commitDiffFile === file) {
-            this.setState({ commitDiffFile: null, commitDiffContent: '' });
-            return;
-        }
-        this.setState({ commitDiffFile: file, commitDiffLoading: true, commitDiffContent: '' });
-        try {
-            const text = await gitService.worktreeDiff(repoPath, file);
-            if (this._mounted) this.setState({ commitDiffContent: text, commitDiffLoading: false });
-        } catch (err) {
-            if (this._mounted) this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
-        }
-    };
-
     loadDiff = async (file: string, staged: boolean) => {
         if (this.state.diffFile === file && this.state.diffStaged === staged) {
             this.setState({ diffFile: null, diffContent: '' });
             return;
         }
+        const path = this.activeRepoPath();
         this.setState({ diffFile: file, diffStaged: staged, diffLoading: true, diffContent: '' });
         try {
-            const text = await gitService.diff(file, staged);
+            const text = await gitService.diff(file, staged, path);
             if (this._mounted) this.setState({ diffContent: text, diffLoading: false });
         } catch (err) {
             if (this._mounted) this.setState({ diffContent: `Error loading diff: ${err}`, diffLoading: false });
         }
     };
 
-    // ── Actions (main interactive only) ────────────────────────────────────
+    // ── Actions ────────────────────────────────────────────────────────────
 
     applyOptimisticStage(file: string | null, direction: 'stage' | 'unstage') {
-        const status = this.state.status;
+        const status = this.activeStatus();
         if (!status) return null;
         const snap: GitStatus = {
             ...status,
@@ -709,13 +722,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         if (file === null) {
             if (direction === 'stage') {
                 const moved = [...status.unstaged, ...status.untracked];
-                this.setState({
-                    status: { ...status, staged: [...status.staged, ...moved], unstaged: [], untracked: [] },
-                });
+                this.setActiveStatus({ ...status, staged: [...status.staged, ...moved], unstaged: [], untracked: [] });
             } else {
-                this.setState({
-                    status: { ...status, staged: [], unstaged: [...status.unstaged, ...status.staged] },
-                });
+                this.setActiveStatus({ ...status, staged: [], unstaged: [...status.unstaged, ...status.staged] });
             }
             return snap;
         }
@@ -723,29 +732,27 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             const fromUnstaged = status.unstaged.find(f => f.path === file);
             const fromUntracked = status.untracked.find(f => f.path === file);
             const entry = fromUnstaged || fromUntracked || { path: file, status: 'M' };
+            this.setActiveStatus({
+                ...status,
+                staged: status.staged.some(f => f.path === file)
+                    ? status.staged
+                    : [...status.staged, { path: entry.path, status: entry.status === '?' ? 'A' : entry.status }],
+                unstaged: status.unstaged.filter(f => f.path !== file),
+                untracked: status.untracked.filter(f => f.path !== file),
+            });
             this.setState({
-                status: {
-                    ...status,
-                    staged: status.staged.some(f => f.path === file)
-                        ? status.staged
-                        : [...status.staged, { path: entry.path, status: entry.status === '?' ? 'A' : entry.status }],
-                    unstaged: status.unstaged.filter(f => f.path !== file),
-                    untracked: status.untracked.filter(f => f.path !== file),
-                },
                 diffFile: this.state.diffFile === file && !this.state.diffStaged ? null : this.state.diffFile,
                 diffContent: this.state.diffFile === file && !this.state.diffStaged ? '' : this.state.diffContent,
             });
         } else {
             const fromStaged = status.staged.find(f => f.path === file);
             const entry = fromStaged || { path: file, status: 'M' };
+            this.setActiveStatus({
+                ...status,
+                staged: status.staged.filter(f => f.path !== file),
+                unstaged: status.unstaged.some(f => f.path === file) ? status.unstaged : [...status.unstaged, entry],
+            });
             this.setState({
-                status: {
-                    ...status,
-                    staged: status.staged.filter(f => f.path !== file),
-                    unstaged: status.unstaged.some(f => f.path === file)
-                        ? status.unstaged
-                        : [...status.unstaged, entry],
-                },
                 diffFile: this.state.diffFile === file && this.state.diffStaged ? null : this.state.diffFile,
                 diffContent: this.state.diffFile === file && this.state.diffStaged ? '' : this.state.diffContent,
             });
@@ -754,32 +761,35 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     }
 
     stage = async (file: string | null) => {
+        const path = this.activeRepoPath();
         const snap = this.applyOptimisticStage(file, 'stage');
         try {
-            await gitService.stage(file);
+            await gitService.stage(file, path);
             this.refresh({ silent: true, includeGraph: false });
         } catch (err) {
-            if (snap && this._mounted) this.setState({ status: snap });
+            if (snap && this._mounted) this.setActiveStatus(snap);
             this.showToast(t('git.toast.stageFailed', this.props.language, { err: String(err) }));
         }
     };
 
     unstage = async (file: string | null) => {
+        const path = this.activeRepoPath();
         const snap = this.applyOptimisticStage(file, 'unstage');
         try {
-            await gitService.unstage(file);
+            await gitService.unstage(file, path);
             this.refresh({ silent: true, includeGraph: false });
         } catch (err) {
-            if (snap && this._mounted) this.setState({ status: snap });
+            if (snap && this._mounted) this.setActiveStatus(snap);
             this.showToast(t('git.toast.unstageFailed', this.props.language, { err: String(err) }));
         }
     };
 
     discard = async (file: string) => {
         if (!window.confirm(t('git.discardConfirm', this.props.language, { file }))) return;
+        const path = this.activeRepoPath();
         this.setState({ loading: true });
         try {
-            await gitService.discard(file);
+            await gitService.discard(file, path);
             this.showToast(t('git.toast.discarded', this.props.language));
             if (this.state.diffFile === file) this.setState({ diffFile: null, diffContent: '' });
             this.refresh({ silent: false, includeGraph: false });
@@ -792,9 +802,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     commit = async () => {
         const { commitMsg } = this.state;
         if (!commitMsg.trim()) return;
+        const path = this.activeRepoPath();
         this.setState({ committing: true });
         try {
-            await gitService.commit(commitMsg.trim());
+            await gitService.commit(commitMsg.trim(), path);
             this.setState({ commitMsg: '', committing: false });
             this.showToast(t('git.toast.committed', this.props.language));
             this.refresh({ silent: false, includeGraph: true });
@@ -805,10 +816,11 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     };
 
     generateAICommit = async () => {
+        const path = this.activeRepoPath();
         this.setState({ aiLoading: true });
         this.showToast(t('git.toast.aiAnalyzing', this.props.language));
         try {
-            const message = await gitService.aiCommit();
+            const message = await gitService.aiCommit(path);
             this.setState({ commitMsg: message, aiLoading: false });
             this.showToast(t('git.toast.aiSuccess', this.props.language));
         } catch (err) {
@@ -820,10 +832,11 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     };
 
     pushOrPull = async (action: 'push' | 'pull') => {
+        const path = this.activeRepoPath();
         this.setState({ pushPullLoading: action });
         try {
-            if (action === 'push') await gitService.push();
-            else await gitService.pull();
+            if (action === 'push') await gitService.push(path);
+            else await gitService.pull(path);
             this.showToast(
                 t(action === 'push' ? 'git.toast.pushSuccess' : 'git.toast.pullSuccess', this.props.language)
             );
@@ -931,12 +944,12 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
     };
 
-    openFile = (relPath: string, status?: string, isDir = false) => {
+    openFile = (relPath: string, status?: string, isDir = false, repoRoot = this.props.workdir) => {
         if (status === 'D') {
             this.showToast(t('git.toast.fileDeleted', this.props.language, { file: relPath }));
             return;
         }
-        const abs = joinWorkdir(this.props.workdir, relPath);
+        const abs = joinWorkdir(repoRoot, relPath);
         const name = relPath.split('/').pop() || relPath;
         tabsStore.openContentTab('files');
         void fsStore.openFileDetail({ name, path: abs, isDir, size: 0, modTime: 0 });
@@ -1300,7 +1313,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                     class="git-action-btn git-action-open"
                                     onClick={e => {
                                         e.stopPropagation();
-                                        this.openFile(file.path, file.status);
+                                        this.openFile(file.path, file.status, false, this.activeRepoRoot());
                                     }}
                                     title={t('git.action.openFile', language)}
                                 >
@@ -1427,53 +1440,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     renderChangesSection() {
         const { language } = this.props;
-        const {
-            status,
-            selectedStatus,
-            selectedStatusLoading,
-            commitDiffFile,
-            commitDiffContent,
-            commitDiffLoading,
-            selected,
-        } = this.state;
-
-        if (this.isViewingMain()) {
-            const staged = status?.staged || [];
-            const unstaged = status?.unstaged || [];
-            const untracked = status?.untracked || [];
-            if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) {
-                return this.renderCleanState();
-            }
-            return (
-                <div class="git-sections-container">
-                    {this.renderSection(
-                        t('git.section.staged', language),
-                        staged,
-                        'staged',
-                        () => this.unstage(null),
-                        t('git.section.unstageAll', language)
-                    )}
-                    {this.renderSection(
-                        t('git.section.unstaged', language),
-                        unstaged,
-                        'unstaged',
-                        () => this.stage(null),
-                        t('git.section.stageAll', language)
-                    )}
-                    {this.renderSection(
-                        t('git.section.untracked', language),
-                        untracked,
-                        'untracked',
-                        () => this.stage(null),
-                        t('git.section.stageAll', language)
-                    )}
-                </div>
-            );
-        }
-
-        // Read-only: worktree or submodule
-        const repoPath = selected.kind === 'main' ? '' : selected.path;
-        if (selectedStatusLoading) {
+        const { selectedStatusLoading } = this.state;
+        if (!this.isViewingMain() && selectedStatusLoading) {
             return (
                 <div class="git-commit-detail">
                     <div class="git-loading-row">
@@ -1482,57 +1450,47 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 </div>
             );
         }
-        const files = selectedStatus
-            ? [...selectedStatus.staged, ...selectedStatus.unstaged, ...selectedStatus.untracked]
-            : [];
-        if (files.length === 0) {
-            return (
-                <div class="git-commit-detail">
-                    <div class="git-commit-detail-empty">{t('git.worktrees.clean', language)}</div>
-                </div>
-            );
+        const activeStatus = this.activeStatus();
+        if (!activeStatus?.isRepo) {
+            return null;
         }
+        const staged = activeStatus.staged || [];
+        const unstaged = activeStatus.unstaged || [];
+        const untracked = activeStatus.untracked || [];
+        if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) return this.renderCleanState();
+
         return (
             <div class="git-sections-container">
-                <div class="git-section">
-                    <div class="git-section-header">
-                        <span class="git-section-title">
-                            {t('git.section.unstaged', language)}
-                            <span class="git-section-count">{files.length}</span>
-                        </span>
-                    </div>
-                    <div class="git-file-list">
-                        {files.map(f => (
-                            <Fragment key={f.path}>
-                                <div
-                                    class={`git-commit-file-row ${commitDiffFile === f.path ? 'open' : ''}`}
-                                    onClick={() => this.openPathDiff(repoPath, f.path)}
-                                >
-                                    {this.renderStatusBadge(f.status)}
-                                    <span class="git-commit-file-path">{f.path}</span>
-                                </div>
-                                {commitDiffFile === f.path && (
-                                    <DiffPanel
-                                        file={f.path}
-                                        content={commitDiffContent}
-                                        loading={commitDiffLoading}
-                                        language={language}
-                                        onClose={() => this.setState({ commitDiffFile: null, commitDiffContent: '' })}
-                                    />
-                                )}
-                            </Fragment>
-                        ))}
-                    </div>
-                </div>
+                {this.renderSection(
+                    t('git.section.staged', language),
+                    staged,
+                    'staged',
+                    () => this.unstage(null),
+                    t('git.section.unstageAll', language)
+                )}
+                {this.renderSection(
+                    t('git.section.unstaged', language),
+                    unstaged,
+                    'unstaged',
+                    () => this.stage(null),
+                    t('git.section.stageAll', language)
+                )}
+                {this.renderSection(
+                    t('git.section.untracked', language),
+                    untracked,
+                    'untracked',
+                    () => this.stage(null),
+                    t('git.section.stageAll', language)
+                )}
             </div>
         );
     }
 
     renderCommitBox() {
         if (!this.isInteractive()) return null;
-        const { commitMsg, committing, pushPullLoading, commitBoxCollapsed, status } = this.state;
+        const { commitMsg, committing, pushPullLoading, commitBoxCollapsed } = this.state;
         const { language } = this.props;
-        const staged = status?.staged || [];
+        const staged = this.activeStatus()?.staged || [];
         const stagedCount = staged.length;
         const hasStaged = stagedCount > 0;
 

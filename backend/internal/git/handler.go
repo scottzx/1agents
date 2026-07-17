@@ -165,6 +165,11 @@ func (h *Handler) Diff(w http.ResponseWriter, r *http.Request) {
 
 	file := r.URL.Query().Get("file")
 	staged := r.URL.Query().Get("staged") == "true"
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	var args []string
 	if staged {
@@ -173,7 +178,7 @@ func (h *Handler) Diff(w http.ResponseWriter, r *http.Request) {
 		args = []string{"diff", "--", file}
 	}
 
-	out, err := h.git(args...)
+	out, err := h.git(append([]string{"-C", dir}, args...)...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -192,12 +197,16 @@ func (h *Handler) Stage(w http.ResponseWriter, r *http.Request) {
 
 	all := r.URL.Query().Get("all") == "true"
 	file := r.URL.Query().Get("file")
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	var err error
 	if all {
-		_, err = h.git("add", "-A")
+		_, err = h.git("-C", dir, "add", "-A")
 	} else if file != "" {
-		_, err = h.git("add", "--", file)
+		_, err = h.git("-C", dir, "add", "--", file)
 	} else {
 		http.Error(w, "must specify file or all=true", http.StatusBadRequest)
 		return
@@ -219,12 +228,16 @@ func (h *Handler) Unstage(w http.ResponseWriter, r *http.Request) {
 
 	all := r.URL.Query().Get("all") == "true"
 	file := r.URL.Query().Get("file")
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	var err error
 	if all {
-		_, err = h.git("reset", "HEAD", "--")
+		_, err = h.git("-C", dir, "reset", "HEAD", "--")
 	} else if file != "" {
-		_, err = h.git("restore", "--staged", "--", file)
+		_, err = h.git("-C", dir, "restore", "--staged", "--", file)
 	} else {
 		http.Error(w, "must specify file or all=true", http.StatusBadRequest)
 		return
@@ -251,8 +264,13 @@ func (h *Handler) Commit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing message", http.StatusBadRequest)
 		return
 	}
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	out, err := h.git("commit", "-m", body.Message)
+	out, err := h.git("-C", dir, "commit", "-m", body.Message)
 	if err != nil {
 		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
 		return
@@ -464,12 +482,17 @@ func (h *Handler) Discard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must specify file", http.StatusBadRequest)
 		return
 	}
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	// Revert uncommitted changes in working directory
-	out, err := h.git("checkout", "--", file)
+	out, err := h.git("-C", dir, "checkout", "--", file)
 	if err != nil {
 		// Fallback to git restore if checkout fails or is unsupported
-		out, err = h.git("restore", "--", file)
+		out, err = h.git("-C", dir, "restore", "--", file)
 	}
 
 	if err != nil {
@@ -560,11 +583,10 @@ func (h *Handler) Submodules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entries := parseSubmoduleStatus(out)
-	// Enrich with live branch / origin ahead-behind when the submodule is checked out.
+	// Enrich with live branch / origin ahead-behind whenever the path is a repo.
+	// A submodule can be marked "-" in the parent while still being independently
+	// checked out with a valid .git file, so the flag alone is not authoritative.
 	for i := range entries {
-		if entries[i].Flag == "-" {
-			continue
-		}
 		abs := entries[i].Path
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(h.root, abs)
@@ -834,14 +856,13 @@ func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
 
 // isWorktreePath reports whether path is one of this repo's registered worktrees.
 func (h *Handler) isWorktreePath(path string) bool {
-	clean := filepath.Clean(path)
 	out, err := h.git("worktree", "list", "--porcelain")
 	if err != nil {
 		return false
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if strings.HasPrefix(line, "worktree ") {
-			if filepath.Clean(strings.TrimPrefix(line, "worktree ")) == clean {
+			if sameRepoPath(strings.TrimPrefix(line, "worktree "), path) {
 				return true
 			}
 		}
@@ -862,7 +883,7 @@ func (h *Handler) isSubmodulePath(path string) bool {
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(h.root, abs)
 		}
-		if filepath.Clean(abs) == clean || filepath.Clean(e.Path) == clean {
+		if sameRepoPath(abs, clean) || filepath.Clean(e.Path) == clean {
 			return true
 		}
 	}
@@ -880,6 +901,17 @@ func (h *Handler) resolveRepoPath(path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Clean(filepath.Join(h.root, path))
+}
+
+func sameRepoPath(a, b string) bool {
+	canonical := func(path string) string {
+		clean := filepath.Clean(path)
+		if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+			return filepath.Clean(resolved)
+		}
+		return clean
+	}
+	return canonical(a) == canonical(b)
 }
 
 // WorktreeStatus handles GET /api/git/worktree-status?path=<path>
@@ -902,6 +934,10 @@ func (h *Handler) WorktreeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.isAllowedRepoPath(path) {
 		path = filepath.Clean(raw)
+	}
+	if !h.isRepoAt(path) {
+		writeJSON(w, GitStatus{IsRepo: false})
+		return
 	}
 
 	staged, unstaged, untracked := h.changedFilesAt(path)
@@ -957,8 +993,14 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// 1. Check if there are staged changes
-	_, err := h.git("diff", "--cached", "--quiet")
+	_, err = h.git("-C", dir, "diff", "--cached", "--quiet")
 	if err == nil {
 		// Exit code 0 means no changes staged
 		w.WriteHeader(http.StatusBadRequest)
@@ -982,7 +1024,7 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 	args = append(args, "-p", prompt)
 
 	cmd := exec.Command(claudeBin, args...)
-	cmd.Dir = h.root
+	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader("")
 
 	// Filter out CLAUDECODE env var to avoid nesting checks
@@ -1035,6 +1077,11 @@ func (h *Handler) isRepo() bool {
 	// This prevents Git from traversing upwards to parent directories (such as the user's home directory ~).
 	_, err := os.Stat(filepath.Join(h.root, ".git"))
 	return err == nil
+}
+
+func (h *Handler) isRepoAt(dir string) bool {
+	out, err := h.git("-C", dir, "rev-parse", "--is-inside-work-tree")
+	return err == nil && strings.TrimSpace(out) == "true"
 }
 
 func (h *Handler) currentBranch() string { return h.currentBranchAt(h.root) }
