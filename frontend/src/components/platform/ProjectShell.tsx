@@ -128,12 +128,14 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
     ].filter(tb => tb.id === 'settings' || !hiddenTabs.has(tb.id)); // 项目设置里勾掉的 tab 隐藏（settings 恒显以便恢复）
     const isConfigTab = PROJECT_CONFIG_TABS.some(c => c.id === activeTab);
 
-    // Start a fresh conversation scoped to this project (locks the picker +
-    // shows 项目 › <name> › 新建对话, mirroring the 助理 flow).
+    // Start a fresh conversation scoped to this project via unified SessionSetup.
     const onNewChat = async () => {
         if (ws) await wsStore.selectWorkspace(ws);
-        sess.onStartNewChat();
-        sess.lockedNewChatWorkspaceId.value = workspaceId;
+        void sess.openSessionSetup({
+            workspaceId,
+            locked: true,
+            defaultAgent: ws?.defaultAgent,
+        });
     };
 
     const configGear = (

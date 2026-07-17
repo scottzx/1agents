@@ -145,12 +145,14 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onReorderFolders={wsStore.reorderFolders}
                                 language={language}
                                 moduleNav={sidebarModuleNav}
-                                onChatCreate={modal.openChatCreate}
+                                onChatCreate={wsId => {
+                                    void sess.openSessionSetup({ workspaceId: wsId, locked: true });
+                                }}
                                 onChatKill={sess.killChatSession}
                                 onStartNewChat={() => {
-                                    // 入口默认态: 新建对话 → chat 领, 右栏关闭。
-                                    sess.onStartNewChat();
+                                    // 统一 SessionSetup：弹窗或 skip 直建；进入对话画布。
                                     stage.enterConversation();
+                                    void sess.openSessionSetup();
                                 }}
                                 activeTab={tabsStore.activeTab.value}
                                 activeSession={activeSession}

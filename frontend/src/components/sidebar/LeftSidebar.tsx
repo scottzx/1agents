@@ -78,7 +78,7 @@ function DeviceOsIcon({ os }: { os?: string }) {
     );
 }
 
-// 12px SVG icons used by the folder "..." menu (新建会话 / 重命名 / 归档).
+// 12px SVG icons used by the folder "..." menu (新建会话 / 新建终端 / 重命名 / 归档).
 const WS_ACTION_ICONS = {
     newChat: (
         <svg
@@ -94,6 +94,21 @@ const WS_ACTION_ICONS = {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             <line x1="12" y1="8" x2="12" y2="14" />
             <line x1="9" y1="11" x2="15" y2="11" />
+        </svg>
+    ),
+    newTerminal: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
     ),
     rename: (
@@ -134,6 +149,7 @@ const WS_ACTION_ICONS = {
 function buildFolderActions(
     ws: Workspace,
     onChatCreate: (id: string) => void,
+    onTerminalCreate: (workspaceId: string, cwd: string) => void,
     onRename: (ws: Workspace) => void
 ): FsRowAction[] {
     const items: FsRowAction[] = [
@@ -142,6 +158,12 @@ function buildFolderActions(
             labelKey: 'sidebar.newSession',
             icon: WS_ACTION_ICONS.newChat,
             onSelect: () => onChatCreate(ws.id),
+        },
+        {
+            id: 'newTerminal',
+            labelKey: 'sidebar.newTerminal',
+            icon: WS_ACTION_ICONS.newTerminal,
+            onSelect: () => onTerminalCreate(ws.id, ws.terminalDir || ws.path || '.'),
         },
         {
             id: 'rename',
@@ -220,6 +242,7 @@ export function LeftSidebar({
     onRenameWorkspace,
     onSelectWorkspace,
     onSelectSession,
+    onTerminalCreate,
     onTerminalKill,
     onRenameSession,
     onReorderFolders,
@@ -395,6 +418,25 @@ export function LeftSidebar({
                         <span>1agents</span>
                     </div>
                     <div class="brand-right">
+                        <button
+                            type="button"
+                            class={`sidebar-new-session-btn${activeTab === 'new_chat' ? ' active' : ''}`}
+                            onClick={onStartNewChat}
+                            title={t('sidebar.newSession', language)}
+                            aria-label={t('sidebar.newSession', language)}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                        </button>
                         <div
                             class="sidebar-search-btn"
                             onClick={openSearch}
@@ -473,24 +515,6 @@ export function LeftSidebar({
                     )}
                     {sidebarMode.value === 'assistant' && (
                         <Fragment>
-                            <button
-                                class={`nav-control-btn new-chat-btn ${activeTab === 'new_chat' ? 'active' : ''}`}
-                                onClick={onStartNewChat}
-                            >
-                                <svg
-                                    class="btn-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2.5"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <line x1="12" y1="5" x2="12" y2="19" />
-                                    <line x1="5" y1="12" x2="19" y2="12" />
-                                </svg>
-                                <span>{t('sidebar.navCtrl.newConversation', language)}</span>
-                            </button>
                             <div
                                 class={`nav-control-item${activeDrawerTab === 'assistants' ? ' active' : ''}`}
                                 onClick={() => {
@@ -712,6 +736,7 @@ export function LeftSidebar({
                                                             items={buildFolderActions(
                                                                 ws,
                                                                 onChatCreate,
+                                                                onTerminalCreate,
                                                                 onRenameWorkspace
                                                             )}
                                                             language={language}
@@ -936,6 +961,7 @@ export function LeftSidebar({
                                                                     items={buildFolderActions(
                                                                         ws,
                                                                         onChatCreate,
+                                                                        onTerminalCreate,
                                                                         onRenameWorkspace
                                                                     )}
                                                                     language={language}

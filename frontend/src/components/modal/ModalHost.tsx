@@ -9,7 +9,7 @@ import { FsRenameModal } from './FsRenameModal';
 import { FsCreateModal } from './FsCreateModal';
 import { FsDeleteConfirmModal } from './FsDeleteConfirmModal';
 import { PushPreviewModal } from './PushPreviewModal';
-import { SessionCreateModal } from '../chat/SessionCreateModal';
+import { SessionSetupModal } from '../chat/SessionSetupModal';
 import { ReauthModal } from '../chat/ReauthModal';
 import { DEFAULT_AGENT_TYPE } from '../../services/agentService';
 import { globalBridgeManager } from '../chat/hooks';
@@ -29,8 +29,8 @@ export function ModalHost() {
     const language = ui.language.value;
     const workspaces = wsStore.workspaces.value;
     const wsModalOpen = modal.wsModalOpen.value;
-    const chatCreateOpen = modal.chatCreateOpen.value;
-    const chatCreateWsId = modal.chatCreateWsId.value;
+    const sessionSetupOpen = modal.sessionSetupOpen.value;
+    const sessionSetupOpts = modal.sessionSetupOpts.value;
     const dirPickerOpen = modal.dirPickerOpen.value;
     const accessTokenModalToken = modal.accessTokenModalToken.value;
     const sessionRenameModalOpen = modal.sessionRenameModalOpen.value;
@@ -84,32 +84,35 @@ export function ModalHost() {
                 />
             )}
 
-            {/* Chat session create modal */}
-            {chatCreateOpen &&
-                chatCreateWsId &&
+            {/* Unified Session Setup (replaces SessionCreateModal; no role/permission) */}
+            {sessionSetupOpen &&
                 (() => {
-                    const ws = workspaces.find(w => w.id === chatCreateWsId);
-                    if (!ws) return null;
+                    const locked = !!sessionSetupOpts.locked && !!sessionSetupOpts.workspaceId;
+                    const defaultWsId =
+                        sessionSetupOpts.workspaceId || wsStore.activeWorkspaceId.value || workspaces[0]?.id || '';
+                    const ws = workspaces.find(w => w.id === defaultWsId);
+                    if (!defaultWsId && workspaces.length === 0) return null;
                     return (
-                        <SessionCreateModal
-                            workspaceId={chatCreateWsId}
-                            workspaceName={ws.name}
-                            defaultAgent={ws.defaultAgent || DEFAULT_AGENT_TYPE}
-                            onCancel={modal.closeChatCreate}
-                            onSubmit={(name, agentType, permissionMode, role) => {
-                                modal.closeChatCreate();
-                                // 'pm' in the cross-project (default/builtin) workspace
-                                // becomes 'pmo' — mirrors createPMSession / NewChatHome.
-                                const effectiveRole =
-                                    role === 'pm' && (ws.id === 'default' || ws.builtin) ? 'pmo' : role || undefined;
-                                sess.createChatSession(
-                                    chatCreateWsId,
-                                    name,
-                                    agentType,
-                                    undefined,
-                                    effectiveRole,
-                                    permissionMode
-                                );
+                        <SessionSetupModal
+                            workspaces={workspaces}
+                            defaultWorkspaceId={defaultWsId}
+                            defaultAgent={sessionSetupOpts.defaultAgent || ws?.defaultAgent || DEFAULT_AGENT_TYPE}
+                            locked={locked}
+                            workspaceName={locked ? ws?.name || '' : ''}
+                            initialAgentRef={sessionSetupOpts.agentRef}
+                            language={language}
+                            onCancel={modal.closeSessionSetup}
+                            onSubmit={values => {
+                                const opts = modal.sessionSetupOpts.value;
+                                modal.closeSessionSetup();
+                                void sess.createFromSessionSetup({
+                                    workspaceId: values.workspaceId || defaultWsId,
+                                    agentType: values.agentType,
+                                    name: values.name,
+                                    initialMessage: opts.initialMessage,
+                                    taskId: opts.taskId,
+                                    agentRef: values.agentRef || opts.agentRef,
+                                });
                             }}
                         />
                     );

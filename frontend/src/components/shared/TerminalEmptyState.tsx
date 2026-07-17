@@ -20,7 +20,8 @@ export function TerminalEmptyState({ language }: Props) {
         const wsId = wsStore.activeWorkspaceId.value;
         if (!wsId) return;
         const ws = wsStore.workspaces.value.find(w => w.id === wsId);
-        sess.createTerminal(wsId, ws?.path || '.');
+        // Bare tmux pane — same path as sidebar「新建终端」, no preset picker.
+        void sess.createTerminal(wsId, ws?.terminalDir || ws?.path || '.');
     };
 
     return (

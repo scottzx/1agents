@@ -616,19 +616,18 @@ export function TaskDetail({
         });
     };
 
-    // Spawn a NEW session for a mode=new reply: index it first so it exists
-    // in the sidebar immediately (with the task badge), then open it and
-    // auto-send the reply text as the first prompt. The user turn itself is
-    // recorded to the timeline server-side when the prompt runs.
+    // Spawn a NEW session via unified SessionSetup (P1-3): same modal/skip as
+    // the main path, agent prefilled from assignee, taskId bound, optional
+    // initialMessage auto-sent after create. PM paths stay on createPMSession.
     const openNewSession = async (initialMessage?: string) => {
-        if (!onSelectSession || !task) return;
-        const rec = await agentService.index({
-            workspace_id: workspaceId,
-            name: `${task.title} - 智能体`,
-            agent_type: (task.assignee || 'claudecode') as AgentType,
-            task_id: task.id,
+        if (!task) return;
+        void sessionStore.openSessionSetup({
+            workspaceId,
+            locked: true,
+            defaultAgent: (task.assignee || 'claudecode') as AgentType,
+            taskId: task.id,
+            initialMessage,
         });
-        onSelectSession({ ...rec, taskId: task.id, initialMessage, active: true });
     };
 
     // 讨论需求：a discussion is deliberately fuzzy, so we never auto-flip its

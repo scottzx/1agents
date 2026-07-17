@@ -12,7 +12,7 @@ import {
 } from '../components/types';
 import type { AuthState, ConnectionState } from '@1agents/core/protocol/types';
 import { terminalService } from '../services/terminalService';
-import { agentService } from '../services/agentService';
+import { agentService, DEFAULT_AGENT_TYPE } from '../services/agentService';
 import { globalBridgeManager } from '../components/chat/hooks';
 import { t } from '../i18n';
 import * as ui from './uiStore';
@@ -20,6 +20,9 @@ import * as fs from './fsStore';
 import * as wsStore from './workspaceStore';
 import * as tabsStore from './tabsStore';
 import * as modal from './modalStore';
+import type { SessionSetupOpenOpts } from './modalStore';
+import { sessionSetupDefaults } from './sessionSetupDefaults';
+import { AGENT_TYPE_LABELS } from '../components/types';
 
 /**
  * Session state (tmux terminal windows, chat session index, active session)
@@ -352,6 +355,82 @@ export const createPMSession = async (workspaceId: string, name: string, initial
     await createChatSession(workspaceId, name, agentType, initialMessage, role, undefined, taskId);
 };
 
+/**
+ * Create a chat session from SessionSetup form values / defaults.
+ * Shared by ModalHost submit and skipModal direct-create.
+ * Terminals are created separately via createTerminal (sidebar / empty state).
+ */
+export const createFromSessionSetup = async (args: {
+    workspaceId: string;
+    agentType?: AgentType;
+    name?: string;
+    initialMessage?: string;
+    taskId?: string;
+    agentRef?: string;
+}) => {
+    const ws = wsStore.workspaces.value.find(w => w.id === args.workspaceId);
+    if (!ws) {
+        ui.showToast('工作空间不存在');
+        return;
+    }
+    const agentType = (args.agentType || sessionSetupDefaults.value.agentType || DEFAULT_AGENT_TYPE) as AgentType;
+    const label = AGENT_TYPE_LABELS[agentType] ?? agentType;
+    const name = (args.name || '').trim() || `${label} 会话`;
+    // No role / permission on the unified path (PRD §5.4).
+    await createChatSession(
+        args.workspaceId,
+        name,
+        agentType,
+        args.initialMessage,
+        undefined,
+        undefined,
+        args.taskId,
+        args.agentRef || undefined
+    );
+};
+
+/**
+ * Unified "new chat session" entry.
+ * When defaults.skipModal is true (and forceModal is not set), creates
+ * immediately from stored defaults; otherwise opens SessionSetupModal.
+ * Always chat — use createTerminal for bare tmux panes.
+ */
+export const openSessionSetup = async (opts: SessionSetupOpenOpts = {}) => {
+    if (isFullPageTab(tabsStore.activeDrawerTab.value)) {
+        tabsStore.activeDrawerTab.value = 'none';
+    }
+    // Clear the NewChatHome lock unless this call itself locks a workspace.
+    if (!opts.locked) {
+        lockedNewChatWorkspaceId.value = null;
+    } else if (opts.workspaceId) {
+        lockedNewChatWorkspaceId.value = opts.workspaceId;
+    }
+
+    const defaults = sessionSetupDefaults.value;
+    if (defaults.skipModal && !opts.forceModal) {
+        const wsId = opts.workspaceId || wsStore.activeWorkspaceId.value || wsStore.workspaces.value[0]?.id || '';
+        if (!wsId) {
+            ui.showToast('请先选择工作空间');
+            return;
+        }
+        await createFromSessionSetup({
+            workspaceId: wsId,
+            agentType: opts.defaultAgent || defaults.agentType,
+            initialMessage: opts.initialMessage,
+            taskId: opts.taskId,
+            agentRef: opts.agentRef,
+        });
+        return;
+    }
+
+    modal.openSessionSetupModal(opts);
+};
+
+/**
+ * Open the simplified New Conversation landing (config gear + CTA).
+ * Prefer openSessionSetup for "新建会话" actions; this remains for
+ * empty-state / breadcrumb navigation to the new_chat tab.
+ */
 export const onStartNewChat = () => {
     // A full-page drawer tab (providers/skills/discovery/settings) overrides
     // the primary pane, so without closing it the new-chat landing stays

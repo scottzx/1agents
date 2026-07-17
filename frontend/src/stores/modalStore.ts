@@ -48,9 +48,46 @@ export const closeAssistantModal = () => {
     assistantModalSoul.value = '';
 };
 
-// ── Chat session creation modal ──
+// ── Chat session creation modal (legacy openChatCreate; prefer SessionSetup) ──
 export const chatCreateOpen = signal(false);
 export const chatCreateWsId = signal('');
+
+// ── Unified Session Setup modal (chat-only; terminal uses createTerminal) ──
+// Opened via openSessionSetupModal; create/skip orchestration lives in
+// sessionStore.openSessionSetup to avoid a modalStore → sessionStore import cycle.
+export interface SessionSetupOpenOpts {
+    /** Preferred / locked workspace. Empty = form may pick. */
+    workspaceId?: string;
+    /** Hide workspace picker and force workspaceId. */
+    locked?: boolean;
+    /** Seed agent type (e.g. task assignee). */
+    defaultAgent?: AgentType;
+    /** Bind created chat to a project-item task. */
+    taskId?: string;
+    /** Auto-send after create (Task replyMode=new). */
+    initialMessage?: string;
+    /** Prefill team expert agent_ref. */
+    agentRef?: string;
+    /** When true, ignore skipModal and always show the modal. */
+    forceModal?: boolean;
+}
+
+export const sessionSetupOpen = signal(false);
+export const sessionSetupOpts = signal<SessionSetupOpenOpts>({});
+
+/** Open the SessionSetup modal (no skip handling — use sessionStore.openSessionSetup). */
+export const openSessionSetupModal = (opts: SessionSetupOpenOpts = {}) => {
+    sessionSetupOpts.value = { ...opts };
+    sessionSetupOpen.value = true;
+    // Keep legacy chat-create flags closed so both never stack.
+    chatCreateOpen.value = false;
+    chatCreateWsId.value = '';
+};
+
+export const closeSessionSetup = () => {
+    sessionSetupOpen.value = false;
+    sessionSetupOpts.value = {};
+};
 
 // ── Directory picker modal ──
 type DirPickerOnSelect = (path: string) => void;
@@ -163,15 +200,20 @@ export const closeWsModal = () => {
     wsModalDefaultAgent.value = DEFAULT_AGENT_TYPE;
 };
 
-/** Open the chat-create modal for a given workspace. */
+/**
+ * Legacy: open chat-create for a workspace.
+ * Routes to the unified SessionSetup modal locked to that workspace.
+ * Prefer sessionStore.openSessionSetup({ workspaceId, locked: true }) so
+ * skipModal is honored.
+ */
 export const openChatCreate = (workspaceId: string) => {
-    chatCreateOpen.value = true;
-    chatCreateWsId.value = workspaceId;
+    openSessionSetupModal({ workspaceId, locked: true });
 };
 
 export const closeChatCreate = () => {
     chatCreateOpen.value = false;
     chatCreateWsId.value = '';
+    closeSessionSetup();
 };
 
 export const openRenameSessionModal = (s: Session) => {

@@ -1,32 +1,23 @@
 import { h } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 import { t, type Lang } from '../../i18n';
 import type { Workspace, AgentType } from '../types';
-import { SessionSetupForm, type SessionSetupFormValues, type TerminalPresetBin } from './SessionSetupForm';
+import { SessionSetupForm, type SessionSetupFormValues, type TeamMemberOption } from './SessionSetupForm';
+import { soulService } from '@1agents/core/services/soulService';
 
 /**
- * Modal wrapper around SessionSetupForm (P0-2 of 统一新建会话). The form is
- * reusable for the NewChatHome config panel; this wrapper owns the overlay,
- * header, and dismiss (overlay-click, ✕ button, Escape).
- *
- * Wire-shape notes:
- *  - `workspaceName` is only used to compose the header; pass '' when the
- *    user picked the workspace from the form's own row (no separate lookup).
- *  - `onSubmit` receives the form values; the ModalHost#submit branch in
- *    #113 is responsible for forwarding chat → createChatSession / term →
- *    createTerminal.
+ * Modal wrapper around SessionSetupForm (chat-only new session).
+ * Terminal is created from the sidebar as a bare tmux pane.
  */
 
 interface SessionSetupModalProps {
     workspaces: Workspace[];
     defaultWorkspaceId: string;
-    defaultAgent: AgentType;
-    /** When true, the workspace row is hidden (locked context). */
+    defaultAgent?: AgentType;
     locked?: boolean;
-    /** Optional header suffix (e.g. workspace name) — empty string omits it. */
     workspaceName?: string;
-    initialTerminalPreset?: TerminalPresetBin;
+    initialAgentRef?: string;
     language: Lang;
     onCancel: () => void;
     onSubmit: (values: SessionSetupFormValues) => void;
@@ -38,11 +29,14 @@ export function SessionSetupModal({
     defaultAgent,
     locked = false,
     workspaceName = '',
-    initialTerminalPreset,
+    initialAgentRef,
     language,
     onCancel,
     onSubmit,
 }: SessionSetupModalProps) {
+    const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
+    const [formWorkspaceId, setFormWorkspaceId] = useState(defaultWorkspaceId);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -53,6 +47,28 @@ export function SessionSetupModal({
         document.addEventListener('keydown', onKey, true);
         return () => document.removeEventListener('keydown', onKey, true);
     }, [onCancel]);
+
+    useEffect(() => {
+        const wsId = locked ? defaultWorkspaceId : formWorkspaceId || defaultWorkspaceId;
+        let cancelled = false;
+        if (!wsId) {
+            setTeamMembers([]);
+            return;
+        }
+        soulService
+            .getWorkspaceTeam(wsId)
+            .then(team => {
+                if (!cancelled) {
+                    setTeamMembers(team.members.map(m => ({ file: m.file, name: m.name })));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setTeamMembers([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [locked, defaultWorkspaceId, formWorkspaceId]);
 
     const title = t('modal.sessionSetup.title', language);
     const subtitle = workspaceName ? ` · ${workspaceName}` : '';
@@ -75,9 +91,11 @@ export function SessionSetupModal({
                         defaultWorkspaceId={defaultWorkspaceId}
                         locked={locked}
                         defaultAgent={defaultAgent}
-                        initialTerminalPreset={initialTerminalPreset}
+                        initialAgentRef={initialAgentRef}
+                        teamMembers={teamMembers}
                         language={language}
                         onCancel={onCancel}
+                        onWorkspaceChange={id => setFormWorkspaceId(id)}
                         onSubmit={onSubmit}
                     />
                 </div>

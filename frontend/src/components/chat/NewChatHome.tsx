@@ -1,177 +1,51 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import { Workspace, AgentType, AGENT_TYPES, AGENT_TYPE_LABELS, type PermissionMode } from '../types';
-import { t, type Lang } from '../i18n';
+import { Workspace, type AgentType } from '../types';
+import { t, type Lang } from '../../i18n';
 import * as wsStore from '../../stores/workspaceStore';
-import { pickableAgents } from '../../stores/agentCatalogStore';
-import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
-import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
-import { useFileAttachments } from '../../hooks/useFileAttachments';
-import { MicButton } from './input/MicButton';
-import { AttachButton } from './input/AttachButton';
-import { AttachmentPreview } from './input/AttachmentPreview';
-import { PermissionModePicker } from './PermissionModePicker';
-import { soulService, type TeamMember } from '@1agents/core/services/soulService';
+import * as sess from '../../stores/sessionStore';
+import { sidebarMode } from '../../stores/uiStore';
+import { SessionSetupForm, type TeamMemberOption } from './SessionSetupForm';
+import { soulService } from '@1agents/core/services/soulService';
 
-/** Roles offered at creation. Dropdown-driven so more roles slot in later
- *  (PMO / Executor / Verifier). 'pmo' is derived (not user-selectable): it
- *  is emitted when 'pm' is chosen with the default (cross-project) workspace. */
-type ChatRole = 'general' | 'pm' | 'pmo';
-
-const ROLE_OPTIONS: { value: ChatRole; labelKey: string }[] = [
-    { value: 'general', labelKey: 'newchat.role.general' },
-    { value: 'pm', labelKey: 'newchat.role.pm' },
-];
+/**
+ * Simplified New Conversation landing (P1 of 统一新建会话).
+ * No create-on-submit parameter bar: config gear + CTA that open
+ * SessionSetup (or the embedded config form for defaults / skipModal).
+ */
 
 interface NewChatHomeProps {
     workspaces: Workspace[];
     activeWorkspaceId: string;
-    onSubmitChat: (
+    /**
+     * @deprecated P1 removed create-on-submit. Kept optional so old callers
+     * compile during transition; ignored.
+     */
+    onSubmitChat?: (
         workspaceId: string,
         agentType: AgentType,
         prompt: string,
-        role: ChatRole,
-        permissionMode: PermissionMode,
+        role: string,
+        permissionMode: string,
         agentRef: string
     ) => void;
-    /**
-     * Terminal mode: open a terminal in the workspace dir and optionally run
-     * an initial command (e.g. `claude "..."`). cwd resolves to the
-     * workspace's terminalDir || path; initialCommand is '' for a bare shell.
-     */
     onSubmitTerminal?: (workspaceId: string, cwd: string, initialCommand: string) => void;
     onOpenFolder: () => void;
-    /**
-     * When set, the landing is locked to this workspace (launched from an
-     * assistant's 新建对话): the picker is hidden and every chat/terminal
-     * targets this workspace. Absent = the general cross-project picker.
-     */
     lockedWorkspaceId?: string;
     language: Lang;
-}
-
-type TerminalPreset = 'claude' | 'codex' | 'gemini' | 'shell';
-
-/** Preset → CLI binary. A missing `bin` means "plain shell, run nothing". */
-const TERMINAL_PRESETS: { value: TerminalPreset; label: string; bin?: string }[] = [
-    { value: 'claude', label: 'Claude', bin: 'claude' },
-    { value: 'codex', label: 'Codex', bin: 'codex' },
-    { value: 'gemini', label: 'Gemini', bin: 'gemini' },
-    { value: 'shell', label: 'Shell' },
-];
-
-/** Wrap a prompt as a single double-quoted bash argument, escaping the chars
- *  that stay special inside double quotes. */
-function quoteArg(s: string): string {
-    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$') + '"';
-}
-
-interface SelectOption {
-    value: string;
-    label: string;
-}
-
-/**
- * Custom anchored dropdown replacing a native <select>. Native select popups
- * mis-position inside transformed / animated ancestors (notably in mobile
- * webviews) — this renders a CSS-anchored menu directly under the trigger so
- * it always opens in the right place. Closes on outside click /选项点击.
- */
-function CustomSelect({
-    value,
-    options,
-    onChange,
-    ariaLabel,
-    title,
-}: {
-    value: string;
-    options: SelectOption[];
-    onChange: (v: string) => void;
-    ariaLabel?: string;
-    title?: string;
-}) {
-    const open = useSignal(false);
-    const ref = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        if (!open.value) return;
-        const onDown = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) open.value = false;
-        };
-        document.addEventListener('mousedown', onDown);
-        return () => document.removeEventListener('mousedown', onDown);
-    }, [open.value]);
-
-    const current = options.find(o => o.value === value);
-    return (
-        <div class="nc-select" ref={ref}>
-            <button
-                type="button"
-                class="nc-select-trigger"
-                aria-label={ariaLabel}
-                title={title}
-                aria-haspopup="listbox"
-                aria-expanded={open.value}
-                onClick={() => (open.value = !open.value)}
-            >
-                <span class="nc-select-value">{current?.label ?? value}</span>
-                <svg class="nc-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <polyline points="6 9 12 15 18 9" />
-                </svg>
-            </button>
-            {open.value && (
-                <div class="nc-select-menu" role="listbox">
-                    {options.map(o => (
-                        <button
-                            type="button"
-                            key={o.value}
-                            role="option"
-                            aria-selected={o.value === value}
-                            class={`nc-select-option ${o.value === value ? 'active' : ''}`}
-                            onClick={() => {
-                                onChange(o.value);
-                                open.value = false;
-                            }}
-                        >
-                            {o.label}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
 }
 
 export function NewChatHome({
     workspaces,
     activeWorkspaceId,
-    onSubmitChat,
-    onSubmitTerminal,
     onOpenFolder,
     lockedWorkspaceId,
     language,
 }: NewChatHomeProps) {
-    const prompt = useSignal('');
-    const selectedAgent = useSignal<AgentType>('claudecode');
-    // Team expert (agent_ref) driving this conversation's persona; '' = the
-    // project's primary agent (or no persona for a bare project). Populated from
-    // <ws>/.claude/agents via /api/workspace/team when the workspace changes.
-    const selectedExpert = useSignal<string>('');
-    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-    // Conversation role declared at creation (chat mode). 'general' = ordinary
-    // chat; 'pm' = AI 项目经理 (project-locked task tools + PM prompt).
-    const selectedRole = useSignal<ChatRole>('general');
-    const selectedPreset = useSignal<TerminalPreset>('claude');
-    const selectedPermissionMode = useSignal<PermissionMode>('approve-reads');
+    const [showConfig, setShowConfig] = useState(false);
     const [wsSearch, setWsSearch] = useState('');
-    // useSignal (not useState) for the mode toggle — plain useState toggles
-    // can fail to re-render under @preact/signals.
-    const mode = useSignal<'chat' | 'terminal'>('chat');
-    // Per-mode workspace selection — the picker now shows in BOTH modes with
-    // assistants and projects mixed (rows tagged 助理/项目). Assistant mode
-    // starts on the built-in default assistant, project mode on the first real
-    // project; each mode remembers its own pick so toggling keeps both contexts.
+    const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
     const [projectWsId, setProjectWsId] = useState(
         activeWorkspaceId !== 'default'
             ? activeWorkspaceId
@@ -182,8 +56,6 @@ export function NewChatHome({
             ? activeWorkspaceId
             : 'default'
     );
-    // Locked to a specific workspace (assistant 新建对话) → ignore the per-mode
-    // picker state entirely.
     const selectedWorkspaceId = lockedWorkspaceId ?? (sidebarMode.value === 'assistant' ? assistantWsId : projectWsId);
     const setSelectedWorkspaceId = (id: string) =>
         sidebarMode.value === 'assistant' ? setAssistantWsId(id) : setProjectWsId(id);
@@ -193,8 +65,6 @@ export function NewChatHome({
     const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
     const isAssistantWs = (w: Workspace) => (w.kind ?? 'project') === 'assistant';
 
-    // Picker rows: assistants first (default pinned on top), then projects —
-    // one searchable list across both kinds.
     const pickerWorkspaces = workspaces
         .filter(ws => !ws.deviceId)
         .filter(ws => ws.name.toLowerCase().includes(wsSearch.toLowerCase()))
@@ -207,75 +77,6 @@ export function NewChatHome({
             return 0;
         });
 
-    // System speech-to-text for the prompt box. Reuses the terminal's
-    // voice-input logic via a shared hook; appends to whatever is typed.
-    const speech = useSpeechRecognition(
-        language,
-        () => prompt.value,
-        (v: string) => {
-            prompt.value = v;
-        }
-    );
-
-    // File upload — appends each /tmp path into the prompt text and tracks a
-    // chip; shares the same getter/setter shape as the speech hook.
-    const attach = useFileAttachments(
-        () => prompt.value,
-        (v: string) => {
-            prompt.value = v;
-        }
-    );
-
-    // Offer only installed agents. Before the catalog loads, keep the legacy
-    // static fallback except for Grok, which must be positively detected as
-    // installed. Preserve the current selection so an existing config renders.
-    const pickable = pickableAgents.value;
-    const agentOptions: { type: AgentType; label: string }[] = pickable.length
-        ? pickable.map(a => ({ type: a.type, label: AGENT_TYPE_LABELS[a.type as AgentType] ?? a.label }))
-        : AGENT_TYPES.filter(ty => ty !== 'grok-build').map(ty => ({
-              type: ty,
-              label: AGENT_TYPE_LABELS[ty] ?? ty,
-          }));
-    if (selectedAgent.value && !agentOptions.some(o => o.type === selectedAgent.value)) {
-        agentOptions.unshift({
-            type: selectedAgent.value,
-            label: AGENT_TYPE_LABELS[selectedAgent.value] ?? selectedAgent.value,
-        });
-    }
-
-    // Align local state agent selector with workspace's default agent if it changes
-    useEffect(() => {
-        if (activeWorkspace?.defaultAgent && AGENT_TYPES.includes(activeWorkspace.defaultAgent)) {
-            selectedAgent.value = activeWorkspace.defaultAgent;
-        }
-    }, [selectedWorkspaceId, activeWorkspace]);
-
-    // Load the workspace's agent team (experts) for the input-box picker. Reset
-    // the pick to '' (= primary) on every workspace switch. Non-fatal: an error
-    // just leaves an empty roster (the picker hides itself).
-    useEffect(() => {
-        let cancelled = false;
-        selectedExpert.value = '';
-        if (!selectedWorkspaceId) {
-            setTeamMembers([]);
-            return;
-        }
-        soulService
-            .getWorkspaceTeam(selectedWorkspaceId)
-            .then(team => {
-                if (cancelled) return;
-                setTeamMembers(team.members);
-            })
-            .catch(() => {
-                if (!cancelled) setTeamMembers([]);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [selectedWorkspaceId]);
-
-    // Adopt a workspace freshly created via "Open folder…" as the picker
-    // selection, without leaving the new-chat landing. One-shot: consume + clear.
     useEffect(() => {
         const injected = wsStore.newChatWorkspaceId.value;
         if (injected) {
@@ -284,7 +85,6 @@ export function NewChatHome({
         }
     }, [wsStore.newChatWorkspaceId.value]);
 
-    // Handle outside click for the workspace dropdown
     useEffect(() => {
         if (!wsDropdownOpen.value) return;
         const handleDown = (e: MouseEvent) => {
@@ -296,51 +96,41 @@ export function NewChatHome({
         return () => document.removeEventListener('mousedown', handleDown);
     }, [wsDropdownOpen.value]);
 
-    const handleSubmit = (e?: Event) => {
-        if (e) e.preventDefault();
-        if (!activeWorkspace) return;
-        const trimmed = prompt.value.trim();
-
-        if (mode.value === 'terminal') {
-            const cwd = activeWorkspace.terminalDir || activeWorkspace.path;
-            const preset = TERMINAL_PRESETS.find(p => p.value === selectedPreset.value) ?? TERMINAL_PRESETS[0];
-            // No bin → bare shell; bin without prompt → launch the CLI alone.
-            const initialCommand = preset.bin ? (trimmed ? `${preset.bin} ${quoteArg(trimmed)}` : preset.bin) : '';
-            onSubmitTerminal?.(activeWorkspace.id, cwd, initialCommand);
-            prompt.value = '';
-            attach.clear();
+    useEffect(() => {
+        let cancelled = false;
+        if (!selectedWorkspaceId) {
+            setTeamMembers([]);
             return;
         }
+        soulService
+            .getWorkspaceTeam(selectedWorkspaceId)
+            .then(team => {
+                if (!cancelled) {
+                    setTeamMembers(team.members.map(m => ({ file: m.file, name: m.name })));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setTeamMembers([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedWorkspaceId]);
 
-        if (!trimmed) return;
-        const effectiveRole: ChatRole =
-            (activeWorkspace.id === 'default' || activeWorkspace.builtin) && selectedRole.value === 'pm'
-                ? 'pmo'
-                : selectedRole.value;
-        onSubmitChat(
-            activeWorkspace.id,
-            selectedAgent.value,
-            trimmed,
-            effectiveRole,
-            selectedPermissionMode.value,
-            selectedExpert.value
-        );
-        prompt.value = '';
-        attach.clear();
+    const openCreate = () => {
+        void sess.openSessionSetup({
+            workspaceId: selectedWorkspaceId || activeWorkspaceId,
+            locked: !!lockedWorkspaceId,
+            defaultAgent: activeWorkspace?.defaultAgent,
+        });
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-            e.preventDefault();
-            handleSubmit();
-        }
+    const onConfigSave = () => {
+        setShowConfig(false);
     };
 
     return (
-        <div class="new-chat-home">
-            {/* Top Workspace Picker Dropdown — shown in both modes; assistants
-                and projects share one searchable list, rows tagged 助理/项目.
-                Hidden when locked to an assistant (launched from 助理 详情). */}
+        <div class="new-chat-home new-chat-home--simplified">
             {activeWorkspace && !lockedWorkspaceId && (
                 <div class="new-chat-ws-picker-container" ref={wsDropdownRef}>
                     <button
@@ -382,16 +172,6 @@ export function NewChatHome({
                     {wsDropdownOpen.value && (
                         <div class="new-chat-ws-dropdown">
                             <div class="dropdown-search-wrap">
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    class="dropdown-search-icon"
-                                >
-                                    <circle cx="11" cy="11" r="8" />
-                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                                </svg>
                                 <input
                                     class="dropdown-search-input"
                                     type="text"
@@ -400,11 +180,6 @@ export function NewChatHome({
                                     onInput={(e: Event) => setWsSearch((e.target as HTMLInputElement).value)}
                                     autoFocus
                                 />
-                                {wsSearch && (
-                                    <button class="dropdown-search-clear" onClick={() => setWsSearch('')} type="button">
-                                        ×
-                                    </button>
-                                )}
                             </div>
                             <div class="dropdown-list">
                                 {pickerWorkspaces.map(ws => (
@@ -417,28 +192,6 @@ export function NewChatHome({
                                             setWsSearch('');
                                         }}
                                     >
-                                        {isAssistantWs(ws) ? (
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                style="width: 14px; height: 14px; opacity: 0.7;"
-                                            >
-                                                <circle cx="12" cy="8" r="4" />
-                                                <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                                            </svg>
-                                        ) : (
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                style="width: 14px; height: 14px; opacity: 0.7;"
-                                            >
-                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                            </svg>
-                                        )}
                                         <span class="item-name">{ws.name}</span>
                                         <span
                                             class={`dropdown-kind-tag ${
@@ -449,7 +202,6 @@ export function NewChatHome({
                                                 ? t('newchat.kind.assistant', language)
                                                 : t('newchat.kind.project', language)}
                                         </span>
-                                        {ws.id === selectedWorkspaceId && <span class="checkmark">✓</span>}
                                     </button>
                                 ))}
                                 {pickerWorkspaces.length === 0 && (
@@ -464,19 +216,6 @@ export function NewChatHome({
                                     setWsSearch('');
                                 }}
                             >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    style="width: 14px; height: 14px; opacity: 0.7;"
-                                >
-                                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                    <line x1="12" y1="10" x2="12" y2="16" />
-                                    <line x1="9" y1="13" x2="15" y2="13" />
-                                </svg>
                                 <span class="item-name">{t('sidebar.newWorkspace', language)}</span>
                             </button>
                         </div>
@@ -484,175 +223,66 @@ export function NewChatHome({
                 </div>
             )}
 
-            {/* Composer group — the input box and the secondary control bar
-                share one light surface (no gap) so they read as a single unit. */}
-            <div class="new-chat-composer-group">
-                <div class="new-chat-input-wrapper">
-                    <AttachmentPreview attachments={attach.attachments} onRemove={attach.remove} />
-                    <textarea
-                        class="new-chat-textarea"
-                        placeholder={
-                            speech.isRecording
-                                ? t('terminal.speech.listening', language)
-                                : mode.value === 'terminal'
-                                  ? t('newchat.terminalPlaceholder', language)
-                                  : t('newchat.chatPlaceholder', language)
-                        }
-                        value={prompt.value}
-                        onInput={(e: Event) => {
-                            prompt.value = (e.target as HTMLTextAreaElement).value;
-                        }}
-                        onKeyDown={handleKeyDown}
-                        rows={1}
-                    />
-                    <div class="new-chat-actions-row">
-                        {/* Primary controls (role + permission) — stay on the first
-                        row on mobile, next to the send cluster. */}
-                        <div class="actions-primary">
-                            {/* Expert selector — pick which team agent (persona) drives
-                                this conversation. Chat mode only, and only when the
-                                workspace has a team roster. '' = the project's primary. */}
-                            {mode.value === 'chat' && teamMembers.length > 0 && (
-                                <CustomSelect
-                                    value={selectedExpert.value}
-                                    ariaLabel={t('newchat.expert.aria', language)}
-                                    title={t('newchat.expert.hint', language)}
-                                    options={[
-                                        { value: '', label: t('newchat.expert.default', language) },
-                                        ...teamMembers.map(m => ({ value: m.file, label: m.name })),
-                                    ]}
-                                    onChange={v => (selectedExpert.value = v)}
-                                />
-                            )}
-
-                            {/* Role selector — chat mode only; hidden in beginner mode (forced general) */}
-                            {mode.value === 'chat' && !isBeginnerMode.value && (
-                                <CustomSelect
-                                    value={selectedRole.value}
-                                    ariaLabel={t('newchat.role.aria', language)}
-                                    title={t('newchat.role.pmHint', language)}
-                                    options={ROLE_OPTIONS.map(r => ({
-                                        value: r.value,
-                                        label: t(r.labelKey, language),
-                                    }))}
-                                    onChange={v => (selectedRole.value = v as ChatRole)}
-                                />
-                            )}
-
-                            {/* Permission mode — chat mode only, cycle button */}
-                            {mode.value === 'chat' && (
-                                <PermissionModePicker
-                                    value={selectedPermissionMode.value}
-                                    onChange={v => {
-                                        selectedPermissionMode.value = v;
-                                    }}
-                                    variant="cycle"
-                                />
-                            )}
-                        </div>
-
-                        <div class="actions-right">
-                            <AttachButton
-                                className="action-btn-circle plus-btn"
-                                onSelect={attach.upload}
-                                uploading={attach.uploading}
-                                title={attach.error || t('chat.composer.attach', language)}
-                                ariaLabel={t('chat.composer.attach', language)}
-                            />
-                            {!IS_DESKTOP && speech.available && (
-                                <MicButton
-                                    className="action-btn-circle mic-btn"
-                                    recording={speech.isRecording}
-                                    onClick={speech.toggle}
-                                    title={speech.error || t('terminal.action.voice', language)}
-                                    ariaLabel={t('terminal.action.voice', language)}
-                                />
-                            )}
-                            <button
-                                type="button"
-                                class={`action-btn-circle send-btn ${mode.value === 'chat' && !prompt.value.trim() ? 'disabled' : ''}`}
-                                disabled={mode.value === 'chat' && !prompt.value.trim()}
-                                onClick={handleSubmit}
-                                title={t('chat.composer.send', language)}
-                                aria-label={t('chat.composer.send', language)}
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <polyline points="9 10 4 15 9 20" />
-                                    <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
+            <div class="new-chat-simplified-body">
+                <div class="new-chat-simplified-hero">
+                    <h2 class="new-chat-simplified-title">{t('newchat.simplified.title', language)}</h2>
+                    <p class="new-chat-simplified-desc">{t('newchat.simplified.desc', language)}</p>
                 </div>
-                <div class="new-chat-outer-bar">
-                    <div class="actions-secondary">
-                        {/* Mode toggle: chat vs terminal — icon segmented control */}
-                        <div class="new-chat-mode-switch" role="group" aria-label={t('newchat.modeSwitch', language)}>
+
+                {showConfig ? (
+                    <div class="new-chat-config-panel session-setup-modal">
+                        <div class="new-chat-config-header">
+                            <span>{t('newchat.simplified.configTitle', language)}</span>
                             <button
                                 type="button"
-                                class={`mode-switch-btn ${mode.value === 'chat' ? 'active' : ''}`}
-                                title={t('newchat.modeChatTitle', language)}
-                                aria-pressed={mode.value === 'chat'}
-                                onClick={() => (mode.value = 'chat')}
+                                class="ws-modal-close"
+                                onClick={() => setShowConfig(false)}
+                                aria-label={t('common.close', language)}
                             >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                                </svg>
-                            </button>
-                            <button
-                                type="button"
-                                class={`mode-switch-btn ${mode.value === 'terminal' ? 'active' : ''}`}
-                                title={t('newchat.modeTerminalTitle', language)}
-                                aria-pressed={mode.value === 'terminal'}
-                                onClick={() => (mode.value = 'terminal')}
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <polyline points="4 17 10 11 4 5" />
-                                    <line x1="12" y1="19" x2="20" y2="19" />
-                                </svg>
+                                ✕
                             </button>
                         </div>
-
-                        {/* Model / Agent selector (chat) or preset selector (terminal) */}
-                        <CustomSelect
-                            value={mode.value === 'terminal' ? selectedPreset.value : selectedAgent.value}
-                            ariaLabel={t('newchat.modeSwitch', language)}
-                            options={
-                                mode.value === 'terminal'
-                                    ? TERMINAL_PRESETS.map(p => ({
-                                          value: p.value,
-                                          label: p.value === 'shell' ? t('newchat.terminalShell', language) : p.label,
-                                      }))
-                                    : agentOptions.map(o => ({ value: o.type, label: o.label }))
-                            }
-                            onChange={v => {
-                                if (mode.value === 'terminal') selectedPreset.value = v as TerminalPreset;
-                                else selectedAgent.value = v as AgentType;
-                            }}
+                        <SessionSetupForm
+                            workspaces={workspaces}
+                            defaultWorkspaceId={selectedWorkspaceId || activeWorkspaceId}
+                            locked
+                            defaultAgent={activeWorkspace?.defaultAgent}
+                            teamMembers={teamMembers}
+                            variant="config"
+                            showSkipToggle
+                            showRemember={false}
+                            language={language}
+                            onCancel={() => setShowConfig(false)}
+                            onSubmit={onConfigSave}
                         />
                     </div>
-                </div>
+                ) : (
+                    <div class="new-chat-simplified-actions">
+                        <button type="button" class="new-chat-cta-primary" onClick={openCreate}>
+                            {t('newchat.simplified.cta', language)}
+                        </button>
+                        <button
+                            type="button"
+                            class="new-chat-cta-gear"
+                            onClick={() => setShowConfig(true)}
+                            title={t('newchat.simplified.configTitle', language)}
+                            aria-label={t('newchat.simplified.configTitle', language)}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <circle cx="12" cy="12" r="3" />
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                            </svg>
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

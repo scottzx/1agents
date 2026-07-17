@@ -2,7 +2,7 @@ import { h, Component, Fragment } from 'preact';
 import { effect } from '@preact/signals';
 
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
-import { isChat, AGENT_TYPE_LABELS, type Session } from '../types';
+import { isChat, type Session } from '../types';
 import { NewChatHome } from '../chat/NewChatHome';
 import { AgentAvatar } from '../chat/AgentAvatar';
 import { DiscoveryPanel } from '../drawer/DiscoveryPanel';
@@ -307,16 +307,11 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
         this.setState({ selectedWorkspaceId: s.workspaceId });
     };
 
-    /** Open the unified New Conversation landing (cross-project). */
+    /** Open the unified SessionSetup flow (P0-5). Skip or modal; no overlay. */
     openNewChat = () => {
-        sess.onStartNewChat();
-        // NewChatHome only shows the project picker (and lets the chosen project
-        // take effect) in 'project' mode; 'assistant' mode locks every chat to
-        // the 'default' workspace. Mobile has no sidebar toggle for this, so
-        // derive it from the UI mode: advanced → project (pick a project),
-        // beginner → assistant (stay simple on the default workspace).
         ui.sidebarMode.value = ui.isBeginnerMode.value ? 'assistant' : 'project';
-        this.setState({ showNewChat: true });
+        this.setState({ showNewChat: false });
+        void sess.openSessionSetup();
     };
 
     private onSwipeDown = (e: PointerEvent, sessionId: string, isChatSession: boolean, sessionIndex: number) => {
@@ -479,39 +474,6 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         <NewChatHome
                                             workspaces={workspaces}
                                             activeWorkspaceId={activeWorkspaceId}
-                                            onSubmitChat={async (
-                                                wsId,
-                                                agentType,
-                                                prompt,
-                                                role,
-                                                permissionMode,
-                                                agentRef
-                                            ) => {
-                                                const name = `${AGENT_TYPE_LABELS[agentType] ?? agentType} 会话`;
-                                                await sess.createChatSession(
-                                                    wsId,
-                                                    name,
-                                                    agentType,
-                                                    prompt,
-                                                    role === 'pm' ? 'pm' : undefined,
-                                                    permissionMode,
-                                                    undefined,
-                                                    agentRef
-                                                );
-                                                tabsStore.activeDrawerTab.value = 'none';
-                                                this.setState({
-                                                    showNewChat: false,
-                                                    selectedWorkspaceId: wsId,
-                                                });
-                                            }}
-                                            onSubmitTerminal={(wsId, cwd, initialCommand) => {
-                                                sess.createTerminal(wsId, cwd, initialCommand);
-                                                tabsStore.activeDrawerTab.value = 'none';
-                                                this.setState({
-                                                    showNewChat: false,
-                                                    selectedWorkspaceId: wsId,
-                                                });
-                                            }}
                                             onOpenFolder={modal.openCreateWorkspacePicker}
                                             lockedWorkspaceId={sess.lockedNewChatWorkspaceId.value || undefined}
                                             language={language}

@@ -743,16 +743,20 @@ body {
       }
 
       .sidebar-close-btn,
-      .sidebar-search-btn {
+      .sidebar-search-btn,
+      .sidebar-new-session-btn {
         display: flex;
         align-items: center;
         justify-content: center;
         width: 24px;
         height: 24px;
+        padding: 0;
+        border: none;
         border-radius: 4px;
+        background: transparent;
         color: var(--text-sidebar-muted);
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background-color 0.15s, color 0.15s;
 
         &:hover {
           background-color: var(--bg-sidebar-hover);
@@ -763,6 +767,10 @@ body {
           width: 14px;
           height: 14px;
         }
+      }
+
+      .sidebar-new-session-btn.active {
+        color: var(--accent-color);
       }
     }
 
@@ -11634,6 +11642,119 @@ body {
   }
 }
 
+.session-setup-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  input[type='checkbox'] {
+    accent-color: var(--accent-color);
+  }
+}
+
+.session-setup-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warning-fg, var(--text-muted));
+  line-height: 1.4;
+}
+
+/* P1 simplified NewChatHome: CTA + config gear, no create-on-submit bar */
+.new-chat-home--simplified {
+  .new-chat-simplified-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 32px 20px;
+    text-align: center;
+  }
+
+  .new-chat-simplified-title {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .new-chat-simplified-desc {
+    margin: 0;
+    max-width: 360px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  .new-chat-simplified-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .new-chat-cta-primary {
+    height: 40px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-color);
+    color: var(--on-accent);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--accent-hover, var(--accent-emphasis));
+    }
+  }
+
+  .new-chat-cta-gear {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &:hover {
+      border-color: var(--text-main);
+      color: var(--text-main);
+    }
+  }
+
+  .new-chat-config-panel {
+    width: min(420px, 100%);
+    text-align: left;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--bento-radius, 12px);
+    background: var(--bg-card);
+  }
+
+  .new-chat-config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+}
+
 
 /* Skill push concurrent-edit conflict modal (issue #379). Reuses .ws-modal
    primitives (overlay/header/body/footer/input/cancel/confirm); this block
@@ -19901,40 +20022,6 @@ body {
   margin-bottom: 4px;
   padding: 0 8px;
 
-  .nav-control-btn.new-chat-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 100%;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    border: none;
-    background: var(--accent-color);
-    color: var(--on-accent);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.2);
-
-    svg.btn-icon {
-      width: 14px;
-      height: 14px;
-      stroke: currentColor;
-    }
-
-    &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(var(--accent-color-rgb), 0.3);
-      opacity: 0.95;
-    }
-
-    &:active {
-      transform: translateY(0.5px);
-    }
-  }
-
   .nav-control-item {
     display: flex;
     align-items: center;
@@ -19980,14 +20067,6 @@ body {
   }
 }
 
-[data-theme="dark"] {
-  .sidebar-nav-controls .nav-control-btn.new-chat-btn {
-    box-shadow: 0 4px 12px rgba(var(--accent-color-rgb), 0.25);
-    &:hover {
-      box-shadow: 0 6px 16px rgba(var(--accent-color-rgb), 0.35);
-    }
-  }
-}
 
 // Centered Main Chat Page styles
 .new-chat-home {
