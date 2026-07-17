@@ -1,6 +1,6 @@
 import { h, Fragment } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useSignal, useComputed } from '@preact/signals';
 import { WorkspaceFolder, Workspace, RightDrawerTab, Session, isChat, isTerminal } from '../types';
 import { t, type Lang } from '../i18n';
 import { SessionRow } from './SessionRow';
@@ -23,6 +23,12 @@ import {
     activeWorkspaceDeviceId,
     collapseFolders,
 } from '../../stores/workspaceStore';
+import {
+    chatSessions as chatSessionsSignal,
+    activeSession as activeSessionSignal,
+    chatsForWorkspace,
+    terminalsForFolderSessions,
+} from '../../stores/sessionStore';
 import { activeL1PageId } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
 import {
@@ -299,7 +305,7 @@ export function LeftSidebar({
         };
     }, [activeDrawerTab]);
 
-    const hasTaskLinkedSession = folders.some(f => f.sessions.some(s => isChat(s) && Boolean(s.taskId)));
+    const hasTaskLinkedSession = chatSessionsSignal.value.some(c => !c.archived && Boolean(c.taskId));
     const folderIdsKey = folders.map(f => f.id).join(',');
     useEffect(() => {
         if (!hasTaskLinkedSession) return;
@@ -307,7 +313,7 @@ export function LeftSidebar({
         (async () => {
             const titles: Record<string, string> = {};
             for (const folder of folders) {
-                if (!folder.sessions.some(s => isChat(s) && Boolean(s.taskId))) continue;
+                if (!chatsForWorkspace(folder.id).some(s => Boolean(s.taskId))) continue;
                 try {
                     const tasks = await projectItemService.list(folder.id);
                     for (const task of tasks) {
@@ -386,6 +392,22 @@ export function LeftSidebar({
             else onTerminalKill(session.index);
         }, 300);
     };
+
+    // useComputed so @preact/signals reliably re-renders this function component
+    // when the chat index or active session changes (void reads were not enough
+    // inside the class-shell tree — restored rows only appeared after the next
+    // archive forced a folders write / parent paint).
+    const chatIndexRev = useComputed(
+        () =>
+            `${chatSessionsSignal.value.length}:${chatSessionsSignal.value.map(c => `${c.id}:${c.archived ? 1 : 0}`).join(',')}:${activeSessionSignal.value && isChat(activeSessionSignal.value) ? activeSessionSignal.value.id : ''}`
+    );
+    void chatIndexRev.value;
+
+    /** Chat rows from chatSessions (SoT) + terminal rows from folder.sessions. */
+    const sessionsForFolder = (folderId: string, folderSessions: Session[]) => ({
+        chats: chatsForWorkspace(folderId),
+        terms: terminalsForFolderSessions(folderSessions),
+    });
 
     const renderSession = (session: Session) => (
         <SessionRow
@@ -688,8 +710,10 @@ export function LeftSidebar({
                                         const folder = folders.find(f => f.id === ws.id);
                                         if (!folder) return null;
                                         const isActive = activeWorkspaceId === ws.id;
-                                        const chatSessions = folder.sessions.filter(isChat);
-                                        const termSessions = folder.sessions.filter(s => !isChat(s));
+                                        const { chats: chatSessions, terms: termSessions } = sessionsForFolder(
+                                            folder.id,
+                                            folder.sessions
+                                        );
                                         return (
                                             <div key={ws.id} class={`project-node${isActive ? ' ws-active' : ''}`}>
                                                 <div
@@ -973,10 +997,8 @@ export function LeftSidebar({
 
                                                     {folder.expanded &&
                                                         (() => {
-                                                            const chatSessions = folder.sessions.filter(isChat);
-                                                            const termSessions = folder.sessions.filter(
-                                                                s => !isChat(s)
-                                                            );
+                                                            const { chats: chatSessions, terms: termSessions } =
+                                                                sessionsForFolder(folder.id, folder.sessions);
 
                                                             // One unified list under each workspace: every
                                                             // 会话 / 终端 session, using the same `.chat-item`

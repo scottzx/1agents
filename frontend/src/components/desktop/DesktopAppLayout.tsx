@@ -1,4 +1,5 @@
 import { h, Component, Fragment } from 'preact';
+import { effect } from '@preact/signals-core';
 import { isFullPageTab, isChat } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
@@ -23,7 +24,32 @@ interface DesktopAppLayoutProps {
     state: AppState;
 }
 
+/**
+ * Desktop shell. Class component + signals: reading `.value` in render alone is
+ * unreliable for nested static subtrees (see chat/hooks useBridge note). Archive
+ * updated `folders` (parent re-painted) while restore only mutated `chatSessions`
+ * — so a restored row only "flew in" when the next archive forced a folders
+ * write. We explicitly effect-subscribe the session index and forceUpdate.
+ */
 export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
+    private _disposeSessionPaint: (() => void) | null = null;
+
+    componentDidMount() {
+        this._disposeSessionPaint = effect(() => {
+            // Track the session SoT used by the sidebar tree.
+            void sess.chatSessions.value;
+            void sess.activeSession.value;
+            void sess.terminalWindows.value;
+            void wsStore.folders.value;
+            this.forceUpdate();
+        });
+    }
+
+    componentWillUnmount() {
+        this._disposeSessionPaint?.();
+        this._disposeSessionPaint = null;
+    }
+
     render() {
         const { app, state } = this.props;
         const tabs = tabsStore.tabs.value;
@@ -34,12 +60,15 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const folders = wsStore.folders.value;
         const workspacesLoading = wsStore.workspacesLoading.value;
         const activeSession = sess.activeSession.value;
+        // Subscribe in render as well (belt + suspenders with the effect above).
+        const chatSessionCount = sess.chatSessions.value.length;
         const tmuxMouseOn = sess.tmuxMouseOn.value;
         const language = ui.language.value;
         const theme = ui.theme.value;
         const leftSidebarOpen = ui.leftSidebarOpen.value;
         const leftSidebarWidth = ui.leftSidebarWidth.value;
         const keyboardVisible = ui.keyboardVisible.value;
+        void chatSessionCount;
 
         const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
         const activeWorkspacePath = activeWorkspace?.path || '.';
@@ -219,9 +248,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 isTerminalView={activeTabId === 'terminal' && primaryView.kind === 'terminal'}
                                 language={language}
                                 moduleNav={sidebarModuleNav}
-                                hasChatSession={folders.some(
-                                    f => f.id === activeWorkspaceId && f.sessions.some(isChat)
-                                )}
+                                hasChatSession={
+                                    !!activeWorkspaceId &&
+                                    (sess.chatsForWorkspace(activeWorkspaceId).length > 0 ||
+                                        folders.some(
+                                            f => f.id === activeWorkspaceId && f.sessions.some(s => !isChat(s))
+                                        ))
+                                }
                                 customCrumbs={
                                     mode === 'project-overview'
                                         ? [{ label: t('projectHome.title', language) }]

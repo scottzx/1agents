@@ -5,7 +5,6 @@ import { useSignal } from '@preact/signals';
 import type { ChatSession, Session } from '../../types';
 import { t } from '../../../i18n';
 import * as ui from '../../../stores/uiStore';
-import { agentService } from '../../../services/agentService';
 import { DataGrid } from './DataGrid';
 import {
     getSessionColumns,
@@ -15,16 +14,12 @@ import {
     sessionDefaultCompare,
     sessionGroupValue,
 } from './sessionGrid';
-import {
-    chatSessions,
-    mergeSessionsIntoFolders,
-    terminalWindows,
-    loadChatSessions,
-} from '../../../stores/sessionStore';
+import { chatSessions, loadChatSessions } from '../../../stores/sessionStore';
 
 interface SessionsViewProps {
     workspaceId: string;
-    onSelectSession?: (session: Session) => void;
+    /** May be async — selectSession unarchives when needed. */
+    onSelectSession?: (session: Session) => void | Promise<void>;
     /** Jump to a linked task's timeline (sets the TaskList selection). */
     onSelectTask?: (taskId: string) => void;
 }
@@ -69,31 +64,16 @@ export function SessionsView({ workspaceId, onSelectSession, onSelectTask }: Ses
         fetchSessions();
     }, [fetchSessions]);
 
-    // 恢复对话: open the conversation, un-archiving first when needed so the
-    // sidebar treats the next close as a fresh archive, not a double-close.
+    // Open / restore: selectSession itself unarchives when needed (single path
+    // for sidebar SoT + backend PATCH). Avoid a second restore here.
     const handleOpen = useCallback(
         async (s: ChatSession) => {
             if (!onSelectSession) return;
-            if (s.archived) {
-                // Optimistic UI update: unarchive locally immediately
-                s.archived = false;
-                s.archivedAt = undefined;
-                chatSessions.value = [...chatSessions.value];
-                mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
-
-                try {
-                    await agentService.setArchived(s.id, false);
-                } catch (err) {
-                    // Rollback on error
-                    s.archived = true;
-                    s.archivedAt = new Date().toISOString();
-                    chatSessions.value = [...chatSessions.value];
-                    mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
-                    setError((err as Error).message);
-                    return;
-                }
+            try {
+                await onSelectSession({ ...s, active: true });
+            } catch (err) {
+                setError((err as Error).message);
             }
-            onSelectSession({ ...s, archived: false, archivedAt: undefined, active: true });
         },
         [onSelectSession]
     );

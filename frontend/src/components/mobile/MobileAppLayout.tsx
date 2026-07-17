@@ -495,7 +495,8 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             <p>{t('mobile.home.desc', language) || '继续已有会话，或新建一个'}</p>
                                         </div>
 
-                                        {folders.some(f => f.sessions.length > 0) && (
+                                        {(folders.some(f => f.sessions.some(s => !isChat(s))) ||
+                                            sess.chatSessions.value.some(c => !c.archived)) && (
                                             <div class="mobile-home-search">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                     <circle cx="11" cy="11" r="8" />
@@ -531,9 +532,18 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
 
                                         {(() => {
                                             const q = homeSearch.trim().toLowerCase();
-                                            const all = folders.flatMap(f =>
-                                                f.sessions.map(s => ({ s, wsName: f.name }))
-                                            );
+                                            // Chat rows from chatSessions SoT (not denormalized
+                                            // folder.sessions — that copy lags after restore).
+                                            const all = folders.flatMap(f => {
+                                                const chats = sess.chatsForWorkspace(f.id).map(s => ({
+                                                    s: s as Session,
+                                                    wsName: f.name,
+                                                }));
+                                                const terms = f.sessions
+                                                    .filter(s => !isChat(s))
+                                                    .map(s => ({ s, wsName: f.name }));
+                                                return [...chats, ...terms];
+                                            });
                                             all.sort((a, b) => {
                                                 if (!!a.s.active !== !!b.s.active) return a.s.active ? -1 : 1;
                                                 const ta = isChat(a.s) ? a.s.lastEventAt || a.s.createdAt || '' : '';
@@ -791,9 +801,15 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         tmuxMouseOn={tmuxMouseOn}
                                         onTmuxMouseToggle={sess.toggleTmuxMouse}
                                         language={language}
-                                        hasChatSession={folders.some(
-                                            f => f.id === selectedWorkspaceId && f.sessions.some(isChat)
-                                        )}
+                                        hasChatSession={
+                                            !!selectedWorkspaceId &&
+                                            (sess.chatsForWorkspace(selectedWorkspaceId).length > 0 ||
+                                                folders.some(
+                                                    f =>
+                                                        f.id === selectedWorkspaceId &&
+                                                        f.sessions.some(s => !isChat(s))
+                                                ))
+                                        }
                                     />
                                     <div class="workspace-body-container" style="flex: 1; min-height: 0;">
                                         {activeDrawerTab === 'none' && <WorkbenchCanvas app={app} fontSize={12} />}

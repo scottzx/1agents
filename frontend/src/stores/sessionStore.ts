@@ -46,6 +46,43 @@ export const activeSession = signal<Session | null>(null);
 export const pendingInitialMessage = signal<string | null>(null);
 
 /**
+ * Source of truth for sidebar chat rows under a workspace.
+ *
+ * Do NOT read denormalized `folder.sessions` for chats — that copy is rebuilt
+ * by mergeSessionsIntoFolders and can lag behind chatSessions / activeSession
+ * after archive → restore (chat UI opens via activeSession, sidebar stayed empty).
+ *
+ * Hidden invariant we enforce here:
+ *   The currently open conversation (activeSession) for this workspace is ALWAYS
+ *   listed, even if chatSessions still has archived=true (stale index after open).
+ *   Being open in the chat pane means it must be visible in the sidebar.
+ */
+export const chatsForWorkspace = (workspaceId: string): ChatSession[] => {
+    const active = activeSession.value;
+    const activeChat =
+        active && isChat(active) && active.workspaceId === workspaceId ? active : null;
+    const activeId = activeChat?.id ?? null;
+
+    const list = chatSessions.value
+        .filter(c => c.workspaceId === workspaceId)
+        .filter(c => !c.archived || c.id === activeId)
+        .map(c =>
+            c.id === activeId
+                ? { ...c, archived: false, archivedAt: undefined, active: true }
+                : { ...c, active: false }
+        );
+
+    if (activeChat && !list.some(c => c.id === activeChat.id)) {
+        return [{ ...activeChat, archived: false, archivedAt: undefined, active: true }, ...list];
+    }
+    return list;
+};
+
+/** Terminal rows for a workspace (still carried on folder.sessions today). */
+export const terminalsForFolderSessions = (sessions: Session[]): Session[] =>
+    sessions.filter(s => isTerminal(s));
+
+/**
  * When the new-chat landing is opened from a specific assistant (助理 详情 的
  * 「新建对话」), it is locked to that assistant's workspace — NewChatHome hides
  * its workspace picker and the header breadcrumb shows 助理 › <name> › 新建对话.
@@ -159,6 +196,9 @@ export const setHighlightedSession = (sessionId: string) => {
 export const sessionListByWorkspace = signal<Record<string, ChatSession[]>>({});
 export const SESSION_LIST_TTL_MS = 5_000;
 const sessionListFetchedAt: Record<string, number> = {};
+/** Per-workspace generation so a slow list response cannot overwrite a newer one
+ *  (e.g. unarchive + select fires a fresh load while an older list is in flight). */
+const chatSessionsLoadGen: Record<string, number> = {};
 
 /** Sync tmux windows + chat sessions into workspace folders as sessions */
 export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSession[]) => {
@@ -168,11 +208,24 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
     // connect the bridge + load history but never appear in the sidebar, and a
     // subsequent loadChatSessions would even wipe it out of activeSession below.
     // Guard: never re-inject an archived session — it was intentionally removed.
+    // Prefer local unarchived active over a stale API row still marked archived
+    // (restore race: optimistic unarchive then a late list lands).
     const prevActive = activeSession.value;
-    const chatList: ChatSession[] =
-        prevActive && isChat(prevActive) && !prevActive.archived && !chats.some(c => c.id === prevActive.id)
-            ? [prevActive, ...chats]
-            : chats;
+    let chatList: ChatSession[] = chats.map(c => {
+        if (
+            prevActive &&
+            isChat(prevActive) &&
+            prevActive.id === c.id &&
+            !prevActive.archived &&
+            c.archived
+        ) {
+            return { ...c, archived: false, archivedAt: undefined };
+        }
+        return c;
+    });
+    if (prevActive && isChat(prevActive) && !prevActive.archived && !chatList.some(c => c.id === prevActive.id)) {
+        chatList = [prevActive, ...chatList];
+    }
     wsStore.folders.value = wsStore.folders.value.map(f => {
         const termSessions: Session[] = windows
             .filter(w => w.workspaceId === f.id)
@@ -199,22 +252,27 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
     // fall back to the most recently active terminal window.
     const activeChat = prevActive && isChat(prevActive) ? chatList.find(c => c.id === prevActive.id) : null;
     const activeWin = windows.find(w => w.active);
-    activeSession.value = activeChat
-        ? { ...activeChat, active: true }
-        : activeWin
-          ? {
-                kind: 'terminal',
-                id: activeWin.name,
-                workspaceId: activeWin.workspaceId,
-                index: activeWin.index,
-                name: activeWin.customName || t('app.session.title', ui.language.value, { index: activeWin.index }),
-                active: true,
-                cwd: activeWin.cwd,
-                status: activeWin.status,
-                waitingFor: activeWin.waitingFor,
-                agent: activeWin.agent,
-            }
-          : null;
+    // Don't replace an active unarchived chat with a still-archived API snapshot.
+    if (activeChat && !(prevActive && isChat(prevActive) && !prevActive.archived && activeChat.archived)) {
+        activeSession.value = { ...activeChat, active: true };
+    } else if (prevActive && isChat(prevActive) && !prevActive.archived) {
+        activeSession.value = { ...prevActive, active: true };
+    } else if (activeWin) {
+        activeSession.value = {
+            kind: 'terminal',
+            id: activeWin.name,
+            workspaceId: activeWin.workspaceId,
+            index: activeWin.index,
+            name: activeWin.customName || t('app.session.title', ui.language.value, { index: activeWin.index }),
+            active: true,
+            cwd: activeWin.cwd,
+            status: activeWin.status,
+            waitingFor: activeWin.waitingFor,
+            agent: activeWin.agent,
+        };
+    } else if (!prevActive || (isChat(prevActive) && prevActive.archived)) {
+        activeSession.value = null;
+    }
 };
 
 /** Fetch all tmux windows from GET /api/terminal/list and sync to folders */
@@ -237,19 +295,39 @@ export const loadTerminals = async () => {
 export const loadChatSessions = async (workspaceId?: string) => {
     const wsId = workspaceId ?? wsStore.activeWorkspaceId.value;
     if (!wsId) return;
+    const gen = (chatSessionsLoadGen[wsId] = (chatSessionsLoadGen[wsId] || 0) + 1);
     try {
         const chats = await agentService.list(wsId, true);
+        // Drop stale responses: a newer load (or unarchive) for this workspace
+        // already landed while this request was in flight.
+        if (chatSessionsLoadGen[wsId] !== gen) return;
         // All chats (incl. role='pm' AI 项目经理) show in the normal sidebar /
         // chat column now — PM is created via New Conversation, not a 副屏.
         // Merge into the cross-workspace aggregate instead of replacing it, so
         // other workspaces' sessions aren't wiped (the session-first mobile
         // home lists every conversation across all projects).
+        //
+        // Critical: if the user currently has a chat open and we locally
+        // unarchived it (activeSession.archived === false), do NOT let a
+        // lagging API snapshot re-mark that row archived — that was the
+        // "can chat but sidebar empty" bug.
+        const active = activeSession.value;
+        const protectId =
+            active && isChat(active) && active.workspaceId === wsId && !active.archived
+                ? active.id
+                : null;
         chatSessions.value = [
             ...chatSessions.value.filter(c => c.workspaceId !== wsId),
-            ...chats.map(c => ({
-                ...c,
-                forkSupported: c.forkSupported ?? (c.agentType === 'claudecode' ? true : undefined),
-            })),
+            ...chats.map(c => {
+                const base = {
+                    ...c,
+                    forkSupported: c.forkSupported ?? (c.agentType === 'claudecode' ? true : undefined),
+                };
+                if (protectId && c.id === protectId) {
+                    return { ...base, archived: false, archivedAt: undefined };
+                }
+                return base;
+            }),
         ];
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
     } catch (err) {
@@ -470,26 +548,73 @@ export const selectNextAvailableSession = (deletedSessionId: string, workspaceId
 export const killChatSession = async (sessionId: string) => {
     const session = chatSessions.value.find(c => c.id === sessionId);
     if (!session) return;
+    const prevArchivedAt = session.archivedAt;
     try {
         // Clean up global WebSocket bridge session
         globalBridgeManager.destroy(sessionId);
-        // Optimistic UI: mark archived locally so sidebar + project detail
-        // update immediately, before the API round-trip completes.
-        session.archived = true;
-        session.archivedAt = new Date().toISOString();
-        chatSessions.value = [...chatSessions.value];
+        // Optimistic UI: immutable update so signals always notify, and the
+        // sidebar drops the row immediately.
+        chatSessions.value = chatSessions.value.map(c =>
+            c.id === sessionId ? { ...c, archived: true, archivedAt: new Date().toISOString() } : c
+        );
+        // Bump list gen before merge so any in-flight loadChatSessions is discarded
+        // and cannot re-add the archived row to the sidebar.
+        chatSessionsLoadGen[session.workspaceId] = (chatSessionsLoadGen[session.workspaceId] || 0) + 1;
         selectNextAvailableSession(sessionId, session.workspaceId);
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
         ui.showToast('会话已归档 ✓');
-        // Persist to backend (fire-and-forget; the optimistic state is canonical).
         await agentService.setArchived(sessionId, true);
     } catch (err) {
         // Rollback optimistic update on failure.
-        session.archived = false;
-        session.archivedAt = undefined;
-        chatSessions.value = [...chatSessions.value];
+        chatSessions.value = chatSessions.value.map(c =>
+            c.id === sessionId ? { ...c, archived: false, archivedAt: prevArchivedAt } : c
+        );
         mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
         ui.showToast(`归档失败: ${(err as Error).message}`);
+    }
+};
+
+/**
+ * Unarchive a chat session and make it active in the sidebar immediately.
+ * Used by the 会话 archive grid "恢复对话" action. Optimistic local state +
+ * folder inject, then persist; selectSession opens the conversation.
+ */
+export const restoreChatSession = async (session: ChatSession): Promise<ChatSession | null> => {
+    const restored: ChatSession = {
+        ...session,
+        archived: false,
+        archivedAt: undefined,
+        active: true,
+    };
+    const had = chatSessions.value.some(c => c.id === session.id);
+    chatSessions.value = had
+        ? chatSessions.value.map(c =>
+              c.id === session.id ? { ...c, archived: false, archivedAt: undefined } : c
+          )
+        : [restored, ...chatSessions.value];
+    // Invalidate in-flight list loads so they can't re-mark this session archived.
+    chatSessionsLoadGen[session.workspaceId] = (chatSessionsLoadGen[session.workspaceId] || 0) + 1;
+    activeSession.value = restored;
+    mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+    // Ensure the workspace folder is expanded so the restored row is visible.
+    wsStore.folders.value = wsStore.folders.value.map(f =>
+        f.id === session.workspaceId ? { ...f, expanded: true } : f
+    );
+
+    try {
+        await agentService.setArchived(session.id, false);
+        return restored;
+    } catch (err) {
+        chatSessions.value = chatSessions.value.map(c =>
+            c.id === session.id
+                ? { ...c, archived: true, archivedAt: session.archivedAt || new Date().toISOString() }
+                : c
+        );
+        if (activeSession.value && isChat(activeSession.value) && activeSession.value.id === session.id) {
+            activeSession.value = null;
+        }
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+        throw err;
     }
 };
 
@@ -750,25 +875,70 @@ export const selectSession = async (session: Session) => {
     const oldWorkspaceId = wsStore.activeWorkspaceId.value;
     const workspaces = wsStore.workspaces.value;
 
-    // 1. Optimistic UI update: mark the session active and switch tab.
-    const updatedFolders = wsStore.folders.value.map(f => ({
-        ...f,
-        sessions: f.sessions.map(s => {
+    // ── Chat: opening a conversation ALWAYS means it is live in the sidebar ──
+    // Hidden bug: several entry points (search, task timeline, grid open) called
+    // selectSession on an archived row. Chat pane works off activeSession, but
+    // the sidebar filters archived → "can talk, no sidebar row". Fix: any chat
+    // open path unarchives (local SoT + backend) before wiring the UI.
+    if (isChat(session)) {
+        const indexed = chatSessions.value.find(c => c.id === session.id);
+        const needsUnarchive = Boolean(session.archived || indexed?.archived);
+        if (needsUnarchive) {
+            try {
+                // restoreChatSession updates chatSessions, activeSession, folders,
+                // expands the workspace node, and PATCHes archived=false.
+                const restored = await restoreChatSession(session as ChatSession);
+                if (restored) session = restored;
+            } catch (err) {
+                ui.showToast(`恢复会话失败: ${(err as Error).message}`);
+                // Still open the pane so the user isn't stuck, but keep trying
+                // to show the row via the activeSession inject in chatsForWorkspace.
+                session = { ...session, archived: false, archivedAt: undefined };
+            }
+        } else {
+            const chat = session as ChatSession;
+            const had = chatSessions.value.some(c => c.id === chat.id);
+            chatSessions.value = had
+                ? chatSessions.value.map(c =>
+                      c.id === chat.id
+                          ? { ...c, archived: false, archivedAt: undefined, active: true }
+                          : c
+                  )
+                : [{ ...chat, archived: false, archivedAt: undefined, active: true }, ...chatSessions.value];
+        }
+        // Normalize for the rest of this function.
+        session = { ...session, archived: false, archivedAt: undefined, active: true };
+    }
+
+    // 1. Optimistic UI update: mark the session active, inject if missing, expand folder.
+    const updatedFolders = wsStore.folders.value.map(f => {
+        const sessions = f.sessions.map(s => {
             if (isChat(s) && isChat(session)) return { ...s, active: s.id === session.id };
             if (isTerminal(s) && isTerminal(session)) return { ...s, active: s.index === session.index };
             return { ...s, active: false };
-        }),
-    }));
+        });
+        if (
+            isChat(session) &&
+            f.id === session.workspaceId &&
+            !sessions.some(s => isChat(s) && s.id === session.id)
+        ) {
+            sessions.unshift({ ...session, active: true });
+        }
+        return {
+            ...f,
+            // Always expand the folder that owns the selected session so a
+            // restored row is not hidden under a collapsed tree.
+            expanded: f.id === session.workspaceId ? true : f.expanded,
+            sessions,
+        };
+    });
     localStorage.setItem('1agents-active-workspace', session.workspaceId);
     activeSession.value = { ...session, active: true };
     // A session opened with a transient initialMessage (issue-model follow-up /
     // new-session reply) auto-sends that prompt once ChatPanel is ready. Plain
     // switches carry none, which also clears any stale pending message.
     pendingInitialMessage.value = (isChat(session) && session.initialMessage) || null;
-    wsStore.folders.value =
-        session.workspaceId !== oldWorkspaceId
-            ? updatedFolders.map(f => (f.id === session.workspaceId ? { ...f, expanded: true } : f))
-            : updatedFolders;
+    wsStore.folders.value = updatedFolders;
     wsStore.activeWorkspaceId.value = session.workspaceId;
     tabsStore.activeTabId.value = 'terminal';
     // Chat sessions live in the agents tab; terminals in the terminal tab.
@@ -781,6 +951,8 @@ export const selectSession = async (session: Session) => {
             const ws = workspaces.find(w => w.id === session.workspaceId);
             if (ws) await fs.switchFsContext(ws);
         }
+        // Rebuild sidebar from the full index (includes archived for the grid).
+        // loadChatSessions protects the open session from being re-archived.
         loadChatSessions(session.workspaceId);
         if (ui.isMobile.value) ui.leftSidebarOpen.value = false;
         return;

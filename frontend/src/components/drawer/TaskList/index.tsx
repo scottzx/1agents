@@ -413,9 +413,9 @@ export function TaskList({
                         </div>
                         <SessionsView
                             workspaceId={workspaceId}
-                            onSelectSession={s => {
+                            onSelectSession={async s => {
                                 showSessions.value = false;
-                                onSelectSession?.(s);
+                                await onSelectSession?.(s);
                             }}
                             onSelectTask={id => {
                                 showSessions.value = false;

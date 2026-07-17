@@ -165,7 +165,7 @@ export function ProjectShell({ workspaceId, workspaceName, crumbs, variant = 'pa
         <Fragment>
             {activeTab === 'sessions' && (
                 <div class="assistant-pane-fill assistant-pane-inset">
-                    <SessionsView workspaceId={workspaceId} onSelectSession={s => void sess.selectSession(s)} />
+                    <SessionsView workspaceId={workspaceId} onSelectSession={s => sess.selectSession(s)} />
                 </div>
             )}
             {activeTab === 'tasks' && (

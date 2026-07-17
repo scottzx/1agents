@@ -104,7 +104,7 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
                     <div class="assistant-pane-fill assistant-pane-inset">
                         <SessionsView
                             workspaceId={workspaceId}
-                            onSelectSession={s => void sessStore.selectSession(s)}
+                            onSelectSession={s => sessStore.selectSession(s)}
                         />
                     </div>
                 )}
