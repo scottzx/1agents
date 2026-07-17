@@ -310,14 +310,41 @@ export class ChatBridgeManager {
     }
 
     /**
-     * Reclaim a session that was taken over by another tab/browser. Used by
-     * the "重试" button on the takeover banner — reconnecting makes THIS
-     * connection the newest, so the bridge hands ownership back here (and the
-     * other tab gets its own takeover banner). connect() clears `takenOver`.
+     * Force-reconnect a session. Used by the takeover banner "重试" button
+     * (reclaim ownership from another tab) and the header refresh button
+     * (recover a stuck/failed session without a full page reload). connect()
+     * clears `takenOver`. A missing bridge is created + connected; a live
+     * one gets a fresh reconnect budget and a clean socket swap so the old
+     * onclose handler cannot race the new connection.
      */
     retry(session: ChatSession) {
         const state = this.sessions.get(session.id);
-        if (!state) return;
+        if (!state) {
+            this.getOrCreate(session);
+            return;
+        }
+        if (state.reconnectTimer) {
+            clearTimeout(state.reconnectTimer);
+            state.reconnectTimer = null;
+        }
+        // User-initiated refresh: reset the auto-reconnect give-up counter so
+        // a previously failed "会话不可用" session can try again.
+        state.reconnectAttempt = 0;
+        // Detach the previous socket so its onclose cannot schedule a competing
+        // reconnect or overwrite the new transport's handlers/state.
+        if (state.ws) {
+            const prev = state.ws;
+            prev.onopen = null;
+            prev.onmessage = null;
+            prev.onerror = null;
+            prev.onclose = null;
+            try {
+                prev.close();
+            } catch {
+                // ignore close races on already-dead sockets
+            }
+            state.ws = null;
+        }
         this.connect(session, state);
     }
 

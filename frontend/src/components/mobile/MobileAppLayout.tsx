@@ -20,6 +20,7 @@ import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
 import * as modal from '../../stores/modalStore';
 import * as tabsStore from '../../stores/tabsStore';
+import { globalBridgeManager } from '../chat/hooks';
 import { SETTINGS_STATIC_MANIFEST, type SettingsCategory } from '../../modules/settings-manifest';
 import './MobileAppLayout.scss';
 
@@ -815,6 +816,14 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                         connection={
                                             activeSession && isChat(activeSession)
                                                 ? sess.liveSessionConnection.value[activeSession.id] ?? 'idle'
+                                                : undefined
+                                        }
+                                        onRefreshSession={
+                                            activeSession && isChat(activeSession)
+                                                ? () => {
+                                                      globalBridgeManager.dismissError(activeSession.id);
+                                                      globalBridgeManager.retry(activeSession);
+                                                  }
                                                 : undefined
                                         }
                                         tmuxMouseOn={tmuxMouseOn}

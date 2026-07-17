@@ -55,6 +55,12 @@ interface WorkspaceHeaderProps {
     sessionStatus?: string;
     connection?: ConnectionState;
     /**
+     * Force-reconnect the active chat session (header refresh button, sits
+     * to the right of the project info icon). Absent when no chat session
+     * is active.
+     */
+    onRefreshSession?: () => void;
+    /**
      * When set, overrides the default session/entity title with a fixed
      * breadcrumb trail (e.g. for project-overview and project-detail modes
      * where there is no active session to surface).
@@ -103,6 +109,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
         agentType,
         sessionStatus,
         connection,
+        onRefreshSession,
         customCrumbs,
         showControls = true,
     } = props;
@@ -425,6 +432,27 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                                         )}
                                     </span>
                                 </span>
+                            )}
+                            {onRefreshSession && (
+                                <button
+                                    type="button"
+                                    class="header-session-refresh"
+                                    onClick={onRefreshSession}
+                                    title={t('header.refreshSession', language)}
+                                    aria-label={t('header.refreshSession', language)}
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M23 4v6h-6M1 20v-6h6" />
+                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                                    </svg>
+                                </button>
                             )}
                             {/* 多设备(#114):连接到远程设备时,在标题栏标出设备名。 */}
                             {activeWorkspaceDeviceId.value &&

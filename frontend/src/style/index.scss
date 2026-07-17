@@ -1824,6 +1824,41 @@ body {
         }
       }
 
+      /* Session refresh — sits to the right of the project info icon.
+         Force-reconnects the chat bridge without a full page reload. */
+      .header-session-refresh {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        outline: none;
+        transition: color 0.15s ease, background-color 0.15s ease;
+
+        svg {
+          width: 14px;
+          height: 14px;
+        }
+
+        &:hover,
+        &:focus-visible {
+          color: var(--accent-color);
+          background: var(--btn-hover);
+        }
+
+        &:active {
+          color: var(--accent-active);
+        }
+      }
+
       /* 多设备(#114):标题栏远程设备徽标。 */
       .header-device-badge {
         display: inline-flex;
