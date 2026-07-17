@@ -11,6 +11,8 @@ export interface BuiltinBrowserProps {
 
 export interface BuiltinBrowserState {
     iframeSrc: string;
+    /** Local draft for the address bar — must not bind live typing to tab.url. */
+    addressBar: string;
 }
 
 export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowserState> {
@@ -20,6 +22,7 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
 
     state: BuiltinBrowserState = {
         iframeSrc: this.getIframeUrl(this.props.tab.url || ''),
+        addressBar: !this.props.tab.url || this.props.tab.url === 'about:blank' ? '' : this.props.tab.url,
     };
 
     componentDidMount() {
@@ -32,10 +35,17 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
 
     componentWillReceiveProps(nextProps: BuiltinBrowserProps) {
         if (nextProps.tab.url !== this.props.tab.url) {
-            if (nextProps.tab.url !== this.lastLoadedUrl) {
+            const nextUrl = nextProps.tab.url || '';
+            const display = !nextUrl || nextUrl === 'about:blank' ? '' : nextUrl;
+            // Committed navigation only — never fight the user while typing.
+            if (nextUrl !== this.lastLoadedUrl) {
                 this.setState({
-                    iframeSrc: this.getIframeUrl(nextProps.tab.url || ''),
+                    iframeSrc: this.getIframeUrl(nextUrl),
+                    addressBar: display,
                 });
+            } else {
+                // URL settled to what we just loaded; keep bar in sync (normalized http:// etc.)
+                this.setState({ addressBar: display });
             }
         }
     }
@@ -134,13 +144,19 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
         return `${window.location.origin}/api/proxy?url=${encodeURIComponent(urlStr)}`;
     }
 
+    handleAddressInput = (e: Event) => {
+        const value = (e.target as HTMLInputElement).value;
+        this.setState({ addressBar: value });
+    };
+
     handleKeyPress = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' && this.inputRef) {
-            let url = this.inputRef.value.trim();
+        if (e.key === 'Enter') {
+            let url = this.state.addressBar.trim();
             if (url) {
                 if (!/^https?:\/\//i.test(url) && !url.startsWith('about:')) {
                     url = 'http://' + url;
                 }
+                // Allow componentWillReceiveProps to refresh iframeSrc for this commit.
                 this.lastLoadedUrl = '';
                 this.props.onUrlChange(this.props.tab.id, url);
             }
@@ -203,10 +219,11 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
                         type="text"
                         class="browser-url-input"
                         placeholder={t('app.browser.placeholder', this.props.language)}
-                        value={tab.url === 'about:blank' ? '' : tab.url}
+                        value={this.state.addressBar}
                         ref={el => {
                             this.inputRef = el;
                         }}
+                        onInput={this.handleAddressInput}
                         onKeyDown={this.handleKeyPress}
                     />
                     <button

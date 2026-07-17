@@ -1143,7 +1143,10 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             ))}
                                         {activeMoreSubView === 'discovery' && (
                                             <div style={{ padding: '16px' }}>
-                                                <DiscoveryPanel onOpenBrowserTab={undefined} language={language} />
+                                                <DiscoveryPanel
+                                                    onOpenBrowserTab={tabsStore.openBrowserTab}
+                                                    language={language}
+                                                />
                                             </div>
                                         )}
                                     </div>

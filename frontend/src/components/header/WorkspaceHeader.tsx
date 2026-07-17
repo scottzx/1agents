@@ -149,6 +149,21 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
             <line x1="12" x2="12" y1="12" y2="15" />
         </svg>
     );
+    // Built-in browser (globe) — peer of 文件 in the right column
+    const IconBrowser = (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        </svg>
+    );
     // AI Agent / chat icon (used as the unified 会话 view icon on mobile)
     const IconAgents = (
         <svg
@@ -543,6 +558,22 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                             {IconFiles}
                         </button>
                         <button
+                            id="hdr-btn-browser"
+                            class={`shortcut-btn ${activeDrawerTab === 'browser' ? 'active' : ''}`}
+                            onClick={() => {
+                                if (activeDrawerTab === 'browser') {
+                                    toggleDrawerTab('browser');
+                                } else {
+                                    tabsStore.openBrowserTab('');
+                                }
+                            }}
+                            title={t('header.col.browser', language)}
+                            aria-label={t('header.col.browser', language)}
+                            aria-pressed={activeDrawerTab === 'browser'}
+                        >
+                            {IconBrowser}
+                        </button>
+                        <button
                             id="hdr-btn-git"
                             class={`shortcut-btn ${activeDrawerTab === 'git' ? 'active' : ''}`}
                             onClick={() => toggleDrawerTab('git')}
@@ -608,6 +639,25 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     <span class="mob-menu-icon">{IconFiles}</span>
                     <span class="mob-menu-label">{t('header.mobile.files', language)}</span>
                     {activeDrawerTab === 'files' && (
+                        <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
+                    )}
+                </button>
+
+                <button
+                    id="mob-menu-browser"
+                    class={`mobile-menu-item ${activeDrawerTab === 'browser' ? 'active' : ''}`}
+                    onClick={() => {
+                        closeMobileMenu();
+                        if (activeDrawerTab === 'browser') {
+                            handleDrawerToggle('browser');
+                        } else {
+                            tabsStore.openBrowserTab('');
+                        }
+                    }}
+                >
+                    <span class="mob-menu-icon">{IconBrowser}</span>
+                    <span class="mob-menu-label">{t('header.mobile.browser', language)}</span>
+                    {activeDrawerTab === 'browser' && (
                         <span class="mob-menu-badge">{t('header.mobile.current', language)}</span>
                     )}
                 </button>

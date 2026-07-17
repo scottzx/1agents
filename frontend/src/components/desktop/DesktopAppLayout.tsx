@@ -3,8 +3,6 @@ import { isFullPageTab, isChat } from '../types';
 import { LeftSidebar } from '../sidebar/LeftSidebar';
 import { WorkspaceHeader } from '../header/WorkspaceHeader';
 import { RightPanelHost } from '../shared/RightPanelHost';
-import { FilePreviewContent } from '../shared/FilePreviewContent';
-import { BuiltinBrowser } from '../browser/BuiltinBrowser';
 import { ContentViewHost } from '../stage/ContentViewHost';
 import { ProjectHome } from '../platform/ProjectHome';
 import { ProjectDetailShell } from '../platform/ProjectDetailShell';
@@ -47,6 +45,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         const activeWorkspacePath = activeWorkspace?.path || '.';
         const activeTabObj = tabs.find(t => t.id === activeTabId);
 
+        // File preview may still use workspace tabs; browser is a right-drawer tab.
+        const isSidePreview = activeTabObj?.type === 'preview';
         // Unified two-column shell, read from the stage store: pane[0] is the
         // left CHAT column, pane[1] (optional) the right ARTIFACT column.
         const panes = stage.panes.value;
@@ -65,11 +65,17 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
         // makes sense when the xterm terminal is the one showing.
         const primaryView = panes[0].view;
         const hasContent = panes.length > 1;
+        // Built-in browser / file preview force a two-column workbench so they
+        // land in the secondary (right) pane next to chat.
+        const sidePaneActive = isSidePreview;
+        const showRightPane = hasContent || sidePaneActive;
+        // Browser/preview can open from project-overview; still show workbench split.
+        const workbenchVisible = isFocusOrSplit || sidePaneActive || activeDrawerTab === 'browser';
         // Left column flex: hidden when railed, split-share otherwise.
         const chatPaneStyle =
             collapsed === 'chat'
                 ? 'flex: 0 1 0; min-width: 0; overflow: hidden;'
-                : hasContent
+                : showRightPane
                   ? `flex: ${splitRatio} 1 0; min-width: 0;`
                   : 'flex: 1 1 0; min-width: 0;';
         // Right column flex: fills when chat railed, split-share otherwise.
@@ -78,13 +84,8 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                 ? 'flex: 1 1 0; width: auto; min-width: 0;'
                 : `flex: ${1 - splitRatio} 1 0; width: auto; min-width: 0;`;
 
-        // The shell (LeftSidebar + WorkspaceHeader + two-column body) is shown
-        // for the non-dynamic tabs ('tasks'/'terminal' both land here); dynamic
-        // tabs (preview/browser) cover the whole content area without it.
-        // Clicking either fixed tab returns from a preview/browser overlay to
-        // the shell; the column contents themselves are driven by the stage.
-        const isShell = activeTabId === 'tasks' || activeTabId === 'terminal';
-        const isDynamicTab = activeTabObj?.type === 'preview' || activeTabObj?.type === 'browser';
+        // Shell stays up for browser/preview so they render as the right pane.
+        const isShell = activeTabId === 'tasks' || activeTabId === 'terminal' || isSidePreview;
         // The general new-chat landing is a focused full-bleed page, so hide the
         // workspace header (it has no active session/workspace context yet). But
         // when launched from an assistant (locked), keep the header so its
@@ -96,63 +97,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
 
         return (
             <Fragment>
-                {IS_DESKTOP && (
-                    <div class="workspace-tabs-bar">
-                        <div class="workspace-tabs-list">
-                            {tabs.map(tab => {
-                                const isActive = tab.id === activeTabId;
-                                return (
-                                    <div
-                                        key={tab.id}
-                                        class={`workspace-tab-item ${isActive ? 'active' : ''}`}
-                                        onClick={() => tabsStore.selectTab(tab.id)}
-                                    >
-                                        <span class="tab-title">{tab.title}</span>
-                                        {tab.closable && (
-                                            <span
-                                                class="workspace-tab-close"
-                                                onClick={(e: MouseEvent) => {
-                                                    e.stopPropagation();
-                                                    tabsStore.closeTab(tab.id);
-                                                }}
-                                                title={t('common.closeTab', language)}
-                                            >
-                                                <svg
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2.5"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                >
-                                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                                </svg>
-                                            </span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <button
-                            class="workspace-tab-add-btn"
-                            onClick={() => tabsStore.openBrowserTab('')}
-                            title={t('common.openBrowserTab', language)}
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                        </button>
-                    </div>
-                )}
+                {/* workspace-tabs-bar hidden: browser lives in right drawer */}
 
                 <div
                     class="app-main-layout"
@@ -296,10 +241,14 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                         )}
 
                         {/* [项目总览]: the 项目 card wall (empty drill stack). */}
-                        {isShell && mode === 'project-overview' && <ProjectHome />}
+                        {isShell && mode === 'project-overview' && !sidePaneActive && activeDrawerTab !== 'browser' && (
+                            <ProjectHome />
+                        )}
 
                         {/* [项目详情]: a drilled-in project's detail page. */}
-                        {isShell && mode === 'project' && <ProjectDetailShell app={app} />}
+                        {isShell && mode === 'project' && !sidePaneActive && activeDrawerTab !== 'browser' && (
+                            <ProjectDetailShell app={app} />
+                        )}
 
                         {/*
                           [WORKBENCH BODY]: the unified two-column shell —
@@ -310,7 +259,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                           discovery/settings) take over as a single full-width
                           pane instead.
                         */}
-                        {isShell && isFocusOrSplit && (
+                        {isShell && workbenchVisible && (
                             <div
                                 class={`workspace-body-container ${activeDrawerTab !== 'none' && !isFullPageTab(activeDrawerTab) ? 'drawer-open' : ''}`}
                             >
@@ -360,7 +309,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                         )}
 
                                         {/* Resizer: between the two columns (only when both shown). */}
-                                        {hasContent && collapsed === 'none' && (
+                                        {showRightPane && collapsed === 'none' && (
                                             <div
                                                 class="resizer resizer-split"
                                                 onMouseDown={(e: MouseEvent) => app.handleResizerDown('split', e)}
@@ -379,8 +328,6 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                             rightPanelWidth={ui.rightPanelWidth.value}
                                             paneStyle={contentPaneStyle}
                                             onSelectSession={s => {
-                                                // 从右栏(任务详情等)打开会话 → 同项目内保留右栏,
-                                                // 仅跨项目时关闭。
                                                 const projectChanged =
                                                     s.workspaceId !== wsStore.activeWorkspaceId.value;
                                                 sess.selectSession(s);
@@ -418,71 +365,13 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                                     const absolutePath = selectedFsEntry.path.startsWith('/')
                                                         ? selectedFsEntry.path
                                                         : `${activeWorkspacePath}/${selectedFsEntry.path}`;
-                                                    if (IS_DESKTOP) {
-                                                        tabsStore.openPreviewTab(absolutePath, selectedFsEntry.name);
-                                                    } else {
-                                                        const shareUrl = `${window.location.origin}${
-                                                            window.location.pathname
-                                                        }?preview=${encodeURIComponent(absolutePath)}`;
-                                                        window.open(shareUrl, '_blank');
-                                                    }
+                                                    tabsStore.openPreviewTab(absolutePath, selectedFsEntry.name);
                                                 }
                                             }}
-                                            onOpenPreview={
-                                                IS_DESKTOP
-                                                    ? (path, name) => tabsStore.openPreviewTab(path, name)
-                                                    : undefined
-                                            }
+                                            onOpenPreview={(path, name) => tabsStore.openPreviewTab(path, name)}
                                         />
                                     </Fragment>
                                 )}
-                            </div>
-                        )}
-
-                        {/*
-                          [DYNAMIC TAB OVERLAY]: preview / browser tabs cover
-                          the whole main content (no shell chrome), sitting on
-                          top of the kanban background.
-                        */}
-                        {!isShell && isDynamicTab && (
-                            <div class="workspace-body-container dynamic-tab-view">
-                                {activeTabObj?.type === 'preview' && (
-                                    <div
-                                        class="fb-detail-view-tab-container"
-                                        style="flex: 1; height: 100%; display: flex; flex-direction: column; overflow: hidden; background-color: var(--bg-panel); padding: 12px 16px;"
-                                    >
-                                        <FilePreviewContent
-                                            app={app}
-                                            activeTabId={activeTabId}
-                                            onOpenPreview={
-                                                IS_DESKTOP
-                                                    ? (path, name) => tabsStore.openPreviewTab(path, name)
-                                                    : undefined
-                                            }
-                                        />
-                                    </div>
-                                )}
-                                <div
-                                    class="builtin-browser-container"
-                                    style={{
-                                        flex: 1,
-                                        height: '100%',
-                                        display: activeTabObj?.type === 'browser' ? 'flex' : 'none',
-                                        flexDirection: 'column',
-                                        overflow: 'hidden',
-                                    }}
-                                >
-                                    {tabs
-                                        .filter(t => t.type === 'browser')
-                                        .map(t => (
-                                            <BuiltinBrowser
-                                                tab={t}
-                                                active={activeTabId === t.id}
-                                                onUrlChange={tabsStore.updateBrowserUrl}
-                                                language={language}
-                                            />
-                                        ))}
-                                </div>
                             </div>
                         )}
                     </div>

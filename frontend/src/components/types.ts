@@ -54,6 +54,7 @@ export function getStatusLabel(status: string, language: Lang, t: (key: string, 
 
 export type RightDrawerTab =
     | 'files'
+    | 'browser'
     | 'git'
     | 'channels'
     | 'providers'

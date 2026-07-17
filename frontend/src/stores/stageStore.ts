@@ -151,7 +151,7 @@ const setStageView = (v: 'conversation' | 'project'): void => {
  * display order (项目管理 first, before 渠道). These are also the only
  * secondary (right-column) views.
  */
-export const HEADER_CONTENT_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'git'];
+export const HEADER_CONTENT_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'browser', 'git'];
 const SECONDARY_TABS: RightDrawerTab[] = HEADER_CONTENT_TABS;
 
 // ── Persisted layout state ──────────────────────────────────────────────

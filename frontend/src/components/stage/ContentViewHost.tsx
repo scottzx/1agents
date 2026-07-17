@@ -81,7 +81,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                 <FilePreviewContent
                     app={app}
                     activeTabId={view.tabId}
-                    onOpenPreview={IS_DESKTOP ? (path, name) => tabsStore.openPreviewTab(path, name) : undefined}
+                    onOpenPreview={(path, name) => tabsStore.openPreviewTab(path, name)}
                 />
             );
         case 'browser':
@@ -278,7 +278,7 @@ export function ContentViewHost({ view, app, state, fontSize = 13 }: ContentView
                     />
                     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
                         <DiscoveryPanel
-                            onOpenBrowserTab={IS_DESKTOP ? tabsStore.openBrowserTab : undefined}
+                            onOpenBrowserTab={tabsStore.openBrowserTab}
                             onOpenApp={tabsStore.openExternalApp}
                             language={language}
                             activeCategory={tabsStore.discoveryCategory.value}

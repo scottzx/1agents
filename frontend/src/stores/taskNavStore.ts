@@ -175,6 +175,19 @@ const onDocumentClick = (e: MouseEvent): void => {
         if (ref) {
             e.preventDefault();
             void openTaskByRef(ref.project, ref.number);
+            return;
+        }
+    }
+
+    // External / local http(s) links → built-in browser side pane
+    // (e.g. http://localhost:3000, https://…). mailto/tel fall through.
+    if (/^https?:\/\//i.test(href) || href.startsWith('//')) {
+        try {
+            const u = new URL(href, window.location.href);
+            e.preventDefault();
+            tabsStore.openBrowserTab(u.href);
+        } catch {
+            /* ignore bad URLs */
         }
     }
 };

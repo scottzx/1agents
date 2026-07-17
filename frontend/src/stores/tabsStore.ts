@@ -58,7 +58,7 @@ export const activeTab = signal<'terminal' | 'agents' | 'console' | 'folders' | 
  * reloads (so the workbench restores which column was open); full-page
  * modules and `pm` are transient.
  */
-const CONTENT_DRAWER_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'git'];
+const CONTENT_DRAWER_TABS: RightDrawerTab[] = ['tasks', 'channels', 'files', 'browser', 'git'];
 const DRAWER_KEY = '1agents-drawer-tab';
 /**
  * Persist the artifact column's state across reloads. We store content tabs
@@ -159,17 +159,49 @@ export const openPreviewTab = async (path: string, fileName: string) => {
     selectTab(tabId);
 };
 
-export const openBrowserTab = (url = '') => {
+/** Normalize a user/agent-facing URL for the built-in browser. */
+const normalizeBrowserUrl = (raw: string): string => {
+    const s = raw.trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s) || s.startsWith('about:')) return s;
+    return 'http://' + s;
+};
+
+/** Ensure a single browser session tab exists; return its id. */
+const ensureBrowserSessionTab = (url: string): string => {
+    const existing = tabs.value.find(tb => tb.type === 'browser');
+    if (existing) {
+        if (url && url !== existing.url) {
+            let title = t('app.browser.title', ui.language.value);
+            try {
+                if (url && url !== 'about:blank') title = new URL(url).hostname || title;
+            } catch {
+                /* keep default */
+            }
+            tabs.value = tabs.value.map(tb => (tb.id === existing.id ? { ...tb, url, title } : tb));
+        }
+        return existing.id;
+    }
     const tabId = `browser-${Date.now()}`;
     const newTab: Tab = {
         id: tabId,
         title: t('app.browser.title', ui.language.value),
         type: 'browser',
-        url: url,
+        url: url || '',
         closable: true,
     };
     tabs.value = [...tabs.value, newTab];
-    selectTab(tabId);
+    return tabId;
+};
+
+/**
+ * Open a URL in the built-in lightweight browser as the right-column
+ * content (peer of 文件 / Git). Does not use the top workspace tab bar.
+ */
+export const openBrowserTab = (url = '') => {
+    const normalized = normalizeBrowserUrl(url);
+    ensureBrowserSessionTab(normalized);
+    openContentTab('browser');
 };
 
 export const closeTab = (tabId: string) => {
@@ -195,11 +227,19 @@ export const closeTab = (tabId: string) => {
 };
 
 export const updateBrowserUrl = (tabId: string, url: string) => {
-    tabs.value = tabs.value.map(t => {
-        if (t.id === tabId) {
-            return { ...t, url };
+    let title = t('app.browser.title', ui.language.value);
+    try {
+        if (url && url !== 'about:blank') {
+            title = new URL(url).hostname || title;
         }
-        return t;
+    } catch {
+        /* keep default title */
+    }
+    tabs.value = tabs.value.map(tb => {
+        if (tb.id === tabId) {
+            return { ...tb, url, title };
+        }
+        return tb;
     });
 };
 

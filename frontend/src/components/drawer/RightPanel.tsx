@@ -7,6 +7,8 @@ import { FileDetailView } from './FileDetailView';
 import { ThemeSettings } from './ThemeSettings';
 import { GitPanel } from './GitPanel';
 import { TaskList } from './TaskList';
+import { BuiltinBrowser } from '../browser/BuiltinBrowser';
+import * as tabsStore from '../../stores/tabsStore';
 import { ProjectShell } from '../platform/ProjectShell';
 import { t } from '../../i18n';
 import { fsService } from '../../services/fsService';
@@ -118,6 +120,8 @@ export function RightPanel({
         switch (tab) {
             case 'files':
                 return t('drawer.title.files', language);
+            case 'browser':
+                return t('app.browser.title', language);
             case 'git':
                 return t('drawer.title.git', language);
             case 'channels':
@@ -280,10 +284,51 @@ export function RightPanel({
                     ))}
             </div>
 
+            {/* Built-in lightweight browser (peer of 文件) */}
+            <div
+                class="panel-body-browser"
+                style={`flex: 1; overflow: hidden; display: ${
+                    activeDrawerTab === 'browser' ? 'flex' : 'none'
+                }; flex-direction: column; height: 100%; min-height: 0;`}
+            >
+                {activeDrawerTab === 'browser' &&
+                    (() => {
+                        const browserTabs = tabsStore.tabs.value.filter(tb => tb.type === 'browser');
+                        const tab = browserTabs[browserTabs.length - 1];
+                        if (!tab) {
+                            return (
+                                <div
+                                    class="browser-welcome-page"
+                                    style="flex:1;display:flex;align-items:center;justify-content:center;"
+                                >
+                                    <button class="shortcut-btn" onClick={() => tabsStore.openBrowserTab('')}>
+                                        {t('app.browser.title', language)}
+                                    </button>
+                                </div>
+                            );
+                        }
+                        return (
+                            <BuiltinBrowser
+                                tab={tab}
+                                active={true}
+                                onUrlChange={tabsStore.updateBrowserUrl}
+                                language={language}
+                            />
+                        );
+                    })()}
+            </div>
+
             {/* Other drawer tab contents (files, git, settings) */}
             <div
                 class="panel-body-scroll"
-                style={`display: ${activeDrawerTab !== 'channels' && activeDrawerTab !== 'tasks' && activeDrawerTab !== 'none' ? 'flex' : 'none'};`}
+                style={`display: ${
+                    activeDrawerTab !== 'channels' &&
+                    activeDrawerTab !== 'tasks' &&
+                    activeDrawerTab !== 'browser' &&
+                    activeDrawerTab !== 'none'
+                        ? 'flex'
+                        : 'none'
+                };`}
             >
                 {activeDrawerTab === 'files' &&
                     (viewMode === 'list' ? (
