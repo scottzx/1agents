@@ -401,6 +401,21 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             } else {
                 this.loadSelectedPathStatus(sel.path);
             }
+            if (this.graphRepoPath(prevState.selected) !== this.graphRepoPath(sel)) {
+                this.setState(
+                    {
+                        graph: [],
+                        graphLimit: DEFAULT_GRAPH_LIMIT,
+                        expandedCommitHash: null,
+                        commitFiles: [],
+                        commitDiffFile: null,
+                        commitDiffContent: '',
+                    },
+                    () => {
+                        if (this.state.graphExpanded) this.loadGraph(false);
+                    }
+                );
+            }
         }
         if (prevState.graphExpanded !== this.state.graphExpanded) {
             this.restartGraphTimer();
@@ -490,6 +505,15 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
     activeRepoRoot(): string {
         const path = this.activeRepoPath();
+        return path ? joinWorkdir(this.props.workdir, path) : this.props.workdir;
+    }
+
+    graphRepoPath(selected = this.state.selected): string | null {
+        return selected.kind === 'submodule' ? selected.path : null;
+    }
+
+    graphRepoRoot(): string {
+        const path = this.graphRepoPath();
         return path ? joinWorkdir(this.props.workdir, path) : this.props.workdir;
     }
 
@@ -634,10 +658,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     };
 
     loadGraph = async (silent = true, gen = this._gen) => {
+        const path = this.graphRepoPath();
         if (!silent) this.setState({ graphLoading: true });
         try {
-            const graph = await gitService.graph(this.state.graphLimit);
-            if (this._mounted && gen === this._gen) this.setState({ graph, graphLoading: false });
+            const graph = await gitService.graph(this.state.graphLimit, path);
+            if (this._mounted && gen === this._gen && this.graphRepoPath() === path) {
+                this.setState({ graph, graphLoading: false });
+            }
         } catch (err) {
             if ((err as Error)?.name === 'AbortError') return;
             console.error('[git] graph error:', err);
@@ -648,10 +675,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
     loadMoreGraph = async () => {
         const next = this.state.graphLimit + GRAPH_LIMIT_STEP;
         const gen = this._gen;
+        const path = this.graphRepoPath();
         this.setState({ graphLimit: next, graphLoading: true });
         try {
-            const graph = await gitService.graph(next);
-            if (this._mounted && gen === this._gen) this.setState({ graph, graphLoading: false });
+            const graph = await gitService.graph(next, path);
+            if (this._mounted && gen === this._gen && this.graphRepoPath() === path) {
+                this.setState({ graph, graphLoading: false });
+            }
         } catch (err) {
             console.error('[git] graph more error:', err);
             if (this._mounted && gen === this._gen) this.setState({ graphLoading: false });
@@ -670,9 +700,12 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             commitDiffFile: null,
             commitDiffContent: '',
         });
+        const path = this.graphRepoPath();
         try {
-            const commitFiles = await gitService.commitFiles(hash);
-            if (this._mounted) this.setState({ commitFiles, commitFilesLoading: false });
+            const commitFiles = await gitService.commitFiles(hash, path);
+            if (this._mounted && this.graphRepoPath() === path) {
+                this.setState({ commitFiles, commitFilesLoading: false });
+            }
         } catch (err) {
             console.error('[git] commit-files error:', err);
             if (this._mounted) this.setState({ commitFilesLoading: false });
@@ -684,10 +717,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             this.setState({ commitDiffFile: null, commitDiffContent: '' });
             return;
         }
+        const path = this.graphRepoPath();
         this.setState({ commitDiffFile: file, commitDiffLoading: true, commitDiffContent: '' });
         try {
-            const text = await gitService.commitDiff(hash, file);
-            if (this._mounted) this.setState({ commitDiffContent: text, commitDiffLoading: false });
+            const text = await gitService.commitDiff(hash, file, path);
+            if (this._mounted && this.graphRepoPath() === path) {
+                this.setState({ commitDiffContent: text, commitDiffLoading: false });
+            }
         } catch (err) {
             if (this._mounted) this.setState({ commitDiffContent: `Error: ${err}`, commitDiffLoading: false });
         }
@@ -1600,8 +1636,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         const railW = layout.maxLanes * LANE_W;
 
         const worktreeByBranch = new Map<string, WorktreeEntry>();
-        for (const wt of worktrees) {
-            if (wt.branch) worktreeByBranch.set(wt.branch, wt);
+        if (!this.graphRepoPath()) {
+            for (const wt of worktrees) {
+                if (wt.branch) worktreeByBranch.set(wt.branch, wt);
+            }
         }
         const branchInitials = (name: string): string => {
             const tail = name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
@@ -1765,7 +1803,12 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                                                     class="git-action-btn git-action-open"
                                                                     onClick={e => {
                                                                         e.stopPropagation();
-                                                                        this.openFile(f.path, f.status);
+                                                                        this.openFile(
+                                                                            f.path,
+                                                                            f.status,
+                                                                            false,
+                                                                            this.graphRepoRoot()
+                                                                        );
                                                                     }}
                                                                     title={t('git.action.openFile', language)}
                                                                 >

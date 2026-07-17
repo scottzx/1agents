@@ -660,7 +660,7 @@ func isHex40(s string) bool {
 	return true
 }
 
-// Graph handles GET /api/git/graph?limit=100
+// Graph handles GET /api/git/graph?limit=100[&path=<submodule>]
 // graphRefs returns the refs the commit graph should span: the main trunk plus
 // every branch that currently has a worktree (detached worktrees contribute
 // their HEAD commit). Falls back to HEAD when nothing else matches.
@@ -722,17 +722,22 @@ func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	// Scope the graph to main + the branches that currently have a worktree,
-	// instead of every ref. This drops stale/abandoned remote branches (e.g.
-	// squash-merged PR branches, which git can't tell were merged) so they no
-	// longer read as dangling "unmerged" lines.
-	refs := h.graphRefs()
+	refs := []string{"HEAD"}
+	if r.URL.Query().Get("path") == "" {
+		// Main and worktree views share main + registered worktree branches.
+		refs = h.graphRefs()
+	}
 
 	// --topo-order keeps each branch's commits contiguous (not interleaved by
 	// date), so the first-parent trunk and its forks/merges read clearly.
 	args := append([]string{"log", "--topo-order", "-n", strconv.Itoa(limit), "--format=%H|%h|%P|%D|%an|%at|%s"}, refs...)
-	out, err := h.git(args...)
+	out, err := h.git(append([]string{"-C", dir}, args...)...)
 	if err != nil {
 		writeJSON(w, []GraphCommit{})
 		return
@@ -791,7 +796,7 @@ func (h *Handler) Graph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, commits)
 }
 
-// CommitFiles handles GET /api/git/commit-files?hash=<hash>
+// CommitFiles handles GET /api/git/commit-files?hash=<hash>[&path=<submodule>]
 func (h *Handler) CommitFiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -803,8 +808,13 @@ func (h *Handler) CommitFiles(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing hash", http.StatusBadRequest)
 		return
 	}
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	out, err := h.git("diff-tree", "--no-commit-id", "-r", "--name-status", hash)
+	out, err := h.git("-C", dir, "diff-tree", "--no-commit-id", "-r", "--name-status", hash)
 	if err != nil {
 		writeJSON(w, []CommitFileEntry{})
 		return
@@ -830,7 +840,7 @@ func (h *Handler) CommitFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, files)
 }
 
-// CommitDiff handles GET /api/git/commit-diff?hash=<hash>&file=<path>
+// CommitDiff handles GET /api/git/commit-diff?hash=<hash>&file=<path>[&path=<submodule>]
 func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -843,8 +853,13 @@ func (h *Handler) CommitDiff(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing hash or file", http.StatusBadRequest)
 		return
 	}
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	out, err := h.git("show", hash, "--", file)
+	out, err := h.git("-C", dir, "show", hash, "--", file)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

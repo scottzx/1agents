@@ -62,6 +62,39 @@ func TestSubmoduleBranchAndCommitWhenParentMarksUninitialized(t *testing.T) {
 	if got := runGit(t, modulePath, "log", "-1", "--pretty=%s"); got != "submodule commit" {
 		t.Fatalf("submodule commit=%q", got)
 	}
+
+	recorder = httptest.NewRecorder()
+	handler.Graph(
+		recorder,
+		httptest.NewRequest(http.MethodGet, "/api/git/graph?limit=10&path="+requestPath, nil),
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("graph status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var commits []GraphCommit
+	if err := json.Unmarshal(recorder.Body.Bytes(), &commits); err != nil {
+		t.Fatal(err)
+	}
+	if len(commits) == 0 || commits[0].Message != "submodule commit" {
+		t.Fatalf("submodule graph=%+v", commits)
+	}
+
+	head := runGit(t, modulePath, "rev-parse", "HEAD")
+	recorder = httptest.NewRecorder()
+	handler.CommitFiles(
+		recorder,
+		httptest.NewRequest(http.MethodGet, "/api/git/commit-files?hash="+head+"&path="+requestPath, nil),
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("commit files status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var files []CommitFileEntry
+	if err := json.Unmarshal(recorder.Body.Bytes(), &files); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Path != "new.txt" {
+		t.Fatalf("submodule commit files=%+v", files)
+	}
 }
 
 func TestWorktreeStageAndCommitUseSelectedPath(t *testing.T) {

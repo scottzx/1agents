@@ -100,8 +100,10 @@ export const gitService = {
         return res.json();
     },
 
-    async graph(limit = 30, opts?: FetchOpts): Promise<GraphCommit[]> {
-        const res = await ensureOk(await fetch(`/api/git/graph?limit=${limit}`, { signal: opts?.signal }));
+    async graph(limit = 30, path?: string | null, opts?: FetchOpts): Promise<GraphCommit[]> {
+        const res = await ensureOk(
+            await fetch(withRepoPath(`/api/git/graph?limit=${limit}`, path), { signal: opts?.signal })
+        );
         const raw: GraphCommit[] = await res.json();
         return raw.map(c => ({
             ...c,
@@ -110,20 +112,24 @@ export const gitService = {
         }));
     },
 
-    async commitFiles(hash: string, opts?: FetchOpts): Promise<CommitFileEntry[]> {
+    async commitFiles(hash: string, path?: string | null, opts?: FetchOpts): Promise<CommitFileEntry[]> {
         const res = await ensureOk(
-            await fetch(`/api/git/commit-files?hash=${encodeURIComponent(hash)}`, {
+            await fetch(withRepoPath(`/api/git/commit-files?hash=${encodeURIComponent(hash)}`, path), {
                 signal: opts?.signal,
             })
         );
         return res.json();
     },
 
-    async commitDiff(hash: string, file: string, opts?: FetchOpts): Promise<string> {
+    async commitDiff(hash: string, file: string, path?: string | null, opts?: FetchOpts): Promise<string> {
         const res = await ensureOk(
-            await fetch(`/api/git/commit-diff?hash=${encodeURIComponent(hash)}&file=${encodeURIComponent(file)}`, {
-                signal: opts?.signal,
-            })
+            await fetch(
+                withRepoPath(
+                    `/api/git/commit-diff?hash=${encodeURIComponent(hash)}&file=${encodeURIComponent(file)}`,
+                    path
+                ),
+                { signal: opts?.signal }
+            )
         );
         return res.text();
     },
