@@ -2,7 +2,6 @@ import { h } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { MessageBubble, GroupedChatItem, GroupedToolCall, ToolGroupElement } from './MessageBubble';
 import type { ChatItem } from './hooks';
-import type { PermissionDecision } from '../types';
 import { t } from '../../i18n';
 import * as ui from '../../stores/uiStore';
 
@@ -11,8 +10,8 @@ interface MessageListProps {
     /**
      * True while a turn is running. Drives the tool-call status icons
      * (spinner vs. neutral "incomplete" for history replays of
-     * cancelled turns) and the typing indicator shown between the
-     * user's prompt and the first streamed token.
+     * cancelled turns) and the persistent typing wave at the bottom
+     * of the message list while the turn is in progress.
      */
     typing?: boolean;
     emptyHint?: string;
@@ -24,7 +23,6 @@ interface MessageListProps {
      */
     loading?: boolean;
     loadingHint?: string;
-    onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
     /**
      * Per-queue-prompt cancel. Wired to the X button on queued user
      * bubbles — distinct from the global "stop the current turn" cancel
@@ -37,11 +35,10 @@ function isCallRenderable(call: GroupedToolCall): boolean {
     // A call is renderable as soon as we know *something* concrete about it:
     //   - it has a toolCallId (the runtime committed to this call — render
     //     a streaming placeholder even before the arguments JSON arrives)
-    //   - it has an inline permission request waiting on the user
+    //   - it has an attached permission request (pending or resolved)
     //   - it already produced an output
     //   - it has parseable input
-    // This fixes the "invisible tool card until arguments stream in" bug
-    // and keeps permission requests inside the matching tool group.
+    // This fixes the "invisible tool card until arguments stream in" bug.
     if (call.toolCallId) return true;
     if (call.output !== undefined) return true;
     if (call.permission) return true;
@@ -58,54 +55,9 @@ function isCallRenderable(call: GroupedToolCall): boolean {
     }
 }
 
-function isProcessItem(item: ChatItem): boolean {
-    return (
-        item.kind === 'thinking' ||
-        item.kind === 'tool_use' ||
-        item.kind === 'tool_result' ||
-        item.kind === 'permission_request'
-    );
-}
-
-function assistantTextToFold(items: ChatItem[]): Set<string> {
-    const foldIds = new Set<string>();
-    let turnStart = 0;
-
-    const visitTurn = (start: number, end: number) => {
-        const turn = items.slice(start, end);
-        // Find the index of the last process item in this turn.
-        // Any assistant text appearing before it is a preamble / intermediate
-        // explanation that belongs in the process block, not the main stream.
-        let lastProcessIdx = -1;
-        let lastAssistantTextIdx = -1;
-        for (let i = 0; i < turn.length; i++) {
-            if (isProcessItem(turn[i])) lastProcessIdx = i;
-            if (turn[i].kind === 'assistant_text') lastAssistantTextIdx = i;
-        }
-        if (lastProcessIdx === -1) return;
-        for (let i = 0; i <= lastProcessIdx; i++) {
-            // The turn's final assistant text is the agent's reply — keep it in
-            // the main stream even when a trailing tool call/result pushes the
-            // last process item past it. Only fold earlier (preamble) texts.
-            if (i === lastAssistantTextIdx) continue;
-            if (turn[i].kind === 'assistant_text') foldIds.add(turn[i].id);
-        }
-    };
-
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].kind !== 'user') continue;
-        visitTurn(turnStart, i);
-        turnStart = i;
-    }
-    visitTurn(turnStart, items.length);
-
-    return foldIds;
-}
-
 function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     const grouped: GroupedChatItem[] = [];
     const pendingCalls: GroupedToolCall[] = [];
-    const foldedAssistantIds = assistantTextToFold(items);
     let currentProcessGroup: Extract<GroupedChatItem, { kind: 'tool_group' }> | null = null;
 
     const ensureProcessGroup = (id: string, createdAt: number): Extract<GroupedChatItem, { kind: 'tool_group' }> => {
@@ -183,19 +135,6 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
             lastGroup.thinkingBlocks = lastGroup.elements
                 .filter(el => el.kind === 'thinking')
                 .map(el => (el as Extract<ToolGroupElement, { kind: 'thinking' }>).content);
-        } else if (item.kind === 'assistant_text' && foldedAssistantIds.has(item.id)) {
-            const lastGroup = ensureProcessGroup(item.id, item.createdAt);
-            if (!lastGroup.elements) lastGroup.elements = [];
-            const existingElement = lastGroup.elements.find(el => el.kind === 'assistant_text' && el.id === item.id);
-            if (existingElement && existingElement.kind === 'assistant_text') {
-                existingElement.content = item.content;
-            } else {
-                lastGroup.elements.push({
-                    kind: 'assistant_text',
-                    id: item.id,
-                    content: item.content,
-                });
-            }
         } else if (item.kind === 'tool_result') {
             const callId = item.toolCallId;
             let matchedCall: GroupedToolCall | null = null;
@@ -300,7 +239,10 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                 });
             }
         } else {
-            if (item.kind === 'user' || item.kind === 'error') {
+            // Assistant replies, user messages, and errors live outside the
+            // tool group. Closing the group keeps chronological order when
+            // more tools arrive after an intermediate assistant reply.
+            if (item.kind === 'user' || item.kind === 'error' || item.kind === 'assistant_text') {
                 currentProcessGroup = null;
             }
             grouped.push(item as GroupedChatItem);
@@ -322,15 +264,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
     return grouped;
 }
 
-export function MessageList({
-    items,
-    typing,
-    emptyHint,
-    loading,
-    loadingHint,
-    onRespondPermission,
-    onCancelQueued,
-}: MessageListProps) {
+export function MessageList({ items, typing, emptyHint, loading, loadingHint, onCancelQueued }: MessageListProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
     // Whether the user is currently stuck to the bottom. Tracked from
     // real scroll events (before content updates) rather than measured
@@ -398,7 +332,6 @@ export function MessageList({
             const renderableCallIds = new Set(renderable.map(c => c.id));
             const filteredElements = item.elements?.filter(el => {
                 if (el.kind === 'thinking') return true;
-                if (el.kind === 'assistant_text') return true;
                 return renderableCallIds.has(el.call.id);
             });
             groupedItems.push({
@@ -409,11 +342,10 @@ export function MessageList({
         }
     }
 
-    // Show the typing indicator only in the gap between the user's
-    // prompt and the model's first event — once thinking/text/tool
-    // blocks exist, they carry their own streaming affordances.
-    const lastItem = groupedItems[groupedItems.length - 1];
-    const showTyping = !!typing && !!lastItem && lastItem.kind === 'user';
+    // Always show the typing wave while a turn is running so users have
+    // a persistent "still working" affordance even after thinking/text/
+    // tool blocks start streaming.
+    const showTyping = !!typing;
     let activeProcessIndex = -1;
     if (typing) {
         for (let i = groupedItems.length - 1; i >= 0; i--) {
@@ -446,7 +378,6 @@ export function MessageList({
                     item={item}
                     isLast={index === groupedItems.length - 1}
                     active={typing && index === activeProcessIndex}
-                    onRespondPermission={onRespondPermission}
                     onCancelQueued={onCancelQueued}
                 />
             ))}

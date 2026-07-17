@@ -44,7 +44,6 @@ export interface GroupedToolCall {
 
 export type ToolGroupElement =
     | { kind: 'thinking'; id: string; content: string }
-    | { kind: 'assistant_text'; id: string; content: string }
     | { kind: 'call'; call: GroupedToolCall };
 
 export type GroupedChatItem =
@@ -78,11 +77,10 @@ interface MessageBubbleProps {
      * spinner).
      */
     active?: boolean;
-    onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
     onCancelQueued?: (queueRequestId: string) => void;
 }
 
-export function MessageBubble({ item, isLast, active, onRespondPermission, onCancelQueued }: MessageBubbleProps) {
+export function MessageBubble({ item, isLast, active, onCancelQueued }: MessageBubbleProps) {
     switch (item.kind) {
         case 'user':
             return (
@@ -105,7 +103,6 @@ export function MessageBubble({ item, isLast, active, onRespondPermission, onCan
                     elements={item.elements}
                     pending={item.pending}
                     active={active}
-                    onRespondPermission={onRespondPermission}
                 />
             );
         case 'error':
@@ -481,53 +478,27 @@ function ToolGroupBubble({
     elements = [],
     pending,
     active,
-    onRespondPermission,
 }: {
     calls: GroupedToolCall[];
     thinkingBlocks?: string[];
     elements?: ToolGroupElement[];
     pending?: boolean;
     active?: boolean;
-    onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
 }) {
     const key = groupKey(calls);
     // Expansion lives in a signal, not useState — see ThinkingBubble: the
     // app re-renders through @preact/signals, and a plain useState setter
     // in these chat bubbles fired its updater but didn't re-render, so the
     // header click did nothing. Reading `.value` subscribes this component.
-    const isExpanded = useSignal(key && groupCollapseChoice.has(key) ? groupCollapseChoice.get(key)! : !!active);
+    // Tool groups default collapsed; pending permissions surface in the
+    // composer-adjacent prompt, so waiting state no longer force-opens.
+    const isExpanded = useSignal(key && groupCollapseChoice.has(key) ? groupCollapseChoice.get(key)! : false);
     const lang = getLang();
 
     const statuses = calls.map(c => callStatus(c, !!active));
     const runningCount = statuses.filter(s => s === 'running').length;
     const errorCount = statuses.filter(s => s === 'error').length;
     const hasWaiting = statuses.includes('waiting');
-
-    // A pending permission must never be hidden behind a collapsed
-    // group — the turn is blocked on the user's decision. Force-expand
-    // only on the transition INTO the waiting state. This is a transient
-    // override, so it doesn't touch groupCollapseChoice: once the
-    // permission resolves the group falls back to the user's choice.
-    const prevWaiting = useRef(hasWaiting);
-    useEffect(() => {
-        if (prevWaiting.current === hasWaiting) return;
-        prevWaiting.current = hasWaiting;
-        if (hasWaiting) isExpanded.value = true;
-    }, [hasWaiting]);
-
-    const prevActive = useRef(!!active);
-    useEffect(() => {
-        if (prevActive.current === !!active) return;
-        prevActive.current = !!active;
-        if (active) {
-            isExpanded.value = true;
-            return;
-        }
-        if (!hasWaiting) {
-            isExpanded.value = false;
-            if (key) groupCollapseChoice.set(key, false);
-        }
-    }, [active, hasWaiting, key]);
 
     const toggle = () => {
         const next = !isExpanded.value;
@@ -587,66 +558,12 @@ function ToolGroupBubble({
                                     streaming={!!active && isLastThinking}
                                 />
                             );
-                        } else if (el.kind === 'assistant_text') {
-                            return <GroupedAssistantTextItem key={el.id || idx} content={el.content} />;
-                        } else {
-                            const callIdx = calls.indexOf(el.call);
-                            return (
-                                <GroupedToolCallItem
-                                    key={el.call.id || idx}
-                                    call={el.call}
-                                    status={statuses[callIdx]}
-                                    onRespondPermission={onRespondPermission}
-                                />
-                            );
                         }
+                        const callIdx = calls.indexOf(el.call);
+                        return (
+                            <GroupedToolCallItem key={el.call.id || idx} call={el.call} status={statuses[callIdx]} />
+                        );
                     })}
-                </div>
-            )}
-        </div>
-    );
-}
-
-function GroupedAssistantTextItem({ content }: { content: string }) {
-    const isExpanded = useSignal(false);
-    const lang = getLang();
-    const preview = useMemo(() => {
-        const firstLine = content.trim().split(/\r?\n/)[0] ?? '';
-        return firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
-    }, [content]);
-
-    const toggle = () => {
-        isExpanded.value = !isExpanded.value;
-    };
-
-    const expanded = isExpanded.value;
-
-    return (
-        <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-assistant-text`}>
-            <div
-                class="chat-tool-row-header"
-                role="button"
-                tabIndex={0}
-                onClick={toggle}
-                onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggle();
-                    }
-                }}
-            >
-                <span class="chat-tool-status-icon is-assistant-text" aria-hidden="true">
-                    ·
-                </span>
-                <span class="chat-tool-name-badge is-assistant-text">{t('chat.assistant.label', lang)}</span>
-                {!expanded && preview && <span class="chat-tool-row-summary is-assistant-text-preview">{preview}</span>}
-                <span class="chat-tool-row-caret" aria-hidden="true">
-                    {expanded ? '▾' : '▸'}
-                </span>
-            </div>
-            {expanded && (
-                <div class="chat-tool-row-body">
-                    <AssistantContent content={content} streaming={false} showActions={false} />
                 </div>
             )}
         </div>
@@ -782,49 +699,17 @@ function StatusIcon({ status }: { status: CallStatus }) {
     }
 }
 
-function GroupedToolCallItem({
-    call,
-    status,
-    onRespondPermission,
-}: {
-    call: GroupedToolCall;
-    status: CallStatus;
-    onRespondPermission?: (requestId: string, decision: PermissionDecision) => void;
-}) {
+function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: CallStatus }) {
     const lang = getLang();
-    const hasPendingPermission = status === 'waiting';
 
     // Rows start collapsed — the header already carries tool name,
-    // key-arg summary and status. A pending permission force-expands
-    // (the user must see the action buttons); an explicit user choice
-    // (persisted by toolCallId across history reloads) wins otherwise.
+    // key-arg summary and status. Pending permissions are answered via
+    // the composer-adjacent prompt, so rows no longer force-expand.
     // Held in a signal (not useState) so the header click re-renders
     // reliably under @preact/signals — see ThinkingBubble.
     const isExpanded = useSignal(
-        hasPendingPermission
-            ? true
-            : call.toolCallId && userExpandChoice.has(call.toolCallId)
-              ? userExpandChoice.get(call.toolCallId)!
-              : false
+        call.toolCallId && userExpandChoice.has(call.toolCallId) ? userExpandChoice.get(call.toolCallId)! : false
     );
-
-    // Sync only on the waiting transition: force-open when a permission
-    // arrives, and on resolution fall back to the user's remembered choice
-    // (or collapsed). Gating on the transition avoids a mount-time write.
-    const prevPending = useRef(hasPendingPermission);
-    useEffect(() => {
-        if (prevPending.current === hasPendingPermission) return;
-        prevPending.current = hasPendingPermission;
-        if (hasPendingPermission) {
-            isExpanded.value = true;
-            return;
-        }
-        if (call.toolCallId && userExpandChoice.has(call.toolCallId)) {
-            isExpanded.value = userExpandChoice.get(call.toolCallId)!;
-            return;
-        }
-        isExpanded.value = false;
-    }, [hasPendingPermission]);
 
     const toggle = () => {
         const next = !isExpanded.value;
@@ -982,31 +867,27 @@ function GroupedToolCallItem({
                         </div>
                     )}
 
-                    {/* Inline permission: pending shows the action buttons,
-                        resolved collapses to a one-line receipt. */}
-                    {hasPermission && (
+                    {/* Resolved permission receipt only. Pending requests are
+                        answered in the composer-adjacent PermissionPrompt. */}
+                    {hasPermission && call.permission!.resolved && (
                         <div class="chat-tool-section">
                             <div class="chat-tool-section-title">{t('chat.tool.permission', lang)}</div>
-                            {call.permission!.resolved ? (
-                                <div
-                                    class={`chat-bubble chat-bubble-permission is-resolved chat-permission-${call.permission!.resolved}`}
-                                >
-                                    <span class="chat-permission-resolved-mark" aria-hidden="true">
-                                        {call.permission!.resolved === 'allow' ? '✓' : '✕'}
-                                    </span>
-                                    <span class="chat-permission-resolved-text">
-                                        {t(
-                                            call.permission!.resolved === 'allow'
-                                                ? 'chat.permission.resolved.allow'
-                                                : 'chat.permission.resolved.deny',
-                                            lang
-                                        )}{' '}
-                                        · {call.permission!.toolName}
-                                    </span>
-                                </div>
-                            ) : (
-                                <PermissionActionRow permission={call.permission!} onRespond={onRespondPermission} />
-                            )}
+                            <div
+                                class={`chat-bubble chat-bubble-permission is-resolved chat-permission-${call.permission!.resolved}`}
+                            >
+                                <span class="chat-permission-resolved-mark" aria-hidden="true">
+                                    {call.permission!.resolved === 'allow' ? '✓' : '✕'}
+                                </span>
+                                <span class="chat-permission-resolved-text">
+                                    {t(
+                                        call.permission!.resolved === 'allow'
+                                            ? 'chat.permission.resolved.allow'
+                                            : 'chat.permission.resolved.deny',
+                                        lang
+                                    )}{' '}
+                                    · {call.permission!.toolName}
+                                </span>
+                            </div>
                         </div>
                     )}
 
@@ -1049,11 +930,17 @@ function ArgValue({ value }: { value: unknown }) {
     return <span class="chat-tool-arg-value">{text}</span>;
 }
 
-function PermissionActionRow({
+export type PendingPermission = NonNullable<GroupedToolCall['permission']>;
+
+/**
+ * Action row for a single pending permission. Shared by the
+ * composer-adjacent PermissionPrompt (live requests).
+ */
+export function PermissionActionRow({
     permission,
     onRespond,
 }: {
-    permission: NonNullable<GroupedToolCall['permission']>;
+    permission: PendingPermission;
     onRespond?: (requestId: string, decision: PermissionDecision) => void;
 }) {
     const lang = getLang();
@@ -1101,6 +988,51 @@ function PermissionActionRow({
                     <span class="chat-permission-btn-label">{t('chat.permission.allowAlways', lang)}</span>
                 </button>
             </div>
+        </div>
+    );
+}
+
+function permissionInputPreview(input: string): string | null {
+    if (!input || !input.trim()) return null;
+    try {
+        const parsed = JSON.parse(input);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const summary = summarizeArgs(parsed as Record<string, unknown>);
+            if (summary) return summary.length > 160 ? `${summary.slice(0, 160)}…` : summary;
+            const compact = JSON.stringify(parsed);
+            return compact.length > 160 ? `${compact.slice(0, 160)}…` : compact;
+        }
+    } catch {
+        // fall through to raw text
+    }
+    const flat = input.replace(/\s+/g, ' ').trim();
+    return flat.length > 160 ? `${flat.slice(0, 160)}…` : flat;
+}
+
+/**
+ * Half-panel above the composer: surfaces every unresolved permission
+ * request so the user can act without digging into a collapsed tool group.
+ * Once resolved, the receipt folds into the matching tool row.
+ */
+export function PermissionPrompt({
+    permissions,
+    onRespond,
+}: {
+    permissions: PendingPermission[];
+    onRespond?: (requestId: string, decision: PermissionDecision) => void;
+}) {
+    if (permissions.length === 0) return null;
+    return (
+        <div class="chat-permission-prompt" role="region" aria-label="permission">
+            {permissions.map(permission => {
+                const preview = permissionInputPreview(permission.input);
+                return (
+                    <div key={permission.requestId} class="chat-permission-prompt-card">
+                        <PermissionActionRow permission={permission} onRespond={onRespond} />
+                        {preview && <div class="chat-permission-prompt-preview">{preview}</div>}
+                    </div>
+                );
+            })}
         </div>
     );
 }

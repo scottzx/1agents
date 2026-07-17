@@ -11,7 +11,9 @@ import { PlanChecklist } from './PlanChecklist';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 import { ChatErrorBanner } from './ChatErrorBanner';
 import { SessionAuthBadge } from './SessionAuthBadge';
+import { PermissionPrompt, type PendingPermission } from './MessageBubble';
 import { closeAuthRequiredModal, openAuthRequiredModal } from '../../stores/modalStore';
+import type { ChatItem } from './hooks';
 
 interface ChatPanelProps {
     session: ChatSession;
@@ -106,6 +108,10 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // mode_changed without extra wiring.
     const currentModeId = modes?.currentModeId;
 
+    // Unresolved permissions float above the composer; resolved ones stay
+    // as receipts inside the (default-collapsed) tool group.
+    const pendingPermissions = collectPendingPermissions(items);
+
     return (
         <div class="chat-panel" data-session-mode={currentModeId}>
             {takenOver && !bannerDismissed.value && (
@@ -133,7 +139,6 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                         : t('chat.empty.send', ui.language.value)
                 }
                 loading={showInitLoading}
-                onRespondPermission={respondPermission}
                 onCancelQueued={cancelQueued}
             />
             {/* Page-persistent error banner — sits above the Composer. Cleared
@@ -141,6 +146,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
             {lastError && (
                 <ChatErrorBanner message={lastError.message} code={lastError.code} onDismiss={dismissError} />
             )}
+            <PermissionPrompt permissions={pendingPermissions} onRespond={respondPermission} />
             <Composer
                 onSend={send}
                 onCancel={cancel}
@@ -157,4 +163,35 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
             />
         </div>
     );
+}
+
+function collectPendingPermissions(items: ChatItem[]): PendingPermission[] {
+    // Permissions live in two places: nested on tool_use.calls (matched
+    // realtime path) and as standalone permission_request items (pending
+    // pool before a tool_use arrives). Scan both; requestId de-dupes.
+    const seen = new Set<string>();
+    const pending: PendingPermission[] = [];
+    const push = (p: PendingPermission) => {
+        if (!p.requestId || seen.has(p.requestId) || p.resolved) return;
+        seen.add(p.requestId);
+        pending.push(p);
+    };
+    for (const item of items) {
+        if (item.kind === 'permission_request') {
+            push({
+                requestId: item.requestId,
+                toolName: item.toolName,
+                input: item.input,
+                options: item.options,
+                ...(item.resolved ? { resolved: item.resolved } : {}),
+            });
+            continue;
+        }
+        if (item.kind === 'tool_use') {
+            for (const call of item.calls) {
+                if (call.permission) push(call.permission);
+            }
+        }
+    }
+    return pending;
 }

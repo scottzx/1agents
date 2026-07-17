@@ -17499,8 +17499,8 @@ body {
   font-style: italic;
 }
 
-// Typing indicator: three bouncing dots shown in the gap between the
-// user's prompt and the model's first streamed event.
+// Typing indicator: three bouncing dots shown for the whole duration of
+// an in-progress turn (persistent "still working" signal at list bottom).
 .chat-typing-row {
   display: inline-flex;
   align-items: center;
@@ -17828,6 +17828,51 @@ body {
 .chat-permission-resolved-mark {
   font-weight: 700;
   line-height: 1;
+}
+
+// Half-panel above the composer: live permission requests. Resolved
+// receipts fold back into the (default-collapsed) tool group.
+.chat-permission-prompt {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px 0;
+  background: var(--chat-bg-page);
+  border-top: 1px solid var(--border-color);
+}
+
+.chat-permission-prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--chat-bg-card);
+  border: 1px solid rgba(var(--warning-rgb), 0.32);
+  border-radius: 10px;
+  // Floating overlay feel (allowed on transient overlays, not resting cards).
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+
+  // Action row is the content; drop its own chrome to avoid double borders.
+  .chat-permission-inline {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+}
+
+.chat-permission-prompt-preview {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding: 6px 8px;
+  background: rgba(var(--warning-rgb), 0.06);
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 // Inline permission prompt nested inside an expanded tool row. Self-
