@@ -371,13 +371,39 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out})
 }
 
-// Push handles POST /api/git/push
+// dirFromQuery resolves an optional ?path= to a worktree/submodule dir, or the main root.
+func (h *Handler) dirFromQuery(r *http.Request) (string, error) {
+	raw := r.URL.Query().Get("path")
+	if raw == "" {
+		return h.root, nil
+	}
+	path := h.resolveRepoPath(raw)
+	if h.isAllowedRepoPath(path) {
+		return path, nil
+	}
+	clean := filepath.Clean(raw)
+	if h.isAllowedRepoPath(clean) {
+		return clean, nil
+	}
+	// Explicit main root is always allowed.
+	if clean == h.root || path == h.root {
+		return h.root, nil
+	}
+	return "", fmt.Errorf("invalid path")
+}
+
+// Push handles POST /api/git/push[?path=]
 func (h *Handler) Push(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	out, err := h.git("push")
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	out, err := h.git("-C", dir, "push")
 	if err != nil {
 		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
 		return
@@ -385,13 +411,18 @@ func (h *Handler) Push(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out})
 }
 
-// Pull handles POST /api/git/pull
+// Pull handles POST /api/git/pull[?path=]
 func (h *Handler) Pull(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	out, err := h.git("pull")
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	out, err := h.git("-C", dir, "pull")
 	if err != nil {
 		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
 		return
@@ -399,20 +430,25 @@ func (h *Handler) Pull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out})
 }
 
-// Fetch handles POST /api/git/fetch
+// Fetch handles POST /api/git/fetch[?path=]
 // Refreshes remote tracking refs (and prunes deleted ones) so that the
-// ahead/behind counts reported by /api/git/status reflect the real remote.
+// ahead/behind counts reported by status reflect the real remote.
 func (h *Handler) Fetch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	out, err := h.git("fetch", "--prune")
+	dir, err := h.dirFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	out, err := h.git("-C", dir, "fetch", "--prune")
 	if err != nil {
 		http.Error(w, out+"\n"+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ahead, behind := h.aheadBehind()
+	ahead, behind := h.aheadBehindAt(dir)
 	writeJSON(w, map[string]interface{}{"ok": true, "output": out, "ahead": ahead, "behind": behind})
 }
 

@@ -1073,6 +1073,10 @@ export const zhCN: Record<string, string> = {
     'git.card.worktree': '工作树',
     'git.card.submodule': '子模块',
     'git.card.originTitle': '相对远程：领先 {ahead} / 落后 {behind}',
+    'git.card.originSyncTitle': '点击与远程同步（fetch，必要时 pull/push）· 领先 {ahead} / 落后 {behind}',
+    'git.toast.syncing': '正在与远程同步…',
+    'git.toast.syncSuccess': '已与远程同步 ✓',
+    'git.toast.syncFailed': '同步失败: {err}',
 
     // Submodules
     'git.submodules.title': '子模块',
@@ -2868,6 +2872,10 @@ export const enUS: Record<string, string> = {
     'git.card.worktree': 'Worktree',
     'git.card.submodule': 'Submodule',
     'git.card.originTitle': 'vs remote: ahead {ahead} / behind {behind}',
+    'git.card.originSyncTitle': 'Click to sync with remote (fetch, then pull/push if needed) · ahead {ahead} / behind {behind}',
+    'git.toast.syncing': 'Syncing with remote…',
+    'git.toast.syncSuccess': 'Synced with remote ✓',
+    'git.toast.syncFailed': 'Sync failed: {err}',
 
     // Submodules
     'git.submodules.title': 'Submodules',

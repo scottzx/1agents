@@ -7,6 +7,7 @@ import {
     type WorktreeEntry,
     type GraphCommit,
     type CommitFileEntry,
+    type BranchEntry,
     type SubmoduleEntry,
 } from '../../services/gitService';
 import { buildGraphLayout } from './git/buildGraphLayout';
@@ -291,6 +292,11 @@ interface GitPanelState {
     submodulesLoading: boolean;
     /** Collapse nested submodule cards under the main repo card. */
     submodulesCollapsed: boolean;
+    // Branch picker (#149) — main repo only
+    branchDropdownOpen: boolean;
+    branches: BranchEntry[];
+    branchesLoading: boolean;
+    branchSwitching: boolean;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -342,6 +348,10 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             submodules: [],
             submodulesLoading: false,
             submodulesCollapsed: false,
+            branchDropdownOpen: false,
+            branches: [],
+            branchesLoading: false,
+            branchSwitching: false,
         };
     }
 
@@ -368,6 +378,9 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 commitDiffContent: '',
                 commitBoxCollapsed: true,
                 submodules: [],
+                branchDropdownOpen: false,
+                branches: [],
+                branchSwitching: false,
                 graphLimit: DEFAULT_GRAPH_LIMIT,
             });
             this.refresh({ silent: false, includeGraph: true });
@@ -827,6 +840,94 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         }
     };
 
+    /**
+     * Click .git-card-origin: fetch, then pull if behind / push if ahead.
+     * path empty = main worktree root; otherwise worktree or submodule path.
+     */
+    syncWithRemote = async (path?: string | null) => {
+        if (this.state.fetching || this.state.pushPullLoading) return;
+        const scoped = path && path.length > 0 ? path : null;
+        this.setState({ fetching: true });
+        this.showToast(t('git.toast.syncing', this.props.language));
+        try {
+            await gitService.fetchRemote(scoped);
+            let st = scoped ? await gitService.worktreeStatus(scoped) : await gitService.status();
+            if (!this._mounted) return;
+            if (scoped) {
+                // Update selected peek status when syncing that card.
+                const sel = this.state.selected;
+                if (
+                    (sel.kind === 'worktree' || sel.kind === 'submodule') &&
+                    (sel.path === scoped || samePath(sel.path, scoped))
+                ) {
+                    this.setState({ selectedStatus: st });
+                }
+            } else {
+                this.setState({ status: st });
+            }
+
+            if (st.behind > 0) {
+                this.setState({ pushPullLoading: 'pull' });
+                await gitService.pull(scoped);
+                st = scoped ? await gitService.worktreeStatus(scoped) : await gitService.status();
+                if (this._mounted) {
+                    if (scoped) this.setState({ selectedStatus: st });
+                    else this.setState({ status: st });
+                }
+            }
+            if (st.ahead > 0) {
+                this.setState({ pushPullLoading: 'push' });
+                await gitService.push(scoped);
+            }
+            this.showToast(t('git.toast.syncSuccess', this.props.language));
+            await this.refresh({ silent: false, includeGraph: true });
+            if (scoped) await this.loadSelectedPathStatus(scoped);
+        } catch (err) {
+            this.showToast(t('git.toast.syncFailed', this.props.language, { err: String(err) }));
+            await this.refresh({ silent: true, includeGraph: false });
+            if (scoped) await this.loadSelectedPathStatus(scoped);
+        } finally {
+            if (this._mounted) this.setState({ fetching: false, pushPullLoading: null });
+        }
+    };
+
+    loadBranches = async () => {
+        this.setState({ branchesLoading: true });
+        try {
+            const branches = await gitService.branches();
+            if (this._mounted) this.setState({ branches, branchesLoading: false });
+        } catch (err) {
+            console.error('[git] branches error:', err);
+            if (this._mounted) this.setState({ branchesLoading: false });
+        }
+    };
+
+    openBranchPicker = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const open = !this.state.branchDropdownOpen;
+        this.setState({ branchDropdownOpen: open });
+        if (open) this.loadBranches();
+    };
+
+    closeBranchPicker = () => {
+        this.setState({ branchDropdownOpen: false });
+    };
+
+    checkoutBranch = async (branch: string) => {
+        if (this.state.branchSwitching) return;
+        this.setState({ branchSwitching: true });
+        try {
+            await gitService.checkout(branch, false);
+            this.showToast(t('git.toast.branchSwitched', this.props.language, { branch }));
+            this.setState({ branchDropdownOpen: false, branchSwitching: false });
+            await this.refresh({ silent: false, includeGraph: true });
+        } catch (err) {
+            this.showToast(t('git.toast.branchSwitchFailed', this.props.language, { err: String(err) }));
+            if (this._mounted) this.setState({ branchSwitching: false });
+        }
+    };
+
     openFile = (relPath: string, status?: string, isDir = false) => {
         if (status === 'D') {
             this.showToast(t('git.toast.fileDeleted', this.props.language, { file: relPath }));
@@ -844,10 +945,37 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         else this.setState({ untrackedCollapsed: !this.state.untrackedCollapsed });
     };
 
-    renderOriginBadge(ahead: number, behind: number, language: Lang) {
+    renderOriginBadge(
+        ahead: number,
+        behind: number,
+        language: Lang,
+        opts?: { syncPath?: string | null; busy?: boolean }
+    ) {
         // Always show both counters so the right column never collapses.
+        // syncPath: null/undefined = main root; string = worktree/submodule path.
+        const syncable = opts?.syncPath !== undefined; // caller passes null for main, string for scoped
+        const busy = !!opts?.busy;
+        const path = opts?.syncPath ?? null;
         return (
-            <span class="git-card-origin" title={t('git.card.originTitle', language, { ahead, behind })}>
+            <button
+                type="button"
+                class={`git-card-origin ${syncable ? 'clickable' : ''} ${busy ? 'busy' : ''}`}
+                title={
+                    syncable
+                        ? t('git.card.originSyncTitle', language, { ahead, behind })
+                        : t('git.card.originTitle', language, { ahead, behind })
+                }
+                disabled={!syncable || busy}
+                onClick={
+                    syncable
+                        ? e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void this.syncWithRemote(path);
+                          }
+                        : e => e.stopPropagation()
+                }
+            >
                 <span
                     class={`git-card-ahead ${ahead > 0 ? 'active' : ''}`}
                     title={t('git.branch.ahead', language, { n: ahead })}
@@ -860,7 +988,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 >
                     ↓{behind}
                 </span>
-            </span>
+            </button>
         );
     }
 
@@ -878,8 +1006,20 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         behind: number;
         onClick: () => void;
         trailing?: h.JSX.Element | null;
+        /** Main card: branch control opens floating picker (#149). */
+        branchPicker?: boolean;
+        /**
+         * Origin badge sync path.
+         * - pass `null` for main root
+         * - pass absolute/relative repo path for worktree/submodule
+         * - omit for non-syncable (should not happen after product change)
+         */
+        originSyncPath?: string | null;
     }) {
         const { language } = this.props;
+        const { fetching, pushPullLoading, branchDropdownOpen } = this.state;
+        const originBusy = fetching || pushPullLoading !== null;
+        const hasOriginSync = opts.originSyncPath !== undefined;
         return (
             <div
                 key={opts.key}
@@ -893,11 +1033,31 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 </span>
                 {opts.kind ? <span class="git-repo-card-kind">{opts.kind}</span> : null}
                 <span class="git-repo-card-grow" />
-                <span class="git-repo-card-branch" title={opts.branch}>
-                    {IconBranchEl()}
-                    <span class="git-repo-card-branch-text">{opts.branch}</span>
-                </span>
-                {this.renderOriginBadge(opts.ahead, opts.behind, language)}
+                {opts.branchPicker ? (
+                    <button
+                        type="button"
+                        class={`git-repo-card-branch clickable ${branchDropdownOpen ? 'open' : ''}`}
+                        title={t('git.branch.toggleTitle', language)}
+                        onClick={this.openBranchPicker}
+                        onMouseDown={e => {
+                            // Prevent parent card from receiving the click first.
+                            e.stopPropagation();
+                        }}
+                    >
+                        {IconBranchEl()}
+                        <span class="git-repo-card-branch-text">{opts.branch}</span>
+                        <span class={`git-repo-card-branch-caret ${branchDropdownOpen ? 'open' : ''}`}>▼</span>
+                    </button>
+                ) : (
+                    <span class="git-repo-card-branch" title={opts.branch}>
+                        {IconBranchEl()}
+                        <span class="git-repo-card-branch-text">{opts.branch}</span>
+                    </span>
+                )}
+                {this.renderOriginBadge(opts.ahead, opts.behind, language, {
+                    syncPath: hasOriginSync ? opts.originSyncPath! : undefined,
+                    busy: originBusy && hasOriginSync,
+                })}
                 {opts.trailing}
             </div>
         );
@@ -947,7 +1107,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
 
         return (
             <div class="git-repo-cards">
-                {/* Main card — single row; chevron toggles nested submodules */}
+                {/* Main card — branch text opens picker; origin badge syncs remote */}
                 {this.renderRepoCardRow({
                     key: 'main',
                     selected: mainSelected,
@@ -959,6 +1119,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     behind,
                     onClick: this.selectMain,
                     trailing: submodulesToggle,
+                    branchPicker: true,
+                    originSyncPath: null, // main root
                 })}
 
                 {/* Submodules under main (collapsed via main-card chevron) */}
@@ -983,6 +1145,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 ahead: sm.ahead ?? 0,
                                 behind: sm.behind ?? 0,
                                 onClick: () => this.selectSubmodule(sm.path),
+                                originSyncPath: sm.path,
                             });
                         })}
                     </div>
@@ -1000,8 +1163,68 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         ahead: wt.ahead ?? 0,
                         behind: wt.behind ?? 0,
                         onClick: () => this.selectWorktree(wt.path, wt.isCurrent),
+                        originSyncPath: wt.path,
                     })
                 )}
+            </div>
+        );
+    }
+
+    /** Floating branch picker popover (viewport-fixed, not clipped by panel scroll). */
+    renderBranchPopover() {
+        const { branchDropdownOpen, branches, branchesLoading, branchSwitching } = this.state;
+        const { language } = this.props;
+        if (!branchDropdownOpen) return null;
+        return (
+            <div class="git-branch-popover-root" onClick={e => e.stopPropagation()}>
+                <div
+                    class="git-branch-popover-backdrop"
+                    onClick={e => {
+                        e.stopPropagation();
+                        this.closeBranchPicker();
+                    }}
+                />
+                <div class="git-branch-popover" role="dialog" aria-label={t('git.branch.selectTitle', language)}>
+                    <div class="git-branch-popover-header">
+                        <span>{t('git.branch.selectTitle', language)}</span>
+                        {branchSwitching && <div class="git-spinner git-spinner-sm" />}
+                        <button
+                            type="button"
+                            class="git-diff-close-btn"
+                            onClick={this.closeBranchPicker}
+                            title={t('git.diff.close', language)}
+                        >
+                            ×
+                        </button>
+                    </div>
+                    <div class="git-branch-popover-list">
+                        {branchesLoading ? (
+                            <div class="git-dropdown-loading">{t('git.branch.loading', language)}</div>
+                        ) : branches.length === 0 ? (
+                            <div class="git-dropdown-empty">{t('git.branch.empty', language)}</div>
+                        ) : (
+                            branches.map(b => (
+                                <button
+                                    type="button"
+                                    key={b.name}
+                                    class={`git-branch-popover-item ${b.current ? 'current' : ''}`}
+                                    disabled={branchSwitching}
+                                    onClick={() => {
+                                        if (b.current || branchSwitching) {
+                                            this.closeBranchPicker();
+                                            return;
+                                        }
+                                        void this.checkoutBranch(b.name);
+                                    }}
+                                >
+                                    <span class="git-branch-item-icon">{IconBranchEl()}</span>
+                                    <span class="git-branch-item-name">{b.name}</span>
+                                    {b.current && <span class="git-branch-item-check">✓</span>}
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </div>
             </div>
         );
     }
@@ -1667,6 +1890,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 {this.renderChangesSection()}
                 {this.renderCommitBox()}
                 {this.renderGraphSection()}
+                {this.renderBranchPopover()}
                 {toast && (
                     <div class="git-toast-wrapper">
                         <div class="git-toast">{toast}</div>

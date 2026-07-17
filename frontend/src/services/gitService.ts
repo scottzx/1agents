@@ -178,16 +178,19 @@ export const gitService = {
         return (data as { message: string }).message;
     },
 
-    async push(opts?: FetchOpts): Promise<void> {
-        await ensureOk(await fetch('/api/git/push', { method: 'POST', signal: opts?.signal }));
+    async push(path?: string | null, opts?: FetchOpts): Promise<void> {
+        const q = path ? `?path=${encodeURIComponent(path)}` : '';
+        await ensureOk(await fetch(`/api/git/push${q}`, { method: 'POST', signal: opts?.signal }));
     },
 
-    async pull(opts?: FetchOpts): Promise<void> {
-        await ensureOk(await fetch('/api/git/pull', { method: 'POST', signal: opts?.signal }));
+    async pull(path?: string | null, opts?: FetchOpts): Promise<void> {
+        const q = path ? `?path=${encodeURIComponent(path)}` : '';
+        await ensureOk(await fetch(`/api/git/pull${q}`, { method: 'POST', signal: opts?.signal }));
     },
 
-    async fetchRemote(opts?: FetchOpts): Promise<void> {
-        await ensureOk(await fetch('/api/git/fetch', { method: 'POST', signal: opts?.signal }));
+    async fetchRemote(path?: string | null, opts?: FetchOpts): Promise<void> {
+        const q = path ? `?path=${encodeURIComponent(path)}` : '';
+        await ensureOk(await fetch(`/api/git/fetch${q}`, { method: 'POST', signal: opts?.signal }));
     },
 
     async branches(opts?: FetchOpts): Promise<BranchEntry[]> {
