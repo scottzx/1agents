@@ -13,7 +13,7 @@ import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
 import { showToast, theme } from '../../stores/uiStore';
 import { ToolDiffView, deriveDiffsFromInput, deriveLocationsFromInput } from './ToolDiffView';
-import { ToolKindIcon, deriveToolKind } from './ToolKindIcon';
+import { deriveToolKind } from './ToolKindIcon';
 import { terminalCommandLine } from './terminalCommand';
 
 // Configure marked once: GFM + soft line breaks so the assistant's
@@ -570,6 +570,29 @@ function ToolGroupBubble({
     );
 }
 
+/** Four agentic categories shown as fixed-width 2-char labels. */
+type KindCategory = 'think' | 'read' | 'execute' | 'tool';
+
+function kindCategory(kind?: string): KindCategory {
+    if (kind === 'think') return 'think';
+    if (kind === 'read' || kind === 'search') return 'read';
+    if (kind === 'execute') return 'execute';
+    return 'tool';
+}
+
+function kindCategoryLabel(category: KindCategory, lang: ReturnType<typeof getLang>): string {
+    switch (category) {
+        case 'think':
+            return t('chat.tool.kind.think', lang);
+        case 'read':
+            return t('chat.tool.kind.read', lang);
+        case 'execute':
+            return t('chat.tool.kind.execute', lang);
+        case 'tool':
+            return t('chat.tool.kind.tool', lang);
+    }
+}
+
 function GroupedThinkingItem({ content, streaming }: { content: string; streaming: boolean }) {
     const isExpanded = useSignal(streaming);
     const lang = getLang();
@@ -591,10 +614,15 @@ function GroupedThinkingItem({ content, streaming }: { content: string; streamin
     const { preview, html } = useMemo(() => {
         const previewText = content.trim().replace(/\s+/g, ' ');
         return {
-            preview: previewText.length > 60 ? `${previewText.slice(0, 60)}…` : previewText,
+            // Collapsed header shows the first ~50 chars of the thought (same
+            // idea as the old thinking-row summary, slightly shorter).
+            preview: previewText.length > 50 ? `${previewText.slice(0, 50)}…` : previewText,
             html: marked.parse(content, { async: false }) as string,
         };
     }, [content]);
+
+    // Header: 「思考」+ first 50 chars. Empty stream falls back to "思考中…".
+    const headerText = preview || (streaming ? t('chat.thinking.streaming', lang) : t('chat.thinking.label', lang));
 
     return (
         <div class={`chat-tool-row ${expanded ? 'is-expanded' : 'is-collapsed'} status-thinking`}>
@@ -610,19 +638,12 @@ function GroupedThinkingItem({ content, streaming }: { content: string; streamin
                     }
                 }}
             >
-                {streaming ? (
-                    <span class="chat-tool-status-icon chat-tool-spinner" aria-hidden="true" />
-                ) : (
-                    <span class="chat-tool-status-icon is-thinking" aria-hidden="true">
-                        ·
-                    </span>
-                )}
-                <span class="chat-tool-name-badge is-thinking">
-                    {streaming ? t('chat.thinking.streaming', lang) : t('chat.thinking.label', lang)}
-                </span>
-                {!expanded && preview && <span class="chat-tool-row-summary is-thinking-preview">{preview}</span>}
                 <span class="chat-tool-row-caret" aria-hidden="true">
                     {expanded ? '▾' : '▸'}
+                </span>
+                <span class="chat-tool-kind-label">{kindCategoryLabel('think', lang)}</span>
+                <span class="chat-tool-name-badge is-thinking-preview" title={preview || undefined}>
+                    {headerText}
                 </span>
             </div>
             {expanded && (
@@ -636,9 +657,7 @@ function GroupedThinkingItem({ content, streaming }: { content: string; streamin
 
 /**
  * Arg keys most likely to identify what a call is doing, in priority
- * order. Used to surface a one-line summary in the collapsed row so
- * the user can tell `Bash: git status` from `Read: foo.ts` without
- * expanding anything.
+ * order. Used for permission-prompt previews (not the collapsed tool row).
  */
 const SUMMARY_KEYS = [
     'command',
@@ -666,37 +685,6 @@ function summarizeArgs(args: Record<string, unknown>): string | undefined {
         }
     }
     return undefined;
-}
-
-function StatusIcon({ status }: { status: CallStatus }) {
-    switch (status) {
-        case 'running':
-            return <span class="chat-tool-status-icon chat-tool-spinner" aria-hidden="true" />;
-        case 'waiting':
-            return (
-                <span class="chat-tool-status-icon is-waiting" aria-hidden="true">
-                    !
-                </span>
-            );
-        case 'success':
-            return (
-                <span class="chat-tool-status-icon is-success" aria-hidden="true">
-                    ✓
-                </span>
-            );
-        case 'error':
-            return (
-                <span class="chat-tool-status-icon is-error" aria-hidden="true">
-                    ✕
-                </span>
-            );
-        case 'incomplete':
-            return (
-                <span class="chat-tool-status-icon is-incomplete" aria-hidden="true">
-                    ◦
-                </span>
-            );
-    }
 }
 
 function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: CallStatus }) {
@@ -747,7 +735,6 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
         return null;
     }
 
-    const summary = Object.keys(args).length > 0 ? summarizeArgs(args) : undefined;
     const expanded = isExpanded.value;
 
     // Prefer the ACP-forwarded metadata; fall back to deriving from the tool
@@ -762,6 +749,9 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
               ? derivedLocations
               : undefined;
     const kind = call.kind ?? deriveToolKind(call.toolName);
+    const category = kindCategory(kind);
+    const isError = status === 'error';
+    const labelCls = isError ? 'is-error' : '';
 
     // Terminal/execute tools render as a durable terminal block — the command
     // (from input) as a `$` prompt line + output in a dark terminal box. Both
@@ -769,8 +759,7 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
     const isTerminal = kind === 'execute';
     const command = isTerminal ? terminalCommandLine(args) : undefined;
 
-    // switch_mode 在工具标题区追加副文本 "<label>: <from> → <to>"（取自 rawInput 的
-    // fromMode/toMode）。Claude Code 走 ExitPlanMode 工作流时推 tool_call.kind='switch_mode'。
+    // switch_mode: show from→to inside the expanded body (header is name-only).
     const modeSwitch =
         kind === 'switch_mode'
             ? (() => {
@@ -796,23 +785,15 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
                     }
                 }}
             >
-                <StatusIcon status={status} />
-                <ToolKindIcon kind={kind} />
-                <span class="chat-tool-name-badge">{call.toolName}</span>
-                {modeSwitch && <span class="chat-tool-row-mode-switch">{modeSwitch}</span>}
-                {summary && <span class="chat-tool-row-summary">{summary}</span>}
-                {status === 'waiting' && (
-                    <span class="chat-tool-row-status is-waiting">{t('chat.tool.status.waiting', lang)}</span>
-                )}
-                {status === 'running' && (
-                    <span class="chat-tool-row-status is-running">{t('chat.tool.status.running', lang)}</span>
-                )}
                 <span class="chat-tool-row-caret" aria-hidden="true">
                     {expanded ? '▾' : '▸'}
                 </span>
+                <span class={`chat-tool-kind-label ${labelCls}`}>{kindCategoryLabel(category, lang)}</span>
+                <span class={`chat-tool-name-badge ${labelCls}`}>{call.toolName}</span>
             </div>
             {expanded && (
                 <div class="chat-tool-row-body">
+                    {modeSwitch && <div class="chat-tool-muted">{modeSwitch}</div>}
                     {/* Terminal command line (execute tools) */}
                     {command && (
                         <div class="chat-tool-cmd-box">
@@ -844,7 +825,8 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
                     )}
 
                     {/* File diffs (Phase 6): ACP diff blocks or derived from
-                        edit-family input. */}
+                        edit-family input. When a diff exists it is the result
+                        surface — raw output is omitted to avoid duplicate noise. */}
                     {diffs.length > 0 && (
                         <div class="chat-tool-section">
                             <div class="chat-tool-section-title">{t('chat.tool.diff', lang)}</div>
@@ -891,29 +873,76 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
                         </div>
                     )}
 
-                    {/* Output */}
-                    <div class="chat-tool-section">
-                        <div class="chat-tool-section-title">{t('chat.tool.output', lang)}</div>
-                        {!hasOutput ? (
-                            <div class="chat-tool-muted">
-                                {status === 'running'
-                                    ? t('chat.tool.outputPending', lang)
-                                    : t('chat.tool.outputMissing', lang)}
-                            </div>
-                        ) : call.output ? (
-                            <pre
-                                class={`${isTerminal ? 'chat-tool-output-box' : 'chat-tool-pre chat-tool-output'} ${call.isError ? 'has-error' : ''}`}
-                            >
-                                {call.output}
-                            </pre>
-                        ) : (
-                            <div class="chat-tool-muted">{t('chat.tool.outputEmpty', lang)}</div>
-                        )}
-                    </div>
+                    {/* Output only when there is no diff result. */}
+                    {diffs.length === 0 && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.tool.output', lang)}</div>
+                            {!hasOutput ? (
+                                <div class="chat-tool-muted">
+                                    {status === 'running'
+                                        ? t('chat.tool.outputPending', lang)
+                                        : t('chat.tool.outputMissing', lang)}
+                                </div>
+                            ) : call.output ? (
+                                <pre
+                                    class={`${isTerminal ? 'chat-tool-output-box' : 'chat-tool-pre chat-tool-output'} ${call.isError ? 'has-error' : ''}`}
+                                >
+                                    {formatToolOutput(call.output)}
+                                </pre>
+                            ) : (
+                                <div class="chat-tool-muted">{t('chat.tool.outputEmpty', lang)}</div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     );
+}
+
+/**
+ * Pretty-print tool output when it is JSON (object/array); otherwise return
+ * the original text. Handles leading/trailing whitespace and double-encoded
+ * JSON strings that some agents emit as output.
+ */
+function formatToolOutput(raw: string): string {
+    const text = raw.trim();
+    if (!text) return raw;
+
+    const tryPretty = (s: string): string | null => {
+        try {
+            const parsed = JSON.parse(s);
+            // Only reformat structured JSON — leave bare strings/numbers as-is
+            // so a plain path or status message is not wrapped in quotes.
+            if (parsed !== null && typeof parsed === 'object') {
+                return JSON.stringify(parsed, null, 2);
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    };
+
+    const direct = tryPretty(text);
+    if (direct !== null) return direct;
+
+    // Some runtimes wrap the whole payload in an extra JSON string layer.
+    if (
+        (text.startsWith('"') && text.endsWith('"')) ||
+        (text.startsWith("'") && text.endsWith("'"))
+    ) {
+        try {
+            const unwrapped = JSON.parse(text);
+            if (typeof unwrapped === 'string') {
+                const nested = tryPretty(unwrapped.trim());
+                if (nested !== null) return nested;
+            }
+        } catch {
+            // keep original
+        }
+    }
+
+    return raw;
 }
 
 function ArgValue({ value }: { value: unknown }) {

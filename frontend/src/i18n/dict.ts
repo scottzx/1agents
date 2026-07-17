@@ -720,7 +720,12 @@ export const zhCN: Record<string, string> = {
     'chat.tool.outputMissing': '未返回结果',
     'chat.tool.outputEmpty': '执行完成，无返回内容',
     'chat.tool.permission': '权限确认',
-    // 工具 kind 标签（与 ToolKindIcon 配套；用于工具卡片副文本等）
+    // 工具行四分类（固定两字宽、无框）
+    'chat.tool.kind.think': '思考',
+    'chat.tool.kind.read': '读取',
+    'chat.tool.kind.execute': '运行',
+    'chat.tool.kind.tool': '工具',
+    // 工具 kind 标签（用于工具卡片副文本等）
     'chat.toolKind.switchMode': '切换模式',
     'chat.toolKind.modeFromTo': '{from} → {to}',
 
@@ -2531,7 +2536,12 @@ export const enUS: Record<string, string> = {
     'chat.tool.outputMissing': 'No result recorded',
     'chat.tool.outputEmpty': 'Completed with no output',
     'chat.tool.permission': 'Permission',
-    // Tool kind labels (paired with ToolKindIcon; used for tool card subtext)
+    // Tool-row category labels (fixed 2-char width, frameless)
+    'chat.tool.kind.think': 'Th',
+    'chat.tool.kind.read': 'Rd',
+    'chat.tool.kind.execute': 'Rn',
+    'chat.tool.kind.tool': 'Tl',
+    // Tool kind labels (tool card subtext)
     'chat.toolKind.switchMode': 'Switch mode',
     'chat.toolKind.modeFromTo': '{from} → {to}',
 

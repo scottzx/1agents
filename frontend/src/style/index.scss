@@ -17152,29 +17152,35 @@ body {
   min-width: 0;
 }
 
-// ── Tool call group: slim card holding one compact row per call ──
-// The collapsed row already carries the load-bearing info (status icon,
-// tool name, key-arg summary), so the group reads like a tidy checklist
-// instead of a wall of expanded cards.
+// ── Tool call group: frameless / border-bottom accordion ──
+// Decardized process log — no outer box, radius, fill, or shadow.
+// Only hairline bottom borders separate the group header and each
+// tool row, so the block reads as document-flow text rather than a card.
+// Collapsed: a single underlined summary line. Expanded: rows "flow"
+// out under the header, each closed by its own bottom divider.
 .chat-bubble-tool-group {
   align-self: flex-start;
   font-size: 13px;
   width: 100%;
   max-width: 100%;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 
   // Holding pen for orphan results / permission requests that haven't
-  // been matched to a tool_use yet — visually provisional.
+  // been matched to a tool_use yet — visually provisional via dashed
+  // header underline only (no dashed box).
   &.is-pending {
-    border-style: dashed;
     opacity: 0.85;
+
+    .chat-tool-group-header {
+      border-bottom-style: dashed;
+    }
   }
 }
 
@@ -17182,20 +17188,28 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 0;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: background-color 0.15s ease;
-  background: var(--chat-bg-panel);
+  background: transparent;
+  border-bottom: 1px solid var(--border-color);
+  transition: color 0.12s ease;
 
   &:hover {
-    background-color: var(--btn-hover);
+    .chat-tool-group-title {
+      color: var(--text-main);
+    }
+
+    .chat-bubble-caret {
+      color: var(--text-secondary);
+    }
   }
 
   &:focus-visible {
     outline: 2px solid var(--accent-color);
-    outline-offset: -2px;
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .chat-bubble-caret {
@@ -17215,39 +17229,49 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
+  // Document-flow summary line — sans, not mono "code label".
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--text-secondary);
+  transition: color 0.12s ease;
 }
 
 .chat-tool-group-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background-color: var(--btn-hover);
-  color: var(--text-secondary);
-  font-size: 10.5px;
-  font-weight: 700;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+
+  &::before {
+    content: '·';
+    margin-right: 6px;
+    color: var(--text-muted);
+  }
 }
 
 .chat-tool-group-processed {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  padding: 1px 6px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--chat-bg-card);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-muted);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   line-height: 1.4;
+  margin-left: auto;
 }
 
 .chat-tool-group-summary {
@@ -17256,7 +17280,13 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+
+  // When both "已处理" and a status summary render, only the first
+  // takes the free-space push so they sit as a tight trailing cluster.
+  .chat-tool-group-processed + & {
+    margin-left: 8px;
+  }
 
   &.status-running { color: var(--accent-color); }
   &.status-waiting { color: var(--warning-fg); }
@@ -17279,22 +17309,27 @@ body {
 .chat-tool-calls-list {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border-color);
-  background: var(--chat-bg-card);
+  // No top border / fill — header underline already separates the list.
+  border-top: none;
+  background: transparent;
+  // Child tools indented under the group header (parent → child hierarchy).
+  padding-left: 2ch;
 }
 
 .chat-tool-row {
+  background: transparent;
+  border: none;
   border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
 
-  &:last-child {
-    border-bottom: none;
-  }
+  // Keep the final row's divider so the expanded group still closes
+  // with a single hairline (frameless accordion terminal edge).
 
-  // A pending permission blocks the whole turn — tint the row so it
-  // stands out even while other rows stream past it.
+  // A pending permission blocks the whole turn — left hairline only,
+  // no fill wash that would re-introduce card weight.
   &.status-waiting {
-    background: rgba(var(--warning-rgb), 0.05);
-    box-shadow: inset 3px 0 0 var(--warning-fg);
+    background: transparent;
+    box-shadow: inset 2px 0 0 var(--warning-fg);
   }
 }
 
@@ -17302,19 +17337,60 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 7px 0;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: background-color 0.15s ease;
+  background: transparent;
+  transition: color 0.12s ease;
+
+  // Unified left caret (matches group header).
+  .chat-tool-row-caret {
+    flex-shrink: 0;
+    margin-left: 0;
+    width: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
 
   &:hover {
-    background-color: var(--btn-hover);
+    .chat-tool-kind-label:not(.is-error),
+    .chat-tool-name-badge:not(.is-error) {
+      color: var(--text-main);
+    }
+
+    .chat-tool-row-caret {
+      color: var(--text-secondary);
+    }
   }
 
   &:focus-visible {
     outline: 2px solid var(--accent-color);
-    outline-offset: -2px;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+// Fixed-width 2-char category label: 思考 / 读取 / 运行 / 工具.
+// Frameless black text; error → red. Width locked so columns align.
+.chat-tool-kind-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2em;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-main);
+  background: transparent;
+  border: none;
+  padding: 0;
+  letter-spacing: 0;
+
+  &.is-error {
+    color: var(--danger-fg);
   }
 }
 
@@ -17376,7 +17452,6 @@ body {
 
 .chat-tool-row-caret {
   flex-shrink: 0;
-  margin-left: auto;
   width: 14px;
   text-align: center;
   font-size: 11px;
@@ -17387,19 +17462,19 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 12px 12px 34px;
-  border-top: 1px dashed var(--border-color);
-  background: var(--chat-bg-card);
+  // No extra indent — flush with the tool-row header text column.
+  padding: 4px 0 12px 0;
+  border-top: none;
+  background: transparent;
 
-  // When the body is a direct first child (no row-header above it), the
-  // dashed separator has nothing to separate from — remove it. This covers
-  // GroupedAssistantTextItem (preamble text folded into the process block).
+  // When the body is a direct first child (no row-header above it).
+  // Covers GroupedAssistantTextItem (preamble text folded into process).
   .chat-tool-row > &:first-child {
-    border-top: none;
+    padding-top: 8px;
   }
 
   &.is-thinking {
-    background: rgba(var(--warning-rgb), 0.025);
+    background: transparent;
 
     .chat-thinking-body {
       margin-top: 0;
@@ -17526,22 +17601,40 @@ body {
   30% { transform: translateY(-3px); opacity: 1; }
 }
 
+// Tool / thinking name — frameless plain text (no badge chrome).
+// Black by default; error rows use red.
 .chat-tool-name-badge {
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent-color);
-  background-color: rgba(var(--accent-color-rgb), 0.06);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(var(--accent-color-rgb), 0.12);
-  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-main);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  flex-shrink: 1;
+  min-width: 0;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-error {
+    color: var(--danger-fg);
+  }
 
   &.is-thinking {
-    background: rgba(var(--warning-rgb), 0.1);
-    border-color: rgba(var(--warning-rgb), 0.18);
-    color: var(--warning-fg);
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+  }
+
+  // Thinking preview: first ~50 chars of the thought — plain secondary text.
+  &.is-thinking-preview {
+    font-family: inherit;
+    font-weight: 400;
+    color: var(--text-secondary);
+    font-style: italic;
   }
 }
 
@@ -17552,8 +17645,8 @@ body {
 
 .chat-tool-name-badge.is-assistant-text {
   color: var(--text-secondary);
-  background: var(--btn-hover);
-  border-color: var(--border-color);
+  background: transparent;
+  border: none;
 }
 
 .chat-tool-row-summary.is-assistant-text-preview {
@@ -17721,14 +17814,16 @@ body {
   white-space: nowrap;
 }
 
+// Execute tools: light Terminal Lite (accent wash) — no always-dark shell.
+// Tokens track light/dark theme; never hardcode #0d1117 black panels.
 .chat-tool-output-box {
   margin: 0;
   padding: 8px 12px;
-  background-color: #0d1117;
-  color: #e6edf3;
-  border: 1px solid #30363d;
+  background-color: rgba(var(--accent-color-rgb), 0.04);
+  color: var(--text-main);
+  border: 1px solid rgba(var(--accent-color-rgb), 0.14);
   border-radius: 6px;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.5;
   overflow-x: auto;
@@ -17742,7 +17837,7 @@ body {
     height: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.15);
+    background-color: var(--border-color);
     border-radius: 3px;
   }
   &::-webkit-scrollbar-track {
@@ -17750,8 +17845,9 @@ body {
   }
 
   &.has-error {
-    border-color: rgba(var(--danger-rgb), 0.4);
-    color: #ff7b72;
+    background-color: rgba(var(--danger-rgb), 0.04);
+    border-color: rgba(var(--danger-rgb), 0.35);
+    color: var(--danger-fg);
   }
 }
 
@@ -17760,27 +17856,27 @@ body {
   align-items: flex-start;
   gap: 8px;
   padding: 8px 12px;
-  background-color: #0d1117;
-  border: 1px solid #30363d;
+  background-color: rgba(var(--accent-color-rgb), 0.06);
+  border: 1px solid rgba(var(--accent-color-rgb), 0.14);
   border-radius: 6px;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
 }
 
 .chat-tool-cmd-prompt {
-  color: #4ade80;
+  color: var(--accent-color);
   font-weight: 700;
   flex-shrink: 0;
   user-select: none;
 }
 
 .chat-tool-cmd-text {
-  color: #e6edf3;
+  color: var(--text-main);
   flex: 1;
   min-width: 0;
 }
