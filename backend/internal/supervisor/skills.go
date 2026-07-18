@@ -2,10 +2,12 @@ package supervisor
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,13 +18,13 @@ import (
 // SkillsSupervisor manages the lifecycle of the 1skills python FastAPI server.
 //
 // Launch priority (first match wins):
-//  1. skill-manager binary next to 1agents executable (release mode, PyInstaller bundle)
-//  2. modules/1skills/.venv/bin/python (development mode, source checkout)
+//  1. skill-manager binary next to 1agents / in ./bin (optional legacy PyInstaller)
+//  2. @1agents/skills npm package source (node_modules/@1agents/skills)
+//  3. modules/1skills (dev checkout) or release-layout 1skills/
+//  4. Host Python venv under ~/.1agents/1skills/.venv
 //
-// In development mode the supervisor auto-bootstraps the virtual environment
-// and installs dependencies when it is missing.
-// In release mode the self-contained binary is used directly.
-// In both cases the supervisor restarts the process if it exits unexpectedly.
+// Host-Python mode prefers `uv` for venv + deps, else python3 -m venv + pip.
+// Requires Python >= 3.11 on the host for non-binary launches.
 type SkillsSupervisor struct {
 	cfg          *config.Config
 	cmd          *exec.Cmd
@@ -53,41 +55,23 @@ func (s *SkillsSupervisor) Done() <-chan struct{} {
 type launchMode int
 
 const (
-	launchModeBinary launchMode = iota // release: standalone skill-manager binary
-	launchModeVenv                     // dev: .venv python + skill_manager module
+	launchModeBinary launchMode = iota // optional: standalone skill-manager binary
+	launchModeVenv                     // host Python venv + skill_manager module
 )
 
 // resolveRuntime decides which launch mode to use and returns the executable
-// path together with the working directory that should be used.
+// path together with the working directory (skills source tree).
 //
 // Search order:
-//  1. skill-manager binary in the same directory as the running 1agents executable
-//  2. skill-manager binary in ./bin/ (relative to CWD – matches release layout)
-//  3. .venv python inside modules/1skills (development checkout)
+//  1. skill-manager binary next to the running 1agents executable
+//  2. skill-manager binary in ./bin/ (relative to CWD)
+//  3. modules/1skills (dev) or bundled release 1skills/ source
+//     - prefer in-tree .venv if present
+//     - else managed venv at ~/.1agents/1skills/.venv
 func (s *SkillsSupervisor) resolveRuntime(cwd string) (mode launchMode, execPath string, skillsDir string) {
-	// Find modules/1skills by traversing upwards from cwd
-	foundDir := ""
-	dir := cwd
-	for {
-		candidate := filepath.Join(dir, "modules", "1skills")
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			foundDir = candidate
-			break
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir { // reached root
-			break
-		}
-		dir = parent
-	}
+	skillsDir = findSkillsSource(cwd)
 
-	if foundDir != "" {
-		skillsDir = foundDir
-	} else {
-		skillsDir = filepath.Join(cwd, "modules", "1skills")
-	}
-
-	// 1. Next to the running executable (release layout: bin/1agents, bin/skill-manager)
+	// 1. Next to the running executable (legacy release layout)
 	if selfExe, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(selfExe), "skill-manager")
 		if isExecutable(candidate) {
@@ -103,10 +87,139 @@ func (s *SkillsSupervisor) resolveRuntime(cwd string) (mode launchMode, execPath
 		return launchModeBinary, candidate, skillsDir
 	}
 
-	// 3. Development .venv
-	venvPython := filepath.Join(skillsDir, ".venv", "bin", "python")
-	log.Printf("[skills-sup] skill-manager binary not found, falling back to dev mode (.venv): %s", venvPython)
-	return launchModeVenv, venvPython, skillsDir
+	// 3. Host Python + source tree
+	if skillsDir == "" || !isSkillsSource(skillsDir) {
+		log.Printf("[skills-sup] No 1skills Python source found (looked for modules/1skills or bundled 1skills/)")
+		return launchModeVenv, "", skillsDir
+	}
+
+	// Prefer an in-tree .venv (dev / previously bootstrapped next to source)
+	inTree := venvPython(filepath.Join(skillsDir, ".venv"))
+	if isExecutable(inTree) {
+		log.Printf("[skills-sup] Using in-tree venv: %s", inTree)
+		return launchModeVenv, inTree, skillsDir
+	}
+
+	// Managed user venv (release/npm: source is read-only under the package)
+	managed := venvPython(managedSkillsVenvDir())
+	if isExecutable(managed) {
+		log.Printf("[skills-sup] Using managed venv: %s", managed)
+		return launchModeVenv, managed, skillsDir
+	}
+
+	// Bootstrap will create managed venv (or in-tree when source is writable)
+	log.Printf("[skills-sup] Host Python mode; will bootstrap venv for source: %s", skillsDir)
+	return launchModeVenv, managed, skillsDir
+}
+
+// findSkillsSource locates the skill-manager Python source tree.
+func findSkillsSource(cwd string) string {
+	// Prefer npm package @1agents/skills (direct registry install)
+	for _, start := range skillsSearchRoots(cwd) {
+		candidate := filepath.Join(start, "node_modules", "@1agents", "skills")
+		if isSkillsSource(candidate) {
+			if abs, err := filepath.Abs(candidate); err == nil {
+				return abs
+			}
+			return candidate
+		}
+	}
+
+	// Dev: walk up for modules/1skills
+	dir := cwd
+	for {
+		candidate := filepath.Join(dir, "modules", "1skills")
+		if isSkillsSource(candidate) {
+			return candidate
+		}
+		// monorepo npm package path
+		candidate = filepath.Join(dir, "npm", "packages", "skills")
+		if isSkillsSource(candidate) {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	// Release layouts relative to the 1agents executable
+	if selfExe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(selfExe)
+		for _, candidate := range []string{
+			filepath.Join(exeDir, "1skills"),
+			filepath.Join(exeDir, "..", "1skills"),
+			filepath.Join(exeDir, "..", "..", "1skills"),
+			filepath.Join(exeDir, "..", "@1agents", "skills"),
+			filepath.Join(exeDir, "..", "..", "@1agents", "skills"),
+		} {
+			if resolved, err := filepath.Abs(candidate); err == nil && isSkillsSource(resolved) {
+				return resolved
+			}
+		}
+	}
+
+	for _, candidate := range []string{
+		filepath.Join(cwd, "1skills"),
+		filepath.Join(cwd, "modules", "1skills"),
+	} {
+		if isSkillsSource(candidate) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func skillsSearchRoots(cwd string) []string {
+	roots := []string{cwd}
+	if selfExe, err := os.Executable(); err == nil {
+		roots = append(roots, filepath.Dir(selfExe))
+	}
+	// Walk a few parents for nested node_modules installs
+	dir := cwd
+	for i := 0; i < 6; i++ {
+		roots = append(roots, dir)
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return roots
+}
+
+func isSkillsSource(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(dir, "skill_manager"))
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, "requirements.txt")); err != nil {
+		return false
+	}
+	return true
+}
+
+func managedSkillsVenvDir() string {
+	return filepath.Join(get1AgentsHome(), ".1agents", "1skills", ".venv")
+}
+
+// venvPython returns the platform-specific python path inside a venv directory.
+func venvPython(venvDir string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(venvDir, "Scripts", "python.exe")
+	}
+	return filepath.Join(venvDir, "bin", "python")
+}
+
+func venvPip(venvDir string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(venvDir, "Scripts", "pip.exe")
+	}
+	return filepath.Join(venvDir, "bin", "pip")
 }
 
 // skillsDataEnv returns the environment overrides that pin 1skills
@@ -144,6 +257,10 @@ func isExecutable(path string) bool {
 	if err != nil {
 		return false
 	}
+	// On Windows, .exe need not have unix execute bits.
+	if runtime.GOOS == "windows" {
+		return info.Mode().IsRegular()
+	}
 	return info.Mode().IsRegular() && info.Mode()&0o111 != 0
 }
 
@@ -160,12 +277,22 @@ func (s *SkillsSupervisor) supervisionLoop(ctx context.Context) {
 	mode, execPath, skillsDir := s.resolveRuntime(cwd)
 	log.Printf("[skills-sup] Launch mode: %v, exec: %s, skillsDir: %s", mode, execPath, skillsDir)
 
-	// Dev-mode only: bootstrap venv if missing
 	if mode == launchModeVenv {
+		if skillsDir == "" || !isSkillsSource(skillsDir) {
+			log.Println("[skills-sup] 1skills source missing and no skill-manager binary; skills service will not start.")
+			log.Println("[skills-sup] Install @1agents/skills from npm (or use modules/1skills in dev), plus Python >= 3.11 (prefer uv).")
+			return
+		}
 		if !isExecutable(execPath) {
-			log.Println("[skills-sup] Virtual environment not found. Attempting to bootstrap 1skills...")
-			if err := s.bootstrap(ctx, skillsDir); err != nil {
+			log.Println("[skills-sup] Virtual environment not found. Bootstrapping 1skills with host Python...")
+			venvDir, err := s.bootstrap(ctx, skillsDir)
+			if err != nil {
 				log.Printf("[skills-sup] Bootstrapping failed: %v. Server will not be started.", err)
+				return
+			}
+			execPath = venvPython(venvDir)
+			if !isExecutable(execPath) {
+				log.Printf("[skills-sup] Bootstrap finished but python missing at %s", execPath)
 				return
 			}
 			log.Println("[skills-sup] Bootstrapping completed successfully.")
@@ -215,50 +342,101 @@ func (s *SkillsSupervisor) supervisionLoop(ctx context.Context) {
 	}
 }
 
-// bootstrap initializes the virtual environment and installs dependencies (dev mode only).
-func (s *SkillsSupervisor) bootstrap(ctx context.Context, dir string) error {
+// bootstrap creates a venv and installs requirements for the skills source tree.
+// Prefers a managed venv under ~/.1agents when the source tree is not writable
+// (typical for npm global installs); otherwise uses <source>/.venv.
+// Prefer `uv` when available; otherwise python3 -m venv + pip.
+// Returns the venv directory path.
+func (s *SkillsSupervisor) bootstrap(ctx context.Context, sourceDir string) (string, error) {
+	venvDir := filepath.Join(sourceDir, ".venv")
+	if !dirIsWritable(sourceDir) {
+		venvDir = managedSkillsVenvDir()
+		log.Printf("[skills-sup] Source not writable; using managed venv at %s", venvDir)
+	}
+	if err := os.MkdirAll(filepath.Dir(venvDir), 0o755); err != nil {
+		return "", err
+	}
+
+	req := filepath.Join(sourceDir, "requirements.txt")
+
+	// Prefer uv
+	if uv, err := exec.LookPath("uv"); err == nil {
+		log.Printf("[skills-sup] Bootstrapping with uv (%s) at %s", uv, venvDir)
+		cmdVenv := exec.CommandContext(ctx, uv, "venv", venvDir)
+		cmdVenv.Stdout = os.Stdout
+		cmdVenv.Stderr = os.Stderr
+		if err := cmdVenv.Run(); err != nil {
+			return "", fmt.Errorf("uv venv: %w", err)
+		}
+		// uv pip install --python <venv-python> -r requirements.txt
+		py := venvPython(venvDir)
+		cmdPip := exec.CommandContext(ctx, uv, "pip", "install", "--python", py, "-r", req)
+		cmdPip.Dir = sourceDir
+		cmdPip.Stdout = os.Stdout
+		cmdPip.Stderr = os.Stderr
+		if err := cmdPip.Run(); err != nil {
+			return "", fmt.Errorf("uv pip install: %w", err)
+		}
+		return venvDir, nil
+	}
+
+	// Fallback: python3 -m venv + pip
 	pythonBin := s.cfg.SkillsBinaryPath
 	if pythonBin == "" {
 		pythonBin = "python3"
 	}
+	if _, err := exec.LookPath(pythonBin); err != nil {
+		return "", fmt.Errorf("host Python not found (%s) and uv not installed: %w — install Python >= 3.11 or uv", pythonBin, err)
+	}
 
-	log.Printf("[skills-sup] Creating venv using %s in %s...", pythonBin, dir)
-	cmdVenv := exec.CommandContext(ctx, pythonBin, "-m", "venv", ".venv")
-	cmdVenv.Dir = dir
+	log.Printf("[skills-sup] uv not found; creating venv with %s at %s...", pythonBin, venvDir)
+	cmdVenv := exec.CommandContext(ctx, pythonBin, "-m", "venv", venvDir)
 	cmdVenv.Stdout = os.Stdout
 	cmdVenv.Stderr = os.Stderr
 	if err := cmdVenv.Run(); err != nil {
-		return err
+		return "", fmt.Errorf("python -m venv: %w", err)
 	}
 
-	pipPath := filepath.Join(dir, ".venv", "bin", "pip")
-	log.Printf("[skills-sup] Installing requirements via %s...", pipPath)
-	cmdPip := exec.CommandContext(ctx, pipPath, "install", "-r", "requirements.txt")
-	cmdPip.Dir = dir
+	pipPath := venvPip(venvDir)
+	log.Printf("[skills-sup] Installing requirements via %s -r %s...", pipPath, req)
+	cmdPip := exec.CommandContext(ctx, pipPath, "install", "-r", req)
+	cmdPip.Dir = sourceDir
 	cmdPip.Stdout = os.Stdout
 	cmdPip.Stderr = os.Stderr
-	return cmdPip.Run()
+	if err := cmdPip.Run(); err != nil {
+		return "", fmt.Errorf("pip install: %w", err)
+	}
+	return venvDir, nil
+}
+
+func dirIsWritable(dir string) bool {
+	probe := filepath.Join(dir, ".1agents-write-test")
+	f, err := os.Create(probe)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove(probe)
+	return true
 }
 
 // startProcess runs the 1skills service and blocks until it exits.
 // In binary mode the skill-manager executable is invoked directly.
-// In venv mode the .venv python interpreter is invoked with -m skill_manager.
+// In venv mode the venv python interpreter is invoked with -m skill_manager
+// and Dir set to the source tree so the package resolves from cwd.
 func (s *SkillsSupervisor) startProcess(ctx context.Context, mode launchMode, dir string, execPath string) error {
 	port := s.portFrom(s.cfg.SkillsAddr)
 
 	var cmd *exec.Cmd
 	switch mode {
 	case launchModeBinary:
-		// skill-manager serve --host 127.0.0.1 --port <port> --no-open-browser
 		cmd = exec.CommandContext(ctx, execPath,
 			"serve",
 			"--host", "127.0.0.1",
 			"--port", port,
 			"--no-open-browser",
 		)
-		// The binary is self-contained; no specific working directory is required.
 	default: // launchModeVenv
-		// python -m skill_manager serve --host 127.0.0.1 --port <port> --no-open-browser
 		cmd = exec.CommandContext(ctx, execPath,
 			"-m", "skill_manager", "serve",
 			"--host", "127.0.0.1",

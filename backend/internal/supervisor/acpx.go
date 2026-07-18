@@ -112,8 +112,9 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, dir string) error {
 	if v := os.Getenv("ACPX_PORT"); v != "" {
 		acpxPort = v
 	}
-	cmd := exec.CommandContext(ctx, "npx", "tsx", "bridge-server.js")
-	cmd.Dir = dir
+
+	// Prefer installed acpx package (npm registry dist) over submodule+tsx.
+	cmd, label := resolveAcpxCommand(ctx, dir)
 	cmd.Env = os.Environ()
 	if home, err := os.UserHomeDir(); err != nil {
 		log.Printf("[acpx-sup] Unable to resolve user home for agent PATH: %v", err)
@@ -133,13 +134,89 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, dir string) error {
 	s.cmd = cmd
 	s.mu.Unlock()
 
-	log.Printf("[acpx-sup] exec: npx tsx bridge-server.js (Dir: %s)", dir)
+	log.Printf("[acpx-sup] exec: %s", label)
 	err = cmd.Run()
 
 	if ctx.Err() != nil {
 		return nil
 	}
 	return err
+}
+
+// resolveAcpxCommand prefers:
+//  1. `acpx` on PATH (npm global / @1agents install)
+//  2. node running acpx dist/cli.js from node_modules
+//  3. legacy modules/1acp + npx tsx bridge-server.js (dev only)
+func resolveAcpxCommand(ctx context.Context, modulesAcpDir string) (*exec.Cmd, string) {
+	if p, err := exec.LookPath("acpx"); err == nil {
+		// Many acpx builds expose CLI; bridge may still need bridge-server.
+		// Prefer package root bridge when present, else run acpx as long-running helper is insufficient.
+		// Fall through to node dist if bridge-server.js exists next to package.
+		_ = p
+	}
+
+	// Walk for node_modules/acpx or node_modules/@1agents/acpx
+	for _, name := range []string{
+		"node_modules/acpx",
+		"node_modules/@1agents/acpx",
+	} {
+		if root := findUp(modulesAcpDir, name); root != "" {
+			if bridge := filepath.Join(root, "bridge-server.js"); fileExists(bridge) {
+				cmd := exec.CommandContext(ctx, "node", bridge)
+				cmd.Dir = root
+				return cmd, "node " + bridge
+			}
+			if cli := filepath.Join(root, "dist", "cli.js"); fileExists(cli) {
+				// No dedicated bridge entry: keep legacy bridge from modules if available.
+				log.Printf("[acpx-sup] found %s but no bridge-server.js; trying modules/1acp fallback", root)
+			}
+		}
+	}
+
+	// Dev / submodule fallback
+	bridge := filepath.Join(modulesAcpDir, "bridge-server.js")
+	if fileExists(bridge) {
+		cmd := exec.CommandContext(ctx, "npx", "tsx", "bridge-server.js")
+		cmd.Dir = modulesAcpDir
+		return cmd, "npx tsx bridge-server.js (modules/1acp)"
+	}
+
+	// Last resort: acpx on PATH with no bridge knowledge
+	if p, err := exec.LookPath("acpx"); err == nil {
+		cmd := exec.CommandContext(ctx, p, "--help")
+		return cmd, p + " --help (no bridge-server found; ACP bridge may be unavailable)"
+	}
+
+	cmd := exec.CommandContext(ctx, "npx", "tsx", "bridge-server.js")
+	cmd.Dir = modulesAcpDir
+	return cmd, "npx tsx bridge-server.js (fallback)"
+}
+
+func findUp(start, rel string) string {
+	dir := start
+	for i := 0; i < 8; i++ {
+		candidate := filepath.Join(dir, rel)
+		if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+			return candidate
+		}
+		// also search parent/node_modules paths when start is modules/1acp
+		candidate = filepath.Join(dir, "..", rel)
+		if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+			abs, _ := filepath.Abs(candidate)
+			return abs
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.Mode().IsRegular()
 }
 
 func (s *AcpxSupervisor) stopProcess() {
