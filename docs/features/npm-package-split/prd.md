@@ -60,8 +60,8 @@ npm install -g @1agents/cli
 | D4 | **1skills 运行时** | 本机 **优先 `uv`，回退 `pip` + venv**；不发 PyInstaller / `_internal` |
 | D5 | **frontend → `@1agents/web`** | 只发生产 `dist`，**去掉 `.map`**；主包 `dependencies` |
 | D6 | **happy-cli → optional** | `@1agents/happy`；`optionalDependencies`，失败不阻断核心 |
-| D7 | **acpx / 1acp → 独立 dist 包** | 集成改为 **resolve 已安装包**（`acpx` 或 `@1agents/acpx`），不再绑 `modules/1acp` + tsx 源码路径 |
-| D8 | **acpx 挂法** | 主包 **`optionalDependencies`**（或实现期定为 deps；默认 **optional**，与「ACP 长尾/可替换」一致） |
+| D7 | **ACP bridge → `@1agents/acp-bridge`（deps）** | 1agents 专用 WebSocket `bridge-server`（`ws://127.0.0.1:38082`）。**不是**上游 `acpx` CLI 包本身——官方 `acpx` **不带** bridge-server |
+| D8 | **运行时依赖 `acpx`** | `@1agents/acp-bridge` **dependencies** 引入 `acpx`（runtime）；bridge 用 `import from "acpx/runtime"`。Supervisor **禁止**默认 chdir 到不存在的 `modules/1acp` |
 | D9 | **cc-connect → `dependencies`** | 装 `@1agents/cli` 时 **一并安装**；独立包族 + 平台子包（见 §4.3） |
 | D9b | **cc-switch-cli → `dependencies`** | **不进 core**；独立 `@1agents/cc-switch` + 平台子包；装 cli **必带**（原生二进制，**不是** uv/pip） |
 | D10 | **主分发 = npm registry** | **core 等平台包直接 `npm publish`**，内含二进制 |

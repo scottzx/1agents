@@ -67,8 +67,8 @@ for p in core-linux-x64 core-linux-arm64 core-darwin-arm64 \
   publish_one "$PKG/$p"
 done
 
-# 2) content + meta
-for p in web skills happy cc-connect cc-switch; do
+# 2) content + meta (+ acp-bridge for Chat WebSocket microservice)
+for p in web skills happy acp-bridge cc-connect cc-switch; do
   publish_one "$PKG/$p"
 done
 

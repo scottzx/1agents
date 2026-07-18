@@ -70,6 +70,7 @@ node_modules
 .playwright-mcp
 .DS_Store
 npm/npm_recover_code.md
+npm_token.txt
 certs/
 
 # Legacy root npm runtime (never commit)
