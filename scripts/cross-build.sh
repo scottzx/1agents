@@ -73,6 +73,8 @@ build_openssl() {
         return
     fi
     openssl_target=$(map_openssl_target "${BUILD_TARGET}")
+    openssl_ar=$(command -v "${TARGET}-ar" || command -v ar)
+    openssl_ranlib=$(command -v "${TARGET}-ranlib" || command -v ranlib)
     echo "=== Building openssl-${OPENSSL_VERSION} (${openssl_target})..."
     curl -sLo- "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" | tar xz -C "${BUILD_DIR}"
     pushd "${BUILD_DIR}/openssl-${OPENSSL_VERSION}"
@@ -83,9 +85,11 @@ build_openssl() {
                 curl -sLo- https://github.com/openssl/openssl/pull/29826.patch | patch -p1
                 ;;
         esac
-        env CC=gcc CROSS_COMPILE="${TARGET}-" CFLAGS="${openssl_cflags}" \
-            ./Configure "${openssl_target}" no-ssl3 no-err -DOPENSSL_SMALL_FOOTPRINT --prefix="${STAGE_DIR}" \
-        && make -j"$(nproc)" all > /dev/null && make install_sw
+        env CC=gcc AR="${openssl_ar}" RANLIB="${openssl_ranlib}" \
+            CROSS_COMPILE="${TARGET}-" CFLAGS="${openssl_cflags}" \
+            ./Configure "${openssl_target}" no-ssl3 no-err -DOPENSSL_SMALL_FOOTPRINT --prefix="${STAGE_DIR}"
+        make -j"$(nproc)" all > /dev/null
+        make install_sw
     popd
 }
 
