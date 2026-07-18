@@ -322,7 +322,20 @@ docs/features/npm-package-split/
 | cc-connect / core 双平台包漏装 | meta 包 postinstall 检测；CI 装跑冒烟 |
 | skills uv/pip 环境差 | 文档 + 分层日志；不 fatal 核心 |
 | acpx 上游 breaking | pin 版本或发 `@1agents/acpx` |
-| scope 权限 | 确认 `@1agents` org publish 权限覆盖所有新包名 |
+| scope 权限 | 确认 `@1agents` org publish 权限覆盖所有新包名；**Granular Token 若只勾了 `@1agents/wire`，发布 `core-linux-x64` 会 E404**（npm 用 404 代替 403） |
+
+### npm 首次发布 E404（运维）
+
+`PUT .../@1agents%2fcore-linux-x64` → **404** 时：
+
+1. 包构建/填充一般是成功的；失败在 **registry 权限**。
+2. 到 https://www.npmjs.com/settings/~/tokens 新建 **Granular Access Token**：
+   - Packages: **Read and write**
+   - Organizations: **1agents**（可 publish）
+   - Packages 选择：**All packages**，或允许在 `@1agents` 下 **创建新包**
+3. 将 token 写入 GitHub secret **`NPM_TOKEN`**
+4. 确认账号是 `@1agents` org 成员且具备 publish
+5. 仅有 `@1agents/wire` 权限的 token **不能** 发布 `core-*` / `cli` 等新名
 
 ---
 

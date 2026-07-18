@@ -754,7 +754,9 @@ jobs:
 
       - name: Publish @1agents/* packages to npm registry
         env:
+          # setup-node registry-url uses NODE_AUTH_TOKEN; our script also accepts NPM_TOKEN
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${NPM_TOKEN:-}" ]; then
@@ -775,10 +777,8 @@ jobs:
             exit 1
           fi
 
-          # Dry-run pack sizes
           (cd npm/packages/cli && npm pack --dry-run --ignore-scripts 2>&1 | tail -5)
 
-          export NPM_TOKEN
           ./scripts/npm-publish-all.sh
 
           echo "Published @1agents/* @${{ needs.prepare.outputs.npm_version }}"
