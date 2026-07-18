@@ -101,57 +101,13 @@ jobs:
           name: html-header
           path: modules/ttyd/src/html.h
 
-  # ── 1skills PyInstaller build ─────────────────────────────────────────────
-  # PyInstaller embeds the CPython runtime, so the build MUST run natively on
-  # each target platform/arch. Cross-compilation is not supported.
-  build-1skills:
-    name: build-1skills-${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: linux-x64
-            runner: ubuntu-latest
-          - target: linux-arm64
-            runner: ubuntu-24.04-arm
-          - target: darwin-arm64
-            runner: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Install build dependencies
-        working-directory: modules/1skills
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt ".[build]"
-          npm ci
-
-      - name: Build 1skills release artifact
-        working-directory: modules/1skills
-        run: python scripts/build_release.py
-
-      - name: Upload 1skills artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: 1skills-${{ matrix.target }}
-          path: modules/1skills/.artifacts/release/*
+  # 1skills: host Python only (no PyInstaller). Release ships modules/1skills
+  # Python sources via scripts/package-1skills-python.sh; SkillsSupervisor
+  # bootstraps a venv with the host python3 on first launch.
 
   build-linux:
     runs-on: ${{ matrix.runner }}
-    needs: [prepare, build-frontend, build-1skills]
+    needs: [prepare, build-frontend]
     strategy:
       matrix:
         include:
@@ -160,13 +116,11 @@ jobs:
             goarch: amd64
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
-            skills_target: linux-x64
           - arch: arm64
             target: arm64
             goarch: arm64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
-            skills_target: linux-arm64
     steps:
       - uses: actions/checkout@v6
         with:
@@ -287,46 +241,38 @@ jobs:
           mkdir -p build
           cp modules/cc-switch-cli/src-tauri/target/${{ matrix.rust_target }}/release/cc-switch build/cc-switch
 
-      - name: Download cloudflared binary
-        run: |
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            curl -L -o build/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
-          else
-            curl -L -o build/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-          fi
-          chmod +x build/cloudflared
-
-      - name: Download 1skills artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: 1skills-${{ matrix.skills_target }}
-          path: temp-1skills
-
-      - name: Extract skill-manager binary
-        run: |
-          # The artifact is skill-manager-v{version}-{target}.tar.gz containing skill-manager/ dir
-          ARCHIVE=$(find temp-1skills -name '*.tar.gz' | head -1)
-          mkdir -p temp-skill-manager
-          tar -xzf "$ARCHIVE" -C temp-skill-manager
-          chmod +x temp-skill-manager/skill-manager/skill-manager
+      # cloudflared is optional: tunnel supervisor downloads it on demand
+      # (PATH → ~/.1agents/bin → GitHub releases). Not shipped in the archive.
 
       - name: Build happy bundle
         run: ./scripts/build-happy-bundle.sh
+        # Default: omit happy-cli node_modules (installed at npm postinstall / first launch)
 
-      - name: Package Release Archive
+      - name: Package 1skills Python source (host Python)
+        run: ./scripts/package-1skills-python.sh build/1skills
+
+      - name: Package Release Archive (optional non-npm bypass)
         run: |
           mkdir -p release-pkg/bin
           cp build/1agents release-pkg/bin/
           cp build/ttyd release-pkg/bin/
           cp build/cc-connect release-pkg/bin/
           cp build/cc-switch release-pkg/bin/
-          cp build/cloudflared release-pkg/bin/
           cp build/happy release-pkg/bin/
           cp -r build/happy-cli release-pkg/bin/happy-cli
           cp -r build/adapter release-pkg/bin/adapter
-          cp -r temp-skill-manager/skill-manager/. release-pkg/bin/
+          cp -r build/1skills release-pkg/1skills
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz -C release-pkg .
+
+      - name: Fill npm packages for this platform
+        env:
+          NPM_PLAT: ${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
+          CORE_BIN_DIR: ${{ github.workspace }}/build
+          WEB_DIST: ${{ github.workspace }}/html-dist
+          SKILLS_SRC: ${{ github.workspace }}/build/1skills
+          HAPPY_OUT: ${{ github.workspace }}/build
+        run: ./scripts/npm-fill-packages.sh
 
       - name: Upload Linux Archive
         uses: actions/upload-artifact@v7
@@ -334,9 +280,24 @@ jobs:
           name: 1agents-linux-${{ matrix.arch }}
           path: 1agents-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.arch }}.tar.gz
 
+      - name: Upload npm packages (linux platform binaries)
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-pkgs-linux-${{ matrix.arch }}
+          path: |
+            npm/packages/core-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
+            npm/packages/cc-connect-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
+            npm/packages/cc-switch-${{ matrix.arch == 'amd64' && 'linux-x64' || 'linux-arm64' }}
+            npm/packages/web
+            npm/packages/skills
+            npm/packages/happy
+            npm/packages/cli
+            npm/packages/cc-connect
+            npm/packages/cc-switch
+
   build-macos:
     runs-on: macos-latest
-    needs: [prepare, build-frontend, build-1skills]
+    needs: [prepare, build-frontend]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -442,47 +403,55 @@ jobs:
             --release
           cp modules/cc-switch-cli/src-tauri/target/release/cc-switch build-ttyd/cc-switch
 
-      - name: Download cloudflared binary
-        run: |
-          curl -L -o build-ttyd/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
-          chmod +x build-ttyd/cloudflared
-
-      - name: Download 1skills artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: 1skills-darwin-arm64
-          path: temp-1skills
-
-      - name: Extract skill-manager binary
-        run: |
-          ARCHIVE=$(find temp-1skills -name '*.tar.gz' | head -1)
-          mkdir -p temp-skill-manager
-          tar -xzf "$ARCHIVE" -C temp-skill-manager
-          chmod +x temp-skill-manager/skill-manager/skill-manager
-
       - name: Build happy bundle
         run: ./scripts/build-happy-bundle.sh "$PWD/build-ttyd"
 
-      - name: Package Release Archive
+      - name: Package 1skills Python source (host Python)
+        run: ./scripts/package-1skills-python.sh build-ttyd/1skills
+
+      - name: Package Release Archive (optional non-npm bypass)
         run: |
           mkdir -p release-pkg/bin
           cp build-ttyd/1agents release-pkg/bin/
           cp build-ttyd/ttyd release-pkg/bin/
           cp build-ttyd/cc-connect release-pkg/bin/
           cp build-ttyd/cc-switch release-pkg/bin/
-          cp build-ttyd/cloudflared release-pkg/bin/
           cp build-ttyd/happy release-pkg/bin/
           cp -r build-ttyd/happy-cli release-pkg/bin/happy-cli
           cp -r build-ttyd/adapter release-pkg/bin/adapter
-          cp -r temp-skill-manager/skill-manager/. release-pkg/bin/
+          cp -r build-ttyd/1skills release-pkg/1skills
           cp -r html-dist release-pkg/dist
           tar -czf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C release-pkg .
+
+      - name: Fill npm packages (darwin-arm64)
+        env:
+          NPM_PLAT: darwin-arm64
+          CORE_BIN_DIR: ${{ github.workspace }}/build-ttyd
+          WEB_DIST: ${{ github.workspace }}/html-dist
+          SKILLS_SRC: ${{ github.workspace }}/build-ttyd/1skills
+          HAPPY_OUT: ${{ github.workspace }}/build-ttyd
+        run: ./scripts/npm-fill-packages.sh
 
       - name: Upload macOS Archive
         uses: actions/upload-artifact@v7
         with:
           name: 1agents-darwin-arm64
           path: 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz
+
+      - name: Upload npm packages (darwin-arm64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-pkgs-darwin-arm64
+          path: |
+            npm/packages/core-darwin-arm64
+            npm/packages/cc-connect-darwin-arm64
+            npm/packages/cc-switch-darwin-arm64
+            npm/packages/web
+            npm/packages/skills
+            npm/packages/happy
+            npm/packages/cli
+            npm/packages/cc-connect
+            npm/packages/cc-switch
 
   build-desktop:
     strategy:
@@ -491,12 +460,10 @@ jobs:
         include:
           - platform: macos-latest
             os_name: macos
-            skills_target: darwin-arm64
           - platform: windows-latest
             os_name: windows
-            skills_target: ''  # 1skills does not support Windows; omitted from desktop bundle
     runs-on: ${{ matrix.platform }}
-    needs: [prepare, build-frontend, build-1skills]
+    needs: [prepare, build-frontend]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -641,30 +608,24 @@ jobs:
             --release
           cp modules/cc-switch-cli/src-tauri/target/release/cc-switch.exe build/cc-switch.exe
 
-      - name: Download 1skills artifact (macOS only)
-        if: matrix.os_name == 'macos'
-        uses: actions/download-artifact@v8
-        with:
-          name: 1skills-${{ matrix.skills_target }}
-          path: temp-1skills
-
-      - name: Extract skill-manager binary (macOS only)
-        if: matrix.os_name == 'macos'
-        run: |
-          ARCHIVE=$(find temp-1skills -name '*.tar.gz' | head -1)
-          mkdir -p temp-skill-manager
-          tar -xzf "$ARCHIVE" -C temp-skill-manager
-          chmod +x temp-skill-manager/skill-manager/skill-manager
-          cp temp-skill-manager/skill-manager/skill-manager build/skill-manager
-
       - name: Build happy bundle
         shell: bash
-        run: ./scripts/build-happy-bundle.sh
+        # Desktop may be offline at first run; pre-install happy-cli deps into the bundle.
+        run: BUNDLE_NODE_MODULES=1 ./scripts/build-happy-bundle.sh
+
+      - name: Package 1skills Python source (host Python)
+        shell: bash
+        run: ./scripts/package-1skills-python.sh build/1skills
 
       - name: Setup Tauri resources
         shell: bash
         run: |
           ./scripts/setup-resources.sh
+          # Ship 1skills Python source for host-Python SkillsSupervisor (no PyInstaller).
+          if [ -d build/1skills ]; then
+            rm -rf src-tauri/resources/1skills
+            cp -r build/1skills src-tauri/resources/1skills
+          fi
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -685,35 +646,102 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Clean npm/bin/ before publishing
-        run: |
-          # Defensive cleanup: any tracked binary that escaped into npm/bin/
-          # would otherwise be published on top of the platform-specific ones.
-          rm -rf npm/bin
-          mkdir -p npm/bin
-
-      - name: Download all archives
+      - name: Download all archives and npm package artifacts
         uses: actions/download-artifact@v8
         with:
           merge-multiple: true
+          path: artifacts
+
+      - name: Layout GitHub Release tarballs + fill npm packages from archives
+        run: |
+          set -euo pipefail
+          # Collect tarballs (optional non-npm bypass + source of binaries for npm fill)
+          find artifacts -name '1agents-*.tar.gz' -exec cp -n {} . \; || true
+          ls -la 1agents-*.tar.gz
+
+          # Prefer pre-filled npm package artifacts when present
+          if find artifacts -type f -path '*/bin/1agents' | grep -q .; then
+            echo "=== using pre-filled npm package artifacts ==="
+            while IFS= read -r p; do
+              # path like artifacts/.../core-linux-x64/bin/1agents
+              rel="${p#artifacts/}"
+              # find package root (directory containing package.json)
+              d=$(dirname "$(dirname "$p")")
+              name=$(basename "$d")
+              case "$name" in
+                core-*|cc-connect-*|cc-switch-*)
+                  rm -rf "npm/packages/$name"
+                  cp -a "$d" "npm/packages/$name"
+                  ;;
+              esac
+            done < <(find artifacts -type f -path '*/bin/1agents' -o -type f -path '*/bin/cc-connect' -o -type f -path '*/bin/cc-switch')
+            for shared in web skills happy cli cc-connect cc-switch; do
+              found=$(find artifacts -type d -name "$shared" | head -1 || true)
+              if [ -n "$found" ] && [ -f "$found/package.json" ]; then
+                rm -rf "npm/packages/$shared"
+                cp -a "$found" "npm/packages/$shared"
+              fi
+            done
+          fi
+
+          # Always also fill from tarballs so every platform is present
+          fill_from_tar() {
+            local tarfile="$1" plat="$2"
+            local tmp
+            tmp=$(mktemp -d)
+            tar -xzf "$tarfile" -C "$tmp"
+            NPM_PLAT="$plat" \
+              CORE_BIN_DIR="$tmp/bin" \
+              WEB_DIST="$tmp/dist" \
+              SKILLS_SRC="$tmp/1skills" \
+              HAPPY_OUT="$tmp/bin" \
+              ./scripts/npm-fill-packages.sh
+            # happy-cli may live under bin/happy-cli in tarball
+            if [ -d "$tmp/bin/happy-cli" ]; then
+              HAPPY_OUT="$tmp/bin" NPM_PLAT="$plat" CORE_BIN_DIR="$tmp/bin" WEB_DIST="$tmp/dist" SKILLS_SRC="$tmp/1skills" \
+                ./scripts/npm-fill-packages.sh
+            fi
+            rm -rf "$tmp"
+          }
+
+          for t in 1agents-*-linux-amd64.tar.gz; do
+            [ -f "$t" ] && fill_from_tar "$t" "linux-x64"
+          done
+          for t in 1agents-*-linux-arm64.tar.gz; do
+            [ -f "$t" ] && fill_from_tar "$t" "linux-arm64"
+          done
+          for t in 1agents-*-darwin-arm64.tar.gz; do
+            [ -f "$t" ] && fill_from_tar "$t" "darwin-arm64"
+          done
+
+          echo "=== npm/packages binaries ==="
+          find npm/packages -path '*/bin/*' ! -name '.gitkeep' | sort
 
       - name: Build OTA manifest (server only)
         run: |
-          # Desktop OTA is shelved: we no longer publish the desktop updater
-          # manifest (build-tauri-manifest.py / desktop-*.json). Server/web OTA
-          # manifest.json is still generated as before.
           python3 scripts/build-manifest.py \
             --version "${{ needs.prepare.outputs.tag }}" \
             --artifacts . \
             --output manifest.json
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (tarballs optional bypass)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: Release ${{ needs.prepare.outputs.tag }}
           draft: false
           prerelease: false
+          body: |
+            ## npm (default install path)
+
+            ```bash
+            npm install -g @1agents/cli@${{ needs.prepare.outputs.npm_version }}
+            ```
+
+            Platform binaries ship as `@1agents/core-<plat>` etc. **directly on the npm registry**.
+            These GitHub Release tarballs are an **optional non-npm bypass** (desktop/offline).
+
+            See `docs/features/npm-package-split/prd.md`.
           files: |
             1agents-*.tar.gz
             manifest.json
@@ -722,57 +750,36 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+          registry-url: https://registry.npmjs.org
 
-      - name: Publish to NPM
+      - name: Publish @1agents/* packages to npm registry
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "NPM_TOKEN secret is not set. Skipping NPM publishing step."
-            echo "To publish automatically, add NPM_TOKEN to your repository secrets."
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "NPM_TOKEN secret is not set. Skipping npm publish (GitHub Release still created)."
             exit 0
           fi
 
-          # Extract binaries and dist into the npm packaging directory using foolproof temporary folders
-          # Extract linux-amd64
-          mkdir -p temp-linux-amd64
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C temp-linux-amd64
-          mkdir -p npm/bin/linux-amd64
-          mv temp-linux-amd64/bin/* npm/bin/linux-amd64/
-          rm -rf temp-linux-amd64
+          node scripts/npm-set-version.mjs "${{ needs.prepare.outputs.npm_version }}"
 
-          # Extract linux-arm64
-          mkdir -p temp-linux-arm64
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-arm64.tar.gz -C temp-linux-arm64
-          mkdir -p npm/bin/linux-arm64
-          mv temp-linux-arm64/bin/* npm/bin/linux-arm64/
-          rm -rf temp-linux-arm64
+          # Sanity: cli has no embedded binaries; at least one core platform package has binaries
+          if find npm/packages/cli -path '*/bin/*' ! -name '.gitkeep' 2>/dev/null | grep -q .; then
+            echo "ERROR: @1agents/cli must not contain platform binaries" >&2
+            exit 1
+          fi
+          if ! find npm/packages/core-* -path '*/bin/1agents' 2>/dev/null | grep -q .; then
+            echo "ERROR: no core platform package contains bin/1agents — fill step failed" >&2
+            find npm/packages -maxdepth 3 | head -80
+            exit 1
+          fi
 
-          # Extract darwin-arm64
-          mkdir -p temp-darwin-arm64
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-darwin-arm64.tar.gz -C temp-darwin-arm64
-          mkdir -p npm/bin/darwin-arm64
-          mv temp-darwin-arm64/bin/* npm/bin/darwin-arm64/
-          rm -rf temp-darwin-arm64
+          # Dry-run pack sizes
+          (cd npm/packages/cli && npm pack --dry-run --ignore-scripts 2>&1 | tail -5)
 
-          # Extract dist (frontend assets) from linux-amd64
-          mkdir -p temp-dist
-          tar -xzf 1agents-${{ needs.prepare.outputs.tag }}-linux-amd64.tar.gz -C temp-dist
-          mv temp-dist/dist npm/
-          rm -rf temp-dist
+          export NPM_TOKEN
+          ./scripts/npm-publish-all.sh
 
-          cd npm
-
-          # Update the version in package.json to NPM SemVer
-          node -e "
-            const fs = require('fs');
-            const pkg = require('./package.json');
-            pkg.version = '${{ needs.prepare.outputs.npm_version }}';
-            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-
-          # Configure NPM auth and publish
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-          npm publish --access public
-
-          echo "Successfully published version ${{ needs.prepare.outputs.npm_version }} to NPM registry!"
+          echo "Published @1agents/* @${{ needs.prepare.outputs.npm_version }}"
+          echo "Install: npm i -g @1agents/cli@${{ needs.prepare.outputs.npm_version }}"
