@@ -11,7 +11,14 @@ import { PlanChecklist } from './PlanChecklist';
 import { SessionTakenOverBanner } from './SessionTakenOverBanner';
 import { ChatErrorBanner } from './ChatErrorBanner';
 import { SessionAuthBadge } from './SessionAuthBadge';
-import { PermissionPrompt, type PendingPermission } from './MessageBubble';
+import {
+    AskUserPrompt,
+    ExitPlanPrompt,
+    PermissionPrompt,
+    type PendingAskUser,
+    type PendingExitPlan,
+    type PendingPermission,
+} from './MessageBubble';
 import { closeAuthRequiredModal, openAuthRequiredModal } from '../../stores/modalStore';
 import type { ChatItem } from './hooks';
 
@@ -56,6 +63,8 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
         cancel,
         cancelQueued,
         respondPermission,
+        respondAskUserQuestion,
+        respondExitPlanMode,
         setPermissionMode,
         setSessionMode,
         setConfigOption,
@@ -108,9 +117,11 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // mode_changed without extra wiring.
     const currentModeId = modes?.currentModeId;
 
-    // Unresolved permissions float above the composer; resolved ones stay
-    // as receipts inside the (default-collapsed) tool group.
+    // Unresolved permissions / questionnaires float above the composer;
+    // resolved ones stay as receipts inside the (default-collapsed) tool group.
     const pendingPermissions = collectPendingPermissions(items);
+    const pendingAskUsers = collectPendingAskUsers(items);
+    const pendingExitPlans = collectPendingExitPlans(items);
 
     return (
         <div class="chat-panel" data-session-mode={currentModeId}>
@@ -147,6 +158,8 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 <ChatErrorBanner message={lastError.message} code={lastError.code} onDismiss={dismissError} />
             )}
             <PermissionPrompt permissions={pendingPermissions} onRespond={respondPermission} />
+            <AskUserPrompt requests={pendingAskUsers} onRespond={respondAskUserQuestion} />
+            <ExitPlanPrompt requests={pendingExitPlans} onRespond={respondExitPlanMode} />
             <Composer
                 onSend={send}
                 onCancel={cancel}
@@ -190,6 +203,63 @@ function collectPendingPermissions(items: ChatItem[]): PendingPermission[] {
         if (item.kind === 'tool_use') {
             for (const call of item.calls) {
                 if (call.permission) push(call.permission);
+            }
+        }
+    }
+    return pending;
+}
+
+function collectPendingAskUsers(items: ChatItem[]): PendingAskUser[] {
+    const seen = new Set<string>();
+    const pending: PendingAskUser[] = [];
+    const push = (p: PendingAskUser) => {
+        if (!p.requestId || seen.has(p.requestId) || p.resolved) return;
+        seen.add(p.requestId);
+        pending.push(p);
+    };
+    for (const item of items) {
+        if (item.kind === 'ask_user_question') {
+            push({
+                requestId: item.requestId,
+                toolCallId: item.toolCallId,
+                mode: item.mode,
+                questions: item.questions,
+                ...(item.resolved ? { resolved: item.resolved } : {}),
+                ...(item.answers ? { answers: item.answers } : {}),
+            });
+            continue;
+        }
+        if (item.kind === 'tool_use') {
+            for (const call of item.calls) {
+                if (call.askUser) push(call.askUser);
+            }
+        }
+    }
+    return pending;
+}
+
+function collectPendingExitPlans(items: ChatItem[]): PendingExitPlan[] {
+    const seen = new Set<string>();
+    const pending: PendingExitPlan[] = [];
+    const push = (p: PendingExitPlan) => {
+        if (!p.requestId || seen.has(p.requestId) || p.resolved) return;
+        seen.add(p.requestId);
+        pending.push(p);
+    };
+    for (const item of items) {
+        if (item.kind === 'exit_plan_mode') {
+            push({
+                requestId: item.requestId,
+                toolCallId: item.toolCallId,
+                planContent: item.planContent,
+                ...(item.resolved ? { resolved: item.resolved } : {}),
+                ...(item.comments ? { comments: item.comments } : {}),
+            });
+            continue;
+        }
+        if (item.kind === 'tool_use') {
+            for (const call of item.calls) {
+                if (call.exitPlan) push(call.exitPlan);
             }
         }
     }

@@ -22,9 +22,12 @@ import {
     handleSessionsList,
 } from '../../stores/sessionStore';
 import type {
+    AskUserAnswerValue,
+    AskUserOutcome,
     AuthState,
     ChatItem,
     ConnectionState,
+    ExitPlanOutcome,
     SessionModesState,
     AvailableCommand,
     SessionUsage,
@@ -71,6 +74,12 @@ interface UseBridgeState {
     cancel: () => void;
     cancelQueued: (requestId: string) => void;
     respondPermission: (requestId: string, decision: PermissionDecision) => void;
+    respondAskUserQuestion: (
+        requestId: string,
+        outcome: AskUserOutcome,
+        answers?: Record<string, AskUserAnswerValue>
+    ) => void;
+    respondExitPlanMode: (requestId: string, outcome: ExitPlanOutcome, comments?: string) => void;
     setPermissionMode: (mode: PermissionMode) => void;
     /** Switch the agent's native session mode (plan/acceptEdits/…). */
     setSessionMode: (modeId: string) => void;
@@ -201,6 +210,22 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         [session]
     );
 
+    const respondAskUserQuestion = useCallback(
+        (requestId: string, outcome: AskUserOutcome, answers?: Record<string, AskUserAnswerValue>) => {
+            if (!session) return;
+            globalBridgeManager.respondAskUserQuestion(session, requestId, outcome, answers);
+        },
+        [session]
+    );
+
+    const respondExitPlanMode = useCallback(
+        (requestId: string, outcome: ExitPlanOutcome, comments?: string) => {
+            if (!session) return;
+            globalBridgeManager.respondExitPlanMode(session, requestId, outcome, comments);
+        },
+        [session]
+    );
+
     const setPermissionMode = useCallback(
         (mode: PermissionMode) => {
             if (!session) return;
@@ -263,6 +288,8 @@ export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): U
         cancel,
         cancelQueued,
         respondPermission,
+        respondAskUserQuestion,
+        respondExitPlanMode,
         setPermissionMode,
         setSessionMode,
         setConfigOption,

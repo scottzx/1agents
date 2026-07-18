@@ -59,6 +59,59 @@ export interface ToolCallInfo {
         options: Array<{ text: string; data: string }>;
         resolved?: 'allow' | 'deny';
     };
+    /**
+     * Grok Build `_x.ai/ask_user_question` questionnaire nested on the matching
+     * tool_use call. Unresolved prompts also float above the composer; once
+     * answered the receipt stays on the tool card.
+     */
+    askUser?: AskUserQuestionState;
+    /**
+     * Grok Build `_x.ai/exit_plan_mode` plan approval nested on the matching
+     * tool_use call. Unresolved prompts float above the composer like
+     * permission requests.
+     */
+    exitPlan?: ExitPlanModeState;
+}
+
+/** Outcome of a Grok exit_plan_mode approval. */
+export type ExitPlanOutcome = 'approved' | 'rejected' | 'abandoned';
+
+/** Nested / pending state for one exit_plan_mode request. */
+export interface ExitPlanModeState {
+    requestId: string;
+    toolCallId?: string;
+    planContent: string;
+    resolved?: ExitPlanOutcome;
+    comments?: string;
+}
+
+/** One multiple-choice option inside an ask_user_question questionnaire. */
+export interface AskUserOption {
+    label: string;
+    description: string;
+    preview?: string | null;
+}
+
+/** One question in a Grok ask_user_question request. */
+export interface AskUserQuestionItem {
+    question: string;
+    options: AskUserOption[];
+    multiSelect?: boolean | null;
+}
+
+/** Answer value: single string or multi-select list (wire StringOrVec). */
+export type AskUserAnswerValue = string | string[];
+
+export type AskUserOutcome = 'accepted' | 'skip_interview' | 'chat_about_this' | 'cancelled';
+
+/** Nested / pending state for one ask_user_question request. */
+export interface AskUserQuestionState {
+    requestId: string;
+    toolCallId?: string;
+    mode?: string;
+    questions: AskUserQuestionItem[];
+    resolved?: AskUserOutcome;
+    answers?: Record<string, AskUserAnswerValue>;
 }
 
 /**
@@ -120,6 +173,27 @@ export type ChatItem =
           options: Array<{ text: string; data: string }>;
           createdAt: number;
           resolved?: 'allow' | 'deny';
+      }
+    | {
+          id: string;
+          kind: 'ask_user_question';
+          requestId: string;
+          toolCallId?: string;
+          mode?: string;
+          questions: AskUserQuestionItem[];
+          createdAt: number;
+          resolved?: AskUserOutcome;
+          answers?: Record<string, AskUserAnswerValue>;
+      }
+    | {
+          id: string;
+          kind: 'exit_plan_mode';
+          requestId: string;
+          toolCallId?: string;
+          planContent: string;
+          createdAt: number;
+          resolved?: ExitPlanOutcome;
+          comments?: string;
       }
     | { id: string; kind: 'error'; content: string; createdAt: number };
 

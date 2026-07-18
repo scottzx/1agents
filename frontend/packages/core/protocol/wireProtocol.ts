@@ -29,6 +29,10 @@ export type BridgeEvent =
     | 'tool_result'
     | 'permission_request'
     | 'permission_timeout'
+    | 'ask_user_question'
+    | 'ask_user_question_timeout'
+    | 'exit_plan_mode'
+    | 'exit_plan_mode_timeout'
     | 'auth_required'
     | 'auth_completed'
     | 'logged_out'
@@ -53,6 +57,16 @@ export interface BridgeEventPayload {
     toolName?: string;
     toolCallId?: string;
     isError?: boolean;
+    /** Grok ask_user_question questionnaire (bridge → client). */
+    questions?: Array<{
+        question?: string;
+        options?: Array<{ label?: string; description?: string; preview?: string | null }>;
+        multiSelect?: boolean | null;
+        multi_select?: boolean | null;
+    }>;
+    mode?: string;
+    /** Grok exit_plan_mode plan markdown (bridge → client). */
+    planContent?: string;
     /** ACP tool metadata on tool_call events (Phase 6). */
     kind?: string;
     /**
@@ -109,6 +123,50 @@ export function respondPermissionAction(
     behavior: PermissionDecision
 ) {
     return { action: 'respond_permission', sessionId, requestId, toolCallId, behavior };
+}
+
+/**
+ * Reply to a Grok `_x.ai/ask_user_question` prompt forwarded by the bridge.
+ * Wire shape (adjacently tagged on `outcome`):
+ *   { outcome: "accepted", answers: { "<question>": "label" | ["a","b"] } }
+ *   { outcome: "skip_interview" | "chat_about_this" | "cancelled" }
+ */
+export function respondAskUserQuestionAction(args: {
+    sessionId: string;
+    requestId: string;
+    outcome: 'accepted' | 'skip_interview' | 'chat_about_this' | 'cancelled';
+    answers?: Record<string, string | string[]>;
+    partialAnswers?: boolean;
+}) {
+    return {
+        action: 'respond_ask_user_question',
+        sessionId: args.sessionId,
+        requestId: args.requestId,
+        outcome: args.outcome,
+        ...(args.outcome === 'accepted' && args.answers ? { answers: args.answers } : {}),
+        ...(args.partialAnswers !== undefined ? { partial_answers: args.partialAnswers } : {}),
+    };
+}
+
+/**
+ * Reply to a Grok `_x.ai/exit_plan_mode` plan-approval prompt.
+ *   { outcome: "approved", comments?: "…" }   — start implementing
+ *   { outcome: "rejected", comments?: "…" }   — request changes / stay planning
+ *   { outcome: "abandoned" }                  — quit plan mode
+ */
+export function respondExitPlanModeAction(args: {
+    sessionId: string;
+    requestId: string;
+    outcome: 'approved' | 'rejected' | 'abandoned';
+    comments?: string;
+}) {
+    return {
+        action: 'respond_exit_plan_mode',
+        sessionId: args.sessionId,
+        requestId: args.requestId,
+        outcome: args.outcome,
+        ...(args.comments && args.comments.trim() ? { comments: args.comments.trim() } : {}),
+    };
 }
 
 // Field name is `permissionMode` (NOT `mode`) to match the JSON tag on

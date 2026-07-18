@@ -3,11 +3,18 @@ import { h } from 'preact';
 // jsxFragmentFactory compiler option, not by name in this file.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Fragment } from 'preact';
-import { useEffect, useRef, useMemo } from 'preact/hooks';
+import { useEffect, useRef, useMemo, useState } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { marked } from 'marked';
-import { t, getLang } from '../../i18n';
+import { t, getLang, type Lang } from '../../i18n';
 import type { PermissionDecision } from '../types';
+import type {
+    AskUserAnswerValue,
+    AskUserOutcome,
+    AskUserQuestionState,
+    ExitPlanModeState,
+    ExitPlanOutcome,
+} from '@1agents/core/protocol/types';
 import { renderMarkdown } from '../../utils/markdown';
 import { renderMermaidBlocks } from '../../utils/mermaid';
 import { activeProjectName } from '../../stores/taskNavStore';
@@ -35,6 +42,8 @@ export interface GroupedToolCall {
     status?: 'pending' | 'in_progress' | 'completed' | 'failed';
     locations?: Array<{ path: string; line?: number }>;
     diffs?: Array<{ path: string; oldText?: string; newText: string }>;
+    askUser?: AskUserQuestionState;
+    exitPlan?: ExitPlanModeState;
     permission?: {
         requestId: string;
         toolName: string;
@@ -896,6 +905,42 @@ function GroupedToolCallItem({ call, status }: { call: GroupedToolCall; status: 
                         </div>
                     )}
 
+                    {/* Resolved ask_user_question receipt. Live prompts sit in
+                        the composer-adjacent AskUserPrompt. */}
+                    {call.askUser?.resolved && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.askUser.title', lang)}</div>
+                            <div class="chat-ask-user-resolved">
+                                <span class="chat-ask-user-resolved-mark" aria-hidden="true">
+                                    {call.askUser.resolved === 'accepted' ? '✓' : '·'}
+                                </span>
+                                <span class="chat-ask-user-resolved-text">
+                                    {formatAskUserResolved(call.askUser, lang)}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Resolved exit_plan_mode receipt. Live approvals sit in
+                        the composer-adjacent ExitPlanPrompt. */}
+                    {call.exitPlan?.resolved && (
+                        <div class="chat-tool-section">
+                            <div class="chat-tool-section-title">{t('chat.exitPlan.title', lang)}</div>
+                            <div class={`chat-exit-plan-resolved chat-exit-plan-${call.exitPlan.resolved}`}>
+                                <span class="chat-exit-plan-resolved-mark" aria-hidden="true">
+                                    {call.exitPlan.resolved === 'approved'
+                                        ? '✓'
+                                        : call.exitPlan.resolved === 'abandoned'
+                                          ? '✕'
+                                          : '↩'}
+                                </span>
+                                <span class="chat-exit-plan-resolved-text">
+                                    {formatExitPlanResolved(call.exitPlan, lang)}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Output only when there is no diff result. */}
                     {diffs.length === 0 && (
                         <div class="chat-tool-section">
@@ -1082,6 +1127,324 @@ export function PermissionPrompt({
                     </div>
                 );
             })}
+        </div>
+    );
+}
+
+export type PendingAskUser = AskUserQuestionState;
+
+function formatAnswerValue(value: AskUserAnswerValue): string {
+    return Array.isArray(value) ? value.join(', ') : String(value);
+}
+
+/** Human-readable receipt for a resolved ask_user_question (tool card). */
+function formatAskUserResolved(state: AskUserQuestionState, lang: Lang): string {
+    switch (state.resolved) {
+        case 'accepted': {
+            const answers = state.answers ?? {};
+            const parts = Object.entries(answers).map(([q, a]) => `${q}=${formatAnswerValue(a)}`);
+            const summary = parts.length > 0 ? parts.join('; ') : '—';
+            return t('chat.askUser.resolved.accepted', lang, { summary });
+        }
+        case 'skip_interview':
+            return t('chat.askUser.resolved.skip', lang);
+        case 'chat_about_this':
+            return t('chat.askUser.resolved.chat', lang);
+        case 'cancelled':
+            return t('chat.askUser.resolved.cancelled', lang);
+        default:
+            return t('chat.askUser.resolved.cancelled', lang);
+    }
+}
+
+/**
+ * One questionnaire card: radio/checkbox options per question + free-text
+ * Other, then Submit / Skip / Discuss / Cancel.
+ */
+function AskUserQuestionCard({
+    request,
+    onRespond,
+}: {
+    request: PendingAskUser;
+    onRespond?: (requestId: string, outcome: AskUserOutcome, answers?: Record<string, AskUserAnswerValue>) => void;
+}) {
+    const lang = getLang();
+    // Selections keyed by question text. multi → string[]; single → string.
+    const [selections, setSelections] = useState<Record<string, string[]>>(() => {
+        const init: Record<string, string[]> = {};
+        for (const q of request.questions) init[q.question] = [];
+        return init;
+    });
+    const [otherText, setOtherText] = useState<Record<string, string>>(() => {
+        const init: Record<string, string> = {};
+        for (const q of request.questions) init[q.question] = '';
+        return init;
+    });
+
+    const toggleOption = (question: string, label: string, multi: boolean) => {
+        setSelections(prev => {
+            const cur = prev[question] ?? [];
+            if (multi) {
+                const next = cur.includes(label) ? cur.filter(x => x !== label) : [...cur, label];
+                return { ...prev, [question]: next };
+            }
+            return { ...prev, [question]: [label] };
+        });
+        // Choosing a listed option clears free-text Other for that question.
+        setOtherText(prev => ({ ...prev, [question]: '' }));
+    };
+
+    const setOther = (question: string, text: string) => {
+        setOtherText(prev => ({ ...prev, [question]: text }));
+        if (text.trim()) {
+            // Free text replaces listed selections for that question.
+            setSelections(prev => ({ ...prev, [question]: [] }));
+        }
+    };
+
+    const buildAnswers = (): Record<string, AskUserAnswerValue> | null => {
+        const answers: Record<string, AskUserAnswerValue> = {};
+        for (const q of request.questions) {
+            const other = (otherText[q.question] ?? '').trim();
+            const picked = selections[q.question] ?? [];
+            if (other) {
+                answers[q.question] = other;
+                continue;
+            }
+            if (picked.length === 0) return null;
+            answers[q.question] = q.multiSelect === true ? picked : picked[0]!;
+        }
+        return answers;
+    };
+
+    const submit = () => {
+        const answers = buildAnswers();
+        if (!answers) {
+            showToast(t('chat.askUser.needAnswer', lang));
+            return;
+        }
+        onRespond?.(request.requestId, 'accepted', answers);
+    };
+
+    return (
+        <div class="chat-ask-user-card">
+            <div class="chat-ask-user-card-header">{t('chat.askUser.title', lang)}</div>
+            <div class="chat-ask-user-questions">
+                {request.questions.map((q, qi) => {
+                    const multi = q.multiSelect === true;
+                    const picked = selections[q.question] ?? [];
+                    const other = otherText[q.question] ?? '';
+                    return (
+                        <div key={qi} class="chat-ask-user-question">
+                            <div class="chat-ask-user-question-text">
+                                {qi + 1}. {q.question}
+                                {multi && (
+                                    <span class="chat-ask-user-multi-tag">{t('chat.askUser.multiSelect', lang)}</span>
+                                )}
+                            </div>
+                            <div class="chat-ask-user-options" role={multi ? 'group' : 'radiogroup'}>
+                                {q.options.map((opt, oi) => {
+                                    const selected = picked.includes(opt.label);
+                                    const recommended = /\(Recommended\)|（推荐）/i.test(opt.label);
+                                    return (
+                                        <button
+                                            key={oi}
+                                            type="button"
+                                            class={`chat-ask-user-option${selected ? ' is-selected' : ''}${recommended ? ' is-recommended' : ''}`}
+                                            onClick={() => toggleOption(q.question, opt.label, multi)}
+                                            aria-pressed={selected}
+                                        >
+                                            <span class="chat-ask-user-option-mark" aria-hidden="true">
+                                                {multi ? (selected ? '☑' : '☐') : selected ? '●' : '○'}
+                                            </span>
+                                            <span class="chat-ask-user-option-body">
+                                                <span class="chat-ask-user-option-label">{opt.label}</span>
+                                                {opt.description && (
+                                                    <span class="chat-ask-user-option-desc">{opt.description}</span>
+                                                )}
+                                                {opt.preview && (
+                                                    <pre class="chat-ask-user-option-preview">{opt.preview}</pre>
+                                                )}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <label class="chat-ask-user-other">
+                                <span class="chat-ask-user-other-label">{t('chat.askUser.other', lang)}</span>
+                                <input
+                                    type="text"
+                                    class="chat-ask-user-other-input"
+                                    value={other}
+                                    placeholder={t('chat.askUser.otherPlaceholder', lang)}
+                                    onInput={e => setOther(q.question, (e.target as HTMLInputElement).value)}
+                                />
+                            </label>
+                        </div>
+                    );
+                })}
+            </div>
+            <div class="chat-ask-user-actions">
+                <button
+                    type="button"
+                    class="chat-ask-user-btn cancel"
+                    onClick={() => onRespond?.(request.requestId, 'cancelled')}
+                >
+                    {t('chat.askUser.cancel', lang)}
+                </button>
+                <button
+                    type="button"
+                    class="chat-ask-user-btn skip"
+                    onClick={() => onRespond?.(request.requestId, 'skip_interview')}
+                    title={t('chat.askUser.skipHint', lang)}
+                >
+                    {t('chat.askUser.skip', lang)}
+                </button>
+                <button
+                    type="button"
+                    class="chat-ask-user-btn chat"
+                    onClick={() => onRespond?.(request.requestId, 'chat_about_this')}
+                    title={t('chat.askUser.chatHint', lang)}
+                >
+                    {t('chat.askUser.chat', lang)}
+                </button>
+                <button type="button" class="chat-ask-user-btn submit" onClick={submit}>
+                    {t('chat.askUser.submit', lang)}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Half-panel above the composer for unresolved Grok ask_user_question prompts.
+ */
+export function AskUserPrompt({
+    requests,
+    onRespond,
+}: {
+    requests: PendingAskUser[];
+    onRespond?: (requestId: string, outcome: AskUserOutcome, answers?: Record<string, AskUserAnswerValue>) => void;
+}) {
+    if (requests.length === 0) return null;
+    return (
+        <div class="chat-ask-user-prompt" role="region" aria-label="ask user question">
+            {requests.map(req => (
+                <AskUserQuestionCard key={req.requestId} request={req} onRespond={onRespond} />
+            ))}
+        </div>
+    );
+}
+
+export type PendingExitPlan = ExitPlanModeState;
+
+/** Human-readable receipt for a resolved exit_plan_mode (tool card). */
+function formatExitPlanResolved(state: ExitPlanModeState, lang: Lang): string {
+    const comments = state.comments?.trim();
+    switch (state.resolved) {
+        case 'approved':
+            return comments
+                ? t('chat.exitPlan.resolved.approvedWithComments', lang, { comments })
+                : t('chat.exitPlan.resolved.approved', lang);
+        case 'rejected':
+            return comments
+                ? t('chat.exitPlan.resolved.rejectedWithComments', lang, { comments })
+                : t('chat.exitPlan.resolved.rejected', lang);
+        case 'abandoned':
+            return t('chat.exitPlan.resolved.abandoned', lang);
+        default:
+            return t('chat.exitPlan.resolved.abandoned', lang);
+    }
+}
+
+/**
+ * One plan-approval card: scrollable plan preview + feedback + 3 actions
+ * (Approve / Request changes / Quit), mirroring tool permission escalation.
+ */
+function ExitPlanCard({
+    request,
+    onRespond,
+}: {
+    request: PendingExitPlan;
+    onRespond?: (requestId: string, outcome: ExitPlanOutcome, comments?: string) => void;
+}) {
+    const lang = getLang();
+    const [comments, setComments] = useState('');
+    const planHtml = useMemo(() => {
+        const md = request.planContent?.trim() || t('chat.exitPlan.empty', lang);
+        try {
+            return marked.parse(md, { async: false }) as string;
+        } catch {
+            return `<pre>${md.replace(/</g, '&lt;')}</pre>`;
+        }
+    }, [request.planContent, lang]);
+
+    const respond = (outcome: ExitPlanOutcome) => {
+        const trimmed = comments.trim();
+        onRespond?.(request.requestId, outcome, trimmed || undefined);
+    };
+
+    return (
+        <div class="chat-exit-plan-card">
+            <div class="chat-exit-plan-card-header">{t('chat.exitPlan.title', lang)}</div>
+            <div class="chat-exit-plan-preview chat-md" dangerouslySetInnerHTML={{ __html: planHtml }} />
+            <label class="chat-exit-plan-feedback">
+                <span class="chat-exit-plan-feedback-label">{t('chat.exitPlan.feedback', lang)}</span>
+                <textarea
+                    class="chat-exit-plan-feedback-input"
+                    rows={2}
+                    value={comments}
+                    placeholder={t('chat.exitPlan.feedbackPlaceholder', lang)}
+                    onInput={e => setComments((e.target as HTMLTextAreaElement).value)}
+                />
+            </label>
+            <div class="chat-exit-plan-actions">
+                <button
+                    type="button"
+                    class="chat-exit-plan-btn abandon"
+                    onClick={() => respond('abandoned')}
+                    title={t('chat.exitPlan.abandonHint', lang)}
+                >
+                    {t('chat.exitPlan.abandon', lang)}
+                </button>
+                <button
+                    type="button"
+                    class="chat-exit-plan-btn reject"
+                    onClick={() => respond('rejected')}
+                    title={t('chat.exitPlan.rejectHint', lang)}
+                >
+                    {t('chat.exitPlan.reject', lang)}
+                </button>
+                <button
+                    type="button"
+                    class="chat-exit-plan-btn approve"
+                    onClick={() => respond('approved')}
+                    title={t('chat.exitPlan.approveHint', lang)}
+                >
+                    {t('chat.exitPlan.approve', lang)}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Half-panel above the composer for unresolved Grok exit_plan_mode approvals.
+ * Layout mirrors PermissionPrompt (composer-adjacent action bar).
+ */
+export function ExitPlanPrompt({
+    requests,
+    onRespond,
+}: {
+    requests: PendingExitPlan[];
+    onRespond?: (requestId: string, outcome: ExitPlanOutcome, comments?: string) => void;
+}) {
+    if (requests.length === 0) return null;
+    return (
+        <div class="chat-exit-plan-prompt" role="region" aria-label="exit plan mode">
+            {requests.map(req => (
+                <ExitPlanCard key={req.requestId} request={req} onRespond={onRespond} />
+            ))}
         </div>
     );
 }

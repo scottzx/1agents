@@ -6,7 +6,19 @@
 // reuse the exact same conversion + folding logic; the host layer keeps only the
 // transport + notify orchestration.
 
-import type { ChatItem, HistoryItem, ToolCallInfo, ToolCallStatus } from './types';
+import type {
+    AskUserAnswerValue,
+    AskUserOption,
+    AskUserOutcome,
+    AskUserQuestionItem,
+    AskUserQuestionState,
+    ChatItem,
+    ExitPlanModeState,
+    ExitPlanOutcome,
+    HistoryItem,
+    ToolCallInfo,
+    ToolCallStatus,
+} from './types';
 import type { ChatStatus } from './session';
 
 /** Normalize agent/runtime status strings onto the ACP ToolCallStatus set. */
@@ -294,6 +306,57 @@ export function tryAssignPending(s: PendingState): PendingState {
     }
     const nextPermissions: ChatItem[] = [];
     for (const p of s.pendingPermissions) {
+        if (p.kind === 'ask_user_question') {
+            let matched = false;
+            for (let i = items.length - 1; i >= 0; i--) {
+                const it = items[i];
+                if (it.kind !== 'tool_use') continue;
+                const callIdx = p.toolCallId ? it.calls.findIndex(c => c.toolCallId === p.toolCallId) : -1;
+                if (callIdx < 0) continue;
+                const askUser: AskUserQuestionState = {
+                    requestId: p.requestId,
+                    toolCallId: p.toolCallId,
+                    mode: p.mode,
+                    questions: p.questions,
+                    ...(p.resolved ? { resolved: p.resolved } : {}),
+                    ...(p.answers ? { answers: p.answers } : {}),
+                };
+                const updated = {
+                    ...it,
+                    calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, askUser })),
+                };
+                items = items.map((entry, idx) => (idx === i ? updated : entry));
+                matched = true;
+                break;
+            }
+            if (!matched) nextPermissions.push(p);
+            continue;
+        }
+        if (p.kind === 'exit_plan_mode') {
+            let matched = false;
+            for (let i = items.length - 1; i >= 0; i--) {
+                const it = items[i];
+                if (it.kind !== 'tool_use') continue;
+                const callIdx = p.toolCallId ? it.calls.findIndex(c => c.toolCallId === p.toolCallId) : -1;
+                if (callIdx < 0) continue;
+                const exitPlan: ExitPlanModeState = {
+                    requestId: p.requestId,
+                    toolCallId: p.toolCallId,
+                    planContent: p.planContent,
+                    ...(p.resolved ? { resolved: p.resolved } : {}),
+                    ...(p.comments ? { comments: p.comments } : {}),
+                };
+                const updated = {
+                    ...it,
+                    calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, exitPlan })),
+                };
+                items = items.map((entry, idx) => (idx === i ? updated : entry));
+                matched = true;
+                break;
+            }
+            if (!matched) nextPermissions.push(p);
+            continue;
+        }
         if (p.kind !== 'permission_request') {
             nextPermissions.push(p);
             continue;
@@ -581,6 +644,353 @@ export function applyPermissionTimeout(
     ];
 }
 
+function parseAskUserOptions(raw: unknown): AskUserOption[] {
+    if (!Array.isArray(raw)) return [];
+    const out: AskUserOption[] = [];
+    for (const item of raw) {
+        if (!item || typeof item !== 'object') continue;
+        const o = item as Record<string, unknown>;
+        if (typeof o.label !== 'string' || typeof o.description !== 'string') continue;
+        out.push({
+            label: o.label,
+            description: o.description,
+            preview: (o.preview as string | null | undefined) ?? undefined,
+        });
+    }
+    return out;
+}
+
+/** Normalize a bridge `ask_user_question` questions array into typed items. */
+export function parseAskUserQuestions(raw: unknown): AskUserQuestionItem[] {
+    if (!Array.isArray(raw)) return [];
+    const out: AskUserQuestionItem[] = [];
+    for (const item of raw) {
+        if (!item || typeof item !== 'object') continue;
+        const q = item as Record<string, unknown>;
+        if (typeof q.question !== 'string') continue;
+        const options = parseAskUserOptions(q.options);
+        if (options.length === 0) continue;
+        const multiRaw = 'multiSelect' in q ? q.multiSelect : q.multi_select;
+        const multiSelect = multiRaw === undefined ? undefined : multiRaw === null ? null : Boolean(multiRaw);
+        out.push({ question: q.question, options, multiSelect });
+    }
+    return out;
+}
+
+/**
+ * Fold an `ask_user_question` event: nest on the matching tool_use call when
+ * possible, otherwise park in pendingPermissions for later reconcile.
+ * Reuses pendingPermissions as the holding pen (same lifecycle as permission).
+ */
+export function applyAskUserQuestion(
+    s: PendingState,
+    ev: {
+        requestId?: string;
+        toolCallId?: string;
+        mode?: string;
+        questions?: unknown;
+    }
+): PendingState {
+    const requestId = ev.requestId || '';
+    const toolCallId = ev.toolCallId;
+    const questions = parseAskUserQuestions(ev.questions);
+    if (!requestId || questions.length === 0) {
+        return s;
+    }
+    const askUser: AskUserQuestionState = {
+        requestId,
+        toolCallId,
+        mode: ev.mode,
+        questions,
+    };
+    const items = [...flushStreamingCursor(s.items)];
+    let matched = false;
+    if (toolCallId) {
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            if (item.kind !== 'tool_use') continue;
+            const callIdx = item.calls.findIndex(c => c.toolCallId === toolCallId);
+            if (callIdx >= 0) {
+                items[i] = {
+                    ...item,
+                    calls: item.calls.map((c, idx) => (idx === callIdx ? { ...c, askUser } : c)),
+                };
+                matched = true;
+                break;
+            }
+        }
+    }
+    if (!matched) {
+        return {
+            items,
+            pendingResults: s.pendingResults,
+            pendingPermissions: [
+                ...s.pendingPermissions,
+                {
+                    id: cryptoId(),
+                    kind: 'ask_user_question',
+                    requestId,
+                    toolCallId,
+                    mode: ev.mode,
+                    questions,
+                    createdAt: Date.now(),
+                },
+            ],
+        };
+    }
+    return { items, pendingResults: s.pendingResults, pendingPermissions: s.pendingPermissions };
+}
+
+/**
+ * Fold an `ask_user_question_timeout` event: mark nested/pending request as
+ * cancelled and append a timeout error bubble.
+ */
+export function applyAskUserQuestionTimeout(
+    s: PendingState,
+    requestId: string | undefined,
+    message: string | undefined
+): PendingState {
+    const rid = requestId || '';
+    const items = flushStreamingCursor(s.items).map(it => {
+        if (it.kind === 'tool_use') {
+            let touched = false;
+            const calls = it.calls.map(c => {
+                if (c.askUser && c.askUser.requestId === rid && !c.askUser.resolved) {
+                    touched = true;
+                    return {
+                        ...c,
+                        askUser: { ...c.askUser, resolved: 'cancelled' as const },
+                    };
+                }
+                return c;
+            });
+            return touched ? { ...it, calls } : it;
+        }
+        if (it.kind === 'ask_user_question' && it.requestId === rid && !it.resolved) {
+            return { ...it, resolved: 'cancelled' as const };
+        }
+        return it;
+    });
+    const pendingPermissions = s.pendingPermissions.map(p => {
+        if (p.kind === 'ask_user_question' && p.requestId === rid && !p.resolved) {
+            return { ...p, resolved: 'cancelled' as const };
+        }
+        return p;
+    });
+    return {
+        items: [
+            ...items,
+            {
+                id: cryptoId(),
+                kind: 'error',
+                content: message || 'ask_user_question timed out.',
+                createdAt: Date.now(),
+            },
+        ],
+        pendingResults: s.pendingResults,
+        pendingPermissions,
+    };
+}
+
+/** Mark a nested/pending ask_user request as resolved after the user answers. */
+export function resolveAskUserQuestion(
+    s: PendingState,
+    requestId: string,
+    outcome: AskUserOutcome,
+    answers?: Record<string, AskUserAnswerValue>
+): PendingState {
+    const items = s.items.map(it => {
+        if (it.kind === 'tool_use') {
+            let touched = false;
+            const calls = it.calls.map(c => {
+                if (c.askUser && c.askUser.requestId === requestId && !c.askUser.resolved) {
+                    touched = true;
+                    return {
+                        ...c,
+                        askUser: {
+                            ...c.askUser,
+                            resolved: outcome,
+                            ...(answers ? { answers } : {}),
+                        },
+                    };
+                }
+                return c;
+            });
+            return touched ? { ...it, calls } : it;
+        }
+        if (it.kind === 'ask_user_question' && it.requestId === requestId && !it.resolved) {
+            return {
+                ...it,
+                resolved: outcome,
+                ...(answers ? { answers } : {}),
+            };
+        }
+        return it;
+    });
+    const pendingPermissions = s.pendingPermissions.map(p => {
+        if (p.kind === 'ask_user_question' && p.requestId === requestId && !p.resolved) {
+            return {
+                ...p,
+                resolved: outcome,
+                ...(answers ? { answers } : {}),
+            };
+        }
+        return p;
+    });
+    return { items, pendingResults: s.pendingResults, pendingPermissions };
+}
+
+/**
+ * Fold an `exit_plan_mode` event: nest on matching tool_use or park pending.
+ */
+export function applyExitPlanMode(
+    s: PendingState,
+    ev: { requestId?: string; toolCallId?: string; planContent?: string }
+): PendingState {
+    const requestId = ev.requestId || '';
+    const toolCallId = ev.toolCallId;
+    const planContent = typeof ev.planContent === 'string' ? ev.planContent : '';
+    if (!requestId) {
+        return s;
+    }
+    const exitPlan: ExitPlanModeState = {
+        requestId,
+        toolCallId,
+        planContent,
+    };
+    const items = [...flushStreamingCursor(s.items)];
+    let matched = false;
+    if (toolCallId) {
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            if (item.kind !== 'tool_use') continue;
+            const callIdx = item.calls.findIndex(c => c.toolCallId === toolCallId);
+            if (callIdx >= 0) {
+                items[i] = {
+                    ...item,
+                    calls: item.calls.map((c, idx) => (idx === callIdx ? { ...c, exitPlan } : c)),
+                };
+                matched = true;
+                break;
+            }
+        }
+    }
+    if (!matched) {
+        return {
+            items,
+            pendingResults: s.pendingResults,
+            pendingPermissions: [
+                ...s.pendingPermissions,
+                {
+                    id: cryptoId(),
+                    kind: 'exit_plan_mode',
+                    requestId,
+                    toolCallId,
+                    planContent,
+                    createdAt: Date.now(),
+                },
+            ],
+        };
+    }
+    return { items, pendingResults: s.pendingResults, pendingPermissions: s.pendingPermissions };
+}
+
+/** Fold `exit_plan_mode_timeout`: mark abandoned + error bubble. */
+export function applyExitPlanModeTimeout(
+    s: PendingState,
+    requestId: string | undefined,
+    message: string | undefined
+): PendingState {
+    const rid = requestId || '';
+    const items = flushStreamingCursor(s.items).map(it => {
+        if (it.kind === 'tool_use') {
+            let touched = false;
+            const calls = it.calls.map(c => {
+                if (c.exitPlan && c.exitPlan.requestId === rid && !c.exitPlan.resolved) {
+                    touched = true;
+                    return {
+                        ...c,
+                        exitPlan: { ...c.exitPlan, resolved: 'abandoned' as const },
+                    };
+                }
+                return c;
+            });
+            return touched ? { ...it, calls } : it;
+        }
+        if (it.kind === 'exit_plan_mode' && it.requestId === rid && !it.resolved) {
+            return { ...it, resolved: 'abandoned' as const };
+        }
+        return it;
+    });
+    const pendingPermissions = s.pendingPermissions.map(p => {
+        if (p.kind === 'exit_plan_mode' && p.requestId === rid && !p.resolved) {
+            return { ...p, resolved: 'abandoned' as const };
+        }
+        return p;
+    });
+    return {
+        items: [
+            ...items,
+            {
+                id: cryptoId(),
+                kind: 'error',
+                content: message || 'exit_plan_mode timed out.',
+                createdAt: Date.now(),
+            },
+        ],
+        pendingResults: s.pendingResults,
+        pendingPermissions,
+    };
+}
+
+/** Mark nested/pending exit_plan_mode as resolved after user decision. */
+export function resolveExitPlanMode(
+    s: PendingState,
+    requestId: string,
+    outcome: ExitPlanOutcome,
+    comments?: string
+): PendingState {
+    const items = s.items.map(it => {
+        if (it.kind === 'tool_use') {
+            let touched = false;
+            const calls = it.calls.map(c => {
+                if (c.exitPlan && c.exitPlan.requestId === requestId && !c.exitPlan.resolved) {
+                    touched = true;
+                    return {
+                        ...c,
+                        exitPlan: {
+                            ...c.exitPlan,
+                            resolved: outcome,
+                            ...(comments ? { comments } : {}),
+                        },
+                    };
+                }
+                return c;
+            });
+            return touched ? { ...it, calls } : it;
+        }
+        if (it.kind === 'exit_plan_mode' && it.requestId === requestId && !it.resolved) {
+            return {
+                ...it,
+                resolved: outcome,
+                ...(comments ? { comments } : {}),
+            };
+        }
+        return it;
+    });
+    const pendingPermissions = s.pendingPermissions.map(p => {
+        if (p.kind === 'exit_plan_mode' && p.requestId === requestId && !p.resolved) {
+            return {
+                ...p,
+                resolved: outcome,
+                ...(comments ? { comments } : {}),
+            };
+        }
+        return p;
+    });
+    return { items, pendingResults: s.pendingResults, pendingPermissions };
+}
+
 /** Flush the streaming cursor at end-of-turn (`done`). */
 export function applyDone(items: ChatItem[]): ChatItem[] {
     return flushStreamingCursor(items);
@@ -621,8 +1031,25 @@ export function deriveLiveStatus(s: {
     typing: boolean;
 }): ChatStatus | null {
     const hasPendingPermission =
-        s.pendingPermissions.some(p => p.kind === 'permission_request' && !p.resolved) ||
-        s.items.some(it => it.kind === 'tool_use' && it.calls.some(c => c.permission && !c.permission.resolved));
+        s.pendingPermissions.some(
+            p =>
+                (p.kind === 'permission_request' && !p.resolved) ||
+                (p.kind === 'ask_user_question' && !p.resolved) ||
+                (p.kind === 'exit_plan_mode' && !p.resolved)
+        ) ||
+        s.items.some(
+            it =>
+                it.kind === 'tool_use' &&
+                it.calls.some(
+                    c =>
+                        (c.permission && !c.permission.resolved) ||
+                        (c.askUser && !c.askUser.resolved) ||
+                        (c.exitPlan && !c.exitPlan.resolved)
+                )
+        ) ||
+        s.items.some(
+            it => (it.kind === 'ask_user_question' && !it.resolved) || (it.kind === 'exit_plan_mode' && !it.resolved)
+        );
     if (hasPendingPermission) return 'awaiting_permission';
     if (s.typing) return 'streaming';
     return null;

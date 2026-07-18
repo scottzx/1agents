@@ -36,17 +36,26 @@ import {
     applyToolResult,
     applyPermissionRequest,
     applyPermissionTimeout,
+    applyAskUserQuestion,
+    applyAskUserQuestionTimeout,
+    resolveAskUserQuestion,
+    applyExitPlanMode,
+    applyExitPlanModeTimeout,
+    resolveExitPlanMode,
     applyDone,
     appendError,
     resolvePermissionSide,
     deriveLiveStatus,
 } from '../../protocol/reducer';
+import type { AskUserAnswerValue, AskUserOutcome, ExitPlanOutcome } from '../../protocol/types';
 import {
     getHistoryAction,
     promptAction,
     cancelTurnAction,
     cancelQueuedAction,
     respondPermissionAction,
+    respondAskUserQuestionAction,
+    respondExitPlanModeAction,
     setPermissionModeAction,
     setSessionModeAction,
     setConfigOptionAction,
@@ -630,6 +639,42 @@ export class ChatBridgeManager {
                     this.notify(state);
                     break;
                 }
+                case 'ask_user_question': {
+                    if (!this.acceptTurnEvent(state)) break;
+                    const next = applyAskUserQuestion(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
+                case 'ask_user_question_timeout': {
+                    if (!state.turnStarted) break;
+                    const next = applyAskUserQuestionTimeout(state, payload.requestId, payload.message);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
+                case 'exit_plan_mode': {
+                    if (!this.acceptTurnEvent(state)) break;
+                    const next = applyExitPlanMode(state, payload);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
+                case 'exit_plan_mode_timeout': {
+                    if (!state.turnStarted) break;
+                    const next = applyExitPlanModeTimeout(state, payload.requestId, payload.message);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
+                    this.notify(state);
+                    break;
+                }
                 case 'auth_required': {
                     // The agent detected an expired token (or never had one).
                     // The host's ReauthModal subscribes to this through
@@ -925,6 +970,66 @@ export class ChatBridgeManager {
             // invariant.
             console.warn('[ChatBridgeManager] respond_permission: no nested permission found for requestId', requestId);
         }
+    }
+
+    /**
+     * Reply to a Grok ask_user_question questionnaire. Sends the wire action
+     * and optimistically marks the nested/pending request as resolved so the
+     * composer-adjacent prompt collapses immediately.
+     */
+    respondAskUserQuestion(
+        session: ChatSession,
+        requestId: string,
+        outcome: AskUserOutcome,
+        answers?: Record<string, AskUserAnswerValue>
+    ) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        if (outcome === 'accepted' && (!answers || Object.keys(answers).length === 0)) {
+            console.warn('[ChatBridgeManager] respond_ask_user_question: accepted without answers');
+            return;
+        }
+        state.ws.send(
+            JSON.stringify(
+                respondAskUserQuestionAction({
+                    sessionId: session.id,
+                    requestId,
+                    outcome,
+                    answers,
+                })
+            )
+        );
+        const next = resolveAskUserQuestion(state, requestId, outcome, answers);
+        state.items = next.items;
+        state.pendingResults = next.pendingResults;
+        state.pendingPermissions = next.pendingPermissions;
+        this.notify(state);
+    }
+
+    /**
+     * Reply to a Grok exit_plan_mode approval. Sends the wire action and
+     * optimistically marks the nested/pending request as resolved.
+     */
+    respondExitPlanMode(session: ChatSession, requestId: string, outcome: ExitPlanOutcome, comments?: string) {
+        const state = this.sessions.get(session.id);
+        if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
+        if (!state.ready) return;
+        state.ws.send(
+            JSON.stringify(
+                respondExitPlanModeAction({
+                    sessionId: session.id,
+                    requestId,
+                    outcome,
+                    comments,
+                })
+            )
+        );
+        const next = resolveExitPlanMode(state, requestId, outcome, comments);
+        state.items = next.items;
+        state.pendingResults = next.pendingResults;
+        state.pendingPermissions = next.pendingPermissions;
+        this.notify(state);
     }
 
     setPermissionMode(session: ChatSession, mode: PermissionMode) {

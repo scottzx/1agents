@@ -42,6 +42,8 @@ function isCallRenderable(call: GroupedToolCall): boolean {
     if (call.toolCallId) return true;
     if (call.output !== undefined) return true;
     if (call.permission) return true;
+    if (call.askUser) return true;
+    if (call.exitPlan) return true;
     if (!call.input || !call.input.trim()) return false;
     try {
         const parsed = JSON.parse(call.input);
@@ -90,6 +92,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     existingCall.output = call.output;
                     existingCall.isError = call.isError;
                     if (call.permission) existingCall.permission = call.permission;
+                    if (call.askUser) existingCall.askUser = call.askUser;
+                    if (call.exitPlan) existingCall.exitPlan = call.exitPlan;
                     // Metadata (Phase 6) + ACP status arrive on later updates — merge, don't clear.
                     if (call.kind) existingCall.kind = call.kind;
                     if (call.status) existingCall.status = call.status;
@@ -112,6 +116,8 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         ...(call.locations ? { locations: call.locations } : {}),
                         ...(call.diffs ? { diffs: call.diffs } : {}),
                         ...(call.permission ? { permission: call.permission } : {}),
+                        ...(call.askUser ? { askUser: call.askUser } : {}),
+                        ...(call.exitPlan ? { exitPlan: call.exitPlan } : {}),
                     };
                     lastGroup.calls.push(newCall);
                     lastGroup.elements.push({ kind: 'call', call: newCall });
@@ -240,6 +246,79 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         options: item.options,
                         ...(item.resolved ? { resolved: item.resolved } : {}),
                     },
+                });
+            }
+        } else if (item.kind === 'ask_user_question') {
+            const callId = item.toolCallId;
+            let matchedCall: GroupedToolCall | null = null;
+
+            if (callId) {
+                for (let i = grouped.length - 1; i >= 0; i--) {
+                    const g = grouped[i];
+                    if (g.kind === 'tool_group' && !g.pending) {
+                        const c = g.calls.find(call => call.toolCallId === callId);
+                        if (c) {
+                            matchedCall = c;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const askUser = {
+                requestId: item.requestId,
+                toolCallId: callId,
+                mode: item.mode,
+                questions: item.questions,
+                ...(item.resolved ? { resolved: item.resolved } : {}),
+                ...(item.answers ? { answers: item.answers } : {}),
+            };
+
+            if (matchedCall) {
+                matchedCall.askUser = askUser;
+            } else {
+                pendingCalls.push({
+                    id: `pending-ask-user-${item.id}`,
+                    toolCallId: callId,
+                    toolName: 'ask_user_question',
+                    input: JSON.stringify({ questions: item.questions }, null, 2),
+                    askUser,
+                });
+            }
+        } else if (item.kind === 'exit_plan_mode') {
+            const callId = item.toolCallId;
+            let matchedCall: GroupedToolCall | null = null;
+
+            if (callId) {
+                for (let i = grouped.length - 1; i >= 0; i--) {
+                    const g = grouped[i];
+                    if (g.kind === 'tool_group' && !g.pending) {
+                        const c = g.calls.find(call => call.toolCallId === callId);
+                        if (c) {
+                            matchedCall = c;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const exitPlan = {
+                requestId: item.requestId,
+                toolCallId: callId,
+                planContent: item.planContent,
+                ...(item.resolved ? { resolved: item.resolved } : {}),
+                ...(item.comments ? { comments: item.comments } : {}),
+            };
+
+            if (matchedCall) {
+                matchedCall.exitPlan = exitPlan;
+            } else {
+                pendingCalls.push({
+                    id: `pending-exit-plan-${item.id}`,
+                    toolCallId: callId,
+                    toolName: 'exit_plan_mode',
+                    input: item.planContent?.slice(0, 500) || '',
+                    exitPlan,
                 });
             }
         } else {
