@@ -225,10 +225,12 @@ function AssistantContent({
     streaming: boolean;
     showActions: boolean;
 }) {
-    // Keep expansion local to this AssistantContent instance. Each assistant
-    // message mounts its own instance, so one block's button never changes
-    // another block's expanded state.
+    // Expansion + "selected" state stay local to this AssistantContent instance.
+    // Clicking the block activates it (shows copy/fold); clicking outside
+    // deactivates. Mutual exclusivity across blocks falls out of each block's
+    // own document pointerdown listener — no shared focusedMessageId needed.
     const isExpanded = useSignal(true);
+    const isActive = useSignal(false);
     const isCollapsible = useSignal(false);
     const blockRef = useRef<HTMLDivElement>(null);
     const lang = getLang();
@@ -243,6 +245,7 @@ function AssistantContent({
         const handlePointerDown = (event: PointerEvent) => {
             if (!blockRef.current?.contains(event.target as Node)) {
                 isExpanded.value = false;
+                isActive.value = false;
             }
         };
 
@@ -279,16 +282,25 @@ function AssistantContent({
         isExpanded.value = !isExpanded.value;
     };
 
+    const activate = () => {
+        if (showActions) isActive.value = true;
+    };
+
     const canCollapse = showActions && isCollapsible.value;
     const expanded = !canCollapse || isExpanded.value;
+    const actionsVisible = showActions && isActive.value;
 
     return (
-        <div ref={blockRef} class="chat-assistant-block">
+        <div
+            ref={blockRef}
+            class={`chat-assistant-block${isActive.value ? ' is-active' : ''}`}
+            onPointerDown={activate}
+        >
             <div class={`chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
                 <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
                 {streaming && <span class="chat-cursor">▍</span>}
             </div>
-            {showActions && (
+            {actionsVisible && (
                 <div class="chat-assistant-actions">
                     <button
                         type="button"
