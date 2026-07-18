@@ -36,7 +36,7 @@ const AGENT_LOGOS: Record<string, string> = {
  * Terminal: none | idle | busy | waiting | shell
  */
 export function normalizeAgentStatus(status?: string | null): AgentRunStatus | undefined {
-    if (status == null || status === '') return undefined;
+    if (status === null || status === undefined || status === '') return undefined;
     switch (status) {
         case 'streaming':
             return 'busy';
@@ -59,7 +59,7 @@ export function AgentAvatar({ agentType, class: className, title, status }: Agen
     const runStatus = normalizeAgentStatus(status);
     const classes = ['agent-avatar', className].filter(Boolean).join(' ');
     const statusEl =
-        runStatus != null ? (
+        runStatus !== undefined ? (
             <span class={`agent-avatar-status agent-avatar-status--${runStatus}`} aria-hidden="true" />
         ) : null;
 

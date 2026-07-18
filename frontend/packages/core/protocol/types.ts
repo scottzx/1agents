@@ -21,6 +21,13 @@ export interface ToolCallDiff {
     newText: string;
 }
 
+/**
+ * ACP ToolCallStatus — authoritative lifecycle for a tool inside a prompt turn.
+ * See https://agentclientprotocol.com/protocol/tool-calls#status
+ * Distinct from the Composer follow-up prompt queue (`queueStatus` on user bubbles).
+ */
+export type ToolCallStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
 export interface ToolCallInfo {
     id?: string;
     toolName: string;
@@ -30,6 +37,11 @@ export interface ToolCallInfo {
     isError?: boolean;
     /** ACP tool kind (read/edit/execute/…) — chooses the card icon. */
     kind?: string;
+    /**
+     * ACP tool-call lifecycle. When present, UI should prefer this over
+     * heuristics (output presence / turn active).
+     */
+    status?: ToolCallStatus;
     /** Files the tool touched — rendered as clickable file links. */
     locations?: ToolCallLocation[];
     /** File diffs the tool produced — rendered inline in the card. */

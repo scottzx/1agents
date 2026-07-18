@@ -243,7 +243,10 @@ export function Composer({
                                 ariaLabel={t('terminal.action.voice', lang)}
                             />
                         )}
-                        {isRunning ? (
+                        {/* While a turn is running, keep Send visible so follow-up
+                            prompts can join the session queue (Agent-side busy
+                            → client promptQueue). Stop remains for cancel_turn. */}
+                        {isRunning && onCancel && (
                             <button
                                 type="button"
                                 class="chat-composer-stop-inline"
@@ -255,31 +258,30 @@ export function Composer({
                                     <rect x="6" y="6" width="12" height="12" rx="2" />
                                 </svg>
                             </button>
-                        ) : (
-                            <button
-                                type="button"
-                                class="chat-composer-send-inline"
-                                onClick={submit}
-                                disabled={disabled}
-                                title={t('chat.composer.send', lang)}
-                                aria-label={t('chat.composer.send', lang)}
-                            >
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    width="14"
-                                    height="14"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    aria-hidden="true"
-                                >
-                                    <line x1="22" y1="2" x2="11" y2="13" />
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                                </svg>
-                            </button>
                         )}
+                        <button
+                            type="button"
+                            class="chat-composer-send-inline"
+                            onClick={submit}
+                            disabled={disabled}
+                            title={t(isRunning ? 'chat.composer.sendQueue' : 'chat.composer.send', lang)}
+                            aria-label={t(isRunning ? 'chat.composer.sendQueue' : 'chat.composer.send', lang)}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                width="14"
+                                height="14"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <line x1="22" y1="2" x2="11" y2="13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>

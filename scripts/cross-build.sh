@@ -208,7 +208,9 @@ build() {
     echo "=== Installing toolchain ${ALIAS} (${TARGET}) [host=${HOST_ARCH}, target_arch=${TARGET_ARCH}, flavor=${TOOLCHAIN_FLAVOR}]..."
 
     mkdir -p "${CROSS_ROOT}" && export PATH="${CROSS_ROOT}/usr/bin:${CROSS_ROOT}/bin:${PATH}"
-    if ! curl -fSsLo- --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 \
+    if command -v "${TARGET}-gcc" >/dev/null 2>&1; then
+        echo "=== Reusing cached toolchain: $(command -v "${TARGET}-gcc")"
+    elif ! curl -fSsLo- --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 \
             "${MUSL_CC_URL_PRIMARY}/${TARGET}-${TOOLCHAIN_FLAVOR}.tgz" \
             | tar xz -C "${CROSS_ROOT}" --strip-components=${COMPONENTS}; then
         echo "=== Primary toolchain source failed, falling back to ${MUSL_CC_URL_FALLBACK}"

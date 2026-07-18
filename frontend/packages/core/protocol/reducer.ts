@@ -6,8 +6,29 @@
 // reuse the exact same conversion + folding logic; the host layer keeps only the
 // transport + notify orchestration.
 
-import type { ChatItem, HistoryItem, ToolCallInfo } from './types';
+import type { ChatItem, HistoryItem, ToolCallInfo, ToolCallStatus } from './types';
 import type { ChatStatus } from './session';
+
+/** Normalize agent/runtime status strings onto the ACP ToolCallStatus set. */
+export function normalizeToolCallStatus(raw: string | undefined | null): ToolCallStatus | undefined {
+    if (!raw) return undefined;
+    switch (raw) {
+        case 'pending':
+        case 'in_progress':
+        case 'completed':
+        case 'failed':
+            return raw;
+        // Pre-ACP / legacy aliases some bridges still emit.
+        case 'success':
+            return 'completed';
+        case 'error':
+            return 'failed';
+        case 'running':
+            return 'in_progress';
+        default:
+            return undefined;
+    }
+}
 
 /**
  * The slice of session state the folds read and write. The host's full
@@ -254,7 +275,16 @@ export function tryAssignPending(s: PendingState): PendingState {
             // idx === i implies tool_use.
             const updated = {
                 ...it,
-                calls: it.calls.map((c, k) => (k !== callIdx ? c : { ...c, output: p.content, isError: p.isError })),
+                calls: it.calls.map((c, k) =>
+                    k !== callIdx
+                        ? c
+                        : {
+                              ...c,
+                              output: p.content,
+                              isError: p.isError,
+                              status: (p.isError ? 'failed' : 'completed') as ToolCallStatus,
+                          }
+                ),
             };
             items = items.map((entry, idx) => (idx === i ? updated : entry));
             matched = true;
@@ -306,13 +336,14 @@ export function applyToolCall(
         toolName?: string;
         toolCallId?: string;
         kind?: string;
+        status?: string;
         locations?: ToolCallInfo['locations'];
         diffs?: ToolCallInfo['diffs'];
     }
 ): PendingState {
     const items0 = flushStreamingCursor(s.items);
-    // A tool_call_update carrying only new metadata (kind/locations/diffs) may
-    // omit arguments; keep `input` empty here and let the merge below preserve
+    // A tool_call_update carrying only new metadata (kind/locations/diffs/status)
+    // may omit arguments; keep `input` empty here and let the merge below preserve
     // any input a prior event set, rather than stomping it with "undefined".
     const hasArgs = hasRenderableArguments(ev.arguments);
     const argsString = !hasArgs
@@ -320,10 +351,12 @@ export function applyToolCall(
         : typeof ev.arguments === 'string'
           ? ev.arguments
           : JSON.stringify(ev.arguments, null, 2);
+    const status = normalizeToolCallStatus(ev.status);
     const newCall: ToolCallInfo = {
         toolName: ev.toolName || 'tool',
         input: argsString,
         ...(ev.kind ? { kind: ev.kind } : {}),
+        ...(status ? { status } : {}),
         ...(ev.locations && ev.locations.length ? { locations: ev.locations } : {}),
         ...(ev.diffs && ev.diffs.length ? { diffs: ev.diffs } : {}),
     };
@@ -348,6 +381,7 @@ export function applyToolCall(
                               // Preserve prior input when this event carried none.
                               input: newCall.input || c.input,
                               ...(newCall.kind ? { kind: newCall.kind } : {}),
+                              ...(newCall.status ? { status: newCall.status } : {}),
                               ...(newCall.locations ? { locations: newCall.locations } : {}),
                               ...(newCall.diffs ? { diffs: newCall.diffs } : {}),
                           }
@@ -403,6 +437,9 @@ export function applyToolResult(
                                   ...c,
                                   output: ev.text || '',
                                   isError: !!ev.isError,
+                                  // tool_result is terminal — align ACP status even when
+                                  // the agent only emitted a result without a status update.
+                                  status: (ev.isError ? 'failed' : 'completed') as ToolCallStatus,
                               }
                             : c
                     ),
@@ -424,6 +461,7 @@ export function applyToolResult(
                               ...c,
                               output: ev.text || '',
                               isError: !!ev.isError,
+                              status: (ev.isError ? 'failed' : 'completed') as ToolCallStatus,
                           }
                         : c
                 ),

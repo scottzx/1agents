@@ -806,8 +806,7 @@ export class MobileAppLayout extends Component<MobileAppLayoutProps, MobileAppLa
                                             (sess.chatsForWorkspace(selectedWorkspaceId).length > 0 ||
                                                 folders.some(
                                                     f =>
-                                                        f.id === selectedWorkspaceId &&
-                                                        f.sessions.some(s => !isChat(s))
+                                                        f.id === selectedWorkspaceId && f.sessions.some(s => !isChat(s))
                                                 ))
                                         }
                                     />

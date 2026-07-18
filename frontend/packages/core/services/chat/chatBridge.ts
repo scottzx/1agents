@@ -590,7 +590,14 @@ export class ChatBridgeManager {
                     // data, so drop them before they reach the fold — UNLESS the
                     // event carries other renderable metadata (a diff/locations/
                     // kind streamed on a later tool_call_update, Phase 6).
-                    const hasMeta = !!(payload.diffs?.length || payload.locations?.length || payload.kind);
+                    // Status-only tool_call_update frames (in_progress / completed)
+                    // carry no arguments — still fold them so UI tracks ACP lifecycle.
+                    const hasMeta = !!(
+                        payload.diffs?.length ||
+                        payload.locations?.length ||
+                        payload.kind ||
+                        payload.status
+                    );
                     if (!hasRenderableArguments(payload.arguments) && !hasMeta) break;
                     const next = applyToolCall(state, payload);
                     state.items = next.items;

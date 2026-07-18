@@ -57,7 +57,7 @@ jobs:
 
       - name: Cache Frontend Build Assets
         id: cache-frontend
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             frontend/dist
@@ -72,7 +72,7 @@ jobs:
 
       - name: Cache Yarn dependencies
         if: steps.cache-frontend.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             frontend/.yarn/cache
@@ -173,7 +173,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.26.1'
           cache: true
@@ -213,7 +213,7 @@ jobs:
           fi
 
       - name: Cache cross-compilation stage
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             /opt/cross
@@ -234,14 +234,14 @@ jobs:
 
       - name: Cache cc-connect Web Assets
         id: cache-ccconnect-web
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: modules/cc-connect/web/dist
           key: cc-connect-web-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/package.json', 'modules/cc-connect/web/pnpm-lock.yaml', 'modules/cc-connect/web/src/**', 'modules/cc-connect/web/index.html', 'modules/cc-connect/web/vite.config.ts', 'modules/cc-connect/web/tailwind.config.ts', 'modules/cc-connect/web/postcss.config.js') }}
 
       - name: Cache pnpm
         if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/pnpm-lock.yaml') }}
@@ -269,7 +269,7 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -343,7 +343,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.26.1'
           cache: true
@@ -393,14 +393,14 @@ jobs:
 
       - name: Cache cc-connect Web Assets
         id: cache-ccconnect-web
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: modules/cc-connect/web/dist
           key: cc-connect-web-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/package.json', 'modules/cc-connect/web/pnpm-lock.yaml', 'modules/cc-connect/web/src/**', 'modules/cc-connect/web/index.html', 'modules/cc-connect/web/vite.config.ts', 'modules/cc-connect/web/tailwind.config.ts', 'modules/cc-connect/web/postcss.config.js') }}
 
       - name: Cache pnpm
         if: steps.cache-ccconnect-web.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/pnpm-lock.yaml') }}
@@ -426,7 +426,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -503,7 +503,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.26.1'
           cache: true
@@ -545,7 +545,7 @@ jobs:
 
       - name: Cache cc-connect Web Assets
         id: cache-ccconnect-web
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: modules/cc-connect/web/dist
           key: cc-connect-web-${{ runner.os }}-${{ hashFiles('modules/cc-connect/web/package.json', 'modules/cc-connect/web/pnpm-lock.yaml', 'modules/cc-connect/web/src/**', 'modules/cc-connect/web/index.html', 'modules/cc-connect/web/vite.config.ts', 'modules/cc-connect/web/tailwind.config.ts', 'modules/cc-connect/web/postcss.config.js') }}
@@ -578,7 +578,7 @@ jobs:
 
       - name: Cache vcpkg packages (Windows)
         if: matrix.os_name == 'windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: C:/vcpkg/installed
           key: vcpkg-windows-ttyd-${{ hashFiles('modules/ttyd/CMakeLists.txt') }}
@@ -615,7 +615,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry

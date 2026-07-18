@@ -55,6 +55,11 @@ export interface BridgeEventPayload {
     isError?: boolean;
     /** ACP tool metadata on tool_call events (Phase 6). */
     kind?: string;
+    /**
+     * ACP ToolCallStatus on tool_call / tool_call_update events:
+     * pending | in_progress | completed | failed.
+     */
+    status?: string;
     locations?: ToolCallLocation[];
     diffs?: ToolCallDiff[];
     messages?: Array<{ role: string; text: string }>;

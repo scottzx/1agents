@@ -275,7 +275,7 @@ func startHappyDaemon() error {
 
 	args := append(append([]string{}, lead...), "daemon", "start")
 	cmd := exec.Command(name, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // detach from Go's process group
+	cmd.SysProcAttr = happyDaemonSysProcAttr()
 	// Wire happy to the 1agents RPC glue when it ships alongside, unless the
 	// environment already pins it. happy reads HAPPY_RPC_ADAPTER_ENTRY itself.
 	cmd.Env = os.Environ()

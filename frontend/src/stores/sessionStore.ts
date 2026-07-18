@@ -59,17 +59,14 @@ export const pendingInitialMessage = signal<string | null>(null);
  */
 export const chatsForWorkspace = (workspaceId: string): ChatSession[] => {
     const active = activeSession.value;
-    const activeChat =
-        active && isChat(active) && active.workspaceId === workspaceId ? active : null;
+    const activeChat = active && isChat(active) && active.workspaceId === workspaceId ? active : null;
     const activeId = activeChat?.id ?? null;
 
     const list = chatSessions.value
         .filter(c => c.workspaceId === workspaceId)
         .filter(c => !c.archived || c.id === activeId)
         .map(c =>
-            c.id === activeId
-                ? { ...c, archived: false, archivedAt: undefined, active: true }
-                : { ...c, active: false }
+            c.id === activeId ? { ...c, archived: false, archivedAt: undefined, active: true } : { ...c, active: false }
         );
 
     if (activeChat && !list.some(c => c.id === activeChat.id)) {
@@ -79,8 +76,7 @@ export const chatsForWorkspace = (workspaceId: string): ChatSession[] => {
 };
 
 /** Terminal rows for a workspace (still carried on folder.sessions today). */
-export const terminalsForFolderSessions = (sessions: Session[]): Session[] =>
-    sessions.filter(s => isTerminal(s));
+export const terminalsForFolderSessions = (sessions: Session[]): Session[] => sessions.filter(s => isTerminal(s));
 
 /**
  * When the new-chat landing is opened from a specific assistant (助理 详情 的
@@ -212,13 +208,7 @@ export const mergeSessionsIntoFolders = (windows: TmuxWindow[], chats: ChatSessi
     // (restore race: optimistic unarchive then a late list lands).
     const prevActive = activeSession.value;
     let chatList: ChatSession[] = chats.map(c => {
-        if (
-            prevActive &&
-            isChat(prevActive) &&
-            prevActive.id === c.id &&
-            !prevActive.archived &&
-            c.archived
-        ) {
+        if (prevActive && isChat(prevActive) && prevActive.id === c.id && !prevActive.archived && c.archived) {
             return { ...c, archived: false, archivedAt: undefined };
         }
         return c;
@@ -313,9 +303,7 @@ export const loadChatSessions = async (workspaceId?: string) => {
         // "can chat but sidebar empty" bug.
         const active = activeSession.value;
         const protectId =
-            active && isChat(active) && active.workspaceId === wsId && !active.archived
-                ? active.id
-                : null;
+            active && isChat(active) && active.workspaceId === wsId && !active.archived ? active.id : null;
         chatSessions.value = [
             ...chatSessions.value.filter(c => c.workspaceId !== wsId),
             ...chats.map(c => {
@@ -588,9 +576,7 @@ export const restoreChatSession = async (session: ChatSession): Promise<ChatSess
     };
     const had = chatSessions.value.some(c => c.id === session.id);
     chatSessions.value = had
-        ? chatSessions.value.map(c =>
-              c.id === session.id ? { ...c, archived: false, archivedAt: undefined } : c
-          )
+        ? chatSessions.value.map(c => (c.id === session.id ? { ...c, archived: false, archivedAt: undefined } : c))
         : [restored, ...chatSessions.value];
     // Invalidate in-flight list loads so they can't re-mark this session archived.
     chatSessionsLoadGen[session.workspaceId] = (chatSessionsLoadGen[session.workspaceId] || 0) + 1;
@@ -900,9 +886,7 @@ export const selectSession = async (session: Session) => {
             const had = chatSessions.value.some(c => c.id === chat.id);
             chatSessions.value = had
                 ? chatSessions.value.map(c =>
-                      c.id === chat.id
-                          ? { ...c, archived: false, archivedAt: undefined, active: true }
-                          : c
+                      c.id === chat.id ? { ...c, archived: false, archivedAt: undefined, active: true } : c
                   )
                 : [{ ...chat, archived: false, archivedAt: undefined, active: true }, ...chatSessions.value];
         }
@@ -917,11 +901,7 @@ export const selectSession = async (session: Session) => {
             if (isTerminal(s) && isTerminal(session)) return { ...s, active: s.index === session.index };
             return { ...s, active: false };
         });
-        if (
-            isChat(session) &&
-            f.id === session.workspaceId &&
-            !sessions.some(s => isChat(s) && s.id === session.id)
-        ) {
+        if (isChat(session) && f.id === session.workspaceId && !sessions.some(s => isChat(s) && s.id === session.id)) {
             sessions.unshift({ ...session, active: true });
         }
         return {
@@ -999,7 +979,11 @@ export const submitRenameSession = async () => {
             chatSessions.value = chatSessions.value.map(c =>
                 c.id === sessionRenameTarget.id ? { ...c, name: updated.name || trimmed } : c
             );
-            if (activeSession.value && isChat(activeSession.value) && activeSession.value.id === sessionRenameTarget.id) {
+            if (
+                activeSession.value &&
+                isChat(activeSession.value) &&
+                activeSession.value.id === sessionRenameTarget.id
+            ) {
                 activeSession.value = { ...activeSession.value, name: updated.name || trimmed };
             }
             mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);

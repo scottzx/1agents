@@ -90,8 +90,9 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     existingCall.output = call.output;
                     existingCall.isError = call.isError;
                     if (call.permission) existingCall.permission = call.permission;
-                    // Metadata (Phase 6) arrives on later updates — merge, don't clear.
+                    // Metadata (Phase 6) + ACP status arrive on later updates — merge, don't clear.
                     if (call.kind) existingCall.kind = call.kind;
+                    if (call.status) existingCall.status = call.status;
                     if (call.locations) existingCall.locations = call.locations;
                     if (call.diffs) existingCall.diffs = call.diffs;
                 } else {
@@ -107,6 +108,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                         output: call.output,
                         isError: call.isError,
                         ...(call.kind ? { kind: call.kind } : {}),
+                        ...(call.status ? { status: call.status } : {}),
                         ...(call.locations ? { locations: call.locations } : {}),
                         ...(call.diffs ? { diffs: call.diffs } : {}),
                         ...(call.permission ? { permission: call.permission } : {}),
@@ -180,6 +182,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
             if (matchedCall) {
                 matchedCall.output = item.content;
                 matchedCall.isError = item.isError;
+                matchedCall.status = item.isError ? 'failed' : 'completed';
             } else {
                 // No tool_use matched — park the result in the
                 // pending pool. A later tool_use with the right
@@ -191,6 +194,7 @@ function groupChatItems(items: ChatItem[]): GroupedChatItem[] {
                     input: '',
                     output: item.content,
                     isError: item.isError,
+                    status: item.isError ? 'failed' : 'completed',
                 });
             }
         } else if (item.kind === 'permission_request') {

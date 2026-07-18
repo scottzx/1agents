@@ -31,6 +31,8 @@ export interface GroupedToolCall {
     output?: string;
     isError?: boolean;
     kind?: string;
+    /** ACP ToolCallStatus when the agent reported it. */
+    status?: 'pending' | 'in_progress' | 'completed' | 'failed';
     locations?: Array<{ path: string; line?: number }>;
     diffs?: Array<{ path: string; oldText?: string; newText: string }>;
     permission?: {
@@ -444,8 +446,17 @@ function groupKey(calls: GroupedToolCall[]): string | undefined {
 
 type CallStatus = 'running' | 'waiting' | 'success' | 'error' | 'incomplete';
 
+/**
+ * Prefer ACP tool-call status when the agent reported it. Fall back to the
+ * previous heuristic (output / turn active) for history replay and agents that
+ * never emit status. Permission waiting still wins over ACP pending — the user
+ * must act before the tool can progress.
+ */
 function callStatus(call: GroupedToolCall, active: boolean): CallStatus {
     if (call.permission && !call.permission.resolved) return 'waiting';
+    if (call.status === 'failed') return 'error';
+    if (call.status === 'completed') return 'success';
+    if (call.status === 'in_progress' || call.status === 'pending') return 'running';
     if (call.output !== undefined) return call.isError ? 'error' : 'success';
     return active ? 'running' : 'incomplete';
 }
@@ -939,10 +950,7 @@ function formatToolOutput(raw: string): string {
     if (direct !== null) return direct;
 
     // Some runtimes wrap the whole payload in an extra JSON string layer.
-    if (
-        (text.startsWith('"') && text.endsWith('"')) ||
-        (text.startsWith("'") && text.endsWith("'"))
-    ) {
+    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
         try {
             const unwrapped = JSON.parse(text);
             if (typeof unwrapped === 'string') {

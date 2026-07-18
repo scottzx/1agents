@@ -102,10 +102,7 @@ export function AssistantDetail({ workspaceId, app }: AssistantDetailProps) {
             <div class="assistant-tab-body">
                 {activeTab === 'sessions' && (
                     <div class="assistant-pane-fill assistant-pane-inset">
-                        <SessionsView
-                            workspaceId={workspaceId}
-                            onSelectSession={s => sessStore.selectSession(s)}
-                        />
+                        <SessionsView workspaceId={workspaceId} onSelectSession={s => sessStore.selectSession(s)} />
                     </div>
                 )}
 
