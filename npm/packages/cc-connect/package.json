@@ -1,0 +1,20 @@
+{
+  "name": "@1agents/cc-connect",
+  "version": "0.0.0-dev",
+  "description": "cc-connect meta (optionalDependencies pull platform binary)",
+  "license": "MIT",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "package.json",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@1agents/cc-connect-linux-x64": "0.0.0-dev",
+    "@1agents/cc-connect-linux-arm64": "0.0.0-dev",
+    "@1agents/cc-connect-darwin-arm64": "0.0.0-dev"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

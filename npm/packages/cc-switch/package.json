@@ -1,0 +1,20 @@
+{
+  "name": "@1agents/cc-switch",
+  "version": "0.0.0-dev",
+  "description": "cc-switch meta (optionalDependencies pull platform binary)",
+  "license": "MIT",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "package.json",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@1agents/cc-switch-linux-x64": "0.0.0-dev",
+    "@1agents/cc-switch-linux-arm64": "0.0.0-dev",
+    "@1agents/cc-switch-darwin-arm64": "0.0.0-dev"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

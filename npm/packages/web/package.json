@@ -1,0 +1,14 @@
+{
+  "name": "@1agents/web",
+  "version": "0.0.0-dev",
+  "description": "1agents frontend static assets (production dist, no source maps)",
+  "license": "MIT",
+  "files": [
+    "dist/",
+    "package.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

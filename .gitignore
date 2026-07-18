@@ -72,12 +72,26 @@ node_modules
 npm/npm_recover_code.md
 certs/
 
-# Thin npm installer: runtime is downloaded from GitHub Releases (never commit)
+# Legacy root npm runtime (never commit)
 npm/dist/
 npm/bin/
 npm/1skills/
 npm/.runtime-meta.json
 npm/node_modules/
+npm/.npmrc-publish
+
+# Multi-package: platform binaries / filled content are CI artifacts, not committed
+npm/packages/*/bin/*
+!npm/packages/*/bin/.gitkeep
+npm/packages/web/dist/**
+!npm/packages/web/dist/.gitkeep
+npm/packages/skills/skill_manager/
+npm/packages/skills/frontend/
+npm/packages/skills/requirements.txt
+npm/packages/skills/pyproject.toml
+npm/packages/skills/README.txt
+npm/packages/happy/happy-cli/
+npm/packages/happy/adapter/
 
 # Local sandboxed home directory
 tmp_home/

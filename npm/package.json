@@ -1,36 +1,10 @@
 {
-  "name": "@scottzx/1agents",
-  "version": "20260526.2.0",
-  "description": "Browser-based remote workbench integrating terminal access, file management, and AI agent communication",
-  "keywords": [
-    "1agents",
-    "terminal",
-    "xterm",
-    "ttyd",
-    "file-manager",
-    "ai-agent",
-    "workbench"
-  ],
-  "homepage": "https://github.com/scottzx/1Agents",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/scottzx/1Agents.git"
-  },
-  "license": "MIT",
-  "author": "scottzx",
-  "bin": {
-    "1agents": "run.js",
-    "cc-connect": "cc-run.js"
-  },
-  "engines": {
-    "node": ">=22"
-  },
-  "files": [
-    "bin/",
-    "dist/",
-    "run.js",
-    "cc-run.js",
-    "README.md",
-    "skill.md"
-  ]
+  "name": "@1agents/cli-workspace",
+  "private": true,
+  "description": "Workspace root for @1agents/* packages. Publish from npm/packages/* — see docs/features/npm-package-split/prd.md",
+  "scripts": {
+    "set-version": "node ../scripts/npm-set-version.mjs",
+    "fill": "../scripts/npm-fill-packages.sh",
+    "publish-all": "../scripts/npm-publish-all.sh"
+  }
 }

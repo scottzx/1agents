@@ -1,0 +1,36 @@
+{
+  "name": "@1agents/cli",
+  "version": "0.0.0-dev",
+  "description": "1agents CLI — resolves @1agents/* packages from the npm registry (no GitHub binary download)",
+  "license": "MIT",
+  "bin": {
+    "1agents": "run.js",
+    "cc-connect": "cc-run.js"
+  },
+  "files": [
+    "run.js",
+    "cc-run.js",
+    "lib/",
+    "package.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@1agents/web": "0.0.0-dev",
+    "@1agents/skills": "0.0.0-dev",
+    "@1agents/cc-connect": "0.0.0-dev",
+    "@1agents/cc-switch": "0.0.0-dev"
+  },
+  "optionalDependencies": {
+    "@1agents/core-linux-x64": "0.0.0-dev",
+    "@1agents/core-linux-arm64": "0.0.0-dev",
+    "@1agents/core-darwin-arm64": "0.0.0-dev",
+    "@1agents/happy": "0.0.0-dev",
+    "acpx": "^0.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
