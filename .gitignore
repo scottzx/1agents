@@ -72,11 +72,12 @@ node_modules
 npm/npm_recover_code.md
 certs/
 
+# Thin npm installer: runtime is downloaded from GitHub Releases (never commit)
 npm/dist/
-
-# Ignore stray binaries in npm/bin/ but keep the platform subdirs (linux-amd64/, etc.)
-npm/bin/*
-!npm/bin/*/
+npm/bin/
+npm/1skills/
+npm/.runtime-meta.json
+npm/node_modules/
 
 # Local sandboxed home directory
 tmp_home/

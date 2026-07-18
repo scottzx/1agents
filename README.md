@@ -6,7 +6,7 @@
 
 **简体中文** | [English](README_EN.md)
 
-[![NPM Version](https://img.shields.io/npm/v/@scottzx/1agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/1agents)
+[![NPM](https://img.shields.io/badge/npm-@1agents%2Fcli-blue?logo=npm)](https://www.npmjs.com/org/1agents)
 [![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/1Agents)
 [![License](https://img.shields.io/github/license/scottzx/1Agents)](LICENSE)
 
@@ -174,25 +174,34 @@ sudo dnf install -y tmux                       # Fedora / CentOS / RHEL
 
 ## 安装
 
-### NPM
+### NPM（推荐 · 默认分发）
 
 ```bash
-npm install -g @scottzx/1agents
-npx @scottzx/1agents [参数]
+# 组织 scope：@1agents（与 @1agents/wire 相同组织）
+npm install -g @1agents/cli
+# 国内镜像示例
+npm install -g @1agents/cli --registry=https://registry.npmmirror.com
+
+1agents [参数]
 ```
 
 要求：
 
 - Node.js >= 22
-- macOS x64/arm64
-- Linux x64/arm64
-- Windows x64/arm64
+- macOS arm64 / Linux x64 / Linux arm64（Windows 请用 WSL2 或源码）
 
-NPM 包包含后端、Web 前端、`ttyd` 和 `cloudflared` 等运行所需组件。
+**分发方式（重要）：**
 
-### 预编译二进制
+- 采用 **多包拆分**：`@1agents/cli` 为入口；**`@1agents/core-<plat>` 等平台包直接上传 npm，包内即二进制**（`1agents` + `ttyd`）。
+- 安装时从 **npm registry** 拉取当前架构的 core / web / skills / cc-connect / cc-switch 等，**不需要**再访问 GitHub 下载大包。
+- 设计说明见 [`docs/features/npm-package-split/prd.md`](docs/features/npm-package-split/prd.md)。
+- `cloudflared` 可选（`-tunnel` 时按需）；1skills 随 `@1agents/skills` 安装，本机 **uv 优先 / pip 回退**。
 
-从 [GitHub Releases](https://github.com/scottzx/1Agents/releases) 下载对应平台的压缩包，解压后运行。
+> 历史包名 `@scottzx/1agents` 与「薄安装器 + GitHub Release 下载」方案 **已废弃**，请改用 `@1agents/cli`。
+
+### 预编译二进制（可选旁路，非 npm 用户）
+
+若不用 npm，可从 [GitHub Releases](https://github.com/scottzx/1agents/releases) 下载整包 tar 解压运行。**npm 用户无需走此路径。**
 
 ### Docker
 
