@@ -17982,10 +17982,21 @@ body {
 }
 
 .chat-ask-user-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--accent-fg);
   font-family: var(--font-mono);
+}
+
+.chat-ask-user-step {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-ask-user-questions {

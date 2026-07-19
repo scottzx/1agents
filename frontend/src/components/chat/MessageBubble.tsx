@@ -1104,9 +1104,11 @@ function permissionInputPreview(input: string): string | null {
 }
 
 /**
- * Half-panel above the composer: surfaces every unresolved permission
+ * Half-panel above the composer: surfaces the current unresolved permission
  * request so the user can act without digging into a collapsed tool group.
- * Once resolved, the receipt folds into the matching tool row.
+ * Callers should pass only the head of the pending queue (one card at a time);
+ * if multiple arrive, only the first is rendered. Once resolved, the receipt
+ * folds into the matching tool row and the next pending prompt can appear.
  */
 export function PermissionPrompt({
     permissions,
@@ -1115,18 +1117,15 @@ export function PermissionPrompt({
     permissions: PendingPermission[];
     onRespond?: (requestId: string, decision: PermissionDecision) => void;
 }) {
-    if (permissions.length === 0) return null;
+    const permission = permissions[0];
+    if (!permission) return null;
+    const preview = permissionInputPreview(permission.input);
     return (
         <div class="chat-permission-prompt" role="region" aria-label="permission">
-            {permissions.map(permission => {
-                const preview = permissionInputPreview(permission.input);
-                return (
-                    <div key={permission.requestId} class="chat-permission-prompt-card">
-                        <PermissionActionRow permission={permission} onRespond={onRespond} />
-                        {preview && <div class="chat-permission-prompt-preview">{preview}</div>}
-                    </div>
-                );
-            })}
+            <div key={permission.requestId} class="chat-permission-prompt-card">
+                <PermissionActionRow permission={permission} onRespond={onRespond} />
+                {preview && <div class="chat-permission-prompt-preview">{preview}</div>}
+            </div>
         </div>
     );
 }
@@ -1160,6 +1159,10 @@ function formatAskUserResolved(state: AskUserQuestionState, lang: Lang): string 
 /**
  * One questionnaire card: radio/checkbox options per question + free-text
  * Other, then Submit / Skip / Discuss / Cancel.
+ *
+ * Multiple questions in one request are stepped through one at a time
+ * (answer → next); the wire `accepted` response still submits the full
+ * answers map when the last question is confirmed.
  */
 function AskUserQuestionCard({
     request,
@@ -1169,17 +1172,24 @@ function AskUserQuestionCard({
     onRespond?: (requestId: string, outcome: AskUserOutcome, answers?: Record<string, AskUserAnswerValue>) => void;
 }) {
     const lang = getLang();
+    const questions = request.questions;
+    const [step, setStep] = useState(0);
     // Selections keyed by question text. multi → string[]; single → string.
     const [selections, setSelections] = useState<Record<string, string[]>>(() => {
         const init: Record<string, string[]> = {};
-        for (const q of request.questions) init[q.question] = [];
+        for (const q of questions) init[q.question] = [];
         return init;
     });
     const [otherText, setOtherText] = useState<Record<string, string>>(() => {
         const init: Record<string, string> = {};
-        for (const q of request.questions) init[q.question] = '';
+        for (const q of questions) init[q.question] = '';
         return init;
     });
+
+    const safeStep = Math.min(step, Math.max(0, questions.length - 1));
+    const q = questions[safeStep];
+    const isLast = safeStep >= questions.length - 1;
+    const multiQuestion = questions.length > 1;
 
     const toggleOption = (question: string, label: string, multi: boolean) => {
         setSelections(prev => {
@@ -1202,17 +1212,20 @@ function AskUserQuestionCard({
         }
     };
 
+    const answerForQuestion = (question: (typeof questions)[number]): AskUserAnswerValue | null => {
+        const other = (otherText[question.question] ?? '').trim();
+        const picked = selections[question.question] ?? [];
+        if (other) return other;
+        if (picked.length === 0) return null;
+        return question.multiSelect === true ? picked : picked[0]!;
+    };
+
     const buildAnswers = (): Record<string, AskUserAnswerValue> | null => {
         const answers: Record<string, AskUserAnswerValue> = {};
-        for (const q of request.questions) {
-            const other = (otherText[q.question] ?? '').trim();
-            const picked = selections[q.question] ?? [];
-            if (other) {
-                answers[q.question] = other;
-                continue;
-            }
-            if (picked.length === 0) return null;
-            answers[q.question] = q.multiSelect === true ? picked : picked[0]!;
+        for (const question of questions) {
+            const value = answerForQuestion(question);
+            if (value === null) return null;
+            answers[question.question] = value;
         }
         return answers;
     };
@@ -1226,63 +1239,82 @@ function AskUserQuestionCard({
         onRespond?.(request.requestId, 'accepted', answers);
     };
 
+    const goNext = () => {
+        if (!q) return;
+        if (answerForQuestion(q) === null) {
+            showToast(t('chat.askUser.needAnswer', lang));
+            return;
+        }
+        if (isLast) {
+            submit();
+            return;
+        }
+        setStep(s => Math.min(s + 1, questions.length - 1));
+    };
+
+    if (!q) return null;
+
+    const multi = q.multiSelect === true;
+    const picked = selections[q.question] ?? [];
+    const other = otherText[q.question] ?? '';
+
     return (
         <div class="chat-ask-user-card">
-            <div class="chat-ask-user-card-header">{t('chat.askUser.title', lang)}</div>
+            <div class="chat-ask-user-card-header">
+                {t('chat.askUser.title', lang)}
+                {multiQuestion && (
+                    <span class="chat-ask-user-step">
+                        {t('chat.askUser.step', lang, {
+                            current: String(safeStep + 1),
+                            total: String(questions.length),
+                        })}
+                    </span>
+                )}
+            </div>
             <div class="chat-ask-user-questions">
-                {request.questions.map((q, qi) => {
-                    const multi = q.multiSelect === true;
-                    const picked = selections[q.question] ?? [];
-                    const other = otherText[q.question] ?? '';
-                    return (
-                        <div key={qi} class="chat-ask-user-question">
-                            <div class="chat-ask-user-question-text">
-                                {qi + 1}. {q.question}
-                                {multi && (
-                                    <span class="chat-ask-user-multi-tag">{t('chat.askUser.multiSelect', lang)}</span>
-                                )}
-                            </div>
-                            <div class="chat-ask-user-options" role={multi ? 'group' : 'radiogroup'}>
-                                {q.options.map((opt, oi) => {
-                                    const selected = picked.includes(opt.label);
-                                    const recommended = /\(Recommended\)|（推荐）/i.test(opt.label);
-                                    return (
-                                        <button
-                                            key={oi}
-                                            type="button"
-                                            class={`chat-ask-user-option${selected ? ' is-selected' : ''}${recommended ? ' is-recommended' : ''}`}
-                                            onClick={() => toggleOption(q.question, opt.label, multi)}
-                                            aria-pressed={selected}
-                                        >
-                                            <span class="chat-ask-user-option-mark" aria-hidden="true">
-                                                {multi ? (selected ? '☑' : '☐') : selected ? '●' : '○'}
-                                            </span>
-                                            <span class="chat-ask-user-option-body">
-                                                <span class="chat-ask-user-option-label">{opt.label}</span>
-                                                {opt.description && (
-                                                    <span class="chat-ask-user-option-desc">{opt.description}</span>
-                                                )}
-                                                {opt.preview && (
-                                                    <pre class="chat-ask-user-option-preview">{opt.preview}</pre>
-                                                )}
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <label class="chat-ask-user-other">
-                                <span class="chat-ask-user-other-label">{t('chat.askUser.other', lang)}</span>
-                                <input
-                                    type="text"
-                                    class="chat-ask-user-other-input"
-                                    value={other}
-                                    placeholder={t('chat.askUser.otherPlaceholder', lang)}
-                                    onInput={e => setOther(q.question, (e.target as HTMLInputElement).value)}
-                                />
-                            </label>
-                        </div>
-                    );
-                })}
+                <div key={safeStep} class="chat-ask-user-question">
+                    <div class="chat-ask-user-question-text">
+                        {multiQuestion ? `${safeStep + 1}. ` : null}
+                        {q.question}
+                        {multi && <span class="chat-ask-user-multi-tag">{t('chat.askUser.multiSelect', lang)}</span>}
+                    </div>
+                    <div class="chat-ask-user-options" role={multi ? 'group' : 'radiogroup'}>
+                        {q.options.map((opt, oi) => {
+                            const selected = picked.includes(opt.label);
+                            const recommended = /\(Recommended\)|（推荐）/i.test(opt.label);
+                            return (
+                                <button
+                                    key={oi}
+                                    type="button"
+                                    class={`chat-ask-user-option${selected ? ' is-selected' : ''}${recommended ? ' is-recommended' : ''}`}
+                                    onClick={() => toggleOption(q.question, opt.label, multi)}
+                                    aria-pressed={selected}
+                                >
+                                    <span class="chat-ask-user-option-mark" aria-hidden="true">
+                                        {multi ? (selected ? '☑' : '☐') : selected ? '●' : '○'}
+                                    </span>
+                                    <span class="chat-ask-user-option-body">
+                                        <span class="chat-ask-user-option-label">{opt.label}</span>
+                                        {opt.description && (
+                                            <span class="chat-ask-user-option-desc">{opt.description}</span>
+                                        )}
+                                        {opt.preview && <pre class="chat-ask-user-option-preview">{opt.preview}</pre>}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <label class="chat-ask-user-other">
+                        <span class="chat-ask-user-other-label">{t('chat.askUser.other', lang)}</span>
+                        <input
+                            type="text"
+                            class="chat-ask-user-other-input"
+                            value={other}
+                            placeholder={t('chat.askUser.otherPlaceholder', lang)}
+                            onInput={e => setOther(q.question, (e.target as HTMLInputElement).value)}
+                        />
+                    </label>
+                </div>
             </div>
             <div class="chat-ask-user-actions">
                 <button
@@ -1308,8 +1340,17 @@ function AskUserQuestionCard({
                 >
                     {t('chat.askUser.chat', lang)}
                 </button>
-                <button type="button" class="chat-ask-user-btn submit" onClick={submit}>
-                    {t('chat.askUser.submit', lang)}
+                {multiQuestion && safeStep > 0 && (
+                    <button
+                        type="button"
+                        class="chat-ask-user-btn back"
+                        onClick={() => setStep(s => Math.max(0, s - 1))}
+                    >
+                        {t('chat.askUser.back', lang)}
+                    </button>
+                )}
+                <button type="button" class="chat-ask-user-btn submit" onClick={isLast ? submit : goNext}>
+                    {isLast ? t('chat.askUser.submit', lang) : t('chat.askUser.next', lang)}
                 </button>
             </div>
         </div>
@@ -1317,7 +1358,8 @@ function AskUserQuestionCard({
 }
 
 /**
- * Half-panel above the composer for unresolved Grok ask_user_question prompts.
+ * Half-panel above the composer for the current Grok ask_user_question prompt.
+ * Only the first request is rendered; callers should pass a single-item queue.
  */
 export function AskUserPrompt({
     requests,
@@ -1326,12 +1368,11 @@ export function AskUserPrompt({
     requests: PendingAskUser[];
     onRespond?: (requestId: string, outcome: AskUserOutcome, answers?: Record<string, AskUserAnswerValue>) => void;
 }) {
-    if (requests.length === 0) return null;
+    const req = requests[0];
+    if (!req) return null;
     return (
         <div class="chat-ask-user-prompt" role="region" aria-label="ask user question">
-            {requests.map(req => (
-                <AskUserQuestionCard key={req.requestId} request={req} onRespond={onRespond} />
-            ))}
+            <AskUserQuestionCard key={req.requestId} request={req} onRespond={onRespond} />
         </div>
     );
 }
@@ -1429,8 +1470,9 @@ function ExitPlanCard({
 }
 
 /**
- * Half-panel above the composer for unresolved Grok exit_plan_mode approvals.
- * Layout mirrors PermissionPrompt (composer-adjacent action bar).
+ * Half-panel above the composer for the current Grok exit_plan_mode approval.
+ * Layout mirrors PermissionPrompt (composer-adjacent action bar). Only the
+ * first request is rendered so stacked plan prompts don't pile up.
  */
 export function ExitPlanPrompt({
     requests,
@@ -1439,12 +1481,11 @@ export function ExitPlanPrompt({
     requests: PendingExitPlan[];
     onRespond?: (requestId: string, outcome: ExitPlanOutcome, comments?: string) => void;
 }) {
-    if (requests.length === 0) return null;
+    const req = requests[0];
+    if (!req) return null;
     return (
         <div class="chat-exit-plan-prompt" role="region" aria-label="exit plan mode">
-            {requests.map(req => (
-                <ExitPlanCard key={req.requestId} request={req} onRespond={onRespond} />
-            ))}
+            <ExitPlanCard key={req.requestId} request={req} onRespond={onRespond} />
         </div>
     );
 }
