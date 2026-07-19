@@ -54,6 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # 1skills + cc-connect web sources needed for embed ESM bundles
+          submodules: recursive
 
       - name: Cache Frontend Build Assets
         id: cache-frontend
@@ -62,10 +65,10 @@ jobs:
           path: |
             frontend/dist
             modules/ttyd/src/html.h
-          key: frontend-assets-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**') }}
+          # Include embed entrypoints so skills/cc-connect panel UI rebuilds when they change.
+          key: frontend-assets-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**', 'scripts/build-module-embeds.sh', 'modules/1skills/package.json', 'modules/1skills/vite.embed.config.ts', 'modules/1skills/frontend/src/embed.tsx', 'modules/cc-connect/web/package.json', 'modules/cc-connect/web/vite.embed.config.ts', 'modules/cc-connect/web/src/embed.tsx') }}
 
       - name: Set up Node.js
-        if: steps.cache-frontend.outputs.cache-hit != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -88,6 +91,19 @@ jobs:
           corepack enable
           yarn install
           yarn build
+
+      # Embeds are served from StaticDir/embed/ via /api/embed/* — not webpack-bundled.
+      # Always ensure they exist (covers cache hits that predate this step).
+      - name: Build and stage module embeds
+        run: |
+          if [ ! -f frontend/dist/embed/skills-embed.js ] || [ ! -f frontend/dist/embed/cc-connect-embed.js ]; then
+            FORCE_EMBED_REBUILD=1 ./scripts/build-module-embeds.sh
+          else
+            echo "embed bundles already present under frontend/dist/embed/"
+            ls -la frontend/dist/embed/
+          fi
+          test -s frontend/dist/embed/skills-embed.js
+          test -s frontend/dist/embed/cc-connect-embed.js
 
       - name: Upload frontend/dist
         uses: actions/upload-artifact@v7

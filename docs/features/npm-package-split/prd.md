@@ -64,6 +64,7 @@ npm install -g @1agents/cli
 | D8 | **运行时依赖 `acpx`** | `@1agents/acp-bridge` **dependencies** 引入 `acpx`（runtime）；bridge 用 `import from "acpx/runtime"`。Supervisor **禁止**默认 chdir 到不存在的 `modules/1acp` |
 | D9 | **cc-connect → `dependencies`** | 装 `@1agents/cli` 时 **一并安装**；独立包族 + 平台子包（见 §4.3） |
 | D9b | **cc-switch-cli → `dependencies`** | **不进 core**；独立 `@1agents/cc-switch` + 平台子包；装 cli **必带**（原生二进制，**不是** uv/pip） |
+| D10 | **技能 / 模块面板 embed 随 `@1agents/web`** | skill-manager / cc-connect 前端是独立 ESM（`<skills-panel>` / `<cc-connect-panel>`），**不是** webpack 进主包。发布物路径：`dist/embed/*.js`，运行时优先 `StaticDir/embed/`，禁止只认 monorepo `modules/*/dist-embed` |
 | D10 | **主分发 = npm registry** | **core 等平台包直接 `npm publish`**，内含二进制 |
 | D11 | **禁止默认 GitHub 下载二进制** | cli **不得** 在 postinstall/首次运行默认去 GitHub 拉 core/tar（已废弃薄安装器主路径） |
 | D12 | **GitHub Release 仅为旁路** | 可选：桌面 / 离线整包 tar / 审计；**不**参与 `npm i -g @1agents/cli` 成功路径 |
