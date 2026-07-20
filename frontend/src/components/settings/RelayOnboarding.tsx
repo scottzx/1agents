@@ -8,11 +8,10 @@
  * 前两步过了才进配对。订阅是硬门槛:对应 server 的 subscription_required —— 若
  * 自动连接因订阅被拒落到门禁,进入即拉 getSubscription(),非 active 会停在 Step 2。
  *
- * 复用:Step 3 直接渲染 <RelayPairingPanel embedded>(账户级配对那套)。配对是
- * 账户级审批 —— Step 1 创建的是「本端账户 C」,审批机器(daemon)即让该机器加入
- * 账户 C;于是 C 的 user-scoped 中转连接天然带上 C 的订阅(Model A #1 账户级绑定,
- * 替代旧 RelayDevicePanel「借机器 token」的设备档案流)。进入 app 后订阅管理仍走
- * 设置里的 SubscriptionPanel(本组件只负责落地门禁)。
+ * 复用:Step 3 渲染 <RelayDevicePanel embedded>(Model B 设备档案)。
+ * Step 1 创建中转账户、Step 2 开通订阅(客户端门禁);Step 3 扫机器端配置二维码
+ * 写入 DeviceProfile 并连接。订阅随账户校验,设备列表在本地档案,不依赖
+ * listMachines。进入 app 后订阅管理仍走设置里的 SubscriptionPanel。
  */
 import { h, Fragment } from 'preact';
 import { useSignal } from '@preact/signals';
@@ -30,7 +29,7 @@ import {
 } from '../../services/subscriptionService';
 import { createAccount } from '../../services/relay/relayClient';
 import { getPlatformBridge } from '@1agents/core/platform/bridge';
-import { RelayPairingPanel } from './RelayPairingPanel';
+import { RelayDevicePanel } from './RelayDevicePanel';
 
 const LS_URL = 'oneagents.relay.url';
 
@@ -39,7 +38,7 @@ type Step = 1 | 2 | 3;
 const STEPS: { n: Step; label: string }[] = [
     { n: 1, label: '账号' },
     { n: 2, label: '订阅' },
-    { n: 3, label: '配对设备' },
+    { n: 3, label: '连接设备' },
 ];
 
 /** 中转地址默认值:happy-server 注入的 serverUrl → 当前 origin。 */
@@ -343,20 +342,19 @@ export function RelayOnboarding({ onReady }: { onReady?: () => void }) {
     };
 
     // ── Step 3 内容 ──
-    // 账户级配对:在机器上跑 `happy auth login` 生成配对码,这里扫码/粘贴审批,
-    // 即把该机器并入 Step 1 创建的本端账户(于是本账户的订阅天然随中转连接生效);
-    // 再「设为后端并进入」即可开始使用。
+    // Model B:扫机器端「配置二维码」(完整 bundle: serverUrl/token/machineId/machineKey),
+    // 写入本地 DeviceProfile 并设为当前后端。订阅已在 Step 2 校验,此处不再走账户 listMachines。
     const renderStep3 = () => (
         <Fragment>
             <div class="bento-card sub-card">
                 <div class="bento-zone-body">
                     <div class="bento-card-desc">
-                        订阅已就绪。在机器端运行 <code>happy auth login</code> 生成配对二维码/链接,这里扫码或
-                        粘贴审批,即把该机器并入你的账户;随后「设为后端并进入」即可开始使用。
+                        订阅已就绪。在机器端打开设置 → 本机 Relay，确认 Daemon
+                        运行中，扫描「配置二维码」或粘贴完整凭据，即可连接该设备。
                     </div>
                 </div>
             </div>
-            <RelayPairingPanel embedded onNodeSelected={() => onReady?.()} />
+            <RelayDevicePanel embedded onConnected={() => onReady?.()} />
             <div class="onb-nav">
                 <button class="sys-settings-btn ghost" onClick={() => (step.value = 2)}>
                     上一步
@@ -372,7 +370,7 @@ export function RelayOnboarding({ onReady }: { onReady?: () => void }) {
                     <div class="sys-settings-section" style="margin-bottom:8px">
                         <div class="sys-settings-section-title">连接到你的设备</div>
                         <div class="sys-settings-section-desc">
-                            按三步完成落地:创建账户 → 开通订阅 → 配对一台远程机器即可开始使用。
+                            按三步完成落地:创建账户 → 开通订阅 → 扫码连接远程机器即可开始使用。
                         </div>
                     </div>
                     {stepper}

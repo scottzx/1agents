@@ -240,10 +240,32 @@ func (h *Handler) HappyStatus(w http.ResponseWriter, r *http.Request) {
 // HappyDaemonStart handles POST /api/system/happy/daemon/start.
 // Finds the `happy` binary and launches `happy daemon start` (which itself
 // spawns a detached start-sync child and exits immediately).
+//
+// When ~/.1agents/relay-creds.json exists but the machine is not yet bound
+// (or is bound to another account), auto-runs ensureMachineBoundToRelayAccount
+// so operators need not use the manual Model A QR flow.
 func (h *Handler) HappyDaemonStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Auto-bind from local relay user credentials when possible.
+	if _, err := loadRelayCredentialsFile(); err == nil {
+		if res, err := ensureMachineBoundToRelayAccount(false); err != nil {
+			jsonError(w, "auto machine bind failed: "+err.Error(), http.StatusBadRequest)
+			return
+		} else if res != nil && !res.Skipped {
+			// ensure already started daemon after bind
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":        true,
+				"bound":     true,
+				"machineId": res.MachineID,
+				"serverUrl": res.ServerURL,
+			})
+			return
+		}
 	}
 
 	if err := startHappyDaemon(); err != nil {
@@ -338,10 +360,17 @@ func stopHappyDaemonProcess() error {
 }
 
 // effectiveRelayURL resolves the relay base the daemon will use, matching
-// happy-cli's precedence: env HAPPY_SERVER_URL → paired settings.json → default.
+// happy-cli's precedence: env HAPPY_SERVER_URL → relay-creds.relayUrl →
+// paired settings.json → default.
 func effectiveRelayURL() string {
 	if v := os.Getenv("HAPPY_SERVER_URL"); v != "" {
 		return v
+	}
+	if data, err := os.ReadFile(relayCredsPath()); err == nil {
+		var c RelayCredentials
+		if json.Unmarshal(data, &c) == nil && strings.TrimSpace(c.RelayURL) != "" {
+			return strings.TrimRight(c.RelayURL, "/")
+		}
 	}
 	if v := happySettingsServerURL(); v != "" {
 		return v

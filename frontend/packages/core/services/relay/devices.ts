@@ -1,21 +1,23 @@
 /**
- * 客户端「设备档案」(多后端切换)。
+ * 客户端「设备档案」(多后端切换) — Model B。
  *
- * 一个设备档案 = 从机器端扫到的凭据 bundle(LocalMachinePanel 的配置二维码),
- * 足以直连那台机器的本地后端:
- *   - token     → 中转 socket 鉴权(connect 只用 token)
+ * 一个设备档案 = 从机器端扫到的凭据 bundle(LocalMachinePanel 的配置二维码):
  *   - machineId → 中转上机器实体 id,也是 RPC 寻址前缀(`${machineId}:${method}`)
  *   - machineKey→ 该机器的 dataKey(AES-256-GCM),即 RPC 载荷的 encryptionKey
  *   - serverUrl → 中转地址
- * 注意:这条路径不需要账户主密钥(secret),所以客户端可同时存多台机器、随时切换。
+ *   - token     → bundle 内 machine session(兼容字段);建连优先用用户账号 token
+ *
+ * 建连(B1):优先 `loadCredentials()` 的用户 token + clientType=user-scoped,
+ * 中转会对无订阅/过期拒绝握手。RPC 仍用档案 machineKey;路由要求机器与用户
+ * 同属一个 account(与 happy-server rpc:userId:method 房间一致)。
  *
  * 档案 + 当前激活 id 都存 localStorage(经 platform bridge,兼容小程序)。
- * 重命名只改本地 name,不动凭据。
  */
 import type { Socket } from 'socket.io-client';
 import { getPlatformBridge } from '../../platform/bridge';
 import { decodeBase64 } from './crypto';
-import { connect, type RelayMachine } from './relayClient';
+import { connect, loadCredentials, loadCredentialsRemote, type RelayMachine } from './relayClient';
+import { getSubscription } from '../subscriptionService';
 
 const LS_DEVICES = 'oneagents.relay.devices';
 const LS_ACTIVE = 'oneagents.relay.activeDevice';
@@ -124,10 +126,44 @@ export function removeDevice(machineId: string): void {
     if (getActiveDeviceId() === machineId) getPlatformBridge().storage.remove(LS_ACTIVE);
 }
 
-/** 按设备档案建立到该机器的连接,返回 socket + 可直接用于 RPC 的 RelayMachine。 */
+/**
+ * 按设备档案建立到该机器的连接。
+ * 1) 客户端订阅预检 2) 用户账号 token 建连(中转验订阅) 3) RPC 用 machineKey。
+ *
+ * 注意:happy-server RPC 房间是 rpc:{userId}:{method},设备 daemon 必须与
+ * 当前登录用户同属一个 account,否则会出现「RPC method not available」。
+ */
 export async function connectDevice(p: DeviceProfile): Promise<{ socket: Socket; machine: RelayMachine }> {
-    // connect 只用 token;secret 在这条路径用不到,传空串即可。
-    const socket = await connect(p.serverUrl, { token: p.token, secretB64: '' });
+    const accountCreds = (await loadCredentialsRemote()) ?? loadCredentials();
+    if (!accountCreds?.token) {
+        throw new Error('请先登录中转账户后再连接设备');
+    }
+
+    // 客户端第一道门(中转握手还会再验 subscription_required / expired)
+    try {
+        const sub = await getSubscription();
+        if (sub.status === 'expired') {
+            throw new Error('订阅已过期，请续订后再连接设备');
+        }
+        if (sub.status !== 'active') {
+            throw new Error('需要有效订阅才能连接设备');
+        }
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // 明确的业务错误直接抛出;网络/解析错误则交给中转握手兜底
+        if (/订阅|尚未创建|NoRelayAccount/.test(msg)) throw e instanceof Error ? e : new Error(msg);
+    }
+
+    const serverUrl = (p.serverUrl || '').replace(/\/+$/, '');
+    if (!serverUrl) throw new Error('设备档案缺少中转地址 serverUrl');
+
+    // B1: 用户 token + user-scoped → 中转强制验订阅
+    const socket = await connect(
+        serverUrl,
+        { token: accountCreds.token, secretB64: accountCreds.secretB64 || '' },
+        { clientType: 'user-scoped' }
+    );
+
     const machine: RelayMachine = {
         id: p.machineId,
         active: true,

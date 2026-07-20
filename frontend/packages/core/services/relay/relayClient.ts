@@ -241,11 +241,25 @@ export async function listMachines(serverUrl: string, creds: RelayCredentials): 
     return machines;
 }
 
-/** 建立 user-scoped 长连接。 */
-export function connect(serverUrl: string, creds: RelayCredentials): Promise<Socket> {
+/**
+ * 建立中转长连接。
+ * 默认 clientType=user-scoped: happy-server 会对无订阅/过期账户拒绝握手
+ * (subscription_required / subscription_expired)。machine-scoped 仅 daemon 使用。
+ */
+export function connect(
+    serverUrl: string,
+    creds: RelayCredentials,
+    opts?: { clientType?: 'user-scoped' | 'session-scoped' | 'machine-scoped'; machineId?: string }
+): Promise<Socket> {
     const { origin, basePath } = splitRelayUrl(serverUrl);
+    const clientType = opts?.clientType ?? 'user-scoped';
     const socket = io(origin, {
-        auth: { token: creds.token },
+        auth: {
+            token: creds.token,
+            clientType,
+            ...(opts?.machineId ? { machineId: opts.machineId } : {}),
+            happyClient: CLIENT_ID,
+        },
         path: `${basePath}/v1/updates`,
         // Allow the polling fallback, not websocket-only: on flaky mobile
         // networks a bare websocket can drop to nothing, whereas polling keeps
@@ -263,6 +277,15 @@ export function connect(serverUrl: string, creds: RelayCredentials): Promise<Soc
         });
         socket.once('connect_error', e => {
             clearTimeout(timer);
+            const msg = (e as Error)?.message ?? String(e);
+            if (/subscription_required/i.test(msg)) {
+                reject(new Error('需要有效订阅才能连接中转 (subscription_required)'));
+                return;
+            }
+            if (/subscription_expired/i.test(msg)) {
+                reject(new Error('订阅已过期，请续订后再连接 (subscription_expired)'));
+                return;
+            }
             reject(e);
         });
         socket.connect();

@@ -70,11 +70,14 @@ export class App extends Component<{}, AppState> {
     }
 
     async componentDidMount() {
-        // 中转节点失联时 apiClient 会把 backendTarget 翻回 none;订阅它,一旦后端
-        // 丢失就重新弹出配对门禁(RelayOnboarding),而不是卡死在打不通的中转界面。
+        // 中转节点失联时 apiClient 会把 backendTarget 翻回 none → 显示门禁;
+        // 静默重连成功回到 relay/direct 时收起门禁,避免手机弱网反复「回到连接页」。
         this._backendWatch = effect(() => {
-            if (backendTarget.value.mode === 'none') {
+            const m = backendTarget.value.mode;
+            if (m === 'none') {
                 this.setState({ backendGateVisible: true });
+            } else if (m === 'relay' || m === 'direct') {
+                this.setState({ backendGateVisible: false });
             }
         });
         // 解析后端来源:本机直连 / 经中转远程节点 / 未连接。

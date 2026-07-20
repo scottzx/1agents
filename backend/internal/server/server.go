@@ -753,6 +753,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
 	mux.HandleFunc("/api/system/happy/pair/start", sysHandler.HappyPairStart)     // POST — begin account-level pairing, returns pairing code
 	mux.HandleFunc("/api/system/happy/pair/status", sysHandler.HappyPairStatus)   // GET  — pairing progress (pending/authorized/error)
+	mux.HandleFunc("/api/system/happy/ensure-machine", sysHandler.HappyEnsureMachine) // POST — auto-bind machine using local relay-creds
 	// 重置本地数据: wipe App data (meta.db/sync.db tables + knowledge/scratch files +
 	// workspace-backed cc-connect projects), keep relay pairing identity (~/.happy +
 	// relay-creds.json) and provider/model config, re-seed default workspace.
