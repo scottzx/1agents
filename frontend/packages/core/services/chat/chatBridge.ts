@@ -446,6 +446,11 @@ export class ChatBridgeManager {
                     state.ready = true;
                     state.everReady = true;
                     this.notify(state);
+                    // onopen may have requested history before ensure_session
+                    // finished (no active handle/cwd yet → empty transcript).
+                    // Re-fetch once ready so resume doesn't stay blank until
+                    // the user hits header refresh.
+                    this.reloadHistory(session, state);
                     break;
                 case 'session_meta': {
                     // Authoritative capability snapshot sent after every
