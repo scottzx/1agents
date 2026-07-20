@@ -65,11 +65,11 @@ const (
 // Search order:
 //  1. skill-manager binary next to the running 1agents executable
 //  2. skill-manager binary in ./bin/ (relative to CWD)
-//  3. modules/1skills (dev) or bundled release 1skills/ source
+//  3. Python source via -skills-dir / ONEAGENTS_SKILLS_DIR / auto-discovery
 //     - prefer in-tree .venv if present
 //     - else managed venv at ~/.1agents/1skills/.venv
 func (s *SkillsSupervisor) resolveRuntime(cwd string) (mode launchMode, execPath string, skillsDir string) {
-	skillsDir = findSkillsSource(cwd)
+	skillsDir = s.resolveSkillsDir(cwd)
 
 	// 1. Next to the running executable (legacy release layout)
 	if selfExe, err := os.Executable(); err == nil {
@@ -89,7 +89,8 @@ func (s *SkillsSupervisor) resolveRuntime(cwd string) (mode launchMode, execPath
 
 	// 3. Host Python + source tree
 	if skillsDir == "" || !isSkillsSource(skillsDir) {
-		log.Printf("[skills-sup] No 1skills Python source found (looked for modules/1skills or bundled 1skills/)")
+		log.Printf("[skills-sup] No 1skills Python source found")
+		s.logSkillsDiscoveryHints(cwd)
 		return launchModeVenv, "", skillsDir
 	}
 
@@ -112,9 +113,60 @@ func (s *SkillsSupervisor) resolveRuntime(cwd string) (mode launchMode, execPath
 	return launchModeVenv, managed, skillsDir
 }
 
-// findSkillsSource locates the skill-manager Python source tree.
+// resolveSkillsDir picks the 1skills Python source tree.
+// Priority: -skills-dir config → ONEAGENTS_SKILLS_DIR env → auto-discovery.
+func (s *SkillsSupervisor) resolveSkillsDir(cwd string) string {
+	if s.cfg != nil && s.cfg.SkillsSourceDir != "" {
+		dir := s.cfg.SkillsSourceDir
+		if isSkillsSource(dir) {
+			if abs, err := filepath.Abs(dir); err == nil {
+				log.Printf("[skills-sup] Using -skills-dir: %s", abs)
+				return abs
+			}
+			log.Printf("[skills-sup] Using -skills-dir: %s", dir)
+			return dir
+		}
+		log.Printf("[skills-sup] -skills-dir %q is not a valid 1skills source (need skill_manager/ + requirements.txt); falling back to discovery", dir)
+	}
+
+	if env := strings.TrimSpace(os.Getenv("ONEAGENTS_SKILLS_DIR")); env != "" {
+		if isSkillsSource(env) {
+			if abs, err := filepath.Abs(env); err == nil {
+				log.Printf("[skills-sup] Using ONEAGENTS_SKILLS_DIR: %s", abs)
+				return abs
+			}
+			log.Printf("[skills-sup] Using ONEAGENTS_SKILLS_DIR: %s", env)
+			return env
+		}
+		log.Printf("[skills-sup] ONEAGENTS_SKILLS_DIR %q is not a valid 1skills source; falling back to discovery", env)
+	}
+
+	if found := findSkillsSource(cwd); found != "" {
+		log.Printf("[skills-sup] Auto-discovered 1skills source: %s", found)
+		return found
+	}
+	return ""
+}
+
+// logSkillsDiscoveryHints prints why source discovery failed (npm path vs cwd).
+func (s *SkillsSupervisor) logSkillsDiscoveryHints(cwd string) {
+	if s.cfg != nil && s.cfg.SkillsSourceDir != "" {
+		log.Printf("[skills-sup] configured -skills-dir=%q (invalid or incomplete package layout)", s.cfg.SkillsSourceDir)
+	}
+	if env := strings.TrimSpace(os.Getenv("ONEAGENTS_SKILLS_DIR")); env != "" {
+		log.Printf("[skills-sup] ONEAGENTS_SKILLS_DIR=%q (invalid or incomplete package layout)", env)
+	}
+	log.Printf("[skills-sup] cwd=%s", cwd)
+	if selfExe, err := os.Executable(); err == nil {
+		log.Printf("[skills-sup] executable=%s", selfExe)
+	}
+	log.Println("[skills-sup] Pass -skills-dir <path> (npm CLI resolves @1agents/skills), or set ONEAGENTS_SKILLS_DIR, or use modules/1skills in dev.")
+}
+
+// findSkillsSource locates the skill-manager Python source tree via heuristics.
+// Prefer an explicit -skills-dir from the npm CLI when available.
 func findSkillsSource(cwd string) string {
-	// Prefer npm package @1agents/skills (direct registry install)
+	// Prefer npm package @1agents/skills (direct registry install, or nested under cli)
 	for _, start := range skillsSearchRoots(cwd) {
 		candidate := filepath.Join(start, "node_modules", "@1agents", "skills")
 		if isSkillsSource(candidate) {
@@ -144,7 +196,10 @@ func findSkillsSource(cwd string) string {
 		dir = parent
 	}
 
-	// Release layouts relative to the 1agents executable
+	// Release / npm layouts relative to the 1agents executable
+	// e.g. .../node_modules/@1agents/core-linux-arm64/bin/1agents
+	//   → .../node_modules/@1agents/cli/node_modules/@1agents/skills
+	//   → .../node_modules/@1agents/skills (hoisted)
 	if selfExe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(selfExe)
 		for _, candidate := range []string{
@@ -157,6 +212,19 @@ func findSkillsSource(cwd string) string {
 			if resolved, err := filepath.Abs(candidate); err == nil && isSkillsSource(resolved) {
 				return resolved
 			}
+		}
+		// Walk up from bin/ looking for node_modules/@1agents/skills at each level
+		dir := exeDir
+		for i := 0; i < 10; i++ {
+			candidate := filepath.Join(dir, "node_modules", "@1agents", "skills")
+			if resolved, err := filepath.Abs(candidate); err == nil && isSkillsSource(resolved) {
+				return resolved
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
 		}
 	}
 
@@ -172,14 +240,34 @@ func findSkillsSource(cwd string) string {
 }
 
 func skillsSearchRoots(cwd string) []string {
-	roots := []string{cwd}
-	if selfExe, err := os.Executable(); err == nil {
-		roots = append(roots, filepath.Dir(selfExe))
+	seen := map[string]bool{}
+	var roots []string
+	add := func(p string) {
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		roots = append(roots, p)
 	}
-	// Walk a few parents for nested node_modules installs
+	add(cwd)
+	if selfExe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(selfExe)
+		add(exeDir)
+		// Walk parents of the binary (covers nested node_modules installs)
+		dir := exeDir
+		for i := 0; i < 10; i++ {
+			add(dir)
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	// Walk a few parents of CWD for nested node_modules installs
 	dir := cwd
 	for i := 0; i < 6; i++ {
-		roots = append(roots, dir)
+		add(dir)
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
@@ -280,7 +368,7 @@ func (s *SkillsSupervisor) supervisionLoop(ctx context.Context) {
 	if mode == launchModeVenv {
 		if skillsDir == "" || !isSkillsSource(skillsDir) {
 			log.Println("[skills-sup] 1skills source missing and no skill-manager binary; skills service will not start.")
-			log.Println("[skills-sup] Install @1agents/skills from npm (or use modules/1skills in dev), plus Python >= 3.11 (prefer uv).")
+			log.Println("[skills-sup] Install @1agents/skills (npm), ensure @1agents/cli passes -skills-dir, or use modules/1skills in dev; need Python >= 3.11 (prefer uv).")
 			return
 		}
 		if !isExecutable(execPath) {

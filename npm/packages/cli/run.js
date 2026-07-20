@@ -15,6 +15,7 @@ const {
   mapPlatform,
   resolveCoreBin,
   resolveWebDist,
+  resolveSkillsRoot,
 } = require("./lib/platform");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,6 +44,17 @@ function resolvePaths() {
     process.exit(1);
   }
 
+  // Soft-fail: core can run without skills; supervisor logs and skips the service.
+  let skillsPath = null;
+  try {
+    skillsPath = resolveSkillsRoot();
+  } catch (err) {
+    console.warn(`⚠️  [1agents] @1agents/skills not found: ${err.message}`);
+    console.warn(
+      "   Skills service will be unavailable. Install with: npm i -g @1agents/skills"
+    );
+  }
+
   if (process.platform !== "win32") {
     try {
       fs.chmodSync(agentPath, 0o755);
@@ -50,11 +62,27 @@ function resolvePaths() {
     } catch (_) {}
   }
 
-  return { agentPath, ttydPath, staticPath };
+  return { agentPath, ttydPath, staticPath, skillsPath };
+}
+
+/** Inject default binary/static/skills paths unless the user already set them. */
+function buildCoreArgs(userArgs, { ttydPath, staticPath, skillsPath }) {
+  const finalArgs = [];
+  if (!userArgs.some((a) => a.startsWith("-ttyd-bin"))) {
+    finalArgs.push("-ttyd-bin", ttydPath);
+  }
+  if (!userArgs.some((a) => a.startsWith("-static"))) {
+    finalArgs.push("-static", staticPath);
+  }
+  if (skillsPath && !userArgs.some((a) => a.startsWith("-skills-dir"))) {
+    finalArgs.push("-skills-dir", skillsPath);
+  }
+  return finalArgs;
 }
 
 async function main() {
-  const { agentPath, ttydPath, staticPath } = resolvePaths();
+  const paths = resolvePaths();
+  const { agentPath } = paths;
   const userArgs = process.argv.slice(2);
   const command = userArgs[0];
 
@@ -64,13 +92,7 @@ async function main() {
   const isDaemon = ["start", "stop", "status", "logs"].includes(command);
 
   if (!isDaemon) {
-    const finalArgs = [];
-    if (!userArgs.some((a) => a.startsWith("-ttyd-bin"))) {
-      finalArgs.push("-ttyd-bin", ttydPath);
-    }
-    if (!userArgs.some((a) => a.startsWith("-static"))) {
-      finalArgs.push("-static", staticPath);
-    }
+    const finalArgs = buildCoreArgs(userArgs, paths);
     finalArgs.push(...userArgs);
     try {
       execFileSync(agentPath, finalArgs, { stdio: "inherit" });
@@ -104,13 +126,7 @@ async function main() {
       process.exit(0);
     }
 
-    const finalArgs = [];
-    if (!userArgs.some((a) => a.startsWith("-ttyd-bin"))) {
-      finalArgs.push("-ttyd-bin", ttydPath);
-    }
-    if (!userArgs.some((a) => a.startsWith("-static"))) {
-      finalArgs.push("-static", staticPath);
-    }
+    const finalArgs = buildCoreArgs(userArgs, paths);
     finalArgs.push(...userArgs.slice(1));
 
     fs.mkdirSync(daemonDir, { recursive: true });
