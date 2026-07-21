@@ -55,6 +55,8 @@ dist/
 # Claude worktrees
 .claude/worktrees/
 .git-worktrees/
+# Claude local skill install metadata (not product source)
+.claude/skills/**/.skillmeta.json
 
 # antigravity
 .antigravitycli
