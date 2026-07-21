@@ -22,5 +22,17 @@ self.addEventListener('fetch', event => {
     )
         return;
 
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    event.respondWith(
+        fetch(event.request).catch(async () => {
+            const cached = await caches.match(event.request);
+            // caches.match returns undefined on miss; respondWith requires a
+            // Response or the SW throws "Failed to convert value to 'Response'".
+            if (cached) return cached;
+            return new Response('Network error', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            });
+        })
+    );
 });

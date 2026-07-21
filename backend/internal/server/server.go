@@ -1372,10 +1372,15 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Copy headers, stripping security controls
+	// Copy headers, stripping security controls and length/encoding hop
+	// headers. We fully buffer (and may rewrite HTML), so upstream
+	// Content-Length / Content-Encoding / Transfer-Encoding are stale —
+	// keeping them makes clients IncompleteRead or truncate the body
+	// (broken iframe loads for e.g. Vite on :5173).
 	for k, v := range resp.Header {
 		lowerK := strings.ToLower(k)
-		if lowerK == "x-frame-options" || lowerK == "content-security-policy" || lowerK == "csp" {
+		if lowerK == "x-frame-options" || lowerK == "content-security-policy" || lowerK == "csp" ||
+			lowerK == "content-length" || lowerK == "content-encoding" || lowerK == "transfer-encoding" {
 			continue
 		}
 		for _, val := range v {
@@ -1384,6 +1389,7 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(bodyBytes)
 }
