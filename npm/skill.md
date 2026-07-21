@@ -92,7 +92,8 @@ homepage: "https://github.com/scottzx/1Agents"
 - **网络**：访问 **npm registry**（可用国内镜像）；**不需要**访问 GitHub 才能装 core
 - **macOS / Linux**：`tmux`
 - **本机 Python ≥ 3.11**（`@1agents/skills`：优先 **uv**，否则 **pip** + venv）
-- **可选**：`cloudflared`（`-tunnel`）；`@1agents/happy` / `acpx`（optional，缺失不挡核心）
+- **可选**：`cloudflared`（`-tunnel`）；`@1agents/happy`（optional，缺失不挡核心）
+- **Chat ACP**：`@1agents/acp-bridge` → `@1agents/acpx`（1agents fork，含 Grok ask_user / exit_plan；装 cli 时一并安装）
 - **禁止当作默认路径**：薄安装器 + 从 GitHub Release 下 `1agents-*.tar.gz`（已废弃）
 
 快速检测脚本（一次跑完即可）：

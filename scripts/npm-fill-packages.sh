@@ -80,4 +80,52 @@ if [ -n "${HAPPY_OUT:-}" ] && [ -d "$HAPPY_OUT/happy-cli" ]; then
   echo "  + happy from $HAPPY_OUT"
 fi
 
+# @1agents/acpx — forked acpx runtime (Grok _x.ai/* host extensions) from modules/1acp
+# Shared package (once per fill). Skipped when modules/1acp is absent (e.g. tarball-only fill).
+ACPX_SRC="${ACPX_SRC:-$ROOT/modules/1acp}"
+if [ -d "$ACPX_SRC" ] && [ -f "$ACPX_SRC/package.json" ]; then
+  if [ ! -f "$ACPX_SRC/dist/runtime.js" ]; then
+    echo "=== building modules/1acp dist for @1agents/acpx ==="
+    if command -v pnpm >/dev/null 2>&1; then
+      (cd "$ACPX_SRC" && pnpm install --frozen-lockfile && pnpm run build:quiet)
+    else
+      (cd "$ACPX_SRC" && npm install && npm run build)
+    fi
+  fi
+  if [ ! -f "$ACPX_SRC/dist/runtime.js" ]; then
+    echo "ERROR: modules/1acp dist/runtime.js missing after build" >&2
+    exit 1
+  fi
+  rm -rf "$PKG/acpx/dist" "$PKG/acpx/skills"
+  mkdir -p "$PKG/acpx/dist"
+  # dist only (no source maps — smaller publish; runtime does not need them)
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude='*.map' "$ACPX_SRC/dist/" "$PKG/acpx/dist/"
+  else
+    tar -C "$ACPX_SRC/dist" --exclude='*.map' -cf - . | tar -C "$PKG/acpx/dist" -xf -
+  fi
+  if [ -d "$ACPX_SRC/skills" ]; then
+    cp -R "$ACPX_SRC/skills" "$PKG/acpx/skills"
+  fi
+  [ -f "$ACPX_SRC/LICENSE" ] && cp "$ACPX_SRC/LICENSE" "$PKG/acpx/LICENSE"
+  # CLI self-ref uses package name "acpx/flows"; rewrite for scoped publish name.
+  # Use sed (not perl double-quoted @ interpolation of @1agents).
+  find "$PKG/acpx/dist" -type f \( -name '*.js' -o -name '*.d.ts' \) -print0 \
+    | xargs -0 sed -i.bak 's|"acpx/flows"|"@1agents/acpx/flows"|g'
+  find "$PKG/acpx/dist" -type f -name '*.bak' -delete
+  echo "  + acpx dist from $ACPX_SRC"
+
+  # Keep bridge-server.mjs in sync with modules/1acp/bridge-server.js
+  # (import runtime from published @1agents/acpx, not monorepo ./src).
+  if [ -f "$ACPX_SRC/bridge-server.js" ]; then
+    sed 's|from "./src/runtime.js"|from "@1agents/acpx/runtime"|g' \
+      "$ACPX_SRC/bridge-server.js" > "$PKG/acp-bridge/bridge-server.mjs"
+    echo "  + acp-bridge/bridge-server.mjs synced from modules/1acp"
+  fi
+elif [ -f "$PKG/acpx/dist/runtime.js" ]; then
+  echo "  + acpx: keeping pre-filled dist (modules/1acp not available)"
+else
+  echo "WARNING: modules/1acp missing and no pre-filled @1agents/acpx dist — Chat ACP bridge will lack Grok host extensions unless filled later"
+fi
+
 echo "=== npm-fill-packages done"

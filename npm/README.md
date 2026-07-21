@@ -20,8 +20,8 @@ npm install -g @1agents/cli --registry=https://registry.npmmirror.com
 
 装 `@1agents/cli` 时 registry 会拉（同版本）：
 
-- **deps：** `@1agents/web`、`@1agents/skills`、`@1agents/cc-connect`（+ 当前平台子包）、`@1agents/cc-switch`（+ 当前平台子包）
-- **optional：** `@1agents/core-<plat>`（`1agents` + `ttyd`）、`@1agents/happy`、`acpx` / `@1agents/acpx`
+- **deps：** `@1agents/web`、`@1agents/skills`、`@1agents/cc-connect`（+ 当前平台子包）、`@1agents/cc-switch`（+ 当前平台子包）、`@1agents/acp-bridge`（→ `@1agents/acpx` fork runtime）
+- **optional：** `@1agents/core-<plat>`（`1agents` + `ttyd`）、`@1agents/happy`
 
 `cloudflared` 不进依赖图（`-tunnel` 时按需）。  
 1skills 仅 `@1agents/skills`：本机 **uv 优先 / pip 回退**。

@@ -61,7 +61,7 @@ npm install -g @1agents/cli
 | D5 | **frontend → `@1agents/web`** | 只发生产 `dist`，**去掉 `.map`**；主包 `dependencies` |
 | D6 | **happy-cli → optional** | `@1agents/happy`；`optionalDependencies`，失败不阻断核心 |
 | D7 | **ACP bridge → `@1agents/acp-bridge`（deps）** | 1agents 专用 WebSocket `bridge-server`（`ws://127.0.0.1:38082`）。**不是**上游 `acpx` CLI 包本身——官方 `acpx` **不带** bridge-server |
-| D8 | **运行时依赖 `acpx`** | `@1agents/acp-bridge` **dependencies** 引入 `acpx`（runtime）；bridge 用 `import from "acpx/runtime"`。Supervisor **禁止**默认 chdir 到不存在的 `modules/1acp` |
+| D8 | **运行时依赖 `@1agents/acpx`** | `@1agents/acp-bridge` **dependencies** 引入 **`@1agents/acpx`**（1agents fork of acpx，含 Grok `_x.ai/*` host extensions）；bridge 用 `import from "@1agents/acpx/runtime"`。**不要**依赖上游 npm `acpx`（无 ask_user / exit_plan）。Supervisor **禁止**默认 chdir 到不存在的 `modules/1acp` |
 | D9 | **cc-connect → `dependencies`** | 装 `@1agents/cli` 时 **一并安装**；独立包族 + 平台子包（见 §4.3） |
 | D9b | **cc-switch-cli → `dependencies`** | **不进 core**；独立 `@1agents/cc-switch` + 平台子包；装 cli **必带**（原生二进制，**不是** uv/pip） |
 | D10 | **技能 / 模块面板 embed 随 `@1agents/web`** | skill-manager / cc-connect 前端是独立 ESM（`<skills-panel>` / `<cc-connect-panel>`），**不是** webpack 进主包。发布物路径：`dist/embed/*.js`，运行时优先 `StaticDir/embed/`，禁止只认 monorepo `modules/*/dist-embed` |
@@ -69,7 +69,7 @@ npm install -g @1agents/cli
 | D11 | **禁止默认 GitHub 下载二进制** | cli **不得** 在 postinstall/首次运行默认去 GitHub 拉 core/tar（已废弃薄安装器主路径） |
 | D12 | **GitHub Release 仅为旁路** | 可选：桌面 / 离线整包 tar / 审计；**不**参与 `npm i -g @1agents/cli` 成功路径 |
 | D13 | **cloudflared 不进默认依赖图** | PATH 或首次 `-tunnel` 下载到 `~/.1agents/bin`（与 core 分发无关） |
-| D14 | **同版本锁定** | 一次 release 内所有 **`@1agents/*` 自研包** version 一致；第三方 `acpx` 可范围 pin |
+| D14 | **同版本锁定** | 一次 release 内所有 **`@1agents/*` 自研包** version 一致（含 `@1agents/acpx` / `@1agents/acp-bridge`） |
 
 > 国内加速：靠 **npm 镜像**（如 npmmirror），不是 ghproxy 下 release。
 ### 2.3 变更摘要
@@ -92,7 +92,7 @@ npm install -g @1agents/cli
 
 1. `npm i -g @1agents/cli`（可用国内 npm 镜像）即可跑通核心工作台。
 2. 只装 **当前 arch** 的原生二进制（core / cc-connect / **cc-switch** 平台子包）。
-3. 安装时 **自动带上** web + skills + cc-connect + **cc-switch**；**尝试** optional happy + acpx。
+3. 安装时 **自动带上** web + skills + cc-connect + **cc-switch** + **acp-bridge**（→ `@1agents/acpx`）；**尝试** optional happy。
 
 4. JS 侧车一律 **dist-only**；Python skills 用 uv/pip。
 5. CI 同版本发布所有 `@1agents/*` 自研包。
@@ -122,17 +122,19 @@ npm install -g @1agents/cli
 │   │           ├── @1agents/cc-connect-linux-x64@=VER
 │   │           ├── @1agents/cc-connect-linux-arm64@=VER
 │   │           └── @1agents/cc-connect-darwin-arm64@=VER
-│   └── @1agents/cc-switch@=VER           # meta → 当前平台 cc-switch 二进制（不进 core）
-│         └── optionalDependencies
-│               ├── @1agents/cc-switch-linux-x64@=VER
-│               ├── @1agents/cc-switch-linux-arm64@=VER
-│               └── @1agents/cc-switch-darwin-arm64@=VER
+│   ├── @1agents/cc-switch@=VER           # meta → 当前平台 cc-switch 二进制（不进 core）
+│   │     └── optionalDependencies
+│   │           ├── @1agents/cc-switch-linux-x64@=VER
+│   │           ├── @1agents/cc-switch-linux-arm64@=VER
+│   │           └── @1agents/cc-switch-darwin-arm64@=VER
+│   └── @1agents/acp-bridge@=VER          # Chat WS bridge
+│         └── dependencies
+│               └── @1agents/acpx@=VER    # forked ACP runtime (Grok host extensions)
 ├── optionalDependencies
 │   ├── @1agents/core-linux-x64@=VER      # 仅 1agents + ttyd
 │   ├── @1agents/core-linux-arm64@=VER
 │   ├── @1agents/core-darwin-arm64@=VER
-│   ├── @1agents/happy@=VER               # happy-cli dist + lock + adapter
-│   └── acpx@^x  或  @1agents/acpx@=VER   # ACP bridge；resolve dist
+│   └── @1agents/happy@=VER               # happy-cli dist + lock + adapter
 └── （已有）@1agents/wire                  # 独立版本线
 ```
 
@@ -151,7 +153,8 @@ npm install -g @1agents/cli
 | `@1agents/web` | 前端静态资源 dist |
 | `@1agents/skills` | 1skills Python 源码 + requirements（**仅此包**用 uv/pip） |
 | `@1agents/happy` | happy-cli + adapter + package-lock |
-| `acpx` 或 `@1agents/acpx` | ACP CLI/runtime dist（见 §4.4） |
+| `@1agents/acpx` | ACP CLI/runtime dist（1agents fork of modules/1acp；见 §4.4） |
+| `@1agents/acp-bridge` | Chat WebSocket bridge-server（deps `@1agents/acpx`） |
 | `@1agents/wire` | 已发布；本 PRD 不改其版本策略 |
 
 **平台后缀：** `linux-x64` | `linux-arm64` | `darwin-arm64`  
@@ -168,7 +171,8 @@ npm install -g @1agents/cli
 | `@1agents/web` | frontend dist **无 map** | 尽量 &lt; 20 MB |
 | `@1agents/skills` | skill_manager + requirements + 可选 frontend/dist | ~2–5 MB |
 | `@1agents/happy` | dist + bin + package-lock + adapter | 小；`npm ci` 装依赖 |
-| acpx / `@1agents/acpx` | 已有 dist-only 模式（~2 MB 级） | 小 |
+| `@1agents/acpx` | modules/1acp dist-only（~2 MB 级，含 Grok host extensions） | 小 |
+| `@1agents/acp-bridge` | bridge-server.mjs only | 小 |
 
 ### 4.3 cc-connect / cc-switch 为何拆出 core
 
@@ -177,17 +181,18 @@ npm install -g @1agents/cli
 - meta 包用 **optionalDependencies + os/cpu** 拉当前平台二进制（esbuild 模式）。
 - **`cc-switch` 是原生二进制**，与 skills 的 uv/pip **无关**。
 
-### 4.4 acpx 包源策略
+### 4.4 acpx 包源策略（已选定 **B**）
 
-| 选项 | 何时用 |
-|------|--------|
-| **A. 依赖上游 `acpx`** | 无 1agents 专属 fork 差异；semver 范围 pin |
-| **B. 发 `@1agents/acpx`** | 需要补丁/钉死版本/与 release VER 对齐 |
+| 选项 | 状态 |
+|------|------|
+| **A. 依赖上游 `acpx`** | **弃用** — 上游无 Grok `_x.ai/ask_user_question` / `_x.ai/exit_plan_mode` |
+| **B. 发 `@1agents/acpx`** | **当前** — 与 release VER 对齐；fill 自 `modules/1acp` dist |
 
-**集成要求（无论 A/B）：**
+**集成要求：**
 
-- 运行时 **resolve 包内 dist**，禁止默认 `modules/1acp` + `npx tsx bridge-server.js`。
-- 生产路径：`node <pkg>/dist/...` 或官方 bin；开发可用 workspace / `file:`。
+- 运行时 **resolve `@1agents/acpx` 包内 dist**，禁止默认 `modules/1acp` + `npx tsx bridge-server.js`。
+- bridge：`import from "@1agents/acpx/runtime"`；publish 顺序：`acpx` → `acp-bridge` → `cli`。
+- 生产路径：`node <pkg>/dist/...` 或 `1agents-acpx` bin；开发可用 monorepo `modules/1acp`。
 
 ### 4.5 主包 resolve 伪代码
 
@@ -200,7 +205,7 @@ const web = require.resolve('@1agents/web/package.json');
 const skills = require.resolve('@1agents/skills/package.json');
 // optional:
 try { require.resolve('@1agents/happy/package.json'); } catch { /* degrade */ }
-try { require.resolve('acpx/package.json'); } catch { /* degrade */ }
+try { require.resolve('@1agents/acpx/package.json'); } catch { /* degrade */ }
 ```
 
 ---
@@ -215,7 +220,7 @@ npm install -g @1agents/cli
 npm i -g @1agents/cli --registry=https://registry.npmmirror.com
 ```
 
-一并得到：`web` + `skills` + `cc-connect`（当前平台）+ `core-*`（optional 成功时）+ 尝试 `happy` / `acpx`。
+一并得到：`web` + `skills` + `cc-connect`（当前平台）+ `acp-bridge`（→ `@1agents/acpx`）+ `core-*`（optional 成功时）+ 尝试 `happy`。
 
 ### 5.2 1skills
 
@@ -223,7 +228,7 @@ npm i -g @1agents/cli --registry=https://registry.npmmirror.com
 - 首次技能相关启动：`uv` 优先，否则 `pip` + venv（目录建议 `~/.1agents/1skills/.venv`）。
 - 无 Python ≥ 3.11：日志明确，**核心不退出**。
 
-### 5.3 happy / acpx 缺失
+### 5.3 happy 缺失
 
 - 核心终端、文件、web、cc-connect 包装命令仍可用。
 - Happy / ACP bridge 相关入口降级提示。
@@ -240,7 +245,7 @@ npm i -g @1agents/cli --registry=https://registry.npmmirror.com
 | 前端 static | `@1agents/web/dist` |
 | 1skills 源码 | `@1agents/skills` 包根（**uv/pip 仅此处**） |
 | happy | `@1agents/happy` + `npm ci` |
-| ACP bridge | `acpx` / `@1agents/acpx` dist |
+| ACP bridge | `@1agents/acp-bridge` + `@1agents/acpx` dist |
 | cloudflared | PATH 或 on-demand 下载 |
 
 ---
@@ -251,14 +256,14 @@ npm i -g @1agents/cli --registry=https://registry.npmmirror.com
 
 - 自研包：`YYYYMMDD.N.0` 全员一致。
 - Git tag：`vYYYYMMDD-N`（Release 可选）。
-- 依赖写死精确版本（`=` / 无 `^`），`@1agents/wire`、上游 `acpx` 可例外注明。
+- 依赖写死精确版本（`=` / 无 `^`），`@1agents/wire` 可例外注明。
 
 ### 7.2 发布顺序
 
 ```text
 1. 构建各平台 core / cc-connect / cc-switch 二进制、web、skills、happy
 2. publish @1agents/core-* 、@1agents/cc-connect-* 、@1agents/cc-switch-*
-3. publish meta：cc-connect、cc-switch、web、skills、happy、acpx（若 B）
+3. publish meta：cc-connect、cc-switch、web、skills、happy、acpx、acp-bridge
 4. publish @1agents/cli（dependencies 指向已存在版本）
 5. （可选）GitHub Release 整包 tar
 ```
@@ -305,7 +310,7 @@ docs/features/npm-package-split/
 
 | 模块 | 策略 |
 |------|------|
-| **1acp / acpx** | 独立 dist 包；supervisor **resolve 包**，淘汰 `modules/1acp`+tsx 默认路径 |
+| **1acp / `@1agents/acpx`** | 独立 dist 包（fork）；supervisor **resolve `@1agents/acp-bridge`** → `@1agents/acpx`，淘汰 `modules/1acp`+tsx 默认路径 |
 | **happy-cli** | `@1agents/happy` optional |
 | **frontend** | `@1agents/web` deps |
 | **1skills** | `@1agents/skills` deps + uv/pip |
@@ -322,7 +327,7 @@ docs/features/npm-package-split/
 | optional core 在部分镜像未装上 | 启动强校验 + 打印 `npm i -g @1agents/core-<plat>@VER` |
 | cc-connect / core 双平台包漏装 | meta 包 postinstall 检测；CI 装跑冒烟 |
 | skills uv/pip 环境差 | 文档 + 分层日志；不 fatal 核心 |
-| acpx 上游 breaking | pin 版本或发 `@1agents/acpx` |
+| `@1agents/acpx` 漏填 dist | fill 必须产出 `dist/runtime.js`；publish 前硬校验 |
 | scope 权限 | 确认 `@1agents` org publish 权限覆盖所有新包名；**Granular Token 若只勾了 `@1agents/wire`，发布 `core-linux-x64` 会 E404**（npm 用 404 代替 403） |
 
 ### npm 首次发布 E404（运维）
@@ -346,7 +351,7 @@ docs/features/npm-package-split/
 2. 安装图含：`web`、`skills`、`cc-connect`、**`cc-switch`**（+ 当前平台子包）、`core-*`（当前平台）。
 3. **无**其它 arch 的 core/cc-connect/cc-switch 平台包；**core 内无 cc-switch**。
 4. skills 在独立包内；首次技能启动走 uv 或 pip（**仅 skills**）。
-5. 无 happy / 无 acpx 时核心仍可用。
+5. 无 happy 时核心仍可用；Chat ACP 需要 `@1agents/acp-bridge` + `@1agents/acpx`（cli deps）。
 6. 同次 release 自研 `@1agents/*` version 一致。
 
 ---
@@ -357,7 +362,7 @@ docs/features/npm-package-split/
 |------|------|
 | P0 | `@1agents` 包骨架、core 平台包、web、cli resolve、CI 同版本 publish |
 | P1 | `@1agents/skills` deps + uv/pip；`@1agents/cc-connect` + **`@1agents/cc-switch`** 平台分包 deps |
-| P2 | `@1agents/happy` optional；acpx resolve + optional；文档 |
+| P2 | `@1agents/happy` optional；`@1agents/acpx` + `@1agents/acp-bridge` deps；文档 |
 | P3 |（后续）GitHub proxy 兜底、体积精修、退役 submodule 源码启动路径 |
 
 ---
@@ -365,7 +370,7 @@ docs/features/npm-package-split/
 ## 13. 参考
 
 - `@1agents/wire`（已发布）
-- `modules/1acp`（npm 名 `acpx`，dist-only）
+- `modules/1acp`（发布为 `@1agents/acpx`，dist-only；bridge 为 `@1agents/acp-bridge`）
 - `scripts/build-happy-bundle.sh`、`scripts/package-1skills-python.sh`
 - `backend/internal/supervisor/skills.go`、`acpx.go`
 - esbuild optional platform packages 模式

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { WebSocketServer } from "ws";
-import { createAcpRuntime, createRuntimeStore, createAgentRegistry } from "acpx/runtime";
+import { createAcpRuntime, createRuntimeStore, createAgentRegistry } from "@1agents/acpx/runtime";
 
 // ----------------------------------------------------
 // Configurations
@@ -1641,8 +1641,8 @@ wss.on("connection", (ws) => {
           ws,
           sessionId,
           "AGENT_ADAPTER_MISSING",
-          `ACP adapter failed to launch (${cmd}). The adapter is not installed for 1acp. ` +
-            `Run: cd modules/1acp && pnpm install, then restart 1agents. ` +
+          `ACP adapter failed to launch (${cmd}). Install the agent CLI on PATH, or reinstall ` +
+            `@1agents/cli (pulls @1agents/acpx). Dev: cd modules/1acp && pnpm install. ` +
             `Underlying: ${err.stderrSummary || err.message}`,
         );
       } else {

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+skills/
+LICENSE
+*.tgz
+package-lock.json

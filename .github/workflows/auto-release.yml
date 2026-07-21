@@ -52,6 +52,9 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
+    # Wait for prepare so APP_VERSION is the release tag (not a short SHA from
+    # shallow git describe). OTA version compare relies on vYYYYMMDD-N.
+    needs: [prepare]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -66,7 +69,8 @@ jobs:
             frontend/dist
             modules/ttyd/src/html.h
           # Include embed entrypoints so skills/cc-connect panel UI rebuilds when they change.
-          key: frontend-assets-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**', 'scripts/build-module-embeds.sh', 'modules/1skills/package.json', 'modules/1skills/vite.embed.config.ts', 'modules/1skills/frontend/src/embed.tsx', 'modules/cc-connect/web/package.json', 'modules/cc-connect/web/vite.embed.config.ts', 'modules/cc-connect/web/src/embed.tsx') }}
+          # Bump version in the key so each release tag gets a versioned bundle.
+          key: frontend-assets-${{ runner.os }}-${{ needs.prepare.outputs.tag }}-${{ hashFiles('frontend/package.json', 'frontend/yarn.lock', 'frontend/gulpfile.js', 'frontend/webpack.config.js', 'frontend/tsconfig.json', 'frontend/src/**', 'scripts/build-module-embeds.sh', 'modules/1skills/package.json', 'modules/1skills/vite.embed.config.ts', 'modules/1skills/frontend/src/embed.tsx', 'modules/cc-connect/web/package.json', 'modules/cc-connect/web/vite.embed.config.ts', 'modules/cc-connect/web/src/embed.tsx') }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -87,6 +91,11 @@ jobs:
       - name: Install and Build Frontend
         if: steps.cache-frontend.outputs.cache-hit != 'true'
         working-directory: frontend
+        env:
+          # webpack DefinePlugin → __APP_VERSION__ (frontend/src/version.ts)
+          APP_VERSION: ${{ needs.prepare.outputs.tag }}
+          GIT_COMMIT: ${{ github.sha }}
+          BUILD_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at }}
         run: |
           corepack enable
           yarn install
@@ -307,6 +316,8 @@ jobs:
             npm/packages/web
             npm/packages/skills
             npm/packages/happy
+            npm/packages/acpx
+            npm/packages/acp-bridge
             npm/packages/cli
             npm/packages/cc-connect
             npm/packages/cc-switch
@@ -465,6 +476,8 @@ jobs:
             npm/packages/web
             npm/packages/skills
             npm/packages/happy
+            npm/packages/acpx
+            npm/packages/acp-bridge
             npm/packages/cli
             npm/packages/cc-connect
             npm/packages/cc-switch
@@ -691,7 +704,7 @@ jobs:
                   ;;
               esac
             done < <(find artifacts -type f -path '*/bin/1agents' -o -type f -path '*/bin/cc-connect' -o -type f -path '*/bin/cc-switch')
-            for shared in web skills happy cli cc-connect cc-switch; do
+            for shared in web skills happy acpx acp-bridge cli cc-connect cc-switch; do
               found=$(find artifacts -type d -name "$shared" | head -1 || true)
               if [ -n "$found" ] && [ -f "$found/package.json" ]; then
                 rm -rf "npm/packages/$shared"
@@ -733,12 +746,76 @@ jobs:
           echo "=== npm/packages binaries ==="
           find npm/packages -path '*/bin/*' ! -name '.gitkeep' | sort
 
-      - name: Build OTA manifest (server only)
+      - name: Download html-dist for frontend OTA payload
+        uses: actions/download-artifact@v8
+        with:
+          name: html-dist
+          path: html-dist
+
+      - name: Build OTA frontend payload + root manifest
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
+          set -euo pipefail
+          # Frontend OTA tarball (top-level files, no outer dist/ prefix).
+          # Prefer the dedicated html-dist artifact; fall back to extracting
+          # dist/ from a backend tarball when the artifact is missing.
+          # Canonical name: frontend-vYYYYMMDD-N.tar.gz (TAG already has leading v).
+          FE_TGZ="frontend-${TAG}.tar.gz"
+          if [ -f html-dist/index.html ]; then
+            tar -czf "$FE_TGZ" -C html-dist .
+            echo "=== frontend payload from html-dist artifact ==="
+            ls -lh "$FE_TGZ"
+          else
+            echo "html-dist/index.html missing — trying backend tarball dist/"
+            fe_src=""
+            for cand in 1agents-${TAG}-linux-amd64.tar.gz \
+                        1agents-${TAG}-linux-arm64.tar.gz \
+                        1agents-${TAG}-darwin-arm64.tar.gz; do
+              [ -f "$cand" ] && { fe_src="$cand"; break; }
+            done
+            if [ -n "$fe_src" ]; then
+              rm -rf _fe && mkdir -p _fe
+              tar -xzf "$fe_src" -C _fe
+              dist_dir=""
+              # Prefer release-pkg layout dist/index.html; never pick happy-cli/dist.
+              if [ -f _fe/dist/index.html ]; then
+                dist_dir="_fe/dist"
+              else
+                while IFS= read -r d; do
+                  if [ -f "$d/index.html" ]; then dist_dir="$d"; break; fi
+                done < <(find _fe -type d -name dist 2>/dev/null | sort)
+              fi
+              if [ -n "$dist_dir" ]; then
+                tar -czf "$FE_TGZ" -C "$dist_dir" .
+                echo "=== frontend payload from $fe_src ($dist_dir) ==="
+                ls -lh "$FE_TGZ"
+              else
+                echo "WARN: no dist/index.html in $fe_src — frontend OTA entry will be empty"
+              fi
+            else
+              echo "WARN: no backend tarball to derive frontend payload"
+            fi
+          fi
+
+          # build-manifest.py accepts both versioned (GitHub asset names) and
+          # unversioned tarballs; for GitHub it emits URLs using the actual basename.
           python3 scripts/build-manifest.py \
-            --version "${{ needs.prepare.outputs.tag }}" \
+            --version "$TAG" \
             --artifacts . \
             --output manifest.json
+          echo "=== OTA manifest ==="
+          cat manifest.json
+          # Fail the release if platforms are empty — OTA would be broken.
+          python3 -c "
+          import json, sys
+          m = json.load(open('manifest.json'))
+          plats = m.get('components', {}).get('backend', {}).get('platforms', {})
+          if not plats:
+              print('ERROR: manifest has no backend platforms', file=sys.stderr)
+              sys.exit(1)
+          print('platforms:', ', '.join(sorted(plats)))
+          "
 
       - name: Create GitHub Release (tarballs optional bypass)
         uses: softprops/action-gh-release@v2
@@ -760,6 +837,7 @@ jobs:
             See `docs/features/npm-package-split/prd.md`.
           files: |
             1agents-*.tar.gz
+            frontend-*.tar.gz
             manifest.json
 
       - name: Set up Node.js
@@ -791,6 +869,17 @@ jobs:
             echo "ERROR: no core platform package contains bin/1agents — fill step failed" >&2
             find npm/packages -maxdepth 3 | head -80
             exit 1
+          fi
+          if [ ! -f npm/packages/acpx/dist/runtime.js ]; then
+            echo "ERROR: npm/packages/acpx/dist/runtime.js missing — @1agents/acpx not filled (modules/1acp build)" >&2
+            exit 1
+          fi
+          if ! grep -q 'onExitPlanMode\|onAskUserQuestion' npm/packages/acpx/dist/runtime.js npm/packages/acpx/dist/*.js 2>/dev/null; then
+            # Grok host hooks live in live-checkpoint chunk; fail closed if neither is present.
+            if ! grep -q '_x.ai/exit_plan_mode\|_x.ai/ask_user_question' npm/packages/acpx/dist/*.js 2>/dev/null; then
+              echo "ERROR: @1agents/acpx dist lacks Grok host extensions — wrong/empty dist" >&2
+              exit 1
+            fi
           fi
 
           (cd npm/packages/cli && npm pack --dry-run --ignore-scripts 2>&1 | tail -5)

@@ -1,0 +1,37 @@
+{
+  "name": "@1agents/acpx",
+  "version": "0.0.0-dev",
+  "description": "1agents fork of acpx (ACP runtime + CLI) with Grok _x.ai/* host extensions",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "1agents-acpx": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./dist/cli.js",
+    "./runtime": "./dist/runtime.js",
+    "./flows": "./dist/flows.js",
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.2.1",
+    "commander": "^15.0.0",
+    "skillflag": "^0.2.0",
+    "tsx": "^4.23.0",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

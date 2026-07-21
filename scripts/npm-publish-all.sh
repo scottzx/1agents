@@ -67,8 +67,13 @@ for p in core-linux-x64 core-linux-arm64 core-darwin-arm64 \
   publish_one "$PKG/$p"
 done
 
-# 2) content + meta (+ acp-bridge for Chat WebSocket microservice)
-for p in web skills happy acp-bridge cc-connect cc-switch; do
+# 2) content + meta
+# acpx (forked ACP runtime) must publish before acp-bridge (depends on @1agents/acpx)
+for p in web skills happy acpx acp-bridge cc-connect cc-switch; do
+  if [ "$p" = "acpx" ] && [ ! -f "$PKG/acpx/dist/runtime.js" ]; then
+    echo "ERROR: npm/packages/acpx/dist/runtime.js missing — run npm-fill-packages.sh (builds modules/1acp)" >&2
+    exit 1
+  fi
   publish_one "$PKG/$p"
 done
 
