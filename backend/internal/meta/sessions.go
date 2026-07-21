@@ -157,9 +157,11 @@ func (s *SessionStore) UpdatePermissionMode(id, mode string) error {
 // UpdateACP persists the agent-managed session id for a chat record. Used
 // when the bridge-server reports back the agent's session uuid via
 // session_ready, so that subsequent opens can resume the same session
-// (and find its native storage, e.g. Claude Code's <uuid>.jsonl).
+// (and find its native storage, e.g. Claude Code's <uuid>.jsonl or
+// Grok's ~/.grok/sessions/.../summary.json).
 // It also tries to resolve a descriptive session title from Claude's
-// sessions index if the session currently has a default or empty name.
+// sessions index, then Grok's generated_title, when the session still has
+// a default or empty name.
 func (s *SessionStore) UpdateACP(id, acpSessionID string) error {
 	if acpSessionID == "" {
 		return nil
@@ -179,6 +181,10 @@ func (s *SessionStore) UpdateACP(id, acpSessionID string) error {
 	newName := rec.Name
 	if !rec.UserNamed && isDefaultSessionName(rec.Name) {
 		if title, err := ResolveClaudeSessionName(acpSessionID); err == nil && title != "" {
+			newName = title
+		} else if title, err := ResolveGrokSessionTitle("", acpSessionID); err == nil && title != "" {
+			// Walk-only: UpdateACP has no workspace path; Grok layout is
+			// ~/.grok/sessions/<encoded-cwd>/<id>/summary.json.
 			newName = title
 		}
 	}

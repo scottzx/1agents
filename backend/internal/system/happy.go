@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -79,7 +80,8 @@ func resolveNode(binDir string) (string, bool) {
 
 // happyAdapterEntry returns the path to the 1agents RPC adapter entrypoint that
 // happy loads via HAPPY_RPC_ADAPTER_ENTRY, or "" if it is not bundled. Mirrors
-// the resolution layouts in resolveHappy (release bundle, then repo dev).
+// the resolution layouts in resolveHappy (release bundle, then repo dev), and
+// also the npm @1agents/cli layout where adapter ships under @1agents/happy/.
 func happyAdapterEntry() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -87,8 +89,10 @@ func happyAdapterEntry() string {
 	}
 	binDir := filepath.Dir(exe)
 	for _, p := range []string{
-		filepath.Join(binDir, "adapter", "rpc", "index.mjs"),       // release bundle
-		filepath.Join(binDir, "..", "adapter", "rpc", "index.mjs"), // repo dev
+		filepath.Join(binDir, "adapter", "rpc", "index.mjs"),                         // release bundle
+		filepath.Join(binDir, "..", "adapter", "rpc", "index.mjs"),                   // repo dev (build/ → adapter/)
+		filepath.Join(binDir, "..", "..", "happy", "adapter", "rpc", "index.mjs"),    // npm: core-*/bin → @1agents/happy/adapter
+		filepath.Join(binDir, "..", "node_modules", "@1agents", "happy", "adapter", "rpc", "index.mjs"),
 	} {
 		if fileExists(p) {
 			return p
@@ -112,6 +116,37 @@ func happySettingsServerURL() string {
 		return ""
 	}
 	return s.ServerURL
+}
+
+// happyBackendURL returns http://127.0.0.1:{port} for the local Go gateway so
+// the happy adapter's 1agents-proxy can reach it when -listen is not the
+// default :38080. Port is read from ~/.1agents/daemon.json (written by main
+// on start). Returns "" if unknown — adapter then keeps its own default.
+func happyBackendURL() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".1agents", "daemon.json"))
+	if err != nil {
+		return ""
+	}
+	var info struct {
+		ListenAddr string `json:"listen_addr"`
+	}
+	if json.Unmarshal(data, &info) != nil || info.ListenAddr == "" {
+		return ""
+	}
+	addr := strings.TrimSpace(info.ListenAddr)
+	// Accept ":8085" by normalizing to "0.0.0.0:8085" for SplitHostPort.
+	if strings.HasPrefix(addr, ":") {
+		addr = "0.0.0.0" + addr
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return ""
+	}
+	return "http://127.0.0.1:" + port
 }
 
 // isExecutableFile reports whether path is a regular file with an executable bit.
@@ -240,10 +275,32 @@ func (h *Handler) HappyStatus(w http.ResponseWriter, r *http.Request) {
 // HappyDaemonStart handles POST /api/system/happy/daemon/start.
 // Finds the `happy` binary and launches `happy daemon start` (which itself
 // spawns a detached start-sync child and exits immediately).
+//
+// When ~/.1agents/relay-creds.json exists but the machine is not yet bound
+// (or is bound to another account), auto-runs ensureMachineBoundToRelayAccount
+// so operators need not use the manual Model A QR flow.
 func (h *Handler) HappyDaemonStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Auto-bind from local relay user credentials when possible.
+	if _, err := loadRelayCredentialsFile(); err == nil {
+		if res, err := ensureMachineBoundToRelayAccount(false); err != nil {
+			jsonError(w, "auto machine bind failed: "+err.Error(), http.StatusBadRequest)
+			return
+		} else if res != nil && !res.Skipped {
+			// ensure already started daemon after bind
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":        true,
+				"bound":     true,
+				"machineId": res.MachineID,
+				"serverUrl": res.ServerURL,
+			})
+			return
+		}
 	}
 
 	if err := startHappyDaemon(); err != nil {
@@ -289,6 +346,14 @@ func startHappyDaemon() error {
 	// default): only inject when neither an env nor a paired settings.json set it.
 	if _, set := os.LookupEnv("HAPPY_SERVER_URL"); !set && happySettingsServerURL() == "" {
 		cmd.Env = append(cmd.Env, "HAPPY_SERVER_URL="+defaultRelayURL)
+	}
+	// Adapter 1agents-proxy / chat bridge fetch the local Go API. Default in
+	// adapter is http://127.0.0.1:38080; when the gateway listens elsewhere
+	// (-listen :8085 etc.) pin ONEAGENTS_BACKEND_URL from daemon.json.
+	if _, set := os.LookupEnv("ONEAGENTS_BACKEND_URL"); !set {
+		if backend := happyBackendURL(); backend != "" {
+			cmd.Env = append(cmd.Env, "ONEAGENTS_BACKEND_URL="+backend)
+		}
 	}
 	// Let the spawned node daemon trust a self-signed dev relay (mkcert). Node
 	// reads NODE_EXTRA_CA_CERTS; if the backend only carries HAPPY_EXTRA_CA_CERTS
@@ -338,10 +403,17 @@ func stopHappyDaemonProcess() error {
 }
 
 // effectiveRelayURL resolves the relay base the daemon will use, matching
-// happy-cli's precedence: env HAPPY_SERVER_URL → paired settings.json → default.
+// happy-cli's precedence: env HAPPY_SERVER_URL → relay-creds.relayUrl →
+// paired settings.json → default.
 func effectiveRelayURL() string {
 	if v := os.Getenv("HAPPY_SERVER_URL"); v != "" {
 		return v
+	}
+	if data, err := os.ReadFile(relayCredsPath()); err == nil {
+		var c RelayCredentials
+		if json.Unmarshal(data, &c) == nil && strings.TrimSpace(c.RelayURL) != "" {
+			return strings.TrimRight(c.RelayURL, "/")
+		}
 	}
 	if v := happySettingsServerURL(); v != "" {
 		return v

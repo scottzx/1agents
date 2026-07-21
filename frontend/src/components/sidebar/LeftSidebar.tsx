@@ -84,6 +84,28 @@ function DeviceOsIcon({ os }: { os?: string }) {
     );
 }
 
+/** Closed vs open folder glyph — doubles as expand/collapse affordance. */
+function FolderToggleIcon({ open }: { open: boolean }) {
+    return (
+        <svg
+            class="folder-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+        >
+            {open ? (
+                <path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2" />
+            ) : (
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+            )}
+        </svg>
+    );
+}
+
 // 12px SVG icons used by the folder "..." menu (新建会话 / 新建终端 / 重命名 / 归档).
 const WS_ACTION_ICONS = {
     newChat: (
@@ -718,39 +740,39 @@ export function LeftSidebar({
                                             <div key={ws.id} class={`project-node${isActive ? ' ws-active' : ''}`}>
                                                 <div
                                                     class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
-                                                    onClick={() => {
-                                                        toggleFolder(ws.id);
-                                                        onSelectWorkspace(ws);
-                                                    }}
                                                 >
-                                                    <svg
-                                                        class="chevron"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2.5"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
+                                                    <button
+                                                        type="button"
+                                                        class="folder-toggle-btn"
+                                                        aria-expanded={folder.expanded}
+                                                        title={t(
+                                                            folder.expanded
+                                                                ? 'sidebar.collapseProject'
+                                                                : 'sidebar.expandProject',
+                                                            language
+                                                        )}
+                                                        aria-label={t(
+                                                            folder.expanded
+                                                                ? 'sidebar.collapseProject'
+                                                                : 'sidebar.expandProject',
+                                                            language
+                                                        )}
+                                                        onClick={(e: MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            toggleFolder(ws.id);
+                                                        }}
                                                     >
-                                                        <polyline points="9 18 15 12 9 6" />
-                                                    </svg>
-                                                    {ws.avatar && ws.avatar.startsWith('/') ? (
-                                                        <img class="folder-avatar" src={ws.avatar} alt="" />
-                                                    ) : (
-                                                        <svg
-                                                            class="folder-icon"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        >
-                                                            <circle cx="12" cy="8" r="4" />
-                                                            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                                                        </svg>
-                                                    )}
-                                                    <span class="ws-name">{ws.name}</span>
+                                                        <FolderToggleIcon open={folder.expanded} />
+                                                    </button>
+                                                    <div
+                                                        class="folder-click-area"
+                                                        onClick={() => onSelectWorkspace(ws)}
+                                                    >
+                                                        {ws.avatar && ws.avatar.startsWith('/') ? (
+                                                            <img class="folder-avatar" src={ws.avatar} alt="" />
+                                                        ) : null}
+                                                        <span class="ws-name">{ws.name}</span>
+                                                    </div>
                                                     <div
                                                         class="ws-actions"
                                                         onClick={(e: MouseEvent) => e.stopPropagation()}
@@ -939,42 +961,46 @@ export function LeftSidebar({
                                                                 ? 'drag-over-after'
                                                                 : ''
                                                         }`}
-                                                        draggable={true}
-                                                        onDragStart={e => handleDragStart(e, folder.id)}
                                                         onDragOver={e => handleDragOver(e, folder.id)}
                                                         onDragLeave={e => handleDragLeave(e, folder.id)}
                                                         onDrop={e => handleDrop(e, folder.id)}
-                                                        onDragEnd={handleDragEnd}
-                                                        onClick={() => {
-                                                            toggleFolder(folder.id);
-                                                            if (ws) onSelectWorkspace(ws);
-                                                        }}
                                                     >
-                                                        <svg
-                                                            class="chevron"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2.5"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
+                                                        <button
+                                                            type="button"
+                                                            class="folder-toggle-btn"
+                                                            aria-expanded={folder.expanded}
+                                                            title={t(
+                                                                folder.expanded
+                                                                    ? 'sidebar.collapseProject'
+                                                                    : 'sidebar.expandProject',
+                                                                language
+                                                            )}
+                                                            aria-label={t(
+                                                                folder.expanded
+                                                                    ? 'sidebar.collapseProject'
+                                                                    : 'sidebar.expandProject',
+                                                                language
+                                                            )}
+                                                            onClick={(e: MouseEvent) => {
+                                                                e.stopPropagation();
+                                                                toggleFolder(folder.id);
+                                                            }}
                                                         >
-                                                            <polyline points="9 18 15 12 9 6" />
-                                                        </svg>
-                                                        <svg
-                                                            class="folder-icon"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
+                                                            <FolderToggleIcon open={folder.expanded} />
+                                                        </button>
+                                                        <div
+                                                            class="folder-click-area"
+                                                            draggable={true}
+                                                            onDragStart={e => handleDragStart(e, folder.id)}
+                                                            onDragEnd={handleDragEnd}
+                                                            onClick={() => {
+                                                                if (ws) onSelectWorkspace(ws);
+                                                            }}
                                                         >
-                                                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
-                                                        </svg>
-                                                        <span class="ws-name" title={ws?.path || folder.name}>
-                                                            {folder.name}
-                                                        </span>
+                                                            <span class="ws-name" title={ws?.path || folder.name}>
+                                                                {folder.name}
+                                                            </span>
+                                                        </div>
                                                         {ws && (
                                                             <div
                                                                 class="ws-actions"

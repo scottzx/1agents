@@ -202,9 +202,9 @@ export function SkillsTab({
             const preview = await skillService.previewPush(workspaceId, selected.skillRef);
             modal.openPushPreviewModal(preview, workspaceId, selected.skillRef, result => {
                 setFlash(
-                    result === 'created'
-                        ? t('assistant.detail.pushedCreated', language)
-                        : t('assistant.push.pushed', language)
+                    result === 'unchanged'
+                        ? t('assistant.push.unchanged', language)
+                        : t('assistant.push.submitted', language)
                 );
                 void load();
             });

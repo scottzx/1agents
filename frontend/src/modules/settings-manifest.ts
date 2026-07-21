@@ -12,6 +12,7 @@
  */
 
 import type { ModuleManifest } from './module-types';
+import { isLocalOperatorHost } from '../utils/localHost';
 
 export type SettingsCategory = 'general' | 'account' | 'agents' | 'relay' | 'devices' | 'updates' | 'about';
 
@@ -34,16 +35,17 @@ export const SETTINGS_CATEGORIES: SettingsNavItem[] = [
 ];
 
 /**
- * Whether the page is being viewed as a remote *client* (non-localhost host)
+ * Whether the page is being viewed as a remote *client* (public / non-local host)
  * rather than the local backend's own operator UI. Subscription/account is a
  * Relay concept that only makes sense on the client: the local backend just
- * exposes a pairing QR/token under「远程控制」. Decided by hostname so dev
- * testing via LAN IP behaves as a client even though webpack proxies /api.
+ * exposes a pairing QR/token under「远程控制」.
+ *
+ * Localhost, loopback, and private LAN addresses (e.g. 192.168.x.x) count as
+ * operator hosts so opening http://192.168.5.200:8085/ matches localhost.
  */
 export function isRelayClientHost(): boolean {
     if (typeof window === 'undefined') return false;
-    const h = window.location.hostname;
-    return !(h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0.0.0.0');
+    return !isLocalOperatorHost();
 }
 
 /** Categories visible for the current host (hides client-only ones locally). */

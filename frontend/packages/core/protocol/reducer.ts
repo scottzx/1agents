@@ -613,35 +613,70 @@ export function applyPermissionRequest(
 }
 
 /**
+ * Mark a permission request as resolved wherever it may live:
+ * nested under tool_use, as a top-level permission_request item, or parked in
+ * the pendingPermissions holding pen (Grok client-side fs/terminal confirms
+ * use synthetic acpx-client-* toolCallIds and almost always land there).
+ */
+export function resolvePermission(s: PendingState, requestId: string, resolved: 'allow' | 'deny'): PendingState {
+    const items = s.items.map(it => {
+        if (it.kind === 'tool_use') {
+            let touched = false;
+            const calls = it.calls.map(c => {
+                if (c.permission && c.permission.requestId === requestId && !c.permission.resolved) {
+                    touched = true;
+                    return { ...c, permission: { ...c.permission, resolved } };
+                }
+                return c;
+            });
+            return touched ? { ...it, calls } : it;
+        }
+        if (it.kind === 'permission_request' && it.requestId === requestId && !it.resolved) {
+            return { ...it, resolved };
+        }
+        return it;
+    });
+    const pendingPermissions = s.pendingPermissions.map(p => {
+        if (p.kind === 'permission_request' && p.requestId === requestId && !p.resolved) {
+            return { ...p, resolved };
+        }
+        return p;
+    });
+    return { items, pendingResults: s.pendingResults, pendingPermissions };
+}
+
+/**
  * Fold a `permission_timeout` event: flush the streaming cursor, mark the nested
- * permission as denied (collapses the inline UI), then append a timeout error.
+ * /pending permission as denied (collapses the inline UI), then append a timeout error.
  */
 export function applyPermissionTimeout(
-    items: ChatItem[],
+    s: PendingState,
     requestId: string | undefined,
     message: string | undefined
-): ChatItem[] {
-    const marked = flushStreamingCursor(items).map(it => {
-        if (it.kind !== 'tool_use') return it;
-        let touched = false;
-        const calls = it.calls.map(c => {
-            if (c.permission && c.permission.requestId === requestId) {
-                touched = true;
-                return { ...c, permission: { ...c.permission, resolved: 'deny' as const } };
-            }
-            return c;
-        });
-        return touched ? { ...it, calls } : it;
-    });
-    return [
-        ...marked,
+): PendingState {
+    const rid = requestId || '';
+    const marked = resolvePermission(
         {
-            id: cryptoId(),
-            kind: 'error',
-            content: message || 'Permission request timed out.',
-            createdAt: Date.now(),
+            items: flushStreamingCursor(s.items),
+            pendingResults: s.pendingResults,
+            pendingPermissions: s.pendingPermissions,
         },
-    ];
+        rid,
+        'deny'
+    );
+    return {
+        items: [
+            ...marked.items,
+            {
+                id: cryptoId(),
+                kind: 'error',
+                content: message || 'Permission request timed out.',
+                createdAt: Date.now(),
+            },
+        ],
+        pendingResults: marked.pendingResults,
+        pendingPermissions: marked.pendingPermissions,
+    };
 }
 
 function parseAskUserOptions(raw: unknown): AskUserOption[] {

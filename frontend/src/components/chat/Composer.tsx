@@ -1,7 +1,7 @@
 import { h } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { t, getLang } from '../../i18n';
-import type { PermissionMode } from '../types';
+import { nextPermissionMode, type PermissionMode } from '../types';
 import type {
     SessionModesState,
     AvailableCommand,
@@ -14,12 +14,37 @@ import { MicButton } from './input/MicButton';
 import { AttachButton } from './input/AttachButton';
 import { AttachmentPreview } from './input/AttachmentPreview';
 import { PermissionModePicker } from './PermissionModePicker';
-import { SessionModePicker } from './SessionModePicker';
+import { SessionModePicker, isDangerousSessionMode, sessionModeLabel } from './SessionModePicker';
 import { SlashCommandPalette, slashQuery, filterCommands } from './SlashCommandPalette';
 import { UsageBadge } from './UsageBadge';
 import { ConfigOptionPicker } from './ConfigOptionPicker';
 
+/**
+ * In-memory per-session composer drafts. Survives session switches within
+ * the SPA lifetime; intentionally NOT written to localStorage so a full
+ * page refresh clears them (product requirement).
+ */
+const composerDrafts = new Map<string, string>();
+
+function readDraft(sessionId: string | undefined): string {
+    if (!sessionId) return '';
+    return composerDrafts.get(sessionId) ?? '';
+}
+
+function writeDraft(sessionId: string | undefined, value: string) {
+    if (!sessionId) return;
+    if (value) composerDrafts.set(sessionId, value);
+    else composerDrafts.delete(sessionId);
+}
+
+function clearDraft(sessionId: string | undefined) {
+    if (!sessionId) return;
+    composerDrafts.delete(sessionId);
+}
+
 interface ComposerProps {
+    /** Session the draft is keyed by. Required for per-session draft restore. */
+    sessionId?: string;
     onSend: (text: string) => void;
     onCancel?: () => void;
     isRunning?: boolean;
@@ -45,6 +70,7 @@ interface ComposerProps {
 }
 
 export function Composer({
+    sessionId,
     onSend,
     onCancel,
     isRunning,
@@ -83,6 +109,24 @@ export function Composer({
         if (slash.matches.length) setSlash({ matches: [], index: 0 });
     };
 
+    /** Resize the uncontrolled textarea to fit content (capped). */
+    const fitHeight = (el: HTMLTextAreaElement) => {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+    };
+
+    // Restore per-session draft when the active session changes. In-memory
+    // only — a full reload leaves `composerDrafts` empty.
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.value = readDraft(sessionId);
+        fitHeight(el);
+        setSlash({ matches: [], index: 0 });
+        // Re-derive slash palette if the restored draft starts with `/`.
+        if (el.value) refreshSlash(el.value);
+    }, [sessionId]);
+
     const pickSlash = (command: AvailableCommand) => {
         const el = ref.current;
         if (!el) return;
@@ -92,6 +136,24 @@ export function Composer({
         closeSlash();
         el.focus();
         handleInput();
+    };
+
+    /** Cycle the visible mode picker: native session modes when present, else permission mode. */
+    const cycleMode = () => {
+        if (disabled) return;
+        if (sessionModes && sessionModes.availableModes.length > 0 && onSessionModeChange) {
+            const modes = sessionModes.availableModes;
+            const idx = modes.findIndex(m => m.id === sessionModes.currentModeId);
+            const next = modes[(Math.max(idx, 0) + 1) % modes.length];
+            if (!next || next.id === sessionModes.currentModeId) return;
+            if (isDangerousSessionMode(next.id)) {
+                const name = sessionModeLabel(next.id, next.name);
+                if (!window.confirm(t('chat.sessionMode.dangerConfirm', lang, { name }))) return;
+            }
+            onSessionModeChange(next.id);
+            return;
+        }
+        onPermissionModeChange(nextPermissionMode(permissionMode));
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -117,6 +179,12 @@ export function Composer({
                 return;
             }
         }
+        // Shift+Tab: cycle permission / session mode (Claude Code convention).
+        if (!e.repeat && e.key === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !disabled) {
+            e.preventDefault();
+            cycleMode();
+            return;
+        }
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             submit();
@@ -130,6 +198,7 @@ export function Composer({
         if (!text) return;
         onSend(text);
         el.value = '';
+        clearDraft(sessionId);
         closeSlash();
         attach.clear();
         // Reset height
@@ -139,8 +208,8 @@ export function Composer({
     const handleInput = () => {
         const el = ref.current;
         if (!el) return;
-        el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+        fitHeight(el);
+        writeDraft(sessionId, el.value);
         refreshSlash(el.value);
     };
 

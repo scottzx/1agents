@@ -122,13 +122,21 @@ func emptyManifest() []byte {
 // upstreamSources returns the manifest URLs to try, in priority order:
 // self-hosted mirror first, GitHub Releases as fallback. Either can be
 // disabled by setting its package var to "".
+//
+// Repo may be a full http(s) URL (used by tests to simulate the GitHub
+// slot without hitting github.com); otherwise it is treated as a
+// GitHub slug "owner/repo".
 func upstreamSources() []string {
 	var srcs []string
 	if MirrorBaseURL != "" {
 		srcs = append(srcs, strings.TrimRight(MirrorBaseURL, "/")+"/manifest.json")
 	}
 	if Repo != "" {
-		srcs = append(srcs, fmt.Sprintf(manifestURL, Repo))
+		if strings.HasPrefix(Repo, "http://") || strings.HasPrefix(Repo, "https://") {
+			srcs = append(srcs, Repo)
+		} else {
+			srcs = append(srcs, fmt.Sprintf(manifestURL, Repo))
+		}
 	}
 	return srcs
 }
@@ -160,25 +168,86 @@ func fetchManifestFrom(url string) ([]byte, error) {
 	return body, nil
 }
 
-// fetchUpstream pulls the latest manifest, preferring the self-hosted
-// mirror and falling back to GitHub Releases. Any network/parse error
-// from all sources is returned to the caller; the caller decides
-// whether to fall back to the cached copy or the empty manifest.
+// backendVersionOf extracts components.backend.version from a raw
+// manifest body. Returns "" on any parse / missing-field failure.
+func backendVersionOf(body []byte) string {
+	var m RootManifest
+	if err := json.Unmarshal(body, &m); err != nil {
+		return ""
+	}
+	return m.Components.Backend.Version
+}
+
+// manifestUsable reports whether a root manifest has at least one
+// backend platform binary. GitHub releases briefly shipped version-only
+// manifests (empty platforms) after the npm package split; those must
+// not beat an older COS mirror that still has downloadable artifacts.
+func manifestUsable(body []byte) bool {
+	var m RootManifest
+	if err := json.Unmarshal(body, &m); err != nil {
+		return false
+	}
+	return len(m.Components.Backend.Platforms) > 0
+}
+
+// preferManifest reports whether candidate should replace current.
+// Rules (in order):
+//  1. Any body beats nil.
+//  2. A usable manifest (has platforms) always beats an unusable one.
+//  3. Among equal usability, newer backend.version wins.
+//  4. Ties keep current (mirror is tried first → mirror wins ties).
+func preferManifest(candidate, current []byte) bool {
+	if current == nil {
+		return true
+	}
+	candOK, curOK := manifestUsable(candidate), manifestUsable(current)
+	if candOK != curOK {
+		return candOK
+	}
+	return versionGT(backendVersionOf(candidate), backendVersionOf(current))
+}
+
+// fetchUpstream pulls manifests from every configured source (mirror +
+// GitHub) and returns the best one (see preferManifest).
+//
+// Historically this was "first success wins" with the mirror preferred,
+// but a stale COS pointer after a failed ota-cdn-publish left clients
+// stuck on an older tag even when GitHub Releases had a newer one.
+// Comparing versions across healthy sources avoids that trap; usability
+// guards against empty-platform manifests.
+//
+// Any network/parse error from all sources is returned to the caller;
+// the caller decides whether to fall back to the cached copy or the
+// empty manifest.
 func fetchUpstream() ([]byte, error) {
 	sources := upstreamSources()
 	if len(sources) == 0 {
 		return nil, fmt.Errorf("no OTA upstream configured")
 	}
-	var lastErr error
+	var (
+		best    []byte
+		lastErr error
+	)
 	for _, url := range sources {
 		body, err := fetchManifestFrom(url)
-		if err == nil {
-			return body, nil
+		if err != nil {
+			log.Printf("[ota] upstream %s failed: %v", url, err)
+			lastErr = err
+			continue
 		}
-		log.Printf("[ota] upstream %s failed: %v", url, err)
-		lastErr = err
+		ver := backendVersionOf(body)
+		if preferManifest(body, best) {
+			best = body
+			log.Printf("[ota] upstream %s version=%q usable=%v (selected)", url, ver, manifestUsable(body))
+		} else {
+			log.Printf("[ota] upstream %s version=%q usable=%v (skipped, keep %q)",
+				url, ver, manifestUsable(body), backendVersionOf(best))
+		}
 	}
-	return nil, lastErr
+	if best == nil {
+		return nil, lastErr
+	}
+	return best, nil
 }
 
 // manifestWithCache returns the manifest body to serve. The order of

@@ -16,6 +16,9 @@ export const clientOptions = {
     closeOnDisconnect: false,
     isWindows: false,
     unicodeVersion: '11',
+    // Pin browser tab title; ttyd otherwise sets it to the start command
+    // (e.g. "tmux new-session -A -s 1agents").
+    titleFixed: '一万',
 } as ClientOptions;
 
 export const flowControl = {

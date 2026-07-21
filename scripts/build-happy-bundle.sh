@@ -1,27 +1,22 @@
 #!/usr/bin/env bash
 #
-# build-happy-bundle.sh — produce a self-contained, portable happy bundle that
-# every distribution channel (npm, GitHub tarball, Tauri desktop, Docker) can
-# ship by simply copying a directory next to the 1agents binary.
-#
-# The happy daemon (relay/C2 transport) is a Node app. In the 1agents
-# integration it is launched via the repo's RPC adapter
-# (adapter/rpc/index.mjs, HAPPY_RPC_ADAPTER_ENTRY) and 1agents' own engine
-# drives agent execution — so happy's heavy bundled session tools (ripgrep +
-# difftastic, ~226MB downloaded by its unpack-tools postinstall) are NOT needed.
-# We skip them with --ignore-scripts, keeping the bundle to happy's code +
-# production deps only.
+# build-happy-bundle.sh — produce a portable happy bundle that every distribution
+# channel (npm, GitHub tarball, Tauri desktop, Docker) can ship next to 1agents.
 #
 # Layout produced (default OUT=build):
-#   build/happy-cli/   dist/ + bin/ + package.json + production node_modules
+#   build/happy-cli/   dist/ + bin/ + package.json + package-lock.json
+#                      [+ node_modules if BUNDLE_NODE_MODULES=1]
 #   build/adapter/     copy of the repo's RPC glue (adapter/)
-#   build/happy        launcher: sets HAPPY_RPC_ADAPTER_ENTRY + execs node
+#   build/happy        launcher: npm ci (locked) if needed, then exec node
 #
-# Node is intentionally NOT bundled — every channel either requires Node on the
-# host (npm engines>=22) or bundles its own runtime (Tauri).
+# package-lock.json is always generated so install-time `npm ci --omit=dev`
+# pins production dependency versions. node_modules are NOT prebundled by
+# default (set BUNDLE_NODE_MODULES=1 for offline desktop bundles).
 #
 # Usage:   scripts/build-happy-bundle.sh [OUT_DIR]   (default: build)
-# Env:     SKIP_BUILD=1   reuse modules/happy-cli/dist instead of rebuilding
+# Env:     SKIP_BUILD=1            reuse modules/happy-cli/dist
+#          BUNDLE_NODE_MODULES=1   pre-install production deps into the stage
+#          KEEP_AGENT_SDK_NATIVE=1  keep Claude Agent SDK native packages
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,7 +26,6 @@ STAGE="$OUT/happy-cli"
 
 echo "=== happy bundle: root=$ROOT out=$OUT"
 
-# 0. Ensure the submodule is checked out.
 if [ ! -f "$HAPPY_SRC/package.json" ]; then
     echo "=== Initializing happy-cli submodule..."
     git -C "$ROOT" submodule update --init modules/happy-cli
@@ -39,8 +33,6 @@ fi
 
 command -v corepack >/dev/null 2>&1 && corepack enable >/dev/null 2>&1 || true
 
-# 1. Build happy-cli's dist (needs dev deps). Skippable when dist already fresh.
-#    happy-cli ships no committed lockfile, so installs are not --frozen.
 if [ "${SKIP_BUILD:-}" != "1" ]; then
     echo "=== Building happy-cli (pnpm install + build)..."
     ( cd "$HAPPY_SRC" && pnpm install && pnpm run build )
@@ -49,12 +41,6 @@ else
 fi
 [ -f "$HAPPY_SRC/dist/index.mjs" ] || { echo "✗ happy-cli not built: dist/index.mjs missing" >&2; exit 1; }
 
-# 2. Stage a clean, copyable bundle: source files + production node_modules.
-#    Use npm (not pnpm) for the prod install: it writes a flat, self-contained
-#    node_modules that survives a plain `cp -r` / tar, with none of pnpm's
-#    store-symlink/lock pitfalls. --omit=dev drops devDeps; --ignore-scripts
-#    skips unpack-tools.cjs (the 226MB session-tools download the daemon never
-#    needs). happy-cli ships no lockfile, so this resolves from package.json.
 echo "=== Staging happy bundle -> $STAGE"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
@@ -62,38 +48,71 @@ cp -r "$HAPPY_SRC/dist" "$STAGE/dist"
 cp -r "$HAPPY_SRC/bin" "$STAGE/bin"
 cp "$HAPPY_SRC/package.json" "$STAGE/package.json"
 
-echo "=== Installing production dependencies (no dev, no tools)..."
-( cd "$STAGE" && npm install --omit=dev --ignore-scripts --no-audit --no-fund )
-rm -f "$STAGE/package-lock.json"
-
-# Prune the Claude Agent SDK's platform-native runtime (~224MB, the bundled
-# Claude Code binary). happy would only use it to RUN agents itself; in the
-# 1agents integration agent execution is driven by 1agents via the RPC adapter,
-# so the relay daemon never loads it. Verified: happy --version + daemon status
-# both work with it removed. The JS SDK (@anthropic-ai/claude-agent-sdk) stays —
-# dist/index.mjs imports it eagerly. Set KEEP_AGENT_SDK_NATIVE=1 to retain it
-# (e.g. if happy must run agents standalone). Cuts the bundle ~358MB -> ~132MB.
-if [ "${KEEP_AGENT_SDK_NATIVE:-}" != "1" ]; then
+prune_agent_sdk_native() {
+    local dir="$1"
+    if [ "${KEEP_AGENT_SDK_NATIVE:-}" = "1" ]; then
+        return 0
+    fi
     echo "=== Pruning Claude Agent SDK native runtime (~224MB)..."
-    rm -rf "$STAGE"/node_modules/@anthropic-ai/claude-agent-sdk-*
+    rm -rf "$dir"/node_modules/@anthropic-ai/claude-agent-sdk-*
+}
+
+# Always generate a package-lock.json for reproducible install-time `npm ci`.
+# --ignore-scripts skips unpack-tools.cjs (session tools the daemon never needs).
+echo "=== Generating happy-cli package-lock.json (production, ignore-scripts)..."
+(
+  cd "$STAGE"
+  # Full install creates a complete lockfile; we may drop node_modules afterward.
+  npm install --omit=dev --ignore-scripts --no-audit --no-fund
+)
+if [ ! -f "$STAGE/package-lock.json" ]; then
+    echo "✗ failed to generate package-lock.json for happy-cli" >&2
+    exit 1
+fi
+echo "=== package-lock.json ready ($(wc -c < "$STAGE/package-lock.json") bytes)"
+
+if [ "${BUNDLE_NODE_MODULES:-0}" = "1" ]; then
+    echo "=== BUNDLE_NODE_MODULES=1 — keeping production node_modules in stage"
+    prune_agent_sdk_native "$STAGE"
+else
+    echo "=== Removing staged node_modules (install via npm ci at postinstall / first launch)"
+    rm -rf "$STAGE/node_modules"
 fi
 
-# 3. Ship the 1agents RPC adapter alongside (HAPPY_RPC_ADAPTER_ENTRY target).
 echo "=== Bundling RPC adapter -> $OUT/adapter"
 rm -rf "$OUT/adapter"
 cp -r "$ROOT/adapter" "$OUT/adapter"
 
-# 4. Dev/standalone launcher. The Go backend wires happy itself; this script is
-#    a convenience for manual runs and mirrors the deployed env wiring.
 cat > "$OUT/happy" <<'LAUNCH'
 #!/bin/sh
 # 1agents bundled happy launcher (generated by build-happy-bundle.sh).
 HERE="$(cd "$(dirname "$0")" && pwd)"
+CLI="$HERE/happy-cli"
 export HAPPY_RPC_ADAPTER_ENTRY="${HAPPY_RPC_ADAPTER_ENTRY:-$HERE/adapter/rpc/index.mjs}"
-exec node "$HERE/happy-cli/bin/happy.mjs" "$@"
+
+if [ ! -d "$CLI/node_modules" ]; then
+  echo "[happy] Installing production dependencies (locked)..." >&2
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "[happy] npm not found; cannot install happy-cli dependencies." >&2
+    exit 1
+  fi
+  if [ -f "$CLI/package-lock.json" ]; then
+    ( cd "$CLI" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund ) || exit 1
+  else
+    ( cd "$CLI" && npm install --omit=dev --ignore-scripts --no-audit --no-fund ) || exit 1
+  fi
+  # Drop unused Claude Agent SDK native binaries if present.
+  rm -rf "$CLI"/node_modules/@anthropic-ai/claude-agent-sdk-* 2>/dev/null || true
+fi
+
+exec node "$CLI/bin/happy.mjs" "$@"
 LAUNCH
 chmod +x "$OUT/happy"
 
 echo "=== happy bundle ready:"
 du -sh "$STAGE" "$OUT/adapter" 2>/dev/null || true
+ls -la "$STAGE/package-lock.json" 2>/dev/null || true
 echo "    launcher: $OUT/happy"
+if [ ! -d "$STAGE/node_modules" ]; then
+    echo "    note: node_modules deferred (npm ci --omit=dev at postinstall / first launch)"
+fi

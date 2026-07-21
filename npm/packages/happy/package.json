@@ -1,0 +1,19 @@
+{
+  "name": "@1agents/happy",
+  "version": "0.0.0-dev",
+  "description": "happy-cli bundle + adapter (optional; npm ci on install)",
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "happy-cli/",
+    "adapter/",
+    "scripts/",
+    "package.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

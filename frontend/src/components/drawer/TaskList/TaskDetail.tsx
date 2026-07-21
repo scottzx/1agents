@@ -7,7 +7,7 @@ import { agentService } from '../../../services/agentService';
 import { projectItemService } from '@1agents/core/services/taskService';
 import type { AgentType, ChatSession, Session } from '../../types';
 import { AGENT_OPTIONS, getLinkRelLabels, getPriorityLabels, getStatusLabels } from './constants';
-import type { ChecklistItem, LinkRel, Reply, ReplyMode, SessionMetadata, ProjectItem, TaskLink } from './types';
+import type { ChecklistItem, Reply, ReplyMode, SessionMetadata, ProjectItem, TaskLink } from './types';
 import { fmtDate, fmtDateOnly, recurrenceLabel } from './utils';
 import { renderMarkdown, type MarkdownContext } from '../../../utils/markdown';
 import { renderMermaidBlocks } from '../../../utils/mermaid';
@@ -164,9 +164,9 @@ export function TaskDetail({
     const [task, setTask] = useState<ProjectItem | null>(null);
     const [error, setError] = useState('');
 
-    // Add-link form
-    const [linkTarget, setLinkTarget] = useState('');
-    const [linkRel, setLinkRel] = useState<LinkRel>('relates');
+    // Add-link form — disabled: links are created by agent only; UI shows results.
+    // const [linkTarget, setLinkTarget] = useState('');
+    // const [linkRel, setLinkRel] = useState<LinkRel>('relates');
 
     // Description editing
     const editingDesc = useSignal(false);
@@ -553,18 +553,19 @@ export function TaskDetail({
         }
     };
 
-    const addLink = async () => {
-        if (!task || !linkTarget) return;
-        const links = task.links || [];
-        if (links.some(l => l.target === linkTarget && l.rel === linkRel)) return; // already linked
-        try {
-            await patchTask({ links: [...links, { target: linkTarget, rel: linkRel }] });
-            setLinkTarget('');
-            setLinkRel('relates');
-        } catch (err) {
-            alert((err as Error).message);
-        }
-    };
+    // Add-link form — disabled: links are created by agent only.
+    // const addLink = async () => {
+    //     if (!task || !linkTarget) return;
+    //     const links = task.links || [];
+    //     if (links.some(l => l.target === linkTarget && l.rel === linkRel)) return;
+    //     try {
+    //         await patchTask({ links: [...links, { target: linkTarget, rel: linkRel }] });
+    //         setLinkTarget('');
+    //         setLinkRel('relates');
+    //     } catch (err) {
+    //         alert((err as Error).message);
+    //     }
+    // };
 
     const removeLink = async (link: TaskLink) => {
         if (!task) return;
@@ -818,7 +819,7 @@ export function TaskDetail({
     const taskById = new Map(allTasks.map(t => [t.id, t]));
     const outgoing = task.links || [];
     const backlinks = allTasks.filter(t => t.id !== task.id && (t.links || []).some(l => l.target === task.id));
-    const linkOptions = allTasks.filter(t => t.id !== task.id);
+    // const linkOptions = allTasks.filter(t => t.id !== task.id);
     const linkLabel = (tgt?: ProjectItem) =>
         tgt ? `${tgt.number ? `#${tgt.number} ` : ''}${tgt.title}` : t('task.detail.unknownTask', lang);
 
@@ -1333,8 +1334,8 @@ export function TaskDetail({
                                 )}
                             </div>
 
-                            {/* Add link form */}
-                            <div class="task-addlink-card">
+                            {/* Add link form — disabled: links are created by agent only; UI shows results. */}
+                            {/* <div class="task-addlink-card">
                                 <h5 class="task-rel-group-title">{t('task.detail.addLinkTitle', lang)}</h5>
                                 <div class="task-addlink-row">
                                     <select
@@ -1362,7 +1363,7 @@ export function TaskDetail({
                                         {t('task.detail.addLink', lang)}
                                     </button>
                                 </div>
-                            </div>
+                            </div> */}
                         </div>
                     )}
                 </div>

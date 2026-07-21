@@ -127,6 +127,8 @@ func main() {
 		"Internal 1skills listen address (must stay on 127.0.0.1)")
 	flag.StringVar(&cfg.SkillsBinaryPath, "skills-bin", cfg.SkillsBinaryPath,
 		"Path to the python executable to run 1skills")
+	flag.StringVar(&cfg.SkillsSourceDir, "skills-dir", cfg.SkillsSourceDir,
+		"Path to 1skills Python source tree (e.g. @1agents/skills package root)")
 	flag.StringVar(&cfg.WorkDir, "workdir", cfg.WorkDir,
 		"Root directory exposed by the file-system API")
 	flag.StringVar(&cfg.StaticDir, "static", cfg.StaticDir,

@@ -66,6 +66,8 @@ submodule-happy-cli:
 frontend:
 	@echo "=== Building Frontend (frontend/)..."
 	cd frontend && corepack enable && yarn install && yarn build
+	@echo "=== Staging module embeds (skills + cc-connect) into frontend/dist/embed..."
+	./scripts/build-module-embeds.sh
 
 ttyd:
 	@echo "=== Building ttyd terminal server..."

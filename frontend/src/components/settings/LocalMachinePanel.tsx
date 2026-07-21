@@ -1,14 +1,15 @@
 /**
  * LocalMachinePanel — 本机 relay daemon 管理面板。
  *
- * 只在本机模式下渲染（hostname === localhost / 127.0.0.1）。
- * 展示 happy daemon 状态、启停按钮，以及 machine key / token，
- * 供客户端（H5、小程序、App）配置时复制使用。
+ * 只在本机模式下渲染（localhost / 127.0.0.1 / 局域网私有 IP）。
+ * 展示 happy daemon 状态、启停、以及 Model B「配置二维码」
+ * （type=1agents-relay 完整 bundle），供客户端扫码写入 DeviceProfile。
  */
 import { h, Fragment } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import QRCode from 'qrcode';
+import { isLocalOperatorHost } from '../../utils/localHost';
 
 interface HappyStatus {
     running: boolean;
@@ -252,23 +253,42 @@ export function LocalMachinePanel() {
         };
     }, []);
 
-    const doStart = async () => {
+    const doEnsureAndStart = async (force = false) => {
         busy.value = true;
+        error.value = '';
         try {
-            const res = await fetch('/api/system/happy/daemon/start', { method: 'POST' });
-            if (!res.ok) {
-                const j = await res.json().catch(() => ({}));
-                error.value = j.error ?? `启动失败 HTTP ${res.status}`;
-            } else {
-                // give daemon a moment to write its state file
-                setTimeout(fetchStatus, 1200);
+            // Prefer auto-bind from ~/.1agents/relay-creds.json (user token on this host).
+            const ensureRes = await fetch('/api/system/happy/ensure-machine', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ force }),
+            });
+            if (ensureRes.ok) {
+                // ensure-machine already starts daemon when it binds / skips
+                setTimeout(fetchStatus, 1500);
+                return;
             }
+            const ej = await ensureRes.json().catch(() => ({}));
+            // No relay-creds → fall back to plain daemon start (may already have access.key)
+            if (ensureRes.status === 400 && /no relay account|relay-creds/i.test(String(ej.error ?? ''))) {
+                const res = await fetch('/api/system/happy/daemon/start', { method: 'POST' });
+                if (!res.ok) {
+                    const j = await res.json().catch(() => ({}));
+                    error.value = j.error ?? `启动失败 HTTP ${res.status}`;
+                } else {
+                    setTimeout(fetchStatus, 1200);
+                }
+                return;
+            }
+            error.value = ej.error ?? `自动注册失败 HTTP ${ensureRes.status}`;
         } catch (e) {
             error.value = (e as Error).message;
         } finally {
             busy.value = false;
         }
     };
+
+    const doStart = async () => doEnsureAndStart(false);
 
     const doStop = async () => {
         busy.value = true;
@@ -357,9 +377,18 @@ export function LocalMachinePanel() {
                         >
                             <polygon points="5 3 19 12 5 21 5 3" />
                         </svg>
-                        启动 Daemon
+                        启动 / 自动注册
                     </button>
                 )}
+                <button
+                    class="sys-settings-btn ghost"
+                    disabled={busy.value}
+                    onClick={() => doEnsureAndStart(true)}
+                    style="margin-left:6px"
+                    title="用本机 relay-creds 重新绑定到当前中转账户"
+                >
+                    重新绑定账户
+                </button>
                 <button
                     class="sys-settings-btn ghost"
                     disabled={busy.value}
@@ -386,19 +415,47 @@ export function LocalMachinePanel() {
 
             {error.value && <div style="margin-top:8px;font-size:12px;color:var(--danger-fg)">{error.value}</div>}
 
-            {/* 本机凭据(只读查看)。客户端接入统一走下方「账户级配对」(Model A);
-                旧「设备档案」扫码流(Model B)已下线,这里仅供排查/查看本机身份。 */}
+            {/* Model B：配置二维码 = 完整设备 bundle，客户端扫码加入 DeviceProfile */}
+            {hasCredentials && s?.token && s?.machineId && s?.machineKey && s?.serverUrl && (
+                <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:14px">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">
+                        配置二维码（客户端扫码接入）
+                    </div>
+                    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">
+                        客户端登录中转并完成订阅后，扫描此码即可连接本机。凭据等同遥控钥匙，勿公开分享。
+                    </div>
+                    {(() => {
+                        const bundle = JSON.stringify({
+                            type: '1agents-relay',
+                            serverUrl: s.serverUrl,
+                            token: s.token,
+                            machineId: s.machineId,
+                            machineKey: s.machineKey,
+                            hostname: s.hostname || '',
+                        });
+                        return (
+                            <Fragment>
+                                <CredentialQr payload={bundle} />
+                                <div style="display:flex;justify-content:center;margin-top:8px">
+                                    <CopyButton value={bundle} label="完整凭据" />
+                                </div>
+                            </Fragment>
+                        );
+                    })()}
+                </div>
+            )}
+
+            {/* 本机凭据明细（排查用） */}
             {hasCredentials && (
                 <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:14px">
                     <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">
-                        本机凭据(只读)
+                        本机凭据
                     </div>
                     <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">
-                        本机 relay 身份,供排查查看;客户端接入请用下方「生成账户配对码」。
+                        客户端主路径为上方配置二维码；以下字段供排查复制。
                     </div>
 
                     {s?.hostname && <MonoRow label="设备名称" value={s.hostname} />}
-                    {/* 中转地址不在面板明文展示 —— 避免暴露 relay 域名招致 DoS。 */}
                     {s?.machineId && <MonoRow label="Machine ID" value={s.machineId} />}
                     {s?.token && <MonoRow label="Token" value={s.token} redact />}
                     {s?.machineKey && <MonoRow label="Machine Key" value={s.machineKey} redact />}
@@ -413,21 +470,26 @@ export function LocalMachinePanel() {
                 </div>
             )}
 
-            {/* 账户级配对(Model A)—— 绑定本机到账号,取代终端 happy auth login */}
-            <AccountPairing onPaired={fetchStatus} />
+            {/* 高级：账户级绑定（Model A，非主路径） */}
+            <details style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:14px">
+                <summary style="font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer">
+                    高级：账户级配对（Model A，一般无需使用）
+                </summary>
+                <AccountPairing onPaired={fetchStatus} />
+            </details>
 
             {/* 未登录提示 */}
             {s !== null && !hasCredentials && (
                 <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
-                    未检测到 happy 凭据。点上方「生成账户配对码」用客户端扫码绑定本机到你的账号,即可启动 Daemon。
+                    未检测到 happy 凭据。请先启动
+                    Daemon；若仍无凭据，可展开下方「账户级配对」完成一次机器会话注册，或使用已有 access.key。
                 </div>
             )}
         </div>
     );
 }
 
-/** 当前访问来源是否为本机（localhost / 127.0.0.1）。 */
+/** 当前访问来源是否为本机（localhost / loopback / 局域网私有 IP）。 */
 export function isLocalMachineMode(): boolean {
-    const h = window.location.hostname;
-    return h === 'localhost' || h === '127.0.0.1';
+    return isLocalOperatorHost();
 }

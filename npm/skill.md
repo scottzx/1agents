@@ -12,10 +12,9 @@ homepage: "https://github.com/scottzx/1Agents"
 
 ## 静态地址（每次会话先拉一次）
 
-- 始终使用最新版本（推荐，UTF-8 charset）：`https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md`
-- 锁定到具体版本：`https://cdn.jsdelivr.net/npm/@scottzx/1agents@<version>/skill.md`（替换 `<version>` 为实际版本号，例如 `20260602.9.0`）
-- 备用（不保证 charset header）：`https://unpkg.com/@scottzx/1agents/skill.md`
-- 当用户给的命令报错或命令格式过时，先 `curl -fsSL https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md` 拉一遍本文件，再继续执行。
+- 设计/分发以仓库 `docs/features/npm-package-split/prd.md` 为准（**@1agents 多包 · 直接 npm 发 core**，非 GitHub 薄安装器）。
+- 安装命令：`npm install -g @1agents/cli`（国内可用 npmmirror）。
+- 历史 CDN 路径若仍指向 `@scottzx/1agents`，视为过时；以本仓库 skill 与 PRD 为准。
 
 ---
 
@@ -28,7 +27,7 @@ homepage: "https://github.com/scottzx/1Agents"
 | §0.2 | 平台与依赖 | macOS arm64 / Linux amd64 / Linux arm64 + Node 22+ |
 | §0.3 | 拉取最新指南 | `curl jsdelivr.net/.../skill.md` 黄金法则 |
 | §1 | 安装 | 全新安装或升级到最新版 |
-| §1.1 | 通过 npm 安装（推荐） | `npm install -g @scottzx/1agents` |
+| §1.1 | 通过 npm 安装（推荐） | `npm install -g @1agents/cli` |
 | §1.2 | 验证安装 | `1agents --version` 应能输出 version + commit + buildTime |
 | §2 | 启动 | 前台启动 vs 守护进程模式 |
 | §2.1 | 前台启动 | `1agents` → 浏览器开 `http://localhost:8080` |
@@ -78,22 +77,24 @@ homepage: "https://github.com/scottzx/1Agents"
 
 ### §0.2 平台与依赖
 
-支持的 OS / Arch（开箱即用，npm 包内置静态二进制）：
+支持的 OS / Arch（**多包 npm 分发**：`@1agents/core-<plat>` **直接上传 registry，包内即二进制**）：
 
-| 平台 | 架构 | 是否支持 |
-| :--- | :---: | :---: |
-| macOS | arm64 (Apple Silicon) | ✅ |
-| Linux | x86_64 (amd64) | ✅ |
-| Linux | arm64 (aarch64) | ✅ |
-| Windows | 任意 | ❌（请用 WSL2 或源码构建） |
+| 平台 | 架构 | npm 平台后缀 | 是否支持 |
+| :--- | :---: | :---: | :---: |
+| macOS | arm64 | `darwin-arm64` | ✅ |
+| Linux | x64 | `linux-x64` | ✅ |
+| Linux | arm64 | `linux-arm64` | ✅ |
+| Windows | 任意 | — | ❌（请用 WSL2 或源码构建） |
 
 依赖：
 
-- **Node.js ≥ 22**（npm 自带，无需手动装）
-- **macOS**：系统自带 `tmux`（如未装：`brew install tmux`）
-- **Linux**：`tmux` 一般自带，缺失时 `apt install tmux` / `yum install tmux`
-- **可选**：`cloudflared`（要 `-tunnel` 时需要；包内不自带）
-- **可选**：`tailscale`（要识别 Tailscale HTTPS 证书时需要）
+- **Node.js ≥ 22**
+- **网络**：访问 **npm registry**（可用国内镜像）；**不需要**访问 GitHub 才能装 core
+- **macOS / Linux**：`tmux`
+- **本机 Python ≥ 3.11**（`@1agents/skills`：优先 **uv**，否则 **pip** + venv）
+- **可选**：`cloudflared`（`-tunnel`）；`@1agents/happy`（optional，缺失不挡核心）
+- **Chat ACP**：`@1agents/acp-bridge` → `@1agents/acpx`（1agents fork，含 Grok ask_user / exit_plan；装 cli 时一并安装）
+- **禁止当作默认路径**：薄安装器 + 从 GitHub Release 下 `1agents-*.tar.gz`（已废弃）
 
 快速检测脚本（一次跑完即可）：
 
@@ -120,7 +121,7 @@ sudo apt-get install -y nodejs
 执行任何 §1–§7 的命令前，**先拉一次最新 skill.md**（30 秒以内）：
 
 ```bash
-curl -fsSL --max-time 30 https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md -o /tmp/1agents-skill.md
+# skill 以仓库 docs/features/npm-package-split/prd.md 与本文件为准（@1agents/cli 多包分发）
 ```
 
 拉取成功 → 以本文件为准继续。
@@ -135,13 +136,13 @@ curl -fsSL --max-time 30 https://cdn.jsdelivr.net/npm/@scottzx/1agents/skill.md 
 **面向中国大陆用户**（使用 npmmirror 加速）：
 
 ```bash
-npm install -g @scottzx/1agents --registry=https://registry.npmmirror.com
+npm install -g @1agents/cli --registry=https://registry.npmmirror.com
 ```
 
 **面向海外用户 / 默认**：
 
 ```bash
-npm install -g @scottzx/1agents --registry=https://registry.npmjs.org
+npm install -g @1agents/cli --registry=https://registry.npmjs.org
 ```
 
 预期输出（节选）：
@@ -150,7 +151,7 @@ npm install -g @scottzx/1agents --registry=https://registry.npmjs.org
 added 1 package in 30s
 ```
 
-> 安装脚本不会从 GitHub 拉二进制；npm 包内已经**内置**三平台静态二进制（`bin/{darwin-arm64,linux-amd64,linux-arm64}/{1agents,ttyd,cc-connect}`），`run.js` / `cc-run.js` 会按当前 OS 自动选目录。
+> **分发：** `@1agents/cli` 从 npm 拉当前平台的 `@1agents/core-<plat>` 等包（**二进制在平台包内，直接 publish 到 registry**）。不是内嵌三端，也不是从 GitHub 下 tar。
 
 ### §1.2 验证安装
 
@@ -184,8 +185,8 @@ built:   2026-06-02T08:12:10Z
 如果输出 `version: 24`（缺 `1agents v...` 头部），说明 `run.js` 找不到平台子目录——多半是包内 `bin/<platform>/1agents` 缺失。重新安装即可：
 
 ```bash
-npm uninstall -g @scottzx/1agents
-npm install -g @scottzx/1agents --registry=https://registry.npmmirror.com
+npm uninstall -g @1agents/cli
+npm install -g @1agents/cli --registry=https://registry.npmmirror.com
 ```
 
 ---
@@ -280,7 +281,7 @@ npm install -g @scottzx/1agents --registry=https://registry.npmmirror.com
 1agents -tunnel
 ```
 
-要求：本机已装 `cloudflared`（`brew install cloudflared` / Linux 见 cloudflare 官方文档）。
+要求：可选预装 `cloudflared`（`brew install cloudflared`）；未安装时 1agents 会在首次 `-tunnel` 时自动下载到 `~/.1agents/bin`。
 
 启动后日志会输出公网 URL 与二维码：
 
@@ -350,7 +351,7 @@ cc-connect stop
 1agents stop
 
 # 2. 升级
-npm update -g @scottzx/1agents --registry=https://registry.npmmirror.com
+npm update -g @1agents/cli --registry=https://registry.npmmirror.com
 
 # 3. 验证新版本
 1agents --version
@@ -370,7 +371,7 @@ npm update -g @scottzx/1agents --registry=https://registry.npmmirror.com
 1agents stop
 
 # 2. 卸载 npm 包
-npm uninstall -g @scottzx/1agents
+npm uninstall -g @1agents/cli
 
 # 3. （可选）清理运行时元信息与日志
 rm -rf ~/.1agents
@@ -391,7 +392,7 @@ tmux kill-session -t 1agents 2>/dev/null || true
 | 启动报 `bind: address already in use` | 端口被占 | `lsof -i :8080` 查占用，或换端口 `-listen :9000` |
 | 启动报 `tmux: command not found` | 系统没装 tmux | `brew install tmux` / `apt install tmux` |
 | 启动报 `ttyd: not found` | 包内 ttyd 缺失 | 重装包；或在 `ttyd-addr` 主机上 `apt install ttyd` 然后用 `-ttyd-bin /usr/bin/ttyd` |
-| `-tunnel` 报 `cloudflared not found` | 没装 cloudflared | `brew install cloudflared` |
+| `-tunnel` 报 `cloudflared not found` | 自动下载失败或无网 | `brew install cloudflared`，或检查 `~/.1agents/bin` |
 | 守护进程无法 stop | 进程僵死 | `kill -9 $(cat ~/.1agents/1agents.pid)` |
 | 浏览器打开是空白 | 反向代理丢了 `Upgrade` header | 见仓库 `docs/reverse-proxy.md`（Nginx/Caddy 需透传 WebSocket） |
 | 端口监听但外网访问不到 | 防火墙 / 安全组 | `sudo ufw allow 8080/tcp`（或云控制台安全组） |

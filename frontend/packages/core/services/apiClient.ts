@@ -106,12 +106,13 @@ export async function initBackend(): Promise<BackendTarget> {
         backendTarget.value = { mode: 'direct' };
         return backendTarget.value;
     }
-    // 多设备模式:优先用「当前激活的设备档案」直连那台机器(只需 token+machineId+machineKey,
-    // 无需账户主密钥)。连不上则继续往下走旧的账户/节点路径,最终落到 none → 门禁页。
+    // Model B:优先用「当前激活的设备档案」。connectDevice 会用用户 token 建连并预检订阅。
+    // 连不上则 fallback 账户 listMachines 路径,最终 none → 门禁页。
     const dev = activeDevice();
     if (dev) {
         try {
             const { socket, machine } = await connectDevice(dev);
+            attachRelaySocketGuards(socket);
             backendTarget.value = { mode: 'relay', socket, machine };
             return backendTarget.value;
         } catch {
@@ -128,6 +129,7 @@ export async function initBackend(): Promise<BackendTarget> {
                 machines.find(m => m.id === savedId && m.active) ?? machines.find(m => m.active) ?? machines[0];
             if (machine) {
                 getPlatformBridge().storage.set(LS_NODE, machine.id);
+                attachRelaySocketGuards(socket);
                 backendTarget.value = { mode: 'relay', socket, machine };
                 return backendTarget.value;
             }
@@ -143,6 +145,7 @@ export async function initBackend(): Promise<BackendTarget> {
 /** 由「中转旁路」面板调用:把某个节点设为当前后端。 */
 export function setRelayNode(socket: Socket, machine: RelayMachine): void {
     getPlatformBridge().storage.set(LS_NODE, machine.id);
+    attachRelaySocketGuards(socket);
     backendTarget.value = { mode: 'relay', socket, machine };
 }
 
@@ -156,6 +159,7 @@ export async function switchToDevice(machineId: string): Promise<void> {
     const prev = backendTarget.value;
     const { socket, machine } = await connectDevice(dev);
     setActiveDeviceId(machineId);
+    attachRelaySocketGuards(socket);
     backendTarget.value = { mode: 'relay', socket, machine };
     if (prev.mode === 'relay' && prev.socket !== socket) prev.socket.close();
 }
@@ -165,17 +169,75 @@ export function isBackendReady(): boolean {
     return m === 'direct' || m === 'relay';
 }
 
-// 连续中转失败计数:节点 daemon 掉线/被顶替时,socket 仍连着中转(账号没变),
-// 但打到该 machine 的 RPC 会失败/超时。累计到阈值就判定"节点失联"。
+// 连续中转失败计数。手机弱网/切后台时 RPC 偶发超时很常见,阈值过低会误踢回门禁页。
 let relayFailStreak = 0;
-const RELAY_FAIL_THRESHOLD = 2;
+const RELAY_FAIL_THRESHOLD = 6;
+let relayReconnectInFlight: Promise<boolean> | null = null;
 
 /**
- * 中转节点失联(daemon 掉线 / 被新账号顶替 / 后端重启)时的恢复:关掉指向死节点
- * 的 socket、把后端目标翻回 none。backendTarget 是信号,顶层 app 订阅后会重新显示
- * 配对门禁,让用户重选节点/重新配对,而不是卡死在中转模式打不通的界面。
+ * 尝试用本地 DeviceProfile 静默重连中转(不进门禁页)。
  */
-export function reportBackendUnreachable(): void {
+export async function reconnectRelayBackend(): Promise<boolean> {
+    if (relayReconnectInFlight) return relayReconnectInFlight;
+    relayReconnectInFlight = (async () => {
+        const prev = backendTarget.value;
+        const machineId =
+            (prev.mode === 'relay' ? prev.machine.id : null) ||
+            getPlatformBridge().storage.get(LS_NODE) ||
+            activeDevice()?.machineId ||
+            null;
+        const dev = machineId ? deviceById(machineId) : activeDevice();
+        if (!dev) return false;
+        try {
+            if (prev.mode === 'relay') {
+                try {
+                    prev.socket.close();
+                } catch {
+                    /* ignore */
+                }
+            }
+            const { socket, machine } = await connectDevice(dev);
+            setActiveDeviceId(dev.machineId);
+            getPlatformBridge().storage.set(LS_NODE, machine.id);
+            attachRelaySocketGuards(socket);
+            backendTarget.value = { mode: 'relay', socket, machine };
+            relayFailStreak = 0;
+            return true;
+        } catch {
+            return false;
+        } finally {
+            relayReconnectInFlight = null;
+        }
+    })();
+    return relayReconnectInFlight;
+}
+
+/** socket 断开时尝试重连,避免 mode 仍是 relay 但底层已死导致连环失败。 */
+function attachRelaySocketGuards(socket: Socket): void {
+    socket.on('disconnect', reason => {
+        if (reason === 'io client disconnect') return;
+        void reconnectRelayBackend().then(ok => {
+            if (!ok) {
+                const t = backendTarget.value;
+                if (t.mode === 'relay' && t.socket === socket) {
+                    reportBackendUnreachable(false);
+                }
+            }
+        });
+    });
+}
+
+/**
+ * 中转节点失联时的恢复:默认先静默重连 DeviceProfile;仍失败才翻 none → 门禁。
+ * 手机弱网下优先重连,避免频繁退回「连接到你的设备」。
+ */
+export function reportBackendUnreachable(tryReconnect = true): void {
+    if (tryReconnect) {
+        void reconnectRelayBackend().then(ok => {
+            if (!ok) reportBackendUnreachable(false);
+        });
+        return;
+    }
     const t = backendTarget.value;
     if (t.mode === 'relay') {
         try {
@@ -192,9 +254,6 @@ export function reportBackendUnreachable(): void {
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     const t = backendTarget.value;
     if (t.mode === 'direct') {
-        // 多设备:激活了远程设备时,经宿主机代理路由层(#111)透传到目标设备。
-        // /api/proxy/{deviceId} 前缀由宿主机剥离后转发同名 /api 路由。
-        // 调用方已显式写了 /proxy/... 路径(如按设备拉项目列表)时不再叠加,避免二次代理。
         const dev = activeDeviceId.value;
         const prefix = dev && !path.startsWith('/proxy/') ? `/api/proxy/${encodeURIComponent(dev)}` : '';
         return getPlatformBridge().httpFetch(directBaseUrl + prefix + '/api' + path, init);
@@ -210,13 +269,40 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
                   : String(rawBody);
         const headers =
             init?.headers && !(init.headers instanceof Headers) ? (init.headers as Record<string, string>) : undefined;
+
+        const runProxy = async (socket: Socket, machine: RelayMachine) =>
+            proxyApi(socket, machine, '/api' + path, { method, body, headers });
+
         let r: Awaited<ReturnType<typeof proxyApi>>;
         try {
-            r = await proxyApi(t.socket, t.machine, '/api' + path, { method, body, headers });
+            if (!t.socket.connected) {
+                const ok = await reconnectRelayBackend();
+                if (!ok) throw new Error('relay socket disconnected');
+            }
+            const cur = backendTarget.value;
+            if (cur.mode !== 'relay') throw new Error('relay backend lost');
+            r = await runProxy(cur.socket, cur.machine);
         } catch (e) {
-            // RPC 失败/超时 = 打不到该节点的 daemon。累计到阈值判定节点失联并回退到
-            // 门禁(见 reportBackendUnreachable),避免卡死;单次抖动不误伤。
-            if (++relayFailStreak >= RELAY_FAIL_THRESHOLD) reportBackendUnreachable();
+            if (++relayFailStreak >= RELAY_FAIL_THRESHOLD) {
+                const ok = await reconnectRelayBackend();
+                if (ok) {
+                    const cur = backendTarget.value;
+                    if (cur.mode === 'relay') {
+                        try {
+                            r = await runProxy(cur.socket, cur.machine);
+                            relayFailStreak = 0;
+                            return new Response(r.body ?? '', {
+                                status: r.status ?? (r.success ? 200 : 502),
+                                headers: { 'content-type': 'application/json' },
+                            });
+                        } catch (e2) {
+                            reportBackendUnreachable(false);
+                            throw e2;
+                        }
+                    }
+                }
+                reportBackendUnreachable(false);
+            }
             throw e;
         }
         relayFailStreak = 0;

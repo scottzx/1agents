@@ -44,6 +44,7 @@ import {
     resolveExitPlanMode,
     applyDone,
     appendError,
+    resolvePermission,
     resolvePermissionSide,
     deriveLiveStatus,
 } from '../../protocol/reducer';
@@ -445,6 +446,11 @@ export class ChatBridgeManager {
                     state.ready = true;
                     state.everReady = true;
                     this.notify(state);
+                    // onopen may have requested history before ensure_session
+                    // finished (no active handle/cwd yet → empty transcript).
+                    // Re-fetch once ready so resume doesn't stay blank until
+                    // the user hits header refresh.
+                    this.reloadHistory(session, state);
                     break;
                 case 'session_meta': {
                     // Authoritative capability snapshot sent after every
@@ -635,7 +641,10 @@ export class ChatBridgeManager {
                 }
                 case 'permission_timeout': {
                     if (!state.turnStarted) break;
-                    state.items = applyPermissionTimeout(state.items, payload.requestId, payload.message);
+                    const next = applyPermissionTimeout(state, payload.requestId, payload.message);
+                    state.items = next.items;
+                    state.pendingResults = next.pendingResults;
+                    state.pendingPermissions = next.pendingPermissions;
                     this.notify(state);
                     break;
                 }
@@ -794,6 +803,18 @@ export class ChatBridgeManager {
                         }
                         break;
                     }
+                    // Stale respond_permission (double-click, already timed out /
+                    // aborted, or UI still showing a pending Grok client-side
+                    // confirm after the first click succeeded). Not a turn
+                    // failure — never kill typing or reload history.
+                    if (
+                        payload.code === 'PERMISSION_NOT_FOUND' ||
+                        payload.code === 'ASK_USER_NOT_FOUND' ||
+                        payload.code === 'EXIT_PLAN_NOT_FOUND'
+                    ) {
+                        console.warn('[ChatBridgeManager] stale interactive response:', payload.code, payload.message);
+                        break;
+                    }
                     const errorMessage = payload.message || payload.code || 'Unknown error';
                     state.items = appendError(state.items, errorMessage);
                     // Surface as a page-persistent banner above the composer.
@@ -931,9 +952,11 @@ export class ChatBridgeManager {
         const state = this.sessions.get(session.id);
         if (!state || !state.ws || state.ws.readyState !== WS_OPEN) return;
         if (!state.ready) return;
-        // Find the nested permission sub-item and capture the originating
+        // Find the permission (nested under tool_use OR parked in the
+        // pendingPermissions holding pen) and capture the originating
         // toolCallId so the response can be linked back to the tool_use
-        // block in the audit/log chain.
+        // block in the audit/log chain. Grok client-side fs/terminal
+        // confirms almost always live only in pendingPermissions.
         let toolCallId: string | undefined;
         for (const it of state.items) {
             if (it.kind !== 'tool_use') continue;
@@ -943,31 +966,31 @@ export class ChatBridgeManager {
                 break;
             }
         }
+        if (toolCallId === undefined) {
+            for (const p of state.pendingPermissions) {
+                if (p.kind === 'permission_request' && p.requestId === requestId) {
+                    toolCallId = p.toolCallId;
+                    break;
+                }
+            }
+        }
         state.ws.send(JSON.stringify(respondPermissionAction(session.id, requestId, toolCallId, decision)));
         // `cancel` leaves the inline UI interactive so the user can re-decide
         // (the runtime will time the request out on its own if nothing
         // else happens). The four real decisions collapse the inline
         // permission into a one-line summary keyed on the allow/deny side.
+        // Must update pendingPermissions too — otherwise Grok client-side
+        // confirms stay visible and a second click hits PERMISSION_NOT_FOUND.
         const resolved = resolvePermissionSide(decision);
         if (resolved) {
-            state.items = state.items.map(it => {
-                if (it.kind !== 'tool_use') return it;
-                let touched = false;
-                const calls = it.calls.map(c => {
-                    if (c.permission && c.permission.requestId === requestId) {
-                        touched = true;
-                        return { ...c, permission: { ...c.permission, resolved } };
-                    }
-                    return c;
-                });
-                return touched ? { ...it, calls } : it;
-            });
+            const next = resolvePermission(state, requestId, resolved);
+            state.items = next.items;
+            state.pendingResults = next.pendingResults;
+            state.pendingPermissions = next.pendingPermissions;
             this.notify(state);
         } else if (toolCallId === undefined) {
-            // Should not happen: every permission_request has a matching
-            // toolCallId by the time the user clicks a button. Logged
-            // for visibility in case a future event source breaks the
-            // invariant.
+            // cancel with no known toolCallId — still fine; just log for
+            // visibility in case a future event source breaks the invariant.
             console.warn('[ChatBridgeManager] respond_permission: no nested permission found for requestId', requestId);
         }
     }
@@ -1010,6 +1033,8 @@ export class ChatBridgeManager {
     /**
      * Reply to a Grok exit_plan_mode approval. Sends the wire action and
      * optimistically marks the nested/pending request as resolved.
+     * approved/abandoned also leave plan mode in the picker immediately —
+     * the bridge mode_changed ack reconciles if the target mode differs.
      */
     respondExitPlanMode(session: ChatSession, requestId: string, outcome: ExitPlanOutcome, comments?: string) {
         const state = this.sessions.get(session.id);
@@ -1029,6 +1054,20 @@ export class ChatBridgeManager {
         state.items = next.items;
         state.pendingResults = next.pendingResults;
         state.pendingPermissions = next.pendingPermissions;
+        // Wire: approved → implement; abandoned → quit plan. rejected stays.
+        // Grok default after leaving plan is acceptEdits (matches bridge/1acp).
+        if (
+            (outcome === 'approved' || outcome === 'abandoned') &&
+            state.modes?.currentModeId === 'plan'
+        ) {
+            const preferred =
+                state.modes.availableModes.find(m => m.id === 'acceptEdits') ??
+                state.modes.availableModes.find(m => m.id === 'default') ??
+                state.modes.availableModes.find(m => m.id !== 'plan');
+            if (preferred) {
+                state.modes = { ...state.modes, currentModeId: preferred.id };
+            }
+        }
         this.notify(state);
     }
 

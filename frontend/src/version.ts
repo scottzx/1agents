@@ -18,15 +18,35 @@ export function normalizeVersion(v: string): string {
     return v.replace(/^v/i, '').trim();
 }
 
+/** Release tags from auto-release: YYYYMMDD-N (optionally with a leading v). */
+const DATE_BASED = /^\d{8}-\d+$/;
+
+export function isDateBasedVersion(v: string): boolean {
+    return DATE_BASED.test(normalizeVersion(v));
+}
+
 /**
- * Compare two date-based versions ("YYYYMMDD-N" or "vYYYYMMDD-N").
- * Lexicographic ordering is sufficient for this format.
+ * Compare two versions. Date-based tags ("YYYYMMDD-N" / "vYYYYMMDD-N")
+ * use lexicographic order (sufficient for this format).
+ *
+ * Local dev builds often bake a short git SHA / "dev" / "unknown" into
+ * APP_VERSION — those are not comparable as dates, so any remote
+ * date-based tag is treated as newer (and vice versa: a non-date remote
+ * never upgrades a date-based local).
+ *
  * Returns positive if `a` is newer, negative if `b` is newer, 0 if equal.
  */
 export function compareVersions(a: string, b: string): number {
     const na = normalizeVersion(a);
     const nb = normalizeVersion(b);
     if (na === nb) return 0;
+    if (!na || !nb) return na ? 1 : -1;
+
+    const aDate = DATE_BASED.test(na);
+    const bDate = DATE_BASED.test(nb);
+    if (aDate && !bDate) return 1;
+    if (!aDate && bDate) return -1;
+
     return na > nb ? 1 : -1;
 }
 

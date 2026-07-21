@@ -57,37 +57,38 @@ async function listWorkspaceSkills(workspaceId: string): Promise<WorkspaceSkillS
 }
 
 /**
- * Details of a concurrent-edit conflict detected by the store on push: the
- * workspace's copy was based on an older store version than what's currently
- * there. Nothing is written until the caller resolves via resolvePush.
+ * Staged project push awaiting Skills Manager adoption.
+ * Project UIs only submit; manager resolve decides create / update / fork.
  */
-export interface SkillPushConflict {
+export interface SkillPushPending {
     id: string;
+    conflictId?: string;
+    kind: 'create' | 'update' | 'conflict';
+    baseId?: string | null;
     name: string;
+    baseName?: string;
     storeVersion: number;
     baseVersion: number;
     sourcePath: string;
 }
 
-/** Response shape for `pushSkill` (Issue #379: conflict is optional, only set on status === 'conflict'). */
+/** Response shape for `pushSkill` — project side never writes the store except exists. */
 export interface PushSkillResponse {
     ok: boolean;
-    status: 'updated' | 'exists' | 'created' | 'conflict';
+    status: 'exists' | 'pending' | 'updated' | 'created' | 'conflict';
     changed: boolean;
     created: boolean;
-    version: number;
-    id: string;
-    conflict?: SkillPushConflict;
+    version?: number;
+    id?: string;
+    pending?: SkillPushPending;
+    /** Back-compat alias of pending for older clients. */
+    conflict?: SkillPushPending;
 }
 
 /**
- * Push a workspace's own edited copy of a skill back to the 1skills shared store
- * (母体) as the new baseline — the reverse of the create-time weak-copy. The Go
- * host resolves `<ws>/.claude/skills/<dir>` and forwards to the store, which
- * no-ops when the copy is unchanged. When the store has moved on since the
- * workspace's copy was based (concurrent edit), nothing is written and the
- * response carries `status: 'conflict'` + `conflict` details for the caller to
- * resolve via `resolvePush`.
+ * Submit a workspace skill copy to Skills Manager for adoption.
+ * The shared store is not written unless content is already identical
+ * (`status: exists`). Create / update / conflict land as `pending`.
  */
 async function pushSkill(workspaceId: string, skillRef: string): Promise<PushSkillResponse> {
     const res = await apiFetch('/workspace/push-skill', {

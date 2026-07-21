@@ -131,7 +131,14 @@ export class Xterm {
     constructor(
         private options: XtermOptions,
         private sendCb: () => void
-    ) {}
+    ) {
+        // Apply fixed title before the ttyd WS can overwrite with start-command title.
+        const fixed = options.clientOptions.titleFixed;
+        if (fixed) {
+            this.titleFixed = fixed;
+            document.title = fixed;
+        }
+    }
 
     dispose() {
         this.containerObserver?.disconnect();
@@ -457,7 +464,9 @@ export class Xterm {
                 break;
             case Command.SET_WINDOW_TITLE:
                 this.title = textDecoder.decode(data);
-                document.title = this.title;
+                if (!this.titleFixed) {
+                    document.title = this.title;
+                }
                 break;
             case Command.SET_PREFERENCES:
                 this.applyPreferences({

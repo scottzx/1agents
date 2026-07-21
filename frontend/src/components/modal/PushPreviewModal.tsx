@@ -8,7 +8,7 @@ interface PushPreviewModalProps {
     workspaceId: string;
     skillRef: string;
     onClose: () => void;
-    onDone: (result: 'created' | 'main' | 'fork') => void;
+    onDone: (result: 'submitted' | 'unchanged') => void;
     language: Lang;
 }
 
@@ -42,40 +42,28 @@ function DiffBlock({ diff }: { diff: string }) {
 }
 
 /**
- * Push-preview dialog (issue #379 follow-up): shown on every "推送到母体" click
- * instead of pushing immediately. Renders the read-only preview's diff so the
- * user can see exactly what changed before choosing to update 母体 in place,
- * fork it, or (first-time) just add it.
+ * Push-preview dialog: project side only *submits* a snapshot to Skills Manager.
+ * Adoption (create / update / conflict resolve) happens in the manager inbox —
+ * this modal never decides whether the skill enters the shared store.
  */
 export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDone, language }: PushPreviewModalProps) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
 
     const { isNew, diverged, files } = preview;
+    const hasChanges = Boolean(isNew || (files && files.length > 0) || diverged);
 
-    const onCreate = async () => {
-        setBusy(true);
-        setError('');
-        try {
-            await skillService.pushSkill(workspaceId, skillRef);
-            onDone('created');
-        } catch {
-            setError(t('assistant.push.previewFailed', language));
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const onPush = async () => {
+    const onSubmit = async () => {
         setBusy(true);
         setError('');
         try {
             const res = await skillService.pushSkill(workspaceId, skillRef);
-            if (res.status === 'conflict') {
-                setError(t('assistant.push.conflictStaged', language));
-            } else {
-                onDone('main');
+            if (res.status === 'exists') {
+                onDone('unchanged');
+                return;
             }
+            // pending (create / update / conflict) — staged for manager adoption
+            onDone('submitted');
         } catch {
             setError(t('assistant.push.previewFailed', language));
         } finally {
@@ -93,6 +81,7 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                     </button>
                 </div>
                 <div class="ws-modal-body">
+                    <p class="push-preview-hint">{t('assistant.push.submitHint', language)}</p>
                     {diverged && preview.target && (
                         <p class="push-preview-banner">
                             {t('assistant.push.divergedBanner', language, {
@@ -102,8 +91,11 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                         </p>
                     )}
                     <div class="push-preview-diff">
-                        {(!files || files.length === 0) && (
+                        {(!files || files.length === 0) && !isNew && (
                             <p class="push-preview-empty">{t('assistant.push.noChange', language)}</p>
+                        )}
+                        {isNew && (!files || files.length === 0) && (
+                            <p class="push-preview-empty">{t('assistant.push.newSkillHint', language)}</p>
                         )}
                         {files && files.length > 0 && (
                             <div class="skill-diff-files">
@@ -127,15 +119,13 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                     <button class="ws-modal-cancel" onClick={onClose} disabled={busy}>
                         {t('assistant.push.cancel', language)}
                     </button>
-                    {isNew ? (
-                        <button class="ws-modal-confirm" onClick={() => void onCreate()} disabled={busy}>
-                            {t('assistant.push.addToStore', language)}
-                        </button>
-                    ) : (
-                        <button class="ws-modal-confirm" onClick={() => void onPush()} disabled={busy}>
-                            {t('assistant.push.submitCopy', language)}
-                        </button>
-                    )}
+                    <button
+                        class="ws-modal-confirm"
+                        onClick={() => void onSubmit()}
+                        disabled={busy || !hasChanges}
+                    >
+                        {t('assistant.push.submitToManager', language)}
+                    </button>
                 </div>
             </div>
         </div>

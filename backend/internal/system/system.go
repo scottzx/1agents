@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -153,9 +154,41 @@ func platformBinaryURL(body []byte) (string, string, error) {
 	return bin.URL, bin.SHA256, nil
 }
 
-// versionGT returns true if a > b (lexicographic, sufficient for date-based versions).
+// dateBasedVersion matches auto-release tags: YYYYMMDD-N (leading "v" already stripped).
+var dateBasedVersion = regexp.MustCompile(`^\d{8}-\d+$`)
+
+// normalizeVersion strips a leading "v"/"V" and surrounding whitespace so
+// "v20260720-1" and "20260720-1" compare equal.
+func normalizeVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) > 0 && (v[0] == 'v' || v[0] == 'V') {
+		v = v[1:]
+	}
+	return strings.TrimSpace(v)
+}
+
+// versionGT returns true if a is strictly newer than b.
+//
+// Date-based tags (YYYYMMDD-N) use lexicographic order. When the local
+// version is a commit hash / "dev" / "unknown" (common for local frontend
+// embeds and untagged builds) and the remote is a date-based release tag,
+// the remote is treated as newer so OTA still surfaces the update.
 func versionGT(a, b string) bool {
-	return a != "" && b != "" && b != "unknown" && a > b
+	na, nb := normalizeVersion(a), normalizeVersion(b)
+	if na == "" || nb == "" || nb == "unknown" {
+		return false
+	}
+	if na == nb {
+		return false
+	}
+	aDate, bDate := dateBasedVersion.MatchString(na), dateBasedVersion.MatchString(nb)
+	if aDate && !bDate {
+		return true
+	}
+	if !aDate && bDate {
+		return false
+	}
+	return na > nb
 }
 
 // ── Restart mode detection ────────────────────────────────────────────────────

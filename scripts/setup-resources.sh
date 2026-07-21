@@ -57,15 +57,18 @@ cp "build/cc-switch$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
 
 chmod +x "$BIN_DIR/1agents$EXE_SUFFIX" "$BIN_DIR/ttyd$EXE_SUFFIX" "$BIN_DIR/cc-connect$EXE_SUFFIX" "$BIN_DIR/cc-switch$EXE_SUFFIX"
 
-# Copy skill-manager (1skills PyInstaller binary) if available
-# In CI it is placed at build/skill-manager by the workflow before this script runs.
-# In local dev it may be absent; the supervisor will fall back to .venv mode.
-if [ -f "build/skill-manager" ]; then
+# 1skills: host Python only. Prefer staged Python source (build/1skills) over a
+# legacy PyInstaller skill-manager binary. SkillsSupervisor bootstraps a venv.
+if [ -d "build/1skills/skill_manager" ]; then
+    echo "=== Copying 1skills Python source (host Python) ==="
+    rm -rf "$RESOURCE_DIR/1skills"
+    cp -r "build/1skills" "$RESOURCE_DIR/1skills"
+elif [ -f "build/skill-manager" ]; then
     cp "build/skill-manager" "$BIN_DIR/skill-manager"
     chmod +x "$BIN_DIR/skill-manager"
-    echo "Copied skill-manager binary."
+    echo "Copied legacy skill-manager binary."
 else
-    echo "WARNING: build/skill-manager not found. 1skills will run in dev (.venv) mode inside the app."
+    echo "WARNING: no build/1skills source or skill-manager binary. Skills need host Python + modules/1skills."
 fi
 
 # Copy the happy bundle (relay/C2 sidecar + RPC adapter) if built.

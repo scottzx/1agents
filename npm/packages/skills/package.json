@@ -1,0 +1,18 @@
+{
+  "name": "@1agents/skills",
+  "version": "0.0.0-dev",
+  "description": "1skills (skill-manager) Python source for host uv/pip",
+  "license": "MIT",
+  "files": [
+    "skill_manager/",
+    "frontend/",
+    "requirements.txt",
+    "pyproject.toml",
+    "package.json",
+    "README.md",
+    "README.txt"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

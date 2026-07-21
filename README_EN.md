@@ -6,7 +6,7 @@ Traditional AI assistants improve one prompt or one chat turn. 1agents focuses o
 
 [简体中文](README.md) | **English**
 
-[![NPM Version](https://img.shields.io/npm/v/@scottzx/1agents?color=blue&logo=npm)](https://www.npmjs.com/package/@scottzx/1agents)
+[![NPM](https://img.shields.io/badge/npm-@1agents%2Fcli-blue?logo=npm)](https://www.npmjs.com/org/1agents)
 [![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/scottzx/1Agents)
 [![License](https://img.shields.io/github/license/scottzx/1Agents)](LICENSE)
 
@@ -177,25 +177,31 @@ sudo dnf install -y tmux                       # Fedora / CentOS / RHEL
 
 ## Installation
 
-### NPM
+### NPM (recommended · default)
 
 ```bash
-npm install -g @scottzx/1agents
-npx @scottzx/1agents [args]
+# Scope: @1agents (same org as @1agents/wire)
+npm install -g @1agents/cli
+# China mirror example
+npm install -g @1agents/cli --registry=https://registry.npmmirror.com
+
+1agents [args]
 ```
 
 Requirements:
 
 - Node.js >= 22
-- macOS x64/arm64
-- Linux x64/arm64
-- Windows x64/arm64
+- macOS arm64 / Linux x64 / Linux arm64 (Windows: WSL2 or build from source)
 
-The NPM package includes the backend, Web frontend, `ttyd`, and `cloudflared`.
+**Distribution (important):**
 
-### Prebuilt Binaries
+- **Multi-package** under `@1agents/*`. `@1agents/cli` is the entry; **`@1agents/core-<plat>` ships binaries directly on the npm registry** (no GitHub download during install).
+- Design: [`docs/features/npm-package-split/prd.md`](docs/features/npm-package-split/prd.md).
+- Legacy `@scottzx/1agents` and the “thin installer + GitHub tarball” flow are **deprecated**.
 
-Download the package for your platform from [GitHub Releases](https://github.com/scottzx/1Agents/releases), extract it, and run it.
+### Prebuilt archives (optional, non-npm)
+
+If you do not use npm, download a full tarball from [GitHub Releases](https://github.com/scottzx/1agents/releases). **npm users do not need this path.**
 
 ### Docker
 

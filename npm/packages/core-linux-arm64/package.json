@@ -1,0 +1,20 @@
+{
+  "name": "@1agents/core-linux-arm64",
+  "version": "0.0.0-dev",
+  "description": "Core 1agents + ttyd binaries (linux-arm64)",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "package.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

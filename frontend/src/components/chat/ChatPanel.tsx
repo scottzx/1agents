@@ -117,11 +117,11 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     // mode_changed without extra wiring.
     const currentModeId = modes?.currentModeId;
 
-    // Unresolved permissions / questionnaires float above the composer;
-    // resolved ones stay as receipts inside the (default-collapsed) tool group.
-    const pendingPermissions = collectPendingPermissions(items);
-    const pendingAskUsers = collectPendingAskUsers(items);
-    const pendingExitPlans = collectPendingExitPlans(items);
+    // Unresolved permissions / questionnaires / plan exits float above the
+    // composer. Show them one-at-a-time in stream order so parallel tool
+    // prompts (or reconnect redelivery) never stack a wall of cards.
+    // Resolved ones stay as receipts inside the (default-collapsed) tool group.
+    const nextPrompt = collectNextPendingPrompt(items);
 
     return (
         <div class="chat-panel" data-session-mode={currentModeId}>
@@ -157,10 +157,17 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
             {lastError && (
                 <ChatErrorBanner message={lastError.message} code={lastError.code} onDismiss={dismissError} />
             )}
-            <PermissionPrompt permissions={pendingPermissions} onRespond={respondPermission} />
-            <AskUserPrompt requests={pendingAskUsers} onRespond={respondAskUserQuestion} />
-            <ExitPlanPrompt requests={pendingExitPlans} onRespond={respondExitPlanMode} />
+            {nextPrompt?.kind === 'permission' && (
+                <PermissionPrompt permissions={[nextPrompt.data]} onRespond={respondPermission} />
+            )}
+            {nextPrompt?.kind === 'ask_user' && (
+                <AskUserPrompt requests={[nextPrompt.data]} onRespond={respondAskUserQuestion} />
+            )}
+            {nextPrompt?.kind === 'exit_plan' && (
+                <ExitPlanPrompt requests={[nextPrompt.data]} onRespond={respondExitPlanMode} />
+            )}
             <Composer
+                sessionId={session.id}
                 onSend={send}
                 onCancel={cancel}
                 isRunning={typing}
@@ -178,48 +185,51 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
     );
 }
 
-function collectPendingPermissions(items: ChatItem[]): PendingPermission[] {
-    // Permissions live in two places: nested on tool_use.calls (matched
-    // realtime path) and as standalone permission_request items (pending
-    // pool before a tool_use arrives). Scan both; requestId de-dupes.
+/** One composer-adjacent interactive prompt waiting for the user. */
+type PendingPrompt =
+    | { kind: 'permission'; data: PendingPermission }
+    | { kind: 'ask_user'; data: PendingAskUser }
+    | { kind: 'exit_plan'; data: PendingExitPlan };
+
+/**
+ * Walk chat items in stream order and return the earliest unresolved
+ * permission / ask_user_question / exit_plan_mode. Parallel tool calls or
+ * reconnect redelivery can leave several pending; the UI surfaces only this
+ * head so the next appears after the user answers the current one.
+ */
+function collectNextPendingPrompt(items: ChatItem[]): PendingPrompt | null {
     const seen = new Set<string>();
-    const pending: PendingPermission[] = [];
-    const push = (p: PendingPermission) => {
-        if (!p.requestId || seen.has(p.requestId) || p.resolved) return;
+
+    const takePermission = (p: PendingPermission): PendingPrompt | null => {
+        if (!p.requestId || seen.has(p.requestId) || p.resolved) return null;
         seen.add(p.requestId);
-        pending.push(p);
+        return { kind: 'permission', data: p };
     };
+    const takeAskUser = (p: PendingAskUser): PendingPrompt | null => {
+        if (!p.requestId || seen.has(p.requestId) || p.resolved) return null;
+        seen.add(p.requestId);
+        return { kind: 'ask_user', data: p };
+    };
+    const takeExitPlan = (p: PendingExitPlan): PendingPrompt | null => {
+        if (!p.requestId || seen.has(p.requestId) || p.resolved) return null;
+        seen.add(p.requestId);
+        return { kind: 'exit_plan', data: p };
+    };
+
     for (const item of items) {
         if (item.kind === 'permission_request') {
-            push({
+            const hit = takePermission({
                 requestId: item.requestId,
                 toolName: item.toolName,
                 input: item.input,
                 options: item.options,
                 ...(item.resolved ? { resolved: item.resolved } : {}),
             });
+            if (hit) return hit;
             continue;
         }
-        if (item.kind === 'tool_use') {
-            for (const call of item.calls) {
-                if (call.permission) push(call.permission);
-            }
-        }
-    }
-    return pending;
-}
-
-function collectPendingAskUsers(items: ChatItem[]): PendingAskUser[] {
-    const seen = new Set<string>();
-    const pending: PendingAskUser[] = [];
-    const push = (p: PendingAskUser) => {
-        if (!p.requestId || seen.has(p.requestId) || p.resolved) return;
-        seen.add(p.requestId);
-        pending.push(p);
-    };
-    for (const item of items) {
         if (item.kind === 'ask_user_question') {
-            push({
+            const hit = takeAskUser({
                 requestId: item.requestId,
                 toolCallId: item.toolCallId,
                 mode: item.mode,
@@ -227,41 +237,38 @@ function collectPendingAskUsers(items: ChatItem[]): PendingAskUser[] {
                 ...(item.resolved ? { resolved: item.resolved } : {}),
                 ...(item.answers ? { answers: item.answers } : {}),
             });
+            if (hit) return hit;
             continue;
         }
-        if (item.kind === 'tool_use') {
-            for (const call of item.calls) {
-                if (call.askUser) push(call.askUser);
-            }
-        }
-    }
-    return pending;
-}
-
-function collectPendingExitPlans(items: ChatItem[]): PendingExitPlan[] {
-    const seen = new Set<string>();
-    const pending: PendingExitPlan[] = [];
-    const push = (p: PendingExitPlan) => {
-        if (!p.requestId || seen.has(p.requestId) || p.resolved) return;
-        seen.add(p.requestId);
-        pending.push(p);
-    };
-    for (const item of items) {
         if (item.kind === 'exit_plan_mode') {
-            push({
+            const hit = takeExitPlan({
                 requestId: item.requestId,
                 toolCallId: item.toolCallId,
                 planContent: item.planContent,
                 ...(item.resolved ? { resolved: item.resolved } : {}),
                 ...(item.comments ? { comments: item.comments } : {}),
             });
+            if (hit) return hit;
             continue;
         }
         if (item.kind === 'tool_use') {
+            // Within a tool group, preserve call order; permission / askUser /
+            // exitPlan on the same call are mutually exclusive in practice.
             for (const call of item.calls) {
-                if (call.exitPlan) push(call.exitPlan);
+                if (call.permission) {
+                    const hit = takePermission(call.permission);
+                    if (hit) return hit;
+                }
+                if (call.askUser) {
+                    const hit = takeAskUser(call.askUser);
+                    if (hit) return hit;
+                }
+                if (call.exitPlan) {
+                    const hit = takeExitPlan(call.exitPlan);
+                    if (hit) return hit;
+                }
             }
         }
     }
-    return pending;
+    return null;
 }

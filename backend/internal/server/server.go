@@ -591,24 +591,22 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.Handle("/1skills/", gateway.NewSkillsProxy(skillsPort))
 
 	// ── Module embed scripts (custom elements) ──────────────────────────────
-	// Self-contained ESM bundles produced by the submodule embed pipelines
-	// (1skills: `yarn build:embed`, cc-connect: `npm run build:embed`).
-	// The 1agents frontend loads them as ESM modules to register
-	// <skills-panel> and <cc-connect-panel> custom elements, replacing
-	// the iframe approach for non-terminal panels.
-	//
-	// The path inside dist-embed is fixed by the submodule's vite
-	// library-mode config. We resolve the file at startup and 404 if the
-	// submodule has not been built yet — a friendlier failure mode than
-	// the route silently shadowing the static catch-all.
-	mux.HandleFunc("/api/embed/skills-embed.js", serveEmbedScript([]string{
-		"modules/1skills/dist-embed/skills-embed.js",
-		"../modules/1skills/dist-embed/skills-embed.js",
-	}))
-	mux.HandleFunc("/api/embed/cc-connect-embed.js", serveEmbedScript([]string{
-		"modules/cc-connect/web/dist-embed/cc-connect-embed.js",
-		"../modules/cc-connect/web/dist-embed/cc-connect-embed.js",
-	}))
+	// Self-contained ESM bundles (1skills / cc-connect web) that register
+	// <skills-panel> and <cc-connect-panel>. Production ships them under
+	// StaticDir/embed/ (npm @1agents/web, release tarball dist/). Dev falls
+	// back to modules/*/dist-embed after `build:embed`.
+	mux.HandleFunc("/api/embed/skills-embed.js", serveEmbedScript(
+		embedBundleCandidates(cfg.StaticDir, "skills-embed.js", []string{
+			"modules/1skills/dist-embed/skills-embed.js",
+			"../modules/1skills/dist-embed/skills-embed.js",
+		}),
+	))
+	mux.HandleFunc("/api/embed/cc-connect-embed.js", serveEmbedScript(
+		embedBundleCandidates(cfg.StaticDir, "cc-connect-embed.js", []string{
+			"modules/cc-connect/web/dist-embed/cc-connect-embed.js",
+			"../modules/cc-connect/web/dist-embed/cc-connect-embed.js",
+		}),
+	))
 
 	// ── 1skills API pass-through routes ──────────────────────────────────────
 	// The 1skills frontend is built with VITE_API_BASE=/api, so its JS makes
@@ -755,6 +753,7 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/system/happy/daemon/stop", sysHandler.HappyDaemonStop)   // POST — stop happy daemon
 	mux.HandleFunc("/api/system/happy/pair/start", sysHandler.HappyPairStart)     // POST — begin account-level pairing, returns pairing code
 	mux.HandleFunc("/api/system/happy/pair/status", sysHandler.HappyPairStatus)   // GET  — pairing progress (pending/authorized/error)
+	mux.HandleFunc("/api/system/happy/ensure-machine", sysHandler.HappyEnsureMachine) // POST — auto-bind machine using local relay-creds
 	// 重置本地数据: wipe App data (meta.db/sync.db tables + knowledge/scratch files +
 	// workspace-backed cc-connect projects), keep relay pairing identity (~/.happy +
 	// relay-creds.json) and provider/model config, re-seed default workspace.
@@ -970,12 +969,21 @@ func authMiddleware(next http.Handler, cfg *config.Config) http.Handler {
 	})
 }
 
+// isLocalhost reports whether the request comes from loopback or a private LAN
+// address (RFC 1918 / unique-local / link-local). Access-token auth treats these
+// the same as localhost so opening http://192.168.x.x:8085/ on the home network
+// gets the happy-cli operator bypass without a token. Public RemoteAddrs still
+// require the access token (tunnel session auth remains a separate layer).
 func isLocalhost(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	return host == "127.0.0.1" || host == "::1"
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 // acpxBridgePort is the port the 1acp bridge-server listens on and the backend
@@ -1417,6 +1425,44 @@ func projectConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// embedBundleCandidates returns filesystem paths to try for a named embed
+// ESM file (e.g. skills-embed.js). Order:
+//  1. -static dir (production: @1agents/web/dist/embed/…)
+//  2. release layout next to the 1agents binary (…/dist/embed/…)
+//  3. monorepo modules/*/dist-embed (dev)
+func embedBundleCandidates(staticDir, fileName string, monorepoRels []string) []string {
+	var c []string
+	seen := map[string]struct{}{}
+	add := func(p string) {
+		if p == "" {
+			return
+		}
+		// Normalize later via Abs in the handler; de-dupe on raw string.
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		c = append(c, p)
+	}
+
+	if staticDir != "" {
+		add(filepath.Join(staticDir, "embed", fileName))
+		add(filepath.Join(staticDir, fileName))
+	}
+
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		add(filepath.Join(exeDir, "dist", "embed", fileName))
+		add(filepath.Join(exeDir, "..", "dist", "embed", fileName))
+		add(filepath.Join(exeDir, "embed", fileName))
+	}
+
+	for _, rel := range monorepoRels {
+		add(rel)
+	}
+	return c
+}
+
 func serveEmbedScript(candidates []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only allow GET — these are static assets; anything else is a bug.
@@ -1439,7 +1485,9 @@ func serveEmbedScript(candidates []string) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w,
-			"embed bundle not found; tried: %s\nbuild it with `yarn build:embed` (1skills) or `npm run build:embed` (cc-connect) inside the submodule",
+			"embed bundle not found; tried: %s\n"+
+				"Production: ensure @1agents/web includes dist/embed/*.js (scripts/build-module-embeds.sh).\n"+
+				"Dev: run `npm run build:embed` in modules/1skills and modules/cc-connect/web, or ./scripts/build-module-embeds.sh",
 			strings.Join(candidates, ", "),
 		)
 	}

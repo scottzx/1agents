@@ -17,9 +17,8 @@ import { apply as applyFrontendUpdate } from '../../ota/applier';
 
 export type { SettingsCategory };
 
-// R2 收敛：账户级配对(RelayPairingPanel)为唯一主路径；旧「借机器 token」
-// 设备档案流(RelayDevicePanel/devices.ts)默认隐藏，保留代码作回退。置 true 可重新露出。
-const SHOW_LEGACY_DEVICE_PROFILE = false;
+// Model B（设备档案 / 扫码 bundle）为主路径；账户级配对(Model A)默认隐藏作回退。
+const SHOW_LEGACY_ACCOUNT_PAIRING = false;
 
 interface SystemSettingsProps {
     theme: 'light' | 'dark';
@@ -511,15 +510,12 @@ export function SystemSettings(props: SystemSettingsProps) {
                 </div>
             </div>
 
-            {/* 客户端模式：账户级配对(R2 主路径) —— 设备作为 machine 绑定到人账号 P，
-                订阅跟人账号走、连接寿命由 server orphan-reaping 依 P 订阅驱动。 */}
-            {!isLocalMachineMode() && <RelayPairingPanel embedded />}
+            {/* 客户端主路径：Model B 设备档案 —— 扫机器端配置二维码 / 粘贴 bundle。
+                订阅由客户端门禁控制；不依赖 listMachines 账户级列表。 */}
+            {!isLocalMachineMode() && <RelayDevicePanel embedded onConnected={() => window.location.reload()} />}
 
-            {/* 旧「借机器 token」设备档案流(Model B) —— 已被 R2 账户级绑定取代，
-                默认隐藏保留回退，勿作主路径(与 R2 混用会导致账号/密钥错配)。 */}
-            {!isLocalMachineMode() && SHOW_LEGACY_DEVICE_PROFILE && (
-                <RelayDevicePanel embedded onConnected={() => window.location.reload()} />
-            )}
+            {/* 旧账户级配对(Model A) —— 默认隐藏；与 Model B 混用易账号错配。 */}
+            {!isLocalMachineMode() && SHOW_LEGACY_ACCOUNT_PAIRING && <RelayPairingPanel embedded />}
         </div>
     );
 
@@ -860,7 +856,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                 <div class="sys-settings-update-name">{t('settings.updates.frontend', language)}</div>
                                 <div class="sys-settings-update-versions">
                                     <span class="sys-settings-version-chip">{APP_VERSION || '—'}</span>
-                                    {frontendLatest && frontendLatest !== APP_VERSION && (
+                                    {frontendHasUpdate && frontendLatest && (
                                         <Fragment>
                                             <span class="sys-settings-update-arrow">→</span>
                                             <span class="sys-settings-version-chip new">{frontendLatest}</span>
@@ -921,7 +917,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                 <div class="sys-settings-update-name">{t('settings.updates.backend', language)}</div>
                                 <div class="sys-settings-update-versions">
                                     <span class="sys-settings-version-chip">{backendCurrent.value || '—'}</span>
-                                    {backendLatest.value && backendLatest.value !== backendCurrent.value && (
+                                    {backendHasUpdate && backendLatest.value && (
                                         <Fragment>
                                             <span class="sys-settings-update-arrow">→</span>
                                             <span class="sys-settings-version-chip new">{backendLatest.value}</span>

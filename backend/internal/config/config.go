@@ -54,6 +54,11 @@ type Config struct {
 	// SkillsBinaryPath is the path to the python executable to run 1skills.
 	SkillsBinaryPath string
 
+	// SkillsSourceDir is the path to the 1skills Python source tree
+	// (e.g. the @1agents/skills npm package root, or modules/1skills in dev).
+	// When empty, the supervisor discovers the tree automatically.
+	SkillsSourceDir string
+
 	// OTA configures the over-the-air self-update behaviour.
 	// When Enabled is false the /api/system/update endpoint still accepts
 	// requests but reports "disabled".
