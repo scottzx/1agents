@@ -79,7 +79,8 @@ func resolveNode(binDir string) (string, bool) {
 
 // happyAdapterEntry returns the path to the 1agents RPC adapter entrypoint that
 // happy loads via HAPPY_RPC_ADAPTER_ENTRY, or "" if it is not bundled. Mirrors
-// the resolution layouts in resolveHappy (release bundle, then repo dev).
+// the resolution layouts in resolveHappy (release bundle, then repo dev), and
+// also the npm @1agents/cli layout where adapter ships under @1agents/happy/.
 func happyAdapterEntry() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -87,8 +88,10 @@ func happyAdapterEntry() string {
 	}
 	binDir := filepath.Dir(exe)
 	for _, p := range []string{
-		filepath.Join(binDir, "adapter", "rpc", "index.mjs"),       // release bundle
-		filepath.Join(binDir, "..", "adapter", "rpc", "index.mjs"), // repo dev
+		filepath.Join(binDir, "adapter", "rpc", "index.mjs"),                         // release bundle
+		filepath.Join(binDir, "..", "adapter", "rpc", "index.mjs"),                   // repo dev (build/ → adapter/)
+		filepath.Join(binDir, "..", "..", "happy", "adapter", "rpc", "index.mjs"),    // npm: core-*/bin → @1agents/happy/adapter
+		filepath.Join(binDir, "..", "node_modules", "@1agents", "happy", "adapter", "rpc", "index.mjs"),
 	} {
 		if fileExists(p) {
 			return p

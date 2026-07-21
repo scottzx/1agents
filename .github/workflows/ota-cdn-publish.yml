@@ -78,47 +78,76 @@ jobs:
             --repo "${{ github.repository }}" \
             --pattern '1agents-*.tar.gz' \
             --dir _mirror
+          # Frontend payload is optional here; Stage step may re-download it.
+          # Canonical: frontend-vYYYYMMDD-N.tar.gz; also try legacy double-v.
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "frontend-${TAG}.tar.gz" \
+            --dir _mirror 2>/dev/null || true
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "frontend-v${TAG}.tar.gz" \
+            --dir _mirror 2>/dev/null || true
           echo "=== downloaded ===" && ls -lh _mirror
 
       - name: Stage artifacts and build CDN manifest
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.tag }}
           OTA_CDN_BASE_URL: ${{ secrets.OTA_CDN_BASE_URL }}
         run: |
-          # Strip the version segment so build-manifest.py's platform regex
-          # matches; the version lives in the CDN URL path instead.
+          # Strip the version segment so CDN objects are
+          # {tag}/1agents-{os}-{arch}.tar.gz (unversioned basenames).
           mkdir -p _stage
           for f in _mirror/1agents-*.tar.gz; do
+            [ -f "$f" ] || continue
             base="$(basename "$f")"
+            # Skip frontend-v* if the pattern ever collides.
+            case "$base" in frontend-*) continue ;; esac
             new="$(echo "$base" | sed "s/^1agents-${TAG}-/1agents-/")"
             cp "$f" "_stage/$new"
           done
+          # Canonical CDN object name: frontend-vYYYYMMDD-N.tar.gz
+          FE_TGZ="frontend-${TAG}.tar.gz"
+          if [ -f "_mirror/${FE_TGZ}" ]; then
+            cp "_mirror/${FE_TGZ}" "_stage/${FE_TGZ}"
+          elif [ -f "_mirror/frontend-v${TAG}.tar.gz" ]; then
+            # legacy double-v asset → rewrite to canonical name for CDN
+            cp "_mirror/frontend-v${TAG}.tar.gz" "_stage/${FE_TGZ}"
+          fi
           echo "=== staged ===" && ls -lh _stage
 
-          # Frontend OTA payload: extract frontend/dist from a backend tarball and
-          # repackage as frontend-v${TAG}.tar.gz (files at top level). This fills
-          # manifest.components.frontend.{entry,integrity} (build-manifest.py's
-          # find_frontend looks for exactly this name), enabling the self-hosted
-          # server updater (1agents_server: scripts/server-h5-ota.sh) to pull the ~3MB app
-          # bundle instead of a 50MB backend tarball. api/embed/ is intentionally
-          # excluded — it changes rarely and the server updater preserves it
-          # across swaps.
-          fe_src=""
-          for cand in _stage/1agents-linux-amd64.tar.gz _stage/1agents-linux-arm64.tar.gz _stage/1agents-darwin-arm64.tar.gz; do
-            [ -f "$cand" ] && { fe_src="$cand"; break; }
-          done
-          if [ -n "$fe_src" ]; then
-            rm -rf _fe && mkdir -p _fe
-            tar -xzf "$fe_src" -C _fe
-            dist_dir="$(find _fe -type d -name dist | head -1)"
-            if [ -n "$dist_dir" ] && [ -f "$dist_dir/index.html" ]; then
-              tar -czf "_stage/frontend-v${TAG}.tar.gz" -C "$dist_dir" .
-              echo "=== frontend payload staged from $(basename "$fe_src") ===" && ls -lh "_stage/frontend-v${TAG}.tar.gz"
-            else
-              echo "WARN: dist/ with index.html not found in $fe_src — frontend payload skipped"
-            fi
+          # Frontend OTA payload: use release asset if present; else extract
+          # dist/ from a backend tarball. Never pick happy-cli/dist — only a
+          # directory that actually contains index.html.
+          if [ -f "_stage/${FE_TGZ}" ]; then
+            echo "=== frontend payload from GitHub Release asset ==="
+            ls -lh "_stage/${FE_TGZ}"
           else
-            echo "WARN: no backend tarball to derive frontend payload — skipped"
+            fe_src=""
+            for cand in _stage/1agents-linux-amd64.tar.gz _stage/1agents-linux-arm64.tar.gz _stage/1agents-darwin-arm64.tar.gz; do
+              [ -f "$cand" ] && { fe_src="$cand"; break; }
+            done
+            if [ -n "$fe_src" ]; then
+              rm -rf _fe && mkdir -p _fe
+              tar -xzf "$fe_src" -C _fe
+              dist_dir=""
+              if [ -f _fe/dist/index.html ]; then
+                dist_dir="_fe/dist"
+              else
+                while IFS= read -r d; do
+                  if [ -f "$d/index.html" ]; then dist_dir="$d"; break; fi
+                done < <(find _fe -type d -name dist 2>/dev/null | sort)
+              fi
+              if [ -n "$dist_dir" ]; then
+                tar -czf "_stage/${FE_TGZ}" -C "$dist_dir" .
+                echo "=== frontend payload staged from $(basename "$fe_src") ($dist_dir) ===" && ls -lh "_stage/${FE_TGZ}"
+              else
+                echo "WARN: no dist/index.html in $fe_src — frontend payload skipped"
+              fi
+            else
+              echo "WARN: no backend tarball to derive frontend payload — skipped"
+            fi
           fi
 
           python3 scripts/build-manifest.py \

@@ -165,12 +165,22 @@ docker compose restart 1agents
 
 ## 9. 发版流程
 
-1. 开发者本地：`git tag v20260615-1 && git push --tags`
-2. 触发 `.github/workflows/auto-release.yml`（或手动 `gh workflow run auto-release.yml`）
-3. CI 跑完所有 `build-*` job，收集 artifact
-4. `release` job 跑 `scripts/build-manifest.py` + `scripts/build-tauri-manifest.py` 生成 manifest
-5. `softprops/action-gh-release@v2` 上传所有 manifest + binary 到同一个 release
-6. 三端下次检查时拉新版本
+1. 手动触发 `.github/workflows/auto-release.yml`（`prepare` job 计算 `vYYYYMMDD-N` 并推 tag）
+2. CI 跑完所有 `build-*` job，收集 artifact
+3. `release` job：
+   - 打包 `frontend-vYYYYMMDD-N.tar.gz`（来自 html-dist）
+   - 跑 `scripts/build-manifest.py` 生成根 manifest  
+     - 识别 **versioned** 产物名 `1agents-{tag}-{os}-{arch}.tar.gz`（GitHub asset）  
+     - 以及 **unversioned** 名 `1agents-{os}-{arch}.tar.gz`（CDN stage）
+   - `softprops/action-gh-release@v2` 上传 tarball + frontend payload + `manifest.json`
+4. `ota-cdn-publish.yml`（`workflow_run`）把产物镜像到 COS，刷新 `/manifest.json` 指针
+5. 客户端 `fetchUpstream` **比较 mirror 与 GitHub 两边的 `backend.version`，取更新的一份**（避免 COS 上传失败时卡在旧版本）
+
+### 版本比较约定
+
+- 发版 tag / manifest：`vYYYYMMDD-N`
+- 前端构建必须注入 `APP_VERSION=<tag>`（auto-release 的 `build-frontend` 已设置）；本地 dev 可能是 short SHA
+- 若 local 不是 date-based（commit / `dev` / `unknown`），而 remote 是 date-based，则视为 **有更新**
 
 ## 10. 紧急回滚（V1 手工）
 

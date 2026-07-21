@@ -209,8 +209,8 @@ func TestDownloadAndVerify_SHAMismatchRejected(t *testing.T) {
 // ── Layer 2: manifest fetch with mirror → GitHub fallback ────────────────────
 
 func TestFetchUpstream_BrokenSourceThenHealthy(t *testing.T) {
-	// fetchUpstream tries each configured source in order. We can't point
-	// the GitHub fallback at a local server (it's a hard-coded github.com
+	// fetchUpstream tries each configured source. We can't point the
+	// GitHub fallback at a local server (it's a hard-coded github.com
 	// URL), so we exercise the failure→recovery behaviour through the
 	// mirror slot: a broken mirror with no other source must fail, and a
 	// healthy mirror must return its manifest body.
@@ -239,6 +239,64 @@ func TestFetchUpstream_BrokenSourceThenHealthy(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "HEALTHY") {
 		t.Errorf("expected healthy manifest body, got %q", body)
+	}
+}
+
+func TestFetchUpstream_PrefersNewerAcrossSources(t *testing.T) {
+	// Regression: stale COS (v20260718-8) must not mask a fresher GitHub
+	// release (v20260720-2) when both have platforms.
+	stale := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"channel":"stable","components":{"backend":{"version":"v20260718-8","platforms":{"linux-amd64":{"url":"http://stale"}}}}}`))
+	}))
+	defer stale.Close()
+	fresh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"channel":"stable","components":{"backend":{"version":"v20260720-2","platforms":{"linux-amd64":{"url":"http://fresh"}}}}}`))
+	}))
+	defer fresh.Close()
+
+	oldMirror, oldRepo := MirrorBaseURL, Repo
+	t.Cleanup(func() { MirrorBaseURL, Repo = oldMirror, oldRepo })
+	MirrorBaseURL = stale.URL
+	Repo = fresh.URL + "/manifest.json"
+
+	body, err := fetchUpstream()
+	if err != nil {
+		t.Fatalf("fetchUpstream: %v", err)
+	}
+	if got := backendVersionOf(body); got != "v20260720-2" {
+		t.Errorf("backend version = %q, want v20260720-2 (fresher source)", got)
+	}
+	if !strings.Contains(string(body), "http://fresh") {
+		t.Errorf("expected fresher manifest body, got %s", body)
+	}
+}
+
+func TestFetchUpstream_SkipsEmptyPlatformsNewer(t *testing.T) {
+	// Broken GH manifest after npm-split: version bumps but platforms={}.
+	// Keep the older usable COS mirror so OTA still has a download URL.
+	usable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"channel":"stable","components":{"backend":{"version":"v20260718-8","platforms":{"linux-amd64":{"url":"http://usable"}}}}}`))
+	}))
+	defer usable.Close()
+	emptyNewer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"channel":"stable","components":{"backend":{"version":"v20260720-2","platforms":{}}}}`))
+	}))
+	defer emptyNewer.Close()
+
+	oldMirror, oldRepo := MirrorBaseURL, Repo
+	t.Cleanup(func() { MirrorBaseURL, Repo = oldMirror, oldRepo })
+	MirrorBaseURL = usable.URL
+	Repo = emptyNewer.URL + "/manifest.json"
+
+	body, err := fetchUpstream()
+	if err != nil {
+		t.Fatalf("fetchUpstream: %v", err)
+	}
+	if got := backendVersionOf(body); got != "v20260718-8" {
+		t.Errorf("backend version = %q, want v20260718-8 (usable over empty newer)", got)
+	}
+	if !strings.Contains(string(body), "http://usable") {
+		t.Errorf("expected usable manifest body, got %s", body)
 	}
 }
 

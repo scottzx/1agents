@@ -856,7 +856,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                 <div class="sys-settings-update-name">{t('settings.updates.frontend', language)}</div>
                                 <div class="sys-settings-update-versions">
                                     <span class="sys-settings-version-chip">{APP_VERSION || '—'}</span>
-                                    {frontendLatest && frontendLatest !== APP_VERSION && (
+                                    {frontendHasUpdate && frontendLatest && (
                                         <Fragment>
                                             <span class="sys-settings-update-arrow">→</span>
                                             <span class="sys-settings-version-chip new">{frontendLatest}</span>
@@ -917,7 +917,7 @@ export function SystemSettings(props: SystemSettingsProps) {
                                 <div class="sys-settings-update-name">{t('settings.updates.backend', language)}</div>
                                 <div class="sys-settings-update-versions">
                                     <span class="sys-settings-version-chip">{backendCurrent.value || '—'}</span>
-                                    {backendLatest.value && backendLatest.value !== backendCurrent.value && (
+                                    {backendHasUpdate && backendLatest.value && (
                                         <Fragment>
                                             <span class="sys-settings-update-arrow">→</span>
                                             <span class="sys-settings-version-chip new">{backendLatest.value}</span>

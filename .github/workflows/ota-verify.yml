@@ -7,6 +7,7 @@ on:
       - 'scripts/build-tauri-manifest.py'
       - 'backend/internal/system/**'
       - '.github/workflows/auto-release.yml'
+      - '.github/workflows/ota-cdn-publish.yml'
 
 jobs:
   verify:
@@ -14,36 +15,86 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Dry-run manifest generation
+      - name: Dry-run manifest generation (unversioned + versioned names)
         run: |
-          # Create a fake artifacts directory with empty tarballs
-          # so the script exercises all code paths.
-          mkdir -p _fake
-          touch _fake/1agents-linux-amd64.tar.gz
-          touch _fake/1agents-linux-arm64.tar.gz
-          touch _fake/1agents-darwin-arm64.tar.gz
-          touch _fake/1agents-windows-amd64.tar.gz
-          touch _fake/frontend-vTEST.tar.gz
+          set -euo pipefail
+
+          # ── Unversioned (CDN stage layout) ──────────────────────────────
+          mkdir -p _fake_unversioned
+          touch _fake_unversioned/1agents-linux-amd64.tar.gz
+          touch _fake_unversioned/1agents-linux-arm64.tar.gz
+          touch _fake_unversioned/1agents-darwin-arm64.tar.gz
+          touch _fake_unversioned/1agents-windows-amd64.tar.gz
+          touch _fake_unversioned/frontend-vTEST.tar.gz
 
           python3 scripts/build-manifest.py \
             --version vTEST \
-            --artifacts _fake \
-            --output _fake/manifest.json
+            --artifacts _fake_unversioned \
+            --output _fake_unversioned/manifest.json
+
+          # ── Versioned (auto-release GitHub asset names) ─────────────────
+          mkdir -p _fake_versioned
+          TAG=v20260720-9
+          touch "_fake_versioned/1agents-${TAG}-linux-amd64.tar.gz"
+          touch "_fake_versioned/1agents-${TAG}-linux-arm64.tar.gz"
+          touch "_fake_versioned/1agents-${TAG}-darwin-arm64.tar.gz"
+          touch "_fake_versioned/frontend-${TAG}.tar.gz"
+
+          python3 scripts/build-manifest.py \
+            --version "$TAG" \
+            --artifacts _fake_versioned \
+            --output _fake_versioned/manifest.json
 
           python3 scripts/build-tauri-manifest.py \
             --version vTEST \
-            --artifacts _fake \
-            --output-dir _fake/desktop
+            --artifacts _fake_unversioned \
+            --output-dir _fake_unversioned/desktop
 
-          # Validate JSON schema (minimal check: required keys)
+          # Validate JSON schema + versioned URL correctness
           python3 -c "
-          import json
+          import json, sys
 
-          with open('_fake/manifest.json') as f:
+          with open('_fake_unversioned/manifest.json') as f:
               m = json.load(f)
           assert 'components' in m, 'missing components'
           assert 'frontend' in m['components'], 'missing frontend'
           assert 'backend' in m['components'], 'missing backend'
           assert m['channel'] == 'stable'
-          print('OK: manifest.json passes schema check')
+          plats = m['components']['backend']['platforms']
+          assert 'linux-amd64' in plats, plats
+          # Unversioned GH URL uses actual basename
+          assert plats['linux-amd64']['url'].endswith('1agents-linux-amd64.tar.gz'), plats['linux-amd64']['url']
+          assert m['components']['frontend']['entry'], 'frontend entry empty'
+          print('OK: unversioned layout')
+
+          with open('_fake_versioned/manifest.json') as f:
+              m2 = json.load(f)
+          plats2 = m2['components']['backend']['platforms']
+          assert len(plats2) == 3, plats2
+          url = plats2['linux-amd64']['url']
+          # GitHub URL must use the versioned asset name actually uploaded
+          assert url.endswith('1agents-v20260720-9-linux-amd64.tar.gz'), url
+          assert 'v20260720-9' in url
+          fe = m2['components']['frontend']
+          assert fe['version'] == 'v20260720-9'
+          assert fe['entry'].endswith('frontend-v20260720-9.tar.gz'), fe['entry']
+          print('OK: versioned layout + GitHub asset URLs')
+
+          # CDN base-url must emit unversioned backend basenames under {version}/
+          import subprocess
+          out = '_fake_versioned/cdn-manifest.json'
+          subprocess.check_call([
+              'python3', 'scripts/build-manifest.py',
+              '--version', 'v20260720-9',
+              '--artifacts', '_fake_versioned',
+              '--base-url', 'https://cdn.example',
+              '--output', out,
+          ])
+          with open(out) as f:
+              m3 = json.load(f)
+          u = m3['components']['backend']['platforms']['linux-amd64']['url']
+          assert u == 'https://cdn.example/v20260720-9/1agents-linux-amd64.tar.gz', u
+          fe_u = m3['components']['frontend']['entry']
+          assert fe_u == 'https://cdn.example/v20260720-9/frontend-v20260720-9.tar.gz', fe_u
+          print('OK: CDN base-url layout')
           "

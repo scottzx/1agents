@@ -23,6 +23,14 @@ func TestVersionGT(t *testing.T) {
 		{"20260615-1", "", false},
 		{"", "20260615-1", false},
 		{"20260615-1", "unknown", false},
+		// Leading "v" must not break date ordering.
+		{"v20260720-2", "v20260720-1", true},
+		{"v20260718-8", "v20260720-1", false},
+		{"v20260720-1", "20260720-1", false},
+		// Local dev / commit hash vs a real release tag.
+		{"v20260720-2", "baaf2e1", true},
+		{"v20260720-2", "dev", true},
+		{"baaf2e1", "v20260720-2", false},
 	}
 	for _, tt := range tests {
 		got := versionGT(tt.a, tt.b)

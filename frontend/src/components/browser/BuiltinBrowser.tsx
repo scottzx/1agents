@@ -91,7 +91,7 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
                 }
             }
         } catch (e) {
-            // Expected cross-origin error when loading non-proxied localhost/intranet sites
+            // Cross-origin reads can still fail for non-HTML / edge proxy responses
         }
     };
 
@@ -111,35 +111,35 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
         return null;
     };
 
-    isLocalUrl(urlStr: string): boolean {
-        try {
-            const url = new URL(urlStr);
-            const hostname = url.hostname.toLowerCase();
-            return (
-                hostname === 'localhost' ||
-                hostname === '127.0.0.1' ||
-                hostname === '::1' ||
-                hostname.startsWith('192.168.') ||
-                hostname.startsWith('10.') ||
-                hostname.startsWith('172.')
-            );
-        } catch (e) {
-            const lower = urlStr.toLowerCase();
-            return lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('::1');
-        }
-    }
-
+    /**
+     * Always load through the host Go proxy so URL semantics match the
+     * backend machine, not the browser client.
+     *
+     * Previously loopback / private IPs were iframe-direct, which made
+     * `localhost:5173` resolve to the phone/remote client in LAN and
+     * Happy Relay modes (white screen). Host-side proxy also avoids
+     * mixed-content blocks when the app is HTTPS and the target is HTTP.
+     */
     getIframeUrl(urlStr: string): string {
         if (!urlStr || urlStr === 'about:blank') {
             return 'about:blank';
-        }
-        if (this.isLocalUrl(urlStr)) {
-            return urlStr;
         }
         // Don't double-wrap an already-proxied URL — breaks the feedback loop
         // if tab.url is transiently a /api/proxy?url=... string
         if (urlStr.startsWith(`${window.location.origin}/api/proxy?url=`)) {
             return urlStr;
+        }
+        // Strip a bare /api/proxy?url= path if it somehow landed in tab.url
+        try {
+            const u = new URL(urlStr, window.location.origin);
+            if (u.pathname === '/api/proxy') {
+                const target = u.searchParams.get('url');
+                if (target) {
+                    return `${window.location.origin}/api/proxy?url=${encodeURIComponent(target)}`;
+                }
+            }
+        } catch {
+            /* fall through */
         }
         return `${window.location.origin}/api/proxy?url=${encodeURIComponent(urlStr)}`;
     }
