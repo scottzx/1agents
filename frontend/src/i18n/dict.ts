@@ -87,7 +87,7 @@ export const zhCN: Record<string, string> = {
     'app.browser.welcomeDesc': '在上方地址栏输入网址并按回车键进行浏览。',
     'app.browser.tipProxyLabel': '💡 提示：',
     'app.browser.tipProxyDesc':
-        '该浏览器基于 iframe 渲染，所有网址（含 localhost / 内网）均经主机 Go 后端代理加载，localhost 指的是运行 1agents 的那台机器，而非当前浏览器设备。',
+        '该浏览器基于 iframe 渲染，所有网址（含 localhost / 内网）均经主机 Go 后端代理加载。localhost 指运行 1agents 的那台机器，而非当前浏览器设备。代理会改写页面路径，使 Remotion 等 path 路由应用在本机与局域网下均可使用。',
     'app.browser.tipExternalLabel': '🌐 外部打开：',
     'app.browser.tipExternalDesc':
         '若页面遇到复杂的 JS 渲染问题或白屏，可点击输入框右侧的按钮，直接使用系统默认浏览器打开该网页。',
@@ -1931,7 +1931,7 @@ export const enUS: Record<string, string> = {
     'app.browser.welcomeDesc': 'Type a URL in the address bar above and press Enter to start browsing.',
     'app.browser.tipProxyLabel': '💡 Tip:',
     'app.browser.tipProxyDesc':
-        'This browser is rendered via an iframe. All URLs (including localhost and private IPs) are loaded through the host Go proxy, so localhost means the machine running 1agents — not the device showing this page.',
+        'This browser is rendered via an iframe. All URLs (including localhost and private IPs) are loaded through the host Go proxy, so localhost means the machine running 1agents — not the device showing this page. The proxy rewrites the page path so path-routed apps (e.g. Remotion) work on loopback and over LAN.',
     'app.browser.tipExternalLabel': '🌐 Open externally:',
     'app.browser.tipExternalDesc':
         'If a page hits JS rendering issues or stays blank, click the button on the right of the address bar to open it in your system default browser.',

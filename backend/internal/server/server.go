@@ -1161,8 +1161,36 @@ func handleAccessRevoke(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Access token revoked."})
 }
 
-// handleProxy acts as a reverse proxy that fetches external websites, strips
-// X-Frame-Options & Content-Security-Policy headers, and injects `<base>` and link-rewriting scripts.
+// proxyHopHeaders are hop-by-hop headers that must not be forwarded (RFC 7230).
+var proxyHopHeaders = map[string]bool{
+	"connection":          true,
+	"keep-alive":          true,
+	"proxy-authenticate":  true,
+	"proxy-authorization": true,
+	"te":                  true,
+	"trailers":            true,
+	"transfer-encoding":   true,
+	"upgrade":             true,
+	"host":                true,
+}
+
+// proxyStripRequestHeaders must not be copied from the browser request.
+// Accept-Encoding is critical: if the client sets it, Go's Transport will NOT
+// transparently decompress gzip, but we always strip Content-Encoding on the
+// way out — leaving the browser with raw gzip bytes (JSON.parse sees "�{...").
+var proxyStripRequestHeaders = map[string]bool{
+	"accept-encoding": true,
+	// Browser Origin/Referer point at the 1agents host (e.g. :38080); rewrite
+	// them to the target origin below so apps that check Origin don't 4xx/5xx.
+	"origin":  true,
+	"referer": true,
+}
+
+// handleProxy acts as a reverse proxy for the built-in browser iframe. It
+// fetches the target URL, strips frame-busting headers, and for HTML injects
+// a <base> tag plus rewrites for navigation / fetch / XHR / EventSource so
+// same-origin APIs (including SSE) stay on the host proxy instead of hitting
+// the target origin directly (which triggers CORS).
 func handleProxy(w http.ResponseWriter, r *http.Request) {
 	targetURL := r.URL.Query().Get("url")
 	if targetURL == "" {
@@ -1170,18 +1198,64 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	// CORS preflight from the iframe (same-origin normally, but keep cheap).
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", r.Header.Get("Access-Control-Request-Headers"))
+		if w.Header().Get("Access-Control-Allow-Headers") == "" {
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var body io.Reader
+	if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		body = r.Body
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Forward standard headers
-	req.Header.Set("User-Agent", r.Header.Get("User-Agent"))
-	req.Header.Set("Accept", r.Header.Get("Accept"))
-	req.Header.Set("Accept-Language", r.Header.Get("Accept-Language"))
+	// Forward client headers except hop-by-hop / encoding / origin.
+	for k, vv := range r.Header {
+		lk := strings.ToLower(k)
+		if proxyHopHeaders[lk] || proxyStripRequestHeaders[lk] {
+			continue
+		}
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
+	}
+	// Ensure Go Transport may negotiate+decompress gzip (see proxyStripRequestHeaders).
+	req.Header.Del("Accept-Encoding")
 
-	client := &http.Client{}
+	if u, err := url.Parse(targetURL); err == nil {
+		req.Host = u.Host
+		targetOrigin := u.Scheme + "://" + u.Host
+		req.Header.Set("Origin", targetOrigin)
+		// Prefer a target-side referer so relative API checks still make sense.
+		if ref := r.Header.Get("Referer"); ref != "" {
+			if ru, err := url.Parse(ref); err == nil && ru.Path == "/api/proxy" {
+				if orig := ru.Query().Get("url"); orig != "" {
+					req.Header.Set("Referer", orig)
+				} else {
+					req.Header.Set("Referer", targetOrigin+"/")
+				}
+			} else {
+				req.Header.Set("Referer", targetOrigin+"/")
+			}
+		} else {
+			req.Header.Set("Referer", targetOrigin+"/")
+		}
+	}
+
+	// No overall Timeout — SSE and other long-lived streams must not be cut off.
+	// CheckRedirect keeps method/body for 307/308; default client is fine for GET.
+	client := &http.Client{Timeout: 0}
 	resp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -1189,210 +1263,375 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Read response body
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	contentType := resp.Header.Get("Content-Type")
+	isHTML := strings.Contains(strings.ToLower(contentType), "text/html")
+	isSSE := strings.Contains(strings.ToLower(contentType), "text/event-stream")
+
+	// HTML: buffer + inject base/script so subsequent navigations stay proxied.
+	// Non-HTML (JSON, assets, SSE): stream through so EventSource works.
+	if isHTML {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		bodyBytes = injectProxyBootstrap(bodyBytes, resp.Request.URL.String())
+		copyProxyResponseHeaders(w, resp.Header, true)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(bodyBytes)
 		return
 	}
 
-	contentType := resp.Header.Get("Content-Type")
-	// If it's HTML, inject our base href and click interceptor scripts!
-	if strings.Contains(strings.ToLower(contentType), "text/html") {
-		htmlStr := string(bodyBytes)
+	copyProxyResponseHeaders(w, resp.Header, false)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if isSSE {
+		// Discourage reverse proxies / browsers from buffering the event stream.
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	w.WriteHeader(resp.StatusCode)
 
-		// 1. Inject <base href="..."> right after the opening <head> tag
-		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
-		if headIdx != -1 {
-			insertPos := headIdx + len("<head>")
-
-			// Inject `<base>` tag and click interceptor script
-			actualURL := resp.Request.URL.String()
-			baseTag := `<base href="` + actualURL + `">`
-			scriptTag := `
-<script>
-(function() {
-  function getOriginalUrl(url) {
-    try {
-      var urlObj = new URL(url || window.location.href);
-      if (urlObj.pathname === '/api/proxy') {
-        var target = urlObj.searchParams.get('url');
-        if (target) return target;
-      }
-      return urlObj.href;
-    } catch(e) {
-      return url || window.location.href;
-    }
-  }
-
-  function notifyParent(url) {
-    try {
-      var orig = getOriginalUrl(url);
-      window.parent.postMessage({ type: 'iframe_navigate', url: orig }, '*');
-    } catch(e) {}
-  }
-
-  // Notify parent of initial load
-  notifyParent();
-
-  // Notify parent on history popstate (e.g. back/forward)
-  window.addEventListener('popstate', function() {
-    notifyParent();
-  });
-
-  // Prevent links from redirecting the frame to non-proxied addresses
-  document.addEventListener('click', function(e) {
-    var target = e.target.closest('a');
-    if (target && target.href) {
-      e.preventDefault();
-      // Route the absolute URL back through our proxy!
-      window.location.href = window.location.origin + '/api/proxy?url=' + encodeURIComponent(target.href);
-    }
-  }, true);
-
-  // Prevent form actions from escaping the proxy
-  document.addEventListener('submit', function(e) {
-    var target = e.target;
-    if (target && target.action) {
-      if (target.method.toLowerCase() === 'get') {
-        e.preventDefault();
-        try {
-          var url = new URL(target.action);
-          var formData = new FormData(target);
-          for (var pair of formData.entries()) {
-            url.searchParams.set(pair[0], pair[1]);
-          }
-          window.location.href = window.location.origin + '/api/proxy?url=' + encodeURIComponent(url.href);
-        } catch(err) {
-          // Fallback if URL parsing fails
-        }
-      }
-    }
-  }, true);
-
-  // Rewrite History API state changes to same-origin to prevent SecurityError
-  if (window.history) {
-    var originalPushState = window.history.pushState;
-    window.history.pushState = function(state, title, url) {
-      try {
-        if (url) {
-          var resolvedUrl = new URL(url, document.baseURI).href;
-          var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
-          originalPushState.apply(window.history, [state, title, proxiedUrl]);
-          notifyParent(resolvedUrl);
-        } else {
-          originalPushState.apply(window.history, arguments);
-          notifyParent();
-        }
-      } catch (e) {
-        console.warn('Blocked pushState rewrite:', e);
-      }
-    };
-
-    var originalReplaceState = window.history.replaceState;
-    window.history.replaceState = function(state, title, url) {
-      try {
-        if (url) {
-          var resolvedUrl = new URL(url, document.baseURI).href;
-          var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
-          originalReplaceState.apply(window.history, [state, title, proxiedUrl]);
-          notifyParent(resolvedUrl);
-        } else {
-          originalReplaceState.apply(window.history, arguments);
-          notifyParent();
-        }
-      } catch (e) {
-        console.warn('Blocked replaceState rewrite:', e);
-      }
-    };
-  }
-
-  // Intercept window.fetch to route relative/external data requests through proxy
-  if (window.fetch) {
-    var originalFetch = window.fetch;
-    window.fetch = function(input, init) {
-      try {
-        var url;
-        if (typeof input === 'string') {
-          url = input;
-        } else if (input instanceof URL) {
-          url = input.href;
-        } else if (input && input.url) {
-          url = input.url;
-        }
-
-        if (url) {
-          var resolvedUrl = new URL(url, document.baseURI).href;
-          var proxyHost = window.location.host;
-          var resolvedObj = new URL(resolvedUrl);
-          if (resolvedObj.host !== proxyHost) {
-            var proxiedUrl = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
-            if (typeof input === 'string') {
-              input = proxiedUrl;
-            } else if (input instanceof URL) {
-              input = new URL(proxiedUrl);
-            } else if (input instanceof Request) {
-              input = new Request(proxiedUrl, input);
-            } else if (input && input.url) {
-              input = new Request(proxiedUrl, input);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Blocked fetch rewrite:', e);
-      }
-      return originalFetch.apply(this, arguments);
-    };
-  }
-
-  // Intercept XMLHttpRequest to route relative/external data requests through proxy
-  if (window.XMLHttpRequest) {
-    var originalOpen = window.XMLHttpRequest.prototype.open;
-    window.XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-      try {
-        if (url) {
-          var resolvedUrl = new URL(url, document.baseURI).href;
-          var proxyHost = window.location.host;
-          var resolvedObj = new URL(resolvedUrl);
-          if (resolvedObj.host !== proxyHost) {
-            arguments[1] = window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolvedUrl);
-          }
-        }
-      } catch (e) {
-        console.warn('Blocked XHR rewrite:', e);
-      }
-      return originalOpen.apply(this, arguments);
-    };
-  }
-})();
-</script>
-`
-			htmlStr = htmlStr[:insertPos] + baseTag + scriptTag + htmlStr[insertPos:]
-			bodyBytes = []byte(htmlStr)
+	if flusher, ok := w.(http.Flusher); ok {
+		buf := make([]byte, 32*1024)
+		for {
+			n, readErr := resp.Body.Read(buf)
+			if n > 0 {
+				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+					return
+				}
+				flusher.Flush()
+			}
+			if readErr != nil {
+				return
+			}
 		}
 	}
+	_, _ = io.Copy(w, resp.Body)
+}
 
-	// Copy headers, stripping security controls and length/encoding hop
-	// headers. We fully buffer (and may rewrite HTML), so upstream
-	// Content-Length / Content-Encoding / Transfer-Encoding are stale —
-	// keeping them makes clients IncompleteRead or truncate the body
-	// (broken iframe loads for e.g. Vite on :5173).
-	for k, v := range resp.Header {
+// copyProxyResponseHeaders copies upstream headers onto the client response,
+// dropping frame-busting policy and stale hop length/encoding headers.
+// When buffered is true, Content-Length/Encoding are always stripped (body
+// may have been rewritten). When streaming, strip only when they would lie
+// after Go's transport auto-decompression (encoding already removed by net/http).
+func copyProxyResponseHeaders(w http.ResponseWriter, src http.Header, buffered bool) {
+	for k, v := range src {
 		lowerK := strings.ToLower(k)
 		if lowerK == "x-frame-options" || lowerK == "content-security-policy" || lowerK == "csp" ||
 			lowerK == "content-length" || lowerK == "content-encoding" || lowerK == "transfer-encoding" {
+			continue
+		}
+		if buffered && lowerK == "content-length" {
 			continue
 		}
 		for _, val := range v {
 			w.Header().Add(k, val)
 		}
 	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
-	w.WriteHeader(resp.StatusCode)
-	_, _ = w.Write(bodyBytes)
 }
+
+// injectProxyBootstrap prepends <base> + rewrite scripts at the document start
+// so they run before any app JS (Remotion reads location.pathname at boot).
+// Network stays on the host proxy; SPA path routing uses a clean-path trick
+// (see proxyInjectScript) because Location.prototype cannot be spoofed in Chromium.
+func injectProxyBootstrap(body []byte, actualURL string) []byte {
+	htmlStr := string(body)
+
+	// Escape for embedding inside a JS double-quoted string.
+	jsTarget := strings.ReplaceAll(actualURL, `\`, `\\`)
+	jsTarget = strings.ReplaceAll(jsTarget, `"`, `\"`)
+	jsTarget = strings.ReplaceAll(jsTarget, "\n", `\n`)
+	jsTarget = strings.ReplaceAll(jsTarget, "\r", `\r`)
+	jsTarget = strings.ReplaceAll(jsTarget, "</", "<\\/")
+
+	// Prepend (not mid-<head>): guarantees execution before any target script,
+	// even if the page puts modules/scripts before or without <head>.
+	// <base> first so relative URLs resolve to the target origin; script then
+	// history.replaceState's onto the target pathname (Remotion etc.).
+	baseTag := `<base href="` + actualURL + `">`
+	scriptTag := strings.Replace(proxyInjectScript, "__TARGET_URL__", jsTarget, 1)
+	return []byte(baseTag + scriptTag + htmlStr)
+}
+
+// proxyInjectScript — built-in browser iframe bootstrap.
+//
+// Problem: the real iframe URL is /api/proxy?url=… so location.pathname is
+// always "/api/proxy". Path-based SPAs (Remotion Studio) treat that as
+// composition id "api/proxy" → "Composition with ID api/proxy not found."
+// Location getters are not configurable in Chromium, so prototype spoofing
+// does not work.
+//
+// Fix: as the first script in <head>, history.replaceState onto the target's
+// pathname (same origin as 1agents). Then location.pathname is "/" or
+// "/MyComp" for real. Full reloads still go through /api/proxy?url=…;
+// pushState/replaceState keep clean paths; fetch/XHR/EventSource map back
+// onto the target via /api/proxy?url=….
+//
+// Placeholders:
+//
+//	__TARGET_URL__ — absolute URL of the page being proxied (set at inject time)
+const proxyInjectScript = `
+<script>
+(function() {
+  var virtualHref = "__TARGET_URL__";
+
+  function parseProxyQuery(href) {
+    try {
+      var urlObj = new URL(href || window.location.href);
+      if (urlObj.pathname === '/api/proxy') {
+        var target = urlObj.searchParams.get('url');
+        if (target) return target;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  try {
+    if (!virtualHref || virtualHref.indexOf('__TARGET') === 0) {
+      virtualHref = parseProxyQuery() || window.location.href;
+    }
+    virtualHref = new URL(virtualHref).href;
+  } catch(e) {
+    virtualHref = window.location.href;
+  }
+
+  var targetOrigin;
+  try { targetOrigin = new URL(virtualHref).origin; } catch(e) { targetOrigin = window.location.origin; }
+
+  function getVirtual() {
+    try { return new URL(virtualHref); } catch(e) { return new URL(targetOrigin + '/'); }
+  }
+  function setVirtual(href) {
+    try {
+      var next = new URL(href, getVirtual().href);
+      // Stay on the same target origin inside one document lifetime.
+      if (next.origin === targetOrigin) virtualHref = next.href;
+      else virtualHref = next.href;
+    } catch(e) {}
+  }
+
+  // Path+search+hash only — so the REAL location.pathname matches the SPA.
+  function toCleanPath(href) {
+    var u = new URL(href, getVirtual().href);
+    return u.pathname + u.search + u.hash;
+  }
+
+  // Full navigation reload through the Go proxy (HTML inject runs again).
+  function toProxiedReload(href) {
+    var resolved = new URL(href, getVirtual().href).href;
+    return window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolved);
+  }
+
+  // Network: send everything meant for the target through /api/proxy?url=.
+  function toProxiedNetwork(url) {
+    try {
+      var resolved = new URL(url, getVirtual().href);
+      var proxyOrigin = window.location.origin;
+
+      // Already a proxy URL — leave it.
+      if (resolved.origin === proxyOrigin && resolved.pathname === '/api/proxy') {
+        return resolved.href;
+      }
+
+      // Resolved against <base>/virtual → target host.
+      if (resolved.origin === targetOrigin) {
+        return proxyOrigin + '/api/proxy?url=' + encodeURIComponent(resolved.href);
+      }
+
+      // After clean-path replaceState, some apps build URLs with location.origin
+      // (1agents host). Map those paths back onto the target (except our proxy).
+      if (resolved.origin === proxyOrigin && resolved.pathname !== '/api/proxy') {
+        var mapped = targetOrigin + resolved.pathname + resolved.search + resolved.hash;
+        return proxyOrigin + '/api/proxy?url=' + encodeURIComponent(mapped);
+      }
+
+      // Other foreign hosts — also proxy (keeps mixed-content / remote clients working).
+      if (resolved.origin !== proxyOrigin) {
+        return proxyOrigin + '/api/proxy?url=' + encodeURIComponent(resolved.href);
+      }
+      return resolved.href;
+    } catch(e) {
+      return url;
+    }
+  }
+
+  var originalPushState = window.history.pushState.bind(window.history);
+  var originalReplaceState = window.history.replaceState.bind(window.history);
+
+  // CRITICAL for Remotion: run BEFORE any app script reads location.pathname.
+  // Turns /api/proxy?url=http://localhost:3000/  into  pathname "/" on this origin.
+  try {
+    originalReplaceState.call(window.history, window.history.state, '', toCleanPath(virtualHref));
+  } catch(e) {
+    console.warn('[1agents proxy] clean-path replaceState failed', e);
+  }
+
+  function notifyParent(url) {
+    try {
+      window.parent.postMessage({ type: 'iframe_navigate', url: url || virtualHref }, '*');
+    } catch(e) {}
+  }
+  notifyParent(virtualHref);
+
+  window.addEventListener('popstate', function() {
+    try {
+      virtualHref = targetOrigin + window.location.pathname + window.location.search + window.location.hash;
+    } catch(e) {}
+    notifyParent(virtualHref);
+  });
+
+  document.addEventListener('click', function(e) {
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (!a || !a.href) return;
+    // Let modified clicks (new tab) through.
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (a.target && a.target !== '' && a.target !== '_self') return;
+    try {
+      var resolved = new URL(a.href, getVirtual().href);
+      // Same-target SPA link: prefer push via full reload through proxy so HTML
+      // bootstrap re-applies (Remotion soft-nav uses history API instead).
+      if (resolved.origin === targetOrigin || resolved.origin === window.location.origin) {
+        e.preventDefault();
+        setVirtual(resolved.origin === window.location.origin
+          ? (targetOrigin + resolved.pathname + resolved.search + resolved.hash)
+          : resolved.href);
+        window.location.href = toProxiedReload(virtualHref);
+      }
+    } catch(err) {}
+  }, true);
+
+  document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (!form || !form.action) return;
+    if ((form.method || 'get').toLowerCase() !== 'get') return;
+    e.preventDefault();
+    try {
+      var url = new URL(form.action, getVirtual().href);
+      var formData = new FormData(form);
+      for (var pair of formData.entries()) {
+        url.searchParams.set(pair[0], pair[1]);
+      }
+      setVirtual(url.href);
+      window.location.href = toProxiedReload(virtualHref);
+    } catch(err) {}
+  }, true);
+
+  window.history.pushState = function(state, title, url) {
+    try {
+      if (url !== undefined && url !== null && String(url) !== '') {
+        var resolvedUrl = new URL(String(url), getVirtual().href).href;
+        if (new URL(resolvedUrl).origin === window.location.origin) {
+          resolvedUrl = targetOrigin + new URL(resolvedUrl).pathname + new URL(resolvedUrl).search + new URL(resolvedUrl).hash;
+        }
+        setVirtual(resolvedUrl);
+        originalPushState(state, title, toCleanPath(resolvedUrl));
+        notifyParent(resolvedUrl);
+        return;
+      }
+    } catch (e) {
+      console.warn('[1agents proxy] pushState', e);
+    }
+    return originalPushState(state, title, url);
+  };
+
+  window.history.replaceState = function(state, title, url) {
+    try {
+      if (url !== undefined && url !== null && String(url) !== '') {
+        var resolvedUrl = new URL(String(url), getVirtual().href).href;
+        if (new URL(resolvedUrl).origin === window.location.origin) {
+          resolvedUrl = targetOrigin + new URL(resolvedUrl).pathname + new URL(resolvedUrl).search + new URL(resolvedUrl).hash;
+        }
+        setVirtual(resolvedUrl);
+        originalReplaceState(state, title, toCleanPath(resolvedUrl));
+        notifyParent(resolvedUrl);
+        return;
+      }
+    } catch (e) {
+      console.warn('[1agents proxy] replaceState', e);
+    }
+    return originalReplaceState(state, title, url);
+  };
+
+  if (window.fetch) {
+    var originalFetch = window.fetch;
+    window.fetch = function(input, init) {
+      try {
+        var url;
+        if (typeof input === 'string') url = input;
+        else if (input instanceof URL) url = input.href;
+        else if (input && input.url) url = input.url;
+        if (url) {
+          var proxied = toProxiedNetwork(url);
+          var resolved = new URL(url, getVirtual().href).href;
+          if (proxied !== resolved && proxied !== url) {
+            if (typeof input === 'string') input = proxied;
+            else if (input instanceof URL) input = new URL(proxied);
+            else if (typeof Request !== 'undefined' && input instanceof Request) input = new Request(proxied, input);
+            else if (input && input.url) input = new Request(proxied, input);
+          }
+        }
+      } catch (e) {
+        console.warn('[1agents proxy] fetch', e);
+      }
+      return originalFetch.call(this, input, init);
+    };
+  }
+
+  if (window.XMLHttpRequest) {
+    var originalOpen = window.XMLHttpRequest.prototype.open;
+    window.XMLHttpRequest.prototype.open = function(method, url) {
+      try {
+        if (url) {
+          var proxied = toProxiedNetwork(url);
+          var resolved = new URL(String(url), getVirtual().href).href;
+          if (proxied !== resolved && proxied !== String(url)) arguments[1] = proxied;
+        }
+      } catch (e) {
+        console.warn('[1agents proxy] xhr', e);
+      }
+      return originalOpen.apply(this, arguments);
+    };
+  }
+
+  if (window.EventSource) {
+    var OriginalEventSource = window.EventSource;
+    function ProxiedEventSource(url, config) {
+      var finalUrl = url;
+      try {
+        if (url) {
+          var proxied = toProxiedNetwork(url);
+          var resolved = new URL(String(url), getVirtual().href).href;
+          if (proxied !== resolved && proxied !== String(url)) finalUrl = proxied;
+        }
+      } catch (e) {
+        console.warn('[1agents proxy] EventSource', e);
+      }
+      return new OriginalEventSource(finalUrl, config);
+    }
+    ProxiedEventSource.prototype = OriginalEventSource.prototype;
+    ProxiedEventSource.CONNECTING = OriginalEventSource.CONNECTING;
+    ProxiedEventSource.OPEN = OriginalEventSource.OPEN;
+    ProxiedEventSource.CLOSED = OriginalEventSource.CLOSED;
+    window.EventSource = ProxiedEventSource;
+  }
+
+  if (navigator.serviceWorker) {
+    try {
+      navigator.serviceWorker.register = function() {
+        return Promise.reject(new Error('Service Worker disabled under 1agents proxy'));
+      };
+      if (navigator.serviceWorker.getRegistrations) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { try { r.unregister(); } catch(e) {} });
+        });
+      }
+    } catch(e) {}
+  }
+})();
+</script>
+`
 
 // serveEmbedScript returns an http.HandlerFunc that serves a single
 // submodule embed bundle. The handler resolves the file lazily on each

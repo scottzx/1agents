@@ -83,12 +83,23 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
         if (!this.iframeRef || !this.iframeRef.contentWindow) return;
         try {
             const iframeUrl = this.iframeRef.contentWindow.location.href;
-            if (iframeUrl && iframeUrl !== 'about:blank') {
-                const targetUrl = this.getOriginalUrl(iframeUrl);
-                if (targetUrl && targetUrl !== this.props.tab.url) {
-                    this.lastLoadedUrl = targetUrl;
-                    this.props.onUrlChange(this.props.tab.id, targetUrl);
+            if (!iframeUrl || iframeUrl === 'about:blank') return;
+            // After inject, the iframe history.replaceState's onto a clean path
+            // (e.g. "/" or "/MyComp") so Remotion sees the right pathname.
+            // That real URL is on the 1agents origin and is NOT the target site —
+            // only /api/proxy?url=… or postMessage(iframe_navigate) carry the truth.
+            try {
+                const u = new URL(iframeUrl);
+                if (u.origin === window.location.origin && u.pathname !== '/api/proxy') {
+                    return;
                 }
+            } catch {
+                /* fall through */
+            }
+            const targetUrl = this.getOriginalUrl(iframeUrl);
+            if (targetUrl && targetUrl !== this.props.tab.url) {
+                this.lastLoadedUrl = targetUrl;
+                this.props.onUrlChange(this.props.tab.id, targetUrl);
             }
         } catch (e) {
             // Cross-origin reads can still fail for non-HTML / edge proxy responses
@@ -113,12 +124,11 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
 
     /**
      * Always load through the host Go proxy so URL semantics match the
-     * backend machine, not the browser client.
+     * 1agents host — not the browser client (LAN phone / Happy Relay).
      *
-     * Previously loopback / private IPs were iframe-direct, which made
-     * `localhost:5173` resolve to the phone/remote client in LAN and
-     * Happy Relay modes (white screen). Host-side proxy also avoids
-     * mixed-content blocks when the app is HTTPS and the target is HTTP.
+     * "localhost:3000" always means the machine running 1agents. The proxy
+     * HTML inject rewrites history onto a clean pathname so path-routed SPAs
+     * (e.g. Remotion Studio) do not see "/api/proxy" as a composition id.
      */
     getIframeUrl(urlStr: string): string {
         if (!urlStr || urlStr === 'about:blank') {

@@ -32,13 +32,28 @@ function isPrivateIPv6(hostname: string): boolean {
     return false;
 }
 
+/** True when hostname is pure loopback (same-machine browser ↔ server). */
+export function isLoopbackHost(hostname?: string): boolean {
+    const h = (hostname ?? (typeof window !== 'undefined' && window.location ? window.location.hostname : ''))
+        .trim()
+        .toLowerCase()
+        .replace(/^\[|\]$/g, '');
+    if (!h) return false;
+    if (h === 'localhost' || h === '0.0.0.0' || h === '::1') return true;
+    // 127.0.0.0/8
+    const m = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+    if (m && [m[1], m[2], m[3]].every(p => Number(p) <= 255)) return true;
+    return false;
+}
+
 /** True when hostname is loopback or a private/LAN address. */
 export function isLocalOperatorHost(hostname?: string): boolean {
     const h = (hostname ?? (typeof window !== 'undefined' && window.location ? window.location.hostname : ''))
         .trim()
         .toLowerCase();
     if (!h) return false;
-    if (h === 'localhost' || h === '0.0.0.0' || h === '::1' || h === '[::1]') {
+    if (isLoopbackHost(h)) return true;
+    if (h === '0.0.0.0' || h === '::1' || h === '[::1]') {
         return true;
     }
     if (isPrivateIPv4(h)) return true;
