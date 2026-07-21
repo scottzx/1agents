@@ -985,6 +985,11 @@ body {
         }
       }
 
+      /* Remote device rows still expand on whole-row click. */
+      &.device-node .project-folder {
+        cursor: pointer;
+      }
+
       &.device-offline .project-folder {
         opacity: 0.55;
 
@@ -1121,10 +1126,10 @@ body {
       .project-folder {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
+        gap: 4px;
+        padding: 4px 8px 4px 4px;
         border-radius: 6px;
-        cursor: pointer;
+        cursor: default;
         font-size: 13px;
         font-weight: 500;
         color: var(--text-sidebar);
@@ -1167,14 +1172,54 @@ body {
           background-color: var(--bg-sidebar-hover);
         }
 
-        svg.chevron {
+        /* Folder icon doubles as expand/collapse — closed vs open glyph. */
+        .folder-toggle-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          width: 24px;
+          height: 24px;
+          margin: 0;
+          padding: 0;
+          border: none;
+          border-radius: 4px;
+          background: transparent;
+          color: var(--accent-color);
+          cursor: pointer;
+          transition: background-color 0.15s, color 0.15s;
+
+          &:hover {
+            background-color: var(--btn-hover);
+            color: var(--accent-emphasis, var(--accent-color));
+          }
+
+          &:active {
+            background-color: var(--bg-sidebar-active);
+          }
+
+          &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 1px;
+          }
+
+          svg.folder-icon {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            pointer-events: none;
+          }
+        }
+
+        /* Legacy chevron (e.g. remote device rows that still use bare svg). */
+        > svg.chevron {
           width: 10px;
           height: 10px;
           transition: transform 0.2s;
           flex-shrink: 0;
         }
-        
-        &.expanded svg.chevron {
+
+        &.expanded > svg.chevron {
           transform: rotate(90deg);
         }
 
@@ -1182,6 +1227,14 @@ body {
           width: 14px;
           height: 14px;
           color: var(--accent-color);
+          flex-shrink: 0;
+        }
+
+        .folder-avatar {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          object-fit: cover;
           flex-shrink: 0;
         }
 
@@ -1193,14 +1246,22 @@ body {
           min-width: 0;
         }
 
-        /* Folder click area for expand/collapse */
+        /* Title zone: name (optional avatar) → open project detail (not expand). */
         .folder-click-area {
           display: flex;
           align-items: center;
           gap: 6px;
           flex: 1;
           min-width: 0;
+          min-height: 22px;
+          padding: 2px 4px;
+          margin: 0 -2px;
+          border-radius: 4px;
           cursor: pointer;
+
+          &:hover {
+            color: var(--text-main);
+          }
         }
 
         /* Status badge */
