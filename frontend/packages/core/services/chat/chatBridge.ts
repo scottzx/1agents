@@ -1033,6 +1033,8 @@ export class ChatBridgeManager {
     /**
      * Reply to a Grok exit_plan_mode approval. Sends the wire action and
      * optimistically marks the nested/pending request as resolved.
+     * approved/abandoned also leave plan mode in the picker immediately —
+     * the bridge mode_changed ack reconciles if the target mode differs.
      */
     respondExitPlanMode(session: ChatSession, requestId: string, outcome: ExitPlanOutcome, comments?: string) {
         const state = this.sessions.get(session.id);
@@ -1052,6 +1054,20 @@ export class ChatBridgeManager {
         state.items = next.items;
         state.pendingResults = next.pendingResults;
         state.pendingPermissions = next.pendingPermissions;
+        // Wire: approved → implement; abandoned → quit plan. rejected stays.
+        // Grok default after leaving plan is acceptEdits (matches bridge/1acp).
+        if (
+            (outcome === 'approved' || outcome === 'abandoned') &&
+            state.modes?.currentModeId === 'plan'
+        ) {
+            const preferred =
+                state.modes.availableModes.find(m => m.id === 'acceptEdits') ??
+                state.modes.availableModes.find(m => m.id === 'default') ??
+                state.modes.availableModes.find(m => m.id !== 'plan');
+            if (preferred) {
+                state.modes = { ...state.modes, currentModeId: preferred.id };
+            }
+        }
         this.notify(state);
     }
 

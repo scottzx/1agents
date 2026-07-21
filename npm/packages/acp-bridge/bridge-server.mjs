@@ -1077,17 +1077,27 @@ wss.on("connection", (ws) => {
           clearTimeout(pending.timer);
           pendingExitPlanModes.delete(requestId);
 
+          let resolvedOutcome = outcome;
           if (outcome === "approved" || outcome === "rejected" || outcome === "abandoned") {
             const response = { outcome };
             if (typeof comments === "string" && comments.trim()) {
               response.comments = comments.trim();
             }
             pending.resolve(response);
-            break;
+          } else {
+            // Unknown outcome → abandon rather than silently approve.
+            resolvedOutcome = "abandoned";
+            pending.resolve({ outcome: "abandoned" });
           }
 
-          // Unknown outcome → abandon rather than silently approve.
-          pending.resolve({ outcome: "abandoned" });
+          // approved / abandoned leave plan mode. Resolve the RPC first so we
+          // never await session/set_mode while the agent is blocked on
+          // exit_plan_mode (deadlock). Then flip the bridge gate + UI and
+          // fire-and-forget setMode for desired_mode persistence.
+          // Grok often omits current_mode_update after ExitPlanMode.
+          if (resolvedOutcome === "approved" || resolvedOutcome === "abandoned") {
+            leavePlanModeAfterExit(sessionId, ws);
+          }
           break;
         }
 
@@ -1707,6 +1717,47 @@ async function resolveGrokPermissionMode(handle, agentType) {
   } catch {
     return DEFAULT_GROK_PERMISSION_MODE;
   }
+}
+
+/**
+ * After ExitPlanMode approved/abandoned: leave plan on the bridge gate, tell
+ * the frontend mode picker, and persist desired mode via runtime.setMode.
+ * Must run AFTER the exit_plan_mode RPC is resolved (agent is single-threaded
+ * waiting on that response — awaiting setMode before resolve deadlocks).
+ */
+function leavePlanModeAfterExit(sessionId, ws) {
+  const session = activeSessions.get(sessionId);
+  if (!session || session.sessionMode !== "plan") {
+    return;
+  }
+  const nextMode = session.agentType === "grok-build" ? DEFAULT_GROK_PERMISSION_MODE : "default";
+  session.sessionMode = nextMode;
+  console.log(`[acpx-server] exit_plan_mode left plan → ${nextMode} for ${sessionId}`);
+  try {
+    if (ws && ws.readyState === 1 /* OPEN */) {
+      ws.send(
+        JSON.stringify({
+          event: "mode_changed",
+          sessionId,
+          payload: { currentModeId: nextMode },
+        }),
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[acpx-server] failed to send mode_changed after exit_plan_mode:`,
+      err?.message || err,
+    );
+  }
+  if (!session.handle) {
+    return;
+  }
+  void runtime.setMode({ handle: session.handle, mode: nextMode }).catch((err) => {
+    console.warn(
+      `[acpx-server] leave-plan setMode(${nextMode}) failed for ${sessionId}:`,
+      err?.message || err,
+    );
+  });
 }
 
 // Notify a session's previous, still-open WebSocket that a newer client has
