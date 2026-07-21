@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/scottzx/1Agents/backend/internal/agent/permission"
+	"github.com/scottzx/1Agents/backend/internal/meta"
 	"github.com/scottzx/1Agents/backend/internal/workspace"
 )
 
@@ -1601,20 +1602,36 @@ func getProjectSlug(path string) string {
 	return sb.String()
 }
 
+// resolveAcpSessionTitle resolves a human-readable session title for sidebar
+// display when the chat record still has a default name. Order:
+//  1. Claude Code: ~/.claude/projects/<slug>/<id>.jsonl (aiTitle, then slug)
+//  2. Grok Build:  ~/.grok/sessions/<url-encoded-cwd>/<id>/summary.json
+//     (generated_title, then session_summary)
+// Falls back to defaultName when neither source has a title yet.
 func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) string {
 	if acpSessionID == "" {
 		return defaultName
 	}
+	if title := resolveClaudeJsonlSessionTitle(workspacePath, acpSessionID); title != "" {
+		return title
+	}
+	if title, err := meta.ResolveGrokSessionTitle(workspacePath, acpSessionID); err == nil && title != "" {
+		return title
+	}
+	return defaultName
+}
+
+func resolveClaudeJsonlSessionTitle(workspacePath, acpSessionID string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return defaultName
+		return ""
 	}
 	slug := getProjectSlug(workspacePath)
 	jsonlPath := filepath.Join(home, ".claude", "projects", slug, acpSessionID+".jsonl")
 
 	file, err := os.Open(jsonlPath)
 	if err != nil {
-		return defaultName
+		return ""
 	}
 	defer file.Close()
 
@@ -1638,8 +1655,5 @@ func resolveAcpSessionTitle(workspacePath, acpSessionID, defaultName string) str
 	if resolvedTitle != "" {
 		return resolvedTitle
 	}
-	if foundSlug != "" {
-		return foundSlug
-	}
-	return defaultName
+	return foundSlug
 }
