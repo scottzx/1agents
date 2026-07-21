@@ -20,6 +20,7 @@ import {
     handleSessionCapabilities,
     handleSessionDeleted,
     handleSessionsList,
+    touchSessionActivity,
 } from '../../stores/sessionStore';
 import type {
     AskUserAnswerValue,
@@ -127,6 +128,7 @@ export const globalBridgeManager = new ChatBridgeManager({
     onSessionForked: (parentId, session) => handleSessionForked(parentId, session),
     onSessionDeleted: sessionId => handleSessionDeleted(sessionId),
     onSessionsList: (workspaceId, sessions) => handleSessionsList(workspaceId, sessions),
+    onAssistantText: sessionId => touchSessionActivity(sessionId),
 });
 
 export function useBridge(session: ChatSession | null, seed: ChatItem[] = []): UseBridgeState {

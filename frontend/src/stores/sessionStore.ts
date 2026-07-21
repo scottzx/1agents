@@ -57,6 +57,14 @@ export const pendingInitialMessage = signal<string | null>(null);
  *   listed, even if chatSessions still has archived=true (stale index after open).
  *   Being open in the chat pane means it must be visible in the sidebar.
  */
+/** Activity timestamp for sidebar sort: last assistant text block, else create time. */
+const sessionActivityTs = (c: ChatSession): number => {
+    const raw = c.lastEventAt || c.createdAt || '';
+    if (!raw) return 0;
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : 0;
+};
+
 export const chatsForWorkspace = (workspaceId: string): ChatSession[] => {
     const active = activeSession.value;
     const activeChat = active && isChat(active) && active.workspaceId === workspaceId ? active : null;
@@ -70,9 +78,34 @@ export const chatsForWorkspace = (workspaceId: string): ChatSession[] => {
         );
 
     if (activeChat && !list.some(c => c.id === activeChat.id)) {
-        return [{ ...activeChat, archived: false, archivedAt: undefined, active: true }, ...list];
+        list.unshift({ ...activeChat, archived: false, archivedAt: undefined, active: true });
     }
+
+    // Newest last-assistant-text activity first (fallback: createdAt).
+    list.sort((a, b) => sessionActivityTs(b) - sessionActivityTs(a));
     return list;
+};
+
+/**
+ * Bump a session's lastEventAt so the sidebar reorders to newest-first when
+ * the assistant starts a new text block. Called from the chat bridge on the
+ * first non-thought text_delta of each assistant_text block.
+ */
+export const touchSessionActivity = (sessionId: string) => {
+    const now = new Date().toISOString();
+    let found = false;
+    chatSessions.value = chatSessions.value.map(c => {
+        if (c.id !== sessionId) return c;
+        found = true;
+        return { ...c, lastEventAt: now };
+    });
+    const active = activeSession.value;
+    if (active && isChat(active) && active.id === sessionId) {
+        activeSession.value = { ...active, lastEventAt: now };
+    }
+    if (found) {
+        mergeSessionsIntoFolders(terminalWindows.value, chatSessions.value);
+    }
 };
 
 /** Terminal rows for a workspace (still carried on folder.sessions today). */

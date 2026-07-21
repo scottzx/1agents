@@ -117,6 +117,11 @@ export interface ChatBridgeOptions {
     onSessionDeleted?(sessionId: string): void;
     /** Bridge answered a `list_sessions` request — refresh the cached session list. */
     onSessionsList?(workspaceId: string | undefined, sessions: unknown): void;
+    /**
+     * First non-thought text_delta of a new assistant_text block. Hosts use
+     * this to bump lastEventAt so the sidebar sorts by last assistant reply.
+     */
+    onAssistantText?(sessionId: string): void;
 }
 
 export interface SessionBridgeState {
@@ -593,7 +598,22 @@ export class ChatBridgeManager {
                     if (!this.acceptTurnEvent(state)) break;
                     const delta = payload.text;
                     if (!delta) break;
-                    state.items = applyTextDelta(state.items, delta, payload.type || 'output');
+                    const deltaType = payload.type || 'output';
+                    // First chunk of a new assistant text block (not thought,
+                    // not an extension of an already-streaming block) → bump
+                    // sidebar recency once per block.
+                    if (deltaType !== 'thought') {
+                        const last = state.items[state.items.length - 1];
+                        const isNewTextBlock = !(
+                            last &&
+                            last.kind === 'assistant_text' &&
+                            last.streaming
+                        );
+                        if (isNewTextBlock) {
+                            this.opts.onAssistantText?.(state.sessionId);
+                        }
+                    }
+                    state.items = applyTextDelta(state.items, delta, deltaType);
                     this.notify(state);
                     break;
                 }

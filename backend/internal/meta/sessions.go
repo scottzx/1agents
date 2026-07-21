@@ -39,14 +39,19 @@ func scanSession(r rowScanner) (ChatSessionRecord, error) {
 }
 
 // ListByWorkspace returns chat sessions belonging to a workspace, sorted
-// newest-first by CreatedAt. Archived sessions are excluded unless
-// includeArchived is set (the 会话 archive view passes true).
+// newest-first by last assistant-text activity (last_event_at), falling
+// back to created_at when last_event_at is empty. Archived sessions are
+// excluded unless includeArchived is set (the 会话 archive view passes true).
 func (s *SessionStore) ListByWorkspace(workspaceID string, includeArchived bool) ([]ChatSessionRecord, error) {
 	query := `SELECT ` + sessionCols + ` FROM sessions WHERE project_id = ?`
 	if !includeArchived {
 		query += ` AND archived_at = ''`
 	}
-	query += ` ORDER BY created_at DESC`
+	// last_event_at is bumped when the assistant emits a text block (see
+	// acpx_client text_delta intercept). Empty last_event_at (legacy rows)
+	// falls back to created_at so brand-new / never-replied sessions still
+	// sort sanely among themselves.
+	query += ` ORDER BY CASE WHEN last_event_at = '' THEN created_at ELSE last_event_at END DESC`
 	rows, err := s.db.sql.Query(query, workspaceID)
 	if err != nil {
 		return nil, err
@@ -80,6 +85,11 @@ func (s *SessionStore) Get(id string) (ChatSessionRecord, bool, error) {
 func (s *SessionStore) Add(rec ChatSessionRecord) error {
 	if rec.CreatedAt.IsZero() {
 		rec.CreatedAt = time.Now().UTC()
+	}
+	// Seed last_event_at so a freshly created session sorts to the top of
+	// the sidebar (newest-first by assistant activity) before any reply.
+	if rec.LastEventAt.IsZero() {
+		rec.LastEventAt = rec.CreatedAt
 	}
 	res, err := s.db.sql.Exec(`
 		INSERT INTO sessions (id, project_id, task_id, name, agent_type, cc_project,

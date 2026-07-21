@@ -421,7 +421,9 @@ export function LeftSidebar({
     // archive forced a folders write / parent paint).
     const chatIndexRev = useComputed(
         () =>
-            `${chatSessionsSignal.value.length}:${chatSessionsSignal.value.map(c => `${c.id}:${c.archived ? 1 : 0}`).join(',')}:${activeSessionSignal.value && isChat(activeSessionSignal.value) ? activeSessionSignal.value.id : ''}`
+            `${chatSessionsSignal.value.length}:${chatSessionsSignal.value
+                .map(c => `${c.id}:${c.archived ? 1 : 0}:${c.lastEventAt || c.createdAt || ''}`)
+                .join(',')}:${activeSessionSignal.value && isChat(activeSessionSignal.value) ? activeSessionSignal.value.id : ''}`
     );
     void chatIndexRev.value;
 

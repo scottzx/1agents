@@ -79,27 +79,40 @@ func TestStoreAddGetListDelete(t *testing.T) {
 	}
 }
 
-func TestStoreListSortedByCreatedAt(t *testing.T) {
+func TestStoreListSortedByLastEventAt(t *testing.T) {
 	s := newTestStore(t)
-	ids := []string{"a", "b", "c"}
-	for _, id := range ids {
-		_ = s.Add(ChatSessionRecord{
+	// Three sessions; later Touch on "a" must promote it to the front
+	// (sidebar sorts by last assistant-text activity, newest first).
+	for _, id := range []string{"a", "b", "c"} {
+		if err := s.Add(ChatSessionRecord{
 			ID:          id,
 			WorkspaceID: "ws",
 			AgentType:   AgentTypeClaudecode,
 			CcProject:   "p",
 			CcSessionID: id,
 			SessionKey:  "k:" + id,
-		})
+		}); err != nil {
+			t.Fatalf("Add %s: %v", id, err)
+		}
 	}
-	all, _ := s.ListByWorkspace("ws", false)
+	all, err := s.ListByWorkspace("ws", false)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
 	if len(all) != 3 {
 		t.Fatalf("got %d, want 3", len(all))
 	}
-	// Add() should have set CreatedAt to ~now; sort is newest-first.
-	// We just check the order is stable and non-empty.
-	if all[0].CreatedAt.IsZero() {
-		t.Fatalf("CreatedAt not set by Add")
+	// Add seeds LastEventAt = CreatedAt; newest create wins initially.
+	if all[0].CreatedAt.IsZero() || all[0].LastEventAt.IsZero() {
+		t.Fatalf("CreatedAt/LastEventAt not set by Add: %+v", all[0])
+	}
+
+	if err := s.Touch("a"); err != nil {
+		t.Fatalf("Touch a: %v", err)
+	}
+	all, _ = s.ListByWorkspace("ws", false)
+	if all[0].ID != "a" {
+		t.Fatalf("after Touch(a), want a first, got order: %s, %s, %s", all[0].ID, all[1].ID, all[2].ID)
 	}
 }
 

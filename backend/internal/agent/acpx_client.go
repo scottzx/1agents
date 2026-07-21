@@ -89,11 +89,15 @@ func (b *ActiveBridge) touch() {
 	b.mu.Unlock()
 }
 
-// appendTurnText accumulates one streamed output chunk.
-func (b *ActiveBridge) appendTurnText(text string) {
+// appendTurnText accumulates one streamed output chunk. Returns true when
+// this was the first chunk of the current assistant text block (used to
+// bump last_event_at once per block rather than on every delta).
+func (b *ActiveBridge) appendTurnText(text string) (firstChunk bool) {
 	b.mu.Lock()
+	firstChunk = len(b.turnText) == 0
 	b.turnText = append(b.turnText, text)
 	b.mu.Unlock()
+	return firstChunk
 }
 
 // resetTurnText clears the accumulator (new turn, or a tool call ended the
@@ -565,9 +569,15 @@ func (c *AcpxClient) readFromServerLoop(bridge *ActiveBridge, scheduler *Schedul
 		} else if msg.Event == "text_delta" {
 			// Accumulate the assistant's streamed output for the issue
 			// timeline write-back ('thought' chunks are not part of the
-			// final message).
+			// final message). First non-thought chunk of a text block also
+			// bumps last_event_at so the sidebar sorts by last assistant
+			// reply (newest first).
 			if msg.Type != "thought" && msg.Text != "" {
-				bridge.appendTurnText(msg.Text)
+				if first := bridge.appendTurnText(msg.Text); first && chatStore != nil {
+					if err := chatStore.Touch(bridge.SessionID); err != nil {
+						log.Printf("[acpx_client] Touch(%s) after assistant text: %v", bridge.SessionID, err)
+					}
+				}
 			}
 		} else if msg.Event == "tool_call" {
 			// A tool call ends the current assistant text block; only text
