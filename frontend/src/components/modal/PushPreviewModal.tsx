@@ -119,11 +119,7 @@ export function PushPreviewModal({ preview, workspaceId, skillRef, onClose, onDo
                     <button class="ws-modal-cancel" onClick={onClose} disabled={busy}>
                         {t('assistant.push.cancel', language)}
                     </button>
-                    <button
-                        class="ws-modal-confirm"
-                        onClick={() => void onSubmit()}
-                        disabled={busy || !hasChanges}
-                    >
+                    <button class="ws-modal-confirm" onClick={() => void onSubmit()} disabled={busy || !hasChanges}>
                         {t('assistant.push.submitToManager', language)}
                     </button>
                 </div>

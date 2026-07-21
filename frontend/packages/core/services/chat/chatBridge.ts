@@ -604,11 +604,7 @@ export class ChatBridgeManager {
                     // sidebar recency once per block.
                     if (deltaType !== 'thought') {
                         const last = state.items[state.items.length - 1];
-                        const isNewTextBlock = !(
-                            last &&
-                            last.kind === 'assistant_text' &&
-                            last.streaming
-                        );
+                        const isNewTextBlock = !(last && last.kind === 'assistant_text' && last.streaming);
                         if (isNewTextBlock) {
                             this.opts.onAssistantText?.(state.sessionId);
                         }
@@ -1076,10 +1072,7 @@ export class ChatBridgeManager {
         state.pendingPermissions = next.pendingPermissions;
         // Wire: approved → implement; abandoned → quit plan. rejected stays.
         // Grok default after leaving plan is acceptEdits (matches bridge/1acp).
-        if (
-            (outcome === 'approved' || outcome === 'abandoned') &&
-            state.modes?.currentModeId === 'plan'
-        ) {
+        if ((outcome === 'approved' || outcome === 'abandoned') && state.modes?.currentModeId === 'plan') {
             const preferred =
                 state.modes.availableModes.find(m => m.id === 'acceptEdits') ??
                 state.modes.availableModes.find(m => m.id === 'default') ??
