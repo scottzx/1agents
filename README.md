@@ -178,9 +178,9 @@ sudo dnf install -y tmux                       # Fedora / CentOS / RHEL
 
 ```bash
 # 组织 scope：@1agents（与 @1agents/wire 相同组织）
-npm install -g @1agents/cli
+npm install -g @1agents/1agents
 # 国内镜像示例
-npm install -g @1agents/cli --registry=https://registry.npmmirror.com
+npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
 1agents [参数]
 ```
@@ -192,12 +192,12 @@ npm install -g @1agents/cli --registry=https://registry.npmmirror.com
 
 **分发方式（重要）：**
 
-- 采用 **多包拆分**：`@1agents/cli` 为入口；**`@1agents/core-<plat>` 等平台包直接上传 npm，包内即二进制**（`1agents` + `ttyd`）。
+- 采用 **多包拆分**：`@1agents/1agents` 为入口；**`@1agents/core-<plat>` 等平台包直接上传 npm，包内即二进制**（`1agents` + `ttyd`）。
 - 安装时从 **npm registry** 拉取当前架构的 core / web / skills / cc-connect / cc-switch 等，**不需要**再访问 GitHub 下载大包。
 - 设计说明见 [`docs/features/npm-package-split/prd.md`](docs/features/npm-package-split/prd.md)。
 - `cloudflared` 可选（`-tunnel` 时按需）；1skills 随 `@1agents/skills` 安装，本机 **uv 优先 / pip 回退**。
 
-> 历史包名 `@scottzx/1agents` 与「薄安装器 + GitHub Release 下载」方案 **已废弃**，请改用 `@1agents/cli`。
+> 历史包名 `@scottzx/1agents` 与「薄安装器 + GitHub Release 下载」方案 **已废弃**，请改用 `@1agents/1agents`。
 
 ### 预编译二进制（可选旁路，非 npm 用户）
 

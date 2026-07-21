@@ -8,7 +8,7 @@ fork (including Grok `_x.ai/ask_user_question` and `_x.ai/exit_plan_mode`) **wit
 `modules/1acp` or `tsx`.
 
 ```bash
-# usually installed as a dependency of @1agents/cli
+# usually installed as a dependency of @1agents/1agents
 node node_modules/@1agents/acp-bridge/bridge-server.mjs
 # or
 ACPX_PORT=38082 1agents-acp-bridge

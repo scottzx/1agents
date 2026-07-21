@@ -22,13 +22,13 @@ PM **是** 1agents 的核心能力，不是旁路产品。
 | 选项 | 结论 |
 |------|------|
 | 另发用户面包 `@1agents/pm` / bin `1pm` | **不做（MVP 否决）** |
-| 主入口 | **`1agents`**（`@1agents/cli` + `@1agents/core-*` 二进制） |
+| 主入口 | **`1agents`**（`@1agents/1agents` + `@1agents/core-*` 二进制） |
 | 仓库内模块整理 | 实现期可做；**用户无感知**，不增加第二品牌 |
 
 **为什么不拆 pm 包：**
 
 1. 记任务 CLI **已经是** `1agents project-items`，现 PM skill 已在用——再造 `1pm` = 双品牌、双文档、双安装。  
-2. npm 已在拆 `@1agents/cli` / `core-*`；「装插件」= 装主入口即可。  
+2. npm 已在拆 `@1agents/1agents` / `core-*`；「装插件」= 装主入口即可。  
 3. PM 是核心：独立包容易被当成「可选附属」，与定位相反。  
 4. 真正缺的不是新包名，而是：  
    - **CLI/MCP 自运行**（不依赖先起完整 daemon）  
@@ -56,7 +56,7 @@ PM **是** 1agents 的核心能力，不是旁路产品。
 用户旅程：
 
 ```text
-1. npm i -g @1agents/cli          # 得到 1agents 命令
+1. npm i -g @1agents/1agents          # 得到 1agents 命令
 2. cd my-repo
    1agents project-items list
    1agents project-items create --title "…" --type task …
@@ -81,7 +81,7 @@ Skill / 文档 **只教 `1agents`**。
 | D3b | **看板 = loopback URL** | 供 agent 内置浏览器 |
 | D4 | **内部实现栈可后定** | 用户面命令已锁定为 `1agents` |
 | D5 | **CLI / MCP / board 均自运行** | **禁止**「必须先起完整 daemon/工作台」才能记任务、开轻量看板 |
-| D6 | **分发 = 现有 `@1agents/cli` + core** | 不另发 pm npm 包 |
+| D6 | **分发 = 现有 `@1agents/1agents` + core** | 不另发 pm npm 包 |
 | D7 | **PM 即核心域** | 无平行任务系统 |
 | D8 | **CLI ↔ MCP 动词同构** | 同一 core |
 
@@ -107,7 +107,7 @@ Agent ──stdio──► project-items MCP ──HTTP──► 1agents daemon 
 
 ### 1.2 目标
 
-- 装 **`@1agents/cli`** 即可用 **`1agents project-items`** 记任务（人/agent shell）。  
+- 装 **`@1agents/1agents`** 即可用 **`1agents project-items`** 记任务（人/agent shell）。  
 - **`1agents board`** 给出 loopback 看板。  
 - 可选 MCP 与 CLI 同构、自运行。  
 - 与完整工作台 **同一 meta.db**。  
@@ -144,7 +144,7 @@ Agent ──stdio──► project-items MCP ──HTTP──► 1agents daemon 
 
 | 项 | 选择 |
 |----|------|
-| 用户安装 | `npm i -g @1agents/cli`（沿用 [npm-package-split](../npm-package-split/prd.md)） |
+| 用户安装 | `npm i -g @1agents/1agents`（沿用 [npm-package-split](../npm-package-split/prd.md)） |
 | 用户命令 | **`1agents`** |
 | 任务子命令 | **`1agents project-items …`**（已有） |
 | 看板子命令 | **`1agents board`**（推荐名；实现期可别名） |
@@ -167,7 +167,7 @@ Agent ──stdio──► project-items MCP ──HTTP──► 1agents daemon 
 
 | 包 | 角色 |
 |----|------|
-| `@1agents/cli` | 安装入口、路径 resolve |
+| `@1agents/1agents` | 安装入口、路径 resolve |
 | `@1agents/core-*` | 含 `1agents` 二进制（project-items / board / 可选 mcp 都在此或同版本发布） |
 | `@1agents/web` 等 | 完整工作台用；**轻量 board UI 可内嵌 core 或极小静态资源**，实现期定 |
 | `@1agents/pm` | **不发布** |
@@ -243,7 +243,7 @@ MVP 不实现 verifier 面板、github 同步等重字段的写入路径（可�
 ### 6.4 安装契约（文档置顶）
 
 ```bash
-npm i -g @1agents/cli
+npm i -g @1agents/1agents
 1agents project-items list
 1agents board
 ```
@@ -278,7 +278,7 @@ Skill 片段只含 `1agents project-items` / `1agents board`。
 
 ## 9. 成功指标（MVP）
 
-1. `npm i -g @1agents/cli` 后，**无**工作台 daemon、**无** MCP，即可 `project-items` CRUD。  
+1. `npm i -g @1agents/1agents` 后，**无**工作台 daemon、**无** MCP，即可 `project-items` CRUD。  
 2. Agent 仅靠 shell + skill 完成记任务闭环。  
 3. `1agents board` 给出 loopback URL，内置浏览器可看板。  
 4. 可选 MCP 与 CLI 同库同语义。  

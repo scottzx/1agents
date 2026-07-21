@@ -181,9 +181,9 @@ sudo dnf install -y tmux                       # Fedora / CentOS / RHEL
 
 ```bash
 # Scope: @1agents (same org as @1agents/wire)
-npm install -g @1agents/cli
+npm install -g @1agents/1agents
 # China mirror example
-npm install -g @1agents/cli --registry=https://registry.npmmirror.com
+npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 
 1agents [args]
 ```
@@ -195,7 +195,7 @@ Requirements:
 
 **Distribution (important):**
 
-- **Multi-package** under `@1agents/*`. `@1agents/cli` is the entry; **`@1agents/core-<plat>` ships binaries directly on the npm registry** (no GitHub download during install).
+- **Multi-package** under `@1agents/*`. `@1agents/1agents` is the entry; **`@1agents/core-<plat>` ships binaries directly on the npm registry** (no GitHub download during install).
 - Design: [`docs/features/npm-package-split/prd.md`](docs/features/npm-package-split/prd.md).
 - Legacy `@scottzx/1agents` and the “thin installer + GitHub tarball” flow are **deprecated**.
 

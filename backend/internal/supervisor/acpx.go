@@ -50,7 +50,7 @@ func (s *AcpxSupervisor) supervisionLoop(ctx context.Context) {
 	bridge, err := resolveAcpBridge(cwd)
 	if err != nil {
 		log.Printf("[acpx-sup] FATAL: cannot locate ACP bridge-server: %v", err)
-		log.Printf("[acpx-sup] Install @1agents/acp-bridge (dependency of @1agents/cli), or run from a monorepo checkout with modules/1acp.")
+		log.Printf("[acpx-sup] Install @1agents/acp-bridge (dependency of @1agents/1agents), or run from a monorepo checkout with modules/1acp.")
 		return
 	}
 	log.Printf("[acpx-sup] Using ACP bridge: %s (dir=%s, via=%s)", bridge.script, bridge.workDir, bridge.via)
@@ -156,7 +156,7 @@ func (s *AcpxSupervisor) startProcess(ctx context.Context, bridge acpBridge) err
 // or monorepo development.
 //
 // Order:
-//  1. node_modules/@1agents/acp-bridge/bridge-server.mjs (local / nested under @1agents/cli)
+//  1. node_modules/@1agents/acp-bridge/bridge-server.mjs (local / nested under @1agents/1agents)
 //  2. npm global root: $(npm root -g)/@1agents/acp-bridge/...
 //  3. monorepo modules/1acp/bridge-server.js (dev, via tsx)
 func resolveAcpBridge(cwd string) (acpBridge, error) {
@@ -215,7 +215,7 @@ func resolveAcpBridge(cwd string) (acpBridge, error) {
 	return acpBridge{}, fmt.Errorf(
 		"@1agents/acp-bridge not found (looked under node_modules and npm root -g); " +
 			"also no modules/1acp/bridge-server.js for dev. " +
-			"Reinstall: npm i -g @1agents/cli (pulls @1agents/acp-bridge)",
+			"Reinstall: npm i -g @1agents/1agents (pulls @1agents/acp-bridge)",
 	)
 }
 

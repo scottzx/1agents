@@ -13,7 +13,7 @@ homepage: "https://github.com/scottzx/1Agents"
 ## 静态地址（每次会话先拉一次）
 
 - 设计/分发以仓库 `docs/features/npm-package-split/prd.md` 为准（**@1agents 多包 · 直接 npm 发 core**，非 GitHub 薄安装器）。
-- 安装命令：`npm install -g @1agents/cli`（国内可用 npmmirror）。
+- 安装命令：`npm install -g @1agents/1agents`（国内可用 npmmirror）。
 - 历史 CDN 路径若仍指向 `@scottzx/1agents`，视为过时；以本仓库 skill 与 PRD 为准。
 
 ---
@@ -27,7 +27,7 @@ homepage: "https://github.com/scottzx/1Agents"
 | §0.2 | 平台与依赖 | macOS arm64 / Linux amd64 / Linux arm64 + Node 22+ |
 | §0.3 | 拉取最新指南 | `curl jsdelivr.net/.../skill.md` 黄金法则 |
 | §1 | 安装 | 全新安装或升级到最新版 |
-| §1.1 | 通过 npm 安装（推荐） | `npm install -g @1agents/cli` |
+| §1.1 | 通过 npm 安装（推荐） | `npm install -g @1agents/1agents` |
 | §1.2 | 验证安装 | `1agents --version` 应能输出 version + commit + buildTime |
 | §2 | 启动 | 前台启动 vs 守护进程模式 |
 | §2.1 | 前台启动 | `1agents` → 浏览器开 `http://localhost:8080` |
@@ -121,7 +121,7 @@ sudo apt-get install -y nodejs
 执行任何 §1–§7 的命令前，**先拉一次最新 skill.md**（30 秒以内）：
 
 ```bash
-# skill 以仓库 docs/features/npm-package-split/prd.md 与本文件为准（@1agents/cli 多包分发）
+# skill 以仓库 docs/features/npm-package-split/prd.md 与本文件为准（@1agents/1agents 多包分发）
 ```
 
 拉取成功 → 以本文件为准继续。
@@ -136,13 +136,13 @@ sudo apt-get install -y nodejs
 **面向中国大陆用户**（使用 npmmirror 加速）：
 
 ```bash
-npm install -g @1agents/cli --registry=https://registry.npmmirror.com
+npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 ```
 
 **面向海外用户 / 默认**：
 
 ```bash
-npm install -g @1agents/cli --registry=https://registry.npmjs.org
+npm install -g @1agents/1agents --registry=https://registry.npmjs.org
 ```
 
 预期输出（节选）：
@@ -151,12 +151,27 @@ npm install -g @1agents/cli --registry=https://registry.npmjs.org
 added 1 package in 30s
 ```
 
-> **分发：** `@1agents/cli` 从 npm 拉当前平台的 `@1agents/core-<plat>` 等包（**二进制在平台包内，直接 publish 到 registry**）。不是内嵌三端，也不是从 GitHub 下 tar。
+> **分发：** `@1agents/1agents` 从 npm 拉当前平台的 `@1agents/core-<plat>` 等包（**二进制在平台包内，直接 publish 到 registry**）。不是内嵌三端，也不是从 GitHub 下 tar。
+
+### §1.1b 模块运行时 `1agents install`
+
+`npm install` 只拉包文件。模块环境（1skills venv、happy deps、二进制校验）用 CLI：
+
+```bash
+1agents install all          # 全部模块
+1agents install skills       # 仅 1skills Python venv（uv 优先 / pip+venv）
+1agents install happy        # 仅 happy-cli 依赖
+1agents install core         # 校验 core 二进制
+1agents install --check      # 只诊断
+```
+
+期望：`--check` 输出 MODULE / STATUS 表；有 Python 时 `install skills` 后 skills 为 `ok`。
 
 ### §1.2 验证安装
 
 ```bash
 1agents --version
+1agents install --check
 ```
 
 期望输出形如：
@@ -185,8 +200,8 @@ built:   2026-06-02T08:12:10Z
 如果输出 `version: 24`（缺 `1agents v...` 头部），说明 `run.js` 找不到平台子目录——多半是包内 `bin/<platform>/1agents` 缺失。重新安装即可：
 
 ```bash
-npm uninstall -g @1agents/cli
-npm install -g @1agents/cli --registry=https://registry.npmmirror.com
+npm uninstall -g @1agents/1agents
+npm install -g @1agents/1agents --registry=https://registry.npmmirror.com
 ```
 
 ---
@@ -351,7 +366,7 @@ cc-connect stop
 1agents stop
 
 # 2. 升级
-npm update -g @1agents/cli --registry=https://registry.npmmirror.com
+npm update -g @1agents/1agents --registry=https://registry.npmmirror.com
 
 # 3. 验证新版本
 1agents --version
@@ -371,7 +386,7 @@ npm update -g @1agents/cli --registry=https://registry.npmmirror.com
 1agents stop
 
 # 2. 卸载 npm 包
-npm uninstall -g @1agents/cli
+npm uninstall -g @1agents/1agents
 
 # 3. （可选）清理运行时元信息与日志
 rm -rf ~/.1agents

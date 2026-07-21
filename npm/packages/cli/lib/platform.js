@@ -24,7 +24,7 @@ function resolvePackageRoot(name) {
     return require("path").dirname(require.resolve(`${name}/package.json`));
   } catch (err) {
     const e = new Error(
-      `Package ${name} is not installed. Install with: npm i -g ${name}@<same-version-as-cli>`
+      `Package ${name} is not installed. Install with: npm i -g ${name}@<same-version-as-@1agents/1agents>`
     );
     e.cause = err;
     throw e;

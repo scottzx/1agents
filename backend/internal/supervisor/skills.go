@@ -198,7 +198,7 @@ func findSkillsSource(cwd string) string {
 
 	// Release / npm layouts relative to the 1agents executable
 	// e.g. .../node_modules/@1agents/core-linux-arm64/bin/1agents
-	//   → .../node_modules/@1agents/cli/node_modules/@1agents/skills
+	//   → .../node_modules/@1agents/1agents/node_modules/@1agents/skills
 	//   → .../node_modules/@1agents/skills (hoisted)
 	if selfExe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(selfExe)
@@ -368,7 +368,7 @@ func (s *SkillsSupervisor) supervisionLoop(ctx context.Context) {
 	if mode == launchModeVenv {
 		if skillsDir == "" || !isSkillsSource(skillsDir) {
 			log.Println("[skills-sup] 1skills source missing and no skill-manager binary; skills service will not start.")
-			log.Println("[skills-sup] Install @1agents/skills (npm), ensure @1agents/cli passes -skills-dir, or use modules/1skills in dev; need Python >= 3.11 (prefer uv).")
+			log.Println("[skills-sup] Install @1agents/skills (npm), ensure @1agents/1agents passes -skills-dir (or run: 1agents install skills), or use modules/1skills in dev; need Python >= 3.11 (prefer uv).")
 			return
 		}
 		if !isExecutable(execPath) {

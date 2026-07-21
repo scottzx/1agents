@@ -9,10 +9,10 @@ This package is **not** the upstream npm `acpx` from OpenClaw. It includes 1agen
 
 ## Install
 
-Usually pulled in as a dependency of `@1agents/acp-bridge` (via `@1agents/cli`):
+Usually pulled in as a dependency of `@1agents/acp-bridge` (via `@1agents/1agents`):
 
 ```bash
-npm install -g @1agents/cli
+npm install -g @1agents/1agents
 ```
 
 ## Runtime import

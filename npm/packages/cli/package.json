@@ -1,7 +1,7 @@
 {
-  "name": "@1agents/cli",
+  "name": "@1agents/1agents",
   "version": "0.0.0-dev",
-  "description": "1agents CLI — resolves @1agents/* packages from the npm registry (no GitHub binary download)",
+  "description": "1agents CLI entry — resolves @1agents/* packages from the npm registry (no GitHub binary download)",
   "license": "MIT",
   "bin": {
     "1agents": "run.js",

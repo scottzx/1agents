@@ -16,7 +16,7 @@
 | 说法 | 是否正确 |
 |------|----------|
 | `@1agents/core-linux-x64` 等包内 **直接带二进制**，用户 `npm i` 即从 **npm registry** 拿到 | ✅ **正确 · 主路径** |
-| `@1agents/cli` 是 **JS 入口**（resolve 已安装的 core/web/skills…），**不**再下载大包 | ✅ **正确** |
+| `@1agents/1agents` 是 **JS 入口**（resolve 已安装的 core/web/skills…），**不**再下载大包 | ✅ **正确** |
 | 安装时 `postinstall` 从 **GitHub Release 拉 tar** 再解压（薄安装器） | ❌ **错误 · 已废弃方向** |
 | 单体 `@scottzx/1agents` 内嵌三端 / 或 GitHub 下大包 | ❌ **历史方案，不再作为默认** |
 | GitHub Release 整包 tar 给桌面 / 离线 / 不用 npm 的人 | ✅ **可选旁路**，不是 npm 用户必经 |
@@ -24,7 +24,7 @@
 **用户默认路径：**
 
 ```bash
-npm install -g @1agents/cli
+npm install -g @1agents/1agents
 # → registry 安装 web / skills / cc-connect / cc-switch / 当前 arch 的 core-*
 # → 本地 node_modules 内已有二进制，无需访问 GitHub
 ```
@@ -48,26 +48,24 @@ npm install -g @1agents/cli
 |---|------|------|
 | D0 | **统一 scope `@1agents`** | 不再使用 `@scottzx/*` 发新包；与已发布 `@1agents/wire` 一致 |
 | D1 | **平台包命名 npm/cpu 惯例** | `@1agents/core-linux-x64`、`@1agents/core-linux-arm64`、`@1agents/core-darwin-arm64`（见 §4 命名表） |
-| D2 | **主包名** | `@1agents/cli`（用户装这个）—— 见 §4.0 说明 |
-
-> 若希望 CLI 包名就叫 `@1agents/1agents`，实现时可二选一，但 **scope 必须是 `@1agents`**。下文默认 **`@1agents/cli`**。
+| D2 | **主包名** | **`@1agents/1agents`**（用户装这个；bin: `1agents`）。历史名 `@1agents/cli` 已废弃 |
 
 ### 2.2 依赖关系（含 v1.2：cc-switch 独立 deps）
 
 | # | 决策 | 说明 |
 |---|------|------|
-| D3 | **1skills → `dependencies` 独立包** | **不再**打进平台二进制包；装 `@1agents/cli` 时 **一并安装** `@1agents/skills` |
+| D3 | **1skills → `dependencies` 独立包** | **不再**打进平台二进制包；装 `@1agents/1agents` 时 **一并安装** `@1agents/skills` |
 | D4 | **1skills 运行时** | 本机 **优先 `uv`，回退 `pip` + venv**；不发 PyInstaller / `_internal` |
 | D5 | **frontend → `@1agents/web`** | 只发生产 `dist`，**去掉 `.map`**；主包 `dependencies` |
 | D6 | **happy-cli → optional** | `@1agents/happy`；`optionalDependencies`，失败不阻断核心 |
 | D7 | **ACP bridge → `@1agents/acp-bridge`（deps）** | 1agents 专用 WebSocket `bridge-server`（`ws://127.0.0.1:38082`）。**不是**上游 `acpx` CLI 包本身——官方 `acpx` **不带** bridge-server |
 | D8 | **运行时依赖 `@1agents/acpx`** | `@1agents/acp-bridge` **dependencies** 引入 **`@1agents/acpx`**（1agents fork of acpx，含 Grok `_x.ai/*` host extensions）；bridge 用 `import from "@1agents/acpx/runtime"`。**不要**依赖上游 npm `acpx`（无 ask_user / exit_plan）。Supervisor **禁止**默认 chdir 到不存在的 `modules/1acp` |
-| D9 | **cc-connect → `dependencies`** | 装 `@1agents/cli` 时 **一并安装**；独立包族 + 平台子包（见 §4.3） |
+| D9 | **cc-connect → `dependencies`** | 装 `@1agents/1agents` 时 **一并安装**；独立包族 + 平台子包（见 §4.3） |
 | D9b | **cc-switch-cli → `dependencies`** | **不进 core**；独立 `@1agents/cc-switch` + 平台子包；装 cli **必带**（原生二进制，**不是** uv/pip） |
 | D10 | **技能 / 模块面板 embed 随 `@1agents/web`** | skill-manager / cc-connect 前端是独立 ESM（`<skills-panel>` / `<cc-connect-panel>`），**不是** webpack 进主包。发布物路径：`dist/embed/*.js`，运行时优先 `StaticDir/embed/`，禁止只认 monorepo `modules/*/dist-embed` |
 | D10 | **主分发 = npm registry** | **core 等平台包直接 `npm publish`**，内含二进制 |
 | D11 | **禁止默认 GitHub 下载二进制** | cli **不得** 在 postinstall/首次运行默认去 GitHub 拉 core/tar（已废弃薄安装器主路径） |
-| D12 | **GitHub Release 仅为旁路** | 可选：桌面 / 离线整包 tar / 审计；**不**参与 `npm i -g @1agents/cli` 成功路径 |
+| D12 | **GitHub Release 仅为旁路** | 可选：桌面 / 离线整包 tar / 审计；**不**参与 `npm i -g @1agents/1agents` 成功路径 |
 | D13 | **cloudflared 不进默认依赖图** | PATH 或首次 `-tunnel` 下载到 `~/.1agents/bin`（与 core 分发无关） |
 | D14 | **同版本锁定** | 一次 release 内所有 **`@1agents/*` 自研包** version 一致（含 `@1agents/acpx` / `@1agents/acp-bridge`） |
 
@@ -90,7 +88,7 @@ npm install -g @1agents/cli
 
 ### 3.1 目标
 
-1. `npm i -g @1agents/cli`（可用国内 npm 镜像）即可跑通核心工作台。
+1. `npm i -g @1agents/1agents`（可用国内 npm 镜像）即可跑通核心工作台。
 2. 只装 **当前 arch** 的原生二进制（core / cc-connect / **cc-switch** 平台子包）。
 3. 安装时 **自动带上** web + skills + cc-connect + **cc-switch** + **acp-bridge**（→ `@1agents/acpx`）；**尝试** optional happy。
 
@@ -113,7 +111,7 @@ npm install -g @1agents/cli
 ### 4.0 总览
 
 ```text
-@1agents/cli                              # 主包：run.js / 路径解析 / daemon 子命令
+@1agents/1agents                              # 主包：run.js / 路径解析 / install / daemon
 ├── dependencies (安装 1agents 时一并安装)
 │   ├── @1agents/web@=VER                 # frontend dist（无 map）
 │   ├── @1agents/skills@=VER              # 1skills Python 源码（仅此包用 uv/pip）
@@ -144,7 +142,7 @@ npm install -g @1agents/cli
 
 | 包名 | 角色 |
 |------|------|
-| `@1agents/cli` | 用户安装入口（`1agents` / `cc-connect` / 包装） |
+| `@1agents/1agents` | 用户安装入口（`1agents` / `cc-connect` / 包装） |
 | `@1agents/core-<plat>` | 核心原生：**仅** `1agents`、`ttyd` |
 | `@1agents/cc-connect` | cc-connect meta（无大文件） |
 | `@1agents/cc-connect-<plat>` | `cc-connect` 单平台二进制 |
@@ -164,7 +162,7 @@ npm install -g @1agents/cli
 
 | 包 | 内容 | 体积目标 |
 |----|------|----------|
-| `@1agents/cli` | JS 入口 only | &lt; 1 MB |
+| `@1agents/1agents` | JS 入口 only | &lt; 1 MB |
 | `@1agents/core-*` | **仅** `1agents` + `ttyd` | 单包尽量 &lt; 50 MB tarball |
 | `@1agents/cc-connect-*` | 仅 `cc-connect` 二进制 | 单包尽量 &lt; 40 MB |
 | `@1agents/cc-switch-*` | 仅 `cc-switch` 二进制 | 单包尽量 &lt; 30 MB |
@@ -215,23 +213,38 @@ try { require.resolve('@1agents/acpx/package.json'); } catch { /* degrade */ }
 ### 5.1 默认
 
 ```bash
-npm install -g @1agents/cli
+npm install -g @1agents/1agents
 # 国内镜像示例
-npm i -g @1agents/cli --registry=https://registry.npmmirror.com
+npm i -g @1agents/1agents --registry=https://registry.npmmirror.com
+
+# 模块运行时环境（venv / happy deps / resolve 校验）
+1agents install all
+1agents install --check
 ```
 
 一并得到：`web` + `skills` + `cc-connect`（当前平台）+ `acp-bridge`（→ `@1agents/acpx`）+ `core-*`（optional 成功时）+ 尝试 `happy`。
 
+**两层安装：**
+
+| 命令 | 含义 |
+|------|------|
+| `npm i -g @1agents/1agents` | registry 包文件 |
+| `1agents install all\|skills\|happy\|core\|…` | 本机运行时脚本（幂等） |
+| `1agents install --check` | 只诊断 |
+
+入口包名固定为 **`@1agents/1agents`**（bin: `1agents`）。历史名 `@1agents/cli` 已废弃。
+
 ### 5.2 1skills
 
 - 源码在 `@1agents/skills`。
-- 首次技能相关启动：`uv` 优先，否则 `pip` + venv（目录建议 `~/.1agents/1skills/.venv`）。
+- **推荐：** `1agents install skills`（或 `install all`）主动建 venv：`uv` 优先，否则 `pip` + venv（目录建议 `~/.1agents/1skills/.venv`）。
+- 兜底：首次技能服务启动时 supervisor 仍可懒建 venv。
 - 无 Python ≥ 3.11：日志明确，**核心不退出**。
 
 ### 5.3 happy 缺失
 
 - 核心终端、文件、web、cc-connect 包装命令仍可用。
-- Happy / ACP bridge 相关入口降级提示。
+- `1agents install happy` 失败时 Happy 相关入口降级提示。
 
 ---
 
@@ -264,13 +277,13 @@ npm i -g @1agents/cli --registry=https://registry.npmmirror.com
 1. 构建各平台 core / cc-connect / cc-switch 二进制、web、skills、happy
 2. publish @1agents/core-* 、@1agents/cc-connect-* 、@1agents/cc-switch-*
 3. publish meta：cc-connect、cc-switch、web、skills、happy、acpx、acp-bridge
-4. publish @1agents/cli（dependencies 指向已存在版本）
+4. publish @1agents/1agents（dependencies 指向已存在版本）
 5. （可选）GitHub Release 整包 tar
 ```
 
 ### 7.3 门禁
 
-- `@1agents/cli` pack &lt; 2 MB。
+- `@1agents/1agents` pack &lt; 2 MB。
 - 单平台 core / cc-connect pack 超阈值 fail。
 - 冒烟：`npm i` 后 resolve 到 core + web + skills + cc-connect 当前平台。
 
@@ -347,7 +360,7 @@ docs/features/npm-package-split/
 
 ## 11. 成功标准
 
-1. 仅 npm 镜像、断 GitHub：`npm i -g @1agents/cli` 可启动并加载 web。
+1. 仅 npm 镜像、断 GitHub：`npm i -g @1agents/1agents` 可启动并加载 web。
 2. 安装图含：`web`、`skills`、`cc-connect`、**`cc-switch`**（+ 当前平台子包）、`core-*`（当前平台）。
 3. **无**其它 arch 的 core/cc-connect/cc-switch 平台包；**core 内无 cc-switch**。
 4. skills 在独立包内；首次技能启动走 uv 或 pip（**仅 skills**）。

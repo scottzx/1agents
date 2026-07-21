@@ -2,8 +2,13 @@
 "use strict";
 
 /**
- * @1agents/cli entry — resolves binaries from installed @1agents/* packages
+ * @1agents/1agents entry — resolves binaries from installed @1agents/* packages
  * on the local npm tree. Does NOT download GitHub Release archives.
+ *
+ * Subcommands handled in this JS shim:
+ *   install [all|module] [--check]  — module runtime bootstrap (venv, happy deps, …)
+ *   start|stop|status|logs          — daemon lifecycle
+ * Everything else is forwarded to the core `1agents` binary.
  */
 
 const { execFileSync, spawn } = require("child_process");
@@ -17,6 +22,7 @@ const {
   resolveWebDist,
   resolveSkillsRoot,
 } = require("./lib/platform");
+const { runInstall } = require("./lib/install");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -81,10 +87,16 @@ function buildCoreArgs(userArgs, { ttydPath, staticPath, skillsPath }) {
 }
 
 async function main() {
-  const paths = resolvePaths();
-  const { agentPath } = paths;
   const userArgs = process.argv.slice(2);
   const command = userArgs[0];
+
+  // `1agents install …` does not need core binaries resolved first.
+  if (command === "install") {
+    process.exit(runInstall(userArgs.slice(1)));
+  }
+
+  const paths = resolvePaths();
+  const { agentPath } = paths;
 
   const daemonDir = path.join(os.homedir(), ".1agents");
   const daemonJson = path.join(daemonDir, "daemon.json");

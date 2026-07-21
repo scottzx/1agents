@@ -1652,7 +1652,7 @@ wss.on("connection", (ws) => {
           sessionId,
           "AGENT_ADAPTER_MISSING",
           `ACP adapter failed to launch (${cmd}). Install the agent CLI on PATH, or reinstall ` +
-            `@1agents/cli (pulls @1agents/acpx). Dev: cd modules/1acp && pnpm install. ` +
+            `@1agents/1agents (pulls @1agents/acpx). Dev: cd modules/1acp && pnpm install. ` +
             `Underlying: ${err.stderrSummary || err.message}`,
         );
       } else {
