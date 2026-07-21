@@ -277,14 +277,19 @@ export const zhCN: Record<string, string> = {
     'assistant.push.addToStore': '加入母体',
     'assistant.push.cancel': '取消',
     'assistant.push.noChange': '无改动',
+    'assistant.push.newSkillHint': '这是新 skill，提交后需在技能管理器确认是否纳入母体。',
     'assistant.push.forkNamePlaceholder': '新名称(可留空)',
     'assistant.push.statusAdded': '新增',
     'assistant.push.statusRemoved': '删除',
     'assistant.push.statusModified': '修改',
     'assistant.push.previewFailed': '预览失败',
     'assistant.push.submitCopy': '推送修改',
-    'assistant.push.conflictStaged': '检测到版本冲突！修改已保存在本地，请前往技能管理器进行统一采纳和血缘合并。',
+    'assistant.push.submitToManager': '提交到技能管理器',
+    'assistant.push.submitHint': '项目侧只负责提交。是否纳入母体，请在技能管理器中二次确认。',
+    'assistant.push.conflictStaged': '已提交到技能管理器，请前往确认是否采纳。',
     'assistant.push.pushed': '修改已推送',
+    'assistant.push.submitted': '已提交，请在技能管理器确认采纳',
+    'assistant.push.unchanged': '与母体一致，无需提交',
 
     // ── Pull-from-store (skills tab, project→母体 skill pull) ────────────────
     'assistant.pull.pull': '拉取更新',
@@ -2120,15 +2125,21 @@ export const enUS: Record<string, string> = {
     'assistant.push.addToStore': 'Add to store',
     'assistant.push.cancel': 'Cancel',
     'assistant.push.noChange': 'No changes',
+    'assistant.push.newSkillHint': 'This is a new skill. After submit, confirm adoption in Skills Manager.',
     'assistant.push.forkNamePlaceholder': 'New name (optional)',
     'assistant.push.statusAdded': 'Added',
     'assistant.push.statusRemoved': 'Removed',
     'assistant.push.statusModified': 'Modified',
     'assistant.push.previewFailed': 'Preview failed',
     'assistant.push.submitCopy': 'Push changes',
+    'assistant.push.submitToManager': 'Submit to Skills Manager',
+    'assistant.push.submitHint':
+        'This project only submits a snapshot. Adoption into the shared store is confirmed in Skills Manager.',
     'assistant.push.conflictStaged':
-        'Conflict detected! Your changes remain in the local workspace. Please open Skills Manager to adopt/merge them.',
+        'Submitted to Skills Manager. Open it to confirm whether to adopt.',
     'assistant.push.pushed': 'Changes pushed',
+    'assistant.push.submitted': 'Submitted — confirm adoption in Skills Manager',
+    'assistant.push.unchanged': 'Already matches the store; nothing to submit',
 
     // ── Pull-from-store (skills tab, project→母体 skill pull) ────────────────
     'assistant.pull.pull': 'Pull update',

@@ -284,25 +284,22 @@ export const closeFsDeleteModal = () => {
     fsDeleteTarget.value = null;
 };
 
-// ── Push-preview modal (issue #379 follow-up) ──────────────────────────────
-// Shown on every "推送到母体" click, replacing the silent-overwrite push:
-// previewPush's read-only diff response drives the dialog, and the user picks
-// update/fork/create from there instead of the push having already happened.
+// ── Push-preview modal ────────────────────────────────────────────────────
+// Project side only submits a snapshot; Skills Manager decides adoption.
 export const pushPreviewOpen = signal(false);
 export const pushPreviewData = signal<SkillPushPreview | null>(null);
 export const pushPreviewWorkspaceId = signal('');
 export const pushPreviewSkillRef = signal('');
 // Callback into SkillsTab so the modal doesn't need to know about workspace
-// refresh/flash wiring; set alongside the preview data when opening. Receives
-// a short status the caller turns into a flash message.
-type PushPreviewOnDone = (result: 'created' | 'main' | 'fork') => void;
+// refresh/flash wiring; set alongside the preview data when opening.
+type PushPreviewOnDone = (result: 'submitted' | 'unchanged') => void;
 export const pushPreviewOnDone = signal<PushPreviewOnDone | null>(null);
 
 export const openPushPreviewModal = (
     preview: SkillPushPreview,
     workspaceId: string,
     skillRef: string,
-    onDone: (result: 'created' | 'main' | 'fork') => void
+    onDone: (result: 'submitted' | 'unchanged') => void
 ) => {
     pushPreviewOpen.value = true;
     pushPreviewData.value = preview;
