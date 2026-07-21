@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -115,6 +116,37 @@ func happySettingsServerURL() string {
 		return ""
 	}
 	return s.ServerURL
+}
+
+// happyBackendURL returns http://127.0.0.1:{port} for the local Go gateway so
+// the happy adapter's 1agents-proxy can reach it when -listen is not the
+// default :38080. Port is read from ~/.1agents/daemon.json (written by main
+// on start). Returns "" if unknown — adapter then keeps its own default.
+func happyBackendURL() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".1agents", "daemon.json"))
+	if err != nil {
+		return ""
+	}
+	var info struct {
+		ListenAddr string `json:"listen_addr"`
+	}
+	if json.Unmarshal(data, &info) != nil || info.ListenAddr == "" {
+		return ""
+	}
+	addr := strings.TrimSpace(info.ListenAddr)
+	// Accept ":8085" by normalizing to "0.0.0.0:8085" for SplitHostPort.
+	if strings.HasPrefix(addr, ":") {
+		addr = "0.0.0.0" + addr
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return ""
+	}
+	return "http://127.0.0.1:" + port
 }
 
 // isExecutableFile reports whether path is a regular file with an executable bit.
@@ -314,6 +346,14 @@ func startHappyDaemon() error {
 	// default): only inject when neither an env nor a paired settings.json set it.
 	if _, set := os.LookupEnv("HAPPY_SERVER_URL"); !set && happySettingsServerURL() == "" {
 		cmd.Env = append(cmd.Env, "HAPPY_SERVER_URL="+defaultRelayURL)
+	}
+	// Adapter 1agents-proxy / chat bridge fetch the local Go API. Default in
+	// adapter is http://127.0.0.1:38080; when the gateway listens elsewhere
+	// (-listen :8085 etc.) pin ONEAGENTS_BACKEND_URL from daemon.json.
+	if _, set := os.LookupEnv("ONEAGENTS_BACKEND_URL"); !set {
+		if backend := happyBackendURL(); backend != "" {
+			cmd.Env = append(cmd.Env, "ONEAGENTS_BACKEND_URL="+backend)
+		}
 	}
 	// Let the spawned node daemon trust a self-signed dev relay (mkcert). Node
 	// reads NODE_EXTRA_CA_CERTS; if the backend only carries HAPPY_EXTRA_CA_CERTS
