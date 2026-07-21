@@ -87,6 +87,40 @@ export const chatsForWorkspace = (workspaceId: string): ChatSession[] => {
 };
 
 /**
+ * Flat task-list source: chats across all assistant workspaces, recency-sorted.
+ * Optional filterWorkspaceId limits to one assistant. Same active-session inject
+ * rules as chatsForWorkspace (open chat always visible even if still archived).
+ */
+export const chatsForAssistants = (
+    assistantWorkspaceIds: string[],
+    filterWorkspaceId?: string | null
+): ChatSession[] => {
+    if (assistantWorkspaceIds.length === 0) return [];
+    const idSet = new Set(
+        filterWorkspaceId ? assistantWorkspaceIds.filter(id => id === filterWorkspaceId) : assistantWorkspaceIds
+    );
+    if (idSet.size === 0) return [];
+
+    const active = activeSession.value;
+    const activeChat = active && isChat(active) && idSet.has(active.workspaceId) ? active : null;
+    const activeId = activeChat?.id ?? null;
+
+    const list = chatSessions.value
+        .filter(c => idSet.has(c.workspaceId))
+        .filter(c => !c.archived || c.id === activeId)
+        .map(c =>
+            c.id === activeId ? { ...c, archived: false, archivedAt: undefined, active: true } : { ...c, active: false }
+        );
+
+    if (activeChat && !list.some(c => c.id === activeChat.id)) {
+        list.unshift({ ...activeChat, archived: false, archivedAt: undefined, active: true });
+    }
+
+    list.sort((a, b) => sessionActivityTs(b) - sessionActivityTs(a));
+    return list;
+};
+
+/**
  * Bump a session's lastEventAt so the sidebar reorders to newest-first when
  * the assistant starts a new text block. Called from the chat bridge on the
  * first non-thought text_delta of each assistant_text block.

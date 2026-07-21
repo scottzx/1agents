@@ -5,7 +5,6 @@ import { Workspace, type AgentType } from '../types';
 import { t, type Lang } from '../../i18n';
 import * as wsStore from '../../stores/workspaceStore';
 import * as sess from '../../stores/sessionStore';
-import { sidebarMode } from '../../stores/uiStore';
 import { SessionSetupForm, type TeamMemberOption } from './SessionSetupForm';
 import { soulService } from '@1agents/core/services/soulService';
 
@@ -46,19 +45,19 @@ export function NewChatHome({
     const [showConfig, setShowConfig] = useState(false);
     const [wsSearch, setWsSearch] = useState('');
     const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
-    const [projectWsId, setProjectWsId] = useState(
-        activeWorkspaceId !== 'default'
-            ? activeWorkspaceId
-            : workspaces.find(w => (w.kind ?? 'project') === 'project' && !w.builtin)?.id || activeWorkspaceId
-    );
-    const [assistantWsId, setAssistantWsId] = useState(
-        workspaces.some(w => w.id === activeWorkspaceId && (w.kind ?? 'project') === 'assistant')
-            ? activeWorkspaceId
-            : 'default'
-    );
-    const selectedWorkspaceId = lockedWorkspaceId ?? (sidebarMode.value === 'assistant' ? assistantWsId : projectWsId);
-    const setSelectedWorkspaceId = (id: string) =>
-        sidebarMode.value === 'assistant' ? setAssistantWsId(id) : setProjectWsId(id);
+    // Unified picker (no assistant/project mode switch): remember last choice.
+    const [selectedWsId, setSelectedWsId] = useState(() => {
+        if (activeWorkspaceId && workspaces.some(w => w.id === activeWorkspaceId && !w.deviceId)) {
+            return activeWorkspaceId;
+        }
+        return (
+            workspaces.find(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)?.id ||
+            workspaces.find(w => !w.deviceId)?.id ||
+            activeWorkspaceId
+        );
+    });
+    const selectedWorkspaceId = lockedWorkspaceId ?? selectedWsId;
+    const setSelectedWorkspaceId = (id: string) => setSelectedWsId(id);
     const wsDropdownOpen = useSignal(false);
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 

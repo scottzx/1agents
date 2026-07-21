@@ -23,6 +23,18 @@ interface SessionRowProps {
     onSelect: (session: Session) => void;
     onKill: (e: MouseEvent, session: Session) => void;
     onRename: (session: Session) => void;
+    /**
+     * Flat task list: show the owning assistant's avatar as the leading logo
+     * (instead of the harness Agent icon). Same `.chat-item` row chrome.
+     */
+    assistantAvatar?: string;
+    /** Full assistant name — tooltip on the avatar. */
+    assistantName?: string;
+    /**
+     * When set (flat task list), the "..." menu gains 「助理详情」 above rename,
+     * opening the session's owning assistant detail page.
+     */
+    onOpenAssistantDetail?: (session: Session) => void;
 }
 
 // Terminal `agent` values come from backend detection ('claude', 'codex',
@@ -118,6 +130,21 @@ const SESSION_ACTION_ICONS = {
             <line x1="14" y1="11" x2="14" y2="17" />
         </svg>
     ),
+    assistantDetail: (
+        <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+        </svg>
+    ),
     switch: (
         <svg
             width="13"
@@ -137,16 +164,26 @@ const SESSION_ACTION_ICONS = {
 };
 
 /** Build the "..." dropdown items for a session row: rename + fork + delete.
- *  Archive/close is a dedicated button to the left of "..." (high-frequency). */
+ *  Archive/close is a dedicated button to the left of "..." (high-frequency).
+ *  Flat task rows may prepend 「助理详情」 above rename. */
 function buildSessionActions(session: Session, props: SessionRowProps): FsRowAction[] {
-    const actions: FsRowAction[] = [
-        {
-            id: 'rename',
-            labelKey: 'sidebar.renameSession',
-            icon: SESSION_ACTION_ICONS.rename,
-            onSelect: () => props.onRename(session),
-        },
-    ];
+    const actions: FsRowAction[] = [];
+
+    if (isChat(session) && props.onOpenAssistantDetail) {
+        actions.push({
+            id: 'assistantDetail',
+            labelKey: 'sidebar.assistantDetail',
+            icon: SESSION_ACTION_ICONS.assistantDetail,
+            onSelect: () => props.onOpenAssistantDetail!(session),
+        });
+    }
+
+    actions.push({
+        id: 'rename',
+        labelKey: 'sidebar.renameSession',
+        icon: SESSION_ACTION_ICONS.rename,
+        onSelect: () => props.onRename(session),
+    });
 
     if (isChat(session) && session.forkSupported === true) {
         actions.push({
@@ -203,9 +240,15 @@ export function SessionRow({
     onSelect,
     onKill,
     onRename,
+    assistantAvatar,
+    assistantName,
+    onOpenAssistantDetail,
 }: SessionRowProps) {
     const chat = isChat(session);
     const chatFallback = t('sidebar.chatSession', language) || '聊天会话';
+    // Task-list rows pass assistant identity → leading logo is the assistant
+    // avatar (same row chrome as project sessions, different glyph source).
+    const useAssistantLogo = chat && !!assistantName;
 
     // Live bridge status (streaming / awaiting_permission) overrides the stale
     // persisted snapshot; reading the signal's .value here subscribes the row
@@ -221,10 +264,24 @@ export function SessionRow({
               : String(session.status || 'none');
     const statusKey = normalizeAgentStatus(avatarStatus) ?? 'none';
 
-    // Leading icon: agent avatar (composite status indicator) for chat and
-    // agent-backed terminals; generic terminal glyph when no agent detected.
+    // Leading icon: assistant avatar (task list) / agent harness logo (project
+    // chats) / terminal glyph. Status corner light is kept in all cases.
     let leadingIcon;
-    if (chat) {
+    if (useAssistantLogo) {
+        const hasImg = !!assistantAvatar && assistantAvatar.startsWith('/');
+        leadingIcon = (
+            <span class="chat-sidebar-avatar chat-assistant-avatar" title={assistantName} aria-hidden="true">
+                {hasImg ? (
+                    <img class="chat-assistant-avatar-img" src={assistantAvatar} alt="" />
+                ) : (
+                    <span class="agent-avatar-fallback chat-assistant-avatar-fallback" aria-hidden="true">
+                        {'\u{1F464}'}
+                    </span>
+                )}
+                <span class={`agent-avatar-status agent-avatar-status--${statusKey}`} />
+            </span>
+        );
+    } else if (chat) {
         leadingIcon = (
             <AgentAvatar
                 agentType={session.agentType}
@@ -301,6 +358,9 @@ export function SessionRow({
                         onSelect,
                         onKill,
                         onRename,
+                        assistantAvatar,
+                        assistantName,
+                        onOpenAssistantDetail,
                     })}
                     language={language}
                     triggerClassName="chat-actions-trigger"

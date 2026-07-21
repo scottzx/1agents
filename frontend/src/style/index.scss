@@ -834,6 +834,7 @@ body {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 4px;
       font-size: 11px;
       text-transform: uppercase;
       font-weight: 600;
@@ -841,10 +842,67 @@ body {
       color: var(--text-sidebar-muted);
       padding: 8px 4px;
 
+      .section-fold-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        margin: 0;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-sidebar-muted);
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: background-color 0.15s, color 0.15s;
+
+        svg.folder-icon {
+          width: 14px;
+          height: 14px;
+        }
+
+        &:hover {
+          background: var(--btn-hover);
+          color: var(--text-sidebar);
+        }
+
+        &:focus-visible {
+          outline: 2px solid var(--accent-color);
+          outline-offset: 1px;
+        }
+      }
+
+      .section-header-label {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        padding: 2px 0;
+        border: none;
+        background: transparent;
+        text-align: left;
+        font: inherit;
+        font-size: inherit;
+        font-weight: inherit;
+        letter-spacing: inherit;
+        text-transform: inherit;
+        color: inherit;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &:hover {
+          color: var(--text-sidebar);
+        }
+      }
+
       .section-header-actions {
         display: flex;
         align-items: center;
         gap: 2px;
+        margin-left: auto;
       }
 
       .section-search-btn {
@@ -868,6 +926,10 @@ body {
         &:hover { opacity: 1; background: var(--btn-hover); }
         &.active { opacity: 1; color: var(--accent-fg); }
       }
+    }
+
+    &.is-collapsed {
+      margin-bottom: 8px;
     }
 
     .section-search-wrap {
@@ -1341,160 +1403,175 @@ body {
         color: var(--text-sidebar-muted);
         font-style: italic;
       }
-      
-      .chat-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 6px 8px 6px 12px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 12px;
-        color: var(--text-sidebar-muted);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        max-height: 40px;
-        opacity: 1;
-        transform: translateX(0);
+    }
 
-        .status-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          margin-right: 8px;
-          flex-shrink: 0;
-          display: inline-block;
-          transition: all 0.25s ease;
+    // Session rows: project-tree children AND flat task list share the same
+    // chrome. Historically nested only under `.project-node`, so the flat
+    // task list (no folder parent) got unstyled multi-line wrap + always-on
+    // action icons — re-scope here for both containers.
+    .project-node .chat-item,
+    .task-session-list .chat-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text-sidebar-muted);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      max-height: 40px;
+      opacity: 1;
+      transform: translateX(0);
+      overflow: hidden;
+      box-sizing: border-box;
 
-          &.status-none {
-            background-color: transparent;
-            box-shadow: none;
-          }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+        flex-shrink: 0;
+        display: inline-block;
+        transition: all 0.25s ease;
 
-          &.status-idle {
-            background-color: var(--success-fg); // emerald
-            box-shadow: 0 0 6px rgba(var(--success-rgb), 0.4);
-          }
-
-          &.status-busy {
-            background-color: #3b82f6; // blue
-            box-shadow: 0 0 8px rgba(var(--accent-color-rgb), 0.6);
-            animation: status-pulse-blue 1.5s infinite ease-in-out;
-          }
-
-          &.status-waiting {
-            background-color: var(--warning-fg); // amber
-            box-shadow: 0 0 8px rgba(var(--warning-rgb), 0.6);
-            animation: status-pulse-amber 1.5s infinite ease-in-out;
-          }
-
-          &.status-shell {
-            background-color: var(--purple-fg); // purple
-            box-shadow: 0 0 6px rgba(var(--purple-rgb), 0.4);
-          }
+        &.status-none {
+          background-color: transparent;
+          box-shadow: none;
         }
 
-        &.chat-item-killing {
-          max-height: 0 !important;
-          opacity: 0 !important;
-          transform: translateX(-100%) !important;
-          padding-top: 0 !important;
-          padding-bottom: 0 !important;
-          margin-top: 0 !important;
-          margin-bottom: 0 !important;
-          overflow: hidden !important;
-          pointer-events: none;
+        &.status-idle {
+          background-color: var(--success-fg); // emerald
+          box-shadow: 0 0 6px rgba(var(--success-rgb), 0.4);
         }
 
-        &:hover {
-          background-color: var(--bg-sidebar-hover);
-          color: var(--text-sidebar);
+        &.status-busy {
+          background-color: #3b82f6; // blue
+          box-shadow: 0 0 8px rgba(var(--accent-color-rgb), 0.6);
+          animation: status-pulse-blue 1.5s infinite ease-in-out;
         }
 
-        &.active {
-          background-color: var(--bg-sidebar-active);
-          color: var(--text-sidebar);
-          font-weight: 500;
-          position: relative;
-          // Keep the base left padding (12px) so the accent bar at left:0
-          // doesn't shift the icon/text — active and inactive rows stay aligned.
-
-          &::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 4px;
-            bottom: 4px;
-            width: 2px;
-            background: var(--accent-gradient);
-            border-radius: 1px;
-            box-shadow: 0 0 6px var(--accent-color);
-          }
+        &.status-waiting {
+          background-color: var(--warning-fg); // amber
+          box-shadow: 0 0 8px rgba(var(--warning-rgb), 0.6);
+          animation: status-pulse-amber 1.5s infinite ease-in-out;
         }
 
-        .chat-title {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          min-width: 0;
-          flex: 1;
-        }
-
-        .chat-item-left {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          min-width: 0;
-          flex: 1;
-
-          .chat-title {
-            max-width: 140px;
-            flex: none;
-          }
-        }
-
-        .chat-agent {
-          font-size: 10px;
-          color: var(--text-sidebar-muted);
-          font-family: 'JetBrains Mono', monospace;
-          background-color: rgba(128, 128, 128, 0.08);
-          padding: 1px 5px;
-          border-radius: 4px;
-          font-weight: 600;
-          transition: all 0.15s ease;
-          border: 1px solid rgba(128, 128, 128, 0.12);
-        }
-
-        &:hover .chat-agent {
-          display: none;
-        }
-
-        /* Session row "..." actions menu — same hover/open gating as the
-         * folder row above. The trigger button comes from
-         * <FsRowActionsMenu>; `.chat-actions-trigger` shrinks it from the
-         * file-browser default 22px down to 18px so chat rows stay compact. */
-        .chat-actions {
-          display: none;
-          align-items: center;
-          gap: 2px;
-          flex-shrink: 0;
-
-          .chat-actions-trigger,
-          .chat-actions-archive {
-            width: 18px;
-            height: 18px;
-
-            svg {
-              width: 10px;
-              height: 10px;
-            }
-          }
-        }
-
-        &:hover .chat-actions,
-        .chat-actions:has(.fb-actions-menu) {
-          display: flex;
+        &.status-shell {
+          background-color: var(--purple-fg); // purple
+          box-shadow: 0 0 6px rgba(var(--purple-rgb), 0.4);
         }
       }
+
+      &.chat-item-killing {
+        max-height: 0 !important;
+        opacity: 0 !important;
+        transform: translateX(-100%) !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none;
+      }
+
+      &:hover {
+        background-color: var(--bg-sidebar-hover);
+        color: var(--text-sidebar);
+      }
+
+      &.active {
+        background-color: var(--bg-sidebar-active);
+        color: var(--text-sidebar);
+        font-weight: 500;
+        position: relative;
+        // Keep the base left padding (12px) so the accent bar at left:0
+        // doesn't shift the icon/text — active and inactive rows stay aligned.
+
+        &::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 4px;
+          bottom: 4px;
+          width: 2px;
+          background: var(--accent-gradient);
+          border-radius: 1px;
+          box-shadow: 0 0 6px var(--accent-color);
+        }
+      }
+
+      .chat-title {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1;
+      }
+
+      .chat-item-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+
+        .chat-title {
+          max-width: 140px;
+          flex: none;
+        }
+      }
+
+      .chat-agent {
+        font-size: 10px;
+        color: var(--text-sidebar-muted);
+        font-family: 'JetBrains Mono', monospace;
+        background-color: rgba(128, 128, 128, 0.08);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-weight: 600;
+        transition: all 0.15s ease;
+        border: 1px solid rgba(128, 128, 128, 0.12);
+      }
+
+      &:hover .chat-agent {
+        display: none;
+      }
+
+      /* Session row "..." actions menu — same hover/open gating as the
+       * folder row above. The trigger button comes from
+       * <FsRowActionsMenu>; `.chat-actions-trigger` shrinks it from the
+       * file-browser default 22px down to 18px so chat rows stay compact. */
+      .chat-actions {
+        display: none;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+
+        .chat-actions-trigger,
+        .chat-actions-archive {
+          width: 18px;
+          height: 18px;
+
+          svg {
+            width: 10px;
+            height: 10px;
+          }
+        }
+      }
+
+      &:hover .chat-actions,
+      .chat-actions:has(.fb-actions-menu) {
+        display: flex;
+      }
+    }
+
+    // Flat task list has no folder indent — let the title use remaining width.
+    .task-session-list .chat-item .chat-item-left .chat-title {
+      max-width: none;
+      flex: 1 1 auto;
+      min-width: 0;
     }
   }
 
@@ -20682,6 +20759,82 @@ body {
 .hdr-btn-agents[hidden] { display: none; }
 
 // Custom Modern Sidebar & Homepage Styles
+// Flat task list (unified sidebar): assistant filter chips + row tags
+.task-filter-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 0 4px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.task-filter-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 7.5rem;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-sidebar-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+
+  .task-filter-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover {
+    border-color: var(--text-main);
+    color: var(--text-sidebar);
+  }
+
+  &.active {
+    border-color: var(--text-main);
+    color: var(--text-main);
+    background: var(--btn-hover);
+  }
+}
+
+// Task-list leading logo: assistant avatar in the same 16px box as agent icons.
+.chat-sidebar-avatar.chat-assistant-avatar {
+  border-radius: 50%;
+  overflow: visible;
+  // Contain emoji fallback so it cannot blow past the 16px row height.
+  font-size: 12px;
+  line-height: 1;
+
+  .chat-assistant-avatar-img {
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .chat-assistant-avatar-fallback {
+    font-size: 11px;
+    line-height: 1;
+  }
+}
+
+.task-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .sidebar-nav-controls {
   display: flex;
   flex-direction: column;

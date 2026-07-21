@@ -10,9 +10,9 @@ import { archiveWorkspace } from '../../stores/workspaceStore';
 import type { ModuleManifest } from '../../modules/module-types';
 import { getModuleIconPath } from '../../modules/icon-registry';
 import { SETTINGS_MODULE_ID } from '../../modules/settings-manifest';
-import { sidebarMode, isBeginnerMode } from '../../stores/uiStore';
+import { isBeginnerMode } from '../../stores/uiStore';
 import { openCreateAssistantModal } from '../../stores/modalStore';
-import { assistantDetailId } from '../../stores/tabsStore';
+import { assistantDetailId, activeDrawerTab as activeDrawerTabSignal } from '../../stores/tabsStore';
 import {
     remoteDevices,
     remoteExpanded,
@@ -27,21 +27,45 @@ import {
     chatSessions as chatSessionsSignal,
     activeSession as activeSessionSignal,
     chatsForWorkspace,
+    chatsForAssistants,
     terminalsForFolderSessions,
 } from '../../stores/sessionStore';
 import { activeL1PageId } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
-import {
-    enterL1App,
-    exitL1App,
-    projectOverview,
-    projectStack,
-    showProjectContext,
-    showAssistantContext,
-} from '../../stores/stageStore';
+import { enterL1App, exitL1App, projectOverview, projectStack } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { inboxService } from '@1agents/core/services/inboxService';
 import { openSearch } from '../../stores/searchStore';
+import type { ChatSession } from '../types';
+
+/** Short label for assistant filter chips (first grapheme of name). */
+function assistantShortLabel(name: string): string {
+    const chars = [...(name || '').trim()];
+    return chars[0] || '?';
+}
+
+const SECTION_OPEN_KEY = {
+    tasks: '1agents-sidebar-section-tasks',
+    projects: '1agents-sidebar-section-projects',
+} as const;
+
+function readSectionOpen(key: keyof typeof SECTION_OPEN_KEY, fallback: boolean): boolean {
+    try {
+        const raw = localStorage.getItem(SECTION_OPEN_KEY[key]);
+        if (raw === null) return fallback;
+        return raw === '1' || raw === 'true';
+    } catch {
+        return fallback;
+    }
+}
+
+function writeSectionOpen(key: keyof typeof SECTION_OPEN_KEY, open: boolean): void {
+    try {
+        localStorage.setItem(SECTION_OPEN_KEY[key], open ? '1' : '0');
+    } catch {
+        /* ignore quota / private mode */
+    }
+}
 
 /** Mac / Linux / Windows OS 图标(currentColor,适配主题)。复用 DevicesPanel 的判定。 */
 function DeviceOsIcon({ os }: { os?: string }) {
@@ -297,6 +321,25 @@ export function LeftSidebar({
     };
     const [projectSearch, setProjectSearch] = useState('');
     const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+    /** Flat task list filter: null = all assistants; else workspace id. */
+    const [taskFilterWsId, setTaskFilterWsId] = useState<string | null>(null);
+    /** Section-level fold: 任务 / 项目 region expand (persisted). */
+    const [tasksSectionOpen, setTasksSectionOpen] = useState(() => readSectionOpen('tasks', true));
+    const [projectsSectionOpen, setProjectsSectionOpen] = useState(() => readSectionOpen('projects', true));
+    const toggleTasksSection = () => {
+        setTasksSectionOpen(prev => {
+            const next = !prev;
+            writeSectionOpen('tasks', next);
+            return next;
+        });
+    };
+    const toggleProjectsSection = () => {
+        setProjectsSectionOpen(prev => {
+            const next = !prev;
+            writeSectionOpen('projects', next);
+            return next;
+        });
+    };
     // Footer utility entries (模型/技能/发现/数据源/系统设置) are collapsed
     // behind a single 「更多」 that pulls up this panel — frees sidebar space.
     const [moreOpen, setMoreOpen] = useState(false);
@@ -423,7 +466,9 @@ export function LeftSidebar({
         () =>
             `${chatSessionsSignal.value.length}:${chatSessionsSignal.value
                 .map(c => `${c.id}:${c.archived ? 1 : 0}:${c.lastEventAt || c.createdAt || ''}`)
-                .join(',')}:${activeSessionSignal.value && isChat(activeSessionSignal.value) ? activeSessionSignal.value.id : ''}`
+                .join(
+                    ','
+                )}:${activeSessionSignal.value && isChat(activeSessionSignal.value) ? activeSessionSignal.value.id : ''}`
     );
     void chatIndexRev.value;
 
@@ -433,7 +478,19 @@ export function LeftSidebar({
         terms: terminalsForFolderSessions(folderSessions),
     });
 
-    const renderSession = (session: Session) => (
+    const openAssistantDetail = (workspaceId: string) => {
+        assistantDetailId.value = workspaceId;
+        activeDrawerTabSignal.value = 'assistants';
+    };
+
+    const renderSession = (
+        session: Session,
+        opts?: {
+            assistantAvatar?: string;
+            assistantName?: string;
+            withAssistantDetail?: boolean;
+        }
+    ) => (
         <SessionRow
             key={session.id}
             session={session}
@@ -444,8 +501,29 @@ export function LeftSidebar({
             onSelect={onSelectSession}
             onKill={handleSessionKill}
             onRename={onRenameSession}
+            assistantAvatar={opts?.assistantAvatar}
+            assistantName={opts?.assistantName}
+            onOpenAssistantDetail={
+                opts?.withAssistantDetail
+                    ? s => {
+                          if (isChat(s)) openAssistantDetail(s.workspaceId);
+                      }
+                    : undefined
+            }
         />
     );
+
+    const assistantWorkspaces = workspaces
+        .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
+        .sort((a, b) => {
+            if (a.id === 'default') return -1;
+            if (b.id === 'default') return 1;
+            return 0;
+        });
+    const assistantIds = assistantWorkspaces.map(w => w.id);
+    const assistantById = new Map(assistantWorkspaces.map(w => [w.id, w]));
+    const taskChats: ChatSession[] = chatsForAssistants(assistantIds, taskFilterWsId);
+    const showProjects = !isBeginnerMode.value;
 
     return (
         <aside
@@ -519,27 +597,34 @@ export function LeftSidebar({
                     </div>
                 </div>
 
-                {!isBeginnerMode.value && (
-                    <div class="sidebar-mode-toggle">
-                        <button
-                            class={`mode-tab${sidebarMode.value === 'assistant' ? ' active' : ''}`}
-                            onClick={() => showAssistantContext()}
-                        >
-                            {t('sidebar.mode.assistant', language)}
-                        </button>
-                        <button
-                            class={`mode-tab${sidebarMode.value === 'project' ? ' active' : ''}`}
-                            onClick={() => showProjectContext()}
-                        >
-                            {t('sidebar.mode.project', language)}
-                        </button>
-                    </div>
-                )}
-
                 <div class="sidebar-nav-controls">
-                    {sidebarMode.value === 'project' && (
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'assistants' ? ' active' : ''}`}
+                        onClick={() => {
+                            // 总览：清掉详情 id，落到助理网格，不复现上次点开的助理。
+                            assistantDetailId.value = null;
+                            toggleDrawerTab('assistants');
+                        }}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <circle cx="12" cy="8" r="4" />
+                            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.assistantOverview', language)}</span>
+                    </div>
+                    {showProjects && (
                         <div
-                            class={`nav-control-item${projectStack.value.length === 0 ? ' active' : ''}`}
+                            class={`nav-control-item${
+                                activeDrawerTab === 'none' && projectStack.value.length === 0 ? ' active' : ''
+                            }`}
                             onClick={() => projectOverview()}
                         >
                             <svg
@@ -559,126 +644,95 @@ export function LeftSidebar({
                             <span>{t('sidebar.navCtrl.projectOverview', language)}</span>
                         </div>
                     )}
-                    {sidebarMode.value === 'assistant' && (
-                        <Fragment>
-                            <div
-                                class={`nav-control-item${activeDrawerTab === 'assistants' ? ' active' : ''}`}
-                                onClick={() => {
-                                    // 点这个总览项不算"选中了某个助理", 清掉残留的详情 id,
-                                    // 落到助理网格, 不要复现上次点开的那个助理。
-                                    assistantDetailId.value = null;
-                                    toggleDrawerTab('assistants');
-                                }}
-                            >
-                                <svg
-                                    class="btn-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="8" r="4" />
-                                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                                </svg>
-                                <span>{t('sidebar.assistants', language)}</span>
-                            </div>
-                            <div
-                                class={`nav-control-item${activeDrawerTab === 'contacts' ? ' active' : ''}`}
-                                onClick={() => toggleDrawerTab('contacts')}
-                            >
-                                <svg
-                                    class="btn-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                                    <circle cx="9" cy="7" r="4" />
-                                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                </svg>
-                                <span>{t('sidebar.navCtrl.contacts', language)}</span>
-                            </div>
-                            <div
-                                class={`nav-control-item${activeDrawerTab === 'inbox' ? ' active' : ''}`}
-                                onClick={() => toggleDrawerTab('inbox')}
-                            >
-                                <svg
-                                    class="btn-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-                                    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-                                </svg>
-                                <span>{t('sidebar.navCtrl.inbox', language)}</span>
-                                {inboxUnread > 0 && <span class="nav-control-badge">{inboxUnread}</span>}
-                            </div>
-                            <div
-                                class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}
-                                onClick={() => toggleDrawerTab('reminders')}
-                            >
-                                <svg
-                                    class="btn-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                    <line x1="16" y1="2" x2="16" y2="6" />
-                                    <line x1="8" y1="2" x2="8" y2="6" />
-                                    <line x1="3" y1="10" x2="21" y2="10" />
-                                </svg>
-                                <span>{t('sidebar.navCtrl.scheduledTasks', language)}</span>
-                            </div>
-                        </Fragment>
-                    )}
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'contacts' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('contacts')}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.contacts', language)}</span>
+                    </div>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'inbox' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('inbox')}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                            <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.inbox', language)}</span>
+                        {inboxUnread > 0 && <span class="nav-control-badge">{inboxUnread}</span>}
+                    </div>
+                    <div
+                        class={`nav-control-item${activeDrawerTab === 'reminders' ? ' active' : ''}`}
+                        onClick={() => toggleDrawerTab('reminders')}
+                    >
+                        <svg
+                            class="btn-icon"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <span>{t('sidebar.navCtrl.scheduledTasks', language)}</span>
+                    </div>
                 </div>
             </div>
 
             <div class="sidebar-scroll">
                 {!moduleNav ? (
                     <Fragment>
-                        {/* ── 助理 section: 唯一的对话列表, default 置顶 ── */}
-                        {sidebarMode.value === 'assistant' && (
-                            <div class="workspace-section">
-                                <div class="section-header">
-                                    <span>{t('sidebar.assistants', language)}</span>
+                        {/* ── 任务: 跨助理扁平 chat 列表（recency + 助理头像）── */}
+                        <div class={`workspace-section task-section${tasksSectionOpen ? '' : ' is-collapsed'}`}>
+                            <div class="section-header">
+                                <button
+                                    type="button"
+                                    class="section-fold-btn"
+                                    aria-expanded={tasksSectionOpen}
+                                    title={t(
+                                        tasksSectionOpen ? 'sidebar.section.collapse' : 'sidebar.section.expand',
+                                        language
+                                    )}
+                                    aria-label={t(
+                                        tasksSectionOpen ? 'sidebar.section.collapse' : 'sidebar.section.expand',
+                                        language
+                                    )}
+                                    onClick={toggleTasksSection}
+                                >
+                                    <FolderToggleIcon open={tasksSectionOpen} />
+                                </button>
+                                <button type="button" class="section-header-label" onClick={toggleTasksSection}>
+                                    {t('sidebar.section.tasks', language)}
+                                </button>
+                                {tasksSectionOpen && (
                                     <div class="section-header-actions">
-                                        <button
-                                            class="section-search-btn"
-                                            title={t('sidebar.collapseAll', language) || '一键折叠'}
-                                            onClick={() => {
-                                                const ids = workspaces
-                                                    .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
-                                                    .map(w => w.id);
-                                                collapseFolders(ids);
-                                            }}
-                                        >
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <polyline points="17 11 12 6 7 11" />
-                                                <polyline points="17 18 12 13 7 18" />
-                                            </svg>
-                                        </button>
                                         <button
                                             class="section-search-btn"
                                             title={t('sidebar.addAssistant', language)}
@@ -697,220 +751,42 @@ export function LeftSidebar({
                                             </svg>
                                         </button>
                                     </div>
-                                </div>
-                                {(() => {
-                                    // 助理 = kind==='assistant' 的本地工作区。default 是内置助理,
-                                    // 永远置顶;其余按 position 排序。远程设备项目归 project 模式管。
-                                    // 兼容旧数据:kind 为空视作 project(不入助理列表)。
-                                    const assistantWss = workspaces
-                                        .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
-                                        .sort((a, b) => {
-                                            if (a.id === 'default') return -1;
-                                            if (b.id === 'default') return 1;
-                                            return 0;
-                                        });
-                                    if (assistantWss.length === 0) {
-                                        return (
-                                            <div class="ws-empty">
-                                                <svg
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="1.5"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                >
-                                                    <circle cx="12" cy="8" r="4" />
-                                                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                                                </svg>
-                                                <span>{t('sidebar.noAssistants', language)}</span>
-                                                <button class="ws-empty-add" onClick={openCreateAssistantModal}>
-                                                    {t('sidebar.addAssistant', language)}
-                                                </button>
-                                            </div>
-                                        );
-                                    }
-                                    return assistantWss.map(ws => {
-                                        const folder = folders.find(f => f.id === ws.id);
-                                        if (!folder) return null;
-                                        const isActive = activeWorkspaceId === ws.id;
-                                        const { chats: chatSessions, terms: termSessions } = sessionsForFolder(
-                                            folder.id,
-                                            folder.sessions
-                                        );
-                                        return (
-                                            <div key={ws.id} class={`project-node${isActive ? ' ws-active' : ''}`}>
-                                                <div
-                                                    class={`project-folder ${folder.expanded ? 'expanded' : ''}`}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        class="folder-toggle-btn"
-                                                        aria-expanded={folder.expanded}
-                                                        title={t(
-                                                            folder.expanded
-                                                                ? 'sidebar.collapseProject'
-                                                                : 'sidebar.expandProject',
-                                                            language
-                                                        )}
-                                                        aria-label={t(
-                                                            folder.expanded
-                                                                ? 'sidebar.collapseProject'
-                                                                : 'sidebar.expandProject',
-                                                            language
-                                                        )}
-                                                        onClick={(e: MouseEvent) => {
-                                                            e.stopPropagation();
-                                                            toggleFolder(ws.id);
-                                                        }}
-                                                    >
-                                                        <FolderToggleIcon open={folder.expanded} />
-                                                    </button>
-                                                    <div
-                                                        class="folder-click-area"
-                                                        onClick={() => onSelectWorkspace(ws)}
-                                                    >
-                                                        {ws.avatar && ws.avatar.startsWith('/') ? (
-                                                            <img class="folder-avatar" src={ws.avatar} alt="" />
-                                                        ) : null}
-                                                        <span class="ws-name">{ws.name}</span>
-                                                    </div>
-                                                    <div
-                                                        class="ws-actions"
-                                                        onClick={(e: MouseEvent) => e.stopPropagation()}
-                                                    >
-                                                        <FsRowActionsMenu
-                                                            entry={ws}
-                                                            items={buildFolderActions(
-                                                                ws,
-                                                                onChatCreate,
-                                                                onTerminalCreate,
-                                                                onRenameWorkspace
-                                                            )}
-                                                            language={language}
-                                                            triggerClassName="ws-actions-trigger"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                {folder.expanded && (
-                                                    <div class="project-children">
-                                                        {chatSessions.map(renderSession)}
-                                                        {termSessions.map(renderSession)}
-                                                        {chatSessions.length === 0 && termSessions.length === 0 && (
-                                                            <div
-                                                                class="chat-item"
-                                                                style="opacity:0.5;cursor:default;pointer-events:none;"
-                                                            >
-                                                                <div class="chat-item-left">
-                                                                    <span class="chat-title">
-                                                                        {t('sidebar.noChats', language)}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    });
-                                })()}
+                                )}
                             </div>
-                        )}
-
-                        {!isBeginnerMode.value && sidebarMode.value === 'project' && (
-                            <div class="workspace-section">
-                                <div class="section-header">
-                                    <span>Projects</span>
-                                    <div class="section-header-actions">
-                                        <button
-                                            class="section-search-btn"
-                                            title={t('sidebar.collapseAll', language) || '一键折叠'}
-                                            onClick={() => {
-                                                const ids = folders
-                                                    .filter(
-                                                        f =>
-                                                            (workspaces.find(w => w.id === f.id)?.kind ?? 'project') !==
-                                                            'assistant'
-                                                    )
-                                                    .map(f => f.id);
-                                                collapseFolders(ids);
-                                            }}
+                            {tasksSectionOpen && (
+                                <Fragment>
+                                    {assistantWorkspaces.length > 0 && (
+                                        <div
+                                            class="task-filter-chips"
+                                            role="tablist"
+                                            aria-label={t('sidebar.taskFilter', language)}
                                         >
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <polyline points="17 11 12 6 7 11" />
-                                                <polyline points="17 18 12 13 7 18" />
-                                            </svg>
-                                        </button>
-                                        <button
-                                            class={`section-search-btn${projectSearchOpen ? ' active' : ''}`}
-                                            title="搜索项目"
-                                            onClick={() => {
-                                                const next = !projectSearchOpen;
-                                                setProjectSearchOpen(next);
-                                                if (!next) setProjectSearch('');
-                                                else setTimeout(() => projectSearchRef.current?.focus(), 50);
-                                            }}
-                                        >
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <circle cx="11" cy="11" r="8" />
-                                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                {projectSearchOpen && (
-                                    <div class="section-search-wrap">
-                                        <input
-                                            ref={projectSearchRef}
-                                            class="section-search-input"
-                                            type="text"
-                                            placeholder="搜索项目…"
-                                            value={projectSearch}
-                                            onInput={(e: Event) =>
-                                                setProjectSearch((e.target as HTMLInputElement).value)
-                                            }
-                                        />
-                                        {projectSearch && (
                                             <button
-                                                class="section-search-clear"
-                                                onClick={() => setProjectSearch('')}
                                                 type="button"
+                                                class={`task-filter-chip${taskFilterWsId === null ? ' active' : ''}`}
+                                                onClick={() => setTaskFilterWsId(null)}
                                             >
-                                                ×
+                                                {t('sidebar.taskFilterAll', language)}
                                             </button>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Loading skeleton */}
-                                {workspacesLoading && (
-                                    <div class="ws-skeleton">
-                                        <div class="ws-skeleton-item" />
-                                        <div class="ws-skeleton-item" style="width:75%" />
-                                        <div class="ws-skeleton-item" style="width:60%" />
-                                    </div>
-                                )}
-
-                                {/* Empty state — folders whose ws is a project (i.e. not an assistant). */}
-                                {!workspacesLoading &&
-                                    folders.filter(f => {
-                                        const w = workspaces.find(x => x.id === f.id);
-                                        return (w?.kind ?? 'project') !== 'assistant';
-                                    }).length === 0 && (
+                                            {assistantWorkspaces.map(ws => (
+                                                <button
+                                                    key={ws.id}
+                                                    type="button"
+                                                    class={`task-filter-chip${
+                                                        taskFilterWsId === ws.id ? ' active' : ''
+                                                    }`}
+                                                    title={ws.name}
+                                                    onClick={() =>
+                                                        setTaskFilterWsId(prev => (prev === ws.id ? null : ws.id))
+                                                    }
+                                                >
+                                                    {assistantShortLabel(ws.name)}
+                                                    <span class="task-filter-chip-name">{ws.name}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {assistantWorkspaces.length === 0 ? (
                                         <div class="ws-empty">
                                             <svg
                                                 viewBox="0 0 24 24"
@@ -920,154 +796,75 @@ export function LeftSidebar({
                                                 stroke-linecap="round"
                                                 stroke-linejoin="round"
                                             >
-                                                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                <circle cx="12" cy="8" r="4" />
+                                                <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
                                             </svg>
-                                            <span>{t('sidebar.empty', language)}</span>
-                                            <button class="ws-empty-add" onClick={onCreateWorkspace}>
-                                                {t('common.new', language)}
+                                            <span>{t('sidebar.noAssistants', language)}</span>
+                                            <button class="ws-empty-add" onClick={openCreateAssistantModal}>
+                                                {t('sidebar.addAssistant', language)}
                                             </button>
                                         </div>
+                                    ) : taskChats.length === 0 ? (
+                                        <div class="chat-item" style="opacity:0.5;cursor:default;pointer-events:none;">
+                                            <div class="chat-item-left">
+                                                <span class="chat-title">{t('sidebar.noChats', language)}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div class="task-session-list">
+                                            {taskChats.map(session => {
+                                                const aw = assistantById.get(session.workspaceId);
+                                                return renderSession(session, {
+                                                    assistantAvatar: aw?.avatar,
+                                                    assistantName: aw?.name || '?',
+                                                    withAssistantDetail: true,
+                                                });
+                                            })}
+                                        </div>
                                     )}
+                                </Fragment>
+                            )}
+                        </div>
 
-                                {!workspacesLoading &&
-                                    folders
-                                        .filter(f => {
-                                            const w = workspaces.find(x => x.id === f.id);
-                                            return (w?.kind ?? 'project') !== 'assistant';
-                                        })
-                                        .filter(f => {
-                                            if (!projectSearch) return true;
-                                            const ws = workspaces.find(w => w.id === f.id);
-                                            return (ws?.name ?? f.id)
-                                                .toLowerCase()
-                                                .includes(projectSearch.toLowerCase());
-                                        })
-                                        .map(folder => {
-                                            const ws = workspaces.find(w => w.id === folder.id);
-                                            const isActive = folder.id === activeWorkspaceId;
-
-                                            return (
-                                                <div
-                                                    key={folder.id}
-                                                    class={`project-node${isActive ? ' ws-active' : ''}`}
-                                                >
-                                                    <div
-                                                        class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
-                                                            draggedId === folder.id ? 'dragging' : ''
-                                                        } ${
-                                                            dragOverId === folder.id && dragOverPosition === 'before'
-                                                                ? 'drag-over-before'
-                                                                : ''
-                                                        } ${
-                                                            dragOverId === folder.id && dragOverPosition === 'after'
-                                                                ? 'drag-over-after'
-                                                                : ''
-                                                        }`}
-                                                        onDragOver={e => handleDragOver(e, folder.id)}
-                                                        onDragLeave={e => handleDragLeave(e, folder.id)}
-                                                        onDrop={e => handleDrop(e, folder.id)}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            class="folder-toggle-btn"
-                                                            aria-expanded={folder.expanded}
-                                                            title={t(
-                                                                folder.expanded
-                                                                    ? 'sidebar.collapseProject'
-                                                                    : 'sidebar.expandProject',
-                                                                language
-                                                            )}
-                                                            aria-label={t(
-                                                                folder.expanded
-                                                                    ? 'sidebar.collapseProject'
-                                                                    : 'sidebar.expandProject',
-                                                                language
-                                                            )}
-                                                            onClick={(e: MouseEvent) => {
-                                                                e.stopPropagation();
-                                                                toggleFolder(folder.id);
-                                                            }}
-                                                        >
-                                                            <FolderToggleIcon open={folder.expanded} />
-                                                        </button>
-                                                        <div
-                                                            class="folder-click-area"
-                                                            draggable={true}
-                                                            onDragStart={e => handleDragStart(e, folder.id)}
-                                                            onDragEnd={handleDragEnd}
-                                                            onClick={() => {
-                                                                if (ws) onSelectWorkspace(ws);
-                                                            }}
-                                                        >
-                                                            <span class="ws-name" title={ws?.path || folder.name}>
-                                                                {folder.name}
-                                                            </span>
-                                                        </div>
-                                                        {ws && (
-                                                            <div
-                                                                class="ws-actions"
-                                                                onClick={(e: MouseEvent) => e.stopPropagation()}
-                                                            >
-                                                                <FsRowActionsMenu
-                                                                    entry={ws}
-                                                                    items={buildFolderActions(
-                                                                        ws,
-                                                                        onChatCreate,
-                                                                        onTerminalCreate,
-                                                                        onRenameWorkspace
-                                                                    )}
-                                                                    language={language}
-                                                                    triggerClassName="ws-actions-trigger"
-                                                                />
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {folder.expanded &&
-                                                        (() => {
-                                                            const { chats: chatSessions, terms: termSessions } =
-                                                                sessionsForFolder(folder.id, folder.sessions);
-
-                                                            // One unified list under each workspace: every
-                                                            // 会话 / 终端 session, using the same `.chat-item`
-                                                            // row style (no group headers).
-                                                            return (
-                                                                <div class="project-children">
-                                                                    {/* 会话 (chat) + 终端 (terminal) sessions */}
-                                                                    {chatSessions.map(renderSession)}
-                                                                    {termSessions.map(renderSession)}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                </div>
-                                            );
-                                        })}
-
-                                {/* ── 远程设备分组(#114)──────────────────────────
-                                    已注册的远程设备:可折叠组,展开时经代理路由拉取该
-                                    设备的项目;离线组灰显并在展开时提示无法连接。 */}
-                                {remoteDevices.value.map(device => {
-                                    const expanded = Boolean(remoteExpanded.value[device.id]);
-                                    const loading = Boolean(remoteLoading.value[device.id]);
-                                    const projects = remoteProjects.value[device.id] ?? [];
-                                    return (
-                                        <div
-                                            key={`dev-${device.id}`}
-                                            class={`project-node device-node${device.active ? '' : ' device-offline'}`}
-                                        >
-                                            <div
-                                                class={`project-folder ${expanded ? 'expanded' : ''}`}
-                                                title={
-                                                    device.active
-                                                        ? device.name
-                                                        : t('sidebar.device.offlineHint', language, {
-                                                              name: device.name,
-                                                          })
-                                                }
-                                                onClick={() => void toggleRemoteDevice(device)}
+                        {showProjects && (
+                            <div class={`workspace-section${projectsSectionOpen ? '' : ' is-collapsed'}`}>
+                                <div class="section-header">
+                                    <button
+                                        type="button"
+                                        class="section-fold-btn"
+                                        aria-expanded={projectsSectionOpen}
+                                        title={t(
+                                            projectsSectionOpen ? 'sidebar.section.collapse' : 'sidebar.section.expand',
+                                            language
+                                        )}
+                                        aria-label={t(
+                                            projectsSectionOpen ? 'sidebar.section.collapse' : 'sidebar.section.expand',
+                                            language
+                                        )}
+                                        onClick={toggleProjectsSection}
+                                    >
+                                        <FolderToggleIcon open={projectsSectionOpen} />
+                                    </button>
+                                    <button type="button" class="section-header-label" onClick={toggleProjectsSection}>
+                                        {t('sidebar.section.projects', language)}
+                                    </button>
+                                    {projectsSectionOpen && (
+                                        <div class="section-header-actions">
+                                            <button
+                                                class="section-search-btn"
+                                                title={t('sidebar.collapseAll', language) || '一键折叠'}
+                                                onClick={() => {
+                                                    const ids = folders
+                                                        .filter(
+                                                            f =>
+                                                                (workspaces.find(w => w.id === f.id)?.kind ??
+                                                                    'project') !== 'assistant'
+                                                        )
+                                                        .map(f => f.id);
+                                                    collapseFolders(ids);
+                                                }}
                                             >
                                                 <svg
-                                                    class="chevron"
                                                     viewBox="0 0 24 24"
                                                     fill="none"
                                                     stroke="currentColor"
@@ -1075,76 +872,322 @@ export function LeftSidebar({
                                                     stroke-linecap="round"
                                                     stroke-linejoin="round"
                                                 >
-                                                    <polyline points="9 18 15 12 9 6" />
+                                                    <polyline points="17 11 12 6 7 11" />
+                                                    <polyline points="17 18 12 13 7 18" />
                                                 </svg>
-                                                <DeviceOsIcon os={device.os} />
-                                                <span class="ws-name">{device.name}</span>
-                                                <span
-                                                    class={`device-status-dot${device.active ? ' online' : ''}`}
-                                                    aria-hidden="true"
+                                            </button>
+                                            <button
+                                                class={`section-search-btn${projectSearchOpen ? ' active' : ''}`}
+                                                title="搜索项目"
+                                                onClick={() => {
+                                                    const next = !projectSearchOpen;
+                                                    setProjectSearchOpen(next);
+                                                    if (!next) setProjectSearch('');
+                                                    else setTimeout(() => projectSearchRef.current?.focus(), 50);
+                                                }}
+                                            >
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                >
+                                                    <circle cx="11" cy="11" r="8" />
+                                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {projectsSectionOpen && (
+                                    <Fragment>
+                                        {projectSearchOpen && (
+                                            <div class="section-search-wrap">
+                                                <input
+                                                    ref={projectSearchRef}
+                                                    class="section-search-input"
+                                                    type="text"
+                                                    placeholder="搜索项目…"
+                                                    value={projectSearch}
+                                                    onInput={(e: Event) =>
+                                                        setProjectSearch((e.target as HTMLInputElement).value)
+                                                    }
                                                 />
+                                                {projectSearch && (
+                                                    <button
+                                                        class="section-search-clear"
+                                                        onClick={() => setProjectSearch('')}
+                                                        type="button"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
                                             </div>
-                                            {expanded && (
-                                                <div class="project-children">
-                                                    {loading && (
+                                        )}
+
+                                        {/* Loading skeleton */}
+                                        {workspacesLoading && (
+                                            <div class="ws-skeleton">
+                                                <div class="ws-skeleton-item" />
+                                                <div class="ws-skeleton-item" style="width:75%" />
+                                                <div class="ws-skeleton-item" style="width:60%" />
+                                            </div>
+                                        )}
+
+                                        {/* Empty state — folders whose ws is a project (i.e. not an assistant). */}
+                                        {!workspacesLoading &&
+                                            folders.filter(f => {
+                                                const w = workspaces.find(x => x.id === f.id);
+                                                return (w?.kind ?? 'project') !== 'assistant';
+                                            }).length === 0 && (
+                                                <div class="ws-empty">
+                                                    <svg
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        stroke-width="1.5"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    >
+                                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" />
+                                                    </svg>
+                                                    <span>{t('sidebar.empty', language)}</span>
+                                                    <button class="ws-empty-add" onClick={onCreateWorkspace}>
+                                                        {t('common.new', language)}
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                        {!workspacesLoading &&
+                                            folders
+                                                .filter(f => {
+                                                    const w = workspaces.find(x => x.id === f.id);
+                                                    return (w?.kind ?? 'project') !== 'assistant';
+                                                })
+                                                .filter(f => {
+                                                    if (!projectSearch) return true;
+                                                    const ws = workspaces.find(w => w.id === f.id);
+                                                    return (ws?.name ?? f.id)
+                                                        .toLowerCase()
+                                                        .includes(projectSearch.toLowerCase());
+                                                })
+                                                .map(folder => {
+                                                    const ws = workspaces.find(w => w.id === folder.id);
+                                                    const isActive = folder.id === activeWorkspaceId;
+
+                                                    return (
                                                         <div
-                                                            class="chat-item"
-                                                            style="opacity:0.6;cursor:default;pointer-events:none;"
+                                                            key={folder.id}
+                                                            class={`project-node${isActive ? ' ws-active' : ''}`}
                                                         >
-                                                            <div class="chat-item-left">
-                                                                <span class="chat-title">
-                                                                    {t('common.loading', language)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {!loading && device.active && projects.length === 0 && (
-                                                        <div
-                                                            class="chat-item"
-                                                            style="opacity:0.5;cursor:default;pointer-events:none;"
-                                                        >
-                                                            <div class="chat-item-left">
-                                                                <span class="chat-title">
-                                                                    {t('sidebar.empty', language)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {!loading &&
-                                                        projects.map(rws => {
-                                                            const isActiveRemote =
-                                                                activeWsIdSignal.value === rws.id &&
-                                                                activeWorkspaceDeviceId.value === device.id;
-                                                            return (
-                                                                <div
-                                                                    key={`${device.id}-${rws.id}`}
-                                                                    class={`chat-item chat-row-kind-task${
-                                                                        isActiveRemote && isTaskView ? ' active' : ''
-                                                                    }`}
+                                                            <div
+                                                                class={`project-folder ${folder.expanded ? 'expanded' : ''} ${
+                                                                    draggedId === folder.id ? 'dragging' : ''
+                                                                } ${
+                                                                    dragOverId === folder.id &&
+                                                                    dragOverPosition === 'before'
+                                                                        ? 'drag-over-before'
+                                                                        : ''
+                                                                } ${
+                                                                    dragOverId === folder.id &&
+                                                                    dragOverPosition === 'after'
+                                                                        ? 'drag-over-after'
+                                                                        : ''
+                                                                }`}
+                                                                onDragOver={e => handleDragOver(e, folder.id)}
+                                                                onDragLeave={e => handleDragLeave(e, folder.id)}
+                                                                onDrop={e => handleDrop(e, folder.id)}
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    class="folder-toggle-btn"
+                                                                    aria-expanded={folder.expanded}
+                                                                    title={t(
+                                                                        folder.expanded
+                                                                            ? 'sidebar.collapseProject'
+                                                                            : 'sidebar.expandProject',
+                                                                        language
+                                                                    )}
+                                                                    aria-label={t(
+                                                                        folder.expanded
+                                                                            ? 'sidebar.collapseProject'
+                                                                            : 'sidebar.expandProject',
+                                                                        language
+                                                                    )}
                                                                     onClick={(e: MouseEvent) => {
                                                                         e.stopPropagation();
-                                                                        onSelectWorkspace(rws);
+                                                                        toggleFolder(folder.id);
                                                                     }}
                                                                 >
+                                                                    <FolderToggleIcon open={folder.expanded} />
+                                                                </button>
+                                                                <div
+                                                                    class="folder-click-area"
+                                                                    draggable={true}
+                                                                    onDragStart={e => handleDragStart(e, folder.id)}
+                                                                    onDragEnd={handleDragEnd}
+                                                                    onClick={() => {
+                                                                        if (ws) onSelectWorkspace(ws);
+                                                                    }}
+                                                                >
+                                                                    <span
+                                                                        class="ws-name"
+                                                                        title={ws?.path || folder.name}
+                                                                    >
+                                                                        {folder.name}
+                                                                    </span>
+                                                                </div>
+                                                                {ws && (
+                                                                    <div
+                                                                        class="ws-actions"
+                                                                        onClick={(e: MouseEvent) => e.stopPropagation()}
+                                                                    >
+                                                                        <FsRowActionsMenu
+                                                                            entry={ws}
+                                                                            items={buildFolderActions(
+                                                                                ws,
+                                                                                onChatCreate,
+                                                                                onTerminalCreate,
+                                                                                onRenameWorkspace
+                                                                            )}
+                                                                            language={language}
+                                                                            triggerClassName="ws-actions-trigger"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {folder.expanded &&
+                                                                (() => {
+                                                                    const { chats: chatSessions, terms: termSessions } =
+                                                                        sessionsForFolder(folder.id, folder.sessions);
+
+                                                                    // One unified list under each workspace: every
+                                                                    // 会话 / 终端 session, using the same `.chat-item`
+                                                                    // row style (no group headers).
+                                                                    return (
+                                                                        <div class="project-children">
+                                                                            {/* 会话 (chat) + 终端 (terminal) sessions */}
+                                                                            {chatSessions.map(s => renderSession(s))}
+                                                                            {termSessions.map(s => renderSession(s))}
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                        </div>
+                                                    );
+                                                })}
+
+                                        {/* ── 远程设备分组(#114)──────────────────────────
+                                    已注册的远程设备:可折叠组,展开时经代理路由拉取该
+                                    设备的项目;离线组灰显并在展开时提示无法连接。 */}
+                                        {remoteDevices.value.map(device => {
+                                            const expanded = Boolean(remoteExpanded.value[device.id]);
+                                            const loading = Boolean(remoteLoading.value[device.id]);
+                                            const projects = remoteProjects.value[device.id] ?? [];
+                                            return (
+                                                <div
+                                                    key={`dev-${device.id}`}
+                                                    class={`project-node device-node${device.active ? '' : ' device-offline'}`}
+                                                >
+                                                    <div
+                                                        class={`project-folder ${expanded ? 'expanded' : ''}`}
+                                                        title={
+                                                            device.active
+                                                                ? device.name
+                                                                : t('sidebar.device.offlineHint', language, {
+                                                                      name: device.name,
+                                                                  })
+                                                        }
+                                                        onClick={() => void toggleRemoteDevice(device)}
+                                                    >
+                                                        <svg
+                                                            class="chevron"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            stroke-width="2.5"
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                        >
+                                                            <polyline points="9 18 15 12 9 6" />
+                                                        </svg>
+                                                        <DeviceOsIcon os={device.os} />
+                                                        <span class="ws-name">{device.name}</span>
+                                                        <span
+                                                            class={`device-status-dot${device.active ? ' online' : ''}`}
+                                                            aria-hidden="true"
+                                                        />
+                                                    </div>
+                                                    {expanded && (
+                                                        <div class="project-children">
+                                                            {loading && (
+                                                                <div
+                                                                    class="chat-item"
+                                                                    style="opacity:0.6;cursor:default;pointer-events:none;"
+                                                                >
                                                                     <div class="chat-item-left">
-                                                                        <span
-                                                                            class="chat-sidebar-avatar chat-task-icon"
-                                                                            aria-hidden="true"
-                                                                        >
-                                                                            {'\u{1F4C1}'}
-                                                                        </span>
-                                                                        <span class="chat-title" title={rws.path}>
-                                                                            {rws.name}
+                                                                        <span class="chat-title">
+                                                                            {t('common.loading', language)}
                                                                         </span>
                                                                     </div>
                                                                 </div>
-                                                            );
-                                                        })}
+                                                            )}
+                                                            {!loading && device.active && projects.length === 0 && (
+                                                                <div
+                                                                    class="chat-item"
+                                                                    style="opacity:0.5;cursor:default;pointer-events:none;"
+                                                                >
+                                                                    <div class="chat-item-left">
+                                                                        <span class="chat-title">
+                                                                            {t('sidebar.empty', language)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {!loading &&
+                                                                projects.map(rws => {
+                                                                    const isActiveRemote =
+                                                                        activeWsIdSignal.value === rws.id &&
+                                                                        activeWorkspaceDeviceId.value === device.id;
+                                                                    return (
+                                                                        <div
+                                                                            key={`${device.id}-${rws.id}`}
+                                                                            class={`chat-item chat-row-kind-task${
+                                                                                isActiveRemote && isTaskView
+                                                                                    ? ' active'
+                                                                                    : ''
+                                                                            }`}
+                                                                            onClick={(e: MouseEvent) => {
+                                                                                e.stopPropagation();
+                                                                                onSelectWorkspace(rws);
+                                                                            }}
+                                                                        >
+                                                                            <div class="chat-item-left">
+                                                                                <span
+                                                                                    class="chat-sidebar-avatar chat-task-icon"
+                                                                                    aria-hidden="true"
+                                                                                >
+                                                                                    {'\u{1F4C1}'}
+                                                                                </span>
+                                                                                <span
+                                                                                    class="chat-title"
+                                                                                    title={rws.path}
+                                                                                >
+                                                                                    {rws.name}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                            );
+                                        })}
+                                    </Fragment>
+                                )}
                             </div>
                         )}
                         {/* ── 应用 / L1 apps section (#332) ──────────────────────────────────

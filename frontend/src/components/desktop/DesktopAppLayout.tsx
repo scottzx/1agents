@@ -150,12 +150,11 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onRenameWorkspace={ws => modal.openRenameWorkspaceModal(ws)}
                                 onSelectWorkspace={ws => {
                                     wsStore.selectWorkspace(ws);
-                                    // 点击文件夹 → 统一下钻到对应详情页:
-                                    // 助理模式进助理详情, 项目模式(非默认工作区)进项目详情。
-                                    if (ui.sidebarMode.value === 'assistant') {
+                                    // 点击项目文件夹 → 下钻项目详情；助理配置走任务行菜单 / 总览。
+                                    if ((ws.kind ?? 'project') === 'assistant') {
                                         tabsStore.assistantDetailId.value = ws.id;
                                         tabsStore.activeDrawerTab.value = 'assistants';
-                                    } else if (ui.sidebarMode.value === 'project' && ws.id !== 'default') {
+                                    } else if (ws.id !== 'default') {
                                         stage.enterProjectDetail(ws.id, ws.name);
                                     } else {
                                         stage.enterProject();
