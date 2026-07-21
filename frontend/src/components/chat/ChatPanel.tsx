@@ -167,6 +167,7 @@ function ChatPanelInner({ session, pendingInitialMessage, onClearPendingInitialM
                 <ExitPlanPrompt requests={[nextPrompt.data]} onRespond={respondExitPlanMode} />
             )}
             <Composer
+                sessionId={session.id}
                 onSend={send}
                 onCancel={cancel}
                 isRunning={typing}
