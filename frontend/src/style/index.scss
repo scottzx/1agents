@@ -12591,6 +12591,15 @@ body {
   gap: 8px;
   overflow: hidden;
 
+  // Same spacing pattern as .fb-file-list.fb-tree-list: parent owns the margin
+  // so children can stay width:100% without horizontal overflow.
+  .fb-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px;
+  }
+
   .fb-search-wrap {
     position: relative;
     width: 100%;
@@ -12625,7 +12634,6 @@ body {
     align-items: center;
     gap: 4px;
     flex-wrap: wrap;
-    margin-bottom: 2px;
 
     .fb-tag {
       display: inline-flex;

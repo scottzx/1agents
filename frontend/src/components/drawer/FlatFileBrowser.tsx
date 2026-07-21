@@ -340,85 +340,86 @@ export function FlatFileBrowser({
 
     return (
         <div class="flat-file-browser">
-            {/* Search Input */}
-            <div class="fb-search-wrap">
-                <input
-                    id="fb-search-input"
-                    class="fb-search-input"
-                    type="text"
-                    placeholder={t('fileBrowser.searchPlaceholder', language)}
-                    value={searchQuery}
-                    onInput={e => onSearchQueryChange((e.target as HTMLInputElement).value)}
-                />
-            </div>
-            {/* Filter Tags */}
-            <div class="fb-filter-tags">
-                {(['all', 'doc', 'img', 'code', 'fav'] as const).map(tag => (
-                    <button
-                        key={tag}
-                        class={`fb-tag ${tag === 'fav' ? 'fb-tag-fav' : ''} ${selectedFilterTag === tag ? 'active' : ''}`}
-                        onClick={() => onFilterTagChange(tag)}
-                    >
-                        {tag === 'fav' && (
-                            <svg class="fb-tag-fav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            {/* Search + Filter toolbar (margin owned by parent, same pattern as fb-file-list / fb-tree-list) */}
+            <div class="fb-toolbar">
+                <div class="fb-search-wrap">
+                    <input
+                        id="fb-search-input"
+                        class="fb-search-input"
+                        type="text"
+                        placeholder={t('fileBrowser.searchPlaceholder', language)}
+                        value={searchQuery}
+                        onInput={e => onSearchQueryChange((e.target as HTMLInputElement).value)}
+                    />
+                </div>
+                <div class="fb-filter-tags">
+                    {(['all', 'doc', 'img', 'code', 'fav'] as const).map(tag => (
+                        <button
+                            key={tag}
+                            class={`fb-tag ${tag === 'fav' ? 'fb-tag-fav' : ''} ${selectedFilterTag === tag ? 'active' : ''}`}
+                            onClick={() => onFilterTagChange(tag)}
+                        >
+                            {tag === 'fav' && (
+                                <svg class="fb-tag-fav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                </svg>
+                            )}
+                            {t(TAG_KEYS[tag], language)}
+                        </button>
+                    ))}
+
+                    {/* Upload Button (icon only, hidden on localhost access) */}
+                    {!IS_LOCALHOST && (
+                        <button
+                            class="fb-tag fb-upload-btn"
+                            style="margin-left: auto; display: flex; align-items: center; justify-content: center; border-color: var(--accent-color); color: var(--accent-color);"
+                            title={t('fileBrowser.upload', language)}
+                            onClick={uploadFileAction}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="width: 14px; height: 14px;"
+                            >
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17 8 12 3 7 8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
-                        )}
-                        {t(TAG_KEYS[tag], language)}
-                    </button>
-                ))}
+                        </button>
+                    )}
 
-                {/* Upload Button (icon only, hidden on localhost access) */}
-                {!IS_LOCALHOST && (
-                    <button
-                        class="fb-tag fb-upload-btn"
-                        style="margin-left: auto; display: flex; align-items: center; justify-content: center; border-color: var(--accent-color); color: var(--accent-color);"
-                        title={t('fileBrowser.upload', language)}
-                        onClick={uploadFileAction}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            style="width: 14px; height: 14px;"
+                    {/* Open in Finder / Explorer Button (Desktop mode only) */}
+                    {IS_DESKTOP && (
+                        <button
+                            class="fb-tag fb-open-folder-btn"
+                            style={`display: flex; align-items: center; gap: 4px; border-color: var(--text-secondary); color: var(--text-secondary);${IS_LOCALHOST ? ' margin-left: auto;' : ''}`}
+                            onClick={openFolderAction}
                         >
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                            <polyline points="17 8 12 3 7 8" />
-                            <line x1="12" y1="3" x2="12" y2="15" />
-                        </svg>
-                    </button>
-                )}
-
-                {/* Open in Finder / Explorer Button (Desktop mode only) */}
-                {IS_DESKTOP && (
-                    <button
-                        class="fb-tag fb-open-folder-btn"
-                        style={`display: flex; align-items: center; gap: 4px; border-color: var(--text-secondary); color: var(--text-secondary);${IS_LOCALHOST ? ' margin-left: auto;' : ''}`}
-                        onClick={openFolderAction}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            style="width: 14px; height: 14px;"
-                        >
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                        <span>
-                            {navigator.userAgent.toLowerCase().includes('mac')
-                                ? t('fileBrowser.openInFinder', language)
-                                : t('fileBrowser.openInExplorer', language)}
-                        </span>
-                    </button>
-                )}
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                style="width: 14px; height: 14px;"
+                            >
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                            </svg>
+                            <span>
+                                {navigator.userAgent.toLowerCase().includes('mac')
+                                    ? t('fileBrowser.openInFinder', language)
+                                    : t('fileBrowser.openInExplorer', language)}
+                            </span>
+                        </button>
+                    )}
+                </div>
             </div>
             {/* Main Content Area */}
             {isSearching ? (
