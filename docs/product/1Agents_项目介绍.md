@@ -1,6 +1,6 @@
 # 关于我们与 1Agents：一人成军的 AI 原生办公软件方案
 
-> 📍 完整版本路线图（1.x→4.x 里程碑与 issue 归位）见 [docs/roadmap.md](./roadmap.md)。
+> 📍 完整版本路线图（1.x→4.x 里程碑与 issue 归位）见 [docs/product/roadmap.md](./roadmap.md)。
 
 ## 👋 我们是谁？
 

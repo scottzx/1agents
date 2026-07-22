@@ -3,7 +3,7 @@
 **Status:** Draft · 设计参照与建议(非实现规格)
 **Author:** scottzx + Claude
 **Date:** 2026-06-29
-**Scope:** 前端 IA / 交互设计;支撑 [agentsOS 架构设计](../agentsOS-架构设计.md) §2 分层、§7 项目外壳、§8 应用挂载点
+**Scope:** 前端 IA / 交互设计;支撑 [agentsOS 架构设计](../architecture/agentsOS-架构设计.md) §2 分层、§7 项目外壳、§8 应用挂载点
 
 > 现状:我们有**内核**(执行/任务/项目三层)+ **外展**(应用,如 CRM),整体偏复杂,交互需要重新设计,让用户不被复杂度淹没。本文先记录 WorkBuddy 的交互范式作参照,再给我们的重构建议。
 
@@ -102,4 +102,4 @@ WorkBuddy v5.1.7,与我们形态接近,可借鉴。
 - 应用挂载点的前端装载机制(项目内 tab / L1 页 / 透视)。
 - 一份可点击的高保真原型(在 CRM + 一个项目级应用上验证三层会话入口与外壳)。
 
-> 关联:[agentsOS 架构设计](../agentsOS-架构设计.md)、[三执行者实战案例](../experience/三执行者实战案例.md)、epic #317。
+> 关联:[agentsOS 架构设计](../architecture/agentsOS-架构设计.md)、[三执行者实战案例](../experience/三执行者实战案例.md)、epic #317。

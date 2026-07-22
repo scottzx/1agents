@@ -54,7 +54,7 @@ H5 → relay → happy daemon → adapter(Node,哑管道) → Go /api/agent/chat
 
 - happy-server = 中转 relay,E2EE(machine key),中转看不到明文。
 - happy-cli daemon(本机 machine scope)启动时 `import(HAPPY_RPC_ADAPTER_ENTRY)` → `register(ctx)` 加载
-  `adapter/` 接缝(详见 [adapter/README.md](../adapter/README.md))。
+  `adapter/` 接缝(详见 [adapter/README.md](../../adapter/README.md))。
 - `adapter/` 注册的 handler(全部哑搬运 + 加密,**零业务逻辑**):
   - `1agents-proxy`(控制面):解密中转请求 → `fetch` 本机 Go HTTP API → 回包。
   - `1agents-chat-open/send/close`(聊天流):开本机 Go `/api/agent/chat/ws`,每个 Go `WsMessage`

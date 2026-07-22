@@ -154,9 +154,10 @@ docs/            产品、设计和架构文档
 
 更多设计文档：
 
-- [docs/frontend-product-features.md](docs/frontend-product-features.md)
+- [docs/README.md](docs/README.md) — 文档分类索引
+- [docs/product/frontend-product-features.md](docs/product/frontend-product-features.md)
 - [docs/design_rules/app-agentic-workbench-design-standard.md](docs/design_rules/app-agentic-workbench-design-standard.md)
-- [docs/agentsOS-架构设计.md](docs/agentsOS-架构设计.md)
+- [docs/architecture/agentsOS-架构设计.md](docs/architecture/agentsOS-架构设计.md)
 
 ---
 

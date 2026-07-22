@@ -47,7 +47,7 @@ const (
 
 // RootManifest mirrors the JSON structure published as
 // releases/latest/download/manifest.json on GitHub Releases.
-// See docs/ota-architecture.md §4.1 for the canonical shape.
+// See docs/architecture/ota-architecture.md §4.1 for the canonical shape.
 type RootManifest struct {
 	Channel      string            `json:"channel"`
 	ReleasedAt   string            `json:"released_at"`

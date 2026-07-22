@@ -157,9 +157,10 @@ docs/            Product, design, and architecture docs
 
 Related docs:
 
-- [docs/frontend-product-features.md](docs/frontend-product-features.md)
+- [docs/README.md](docs/README.md) — docs index
+- [docs/product/frontend-product-features.md](docs/product/frontend-product-features.md)
 - [docs/design_rules/app-agentic-workbench-design-standard.md](docs/design_rules/app-agentic-workbench-design-standard.md)
-- [docs/agentsOS-架构设计.md](docs/agentsOS-架构设计.md)
+- [docs/architecture/agentsOS-架构设计.md](docs/architecture/agentsOS-架构设计.md)
 
 ---
 

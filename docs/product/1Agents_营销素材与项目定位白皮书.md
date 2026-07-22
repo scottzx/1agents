@@ -84,15 +84,15 @@ graph TD
 
 ### 1. 组织横幅 (Organization Banner)
 > 适用于组织主页、产品头部大图，简洁而富有科技感。
-![组织横幅](../publics/org_banner.png)
+![组织横幅](../../publics/org_banner.png)
 
 ### 2. 详情页横幅 (Detail Page Banner) - 1200×340 推荐尺寸
 > 适用于产品详情页或说明文档，右侧融入了轻量级终端、文件目录与 Agent 互联拓扑。
-![详情页横幅](../publics/detail_banner.png)
+![详情页横幅](../../publics/detail_banner.png)
 
 ### 3. 社交媒体海报 (Social Media Poster)
 > 适用于 GitHub Readme、X (Twitter)、小红书或朋友圈。展示了 PMO, PM, Executor, Verifier 相互协同的深色科技质感。
-![社交媒体海报](../publics/promo_poster.png)
+![社交媒体海报](../../publics/promo_poster.png)
 
 ---
 

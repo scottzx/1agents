@@ -2,7 +2,7 @@
  * ctx 契约 —— happy-cli 注入给 adapter `register(ctx)` 的对象形状。
  *
  * **耦合锁定点**:这是 adapter 与 happy-cli 之间唯一的接口面。每次同步 upstream
- * (见 docs/happy-cli-fork-sync.md)后,须复核本文件是否仍与 happy-cli
+ * (见 docs/architecture/happy-cli-fork-sync.md)后,须复核本文件是否仍与 happy-cli
  * `src/modules/common/loadRpcAdapter.ts` 的注入对象一致。
  *
  * adapter 只通过 ctx 触达 happy-cli 能力,绝不直接 import happy-cli 内部模块。

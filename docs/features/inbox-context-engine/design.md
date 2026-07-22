@@ -4,7 +4,7 @@
 **Author:** scott + Claude
 **Date:** 2026-06-22
 **Scope:** `backend/internal/meta`（inbox_items / roles）、`modules/1skills`、新增角色仓 `.1agents/roles/`、`modules/_upstream/*`（吸收参照）
-**关联路线图:** [docs/roadmap.md](../../roadmap.md) 3.x（信息收口→闭环可控）+ 4.x（经验复利）
+**关联路线图:** [docs/product/roadmap.md](../../product/roadmap.md) 3.x（信息收口→闭环可控）+ 4.x（经验复利）
 
 > 本文是把 Inbox 从「统一收件箱」升级为「**全部外部上下文收口 + 驱动自动运行的引擎**」，并据此搭建「专家系统」（角色 + 技能 + 吸收管线）的单一事实来源。跨 Inbox / 角色 / 技能 / 开源吸收四块，先有定稿再拆 issue，避免各写各的。
 
@@ -22,7 +22,7 @@
 
 > **Inbox 是公司的感知器官（雷达）。所有外部上下文从这里进，经分类/深挖/讨论后，要么转成需求驱动项目执行，要么沉淀进知识库。专家（角色）+ 技能 + 吸收管线是支撑这条流水线的底座。**
 
-这与 [roadmap.md](../../roadmap.md) 的「信息收口是入口也是回流口」「三时间尺度叠加，沉淀链是复利护城河」完全一致——本 RFC 是那条理念在 Inbox/专家层的具体落地。
+这与 [roadmap.md](../../product/roadmap.md) 的「信息收口是入口也是回流口」「三时间尺度叠加，沉淀链是复利护城河」完全一致——本 RFC 是那条理念在 Inbox/专家层的具体落地。
 
 ---
 

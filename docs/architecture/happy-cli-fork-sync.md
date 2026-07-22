@@ -18,7 +18,7 @@
 因为我们零改动 submodule 源码,同步就是直接合上游,**理想零冲突**。唯二的耦合点:
 
 1. **`ctx` 契约形状** —— happy-cli `src/modules/common/loadRpcAdapter.ts` 注入给
-   `register(ctx)` 的对象。由 [`adapter/rpc/ctxContract.d.ts`](../adapter/rpc/ctxContract.d.ts) 钉住。
+   `register(ctx)` 的对象。由 [`adapter/rpc/ctxContract.d.ts`](../../adapter/rpc/ctxContract.d.ts) 钉住。
 2. **Tier-1 导出面** —— `agent/core`、`agent/transport`、`agent/acp/{AcpBackend,AcpSessionManager}`
    等被 `adapter/agent/` 当库消费的模块的导出签名(M2/M3 才相关)。
 

@@ -5,8 +5,8 @@
 (machine scope)启动时动态加载并调用 `register(ctx)`,把所有 1Agents 专属能力注册进中转。
 
 这样 happy-cli 源码保持**零 1Agents 代码**,可干净同步上游 slopus/happy
-(见 [docs/happy-cli-fork-sync.md](../docs/happy-cli-fork-sync.md))。整体设计见
-[docs/happy-integration-skeleton.md](../docs/happy-integration-skeleton.md)。
+(见 [docs/architecture/happy-cli-fork-sync.md](../docs/architecture/happy-cli-fork-sync.md))。整体设计见
+[docs/architecture/happy-integration-skeleton.md](../docs/architecture/happy-integration-skeleton.md)。
 
 ## 模块边界(硬约束)
 
@@ -32,7 +32,7 @@
   (`npm test` 或 `node --test`)。⚠️ golden 编码的是从两端类型定义推导的契约基线,
   **非现网 acpx 抓包** —— M2 闸(逐字节对拍现网产出)仍未做,见 envelope.mjs 顶部「验收边界」。
 - 🚧 `terminal/`、`agent/` —— 占位 + 文档注释 + TODO,**不含可运行逻辑**。
-  见 [agent 收敛路线图](../docs/agent-convergence-roadmap.md)的 M1/M2/M3。
+  见 [agent 收敛路线图](../docs/architecture/agent-convergence-roadmap.md)的 M1/M2/M3。
 
 ## 怎么被加载(零耦合)
 

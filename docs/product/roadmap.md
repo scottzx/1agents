@@ -69,7 +69,7 @@
 
 ### 3.x — 信息收口 → 闭环可控
 
-> **Inbox 全上下文引擎 + 专家系统底座定稿** → [docs/features/inbox-context-engine/design.md](features/inbox-context-engine/design.md)。把 Inbox 升级为「全部外部上下文收口 + 自动运行引擎」，并据此搭角色仓/技能仓/开源吸收管线（吸收 kwiki/superpowers/gstack）。下列 ◯ 槽位拆 issue 时连续编号。
+> **Inbox 全上下文引擎 + 专家系统底座定稿** → [docs/features/inbox-context-engine/design.md](../features/inbox-context-engine/design.md)。把 Inbox 升级为「全部外部上下文收口 + 自动运行引擎」，并据此搭角色仓/技能仓/开源吸收管线（吸收 kwiki/superpowers/gstack）。下列 ◯ 槽位拆 issue 时连续编号。
 
 - ⬤ **3.0 Inbox 信息收口 + 立项**：[#60](https://github.com/scottzx/1agents/issues/60)（统一收口层 → 扩 domain+depth 维度 + 收口规则，见 RFC §3）、[#61](https://github.com/scottzx/1agents/issues/61)（PMO 需求分发）、[#67](https://github.com/scottzx/1agents/issues/67)（下游分叉·临时任务 vs 立项；个人 Task PhaseA 为本期地基）
   - ⬤ [#189](https://github.com/scottzx/1agents/issues/189) **Discussion 决策层**（合并 [#47](https://github.com/scottzx/1agents/issues/47) 建议卡）：对话线程 + 可选挂卡 + 拍板转需求/任务（RFC §3.1）

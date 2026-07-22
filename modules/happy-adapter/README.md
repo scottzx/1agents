@@ -8,7 +8,7 @@
 
 1Agents 自有的 **C2 接缝胶水**。把所有 1Agents 专属的 machine-scoped RPC handler 从
 happy-cli 里搬出来，放进本仓（1agents_app），让 happy-cli 保持**零 1Agents 代码的只读蓝图**，
-可干净同步上游 slopus/happy。详见 [docs/happy-cli-fork-sync.md](../../docs/happy-cli-fork-sync.md)、
+可干净同步上游 slopus/happy。详见 [docs/architecture/happy-cli-fork-sync.md](../../docs/architecture/happy-cli-fork-sync.md)、
 [docs/csc-architecture? / open-vs-closed-boundary](../../../1agents_server/docs/open-vs-closed-boundary.md)。
 
 ## 它注册了什么
