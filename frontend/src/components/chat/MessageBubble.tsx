@@ -1033,9 +1033,12 @@ export type PendingPermission = NonNullable<GroupedToolCall['permission']>;
 export function PermissionActionRow({
     permission,
     onRespond,
+    preview,
 }: {
     permission: PendingPermission;
     onRespond?: (requestId: string, decision: PermissionDecision) => void;
+    /** Optional tool-input summary shown between the title and action buttons. */
+    preview?: string | null;
 }) {
     const lang = getLang();
     const respond = (decision: PermissionDecision) => {
@@ -1043,11 +1046,13 @@ export function PermissionActionRow({
     };
     // Four buttons, ordered left → right by escalation:
     //   deny-always · deny · allow · allow-always
+    // Layout: toolname → description → options
     return (
         <div class="chat-permission-inline">
             <div class="chat-permission-inline-label">
                 {t('chat.permission.title', lang, { tool: permission.toolName })}
             </div>
+            {preview && <div class="chat-permission-prompt-preview">{preview}</div>}
             <div class="chat-permission-actions">
                 <button
                     type="button"
@@ -1123,8 +1128,11 @@ export function PermissionPrompt({
     return (
         <div class="chat-permission-prompt" role="region" aria-label="permission">
             <div key={permission.requestId} class="chat-permission-prompt-card">
-                <PermissionActionRow permission={permission} onRespond={onRespond} />
-                {preview && <div class="chat-permission-prompt-preview">{preview}</div>}
+                <PermissionActionRow
+                    permission={permission}
+                    onRespond={onRespond}
+                    preview={preview}
+                />
             </div>
         </div>
     );
