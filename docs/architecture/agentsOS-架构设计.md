@@ -1,7 +1,9 @@
 # agentsOS 架构设计 — 任务内核 · 项目外壳 · 可装可卸应用
 
 > 1agents 演进为「AI-native 组织 / 可装可卸多应用平台」的架构总纲。
-> 术语:统一叫**任务**(不再叫"工单")。任务 = 平台的基本要素。
+> **术语权威**：[名称定义表 §0](../product/名称定义表.md)（冲突时以名称定义表为准，本文不另造名）。
+> 可调度工作单元 = **ProjectItem** 中 `ItemType=task` 的条目（口语可称「任务」）；**工单**弃用。主实体类型名是 ProjectItem，不是 Task。
+> **应用 registry / 三挂载 / 首批 media·CRM·电台一等应用** = **远期愿景**；当前过渡扩展 = skill + scripts + 内置浏览器预览（名称定义表 §0.9），本文 §8–§10 相关段落均按远期阅读。
 
 ---
 
@@ -53,9 +55,9 @@
 | **④ 执行层** | 三条道:`agent` / `function` / `human` 把任务做掉 | 内核框架 + 应用 handler |
 
 **层间关系**
-- **③ 任务是原子,可脱离 ② 项目独立跑**(助理/通用项目 = 只有任务、没有项目管理);② 坐在 ③ 之上去**组织**任务,而非包含它。
+- **③ 在逻辑上可无完整 ② PM 外壳运转**（如 **助理 `kind=workforce`**：轻量对话、无强制里程碑/需求池），但**存储上每条 ProjectItem 始终挂一条 Workspace/Project 行**（含 builtin 助理）。**否决**「任务可脱离 project / schema 无 project_id」——与实现不符，见[名称定义表 §0.3](../product/名称定义表.md)。② 坐在 ③ 之上去**组织**工作项，而非「可不挂项目行」。
 - **④ 是 ③ 的派发出口**(三条道);agent 是主道,function 与 human 同层。
-- **① 在 ②③④ 上生长、沉淀出来**(机制见 §3)。
+- **① 在 ②③④ 上生长、沉淀出来**(机制见 §3；① 的 registry 形态为**远期**)。
 
 ---
 
@@ -82,8 +84,8 @@
 ## 4. 内核 / 应用 切线
 
 - **内核(出厂就有)** = ②③④框架:项目外壳 + 任务引擎 + 执行层三态的槽与派发 + 北向任务 API + 南向 ACP + 存储面。
-- **应用(长出来、装上去)** = ①业务层 + ④里 `function` 的具体 handler。
-- 硬规则:① 应用不依赖应用;② 核心保持干净;③ registry = 版次边界。
+- **应用(长出来、装上去)** = ①业务层 + ④里 `function` 的具体 handler。（**远期** registry 装载形态；当前过渡不实装 App Registry。）
+- 硬规则:① 应用不依赖应用;② 核心保持干净;③ **远期** registry = 版次边界（当前扩展真源 = skill / scripts / 浏览器预览）。
 
 ---
 
@@ -149,14 +151,16 @@ function     agent        human       ┌ function(刚)              └─► �
 - **workspace** = 目录 + 身份 + 可用 agent 白名单(内核瘦概念)。任务带 `cwd = 项目目录`。
 - **通用项目外壳(平台级 scaffold)**:`动态 / 计划 / 任务 / 资产` 四标签 + **项目配置**。
 - **项目配置 = 该项目的 agent 上下文**:`指令`(system prompt)+`连接器`(MCP)+`专家`(角色)+`技能`+`自动化`。项目内派任务时,任务的 `target.能力 / 提示词`来自项目配置。
-- **三层会话入口**:**助理**(默认 workspace + 对话)/ **通用项目**(选文件夹直接对话,不挂应用)/ **专业项目**(workspace + 应用模板 + 完整任务管理)。
-- **项目模板机制**:新建专业项目 = 选模板(= 领域应用,= 固化产物)→ 铺 workspace:子目录骨架 + 域表 + 预置配置。
+- **创建入口（UX，非落库三档 kind）**：见[名称定义表 §0.4](../product/名称定义表.md)——**助理** → `kind=workforce`；**项目** → `kind=project`（无模板）；**template_project**（向导名，**不是 kind**）→ `kind=project` + 模板脚手架。**否决**将 `professional-project` / `generic-project` / `SessionTier` 当作落库枚举。
+- **项目模板机制（远期愿景与当前 scaffold 共用「选模板铺目录」思路）**:新建模板项目 = 选模板 → 铺 workspace:子目录骨架 + 预置配置（一等「领域应用」装载属远期）。
 
 ---
 
-## 8. 业务层(应用 / 专业模板)
+## 8. 业务层(应用 / 专业模板) · **远期**
 
-**应用 = 模块 + 挂载点(manifest 声明)**:
+> **状态（名称定义表 §0.9）**：**远期**。当前**不实装** App Registry；扩展优先 skill + scripts + 内置浏览器预览。media / CRM / 电台**不以一等注册应用交付**。下文描述目标架构形态，非当前真源。
+
+**应用 = 模块 + 挂载点(manifest 声明)**（远期）:
 
 | 挂载点 | 呈现 | 适用 | 准则 |
 |---|---|---|---|
@@ -165,10 +169,10 @@ function     agent        human       ┌ function(刚)              └─► �
 | **项目透视(lens)** | 往项目/Home 叠加横切视图 | 财务(成本)、CRM(关联线索) | 横切,叠加 |
 
 - 项目级应用**必须**做成项目内 tab(继承项目外壳);全局级做 L1 页;一个应用可多挂载点。
-- **"专业模板" = 挂在项目里的应用;"全局应用" = 挂在 L1 的应用**,同一套 registry,区别只是挂载点。
+- **"专业模板" = 挂在项目里的应用;"全局应用" = 挂在 L1 的应用**,同一套 **远期** registry,区别只是挂载点。
 - **`function` 是专业模板的核心贡献**:通用内核擅长 agent/human,缺确定性工人。模板贡献 = skills/提示词 + `function` 工人 + 自定义视图/域表 + 自动化。
 
-**首批应用(Phase 1)**
+**首批应用（远期示意，非当前交付）**
 
 | 应用 | 挂载点 | 骑在谁身上 | 新增 |
 |---|---|---|---|
@@ -192,9 +196,11 @@ function     agent        human       ┌ function(刚)              └─► �
 
 ## 10. 插件化与自举(= 固化引擎)
 
-- **安装机制(Phase 1)**:编译期模块 + registry 启用/停用。**开关即版本**。
-- **自举生命周期**:需求(inbox/对话)→ 立项 + 项目目录 → agent 开发/部署/测试 → CICD → registry 装回 → 运行时回调任务 API。应用运行时**不自带 agent**,统一回调平台执行任务。
-- **应用契约两面(SDK)**:应用提供 manifest + 前端 bundle + 后端模块(含 function)+ `business_ref` 命名空间;平台提供 任务 API + 领域存储 + 共享源(Inbox/RSS/digest)+ 项目外壳 + co-pilot + 挂载点。
+> **registry 装载 = 远期**。当前过渡：skill + scripts + 内置浏览器；不实装 App Registry（§0.9）。
+
+- **安装机制（远期）**:编译期模块 + registry 启用/停用。**开关即版本**。
+- **自举生命周期（远期形态）**:需求(inbox/对话)→ 立项 + 项目目录 → agent 开发/部署/测试 → CICD → registry 装回 → 运行时回调任务 API。应用运行时**不自带 agent**,统一回调平台执行任务。
+- **应用契约两面(SDK)（远期；契约草案见 [app-sdk-contract.md](./app-sdk-contract.md)）**:应用提供 manifest + 前端 bundle + 后端模块(含 function)+ `business_ref` 命名空间;平台提供 任务 API + 领域存储 + 共享源(Inbox/RSS/digest)+ 项目外壳 + co-pilot + 挂载点。
 
 ---
 
@@ -208,25 +214,28 @@ function     agent        human       ┌ function(刚)              └─► �
 
 ## 12. Phase 1 范围 · 北极星 · 纪律
 
-- **Phase 1**:单用户 · 无 RBAC · 编译期模块+开关。底座 + 自媒体 + CRM(+ 电台验证)。唯一成功标准:**做第三个应用几乎零内核改动**。
-- **北极星(不做)**:运行时热装、多租户 RBAC、财务/成本归集/预算、人机混合任务(报销/回填)、第三方市场、固化一等化(一键收割)。
-- **纪律**:先立任务 API 边界、应用只经 API;`task`/`pm_*` 物理表先共存、延后拆;别第一步重写 `meta.Task`。
+- **当前交付重心**:单用户 · 无 RBAC · 任务内核 + 项目外壳 + executor 三态 + skill/scripts 过渡扩展。**不实装** App Registry；media/CRM/电台一等应用与 registry 三挂载标**远期**。
+- **远期北极星（仍有效、非当前闸门）**:做第三个 registry 应用几乎零内核改动。
+- **北极星(不做)**:运行时热装、多租户 RBAC、财务/成本归集/预算、第三方市场、固化一等化(一键收割)。
+- **纪律**:术语与实体以[名称定义表 §0](../product/名称定义表.md)为准；可调度仅 `ItemType=task`；ProjectItem 始终挂 Workspace；应用扩展当前不经 registry。
 
 ---
 
 ## 13. 术语表
 
+> **完整与冲突裁决以 [名称定义表](../product/名称定义表.md) 为准**；下表仅为本文阅读索引，不另立定义。
+
 | 术语 | 含义 |
 |---|---|
-| **任务** | 平台基本要素;executor 三态(agent/function/human)的可调度工作单元 |
-| **任务内核** | 任务模型 + 调度/依赖/重试/周期 + verifier + 事件引擎 + 成本 + 北向 API + 南向派发 |
-| **项目外壳** | 平台级 scaffold:workspace + 动态/计划/任务/资产 + 项目配置 |
-| **workspace** | 内核瘦概念:目录 + 身份 + 可用 agent 白名单 |
-| **应用 / 专业模板** | 注册进 registry 的模块;挂载点 = 项目内 tab / L1 页 / 透视 |
+| **ProjectItem / 任务（口语）** | 主实体 ProjectItem；仅 `ItemType=task` 可调度；executor ∈ {agent,function,human} × assignee |
+| **任务内核** | ProjectItem 引擎：调度/依赖/重试/周期 + verifier + 事件 + 成本 + 北向 API + 南向派发 |
+| **项目外壳** | 平台级 scaffold:workspace + 动态/计划/工作项/资产 + 项目配置；可无完整 PM 外壳 ≠ 可无 project 行 |
+| **workspace / 项目** | API/类型真名 Workspace = 产品「项目」；助理 UI = `kind=workforce` |
+| **应用 / 专业模板** | **远期**：注册进 registry 的模块；挂载点 = 项目内 tab / L1 页 / 透视。当前过渡 = skill/scripts/浏览器 |
 | **固化 / 核心循环** | 把 agent 探索沉淀成更刚的形态(即兴 → 工具 → 定时 → 代码) |
 | **function(刚)** | executor 之一:确定性 worker;内核出框架、应用出实现;一份注册、两种消费 |
-| **agent(柔)** | executor 之一:推理/组织/变通,按需 call function |
+| **agent(柔)** | executor 通道之一（≠ kind=workforce 助理；≠ Chat `assistant_text`） |
 | **human(裁)** | executor 之一:最终担责拍板 |
 | **策略** | 柔固化为刚的产物:判定依据 + 逻辑代码;由 function 刚性执行 |
-| **business_ref** | 任务到应用业务对象/阶段的绑定缝 |
+| **business_ref** | 任务到应用业务对象/阶段的绑定缝（远期应用场景更完整） |
 | **co-pilot** | 随处可唤的对话入口;意图识别 → 落成任务 |

@@ -155,9 +155,10 @@ docs/            产品、设计和架构文档
 更多设计文档：
 
 - [docs/README.md](docs/README.md) — 文档分类索引
+- [docs/product/名称定义表.md](docs/product/名称定义表.md) — **术语权威**（§0 冲突裁决 · ProjectItem / workforce）
 - [docs/product/frontend-product-features.md](docs/product/frontend-product-features.md)
 - [docs/design_rules/app-agentic-workbench-design-standard.md](docs/design_rules/app-agentic-workbench-design-standard.md)
-- [docs/architecture/agentsOS-架构设计.md](docs/architecture/agentsOS-架构设计.md)
+- [docs/architecture/agentsOS-架构设计.md](docs/architecture/agentsOS-架构设计.md) — 架构总纲（App Registry 为远期）
 
 ---
 
