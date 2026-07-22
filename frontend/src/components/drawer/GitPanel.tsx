@@ -271,16 +271,14 @@ interface GitPanelState {
     diffContent: string;
     diffLoading: boolean;
     toast: string;
-    stagedCollapsed: boolean;
-    unstagedCollapsed: boolean;
-    untrackedCollapsed: boolean;
+    /** Unified "Changes" section expand/collapse. */
+    changesExpanded: boolean;
     aiLoading: boolean;
     worktrees: WorktreeEntry[];
     worktreesLoading: boolean;
     selected: SelectedCtx;
     selectedStatus: GitStatus | null;
     selectedStatusLoading: boolean;
-    commitBoxCollapsed: boolean;
     graph: GraphCommit[];
     graphLoading: boolean;
     graphExpanded: boolean;
@@ -328,16 +326,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             diffContent: '',
             diffLoading: false,
             toast: '',
-            stagedCollapsed: false,
-            unstagedCollapsed: false,
-            untrackedCollapsed: false,
+            changesExpanded: true,
             aiLoading: false,
             worktrees: [],
             worktreesLoading: false,
             selected: { kind: 'main' },
             selectedStatus: null,
             selectedStatusLoading: false,
-            commitBoxCollapsed: true,
             graph: [],
             graphLoading: false,
             graphExpanded: true,
@@ -379,7 +374,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                 commitFiles: [],
                 commitDiffFile: null,
                 commitDiffContent: '',
-                commitBoxCollapsed: true,
+                changesExpanded: true,
                 submodules: [],
                 branchDropdownOpen: false,
                 branches: [],
@@ -991,12 +986,6 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         void fsStore.openFileDetail({ name, path: abs, isDir, size: 0, modTime: 0 });
     };
 
-    toggleSection = (section: 'staged' | 'unstaged' | 'untracked') => {
-        if (section === 'staged') this.setState({ stagedCollapsed: !this.state.stagedCollapsed });
-        else if (section === 'unstaged') this.setState({ unstagedCollapsed: !this.state.unstagedCollapsed });
-        else this.setState({ untrackedCollapsed: !this.state.untrackedCollapsed });
-    };
-
     renderOriginBadge(
         ahead: number,
         behind: number,
@@ -1312,11 +1301,13 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
-    renderFileRow(file: FileStatus, section: 'staged' | 'unstaged' | 'untracked') {
+    renderFileRow(file: FileStatus, section: 'staged' | 'unstaged') {
         const { diffFile, diffStaged } = this.state;
         const { language } = this.props;
         const isStaged = section === 'staged';
-        const isOpen = diffFile === file.path && diffStaged === isStaged;
+        const isUntracked = file.status === '?';
+        const canDiff = !isUntracked;
+        const isOpen = canDiff && diffFile === file.path && diffStaged === isStaged;
         const conflict = isConflictStatus(file.status);
         const statusCls = STATUS_COLOR[file.status] || (conflict ? 'git-status-conflict' : 'git-status-u');
         const label = STATUS_KEY[file.status]
@@ -1335,8 +1326,8 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     <span
                         class="git-file-path"
                         onClick={() => {
-                            if (!interactive) return;
-                            if (section !== 'untracked') this.loadDiff(file.path, isStaged);
+                            if (!interactive || !canDiff) return;
+                            this.loadDiff(file.path, isStaged);
                         }}
                         title={file.path}
                     >
@@ -1344,7 +1335,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                     </span>
                     {interactive && (
                         <div class="git-file-actions">
-                            {file.status !== 'D' && file.status !== '?' && (
+                            {file.status !== 'D' && !isUntracked && (
                                 <button
                                     class="git-action-btn git-action-open"
                                     onClick={e => {
@@ -1369,7 +1360,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                                 </button>
                             ) : (
                                 <Fragment>
-                                    {section === 'unstaged' && !conflict && (
+                                    {!isUntracked && !conflict && (
                                         <button
                                             class="git-action-btn git-action-discard"
                                             onClick={e => {
@@ -1398,35 +1389,26 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         </div>
                     )}
                 </div>
-                {isOpen && section !== 'untracked' && interactive && this.renderDiff()}
+                {isOpen && interactive && this.renderDiff()}
             </Fragment>
         );
     }
 
-    renderSection(
+    /** Staged or unstaged file group inside the unified Changes section. */
+    renderFileGroup(
         title: string,
         files: FileStatus[],
-        section: 'staged' | 'unstaged' | 'untracked',
+        section: 'staged' | 'unstaged',
         allAction?: () => void,
         allLabel?: string
     ) {
         if (files.length === 0) return null;
-        const isCollapsed =
-            section === 'staged'
-                ? this.state.stagedCollapsed
-                : section === 'unstaged'
-                  ? this.state.unstagedCollapsed
-                  : this.state.untrackedCollapsed;
         const interactive = this.isInteractive();
 
         return (
-            <div class="git-section">
-                <div
-                    class="git-section-header git-section-header-clickable"
-                    onClick={() => this.toggleSection(section)}
-                >
-                    <span class="git-section-title">
-                        {IconChevron(!isCollapsed)}
+            <div class={`git-changes-group git-changes-group-${section}`}>
+                <div class="git-changes-group-header">
+                    <span class="git-changes-group-title">
                         {title}
                         <span class="git-section-count">{files.length}</span>
                     </span>
@@ -1443,7 +1425,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
                         </button>
                     )}
                 </div>
-                {!isCollapsed && <div class="git-file-list">{files.map(f => this.renderFileRow(f, section))}</div>}
+                <div class="git-file-list">{files.map(f => this.renderFileRow(f, section))}</div>
             </div>
         );
     }
@@ -1459,7 +1441,7 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
-    /** Clean-tree illustration + refresh (used alone or inside the commit section). */
+    /** Clean-tree illustration + refresh (nested inside Changes when empty). */
     renderCleanStateCard() {
         const { language } = this.props;
         return (
@@ -1486,9 +1468,89 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         );
     }
 
+    /** Commit message + AI / commit / push / pull — lives under Changes. */
+    renderCommitZone() {
+        if (!this.isInteractive()) return null;
+        const { commitMsg, committing, pushPullLoading } = this.state;
+        const { language } = this.props;
+        const stagedCount = (this.activeStatus()?.staged || []).length;
+        const hasStaged = stagedCount > 0;
+
+        return (
+            <div class="git-changes-zone git-commit-zone">
+                <div class="git-changes-zone-label">{t('git.commit.sectionTitle', language)}</div>
+                <div class="git-commit-box-body">
+                    <textarea
+                        class="git-commit-input"
+                        placeholder={t(
+                            hasStaged ? 'git.commit.placeholderReady' : 'git.commit.placeholderEmpty',
+                            language
+                        )}
+                        disabled={!hasStaged}
+                        value={commitMsg}
+                        onInput={e => this.setState({ commitMsg: (e.target as HTMLTextAreaElement).value })}
+                        onKeyDown={(e: KeyboardEvent) => {
+                            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') this.commit();
+                        }}
+                        rows={2}
+                    />
+                    <div class="git-commit-actions">
+                        <button
+                            class="git-ai-commit-btn"
+                            onClick={this.generateAICommit}
+                            disabled={!hasStaged || this.state.aiLoading}
+                            title={t('git.commit.aiTitle', language)}
+                        >
+                            {this.state.aiLoading ? <div class="git-spinner" /> : IconSparkles}
+                        </button>
+                        <button
+                            class="git-commit-btn"
+                            onClick={this.commit}
+                            disabled={!hasStaged || !commitMsg.trim() || committing}
+                            title={t('git.commit.submitTitle', language)}
+                        >
+                            {committing ? (
+                                t('git.commit.committing', language)
+                            ) : (
+                                <Fragment>
+                                    {IconCommit}
+                                    <span>
+                                        {t('git.commit.commitLabel', language, {
+                                            n: stagedCount > 0 ? ` (${stagedCount})` : '',
+                                        })}
+                                    </span>
+                                </Fragment>
+                            )}
+                        </button>
+                        <button
+                            class="git-push-btn"
+                            onClick={() => this.pushOrPull('push')}
+                            disabled={pushPullLoading !== null}
+                            title={t('git.action.push', language)}
+                        >
+                            {pushPullLoading === 'push' ? <div class="git-spinner" /> : IconPush}
+                        </button>
+                        <button
+                            class="git-pull-btn"
+                            onClick={() => this.pushOrPull('pull')}
+                            disabled={pushPullLoading !== null}
+                            title={t('git.action.pull', language)}
+                        >
+                            {pushPullLoading === 'pull' ? <div class="git-spinner" /> : IconPull}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    /**
+     * Unified collapsible "变更" section: commit form + staged + unstaged
+     * (untracked files are folded into unstaged).
+     */
     renderChangesSection() {
         const { language } = this.props;
-        const { selectedStatusLoading } = this.state;
+        const { selectedStatusLoading, changesExpanded } = this.state;
         if (!this.isViewingMain() && selectedStatusLoading) {
             return (
                 <div class="git-commit-detail">
@@ -1502,132 +1564,49 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
         if (!activeStatus?.isRepo) {
             return null;
         }
+
         const staged = activeStatus.staged || [];
-        const unstaged = activeStatus.unstaged || [];
-        const untracked = activeStatus.untracked || [];
-        // Clean tree is shown inside the unified commit section (or alone when
-        // the panel is read-only / non-interactive).
-        if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) {
-            if (this.isInteractive()) return null;
+        // Merge untracked into unstaged for a single "未暂存" list.
+        const unstaged = [...(activeStatus.unstaged || []), ...(activeStatus.untracked || [])];
+        const changeCount = staged.length + unstaged.length;
+        const isClean = changeCount === 0;
+        const interactive = this.isInteractive();
+
+        // Read-only peek with a clean tree: still show a compact clean card.
+        if (isClean && !interactive) {
             return this.renderCleanStateCard();
         }
 
         return (
-            <div class="git-sections-container">
-                {this.renderSection(
-                    t('git.section.staged', language),
-                    staged,
-                    'staged',
-                    () => this.unstage(null),
-                    t('git.section.unstageAll', language)
-                )}
-                {this.renderSection(
-                    t('git.section.unstaged', language),
-                    unstaged,
-                    'unstaged',
-                    () => this.stage(null),
-                    t('git.section.stageAll', language)
-                )}
-                {this.renderSection(
-                    t('git.section.untracked', language),
-                    untracked,
-                    'untracked',
-                    () => this.stage(null),
-                    t('git.section.stageAll', language)
-                )}
-            </div>
-        );
-    }
-
-    /**
-     * Unified commit section: clean-state card (when tree is clean) + collapsible
-     * "提交说明" dropdown with message input and commit/push/pull actions.
-     */
-    renderCommitBox() {
-        if (!this.isInteractive()) return null;
-        const { commitMsg, committing, pushPullLoading, commitBoxCollapsed } = this.state;
-        const { language } = this.props;
-        const staged = this.activeStatus()?.staged || [];
-        const stagedCount = staged.length;
-        const hasStaged = stagedCount > 0;
-        const isClean = this.isWorkingTreeClean();
-
-        return (
-            <div class={`git-section git-commit-box${isClean ? ' is-clean' : ''}`}>
+            <div class={`git-section git-changes-section${isClean ? ' is-clean' : ''}`}>
                 <div
                     class="git-section-header git-section-header-clickable"
-                    onClick={() => this.setState({ commitBoxCollapsed: !commitBoxCollapsed })}
+                    onClick={() => this.setState({ changesExpanded: !changesExpanded })}
                 >
                     <span class="git-section-title">
-                        {IconChevron(!commitBoxCollapsed)}
-                        {t('git.commit.sectionTitle', language)}
-                        {hasStaged && <span class="git-section-count">{stagedCount}</span>}
+                        {IconChevron(changesExpanded)}
+                        {t('git.section.changes', language)}
+                        {changeCount > 0 && <span class="git-section-count">{changeCount}</span>}
                     </span>
                 </div>
-                {!commitBoxCollapsed && (
-                    <div class="git-section-body">
+                {changesExpanded && (
+                    <div class="git-section-body git-changes-body">
                         {isClean && this.renderCleanStateCard()}
-                        <div class="git-commit-box-body">
-                            <textarea
-                                class="git-commit-input"
-                                placeholder={t(
-                                    hasStaged ? 'git.commit.placeholderReady' : 'git.commit.placeholderEmpty',
-                                    language
-                                )}
-                                disabled={!hasStaged}
-                                value={commitMsg}
-                                onInput={e => this.setState({ commitMsg: (e.target as HTMLTextAreaElement).value })}
-                                onKeyDown={(e: KeyboardEvent) => {
-                                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') this.commit();
-                                }}
-                                rows={2}
-                            />
-                            <div class="git-commit-actions">
-                                <button
-                                    class="git-ai-commit-btn"
-                                    onClick={this.generateAICommit}
-                                    disabled={!hasStaged || this.state.aiLoading}
-                                    title={t('git.commit.aiTitle', language)}
-                                >
-                                    {this.state.aiLoading ? <div class="git-spinner" /> : IconSparkles}
-                                </button>
-                                <button
-                                    class="git-commit-btn"
-                                    onClick={this.commit}
-                                    disabled={!hasStaged || !commitMsg.trim() || committing}
-                                    title={t('git.commit.submitTitle', language)}
-                                >
-                                    {committing ? (
-                                        t('git.commit.committing', language)
-                                    ) : (
-                                        <Fragment>
-                                            {IconCommit}
-                                            <span>
-                                                {t('git.commit.commitLabel', language, {
-                                                    n: stagedCount > 0 ? ` (${stagedCount})` : '',
-                                                })}
-                                            </span>
-                                        </Fragment>
-                                    )}
-                                </button>
-                                <button
-                                    class="git-push-btn"
-                                    onClick={() => this.pushOrPull('push')}
-                                    disabled={pushPullLoading !== null}
-                                    title={t('git.action.push', language)}
-                                >
-                                    {pushPullLoading === 'push' ? <div class="git-spinner" /> : IconPush}
-                                </button>
-                                <button
-                                    class="git-pull-btn"
-                                    onClick={() => this.pushOrPull('pull')}
-                                    disabled={pushPullLoading !== null}
-                                    title={t('git.action.pull', language)}
-                                >
-                                    {pushPullLoading === 'pull' ? <div class="git-spinner" /> : IconPull}
-                                </button>
-                            </div>
-                        </div>
+                        {this.renderCommitZone()}
+                        {this.renderFileGroup(
+                            t('git.section.staged', language),
+                            staged,
+                            'staged',
+                            () => this.unstage(null),
+                            t('git.section.unstageAll', language)
+                        )}
+                        {this.renderFileGroup(
+                            t('git.section.unstaged', language),
+                            unstaged,
+                            'unstaged',
+                            () => this.stage(null),
+                            t('git.section.stageAll', language)
+                        )}
                     </div>
                 )}
             </div>
@@ -1918,7 +1897,6 @@ export class GitPanel extends Component<GitPanelProps, GitPanelState> {
             <div class="git-panel">
                 {this.renderRepoCards()}
                 {this.renderChangesSection()}
-                {this.renderCommitBox()}
                 {this.renderGraphSection()}
                 {this.renderBranchPopover()}
                 {toast && (

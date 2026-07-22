@@ -14476,142 +14476,130 @@ body {
     }
   }
 
-  // Commit Box
-  .git-commit-box {
-    // Reuses the standard .git-section / .git-section-header chrome (header +
-    // chevron identical to the worktrees & graph sections). Body padding below
-    // aligns the inputs with the header label.
-    .git-commit-input {
-      width: 100%;
-      background-color: var(--bg-terminal-inner);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      color: var(--text-main);
-      font-family: inherit;
-      font-size: 13px;
-      padding: 10px 12px;
-      outline: none;
-      resize: vertical;
-      min-height: 60px;
-      box-sizing: border-box;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      line-height: 1.5;
+  // Commit form controls (used inside unified Changes section)
+  .git-commit-input {
+    width: 100%;
+    background-color: var(--bg-terminal-inner);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+    resize: vertical;
+    min-height: 56px;
+    box-sizing: border-box;
+    transition: border-color 0.15s, background-color 0.15s;
+    line-height: 1.5;
 
-      &::placeholder {
-        color: var(--text-muted);
-      }
-
-      &:focus {
-        border-color: var(--accent-color);
-        box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb), 0.12);
-        background-color: var(--bg-card);
-      }
-
-      &:disabled {
-        opacity: 0.65;
-        cursor: not-allowed;
-        background-color: var(--bg-main);
-      }
+    &::placeholder {
+      color: var(--text-muted);
     }
 
-    .git-commit-actions {
-      display: flex;
-      gap: 8px;
+    &:focus {
+      border-color: var(--accent-color);
+      background-color: var(--bg-card);
+    }
 
-      .git-commit-btn {
-        flex: 1;
-        background-color: var(--accent-color);
-        color: var(--on-accent);
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 13px;
-        padding: 9px 16px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        box-shadow: 0 2px 4px rgba(var(--accent-color-rgb), 0.1);
-
-        svg {
-          width: 14px;
-          height: 14px;
-        }
-
-        &:hover:not(:disabled) {
-          filter: brightness(1.08);
-          transform: translateY(-0.5px);
-          box-shadow: 0 4px 8px rgba(var(--accent-color-rgb), 0.2);
-        }
-
-        &:active:not(:disabled) {
-          transform: scale(0.98);
-        }
-
-        &:disabled {
-          background-color: var(--border-color);
-          color: var(--text-muted);
-          cursor: not-allowed;
-          box-shadow: none;
-        }
-      }
-
-      .git-ai-commit-btn, .git-push-btn, .git-pull-btn {
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-color);
-        color: var(--text-main);
-        border-radius: 8px;
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-        svg {
-          width: 16px;
-          height: 16px;
-          color: var(--text-muted);
-          transition: color 0.2s;
-        }
-
-        &:hover:not(:disabled) {
-          border-color: var(--text-muted);
-          background-color: var(--bg-terminal-inner);
-          svg {
-            color: var(--text-main);
-          }
-        }
-
-        &.git-ai-commit-btn:hover:not(:disabled) {
-          border-color: var(--accent-color);
-          background-color: rgba(var(--accent-color-rgb), 0.08);
-          svg {
-            color: var(--accent-color);
-          }
-        }
-
-        &:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .git-spinner {
-          width: 12px;
-          height: 12px;
-          border-width: 1.5px;
-        }
-      }
+    &:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      background-color: var(--bg-main);
     }
   }
 
-  // Sections Container
-  .git-sections-container {
+  .git-commit-actions {
     display: flex;
-    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+
+    .git-commit-btn {
+      flex: 1;
+      background-color: var(--accent-color);
+      color: var(--on-accent);
+      border: none;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 9px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: filter 0.15s, background-color 0.15s;
+
+      svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      &:hover:not(:disabled) {
+        filter: brightness(1.06);
+      }
+
+      &:active:not(:disabled) {
+        filter: brightness(0.98);
+      }
+
+      &:disabled {
+        background-color: var(--border-color);
+        color: var(--text-muted);
+        cursor: not-allowed;
+        filter: none;
+      }
+    }
+
+    .git-ai-commit-btn,
+    .git-push-btn,
+    .git-pull-btn {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 999px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background-color 0.15s;
+
+      svg {
+        width: 16px;
+        height: 16px;
+        color: var(--text-muted);
+        transition: color 0.15s;
+      }
+
+      &:hover:not(:disabled) {
+        border-color: var(--text-main);
+        background-color: var(--bg-terminal-inner);
+        svg {
+          color: var(--text-main);
+        }
+      }
+
+      &.git-ai-commit-btn:hover:not(:disabled) {
+        border-color: var(--accent-color);
+        background-color: rgba(var(--accent-color-rgb), 0.08);
+        svg {
+          color: var(--accent-color);
+        }
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .git-spinner {
+        width: 12px;
+        height: 12px;
+        border-width: 1.5px;
+      }
+    }
   }
 
   // Sections list header / collapsible
@@ -14683,13 +14671,103 @@ body {
     .git-file-list {
       display: flex;
       flex-direction: column;
-      padding: 4px 8px;
+      padding: 2px 8px 6px;
     }
   }
 
-  // Clean working-tree banner. Standalone (non-interactive) keeps a light card;
-  // nested inside .git-commit-box it becomes a flush section body above the
-  // collapsible "提交说明" header — no second outer chrome.
+  // Shared count badge (section header + nested group headers)
+  .git-section-count {
+    background-color: var(--bg-terminal-inner);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 700;
+    margin-left: 2px;
+  }
+
+  .git-section-action {
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+
+    &:hover {
+      background-color: rgba(var(--accent-color-rgb), 0.1);
+    }
+  }
+
+  // Unified "变更" section: commit form + staged + unstaged groups
+  .git-changes-section {
+    .git-changes-body {
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .git-changes-zone {
+      padding: 10px 12px 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .git-changes-zone-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      padding: 0 4px 8px;
+    }
+
+    .git-commit-box-body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .git-changes-group {
+      border-bottom: 1px solid var(--border-color);
+
+      &:last-child {
+        border-bottom: none;
+      }
+    }
+
+    .git-changes-group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px 4px;
+    }
+
+    .git-changes-group-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    &.is-clean .git-clean-state-card {
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: none;
+      background: transparent;
+      padding: 28px 20px 20px;
+    }
+  }
+
+  // Clean working-tree banner.
   .git-clean-state-card {
     padding: 40px 24px;
     text-align: center;
@@ -14701,7 +14779,6 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 
     .git-clean-illustration {
       color: var(--success-fg);
@@ -14734,12 +14811,12 @@ body {
       font-size: 11.5px;
       font-weight: 600;
       padding: 6px 14px;
-      border-radius: 6px;
+      border-radius: 999px;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 6px;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: border-color 0.15s, background-color 0.15s;
 
       svg {
         width: 12px;
@@ -14747,27 +14824,9 @@ body {
       }
 
       &:hover {
-        background-color: var(--border-color);
-        border-color: var(--text-muted);
+        border-color: var(--text-main);
+        background-color: var(--btn-hover);
       }
-    }
-  }
-
-  // Unified commit section body: optional clean banner + commit form.
-  .git-commit-box {
-    .git-section-body {
-      display: flex;
-      flex-direction: column;
-    }
-
-    &.is-clean .git-section-body > .git-clean-state-card {
-      margin: 0;
-      border: none;
-      border-radius: 0;
-      border-bottom: 1px solid var(--border-color);
-      box-shadow: none;
-      background: transparent;
-      padding: 28px 20px 20px;
     }
   }
 
@@ -15441,12 +15500,11 @@ body {
     margin-bottom: 2px;
   }
 
-  // Commit form (textarea + actions) inside .git-section-body
+  // Commit form (textarea + actions) inside unified Changes section
   .git-commit-box-body {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 4px 16px 12px;
+    gap: 0;
   }
 
   // Graph row ref count badge (compact: branch icon + count)

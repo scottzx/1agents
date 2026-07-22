@@ -1108,10 +1108,11 @@ export const zhCN: Record<string, string> = {
     'git.commit.committing': '提交中…',
     'git.commit.commitLabel': '提交{n}',
 
-    'git.section.staged': '已暂存的更改',
+    'git.section.changes': '变更',
+    'git.section.staged': '已暂存',
     'git.section.unstageAll': '全部取消',
-    'git.section.unstaged': '未暂存的更改',
-    'git.section.stageAll': '全部暂存 +',
+    'git.section.unstaged': '未暂存',
+    'git.section.stageAll': '全部暂存',
     'git.section.untracked': '未跟踪的文件',
 
     'git.log.title': '最近提交历史',
@@ -2974,10 +2975,11 @@ export const enUS: Record<string, string> = {
     'git.commit.committing': 'Committing…',
     'git.commit.commitLabel': 'Commit{n}',
 
-    'git.section.staged': 'Staged changes',
+    'git.section.changes': 'Changes',
+    'git.section.staged': 'Staged',
     'git.section.unstageAll': 'Unstage all',
-    'git.section.unstaged': 'Unstaged changes',
-    'git.section.stageAll': 'Stage all +',
+    'git.section.unstaged': 'Unstaged',
+    'git.section.stageAll': 'Stage all',
     'git.section.untracked': 'Untracked files',
 
     'git.log.title': 'Recent commit history',
