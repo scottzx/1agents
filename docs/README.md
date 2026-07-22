@@ -126,4 +126,4 @@ docs/
 - **权威优先级**：`product/名称定义表.md`（**术语 / 实体名 / kind**）> `product/roadmap.md`（版本）> `architecture/agentsOS-架构设计.md`（架构；registry 段为远期）> `design_rules/`（UI 规范）> 单功能 `features/*`。
 - **状态字段**：功能文档文首的 Status（Implemented / Draft / RFC 等）以该文件为准；索引表只做导航。
 - **新增文档**：按上表选目录；功能级一律放 `features/<kebab-name>/`，避免继续堆在 `docs/` 根目录。
-- **过时术语**：`tasks` 表名、`kind=assistant`、`SessionTier`/`professional-project` 落库、`任务可脱离 project` 等——见名称定义表 §0 否决/待迁移；docs 中出现须带标注，不得当现行断言。
+- **过时术语**：`tasks` 表名、`kind=assistant`、`SessionTier`/`professional-project` 落库、`任务可脱离 project` 等——见名称定义表 §0 否决与 §0.0 落地状态；docs 中出现须带标注，不得当现行断言。
