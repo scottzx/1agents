@@ -1,6 +1,6 @@
 # 1Agents 文档索引
 
-本目录按用途分类。入口优先读 **产品定位 → 架构总纲 → 设计规范 → 功能 PRD**；运维与排错看 `guides/` / `tips/`。
+本目录按用途分类。入口优先读 **[名称定义表](./product/名称定义表.md) → 产品定位 → 架构总纲 → 设计规范 → 功能 PRD**；运维与排错看 `guides/` / `tips/`。
 
 ```
 docs/
@@ -23,11 +23,12 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
+| [名称定义表.md](./product/名称定义表.md) | **术语与名称总表**（产品/架构/代码/包名/废弃别名） |
 | [roadmap.md](./product/roadmap.md) | **权威版本路线图**（1.x→4.x 里程碑与 issue 归位） |
 | [1Agents_项目介绍.md](./product/1Agents_项目介绍.md) | 对外项目介绍 / 关于我们 |
 | [1Agents_营销素材与项目定位白皮书.md](./product/1Agents_营销素材与项目定位白皮书.md) | 定位、受众、营销素材 |
 | [frontend-product-features.md](./product/frontend-product-features.md) | 前端产品功能总览（模块 ↔ 入口） |
-| [产品命名.md](./product/产品命名.md) | 1Agents / 1Hive 命名约定 |
+| [产品命名.md](./product/产品命名.md) | 1Agents / 1Hive 品牌命名（细表见名称定义表） |
 | [专家智能体-视觉创作台词.md](./product/专家智能体-视觉创作台词.md) | 视觉创作专家 persona / 系统提示词 |
 
 ---
@@ -102,6 +103,7 @@ docs/
 | 目录 | 文档 | 说明 |
 |------|------|------|
 | `experience/` | [三执行者实战案例.md](./experience/三执行者实战案例.md) | agent / function / human 经验（认知层） |
+| `experience/` | [builtin-browser-webproxy-remotion.md](./experience/builtin-browser-webproxy-remotion.md) | 内置浏览器 path 反代 + Remotion composition 路由（成功经验） |
 | `discussions/` | [一芥智能体落地技术实现蓝图_V1.1.md](./discussions/一芥智能体落地技术实现蓝图_V1.1.md) | 落地技术蓝图讨论稿 |
 | `assets/` | 设计图、业务流程图、`index.html` | 图示与静态页 |
 | `archive/` | ORIGINAL_REQUEST / PROJECT / model-role-notes | 历史会话与个人笔记，默认不作为规格引用 |
@@ -110,7 +112,7 @@ docs/
 
 ## 阅读路径建议
 
-1. **新同学上手**：`product/1Agents_项目介绍` → `product/frontend-product-features` → `architecture/agentsOS-架构设计` → `design_rules/app-agentic-workbench-design-standard`
+1. **新同学上手**：`product/名称定义表` → `product/1Agents_项目介绍` → `product/frontend-product-features` → `architecture/agentsOS-架构设计` → `design_rules/app-agentic-workbench-design-standard`
 2. **做功能 / 改 UI**：`design_rules/*` → 对应 `features/<域>/` → 必要时 `uiux/`
 3. **接 agent / 改传输层**：`architecture/agent-convergence-roadmap` → `happy-integration-skeleton` → `happy-cli-fork-sync` → `adapter/README`
 4. **发版 / 部署**：`guides/编译与打包指南` → `architecture/ota-architecture` → `features/npm-package-split/prd`
