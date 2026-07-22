@@ -16,7 +16,7 @@ import (
 func TestParseSubmoduleStatus(t *testing.T) {
 	out := " 244a18e8944cf01cb81ea3f5178ae10f4e881233 modules/1acp (v0.12.0-52-g244a18e)\n" +
 		"+bc1a6703399f93b1bc3fd4936f38b805ab21338d modules/cc-switch-cli (v5.9.1)\n" +
-		"-80ea6ea18b8937db0d453e3f5440fdfbc4778a32 modules/FunClip\n" +
+		"-80ea6ea18b8937db0d453e3f5440fdfbc4778a32 modules/example\n" +
 		"U979ba4be341534731445e4b11a84f0c0aa4b40a8 modules/cc-connect (v1)\n"
 	got := parseSubmoduleStatus(out)
 	if len(got) != 4 {
