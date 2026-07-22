@@ -420,8 +420,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// tasks (issue #47 model). A suggestion is a proposed issue the user
 		// clarifies and confirms before the PM schedules it.
 		if TaskSource(body.Source) == TaskSourceAgent &&
-			TaskType(body.Type) != TaskTypeRequirement && TaskType(body.Type) != TaskTypeBug {
-			http.Error(w, "agent-suggested tasks must be of type requirement or bug", http.StatusBadRequest)
+			ItemType(body.Type) != ItemTypeRequirement && ItemType(body.Type) != ItemTypeBug {
+			http.Error(w, "agent-suggested project items must be of type requirement or bug", http.StatusBadRequest)
 			return
 		}
 		if body.Verifier != "" && !IsSupportedAgentType(body.Verifier) {
@@ -467,7 +467,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			ParentID:            body.ParentID,
 			Milestone:           body.Milestone,
 			Sprint:              body.Sprint,
-			Type:                TaskType(body.Type),
+			Type:                ItemType(body.Type),
 			Source:              TaskSource(body.Source),
 			UserConfirm:         body.UserConfirm,
 			Recurrence:          body.Recurrence,
@@ -885,7 +885,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			target.Sprint = *body.Sprint
 		}
 		if body.Type != nil {
-			target.Type = TaskType(*body.Type)
+			target.Type = ItemType(*body.Type)
 		}
 		if body.Source != nil {
 			target.Source = TaskSource(*body.Source)
@@ -1371,7 +1371,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// Issue background injection (issue-model §9): description + the
 		// full reply timeline, injected only when this is a NEW session.
 		// Resumed sessions already carry their own conversation history.
-		if targetTask.Type == TaskTypeDiscussion {
+		if targetTask.Type == ItemTypeDiscussion {
 			// A discussion-linked session is a PM conversation, NOT an
 			// executor: the agent acts as PM (create_project_item / create_discussion)
 			// with the discussion thread as background. Its user prompts and
@@ -1419,7 +1419,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// to running, or re-execute. Only a genuinely new session (acpSessionID
 		// empty) starts execution. Discussions are never executed, so a
 		// discussion-linked PM conversation skips this entirely.
-		if targetTask.Type != TaskTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
+		if targetTask.Type != ItemTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict

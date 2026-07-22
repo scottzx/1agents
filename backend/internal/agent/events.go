@@ -233,7 +233,7 @@ func routeAgent(t Task, _ PolicySignals) AgentType {
 		}
 	}
 	switch t.Type {
-	case TaskTypeBug:
+	case ItemTypeBug:
 		return AgentTypeCodex
 	default:
 		return DefaultAgentType

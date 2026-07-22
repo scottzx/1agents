@@ -80,7 +80,7 @@ func (h *Handler) HandleAgendaRoot(w http.ResponseWriter, r *http.Request) {
 // time anchor and are still open. Discussions and unadopted AI suggestions are
 // never agenda items.
 func taskToCalendarItem(t *Task, p Project) (calendarItem, bool) {
-	if t.Type == TaskTypeDiscussion || t.Source == TaskSourceAgent {
+	if t.Type == ItemTypeDiscussion || t.Source == TaskSourceAgent {
 		return calendarItem{}, false
 	}
 	// A human task (assignee=user or executor=human) is a personal to-do / gate

@@ -141,7 +141,7 @@ func isHumanTask(t *Task) bool {
 // so none of those are gated here. Container parents (no Description of their
 // own) auto-complete from their subtasks and never execute, so they are exempt.
 func needsAcceptanceCriteria(t *Task) bool {
-	if t.Type != "" && t.Type != TaskTypeTask {
+	if t.Type != "" && t.Type != ItemTypeTask {
 		return false
 	}
 	if t.Source == TaskSourceAgent {
@@ -177,7 +177,7 @@ func needsAcceptanceCriteria(t *Task) bool {
 // subtask inherits its parent's sourcing — once the parent is sourced (or is a
 // container deriving from a requirement/bug), its children need no own link.
 func needsSourcing(t *Task, taskMap map[string]*Task) bool {
-	if t.Type != "" && t.Type != TaskTypeTask {
+	if t.Type != "" && t.Type != ItemTypeTask {
 		return false
 	}
 	if t.Source == TaskSourceAgent {
@@ -210,7 +210,7 @@ func hasSourcingLink(t *Task, taskMap map[string]*Task, seen map[string]bool) bo
 		if !ok {
 			continue
 		}
-		if tgt.Type == TaskTypeRequirement || tgt.Type == TaskTypeBug {
+		if tgt.Type == ItemTypeRequirement || tgt.Type == ItemTypeBug {
 			return true
 		}
 	}
@@ -368,7 +368,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if t.Assignee != "" {
 				continue
 			}
-			if (t.Type != "" && t.Type != TaskTypeTask) || t.Source == TaskSourceAgent {
+			if (t.Type != "" && t.Type != ItemTypeTask) || t.Source == TaskSourceAgent {
 				continue
 			}
 			if s.emit(t, EventCreated, now) {
@@ -473,7 +473,7 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 		}
 		for i := range cfg.Tasks {
 			t := &cfg.Tasks[i]
-			if t.Type != TaskTypeRequirement && t.Type != TaskTypeBug {
+			if t.Type != ItemTypeRequirement && t.Type != ItemTypeBug {
 				continue
 			}
 			if t.IssueState == IssueClosed || !allChildrenTerminal(t) {
@@ -505,10 +505,10 @@ func (s *Scheduler) tickWorkspace(ref WorkspaceRef) {
 			if !isReview && t.Status != TaskStatusPending && t.Status != TaskStatusQueued {
 				continue
 			}
-			if t.Type == TaskTypeDiscussion {
+			if t.Type == ItemTypeDiscussion {
 				continue // 讨论是概念记录，永不调度执行
 			}
-			if t.Type == TaskTypeRequirement || t.Type == TaskTypeBug {
+			if t.Type == ItemTypeRequirement || t.Type == ItemTypeBug {
 				continue // 需求/缺陷是 open/close 的议题，不可直接执行；由 PM 拆成任务后再排期
 			}
 			if t.Source == TaskSourceAgent {
