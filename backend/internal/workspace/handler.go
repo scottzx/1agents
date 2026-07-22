@@ -42,7 +42,8 @@ type Workspace struct {
 	// AvailableAgents is the allowlist of agent type slugs that may run in
 	// this workspace (§325). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
-	// Kind: "assistant" | "project" — see meta.Project.Kind.
+	// Kind: "workforce" | "project" — see meta.Project.Kind / #189.
+	// Legacy clients may still send "assistant"; create/update normalizes to workforce.
 	Kind string `json:"kind,omitempty"`
 	// Avatar: image URL under /avatars/ (preset or upload); empty means unset.
 	Avatar string `json:"avatar,omitempty"`
@@ -194,14 +195,14 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 		return err
 	}
 	if ok {
-		// Migrate the legacy default row into the assistant family. Older installs
-		// created it with name "对话" and no kind; the sidebar now shows this row as
-		// the always-first assistant, so it needs kind='assistant' and a friendlier
-		// display name. Users can rename it later.
-		needs := existing.Kind != "assistant" || existing.Name == "对话" || existing.Name == "" ||
+		// Migrate the legacy default row into the workforce (UI「助理」) family.
+		// Older installs created it with name "对话" and no kind; the sidebar shows
+		// this row as the always-first 助理, so it needs kind=workforce and a
+		// friendlier display name. Users can rename it later. (#189)
+		needs := existing.Kind != meta.KindWorkforce || existing.Name == "对话" || existing.Name == "" ||
 			existing.Avatar == ""
 		if needs {
-			existing.Kind = "assistant"
+			existing.Kind = meta.KindWorkforce
 			if existing.Name == "对话" || existing.Name == "" {
 				existing.Name = "助理"
 			}
@@ -211,7 +212,7 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 			if err := db.EnsureWorkspaceProject(existing); err != nil {
 				log.Printf("[workspace] migrate default row: %v", err)
 			} else {
-				log.Printf("[workspace] migrated default row → kind=assistant, name=%q", existing.Name)
+				log.Printf("[workspace] migrated default row → kind=workforce, name=%q", existing.Name)
 			}
 		}
 		return nil
@@ -228,7 +229,7 @@ func (h *Handler) EnsureDefaultWorkspace() error {
 		WorkspacePath: defaultPath,
 		DefaultAgent:  "claudecode",
 		Builtin:       true,
-		Kind:          "assistant",
+		Kind:          meta.KindWorkforce,
 		Avatar:        defaultAssistantAvatar,
 	}); err != nil {
 		return err
@@ -374,10 +375,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if ws.DefaultAgent == "" {
 		ws.DefaultAgent = "claudecode"
 	}
-	// Default kind: 'project' unless the caller (assistant flow) says otherwise.
-	if ws.Kind == "" {
-		ws.Kind = "project"
-	}
+	// Default kind: project unless the caller (create-assistant flow) says otherwise.
+	// Normalize legacy kind=assistant → workforce so write path only persists
+	// workforce|project (#189).
+	ws.Kind = meta.NormalizeProjectKind(ws.Kind)
 	// Name uniqueness across assistants + projects.
 	if taken, ok, err := h.isNameTaken(ws.Name, ws.ID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1147,12 +1148,15 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
 	}
-	// Built-in workspace is allowed rename/avatar edits (default assistant), but
+	// Built-in workspace is allowed rename/avatar edits (default 助理), but
 	// its kind and path are pinned to the stored values — clients cannot demote
 	// the built-in default via update.
 	if existing.Builtin {
 		ws.Kind = existing.Kind
 		ws.Path = existing.WorkspacePath
+	} else {
+		// Write path only persists workforce|project (#189).
+		ws.Kind = meta.NormalizeProjectKind(ws.Kind)
 	}
 	// builtin can never be set via update — pin it to the stored value.
 	ws.Builtin = existing.Builtin
@@ -1458,8 +1462,9 @@ func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 
 // nameKindLabel returns a Chinese label ("助理" / "项目") for a conflicting
 // workspace's kind — used in the 409 message shown to the user.
+// Code kind is workforce; product copy stays 「助理」(#189 / §0.4).
 func nameKindLabel(kind string) string {
-	if kind == "assistant" {
+	if meta.NormalizeProjectKind(kind) == meta.KindWorkforce {
 		return "助理"
 	}
 	return "项目"
