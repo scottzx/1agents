@@ -270,7 +270,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     // back to the overview / that entity's detail (L1 / L2).
     const activeWs = workspaces.value.find(w => w.id === activeWorkspaceId.value);
     const wsKind = activeWs?.kind ?? 'project';
-    const isAssistantCtx = wsKind === 'assistant';
+    const isAssistantCtx = wsKind === 'workforce';
     const isProjectCtx = !!activeWs && wsKind === 'project' && !activeWs.builtin && activeWs.id !== 'default';
     const isEntityCtx = isAssistantCtx || isProjectCtx;
     const openOverview = () => {

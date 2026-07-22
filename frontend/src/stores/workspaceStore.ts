@@ -342,7 +342,7 @@ export const createAssistant = async (
     soul?: string
 ): Promise<boolean> => {
     try {
-        await workspaceService.create({ name, status: 'active', kind: 'assistant', avatar }, skills, soul);
+        await workspaceService.create({ name, status: 'active', kind: 'workforce', avatar }, skills, soul);
         localStorage.setItem('1agents-onboarded', 'true');
         onboarded.value = true;
         const list = await loadWorkspaces(true);

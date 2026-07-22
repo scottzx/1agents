@@ -514,7 +514,7 @@ export function LeftSidebar({
     );
 
     const assistantWorkspaces = workspaces
-        .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
+        .filter(w => (w.kind ?? 'project') === 'workforce' && !w.deviceId)
         .sort((a, b) => {
             if (a.id === 'default') return -1;
             if (b.id === 'default') return 1;
@@ -858,7 +858,7 @@ export function LeftSidebar({
                                                         .filter(
                                                             f =>
                                                                 (workspaces.find(w => w.id === f.id)?.kind ??
-                                                                    'project') !== 'assistant'
+                                                                    'project') !== 'workforce'
                                                         )
                                                         .map(f => f.id);
                                                     collapseFolders(ids);
@@ -940,7 +940,7 @@ export function LeftSidebar({
                                         {!workspacesLoading &&
                                             folders.filter(f => {
                                                 const w = workspaces.find(x => x.id === f.id);
-                                                return (w?.kind ?? 'project') !== 'assistant';
+                                                return (w?.kind ?? 'project') !== 'workforce';
                                             }).length === 0 && (
                                                 <div class="ws-empty">
                                                     <svg
@@ -964,7 +964,7 @@ export function LeftSidebar({
                                             folders
                                                 .filter(f => {
                                                     const w = workspaces.find(x => x.id === f.id);
-                                                    return (w?.kind ?? 'project') !== 'assistant';
+                                                    return (w?.kind ?? 'project') !== 'workforce';
                                                 })
                                                 .filter(f => {
                                                     if (!projectSearch) return true;

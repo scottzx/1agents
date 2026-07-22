@@ -13,7 +13,7 @@ import { AssistantDetail } from './AssistantDetail';
 /**
  * AssistantsPage — the 助理 landing (breadcrumb level 1: 助理 概览).
  *
- * Renders the flat grid of every assistant (kind='assistant', excluding
+ * Renders the flat grid of every assistant (kind='workforce', excluding
  * remote-device projects), or — when a card is picked — drills into that
  * assistant's detail view (L2). The L1/L2 breadcrumb is published to the one
  * global WorkspaceHeader (助理 › <name>) rather than a second in-page bar; L3
@@ -58,7 +58,7 @@ export function AssistantsPage({ app }: { app: App }) {
     }
 
     const assistants = workspaces
-        .filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)
+        .filter(w => (w.kind ?? 'project') === 'workforce' && !w.deviceId)
         .sort((a, b) => {
             if (a.id === 'default') return -1;
             if (b.id === 'default') return 1;
@@ -70,7 +70,7 @@ export function AssistantsPage({ app }: { app: App }) {
         return folder ? folder.sessions.length : 0;
     };
 
-    const archivedAssistants = archived.filter(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId);
+    const archivedAssistants = archived.filter(w => (w.kind ?? 'project') === 'workforce' && !w.deviceId);
 
     const onCardClick = (wsId: string) => {
         tabs.assistantDetailId.value = wsId;
