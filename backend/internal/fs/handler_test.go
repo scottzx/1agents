@@ -99,6 +99,104 @@ func TestTreeCacheTTLIsFiveMinutes(t *testing.T) {
 	}
 }
 
+func TestHandler_SearchReusesTreeCacheAndSharedIgnores(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "src", "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("docs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Shared ignore set: both tree list and search must skip these.
+	for _, ignored := range []string{"node_modules", ".vscode", "target", ".venv"} {
+		dir := filepath.Join(root, ignored)
+		if err := os.MkdirAll(filepath.Join(dir, "nested"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "nested", "hidden.go"), []byte("package hidden"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	h := NewHandler(root)
+	search := func(query, tag string) []FileEntry {
+		t.Helper()
+		url := "/api/fs/search?query=" + query + "&tag=" + tag
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		w := httptest.NewRecorder()
+		h.Search(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("search returned %d: %s", w.Code, w.Body.String())
+		}
+		var entries []FileEntry
+		if err := json.NewDecoder(w.Body).Decode(&entries); err != nil {
+			t.Fatal(err)
+		}
+		return entries
+	}
+
+	// First search builds the tree cache.
+	got := search("main", "all")
+	if len(got) != 1 || got[0].Path != "src/main.go" {
+		t.Fatalf("expected src/main.go, got %#v", got)
+	}
+	cachedAt := h.treeCache[root].cachedAt
+	if cachedAt.IsZero() {
+		t.Fatal("search should populate treeCache")
+	}
+
+	// External file must not appear while cache is warm (same TTL semantics as List).
+	if err := os.WriteFile(filepath.Join(root, "extra.go"), []byte("package extra"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := search("extra", "all"); len(got) != 0 {
+		t.Fatalf("warm cache should hide external files, got %#v", got)
+	}
+
+	// Second search must reuse the same cache entry (no rebuild).
+	_ = search("readme", "doc")
+	if !h.treeCache[root].cachedAt.Equal(cachedAt) {
+		t.Fatal("second search should reuse treeCache without rebuilding")
+	}
+
+	// Tag filter: only docs from the cached tree.
+	docs := search("", "doc")
+	if len(docs) != 1 || docs[0].Name != "README.md" {
+		t.Fatalf("expected only README.md for tag=doc, got %#v", docs)
+	}
+
+	// Ignored dirs must never surface, even with a matching name query.
+	if hidden := search("hidden", "all"); len(hidden) != 0 {
+		t.Fatalf("ignored dirs should be excluded from search, got %#v", hidden)
+	}
+}
+
+func TestSearchTreeLimitAndMatch(t *testing.T) {
+	tree := []FileEntry{
+		{Name: "a.go", Path: "a.go", IsDir: false},
+		{
+			Name:  "pkg",
+			Path:  "pkg",
+			IsDir: true,
+			Children: []FileEntry{
+				{Name: "b.go", Path: "pkg/b.go", IsDir: false},
+				{Name: "note.md", Path: "pkg/note.md", IsDir: false},
+			},
+		},
+	}
+	got := searchTree(tree, "pkg/", "all", 10)
+	if len(got) != 2 {
+		t.Fatalf("path substring should match nested files, got %#v", got)
+	}
+	got = searchTree(tree, "", "code", 1)
+	if len(got) != 1 || got[0].Name != "a.go" {
+		t.Fatalf("limit=1 should return first code file only, got %#v", got)
+	}
+}
+
 func TestHandler_View(t *testing.T) {
 	// Create a temporary sandbox directory
 	tempDir, err := os.MkdirTemp("", "fs-test-sandbox-*")

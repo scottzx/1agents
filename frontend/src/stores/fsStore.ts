@@ -232,7 +232,9 @@ export const loadFlatFiles = async () => {
     try {
         const files = await fsService.search(searchQuery.value, selectedFilterTag.value);
         if (currentCrawl === _crawlCounter) {
-            flatFiles.value = files;
+            // Backend may encode an empty Go slice as JSON null; never let that
+            // land in the UI (FlatFileBrowser does .filter on this list).
+            flatFiles.value = Array.isArray(files) ? files : [];
             flatFilesLoading.value = false;
         }
     } catch (err) {

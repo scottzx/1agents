@@ -227,7 +227,8 @@ export function FlatFileBrowser({
     //    Lowercases the query once instead of per-row.
     const filtered = useMemo(() => {
         const q = searchQuery.toLowerCase();
-        return flatFiles.filter(f => {
+        const list = Array.isArray(flatFiles) ? flatFiles : [];
+        return list.filter(f => {
             if (q && !f.name.toLowerCase().includes(q) && !f.path.toLowerCase().includes(q)) {
                 return false;
             }

@@ -68,7 +68,9 @@ export const fsService = {
     async search(query: string, tag: string): Promise<FsEntry[]> {
         const res = await apiFetch(`/fs/search?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}`);
         if (!res.ok) throw new Error(await res.text());
-        return res.json();
+        const data = await res.json();
+        // Empty Go slices encode as JSON null; normalize to [] for callers.
+        return Array.isArray(data) ? data : [];
     },
 
     async setContext(path: string): Promise<void> {

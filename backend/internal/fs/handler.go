@@ -30,6 +30,9 @@ type Handler struct {
 
 const treeCacheTTL = 5 * time.Minute
 
+// treeIgnoredDirs is shared by project tree listing and search. Heavy/generated
+// directories are omitted so one-shot payloads stay bounded and search stays
+// aligned with what the file tree shows.
 var treeIgnoredDirs = map[string]bool{
 	"node_modules": true,
 	"dist":         true,
@@ -46,6 +49,8 @@ var treeIgnoredDirs = map[string]bool{
 	"venv":         true,
 	"target":       true,
 	"coverage":     true,
+	".vscode":      true,
+	".idea":        true,
 }
 
 type treeCacheEntry struct {
@@ -1016,7 +1021,9 @@ func getFileTagFromExt(ext string) string {
 }
 
 // Search handles GET /api/fs/search?query=<search-term>&tag=all|doc|img|code
-// Performs a case-insensitive search on files recursively in the workspace.
+// Case-insensitive match on file name and relative path, using the same
+// recursive project tree (and treeCache) as List so search and browse stay
+// consistent and avoid a second full disk walk.
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1029,93 +1036,59 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		tag = "all"
 	}
 
-	var results []FileEntry
-	limit := 1000
-
-	// Common heavy directories to skip
-	ignoreDirs := map[string]bool{
-		"node_modules": true,
-		"dist":         true,
-		"build":        true,
-		"__pycache__":  true,
-		"vendor":       true,
-		".git":         true,
-		".bun":         true,
-		".yarn":        true,
-		".pnpm":        true,
-		".cache":       true,
-		".vscode":      true,
-		".idea":        true,
-	}
-
-	err := filepath.WalkDir(h.root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip problematic files/dirs
-		}
-
-		if d.IsDir() {
-			name := d.Name()
-			if ignoreDirs[name] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// It's a file. Get its relative path to root for matching and for returned field
-		rel, err := filepath.Rel(h.root, path)
-		if err != nil {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		name := d.Name()
-
-		// Match query if provided
-		if query != "" {
-			nameLower := strings.ToLower(name)
-			relLower := strings.ToLower(relSlash)
-			if !strings.Contains(nameLower, query) && !strings.Contains(relLower, query) {
-				return nil
-			}
-		}
-
-		// Match tag if provided
-		if tag != "all" {
-			ext := strings.ToLower(filepath.Ext(name))
-			if ext != "" && ext[0] == '.' {
-				ext = ext[1:]
-			}
-			fileTag := getFileTagFromExt(ext)
-			if fileTag != tag {
-				return nil
-			}
-		}
-
-		// Fetch basic info
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-
-		results = append(results, FileEntry{
-			Name:    name,
-			Path:    relSlash,
-			IsDir:   false,
-			Size:    info.Size(),
-			ModTime: info.ModTime().Unix(),
-		})
-
-		// Stop walking if limit is reached
-		if len(results) >= limit {
-			return filepath.SkipAll
-		}
-
-		return nil
-	})
-
+	tree, err := h.projectTree(false)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleListError(w, err)
 		return
 	}
 
-	writeJSON(w, results)
+	writeJSON(w, searchTree(tree, query, tag, 1000))
+}
+
+// searchTree flattens a project tree into matching files only.
+// Matching is case-insensitive substring on Name or Path; tag filters by
+// extension family (all|doc|img|code). Results are capped at limit.
+func searchTree(entries []FileEntry, query, tag string, limit int) []FileEntry {
+	// Always return a non-nil empty slice so JSON encodes as [] not null.
+	results := make([]FileEntry, 0)
+	if limit <= 0 {
+		return results
+	}
+	var walk func([]FileEntry)
+	walk = func(nodes []FileEntry) {
+		for _, n := range nodes {
+			if len(results) >= limit {
+				return
+			}
+			if n.IsDir {
+				walk(n.Children)
+				continue
+			}
+			if query != "" {
+				nameLower := strings.ToLower(n.Name)
+				pathLower := strings.ToLower(n.Path)
+				if !strings.Contains(nameLower, query) && !strings.Contains(pathLower, query) {
+					continue
+				}
+			}
+			if tag != "all" {
+				ext := strings.ToLower(filepath.Ext(n.Name))
+				if ext != "" && ext[0] == '.' {
+					ext = ext[1:]
+				}
+				if getFileTagFromExt(ext) != tag {
+					continue
+				}
+			}
+			results = append(results, FileEntry{
+				Name:    n.Name,
+				Path:    n.Path,
+				IsDir:   false,
+				Size:    n.Size,
+				ModTime: n.ModTime,
+			})
+		}
+	}
+	walk(entries)
+	return results
 }
