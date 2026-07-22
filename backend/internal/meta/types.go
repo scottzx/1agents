@@ -174,8 +174,11 @@ const (
 	ItemTypeDiscussion  ItemType = "discussion"
 )
 
-// TaskType is a transitional alias for ItemType (Epic #184). Prefer ItemType in
-// new code; enum wire values are unchanged.
+// TaskType is a deprecated alias for ItemType (Epic #184 / #197). Prefer ItemType.
+// Removal target: delete when M6 (#196) closes and remaining TaskType call sites
+// are gone (tracked by #197). Wire values unchanged.
+//
+// Deprecated: use ItemType.
 type TaskType = ItemType
 
 const (
@@ -427,13 +430,11 @@ type Reply struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
-// ProjectItem (alias: Task) is a board row persisted in the project_items table
-// (Epic #184 / #187–#188). Wire JSON field names stay stable; only the Go/type
-// and SQL table names moved off the legacy "tasks table" primary naming.
-// Prefer ProjectItem / ItemType in new code; Task remains as a transitional alias.
-type ProjectItem = Task
-
-type Task struct {
+// ProjectItem is the primary board-row type, persisted in the project_items table
+// (Epic #184 / #197 M6-1). This is the struct definition site; Task is only a
+// transitional alias. Wire JSON field names stay stable.
+// Prefer ProjectItem / ItemType in new code.
+type ProjectItem struct {
 	ID           string       `json:"id"`
 	Title        string       `json:"title"`
 	Description  string       `json:"description"` // issue-model: Markdown body; ALSO the agent's work instruction
@@ -581,8 +582,17 @@ type Task struct {
 	WorkspacePath string            `json:"-"`
 }
 
+// Task is a deprecated alias for ProjectItem (Epic #197 / M6-1). Prefer ProjectItem.
+// Removal target: delete when M6 (#196) closes and remaining Task call sites
+// are gone (tracked by #197). Wire JSON is unchanged (same underlying type).
+//
+// Deprecated: use ProjectItem.
+type Task = ProjectItem
+
+// TasksConfig is the load/save aggregate for a workspace board (JSON key "tasks"
+// kept for wire compatibility). Prefer iterating ProjectItem values.
 type TasksConfig struct {
-	Tasks []Task `json:"tasks"`
+	Tasks []ProjectItem `json:"tasks"`
 }
 
 // Milestone is a first-class roadmap stage (schema v7). Its identity is the

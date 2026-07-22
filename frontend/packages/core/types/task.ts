@@ -51,12 +51,13 @@ export interface Milestone {
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
 /**
- * ItemType — board-row discriminator (Epic #184 / #193).
+ * ItemType — board-row discriminator (Epic #184 / #193 / #197).
  * Wire values stay task|requirement|bug|discussion; only `task` is scheduler-runnable.
  * TaskType is a transitional alias for gradual renames of call sites.
+ * Removal target: after M6 (#196) closes (tracked by #197).
  */
 export type ItemType = 'task' | 'requirement' | 'bug' | 'discussion';
-/** @deprecated Prefer ItemType */
+/** @deprecated Prefer ItemType. Removal target: M6 close (#196 / #197). */
 export type TaskType = ItemType;
 
 /** Executor channel (名称定义表 §0.5). Field name stays executor — not AIWorkforce. */
@@ -96,6 +97,10 @@ export interface ChecklistItem {
     done?: boolean;
 }
 
+/**
+ * ProjectItem — primary board-row type (Epic #184 / #197 M6-1).
+ * Wire JSON field names stay stable; prefer ProjectItem / ItemType in new code.
+ */
 export interface ProjectItem {
     id: string;
     title: string;
@@ -158,3 +163,9 @@ export interface ProjectItem {
     workspaceId?: string;
     workspaceName?: string;
 }
+
+/**
+ * @deprecated Prefer ProjectItem. Transitional alias (Epic #197 / M6-1).
+ * Removal target: delete when M6 (#196) closes (tracked by #197).
+ */
+export type Task = ProjectItem;

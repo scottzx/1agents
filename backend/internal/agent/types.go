@@ -73,8 +73,8 @@ type (
 	Author            = meta.Author
 	ReplyMode         = meta.ReplyMode
 	Reply             = meta.Reply
-	// ProjectItem is the primary board-row type (table project_items). Task is
-	// the transitional alias used by existing call sites (#188).
+	// ProjectItem is the primary board-row type (table project_items; #197).
+	// Task is a transitional alias — prefer ProjectItem in new code.
 	ProjectItem       = meta.ProjectItem
 	Task              = meta.Task
 	TasksConfig       = meta.TasksConfig

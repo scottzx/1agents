@@ -8,7 +8,7 @@
 
 import { apiFetch } from './apiClient';
 import { workspaceService } from './workspaceService';
-import type { ProjectItem, Milestone, Reply, ReplyMode } from '../types/task';
+import type { ProjectItem, Milestone, ReplyMode } from '../types/task';
 
 /** Resolve a GitHub-style project#number reference to its task + workspace. */
 export interface ProjectItemRef {
@@ -144,4 +144,4 @@ export const projectItemService = {
     },
 };
 
-export type { ProjectItem, Milestone, Reply };
+export type { ProjectItem, ItemType, Task, TaskType, Milestone, Reply } from '../types/task';

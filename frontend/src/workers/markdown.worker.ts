@@ -8,11 +8,7 @@
 /// <reference lib="webworker" />
 
 import { Marked } from 'marked';
-import {
-    frontmatterExtension,
-    mermaidRenderer,
-    normalizeMarkdownThematicBreaks,
-} from '../utils/markdown';
+import { frontmatterExtension, mermaidRenderer, normalizeMarkdownThematicBreaks } from '../utils/markdown';
 
 // Use a dedicated Marked instance carrying the shared mermaid code renderer, so
 // ```mermaid fences in a .md file become `.mermaid-block` placeholders (drawn by
