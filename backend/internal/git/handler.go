@@ -830,7 +830,7 @@ func (h *Handler) CommitFiles(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		status := string(parts[0][0]) // take first char (strips similarity score like R100 → R)
-		path := parts[len(parts)-1]   // last field (for renames: "R\told\tnew" → take new)
+		path := unquoteGitPath(parts[len(parts)-1]) // last field (renames: R\told\tnew → new)
 		files = append(files, CommitFileEntry{Status: status, Path: path})
 	}
 
@@ -1080,11 +1080,27 @@ func (h *Handler) AICommit(w http.ResponseWriter, r *http.Request) {
 // --- Internal helpers ---
 
 func (h *Handler) git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	// core.quotepath=false so non-ASCII paths (e.g. 中文) are emitted as UTF-8
+	// instead of C-style octal escapes like "\346\233\264…".
+	full := append([]string{"-c", "core.quotepath=false"}, args...)
+	cmd := exec.Command("git", full...)
 	cmd.Dir = h.root
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	return strings.TrimRight(string(out), "\r\n \t"), err
+}
+
+// unquoteGitPath decodes a path from git porcelain / name-status output.
+// Git wraps paths that contain spaces or (when quotepath is on) non-ASCII
+// bytes in double quotes with C-style escapes (\nnn octal, \", \\, \n, …).
+func unquoteGitPath(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		if u, err := strconv.Unquote(s); err == nil {
+			return u
+		}
+	}
+	return s
 }
 
 func (h *Handler) isRepo() bool {
@@ -1148,11 +1164,12 @@ func (h *Handler) changedFilesAt(dir string) (staged, unstaged, untracked []File
 		y := string(line[1]) // unstaged status
 		path := strings.TrimSpace(line[3:])
 
-		// Handle renames: "old -> new"
+		// Handle renames: "old -> new" (each side may be C-quoted)
 		if strings.Contains(path, " -> ") {
 			parts := strings.SplitN(path, " -> ", 2)
 			path = parts[1]
 		}
+		path = unquoteGitPath(path)
 
 		if x == "?" && y == "?" {
 			untracked = append(untracked, FileStatus{Path: path, Status: "?"})
