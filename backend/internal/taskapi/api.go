@@ -16,7 +16,6 @@ package taskapi
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -206,9 +205,7 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 	}
 	// For function tasks, embed the handler type in Labels so the runner can
 	// look it up without a dedicated column. Mirrors Assignee (same value).
-	if spec.Executor == meta.TaskExecutorFunction && spec.FunctionType != "" {
-		t.Labels = append(t.Labels, "fn:"+spec.FunctionType)
-	}
+	t.Labels = meta.ApplyFnLabel(t.Labels, spec.Executor, spec.FunctionType)
 
 	err = a.store.Mutate(spec.WorkspacePath, func(cfg *meta.TasksConfig) bool {
 		cfg.Tasks = append(cfg.Tasks, t)
@@ -221,36 +218,18 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 }
 
 // NormalizeDispatchSpec validates the executor×assignee matrix and returns a
-// copy with Executor defaulted and Assignee filled. Invalid combos return a
-// descriptive error suitable for HTTP 4xx surfaces (#192 / 名称定义表 §0.5).
+// copy with Executor defaulted and Assignee filled. Delegates to
+// meta.NormalizeExecutorAssignment — the single matrix entry used by HTTP
+// project-items create/patch as well (#192 / #198 / 名称定义表 §0.5).
 func NormalizeDispatchSpec(spec DispatchSpec) (DispatchSpec, error) {
-	out := spec
-	out.Executor = executorOrDefault(spec.Executor)
-
-	switch out.Executor {
-	case meta.TaskExecutorAgent:
-		// Agent channel: assignee is an AgentType or empty (runner default).
-		// "user" is the human sentinel — that combination is human, not agent.
-		if out.Assignee == meta.AssigneeUser {
-			return out, fmt.Errorf("taskapi: executor=agent cannot use assignee=user (use executor=human)")
-		}
-	case meta.TaskExecutorHuman:
-		// Human channel: assignee fixed to user (future: employee ids).
-		out.Assignee = meta.AssigneeUser
-	case meta.TaskExecutorFunction:
-		// Function channel: FunctionType is source of truth; assignee mirrors it.
-		fn := strings.TrimSpace(out.FunctionType)
-		if fn == "" {
-			fn = strings.TrimSpace(out.Assignee)
-		}
-		if fn == "" {
-			return out, fmt.Errorf("taskapi: executor=function requires FunctionType (or assignee=function name)")
-		}
-		out.FunctionType = fn
-		out.Assignee = fn
-	default:
-		return out, fmt.Errorf("taskapi: invalid executor %q (want agent|function|human)", out.Executor)
+	asg, err := meta.NormalizeExecutorAssignment(spec.Executor, spec.Assignee, spec.FunctionType)
+	if err != nil {
+		return spec, fmt.Errorf("taskapi: %w", err)
 	}
+	out := spec
+	out.Executor = asg.Executor
+	out.Assignee = asg.Assignee
+	out.FunctionType = asg.FunctionType
 	return out, nil
 }
 
@@ -284,12 +263,6 @@ func (a *API) QueryTasks(workspacePath, businessRef, executorFilter string) ([]m
 
 // helpers ──────────────────────────────────────────────────────────────────
 
-func executorOrDefault(e meta.TaskExecutor) meta.TaskExecutor {
-	if e == "" {
-		return meta.TaskExecutorAgent
-	}
-	return e
-}
 
 func priorityOrDefault(p string) string {
 	if p == "" {

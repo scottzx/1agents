@@ -21,3 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Chat message kind `assistant_text` is unchanged.
 - HTTP paths remain `/api/agent/project-items`; CLI remains `1agents project-items`.
 - Package name `taskapi` is intentionally retained for this cutover.
+
+### Changed (M6 follow-up · #197 / #198)
+
+- **Go/TS true names**: `ProjectItem` is now the struct definition site; `Task` / `TaskType` remain deprecated aliases with removal target after M6 call-site migration.
+- **Single executor matrix**: `meta.NormalizeExecutorAssignment` is the shared entry for `taskapi.DispatchTask` and HTTP POST/PATCH `/api/agent/project-items` (illegal combos return 4xx).
