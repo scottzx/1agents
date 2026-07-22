@@ -510,7 +510,7 @@ func runEngine(ctx context.Context, cfg *config.Config, configPath string) bool 
 			engine.SetChannelAgent(p, chAgent)
 			slog.Info("channel-level agent bound", "project", proj.Name, "channel", p.Name(), "agent", chAgent.Name())
 		}
-		_, _, _, _, _, showCtx, showFooter := config.EffectiveDisplay(cfg, &proj)
+		_, _, _, _, _, showCtx, showFooter, _ := config.EffectiveDisplay(cfg, &proj)
 		engine.SetShowContextIndicator(showCtx)
 		engine.SetReplyFooterEnabled(showFooter)
 		engine.SetAttachmentSendEnabled(cfg.AttachmentSend != "off")
@@ -1160,7 +1160,7 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 		return nil, fmt.Errorf("project %q not found in config", projName)
 	}
 
-	mode, tm, tool, tmlen, toollen, showCtx, showFooter := config.EffectiveDisplay(cfg, proj)
+	mode, tm, tool, tmlen, toollen, showCtx, showFooter, _ := config.EffectiveDisplay(cfg, proj)
 	engine.SetDisplayConfig(core.DisplayCfg{
 		Mode:             mode,
 		CardMode:         config.EffectiveCardMode(cfg, proj),

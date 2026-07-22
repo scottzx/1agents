@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -781,7 +782,12 @@ func NewRouter(cfg *config.Config) http.Handler {
 	mux.HandleFunc("/api/access/revoke", handleAccessRevoke)
 
 	// ── Proxy API ────────────────────────────────────────────────────────────
+	// Query form (legacy): /api/proxy?url=http://localhost:3000/TalkingHeadComposition
+	// Path form (preferred for SPAs like Remotion): 
+	//   /api/webproxy/{base64url(origin)}/TalkingHeadComposition
+	// so location.pathname's last segment is the composition id even before inject.
 	mux.HandleFunc("/api/proxy", handleProxy)
+	mux.HandleFunc("/api/webproxy/", handleWebProxy)
 
 	// ── Static frontend assets + task permalink deep links ───────────────────
 	// This catch-all must be registered last so it does not shadow the routes
@@ -1186,18 +1192,104 @@ var proxyStripRequestHeaders = map[string]bool{
 	"referer": true,
 }
 
-// handleProxy acts as a reverse proxy for the built-in browser iframe. It
-// fetches the target URL, strips frame-busting headers, and for HTML injects
-// a <base> tag plus rewrites for navigation / fetch / XHR / EventSource so
-// same-origin APIs (including SSE) stay on the host proxy instead of hitting
-// the target origin directly (which triggers CORS).
+// handleProxy is the legacy query form: /api/proxy?url=<absolute-url>.
+// Prefer handleWebProxy for path-routed SPAs (Remotion).
 func handleProxy(w http.ResponseWriter, r *http.Request) {
 	targetURL := r.URL.Query().Get("url")
 	if targetURL == "" {
 		http.Error(w, "Missing url parameter", http.StatusBadRequest)
 		return
 	}
+	proxyToTarget(w, r, targetURL)
+}
 
+// handleWebProxy is the path form used by the built-in browser:
+//
+//	/api/webproxy/{base64url(origin)}/{path...}?query
+//
+// Example for Remotion:
+//
+//	/api/webproxy/aHR0cDovL2xvY2FsaG9zdDozMDAw/TalkingHeadComposition
+//
+// Remotion derives composition id from the last path segment
+// (deriveCanvasContentFromRoute), so this shape works even before inject
+// clean-path runs — unlike /api/proxy?url=… where pathname is always "/api/proxy".
+func handleWebProxy(w http.ResponseWriter, r *http.Request) {
+	targetURL, err := parseWebProxyPath(r.URL)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	proxyToTarget(w, r, targetURL)
+}
+
+// parseWebProxyPath decodes /api/webproxy/{b64origin}/{path...} into an absolute URL.
+func parseWebProxyPath(u *url.URL) (string, error) {
+	const prefix = "/api/webproxy/"
+	if !strings.HasPrefix(u.Path, prefix) {
+		return "", fmt.Errorf("not a webproxy path")
+	}
+	rest := strings.TrimPrefix(u.Path, prefix)
+	if rest == "" {
+		return "", fmt.Errorf("missing origin token")
+	}
+	b64 := rest
+	pathPart := "/"
+	if i := strings.Index(rest, "/"); i >= 0 {
+		b64 = rest[:i]
+		pathPart = rest[i:] // includes leading /
+		if pathPart == "" {
+			pathPart = "/"
+		}
+	}
+	originBytes, err := base64.RawURLEncoding.DecodeString(b64)
+	if err != nil {
+		// Accept standard base64url with padding too.
+		originBytes, err = base64.URLEncoding.DecodeString(b64)
+		if err != nil {
+			return "", fmt.Errorf("invalid origin token: %w", err)
+		}
+	}
+	origin := string(originBytes)
+	ou, err := url.Parse(origin)
+	if err != nil || ou.Scheme == "" || ou.Host == "" {
+		return "", fmt.Errorf("invalid origin %q", origin)
+	}
+	target := strings.TrimRight(origin, "/") + pathPart
+	if u.RawQuery != "" {
+		target += "?" + u.RawQuery
+	}
+	if u.Fragment != "" {
+		target += "#" + u.Fragment
+	}
+	return target, nil
+}
+
+// encodeWebProxyPath builds /api/webproxy/{b64origin}{pathname} for tests/helpers.
+func encodeWebProxyPath(target string) (string, error) {
+	u, err := url.Parse(target)
+	if err != nil {
+		return "", err
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("target must be absolute")
+	}
+	origin := u.Scheme + "://" + u.Host
+	b64 := base64.RawURLEncoding.EncodeToString([]byte(origin))
+	path := u.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	out := "/api/webproxy/" + b64 + path
+	if u.RawQuery != "" {
+		out += "?" + u.RawQuery
+	}
+	return out, nil
+}
+
+// proxyToTarget reverse-proxies the browser request to targetURL.
+// HTML responses get base + bootstrap inject (clean-path for Remotion, network rewrites).
+func proxyToTarget(w http.ResponseWriter, r *http.Request, targetURL string) {
 	// CORS preflight from the iframe (same-origin normally, but keep cheap).
 	if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1237,24 +1329,10 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 		req.Host = u.Host
 		targetOrigin := u.Scheme + "://" + u.Host
 		req.Header.Set("Origin", targetOrigin)
-		// Prefer a target-side referer so relative API checks still make sense.
-		if ref := r.Header.Get("Referer"); ref != "" {
-			if ru, err := url.Parse(ref); err == nil && ru.Path == "/api/proxy" {
-				if orig := ru.Query().Get("url"); orig != "" {
-					req.Header.Set("Referer", orig)
-				} else {
-					req.Header.Set("Referer", targetOrigin+"/")
-				}
-			} else {
-				req.Header.Set("Referer", targetOrigin+"/")
-			}
-		} else {
-			req.Header.Set("Referer", targetOrigin+"/")
-		}
+		req.Header.Set("Referer", targetOrigin+"/")
 	}
 
 	// No overall Timeout — SSE and other long-lived streams must not be cut off.
-	// CheckRedirect keeps method/body for 307/308; default client is fine for GET.
 	client := &http.Client{Timeout: 0}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1275,7 +1353,19 @@ func handleProxy(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		bodyBytes = injectProxyBootstrap(bodyBytes, resp.Request.URL.String())
+		// Prefer the URL the client asked for (keeps composition path even if
+		// upstream redirected); fall back to final request URL.
+		pageURL := targetURL
+		if resp.Request != nil && resp.Request.URL != nil {
+			// Keep path from target if upstream only added trailing slash noise.
+			final := resp.Request.URL.String()
+			if tu, err := url.Parse(targetURL); err == nil && tu.Path != "" && tu.Path != "/" {
+				pageURL = targetURL
+			} else {
+				pageURL = final
+			}
+		}
+		bodyBytes = injectProxyBootstrap(bodyBytes, pageURL)
 		copyProxyResponseHeaders(w, resp.Header, true)
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
@@ -1346,28 +1436,31 @@ func injectProxyBootstrap(body []byte, actualURL string) []byte {
 	jsTarget = strings.ReplaceAll(jsTarget, "\r", `\r`)
 	jsTarget = strings.ReplaceAll(jsTarget, "</", "<\\/")
 
-	// Prepend (not mid-<head>): guarantees execution before any target script,
-	// even if the page puts modules/scripts before or without <head>.
-	// <base> first so relative URLs resolve to the target origin; script then
-	// history.replaceState's onto the target pathname (Remotion etc.).
-	baseTag := `<base href="` + actualURL + `">`
+	// <base> must be origin root (with trailing slash), NOT the full composition
+	// URL — otherwise relative asset resolution breaks under Remotion.
+	baseHref := actualURL
+	if u, err := url.Parse(actualURL); err == nil && u.Scheme != "" && u.Host != "" {
+		baseHref = u.Scheme + "://" + u.Host + "/"
+	}
+
+	// Prepend: guarantees execution before any target script.
+	// Script history.replaceState's onto the target pathname so Remotion's
+	// getRoute()/pathname.replace('/','') sees "TalkingHeadComposition" not "api/proxy".
+	baseTag := `<base href="` + baseHref + `">`
 	scriptTag := strings.Replace(proxyInjectScript, "__TARGET_URL__", jsTarget, 1)
 	return []byte(baseTag + scriptTag + htmlStr)
 }
 
 // proxyInjectScript — built-in browser iframe bootstrap.
 //
-// Problem: the real iframe URL is /api/proxy?url=… so location.pathname is
-// always "/api/proxy". Path-based SPAs (Remotion Studio) treat that as
-// composition id "api/proxy" → "Composition with ID api/proxy not found."
-// Location getters are not configurable in Chromium, so prototype spoofing
-// does not work.
+// Remotion Studio (see getRoute / CanvasOrLoading):
+//   compositionId = location.pathname last segment  OR  pathname.replace('/','')
+// So pathname "/api/proxy" → id "api/proxy" → "Composition with ID api/proxy not found."
 //
-// Fix: as the first script in <head>, history.replaceState onto the target's
-// pathname (same origin as 1agents). Then location.pathname is "/" or
-// "/MyComp" for real. Full reloads still go through /api/proxy?url=…;
-// pushState/replaceState keep clean paths; fetch/XHR/EventSource map back
-// onto the target via /api/proxy?url=….
+// Preferred load shape (NEVER rewrite history to bare "/TalkingHeadComposition"):
+//   /api/webproxy/{b64(origin)}/TalkingHeadComposition
+// Remotion takes composition id from the LAST path segment, so this works.
+// Bare paths on the 1agents host 404 on reload (static catch-all).
 //
 // Placeholders:
 //
@@ -1376,6 +1469,32 @@ const proxyInjectScript = `
 <script>
 (function() {
   var virtualHref = "__TARGET_URL__";
+
+  function b64urlEncode(str) {
+    var s = btoa(unescape(encodeURIComponent(str)));
+    return s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+  function b64urlDecode(s) {
+    s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    try { return decodeURIComponent(escape(atob(s))); } catch(e) { return atob(s); }
+  }
+
+  // Decode /api/webproxy/{b64origin}/{path...}
+  function parseWebProxyPath(href) {
+    try {
+      var u = new URL(href || window.location.href);
+      var prefix = '/api/webproxy/';
+      if (u.pathname.indexOf(prefix) !== 0) return null;
+      var rest = u.pathname.slice(prefix.length);
+      if (!rest) return null;
+      var slash = rest.indexOf('/');
+      var b64 = slash < 0 ? rest : rest.slice(0, slash);
+      var path = slash < 0 ? '/' : rest.slice(slash);
+      if (!path) path = '/';
+      return b64urlDecode(b64) + path + u.search + u.hash;
+    } catch(e) { return null; }
+  }
 
   function parseProxyQuery(href) {
     try {
@@ -1390,7 +1509,7 @@ const proxyInjectScript = `
 
   try {
     if (!virtualHref || virtualHref.indexOf('__TARGET') === 0) {
-      virtualHref = parseProxyQuery() || window.location.href;
+      virtualHref = parseWebProxyPath() || parseProxyQuery() || window.location.href;
     }
     virtualHref = new URL(virtualHref).href;
   } catch(e) {
@@ -1406,50 +1525,68 @@ const proxyInjectScript = `
   function setVirtual(href) {
     try {
       var next = new URL(href, getVirtual().href);
-      // Stay on the same target origin inside one document lifetime.
-      if (next.origin === targetOrigin) virtualHref = next.href;
-      else virtualHref = next.href;
+      // If app navigates using bare path on 1agents origin, map back to target.
+      if (next.origin === window.location.origin && next.pathname.indexOf('/api/webproxy/') !== 0 && next.pathname !== '/api/proxy') {
+        virtualHref = targetOrigin + next.pathname + next.search + next.hash;
+      } else if (next.origin === targetOrigin || next.protocol === 'http:' || next.protocol === 'https:') {
+        if (next.origin === targetOrigin) virtualHref = next.href;
+        else if (next.origin === window.location.origin) {
+          var decoded = parseWebProxyPath(next.href);
+          if (decoded) virtualHref = decoded;
+        } else {
+          virtualHref = next.href;
+        }
+      }
     } catch(e) {}
   }
 
-  // Path+search+hash only — so the REAL location.pathname matches the SPA.
-  function toCleanPath(href) {
-    var u = new URL(href, getVirtual().href);
-    return u.pathname + u.search + u.hash;
+  // History + full navigations ALWAYS stay on /api/webproxy/... so reload works
+  // (bare /TalkingHeadComposition is not a 1agents route → 404).
+  function buildWebProxyURL(absoluteHref) {
+    var u = new URL(absoluteHref, getVirtual().href);
+    if (u.origin === window.location.origin) {
+      var decoded = parseWebProxyPath(u.href);
+      if (decoded) u = new URL(decoded);
+      else if (u.pathname !== '/api/proxy') {
+        u = new URL(targetOrigin + u.pathname + u.search + u.hash);
+      }
+    }
+    var path = u.pathname || '/';
+    return window.location.origin + '/api/webproxy/' + b64urlEncode(u.origin) + path + u.search + u.hash;
   }
 
-  // Full navigation reload through the Go proxy (HTML inject runs again).
+  function toHistoryURL(href) {
+    // Absolute same-origin webproxy URL (base tag must not rewrite this).
+    return buildWebProxyURL(href);
+  }
+
   function toProxiedReload(href) {
-    var resolved = new URL(href, getVirtual().href).href;
-    return window.location.origin + '/api/proxy?url=' + encodeURIComponent(resolved);
+    return buildWebProxyURL(href);
   }
 
-  // Network: send everything meant for the target through /api/proxy?url=.
+  function isOurProxyPath(pathname) {
+    return pathname === '/api/proxy' || pathname.indexOf('/api/webproxy/') === 0;
+  }
+
   function toProxiedNetwork(url) {
     try {
       var resolved = new URL(url, getVirtual().href);
       var proxyOrigin = window.location.origin;
 
-      // Already a proxy URL — leave it.
-      if (resolved.origin === proxyOrigin && resolved.pathname === '/api/proxy') {
+      if (resolved.origin === proxyOrigin && isOurProxyPath(resolved.pathname)) {
         return resolved.href;
       }
-
-      // Resolved against <base>/virtual → target host.
       if (resolved.origin === targetOrigin) {
-        return proxyOrigin + '/api/proxy?url=' + encodeURIComponent(resolved.href);
+        return buildWebProxyURL(resolved.href);
       }
-
-      // After clean-path replaceState, some apps build URLs with location.origin
-      // (1agents host). Map those paths back onto the target (except our proxy).
-      if (resolved.origin === proxyOrigin && resolved.pathname !== '/api/proxy') {
-        var mapped = targetOrigin + resolved.pathname + resolved.search + resolved.hash;
-        return proxyOrigin + '/api/proxy?url=' + encodeURIComponent(mapped);
+      if (resolved.origin === proxyOrigin && !isOurProxyPath(resolved.pathname)) {
+        if (resolved.pathname.indexOf('/api/') === 0 && resolved.pathname.indexOf('/api/webproxy/') !== 0) {
+          return resolved.href;
+        }
+        return buildWebProxyURL(targetOrigin + resolved.pathname + resolved.search + resolved.hash);
       }
-
-      // Other foreign hosts — also proxy (keeps mixed-content / remote clients working).
       if (resolved.origin !== proxyOrigin) {
-        return proxyOrigin + '/api/proxy?url=' + encodeURIComponent(resolved.href);
+        return buildWebProxyURL(resolved.href);
       }
       return resolved.href;
     } catch(e) {
@@ -1460,12 +1597,16 @@ const proxyInjectScript = `
   var originalPushState = window.history.pushState.bind(window.history);
   var originalReplaceState = window.history.replaceState.bind(window.history);
 
-  // CRITICAL for Remotion: run BEFORE any app script reads location.pathname.
-  // Turns /api/proxy?url=http://localhost:3000/  into  pathname "/" on this origin.
+  // Normalize legacy ?url= loads onto path-form webproxy (reload-safe).
   try {
-    originalReplaceState.call(window.history, window.history.state, '', toCleanPath(virtualHref));
+    if (window.location.pathname === '/api/proxy' || !isOurProxyPath(window.location.pathname)) {
+      var desired = buildWebProxyURL(virtualHref);
+      if (window.location.href !== desired) {
+        originalReplaceState.call(window.history, window.history.state, '', desired);
+      }
+    }
   } catch(e) {
-    console.warn('[1agents proxy] clean-path replaceState failed', e);
+    console.warn('[1agents proxy] history normalize failed', e);
   }
 
   function notifyParent(url) {
@@ -1477,7 +1618,11 @@ const proxyInjectScript = `
 
   window.addEventListener('popstate', function() {
     try {
-      virtualHref = targetOrigin + window.location.pathname + window.location.search + window.location.hash;
+      var decoded = parseWebProxyPath(window.location.href);
+      if (decoded) virtualHref = decoded;
+      else if (!isOurProxyPath(window.location.pathname)) {
+        virtualHref = targetOrigin + window.location.pathname + window.location.search + window.location.hash;
+      }
     } catch(e) {}
     notifyParent(virtualHref);
   });
@@ -1485,18 +1630,13 @@ const proxyInjectScript = `
   document.addEventListener('click', function(e) {
     var a = e.target && e.target.closest ? e.target.closest('a') : null;
     if (!a || !a.href) return;
-    // Let modified clicks (new tab) through.
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (a.target && a.target !== '' && a.target !== '_self') return;
     try {
       var resolved = new URL(a.href, getVirtual().href);
-      // Same-target SPA link: prefer push via full reload through proxy so HTML
-      // bootstrap re-applies (Remotion soft-nav uses history API instead).
       if (resolved.origin === targetOrigin || resolved.origin === window.location.origin) {
         e.preventDefault();
-        setVirtual(resolved.origin === window.location.origin
-          ? (targetOrigin + resolved.pathname + resolved.search + resolved.hash)
-          : resolved.href);
+        setVirtual(resolved.href);
         window.location.href = toProxiedReload(virtualHref);
       }
     } catch(err) {}
@@ -1522,12 +1662,9 @@ const proxyInjectScript = `
     try {
       if (url !== undefined && url !== null && String(url) !== '') {
         var resolvedUrl = new URL(String(url), getVirtual().href).href;
-        if (new URL(resolvedUrl).origin === window.location.origin) {
-          resolvedUrl = targetOrigin + new URL(resolvedUrl).pathname + new URL(resolvedUrl).search + new URL(resolvedUrl).hash;
-        }
         setVirtual(resolvedUrl);
-        originalPushState(state, title, toCleanPath(resolvedUrl));
-        notifyParent(resolvedUrl);
+        originalPushState(state, title, toHistoryURL(virtualHref));
+        notifyParent(virtualHref);
         return;
       }
     } catch (e) {
@@ -1540,12 +1677,9 @@ const proxyInjectScript = `
     try {
       if (url !== undefined && url !== null && String(url) !== '') {
         var resolvedUrl = new URL(String(url), getVirtual().href).href;
-        if (new URL(resolvedUrl).origin === window.location.origin) {
-          resolvedUrl = targetOrigin + new URL(resolvedUrl).pathname + new URL(resolvedUrl).search + new URL(resolvedUrl).hash;
-        }
         setVirtual(resolvedUrl);
-        originalReplaceState(state, title, toCleanPath(resolvedUrl));
-        notifyParent(resolvedUrl);
+        originalReplaceState(state, title, toHistoryURL(virtualHref));
+        notifyParent(virtualHref);
         return;
       }
     } catch (e) {
@@ -1616,6 +1750,36 @@ const proxyInjectScript = `
     ProxiedEventSource.CLOSED = OriginalEventSource.CLOSED;
     window.EventSource = ProxiedEventSource;
   }
+
+  // Workers cannot load cross-origin scripts (base → :3000 while page is :38080).
+  // Route worker scripts through same-origin webproxy.
+  function wrapWorkerCtor(Orig) {
+    if (!Orig) return Orig;
+    function ProxiedWorker(scriptURL, options) {
+      var finalUrl = scriptURL;
+      try {
+        if (scriptURL) {
+          var proxied = toProxiedNetwork(String(scriptURL));
+          var resolved = new URL(String(scriptURL), getVirtual().href).href;
+          if (proxied !== resolved && proxied !== String(scriptURL)) finalUrl = proxied;
+        }
+      } catch (e) {
+        console.warn('[1agents proxy] Worker', e);
+      }
+      return new Orig(finalUrl, options);
+    }
+    ProxiedWorker.prototype = Orig.prototype;
+    try {
+      Object.keys(Orig).forEach(function(k) {
+        try { ProxiedWorker[k] = Orig[k]; } catch(e) {}
+      });
+    } catch(e) {}
+    return ProxiedWorker;
+  }
+  try {
+    if (window.Worker) window.Worker = wrapWorkerCtor(window.Worker);
+    if (window.SharedWorker) window.SharedWorker = wrapWorkerCtor(window.SharedWorker);
+  } catch(e) {}
 
   if (navigator.serviceWorker) {
     try {

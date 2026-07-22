@@ -2,6 +2,43 @@ import { h, Component } from 'preact';
 import { t, type Lang } from '../../i18n';
 import type { Tab } from '../../stores/tabsStore';
 
+/** base64url (no padding) for ASCII origins — matches Go RawURLEncoding. */
+function b64urlEncode(str: string): string {
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function b64urlDecode(s: string): string {
+    let b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    return atob(b64);
+}
+
+/**
+ * /api/webproxy/{b64origin}/TalkingHeadComposition
+ * last path segment = Remotion composition id.
+ */
+function toWebProxyIframeSrc(targetUrl: string): string {
+    const u = new URL(targetUrl);
+    const origin = u.origin;
+    const path = u.pathname || '/';
+    return `${window.location.origin}/api/webproxy/${b64urlEncode(origin)}${path}${u.search}${u.hash}`;
+}
+
+function decodeWebProxyPath(url: URL): string | null {
+    const prefix = '/api/webproxy/';
+    if (!url.pathname.startsWith(prefix)) return null;
+    const rest = url.pathname.slice(prefix.length);
+    if (!rest) return null;
+    const slash = rest.indexOf('/');
+    const b64 = slash < 0 ? rest : rest.slice(0, slash);
+    const path = slash < 0 ? '/' : rest.slice(slash) || '/';
+    try {
+        return `${b64urlDecode(b64)}${path}${url.search}${url.hash}`;
+    } catch {
+        return null;
+    }
+}
+
 export interface BuiltinBrowserProps {
     tab: Tab;
     active: boolean;
@@ -68,11 +105,15 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
 
     getOriginalUrl = (urlStr: string): string => {
         try {
-            const url = new URL(urlStr);
+            const url = new URL(urlStr, window.location.origin);
+            // Legacy query proxy
             if (url.pathname === '/api/proxy') {
                 const target = url.searchParams.get('url');
                 if (target) return target;
             }
+            // Path proxy: /api/webproxy/{b64origin}/{path...}
+            const decoded = decodeWebProxyPath(url);
+            if (decoded) return decoded;
             return urlStr;
         } catch (e) {
             return urlStr;
@@ -84,14 +125,14 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
         try {
             const iframeUrl = this.iframeRef.contentWindow.location.href;
             if (!iframeUrl || iframeUrl === 'about:blank') return;
-            // After inject, the iframe history.replaceState's onto a clean path
-            // (e.g. "/" or "/MyComp") so Remotion sees the right pathname.
-            // That real URL is on the 1agents origin and is NOT the target site —
-            // only /api/proxy?url=… or postMessage(iframe_navigate) carry the truth.
+            // After inject, iframe replaceState's to a clean path ("/TalkingHeadComposition").
+            // That is NOT the target site URL — trust postMessage / proxy wrappers only.
             try {
                 const u = new URL(iframeUrl);
-                if (u.origin === window.location.origin && u.pathname !== '/api/proxy') {
-                    return;
+                if (u.origin === window.location.origin) {
+                    const isProxy =
+                        u.pathname === '/api/proxy' || u.pathname.startsWith('/api/webproxy/');
+                    if (!isProxy) return;
                 }
             } catch {
                 /* fall through */
@@ -123,35 +164,45 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
     };
 
     /**
-     * Always load through the host Go proxy so URL semantics match the
+     * Always load through the host Go path-proxy so URL semantics match the
      * 1agents host — not the browser client (LAN phone / Happy Relay).
      *
-     * "localhost:3000" always means the machine running 1agents. The proxy
-     * HTML inject rewrites history onto a clean pathname so path-routed SPAs
-     * (e.g. Remotion Studio) do not see "/api/proxy" as a composition id.
+     * Shape: /api/webproxy/{base64url(origin)}/TalkingHeadComposition
+     *
+     * Remotion Studio takes composition id from the last path segment; this
+     * keeps "TalkingHeadComposition" as that segment (unlike ?url=… where
+     * pathname is always "/api/proxy" → error "Composition with ID api/proxy").
+     * Inject also replaceState's to a clean "/TalkingHeadComposition" path.
      */
     getIframeUrl(urlStr: string): string {
         if (!urlStr || urlStr === 'about:blank') {
             return 'about:blank';
         }
-        // Don't double-wrap an already-proxied URL — breaks the feedback loop
-        // if tab.url is transiently a /api/proxy?url=... string
-        if (urlStr.startsWith(`${window.location.origin}/api/proxy?url=`)) {
+        // Already a proxied URL — don't double-wrap
+        if (
+            urlStr.startsWith(`${window.location.origin}/api/proxy?url=`) ||
+            urlStr.startsWith(`${window.location.origin}/api/webproxy/`) ||
+            urlStr.startsWith('/api/webproxy/') ||
+            urlStr.startsWith('/api/proxy?url=')
+        ) {
+            if (urlStr.startsWith('/')) {
+                return `${window.location.origin}${urlStr}`;
+            }
             return urlStr;
         }
-        // Strip a bare /api/proxy?url= path if it somehow landed in tab.url
+        // Unwrap if tab.url somehow holds a proxy wrapper
         try {
             const u = new URL(urlStr, window.location.origin);
             if (u.pathname === '/api/proxy') {
                 const target = u.searchParams.get('url');
-                if (target) {
-                    return `${window.location.origin}/api/proxy?url=${encodeURIComponent(target)}`;
-                }
+                if (target) return toWebProxyIframeSrc(target);
             }
+            const decoded = decodeWebProxyPath(u);
+            if (decoded) return toWebProxyIframeSrc(decoded);
         } catch {
             /* fall through */
         }
-        return `${window.location.origin}/api/proxy?url=${encodeURIComponent(urlStr)}`;
+        return toWebProxyIframeSrc(urlStr);
     }
 
     handleAddressInput = (e: Event) => {
@@ -174,12 +225,15 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
     };
 
     handleRefresh = () => {
-        if (this.iframeRef && this.iframeRef.contentWindow) {
-            try {
-                this.iframeRef.contentWindow.location.reload();
-            } catch (e) {
-                this.iframeRef.src = this.state.iframeSrc;
-            }
+        // Always re-set iframeSrc (webproxy URL). Do NOT location.reload() the
+        // iframe document — after SPA history changes the real path may no longer
+        // be a proxy path and reload would hit 1agents 404 (e.g. /TalkingHeadComposition).
+        const src = this.getIframeUrl(this.props.tab.url || '');
+        if (this.iframeRef) {
+            // Cache-bust so the browser actually re-fetches
+            const sep = src.includes('?') ? '&' : '?';
+            this.iframeRef.src = src === 'about:blank' ? src : `${src}${sep}_r=${Date.now()}`;
+            this.setState({ iframeSrc: src });
         }
     };
 
