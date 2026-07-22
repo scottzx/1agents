@@ -16,6 +16,7 @@ package taskapi
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,9 +33,16 @@ type DispatchSpec struct {
 	// AcceptanceCriteria is injected into agent prompts as the self-check gate.
 	AcceptanceCriteria string
 	// Executor selects the execution path. Defaults to "agent".
+	// Values: agent | function | human (field name stays executor — not AIWorkforce).
 	Executor meta.TaskExecutor
+	// Assignee is the channel object (名称定义表 §0.5):
+	//   agent    → AgentType (empty = runner default)
+	//   human    → "user" (forced on write)
+	//   function → function name; mirrored from FunctionType when empty
+	Assignee string
 	// FunctionType is the registered handler key for executor=function tasks
-	// (e.g. "core.noop", or an app-registered type). Ignored for agent/human.
+	// (e.g. "core.noop"). On write it is the source of truth and Assignee is
+	// mirrored to the same value (#192). Ignored for agent/human.
 	FunctionType string
 	// BusinessRef is the opaque binding seam, e.g. "crm:lead:42". Nullable.
 	BusinessRef string
@@ -148,6 +156,16 @@ func (a *API) checkPermission(namespace, businessRef string) error {
 
 // DispatchTask creates a task and enqueues it for execution. namespace is the
 // calling application's identifier (empty = kernel). Returns the new task ID.
+//
+// Executor × assignee matrix (名称定义表 §0.5 / #192):
+//
+//	executor=agent    → assignee empty or AgentType (never "user")
+//	executor=human    → assignee fixed to "user"
+//	executor=function → FunctionType required; Assignee mirrored to FunctionType;
+//	                    Labels also carry "fn:<FunctionType>" for the runner
+//
+// Field name stays executor (not AIWorkforce). function_type is the DispatchSpec
+// field; on write it is the source of truth and assignee is mirrored to the same value.
 func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) {
 	if err := a.checkPermission(namespace, spec.BusinessRef); err != nil {
 		return "", err
@@ -156,6 +174,12 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 		return "", fmt.Errorf("taskapi: WorkspacePath is required")
 	}
 
+	normalized, err := NormalizeDispatchSpec(spec)
+	if err != nil {
+		return "", err
+	}
+	spec = normalized
+
 	now := time.Now().UTC()
 	taskID := meta.NewID()
 	t := meta.Task{
@@ -163,7 +187,8 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 		Title:              spec.Title,
 		Description:        spec.Description,
 		AcceptanceCriteria: spec.AcceptanceCriteria,
-		Executor:           executorOrDefault(spec.Executor),
+		Executor:           spec.Executor,
+		Assignee:           spec.Assignee,
 		BusinessRef:        spec.BusinessRef,
 		TaskTarget:         spec.Target,
 		DependsOn:          spec.DependsOn,
@@ -171,7 +196,7 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 		Milestone:          spec.Milestone,
 		Status:             meta.TaskStatusPending,
 		IssueState:         meta.IssueOpen,
-		Type:               meta.TaskTypeTask,
+		Type:               meta.ItemTypeTask,
 		CreatedBy:          namespace,
 		CreatedAt:          now,
 		UpdatedAt:          now,
@@ -180,12 +205,12 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 		Sessions:           []meta.SessionMetadata{},
 	}
 	// For function tasks, embed the handler type in Labels so the runner can
-	// look it up without a schema change (Wave 3 may add a dedicated column).
+	// look it up without a dedicated column. Mirrors Assignee (same value).
 	if spec.Executor == meta.TaskExecutorFunction && spec.FunctionType != "" {
 		t.Labels = append(t.Labels, "fn:"+spec.FunctionType)
 	}
 
-	err := a.store.Mutate(spec.WorkspacePath, func(cfg *meta.TasksConfig) bool {
+	err = a.store.Mutate(spec.WorkspacePath, func(cfg *meta.TasksConfig) bool {
 		cfg.Tasks = append(cfg.Tasks, t)
 		return true
 	})
@@ -193,6 +218,40 @@ func (a *API) DispatchTask(namespace string, spec DispatchSpec) (string, error) 
 		return "", fmt.Errorf("taskapi: dispatch: %w", err)
 	}
 	return taskID, nil
+}
+
+// NormalizeDispatchSpec validates the executor×assignee matrix and returns a
+// copy with Executor defaulted and Assignee filled. Invalid combos return a
+// descriptive error suitable for HTTP 4xx surfaces (#192 / 名称定义表 §0.5).
+func NormalizeDispatchSpec(spec DispatchSpec) (DispatchSpec, error) {
+	out := spec
+	out.Executor = executorOrDefault(spec.Executor)
+
+	switch out.Executor {
+	case meta.TaskExecutorAgent:
+		// Agent channel: assignee is an AgentType or empty (runner default).
+		// "user" is the human sentinel — that combination is human, not agent.
+		if out.Assignee == meta.AssigneeUser {
+			return out, fmt.Errorf("taskapi: executor=agent cannot use assignee=user (use executor=human)")
+		}
+	case meta.TaskExecutorHuman:
+		// Human channel: assignee fixed to user (future: employee ids).
+		out.Assignee = meta.AssigneeUser
+	case meta.TaskExecutorFunction:
+		// Function channel: FunctionType is source of truth; assignee mirrors it.
+		fn := strings.TrimSpace(out.FunctionType)
+		if fn == "" {
+			fn = strings.TrimSpace(out.Assignee)
+		}
+		if fn == "" {
+			return out, fmt.Errorf("taskapi: executor=function requires FunctionType (or assignee=function name)")
+		}
+		out.FunctionType = fn
+		out.Assignee = fn
+	default:
+		return out, fmt.Errorf("taskapi: invalid executor %q (want agent|function|human)", out.Executor)
+	}
+	return out, nil
 }
 
 // QueryTask returns the current state of task by id. ok=false when not found.

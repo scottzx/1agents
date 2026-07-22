@@ -77,8 +77,75 @@ func TestExecutorRoundTrip(t *testing.T) {
 				if !found {
 					t.Errorf("expected label fn:%s in %v", tc.fnType, task.Labels)
 				}
+				if task.Assignee != tc.fnType {
+					t.Errorf("function assignee: got %q, want mirrored FunctionType %q", task.Assignee, tc.fnType)
+				}
+			}
+			if tc.executor == meta.TaskExecutorHuman && task.Assignee != meta.AssigneeUser {
+				t.Errorf("human assignee: got %q, want user", task.Assignee)
 			}
 		})
+	}
+}
+
+// ── #192: executor×assignee matrix validation ───────────────────────────────
+
+func TestNormalizeDispatchSpecMatrix(t *testing.T) {
+	// valid: agent with empty assignee
+	if _, err := taskapi.NormalizeDispatchSpec(taskapi.DispatchSpec{Executor: meta.TaskExecutorAgent}); err != nil {
+		t.Fatalf("agent empty assignee: %v", err)
+	}
+	// invalid: agent + user
+	if _, err := taskapi.NormalizeDispatchSpec(taskapi.DispatchSpec{
+		Executor: meta.TaskExecutorAgent, Assignee: meta.AssigneeUser,
+	}); err == nil {
+		t.Fatal("expected error for executor=agent assignee=user")
+	}
+	// valid: human forces assignee=user
+	h, err := taskapi.NormalizeDispatchSpec(taskapi.DispatchSpec{Executor: meta.TaskExecutorHuman})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Assignee != meta.AssigneeUser {
+		t.Fatalf("human assignee = %q", h.Assignee)
+	}
+	// invalid: function without type
+	if _, err := taskapi.NormalizeDispatchSpec(taskapi.DispatchSpec{Executor: meta.TaskExecutorFunction}); err == nil {
+		t.Fatal("expected error for function without FunctionType")
+	}
+	// valid: function from assignee only
+	f, err := taskapi.NormalizeDispatchSpec(taskapi.DispatchSpec{
+		Executor: meta.TaskExecutorFunction, Assignee: "core.noop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.FunctionType != "core.noop" || f.Assignee != "core.noop" {
+		t.Fatalf("function mirror: type=%q assignee=%q", f.FunctionType, f.Assignee)
+	}
+	// invalid executor
+	if _, err := taskapi.NormalizeDispatchSpec(taskapi.DispatchSpec{Executor: "AIWorkforce"}); err == nil {
+		t.Fatal("expected error for invalid executor AIWorkforce")
+	}
+}
+
+func TestDispatchTaskRejectsInvalidMatrix(t *testing.T) {
+	db, cleanup := openTestDB(t)
+	defer cleanup()
+	api := taskapi.New(meta.NewTaskStore(db))
+	ws := t.TempDir()
+
+	_, err := api.DispatchTask("test", taskapi.DispatchSpec{
+		Title: "bad", Executor: meta.TaskExecutorFunction, WorkspacePath: ws,
+	})
+	if err == nil {
+		t.Fatal("expected dispatch error for function without type")
+	}
+	_, err = api.DispatchTask("test", taskapi.DispatchSpec{
+		Title: "bad", Executor: meta.TaskExecutorAgent, Assignee: meta.AssigneeUser, WorkspacePath: ws,
+	})
+	if err == nil {
+		t.Fatal("expected dispatch error for agent+user")
 	}
 }
 
