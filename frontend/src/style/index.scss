@@ -219,11 +219,20 @@
     &::marker { color: var(--accent-color); }
   }
 
-  /* Horizontal rule */
+  /* Horizontal rule — filled bar (GitHub-style).
+   * Prefer background over border-top: UA styles set overflow:hidden on <hr>,
+   * and with global box-sizing:border-box a border-only rule can collapse to
+   * 0px height and look like the divider "didn't render". */
   hr {
-    border: none;
-    border-top: 1px solid var(--border-color);
+    display: block;
+    height: 0.2em;
     margin: 1.5em 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    background-color: var(--border-color);
+    border-radius: 1px;
+    color: transparent;
   }
 
   /* Tables — display:block + overflow-x:auto lets wide tables scroll
@@ -8465,7 +8474,13 @@ body {
         background-color: var(--bg-sidebar-hover);
         font-size: 13px;
         color: var(--text-main);
+        // Empty-state placeholder keeps raw text wrapping; rendered markdown
+        // must use normal flow so block elements (hr, lists, etc.) layout.
         white-space: pre-wrap;
+
+        &.markdown-body {
+          white-space: normal;
+        }
       }
     }
 
@@ -17068,6 +17083,13 @@ body {
 
 .chat-bubble-user .chat-bubble-body {
   overflow-wrap: anywhere;
+  min-width: 0;
+
+  // User text reuses .chat-assistant-content (max-height / scroll / fold).
+  // Align the copy/fold bar to the bubble's trailing edge.
+  .chat-assistant-actions {
+    justify-content: flex-end;
+  }
 }
 
 // Queued state: the bridge accepted the prompt but couldn't start it

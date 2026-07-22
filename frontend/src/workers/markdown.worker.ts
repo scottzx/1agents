@@ -8,7 +8,11 @@
 /// <reference lib="webworker" />
 
 import { Marked } from 'marked';
-import { frontmatterExtension, mermaidRenderer } from '../utils/markdown';
+import {
+    frontmatterExtension,
+    mermaidRenderer,
+    normalizeMarkdownThematicBreaks,
+} from '../utils/markdown';
 
 // Use a dedicated Marked instance carrying the shared mermaid code renderer, so
 // ```mermaid fences in a .md file become `.mermaid-block` placeholders (drawn by
@@ -34,7 +38,9 @@ ctx.addEventListener('message', (e: MessageEvent<ParseRequest>) => {
     try {
         // `async: false` because we are already on a worker thread — we want
         // to block this thread (not the main one) and post the result back.
-        html = marked.parse(content, { async: false }) as string;
+        // Normalize bare `---` so it becomes <hr>, not a setext H2 underline.
+        const src = normalizeMarkdownThematicBreaks(content);
+        html = marked.parse(src, { async: false }) as string;
     } catch (err) {
         html = `<pre class="md-parse-error">Markdown parse error: ${String(err)}</pre>`;
     }
