@@ -70,7 +70,7 @@ func SearchHandler(db *DB) http.HandlerFunc {
 		numMatch := strings.TrimPrefix(q, "#")
 		taskRows, err := sqlDB.Query(`
 			SELECT t.id, t.project_id, COALESCE(p.name, ''), t.number, t.title, t.status, t.type
-			FROM tasks t
+			FROM project_items t
 			LEFT JOIN projects p ON p.id = t.project_id
 			WHERE t.title LIKE ? ESCAPE '\'
 			   OR t.description LIKE ? ESCAPE '\'

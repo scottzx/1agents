@@ -69,16 +69,37 @@ type Project struct {
 	// AvailableAgents is the allowlist of agent types that may run in this
 	// workspace (e.g. ["claudecode", "codex"]). Empty means unrestricted.
 	AvailableAgents []string `json:"availableAgents,omitempty"`
-	// Kind splits workspaces into two families with different UX:
-	//   "assistant" — the "对话" concept, N of them; short-lived tasks & chat.
-	//   "project"   — a full project with dependency graph / kanban (default).
-	// Empty on legacy rows is treated as "project".
+	// Kind splits workspaces into two families (Epic #184 / #189):
+	//   KindWorkforce ("workforce") — UI「助理」; light chat unit, optional PM shell
+	//   KindProject   ("project")   — full project with kanban / milestones (default)
+	// Empty on legacy rows is treated as KindProject. Historical kind=assistant is
+	// migrated to workforce on Open; write paths only persist workforce|project.
 	Kind string `json:"kind,omitempty"`
 	// Avatar is an optional image URL ("/avatars/presets/x.png" or an upload
 	// under "/avatars/"). Rendered on the assistant card and sidebar folder icon.
 	Avatar    string    `json:"avatar,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Workspace kind values persisted on projects.kind (Epic #184 §0.4 / #189).
+const (
+	KindWorkforce = "workforce" // UI「助理」
+	KindProject   = "project"
+)
+
+// NormalizeProjectKind maps legacy/empty kind strings to the only two persisted
+// values. kind=assistant becomes workforce (one-shot write-side remap, no
+// long-lived dual-read of storage).
+func NormalizeProjectKind(kind string) string {
+	switch kind {
+	case "", KindProject:
+		return KindProject
+	case KindWorkforce, "assistant":
+		return KindWorkforce
+	default:
+		return kind
+	}
 }
 
 // ChatSessionRecord is the 1agents-side index of a chat session.
@@ -139,17 +160,29 @@ const (
 	ScheduleTypeScheduled ScheduleType = "scheduled"
 )
 
-// TaskType is the GitHub-style issue discriminator. Requirement/bug/discussion
-// cards live in the same tasks table as normal tasks; the "需求池"/"讨论" views
-// filter by type. A discussion is a free-form conceptual record (no deliverable)
-// that never participates in scheduling — see the scheduler's ready loop.
-type TaskType string
+// ItemType is the GitHub-style issue discriminator. Requirement/bug/discussion
+// cards live in the same project_items table as normal tasks; the "需求池"/"讨论"
+// views filter by type. A discussion is a free-form conceptual record (no
+// deliverable) that never participates in scheduling — see the scheduler's
+// ready loop. Wire JSON values stay task|requirement|bug|discussion.
+type ItemType string
 
 const (
-	TaskTypeTask        TaskType = "task"
-	TaskTypeRequirement TaskType = "requirement"
-	TaskTypeBug         TaskType = "bug"
-	TaskTypeDiscussion  TaskType = "discussion"
+	ItemTypeTask        ItemType = "task"
+	ItemTypeRequirement ItemType = "requirement"
+	ItemTypeBug         ItemType = "bug"
+	ItemTypeDiscussion  ItemType = "discussion"
+)
+
+// TaskType is a transitional alias for ItemType (Epic #184). Prefer ItemType in
+// new code; enum wire values are unchanged.
+type TaskType = ItemType
+
+const (
+	TaskTypeTask        = ItemTypeTask
+	TaskTypeRequirement = ItemTypeRequirement
+	TaskTypeBug         = ItemTypeBug
+	TaskTypeDiscussion  = ItemTypeDiscussion
 )
 
 // TaskExecutor is the executor role for a task (schema v20, #318).
@@ -394,6 +427,12 @@ type Reply struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+// ProjectItem (alias: Task) is a board row persisted in the project_items table
+// (Epic #184 / #187–#188). Wire JSON field names stay stable; only the Go/type
+// and SQL table names moved off the legacy "tasks table" primary naming.
+// Prefer ProjectItem / ItemType in new code; Task remains as a transitional alias.
+type ProjectItem = Task
+
 type Task struct {
 	ID           string       `json:"id"`
 	Title        string       `json:"title"`
@@ -422,9 +461,10 @@ type Task struct {
 	// v2 row that pre-dates the column.
 	Sprint string `json:"sprint,omitempty"`
 	// ── PM fields (schema v4) ──
-	// Type is the issue discriminator (task | requirement | bug). Empty/"" is
-	// treated as "task" for any pre-v4 row.
-	Type TaskType `json:"type,omitempty"`
+	// Type is the ItemType discriminator (task | requirement | bug | discussion).
+	// Empty/"" is treated as ItemTypeTask for any pre-v4 row. Only ItemTypeTask
+	// is scheduler-runnable; other types are board issues.
+	Type ItemType `json:"type,omitempty"`
 	// ── relations (schema v5) ──
 	// Number is the per-project short id (#N), assigned on first save and
 	// stable thereafter; 0 means un-numbered (pre-v5 rows are backfilled).

@@ -90,7 +90,7 @@ func TestRenderCardDoc(t *testing.T) {
 	task := Task{
 		Number:      7,
 		Title:       "需求：分页",
-		Type:        TaskTypeRequirement,
+		Type:        ItemTypeRequirement,
 		Status:      TaskStatusPending,
 		IssueState:  IssueOpen,
 		Priority:    PriorityHigh,

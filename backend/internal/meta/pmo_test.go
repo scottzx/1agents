@@ -33,7 +33,7 @@ func TestDispatchWritesRequirementIntoProject(t *testing.T) {
 		t.Fatalf("dispatch target project = %q, want proj-1", res.Project.ID)
 	}
 	req := res.Requirement
-	if req.Type != TaskTypeRequirement {
+	if req.Type != ItemTypeRequirement {
 		t.Fatalf("dispatched card type = %q, want requirement", req.Type)
 	}
 	if req.Number != 1 {

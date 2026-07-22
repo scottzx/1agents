@@ -12,7 +12,7 @@ package meta
 // not a table, so it survives untouched.
 var dataTables = []string{
 	"projects",
-	"tasks",
+	"project_items",
 	"task_deps",
 	"replies",
 	"sessions",

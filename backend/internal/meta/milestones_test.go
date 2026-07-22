@@ -197,13 +197,13 @@ func TestMilestoneCountsExcludeIssueItems(t *testing.T) {
 	err := s.Mutate(ws, func(cfg *TasksConfig) bool {
 		now := time.Now().UTC()
 		cfg.Tasks = append(cfg.Tasks,
-			Task{ID: "req", Title: "parent req", Type: TaskTypeRequirement, Milestone: "M1",
+			Task{ID: "req", Title: "parent req", Type: ItemTypeRequirement, Milestone: "M1",
 				Status: TaskStatusPending, IssueState: IssueClosed, CreatedAt: now, UpdatedAt: now},
-			Task{ID: "bug", Title: "a bug", Type: TaskTypeBug, Milestone: "M1",
+			Task{ID: "bug", Title: "a bug", Type: ItemTypeBug, Milestone: "M1",
 				Status: TaskStatusPending, IssueState: IssueOpen, CreatedAt: now, UpdatedAt: now},
-			Task{ID: "t1", Title: "done task", Type: TaskTypeTask, Milestone: "M1",
+			Task{ID: "t1", Title: "done task", Type: ItemTypeTask, Milestone: "M1",
 				Status: TaskStatusCompleted, IssueState: IssueOpen, CreatedAt: now, UpdatedAt: now},
-			Task{ID: "t2", Title: "open task", Type: TaskTypeTask, Milestone: "M1",
+			Task{ID: "t2", Title: "open task", Type: ItemTypeTask, Milestone: "M1",
 				Status: TaskStatusPending, IssueState: IssueOpen, CreatedAt: now, UpdatedAt: now},
 		)
 		return true
@@ -232,9 +232,9 @@ func TestMilestoneCountsExcludeCancelled(t *testing.T) {
 	err := s.Mutate(ws, func(cfg *TasksConfig) bool {
 		now := time.Now().UTC()
 		cfg.Tasks = append(cfg.Tasks,
-			Task{ID: "done", Title: "done", Type: TaskTypeTask, Milestone: "M1",
+			Task{ID: "done", Title: "done", Type: ItemTypeTask, Milestone: "M1",
 				Status: TaskStatusCompleted, CreatedAt: now, UpdatedAt: now},
-			Task{ID: "cx", Title: "cancelled", Type: TaskTypeTask, Milestone: "M1",
+			Task{ID: "cx", Title: "cancelled", Type: ItemTypeTask, Milestone: "M1",
 				Status: TaskStatusCancelled, CreatedAt: now, UpdatedAt: now},
 		)
 		return true
