@@ -463,11 +463,15 @@ export const selectWorkspace = async (ws: Workspace) => {
     if (ws.id === activeId && activeWorkspaceDeviceId.value === targetDeviceId) return;
     activeWorkspaceDeviceId.value = targetDeviceId;
 
+    const prevWsId = activeId;
     activeWorkspaceId.value = ws.id;
     loadCcConnectUrl(ws.id);
     loadCcProvidersUrl(ws.id);
     sess.loadChatSessions(ws.id);
     localStorage.setItem('1agents-active-workspace', ws.id);
+
+    // Per-project built-in browser: restore this workspace's URL; unload others.
+    tabsStore.onWorkspaceBrowserSwitch(prevWsId, ws.id);
 
     // Switch backend context (fs + git roots) and reload file browser
     await fs.switchFsContext(ws);

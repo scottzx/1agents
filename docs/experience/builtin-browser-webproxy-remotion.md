@@ -157,7 +157,14 @@ curl -sS "http://127.0.0.1:38080/api/webproxy/aHR0cDovL2xvY2FsaG9zdDozMDAw/Talki
 
 ---
 
-## 6. 已知限制
+## 6. 按项目隔离与内存
+
+- **会话状态**按 `workspaceId` 存在 `localStorage`（`1agents-browser-sessions`）：URL / 标题 / 最近活跃时间。  
+- **同一时刻最多一个浏览器 iframe**（`tabs` 里只保留当前项目的 `browser-<wsId>`）；切项目时换会话并卸载上一页。  
+- **离开浏览器栏**即卸载组件 → 释放 Remotion 等重页面内存。  
+- **空闲自动关闭**：浏览器栏打开后 **15 分钟无导航/改址** 则关闭内容栏（`BROWSER_IDLE_CLOSE_MS`），会话 URL 仍保留，下次打开同项目可恢复。  
+
+## 7. 已知限制
 
 - Worker 经 webproxy 同源后，worker 内部 `importScripts` 相对路径仍可能出边角问题。  
 - Remotion 根路径 `/` 时 webproxy 末段可能是 b64 token；应用侧更推荐打开明确 composition URL。  
@@ -165,7 +172,7 @@ curl -sS "http://127.0.0.1:38080/api/webproxy/aHR0cDovL2xvY2FsaG9zdDozMDAw/Talki
 
 ---
 
-## 7. 相关用户可见文案
+## 8. 相关用户可见文案
 
 内置浏览器欢迎页提示（i18n `app.browser.tipProxyDesc`）：说明一律主机反代、localhost 指 1agents 主机。  
 `</think>`

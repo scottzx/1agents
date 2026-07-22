@@ -210,6 +210,11 @@ export const panes = computed<Pane[]>(() => {
     const drawer = tabsStore.activeDrawerTab.value;
     const primary: Pane = { id: 'primary', view: primaryView() };
     if (isFullPageTab(drawer)) return [primary];
+    if (drawer === 'browser') {
+        // Browser state is per-workspace; tab id encodes the workspace.
+        const tabId = tabsStore.getActiveBrowserTabId() || tabsStore.browserTabIdForWorkspace('');
+        return [primary, { id: 'content', view: { kind: 'browser', tabId } }];
+    }
     if (SECONDARY_TABS.includes(drawer)) {
         return [primary, { id: 'content', view: { kind: drawer } as ContentView }];
     }

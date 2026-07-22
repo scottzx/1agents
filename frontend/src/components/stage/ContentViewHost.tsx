@@ -412,7 +412,16 @@ function resolveChatSession(sessionId?: string): ChatSession | null {
 }
 
 function renderBrowser(tabId: string, language: Lang) {
-    const tab = tabsStore.tabs.value.find(t => t.id === tabId);
+    // Prefer explicit tabId; fall back to active workspace's browser session.
+    let tab = tabsStore.tabs.value.find(t => t.id === tabId);
+    if (!tab || tab.type !== 'browser') {
+        tab = tabsStore.tabs.value.find(t => t.type === 'browser');
+    }
+    if (!tab) {
+        // Ensure a home tab for the active project so the column is not empty.
+        tabsStore.openBrowserTab('');
+        tab = tabsStore.tabs.value.find(t => t.type === 'browser');
+    }
     if (!tab) return null;
     return (
         <div

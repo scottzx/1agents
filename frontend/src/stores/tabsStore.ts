@@ -167,41 +167,206 @@ const normalizeBrowserUrl = (raw: string): string => {
     return 'http://' + s;
 };
 
-/** Ensure a single browser session tab exists; return its id. */
-const ensureBrowserSessionTab = (url: string): string => {
-    const existing = tabs.value.find(tb => tb.type === 'browser');
-    if (existing) {
-        if (url && url !== existing.url) {
-            let title = t('app.browser.title', ui.language.value);
-            try {
-                if (url && url !== 'about:blank') title = new URL(url).hostname || title;
-            } catch {
-                /* keep default */
-            }
-            tabs.value = tabs.value.map(tb => (tb.id === existing.id ? { ...tb, url, title } : tb));
-        }
-        return existing.id;
+// ── Per-project (workspace) browser sessions ─────────────────────────────
+// Each workspace keeps its own URL/title so switching projects restores the
+// prior page. Only the active workspace's browser tab is kept in `tabs`
+// (and thus only one iframe mounts) to avoid Remotion-level memory growth.
+
+export interface BrowserSession {
+    url: string;
+    title: string;
+    lastActiveAt: number;
+}
+
+const BROWSER_SESSIONS_KEY = '1agents-browser-sessions';
+/** Cap persisted sessions (URL metadata only — no iframe). */
+const MAX_BROWSER_SESSIONS = 24;
+/**
+ * Auto-close the browser content column after this idle period while it is
+ * open. Unmounts the iframe and frees heavy pages (e.g. Remotion Studio).
+ * Activity = open / navigate / address-bar commit / iframe load message.
+ */
+export const BROWSER_IDLE_CLOSE_MS = 15 * 60 * 1000;
+
+const browserTitleFromUrl = (url: string): string => {
+    let title = t('app.browser.title', ui.language.value);
+    try {
+        if (url && url !== 'about:blank') title = new URL(url).hostname || title;
+    } catch {
+        /* keep default */
     }
-    const tabId = `browser-${Date.now()}`;
-    const newTab: Tab = {
-        id: tabId,
-        title: t('app.browser.title', ui.language.value),
-        type: 'browser',
+    return title;
+};
+
+const loadBrowserSessions = (): Record<string, BrowserSession> => {
+    try {
+        const raw = localStorage.getItem(BROWSER_SESSIONS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw) as Record<string, BrowserSession>;
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+};
+
+export const browserSessions = signal<Record<string, BrowserSession>>(loadBrowserSessions());
+
+const persistBrowserSessions = (map: Record<string, BrowserSession>) => {
+    try {
+        localStorage.setItem(BROWSER_SESSIONS_KEY, JSON.stringify(map));
+    } catch {
+        /* private mode / quota */
+    }
+};
+
+const pruneBrowserSessions = (map: Record<string, BrowserSession>): Record<string, BrowserSession> => {
+    const entries = Object.entries(map);
+    if (entries.length <= MAX_BROWSER_SESSIONS) return map;
+    entries.sort((a, b) => (b[1].lastActiveAt || 0) - (a[1].lastActiveAt || 0));
+    const next: Record<string, BrowserSession> = {};
+    for (const [k, v] of entries.slice(0, MAX_BROWSER_SESSIONS)) next[k] = v;
+    return next;
+};
+
+const activeBrowserWorkspaceKey = (): string => wsStore.activeWorkspaceId.value || 'none';
+
+export const browserTabIdForWorkspace = (wsId: string): string => `browser-${wsId || 'none'}`;
+
+const writeBrowserSession = (wsId: string, url: string, title?: string) => {
+    const key = wsId || 'none';
+    const session: BrowserSession = {
         url: url || '',
+        title: title || browserTitleFromUrl(url || ''),
+        lastActiveAt: Date.now(),
+    };
+    const next = pruneBrowserSessions({ ...browserSessions.value, [key]: session });
+    browserSessions.value = next;
+    persistBrowserSessions(next);
+};
+
+let browserIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearBrowserIdleTimer = () => {
+    if (browserIdleTimer !== null) {
+        clearTimeout(browserIdleTimer);
+        browserIdleTimer = null;
+    }
+};
+
+/** Reset idle auto-close while the browser column is open. */
+export const touchBrowserActivity = () => {
+    const key = activeBrowserWorkspaceKey();
+    const cur = browserSessions.value[key];
+    if (cur) {
+        const next = {
+            ...browserSessions.value,
+            [key]: { ...cur, lastActiveAt: Date.now() },
+        };
+        browserSessions.value = next;
+        persistBrowserSessions(next);
+    }
+    scheduleBrowserIdleClose();
+};
+
+const scheduleBrowserIdleClose = () => {
+    clearBrowserIdleTimer();
+    if (typeof window === 'undefined') return;
+    if (activeDrawerTab.value !== 'browser') return;
+    browserIdleTimer = setTimeout(() => {
+        browserIdleTimer = null;
+        if (activeDrawerTab.value === 'browser') {
+            // Unmount iframe — free Remotion / SPA memory; session URL is kept.
+            closeContentTab();
+        }
+    }, BROWSER_IDLE_CLOSE_MS);
+};
+
+/**
+ * Sync the visible `tabs` browser entry to the given workspace's session.
+ * Drops other workspaces' browser tabs so at most one browser iframe mounts.
+ */
+const syncBrowserTabForWorkspace = (wsId: string, urlOverride?: string): string => {
+    const key = wsId || 'none';
+    const tabId = browserTabIdForWorkspace(key);
+    const session = browserSessions.value[key];
+    const url =
+        urlOverride !== undefined ? urlOverride : session?.url && session.url !== 'about:blank' ? session.url : '';
+    const title = urlOverride !== undefined ? browserTitleFromUrl(url) : session?.title || browserTitleFromUrl(url);
+
+    writeBrowserSession(key, url, title);
+
+    const nextTab: Tab = {
+        id: tabId,
+        title: browserSessions.value[key]?.title || title,
+        type: 'browser',
+        url: browserSessions.value[key]?.url ?? url,
         closable: true,
     };
-    tabs.value = [...tabs.value, newTab];
+    const withoutBrowsers = tabs.value.filter(tb => tb.type !== 'browser');
+    tabs.value = [...withoutBrowsers, nextTab];
     return tabId;
+};
+
+/** Ensure a browser tab exists for the *active* workspace; return its id. */
+const ensureBrowserSessionTab = (url: string): string => {
+    const wsId = activeBrowserWorkspaceKey();
+    if (url) {
+        return syncBrowserTabForWorkspace(wsId, url);
+    }
+    // Open existing session URL for this project (or empty home).
+    return syncBrowserTabForWorkspace(wsId);
+};
+
+/**
+ * Called when the active workspace changes. Restores that project's browser
+ * URL into the single browser tab slot (previous project's iframe unmounts
+ * when the tab id/url changes). Session metadata for other projects is kept.
+ */
+export const onWorkspaceBrowserSwitch = (_prevWsId: string, nextWsId: string) => {
+    clearBrowserIdleTimer();
+    const key = nextWsId || 'none';
+    // Drop other workspaces' browser tabs from the tab bar — only one live iframe.
+    const withoutBrowsers = tabs.value.filter(tb => tb.type !== 'browser');
+    const session = browserSessions.value[key];
+    if (session && session.url && session.url !== 'about:blank') {
+        tabs.value = [
+            ...withoutBrowsers,
+            {
+                id: browserTabIdForWorkspace(key),
+                title: session.title || browserTitleFromUrl(session.url),
+                type: 'browser',
+                url: session.url,
+                closable: true,
+            },
+        ];
+    } else {
+        tabs.value = withoutBrowsers;
+    }
+    // If browser column stays open, re-arm idle close for the new page.
+    if (activeDrawerTab.value === 'browser') {
+        if (!tabs.value.some(tb => tb.type === 'browser')) {
+            // Ensure a home tab so the column is not empty.
+            syncBrowserTabForWorkspace(key, '');
+        }
+        scheduleBrowserIdleClose();
+    }
+};
+
+/** Tab id for the active workspace browser session (for stage panes). */
+export const getActiveBrowserTabId = (): string | null => {
+    const id = browserTabIdForWorkspace(activeBrowserWorkspaceKey());
+    return tabs.value.some(tb => tb.id === id) ? id : tabs.value.find(tb => tb.type === 'browser')?.id || null;
 };
 
 /**
  * Open a URL in the built-in lightweight browser as the right-column
- * content (peer of 文件 / Git). Does not use the top workspace tab bar.
+ * content (peer of 文件 / Git). State is scoped to the active workspace.
  */
 export const openBrowserTab = (url = '') => {
     const normalized = normalizeBrowserUrl(url);
     ensureBrowserSessionTab(normalized);
     openContentTab('browser');
+    touchBrowserActivity();
 };
 
 export const closeTab = (tabId: string) => {
@@ -227,20 +392,17 @@ export const closeTab = (tabId: string) => {
 };
 
 export const updateBrowserUrl = (tabId: string, url: string) => {
-    let title = t('app.browser.title', ui.language.value);
-    try {
-        if (url && url !== 'about:blank') {
-            title = new URL(url).hostname || title;
-        }
-    } catch {
-        /* keep default title */
-    }
+    const title = browserTitleFromUrl(url);
     tabs.value = tabs.value.map(tb => {
         if (tb.id === tabId) {
             return { ...tb, url, title };
         }
         return tb;
     });
+    // Prefer workspace key encoded in tab id (`browser-<wsId>`).
+    const wsKey = tabId.startsWith('browser-') ? tabId.slice('browser-'.length) : activeBrowserWorkspaceKey();
+    writeBrowserSession(wsKey, url, title);
+    touchBrowserActivity();
 };
 
 /**
@@ -250,10 +412,12 @@ export const updateBrowserUrl = (tabId: string, url: string) => {
  */
 export const openContentTab = (tab: RightDrawerTab) => {
     if (activeDrawerTab.value === tab) return;
+    if (activeDrawerTab.value === 'browser' && tab !== 'browser') clearBrowserIdleTimer();
     activeDrawerTab.value = tab;
     activeModulePath.value = '';
     persistDrawerTab(tab);
     if (tab === 'channels') wsStore.loadCcConnectUrl();
+    if (tab === 'browser') scheduleBrowserIdleClose();
     ui.triggerTerminalFit();
 };
 
@@ -261,6 +425,7 @@ export const openContentTab = (tab: RightDrawerTab) => {
 export const closeContentTab = () => {
     activeExternalApp.value = null;
     if (activeDrawerTab.value === 'none') return;
+    if (activeDrawerTab.value === 'browser') clearBrowserIdleTimer();
     activeDrawerTab.value = 'none';
     activeModulePath.value = '';
     persistDrawerTab('none');
@@ -287,6 +452,7 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
     // unified in-project view switcher).
     if (activeDrawerTab.value === tab) {
         // Collapse the drawer
+        if (tab === 'browser') clearBrowserIdleTimer();
         activeDrawerTab.value = 'none';
         activeModulePath.value = '';
         persistDrawerTab('none');
@@ -302,6 +468,7 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
 
         // Module-backed tabs get their entry path; non-module tabs clear it.
         const mod = getModuleByTab(tab);
+        if (activeDrawerTab.value === 'browser' && tab !== 'browser') clearBrowserIdleTimer();
         ui.rightPanelWidth.value = smartWidth;
         activeDrawerTab.value = tab;
         persistDrawerTab(tab);
@@ -312,6 +479,13 @@ export const toggleDrawerTab = (tab: RightDrawerTab) => {
             wsStore.loadCcProvidersUrl();
         } else if (mod) {
             loadModuleManifest(mod);
+        }
+        if (tab === 'browser') {
+            // Ensure a session tab for this workspace exists when opening the column.
+            if (!tabs.value.some(tb => tb.type === 'browser')) {
+                ensureBrowserSessionTab('');
+            }
+            scheduleBrowserIdleClose();
         }
     }
     ui.triggerTerminalFit();

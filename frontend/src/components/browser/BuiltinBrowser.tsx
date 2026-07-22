@@ -71,13 +71,37 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
     }
 
     componentWillReceiveProps(nextProps: BuiltinBrowserProps) {
+        // Inactive pane: drop iframe document to free memory (Remotion / SPAs).
+        if (!nextProps.active && this.props.active) {
+            this.setState({ iframeSrc: 'about:blank' });
+            return;
+        }
+        if (nextProps.active && !this.props.active) {
+            const nextUrl = nextProps.tab.url || '';
+            this.lastLoadedUrl = '';
+            this.setState({
+                iframeSrc: this.getIframeUrl(nextUrl),
+                addressBar: !nextUrl || nextUrl === 'about:blank' ? '' : nextUrl,
+            });
+            return;
+        }
+        // Tab id change = different workspace session.
+        if (nextProps.tab.id !== this.props.tab.id) {
+            const nextUrl = nextProps.tab.url || '';
+            this.lastLoadedUrl = '';
+            this.setState({
+                iframeSrc: nextProps.active ? this.getIframeUrl(nextUrl) : 'about:blank',
+                addressBar: !nextUrl || nextUrl === 'about:blank' ? '' : nextUrl,
+            });
+            return;
+        }
         if (nextProps.tab.url !== this.props.tab.url) {
             const nextUrl = nextProps.tab.url || '';
             const display = !nextUrl || nextUrl === 'about:blank' ? '' : nextUrl;
             // Committed navigation only — never fight the user while typing.
             if (nextUrl !== this.lastLoadedUrl) {
                 this.setState({
-                    iframeSrc: this.getIframeUrl(nextUrl),
+                    iframeSrc: nextProps.active ? this.getIframeUrl(nextUrl) : 'about:blank',
                     addressBar: display,
                 });
             } else {
@@ -130,8 +154,7 @@ export class BuiltinBrowser extends Component<BuiltinBrowserProps, BuiltinBrowse
             try {
                 const u = new URL(iframeUrl);
                 if (u.origin === window.location.origin) {
-                    const isProxy =
-                        u.pathname === '/api/proxy' || u.pathname.startsWith('/api/webproxy/');
+                    const isProxy = u.pathname === '/api/proxy' || u.pathname.startsWith('/api/webproxy/');
                     if (!isProxy) return;
                 }
             } catch {

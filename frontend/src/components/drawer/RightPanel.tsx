@@ -293,8 +293,12 @@ export function RightPanel({
             >
                 {activeDrawerTab === 'browser' &&
                     (() => {
-                        const browserTabs = tabsStore.tabs.value.filter(tb => tb.type === 'browser');
-                        const tab = browserTabs[browserTabs.length - 1];
+                        // Per-workspace: only the active project's browser tab is in `tabs`.
+                        let tab = tabsStore.tabs.value.find(tb => tb.type === 'browser');
+                        if (!tab) {
+                            tabsStore.openBrowserTab('');
+                            tab = tabsStore.tabs.value.find(tb => tb.type === 'browser');
+                        }
                         if (!tab) {
                             return (
                                 <div
