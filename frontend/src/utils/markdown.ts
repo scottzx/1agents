@@ -222,6 +222,77 @@ export const mermaidRenderer: RendererObject = {
     },
 };
 
+/**
+ * A full-line thematic-break marker (`---`, `***`, `___`, 3+ chars, optional
+ * leading indent ≤3 spaces). Matches CommonMark / GFM hr lines.
+ */
+const THEMATIC_BREAK_LINE_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*\r?$/;
+
+/**
+ * Ensure a bare `---` (or `***` / `___`) line is parsed as `<hr>`, not as a
+ * setext heading underline.
+ *
+ * CommonMark turns this into an H2:
+ *
+ *   上一段
+ *   ---
+ *   下一段
+ *
+ * Chat / docs / Chinese AI agents almost never write setext headings — they
+ * write `---` as a section divider, often without surrounding blank lines.
+ * Insert a blank line before a thematic-break marker when the previous line
+ * has content, so marked emits `<hr>`. Fenced code blocks are left untouched.
+ */
+export function normalizeMarkdownThematicBreaks(src: string): string {
+    if (!src || (!src.includes('-') && !src.includes('*') && !src.includes('_'))) {
+        return src;
+    }
+
+    const lines = src.split('\n');
+    const out: string[] = [];
+    let fenceChar: '`' | '~' | null = null;
+    let fenceLen = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        if (fenceChar) {
+            // Closing fence: same char, ≥ open length, only trailing spaces.
+            const close = /^( {0,3})(`{3,}|~{3,})[ \t]*\r?$/.exec(line);
+            if (close && close[2][0] === fenceChar && close[2].length >= fenceLen) {
+                fenceChar = null;
+                fenceLen = 0;
+            }
+            out.push(line);
+            continue;
+        }
+
+        const open = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
+        if (open) {
+            fenceChar = open[2][0] as '`' | '~';
+            fenceLen = open[2].length;
+            out.push(line);
+            continue;
+        }
+
+        if (THEMATIC_BREAK_LINE_RE.test(line) && out.length > 0) {
+            const prev = out[out.length - 1];
+            // Only break setext when the previous line has real content (not blank,
+            // not already another hr). Keeps YAML frontmatter `--- / keys / ---`
+            // intact: blank lines are allowed inside the candidate and we only
+            // insert *before* the marker when the prior line is non-empty — the
+            // frontmatter tokenizer still sees a YAML-shaped block.
+            if (prev.replace(/\r$/, '') !== '' && !THEMATIC_BREAK_LINE_RE.test(prev)) {
+                out.push('');
+            }
+        }
+
+        out.push(line);
+    }
+
+    return out.join('\n');
+}
+
 const instance = new Marked({ gfm: true, breaks: true });
 // taskRef must be registered first so `project#N` is captured before fileRef
 // can see the backtick.
@@ -235,7 +306,8 @@ instance.use({ extensions: [frontmatterExtension, taskRefExtension, fileRefExten
 export function renderMarkdown(content: string, c: MarkdownContext = {}): string {
     ctx = c;
     try {
-        return instance.parse(content, { async: false }) as string;
+        const src = normalizeMarkdownThematicBreaks(content);
+        return instance.parse(src, { async: false }) as string;
     } catch (err) {
         return `<pre class="md-parse-error">Markdown parse error: ${escapeHtml(String(err))}</pre>`;
     } finally {

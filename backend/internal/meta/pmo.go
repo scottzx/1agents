@@ -79,7 +79,7 @@ func (s *PMOStore) Dispatch(projectID, title, description, priority, fromInbox s
 		ID:           newID(),
 		Title:        title,
 		Description:  description,
-		Type:         TaskTypeRequirement,
+		Type:         ItemTypeRequirement,
 		Priority:     Priority(priority),
 		IssueState:   IssueOpen,
 		Status:       TaskStatusPending,

@@ -133,7 +133,7 @@ func (h *Handler) HandleDiscussionsRoot(w http.ResponseWriter, r *http.Request) 
 		ID:           newID(),
 		Title:        strings.TrimSpace(body.Title),
 		Description:  body.Description,
-		Type:         TaskTypeDiscussion,
+		Type:         ItemTypeDiscussion,
 		IssueState:   IssueOpen,
 		Status:       TaskStatusPending,
 		ScheduleType: ScheduleTypeImmediate,
@@ -208,7 +208,7 @@ func (h *Handler) handleDiscussionAttachCard(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "discussion not found", http.StatusNotFound)
 		return
 	}
-	if disc.Type != TaskTypeDiscussion {
+	if disc.Type != ItemTypeDiscussion {
 		http.Error(w, "task is not a discussion", http.StatusBadRequest)
 		return
 	}
@@ -252,14 +252,14 @@ func (h *Handler) handleDiscussionConclude(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "title is required", http.StatusBadRequest)
 		return
 	}
-	// A conclusion routes only to the requirement pool or a temp Task — never a
-	// discussion/bug-suggestion variant. Default to requirement (the work-domain
-	// route from RFC §3.2); "task" produces a temp Task.
-	typ := TaskType(body.Type)
+	// A conclusion routes only to the requirement pool or a temp executable
+	// item — never a discussion/bug-suggestion variant. Default to requirement
+	// (the work-domain route from RFC §3.2); "task" produces a temp ItemTypeTask.
+	typ := ItemType(body.Type)
 	if typ == "" {
-		typ = TaskTypeRequirement
+		typ = ItemTypeRequirement
 	}
-	if typ != TaskTypeRequirement && typ != TaskTypeTask && typ != TaskTypeBug {
+	if typ != ItemTypeRequirement && typ != ItemTypeTask && typ != ItemTypeBug {
 		http.Error(w, "type must be requirement, task or bug", http.StatusBadRequest)
 		return
 	}
@@ -277,7 +277,7 @@ func (h *Handler) handleDiscussionConclude(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "discussion not found", http.StatusNotFound)
 		return
 	}
-	if disc.Type != TaskTypeDiscussion {
+	if disc.Type != ItemTypeDiscussion {
 		http.Error(w, "task is not a discussion", http.StatusBadRequest)
 		return
 	}

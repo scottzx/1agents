@@ -151,7 +151,7 @@ export class DesktopAppLayout extends Component<DesktopAppLayoutProps> {
                                 onSelectWorkspace={ws => {
                                     wsStore.selectWorkspace(ws);
                                     // 点击项目文件夹 → 下钻项目详情；助理配置走任务行菜单 / 总览。
-                                    if ((ws.kind ?? 'project') === 'assistant') {
+                                    if ((ws.kind ?? 'project') === 'workforce') {
                                         tabsStore.assistantDetailId.value = ws.id;
                                         tabsStore.activeDrawerTab.value = 'assistants';
                                     } else if (ws.id !== 'default') {

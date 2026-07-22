@@ -42,10 +42,7 @@ func (db *DB) upsertWorkspaceProject(p Project, position int) error {
 		builtin = 1
 	}
 	agents, _ := json.Marshal(p.AvailableAgents)
-	kind := p.Kind
-	if kind == "" {
-		kind = "project"
-	}
+	kind := NormalizeProjectKind(p.Kind)
 	_, err := db.sql.Exec(`
 		INSERT INTO projects (id, name, workspace_path, status,
 			terminal_dir, chat_channel, default_agent, builtin, position,
@@ -328,5 +325,7 @@ func scanProject(r rowScanner) (Project, error) {
 	if availableAgents != "" && availableAgents != "[]" {
 		_ = json.Unmarshal([]byte(availableAgents), &p.AvailableAgents)
 	}
+	// Surface only the two canonical kinds on read paths (post-#189).
+	p.Kind = NormalizeProjectKind(p.Kind)
 	return p, nil
 }

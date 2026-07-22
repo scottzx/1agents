@@ -654,7 +654,7 @@ func TestSchemaV1ToV2Upgrade(t *testing.T) {
 		VALUES ('ws1', 'P', '/tmp/v1ws', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Exec(`INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+	if _, err := raw.Exec(`INSERT INTO project_items (id, project_id, title, status, created_at, updated_at)
 		VALUES ('t1', 'ws1', '老任务', 'completed', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
@@ -734,7 +734,7 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 		VALUES ('ws1', 'P', '/tmp/v2ws', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Exec(`INSERT INTO tasks (id, project_id, title, status, created_at, updated_at,
+	if _, err := raw.Exec(`INSERT INTO project_items (id, project_id, title, status, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
 			acceptance_criteria, recurrence, max_retries, retry_count, timeout_minutes)
 		VALUES ('legacy', 'ws1', 'v2 老任务', 'completed',
@@ -774,7 +774,7 @@ func TestSchemaV2ToV3Upgrade(t *testing.T) {
 	if task.Sprint != "" {
 		t.Fatalf("legacy v2 row should have empty sprint, got %q", task.Sprint)
 	}
-	if task.Type != TaskTypeTask {
+	if task.Type != ItemTypeTask {
 		t.Fatalf("legacy row type = %q, want default 'task'", task.Type)
 	}
 	// v5 backfill: the single pre-v5 row is numbered #1 and starts with no
@@ -860,26 +860,26 @@ func TestTaskGithubFieldsRoundTrip(t *testing.T) {
 }
 
 // TestSchemaPreV12ToV12Upgrade builds a DB missing the v12 GitHub columns (a
-// pre-#74 schema pinned at user_version=11) and verifies the ensureTasksColumns
+// pre-#74 schema pinned at user_version=11) and verifies ensureProjectItemsColumns
 // reconcile adds them, old rows survive with empty defaults, and user_version
 // advances to the current schemaVersion.
 func TestSchemaPreV12ToV12Upgrade(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "meta.db")
 
-	// Build a v11-shaped tasks table: everything up to user_confirm, but none of
-	// the v12 github* columns. ensureTasksColumns must heal it on reopen.
+	// Build a v11-shaped project_items table: everything up to user_confirm, but
+	// none of the v12 github* columns. ensureProjectItemsColumns must heal it.
 	raw, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stmts := []string{
 		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8,
-		"ALTER TABLE tasks ADD COLUMN verifier TEXT NOT NULL DEFAULT ''",
-		"ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0",
-		"ALTER TABLE tasks ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0",
-		"ALTER TABLE tasks ADD COLUMN review TEXT NOT NULL DEFAULT ''",
-		"ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT ''",
-		"ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE project_items ADD COLUMN verifier TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE project_items ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE project_items ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE project_items ADD COLUMN review TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE project_items ADD COLUMN source TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE project_items ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0",
 	}
 	for _, q := range stmts {
 		if _, err := raw.Exec(q); err != nil {
@@ -890,7 +890,7 @@ func TestSchemaPreV12ToV12Upgrade(t *testing.T) {
 		VALUES ('ws1', 'P', '/tmp/v11ws', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Exec(`INSERT INTO tasks (id, project_id, title, status, created_at, updated_at)
+	if _, err := raw.Exec(`INSERT INTO project_items (id, project_id, title, status, created_at, updated_at)
 		VALUES ('legacy', 'ws1', 'v11 老任务', 'completed', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
@@ -924,5 +924,147 @@ func TestSchemaPreV12ToV12Upgrade(t *testing.T) {
 		task.GithubNodeId != "" || task.GithubUrl != "" || task.GithubState != "" ||
 		len(task.GithubAssignees) != 0 || task.LastSyncedAt != nil {
 		t.Fatalf("pre-v12 row should default empty github fields: %+v", task)
+	}
+}
+
+// TestNewDBCreatesProjectItemsTable (Epic #187): a fresh meta.db must create
+// project_items directly and never leave a tasks table behind.
+func TestNewDBCreatesProjectItemsTable(t *testing.T) {
+	db := newTestDB(t)
+	hasItems, err := db.tableExists("project_items")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasItems {
+		t.Fatal("expected project_items table on fresh Open")
+	}
+	hasTasks, err := db.tableExists("tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasTasks {
+		t.Fatal("fresh Open must not create a tasks table")
+	}
+}
+
+// TestLegacyTasksTableRenamedToProjectItems (Epic #187): a pre-rename DB that
+// still has the tasks table is upgraded on Open with no dual-read path left.
+func TestLegacyTasksTableRenamedToProjectItems(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meta.db")
+
+	// Build a fully current DB with one row, then rewind the physical table name
+	// to `tasks` so Open must run renameTasksTableIfNeeded.
+	{
+		db, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws := t.TempDir()
+		now := time.Now().UTC()
+		if err := NewTaskStore(db).Save(ws, &TasksConfig{Tasks: []Task{{
+			ID: "legacy-row", Title: "旧表行", Status: TaskStatusCompleted,
+			Type: ItemTypeTask, CreatedAt: now, UpdatedAt: now,
+		}}}); err != nil {
+			t.Fatalf("seed Save: %v", err)
+		}
+		db.Close()
+	}
+
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`ALTER TABLE project_items RENAME TO tasks`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 21`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open legacy tasks DB: %v", err)
+	}
+	defer db.Close()
+
+	hasTasks, err := db.tableExists("tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasTasks {
+		t.Fatal("after Open, tasks table must be gone (no dual-read)")
+	}
+	hasItems, err := db.tableExists("project_items")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasItems {
+		t.Fatal("after Open, project_items must exist")
+	}
+
+	task, ok, err := NewTaskStore(db).GetTask("legacy-row")
+	if err != nil || !ok {
+		t.Fatalf("GetTask after rename: ok=%v err=%v", ok, err)
+	}
+	if task.Title != "旧表行" || task.Status != TaskStatusCompleted {
+		t.Fatalf("data lost across rename: %+v", task)
+	}
+	if task.Type != ItemTypeTask {
+		t.Fatalf("type = %q, want %q", task.Type, ItemTypeTask)
+	}
+
+	var ver int
+	if err := db.sql.QueryRow("PRAGMA user_version").Scan(&ver); err != nil {
+		t.Fatal(err)
+	}
+	if ver != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", ver, schemaVersion)
+	}
+}
+
+// TestAssistantKindMigratesToWorkforce (Epic #189): legacy kind=assistant rows
+// become workforce on Open with no dual-read of the old value.
+func TestAssistantKindMigratesToWorkforce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meta.db")
+	// Fresh schema, then plant a legacy assistant row via raw SQL (write path
+	// already normalizes, so we must inject the old value by hand).
+	{
+		db, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	if _, err := raw.Exec(`INSERT INTO projects (id, name, workspace_path, status, kind, created_at, updated_at)
+		VALUES ('asst-1', '旧助理', ?, 'active', 'assistant', '', '')`, ws); err != nil {
+		t.Fatalf("seed assistant row: %v", err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	p, ok, err := db.GetProject("asst-1")
+	if err != nil || !ok {
+		t.Fatalf("GetProject: ok=%v err=%v", ok, err)
+	}
+	if p.Kind != KindWorkforce {
+		t.Fatalf("kind = %q, want %q", p.Kind, KindWorkforce)
+	}
+	var rawKind string
+	if err := db.sql.QueryRow(`SELECT kind FROM projects WHERE id = 'asst-1'`).Scan(&rawKind); err != nil {
+		t.Fatal(err)
+	}
+	if rawKind != KindWorkforce {
+		t.Fatalf("raw kind = %q, want %q (no dual-read of assistant)", rawKind, KindWorkforce)
 	}
 }

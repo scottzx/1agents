@@ -7,7 +7,7 @@
 // The web today encodes the same status→color mapping inline in SCSS class
 // names; this lifts that single source of truth up so the 小程序 stays in sync.
 
-import type { ProjectItem, TaskPriority, TaskType } from '../types/task';
+import type { ProjectItem, TaskPriority, ItemType } from '../types/task';
 
 /** Semantic color families — mirror the SCSS token families in index.scss. */
 export type Tone = 'accent' | 'success' | 'danger' | 'warning' | 'orange' | 'purple' | 'muted';
@@ -43,7 +43,7 @@ export interface TaskCardVM {
     title: string;
     /** `#12` when the task has a number, else '' (suggestions before adoption). */
     numberLabel: string;
-    type: TaskType;
+    type: ItemType;
     status: ProjectItem['status'];
     statusTone: Tone;
     /** Defaulted to 'medium' when the task omits priority (matches board sort). */

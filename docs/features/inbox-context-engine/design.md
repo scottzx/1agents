@@ -201,7 +201,7 @@ license: MIT
 
 | Phase | 工作项 | 依赖 | 里程碑 |
 |---|---|---|---|
-| **P1 双地基（并行）** | **C1** 临时任务/个人 Task 汇总层（#67 PhaseA，无 project_id）<br>**A1+A2** 三级 loader（embed+用户/项目+按名覆盖+fork/restore）+ 角色仓 schema（#137） | — | 3.0 / 3.1 |
+| **P1 双地基（并行）** | **C1** 临时任务/个人 Task 汇总层（#67 PhaseA；**「无 project_id」已否决**——ProjectItem 始终挂 Workspace 行，见[名称定义表 §0.3](../../product/名称定义表.md)）<br>**A1+A2** 三级 loader（embed+用户/项目+按名覆盖+fork/restore）+ 角色仓 schema（#137） | — | 3.0 / 3.1 |
 | **P2 Inbox MVP + 吸收管线** | **C2** Inbox 扩 domain+depth + 收口规则（#60）<br>**C3** Discussion 决策层（合并 #47，对话线程+可选卡+拍板转需求/任务）<br>**B1+B2+B3** 吸收管线（submodule 参照 + 转化器 + .absorbed.json 增量同步） | C1,C2 / A1 | 3.0 / 3.1 |
 | **P3 首批吸收 + 真·自动运行** | **B4** 吸收 superpowers/gstack → 1skills + 角色仓（/browse 重映射）<br>**C4** 定时爬虫 + L2 深挖（专家角色 + 事件驱动 #133） | A2,B2 / B4,C2 | 3.1 / 3.2 |
 | **P4 沉淀 + 提醒** | **C5** 知识基底 wiki（kwiki raw/wiki/output）<br>**C6** 提醒层（复用 Scheduled Tasks）<br>**C7** 个人 wiki + 沉淀链对接（#143/#144） | C2 / C1 | 3.3 / 4.0 |

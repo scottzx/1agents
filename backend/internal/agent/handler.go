@@ -365,6 +365,9 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			AcceptanceCriteria  string          `json:"acceptanceCriteria"`
 			Priority            string          `json:"priority"`
 			Assignee            string          `json:"assignee"`
+			// Executor is agent|function|human; empty defaults via matrix (#198).
+			Executor     string `json:"executor"`
+			FunctionType string `json:"functionType"`
 			Labels              []string        `json:"labels"`
 			ParentID            string          `json:"parentId"`
 			Milestone           string          `json:"milestone"`
@@ -404,12 +407,15 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "workspace_id and title are required", http.StatusBadRequest)
 			return
 		}
-		// assignee selects the executing agent; empty falls back to
-		// DefaultAgentType at run time (runner.go). The "user" sentinel marks a
-		// personal reminder the scheduler never runs (#192). Reject other unknown
-		// values so a typo from the PM tool surfaces instead of silently defaulting.
-		if body.Assignee != "" && body.Assignee != AssigneeUser && !IsSupportedAgentType(body.Assignee) {
-			http.Error(w, "unknown assignee agent type: "+body.Assignee, http.StatusBadRequest)
+		// Single matrix entry shared with taskapi (#198 / 名称定义表 §0.5).
+		asg, err := meta.NormalizeExecutorAssignment(
+			TaskExecutor(body.Executor), body.Assignee, body.FunctionType)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if asg.Executor == TaskExecutorAgent && asg.Assignee != "" && !IsSupportedAgentType(asg.Assignee) {
+			http.Error(w, "unknown assignee agent type: "+asg.Assignee, http.StatusBadRequest)
 			return
 		}
 		if body.Source != "" && TaskSource(body.Source) != TaskSourceAgent {
@@ -420,8 +426,8 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		// tasks (issue #47 model). A suggestion is a proposed issue the user
 		// clarifies and confirms before the PM schedules it.
 		if TaskSource(body.Source) == TaskSourceAgent &&
-			TaskType(body.Type) != TaskTypeRequirement && TaskType(body.Type) != TaskTypeBug {
-			http.Error(w, "agent-suggested tasks must be of type requirement or bug", http.StatusBadRequest)
+			ItemType(body.Type) != ItemTypeRequirement && ItemType(body.Type) != ItemTypeBug {
+			http.Error(w, "agent-suggested project items must be of type requirement or bug", http.StatusBadRequest)
 			return
 		}
 		if body.Verifier != "" && !IsSupportedAgentType(body.Verifier) {
@@ -450,7 +456,7 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		if body.VerifyPassThreshold != nil && *body.VerifyPassThreshold > 0 {
 			verifyPassThreshold = *body.VerifyPassThreshold
 		}
-		newTask := Task{
+		newTask := ProjectItem{
 			ID:                  newID(),
 			Title:               body.Title,
 			Description:         body.Description,
@@ -458,16 +464,17 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 			IssueState:          IssueOpen,
 			Status:              TaskStatusPending,
 			Priority:            Priority(body.Priority),
-			Assignee:            body.Assignee,
+			Assignee:            asg.Assignee,
+			Executor:            asg.Executor,
 			Verifier:            body.Verifier,
 			ReviewMaxAttempts:   reviewMaxAttempts,
 			VerifierCount:       verifierCount,
 			VerifyPassThreshold: verifyPassThreshold,
-			Labels:              body.Labels,
+			Labels:              meta.ApplyFnLabel(body.Labels, asg.Executor, asg.FunctionType),
 			ParentID:            body.ParentID,
 			Milestone:           body.Milestone,
 			Sprint:              body.Sprint,
-			Type:                TaskType(body.Type),
+			Type:                ItemType(body.Type),
 			Source:              TaskSource(body.Source),
 			UserConfirm:         body.UserConfirm,
 			Recurrence:          body.Recurrence,
@@ -494,12 +501,6 @@ func (h *Handler) HandleTasksRoot(w http.ResponseWriter, r *http.Request) {
 		}
 		if newTask.ScheduleType == "" {
 			newTask.ScheduleType = ScheduleTypeImmediate
-		}
-		// executor is a derived kind, not a second "who" axis: a task assigned to
-		// the user IS a human task. Stamp it so the stored kind matches assignee
-		// and the human/agent/function branches read one field consistently.
-		if newTask.Assignee == AssigneeUser {
-			newTask.Executor = TaskExecutorHuman
 		}
 
 		if err := h.tasksStore.Mutate(wsPath, func(cfg *TasksConfig) bool {
@@ -703,6 +704,8 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		AcceptanceCriteria *string          `json:"acceptanceCriteria,omitempty"`
 		Priority           *string          `json:"priority,omitempty"`
 		Assignee           *string          `json:"assignee,omitempty"`
+		Executor           *string          `json:"executor,omitempty"`
+		FunctionType       *string          `json:"functionType,omitempty"`
 		Labels             *[]string        `json:"labels,omitempty"`
 		ParentID           *string          `json:"parentId,omitempty"`
 		Milestone          *string          `json:"milestone,omitempty"`
@@ -769,10 +772,6 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			return
 		}
 	}
-	if body.Assignee != nil && *body.Assignee != "" && *body.Assignee != AssigneeUser && !IsSupportedAgentType(*body.Assignee) {
-		http.Error(w, "unknown assignee agent type: "+*body.Assignee, http.StatusBadRequest)
-		return
-	}
 	// Adopting an AI suggestion is a PATCH with source:"" (clears the marker so
 	// the card joins the board); the only other accepted value is the marker
 	// itself. Anything else is a typo and is rejected.
@@ -797,6 +796,34 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
+
+	// Pre-validate executor×assignee matrix before Mutate (#198).
+	var patchAsg *meta.ExecutorAssignment
+	if body.Assignee != nil || body.Executor != nil || body.FunctionType != nil {
+		exec := existing.Executor
+		if body.Executor != nil {
+			exec = TaskExecutor(*body.Executor)
+		}
+		assignee := existing.Assignee
+		if body.Assignee != nil {
+			assignee = *body.Assignee
+		}
+		fnType := extractFnLabel(existing.Labels)
+		if body.FunctionType != nil {
+			fnType = *body.FunctionType
+		}
+		asg, nerr := meta.NormalizeExecutorAssignment(exec, assignee, fnType)
+		if nerr != nil {
+			http.Error(w, nerr.Error(), http.StatusBadRequest)
+			return
+		}
+		if asg.Executor == TaskExecutorAgent && asg.Assignee != "" && !IsSupportedAgentType(asg.Assignee) {
+			http.Error(w, "unknown assignee agent type: "+asg.Assignee, http.StatusBadRequest)
+			return
+		}
+		patchAsg = &asg
+	}
+
 	found := false
 	if err := h.tasksStore.Mutate(existing.WorkspacePath, func(cfg *TasksConfig) bool {
 		var target *Task
@@ -860,19 +887,15 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 		if body.Priority != nil {
 			target.Priority = Priority(*body.Priority)
 		}
-		if body.Assignee != nil {
-			target.Assignee = *body.Assignee
-			// Keep the derived executor kind in sync with the reassignment:
-			// → user makes it a human task; → an agent reverts a formerly-human
-			// task to agent dispatch (function tasks are set via the kernel API,
-			// not reassigned here, so they're left untouched).
-			if target.Assignee == AssigneeUser {
-				target.Executor = TaskExecutorHuman
-			} else if target.Executor == TaskExecutorHuman {
-				target.Executor = TaskExecutorAgent
+		if patchAsg != nil {
+			target.Executor = patchAsg.Executor
+			target.Assignee = patchAsg.Assignee
+			baseLabels := target.Labels
+			if body.Labels != nil {
+				baseLabels = *body.Labels
 			}
-		}
-		if body.Labels != nil {
+			target.Labels = meta.ApplyFnLabel(baseLabels, patchAsg.Executor, patchAsg.FunctionType)
+		} else if body.Labels != nil {
 			target.Labels = *body.Labels
 		}
 		if body.ParentID != nil {
@@ -885,7 +908,7 @@ func (h *Handler) handleTaskPatch(w http.ResponseWriter, r *http.Request, id str
 			target.Sprint = *body.Sprint
 		}
 		if body.Type != nil {
-			target.Type = TaskType(*body.Type)
+			target.Type = ItemType(*body.Type)
 		}
 		if body.Source != nil {
 			target.Source = TaskSource(*body.Source)
@@ -1371,7 +1394,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// Issue background injection (issue-model §9): description + the
 		// full reply timeline, injected only when this is a NEW session.
 		// Resumed sessions already carry their own conversation history.
-		if targetTask.Type == TaskTypeDiscussion {
+		if targetTask.Type == ItemTypeDiscussion {
 			// A discussion-linked session is a PM conversation, NOT an
 			// executor: the agent acts as PM (create_project_item / create_discussion)
 			// with the discussion thread as background. Its user prompts and
@@ -1419,7 +1442,7 @@ func (h *Handler) HandleChatWs(w http.ResponseWriter, r *http.Request) {
 		// to running, or re-execute. Only a genuinely new session (acpSessionID
 		// empty) starts execution. Discussions are never executed, so a
 		// discussion-linked PM conversation skips this entirely.
-		if targetTask.Type != TaskTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
+		if targetTask.Type != ItemTypeDiscussion && !isVerifierRole(sessionRole) && acpSessionID == "" && targetTask.Status != TaskStatusRunning {
 			// Try to acquire the execution lock
 			if !h.scheduler.Lock.TryAcquire(wsPath, taskId) {
 				// If already occupied, return 409 conflict
@@ -1656,4 +1679,14 @@ func resolveClaudeJsonlSessionTitle(workspacePath, acpSessionID string) string {
 		return resolvedTitle
 	}
 	return foundSlug
+}
+
+// extractFnLabel returns the first "fn:<type>" entry from labels, or "".
+func extractFnLabel(labels []string) string {
+	for _, l := range labels {
+		if strings.HasPrefix(l, "fn:") {
+			return strings.TrimPrefix(l, "fn:")
+		}
+	}
+	return ""
 }

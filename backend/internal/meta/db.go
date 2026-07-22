@@ -105,12 +105,19 @@ func (db *DB) Close() error { return db.sql.Close() }
 // migrations without touching the global schemaVersion counter.
 func (db *DB) SQL() *sql.DB { return db.sql }
 
-const schemaVersion = 21
+const schemaVersion = 23
 
 func (db *DB) migrateSchema() error {
 	var version int
 	if err := db.sql.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("meta: read user_version: %w", err)
+	}
+	// Rename legacy `tasks` → `project_items` before any DDL that targets the
+	// new name. Runs unconditionally (not version-gated) so DBs already at a
+	// high user_version still lose the old table name on next Open. No dual-read
+	// path remains after this step (Epic #184 / #187).
+	if err := db.renameTasksTableIfNeeded(); err != nil {
+		return fmt.Errorf("meta: rename tasks→project_items: %w", err)
 	}
 	if version < 1 {
 		if _, err := db.sql.Exec(schemaV1); err != nil {
@@ -215,23 +222,44 @@ func (db *DB) migrateSchema() error {
 			return fmt.Errorf("meta: apply schema v21: %w", err)
 		}
 	}
-	// Schema v9–v12 only add tasks columns, but the v9 branch collision between
-	// #47 (source, user_confirm) and #50 (verifier/review fields) left some DBs
-	// with user_version bumped to the latest while the other branch's columns
-	// were never added. A version-gated ALTER can't recover that: it re-adds an
-	// existing column ("duplicate column name") or skips a missing one forever.
-	// Run unconditionally (NOT under a version gate) so a DB already at the
-	// latest user_version but missing columns still gets healed — idempotent.
-	// v12 (#74) adds the GitHub Issue/PR mapping columns the same way.
-	if err := db.ensureTasksColumns(); err != nil {
-		return fmt.Errorf("meta: reconcile tasks columns: %w", err)
+	// v22 (#187): tasks→project_items table rename is handled by
+	// renameTasksTableIfNeeded above (unconditional). The version gate only
+	// bumps the counter so new and upgraded DBs share schemaVersion.
+	if version < 22 {
+		if _, err := db.sql.Exec(schemaV22); err != nil {
+			return fmt.Errorf("meta: apply schema v22: %w", err)
+		}
+	}
+	// v23 (#189): projects.kind assistant→workforce. Remap is unconditional
+	// (migrateAssistantKindIfNeeded) so DBs already past user_version 22 still
+	// lose the legacy value on next Open.
+	if version < 23 {
+		if _, err := db.sql.Exec(schemaV23); err != nil {
+			return fmt.Errorf("meta: apply schema v23: %w", err)
+		}
+	}
+	// Schema v9–v12 only add project_items columns, but the v9 branch collision
+	// between #47 (source, user_confirm) and #50 (verifier/review fields) left
+	// some DBs with user_version bumped to the latest while the other branch's
+	// columns were never added. A version-gated ALTER can't recover that: it
+	// re-adds an existing column ("duplicate column name") or skips a missing
+	// one forever. Run unconditionally (NOT under a version gate) so a DB
+	// already at the latest user_version but missing columns still gets healed
+	// — idempotent. v12 (#74) adds the GitHub Issue/PR mapping columns the same way.
+	if err := db.ensureProjectItemsColumns(); err != nil {
+		return fmt.Errorf("meta: reconcile project_items columns: %w", err)
 	}
 	// v14 (#141) adds the project archive/close columns. Reconciled
-	// unconditionally (same rationale as ensureTasksColumns): idempotent ADD
-	// COLUMN that heals a DB whose user_version was bumped by a sibling branch
-	// before these columns landed (v13 was taken by #60's Inbox table).
+	// unconditionally (same rationale as ensureProjectItemsColumns): idempotent
+	// ADD COLUMN that heals a DB whose user_version was bumped by a sibling
+	// branch before these columns landed (v13 was taken by #60's Inbox table).
 	if err := db.ensureProjectsColumns(); err != nil {
 		return fmt.Errorf("meta: reconcile projects columns: %w", err)
+	}
+	// v23 (#189): remap projects.kind 'assistant' → 'workforce' after the kind
+	// column is guaranteed to exist. Unconditional — no dual-read of the old value.
+	if err := db.migrateAssistantKindIfNeeded(); err != nil {
+		return fmt.Errorf("meta: migrate assistant→workforce kind: %w", err)
 	}
 	// v18 (二度联系人) adds contacts.degree. Reconciled unconditionally (same
 	// rationale as the other ensure* helpers): an idempotent ADD COLUMN that heals
@@ -272,51 +300,51 @@ func (db *DB) migrateSchema() error {
 	return nil
 }
 
-// ensureTasksColumns adds any of the schema v9–v14 tasks columns that are
-// missing, skipping those already present. Idempotent and independent of
-// user_version, so it recovers DBs left half-migrated by the v9 branch
+// ensureProjectItemsColumns adds any of the schema v9–v20 project_items columns
+// that are missing, skipping those already present. Idempotent and independent
+// of user_version, so it recovers DBs left half-migrated by the v9 branch
 // collision (#47 ⇄ #50). DDL must match the original ADD COLUMN definitions.
-func (db *DB) ensureTasksColumns() error {
-	have, err := db.tasksColumns()
+func (db *DB) ensureProjectItemsColumns() error {
+	have, err := db.projectItemsColumns()
 	if err != nil {
 		return err
 	}
 	type col struct{ name, ddl string }
 	wanted := []col{
-		{"verifier", "ALTER TABLE tasks ADD COLUMN verifier TEXT NOT NULL DEFAULT ''"},
-		{"review_max_attempts", "ALTER TABLE tasks ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0"},
-		{"review_count", "ALTER TABLE tasks ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0"},
-		{"review", "ALTER TABLE tasks ADD COLUMN review TEXT NOT NULL DEFAULT ''"},
-		{"source", "ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT ''"},
-		{"user_confirm", "ALTER TABLE tasks ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0"},
+		{"verifier", "ALTER TABLE project_items ADD COLUMN verifier TEXT NOT NULL DEFAULT ''"},
+		{"review_max_attempts", "ALTER TABLE project_items ADD COLUMN review_max_attempts INTEGER NOT NULL DEFAULT 0"},
+		{"review_count", "ALTER TABLE project_items ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0"},
+		{"review", "ALTER TABLE project_items ADD COLUMN review TEXT NOT NULL DEFAULT ''"},
+		{"source", "ALTER TABLE project_items ADD COLUMN source TEXT NOT NULL DEFAULT ''"},
+		{"user_confirm", "ALTER TABLE project_items ADD COLUMN user_confirm INTEGER NOT NULL DEFAULT 0"},
 		// ── GitHub Issue/PR mapping (v12, #74) ──
-		{"github_repo", "ALTER TABLE tasks ADD COLUMN github_repo TEXT NOT NULL DEFAULT ''"},
-		{"github_kind", "ALTER TABLE tasks ADD COLUMN github_kind TEXT NOT NULL DEFAULT ''"},
-		{"github_number", "ALTER TABLE tasks ADD COLUMN github_number INTEGER NOT NULL DEFAULT 0"},
-		{"github_node_id", "ALTER TABLE tasks ADD COLUMN github_node_id TEXT NOT NULL DEFAULT ''"},
-		{"github_url", "ALTER TABLE tasks ADD COLUMN github_url TEXT NOT NULL DEFAULT ''"},
-		{"github_state", "ALTER TABLE tasks ADD COLUMN github_state TEXT NOT NULL DEFAULT ''"},
-		{"github_assignees", "ALTER TABLE tasks ADD COLUMN github_assignees TEXT NOT NULL DEFAULT '[]'"},
-		{"last_synced_at", "ALTER TABLE tasks ADD COLUMN last_synced_at TEXT"},
+		{"github_repo", "ALTER TABLE project_items ADD COLUMN github_repo TEXT NOT NULL DEFAULT ''"},
+		{"github_kind", "ALTER TABLE project_items ADD COLUMN github_kind TEXT NOT NULL DEFAULT ''"},
+		{"github_number", "ALTER TABLE project_items ADD COLUMN github_number INTEGER NOT NULL DEFAULT 0"},
+		{"github_node_id", "ALTER TABLE project_items ADD COLUMN github_node_id TEXT NOT NULL DEFAULT ''"},
+		{"github_url", "ALTER TABLE project_items ADD COLUMN github_url TEXT NOT NULL DEFAULT ''"},
+		{"github_state", "ALTER TABLE project_items ADD COLUMN github_state TEXT NOT NULL DEFAULT ''"},
+		{"github_assignees", "ALTER TABLE project_items ADD COLUMN github_assignees TEXT NOT NULL DEFAULT '[]'"},
+		{"last_synced_at", "ALTER TABLE project_items ADD COLUMN last_synced_at TEXT"},
 		// ── adversarial multi-verifier (v14, #131) ──
-		{"verifier_count", "ALTER TABLE tasks ADD COLUMN verifier_count INTEGER NOT NULL DEFAULT 0"},
-		{"verify_pass_threshold", "ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0"},
-		{"review_pool", "ALTER TABLE tasks ADD COLUMN review_pool TEXT NOT NULL DEFAULT ''"},
+		{"verifier_count", "ALTER TABLE project_items ADD COLUMN verifier_count INTEGER NOT NULL DEFAULT 0"},
+		{"verify_pass_threshold", "ALTER TABLE project_items ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0"},
+		{"review_pool", "ALTER TABLE project_items ADD COLUMN review_pool TEXT NOT NULL DEFAULT ''"},
 		// ── task kernel executor tri-state + binding seam (v20, #318) ──
-		{"executor", "ALTER TABLE tasks ADD COLUMN executor TEXT NOT NULL DEFAULT 'agent'"},
-		{"business_ref", "ALTER TABLE tasks ADD COLUMN business_ref TEXT NOT NULL DEFAULT ''"},
-		{"task_target", "ALTER TABLE tasks ADD COLUMN task_target TEXT NOT NULL DEFAULT ''"},
-		{"result", "ALTER TABLE tasks ADD COLUMN result TEXT NOT NULL DEFAULT ''"},
-		{"cost_tokens", "ALTER TABLE tasks ADD COLUMN cost_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"executor", "ALTER TABLE project_items ADD COLUMN executor TEXT NOT NULL DEFAULT 'agent'"},
+		{"business_ref", "ALTER TABLE project_items ADD COLUMN business_ref TEXT NOT NULL DEFAULT ''"},
+		{"task_target", "ALTER TABLE project_items ADD COLUMN task_target TEXT NOT NULL DEFAULT ''"},
+		{"result", "ALTER TABLE project_items ADD COLUMN result TEXT NOT NULL DEFAULT ''"},
+		{"cost_tokens", "ALTER TABLE project_items ADD COLUMN cost_tokens INTEGER NOT NULL DEFAULT 0"},
 		// ── embedded checklist (in-task progress ledger) ──
-		{"checklist", "ALTER TABLE tasks ADD COLUMN checklist TEXT NOT NULL DEFAULT '[]'"},
+		{"checklist", "ALTER TABLE project_items ADD COLUMN checklist TEXT NOT NULL DEFAULT '[]'"},
 	}
 	for _, c := range wanted {
 		if have[c.name] {
 			continue
 		}
 		if _, err := db.sql.Exec(c.ddl); err != nil {
-			return fmt.Errorf("add tasks.%s: %w", c.name, err)
+			return fmt.Errorf("add project_items.%s: %w", c.name, err)
 		}
 	}
 	return nil
@@ -324,7 +352,7 @@ func (db *DB) ensureTasksColumns() error {
 
 // ensureProjectsColumns adds the schema v14 project archive/close columns
 // (#141) that are missing, skipping any already present. Idempotent and
-// independent of user_version, mirroring ensureTasksColumns.
+// independent of user_version, mirroring ensureProjectItemsColumns.
 func (db *DB) ensureProjectsColumns() error {
 	have, err := db.tableColumns("projects")
 	if err != nil {
@@ -350,8 +378,9 @@ func (db *DB) ensureProjectsColumns() error {
 		// available_agents: JSON array of allowed agent type slugs (e.g. ["claudecode"]).
 		// Empty array means unrestricted. Added by Wave 2a platform layer (#325).
 		{"available_agents", "ALTER TABLE projects ADD COLUMN available_agents TEXT NOT NULL DEFAULT '[]'"},
-		// kind: 'assistant' | 'project'. Legacy rows default to 'project';
-		// EnsureDefaultWorkspace bumps the reserved default row to 'assistant'.
+		// kind: 'workforce' | 'project' (Epic #189). Legacy rows default to
+		// 'project'; EnsureDefaultWorkspace bumps the reserved default row to
+		// workforce. Historical 'assistant' is remapped by migrateAssistantKindIfNeeded.
 		{"kind", "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'"},
 		// avatar: image ref for the assistant/project card. Either a URL served
 		// by GET /avatars/... or a "emoji:X" string; empty when unset.
@@ -371,7 +400,7 @@ func (db *DB) ensureProjectsColumns() error {
 // ensureContactsColumns adds the schema v18 columns when missing: contacts.degree
 // (1 = first-degree/manual, 2 = second-degree/roster-only) and
 // contact_channels.tenant_key (the member's Feishu org, free in chat.members).
-// Idempotent and independent of user_version, mirroring ensureTasksColumns.
+// Idempotent and independent of user_version, mirroring ensureProjectItemsColumns.
 func (db *DB) ensureContactsColumns() error {
 	contactCols, err := db.tableColumns("contacts")
 	if err != nil {
@@ -414,9 +443,62 @@ func (db *DB) ensureContactsColumns() error {
 	return nil
 }
 
-// tasksColumns returns the set of column names currently on the tasks table.
-func (db *DB) tasksColumns() (map[string]bool, error) {
-	return db.tableColumns("tasks")
+// projectItemsColumns returns the set of column names currently on project_items.
+func (db *DB) projectItemsColumns() (map[string]bool, error) {
+	return db.tableColumns("project_items")
+}
+
+// tableExists reports whether a user table with the given name is present.
+func (db *DB) tableExists(name string) (bool, error) {
+	var n int
+	err := db.sql.QueryRow(
+		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name=?`, name,
+	).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// renameTasksTableIfNeeded renames the legacy `tasks` table to `project_items`
+// (Epic #184 / #187). After this, runtime SQL only touches project_items — no
+// dual-read of the old name. Idempotent.
+func (db *DB) renameTasksTableIfNeeded() error {
+	hasTasks, err := db.tableExists("tasks")
+	if err != nil {
+		return err
+	}
+	hasItems, err := db.tableExists("project_items")
+	if err != nil {
+		return err
+	}
+	switch {
+	case hasTasks && !hasItems:
+		if _, err := db.sql.Exec(`ALTER TABLE tasks RENAME TO project_items`); err != nil {
+			return err
+		}
+		// Recreate indexes under the new name (SQLite keeps old index names on
+		// RENAME TABLE; DROP+CREATE is idempotent and matches schemaV1).
+		if _, err := db.sql.Exec(`DROP INDEX IF EXISTS idx_tasks_project`); err != nil {
+			return err
+		}
+		if _, err := db.sql.Exec(`CREATE INDEX IF NOT EXISTS idx_project_items_project ON project_items(project_id, status)`); err != nil {
+			return err
+		}
+		if _, err := db.sql.Exec(`DROP INDEX IF EXISTS idx_tasks_parent`); err != nil {
+			return err
+		}
+		if _, err := db.sql.Exec(`CREATE INDEX IF NOT EXISTS idx_project_items_parent ON project_items(parent_id)`); err != nil {
+			return err
+		}
+	case hasTasks && hasItems:
+		// Stale dual state (partial manual migration). project_items is the
+		// source of truth — drop the legacy name so nothing still depends on it.
+		if _, err := db.sql.Exec(`DROP TABLE tasks`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensureSessionsColumns adds the sessions.user_named column when missing (#94).
@@ -480,7 +562,7 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(workspace_path);
 
-CREATE TABLE IF NOT EXISTS tasks (
+CREATE TABLE IF NOT EXISTS project_items (
     id            TEXT PRIMARY KEY,
     project_id    TEXT NOT NULL,
     title         TEXT NOT NULL DEFAULT '',
@@ -497,7 +579,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_project_items_project ON project_items(project_id, status);
 
 CREATE TABLE IF NOT EXISTS task_deps (
     task_id    TEXT NOT NULL,
@@ -547,46 +629,46 @@ CREATE INDEX IF NOT EXISTS idx_sessions_task ON sessions(task_id);
 // TABLE ADD COLUMN is metadata-only, so upgrading an existing v1 database
 // keeps all rows intact.
 const schemaV2 = `
-ALTER TABLE tasks ADD COLUMN priority            TEXT    NOT NULL DEFAULT 'medium';
-ALTER TABLE tasks ADD COLUMN assignee            TEXT    NOT NULL DEFAULT '';
-ALTER TABLE tasks ADD COLUMN labels              TEXT    NOT NULL DEFAULT '[]';
-ALTER TABLE tasks ADD COLUMN created_by          TEXT    NOT NULL DEFAULT 'user';
-ALTER TABLE tasks ADD COLUMN parent_id           TEXT    NOT NULL DEFAULT '';
-ALTER TABLE tasks ADD COLUMN milestone           TEXT    NOT NULL DEFAULT '';
-ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT    NOT NULL DEFAULT '';
-ALTER TABLE tasks ADD COLUMN recurrence          TEXT    NOT NULL DEFAULT '';
-ALTER TABLE tasks ADD COLUMN max_retries         INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE tasks ADD COLUMN retry_count         INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tasks ADD COLUMN timeout_minutes     INTEGER NOT NULL DEFAULT 0;
-CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+ALTER TABLE project_items ADD COLUMN priority            TEXT    NOT NULL DEFAULT 'medium';
+ALTER TABLE project_items ADD COLUMN assignee            TEXT    NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN labels              TEXT    NOT NULL DEFAULT '[]';
+ALTER TABLE project_items ADD COLUMN created_by          TEXT    NOT NULL DEFAULT 'user';
+ALTER TABLE project_items ADD COLUMN parent_id           TEXT    NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN milestone           TEXT    NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN acceptance_criteria TEXT    NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN recurrence          TEXT    NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN max_retries         INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE project_items ADD COLUMN retry_count         INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_items ADD COLUMN timeout_minutes     INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_project_items_parent ON project_items(parent_id);
 `
 
 // schemaV3 adds the sprint label (free-text PM grouping, e.g. "Sprint 23").
 // Backward-compat: the DEFAULT ” means existing v2 rows survive untouched
 // and report Sprint == "" until the user opts a task into a sprint.
 const schemaV3 = `
-ALTER TABLE tasks ADD COLUMN sprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN sprint TEXT NOT NULL DEFAULT '';
 `
 
 // schemaV4 adds the issue-type discriminator (GitHub-style: task/requirement/
 // bug share one table). DEFAULT 'task' keeps every pre-v4 row a normal task;
-// requirement cards (the "需求池") are just tasks with type != 'task'.
+// requirement cards (the "需求池") are just rows with type != 'task'.
 const schemaV4 = `
-ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'task';
+ALTER TABLE project_items ADD COLUMN type TEXT NOT NULL DEFAULT 'task';
 `
 
 // schemaV5 adds the per-project short id (#N) and peer cross-reference links.
 // number is backfilled per project in (created_at, id) order so existing rows
 // get stable, gap-free #N; links holds a JSON array of {target, rel} mirroring
-// the labels column. New tasks get their number assigned at upsert time.
+// the labels column. New items get their number assigned at upsert time.
 const schemaV5 = `
-ALTER TABLE tasks ADD COLUMN number INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tasks ADD COLUMN links  TEXT    NOT NULL DEFAULT '[]';
-UPDATE tasks SET number = sub.rn FROM (
+ALTER TABLE project_items ADD COLUMN number INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_items ADD COLUMN links  TEXT    NOT NULL DEFAULT '[]';
+UPDATE project_items SET number = sub.rn FROM (
     SELECT id, ROW_NUMBER() OVER (
         PARTITION BY project_id ORDER BY created_at, id
-    ) AS rn FROM tasks
-) AS sub WHERE tasks.id = sub.id;
+    ) AS rn FROM project_items
+) AS sub WHERE project_items.id = sub.id;
 `
 
 // schemaV6 adds the session role discriminator. DEFAULT ” keeps every
@@ -607,11 +689,11 @@ ALTER TABLE sessions ADD COLUMN archived_at TEXT NOT NULL DEFAULT '';
 
 // schemaV8 promotes the milestone label to a first-class entity. The new table
 // stores per-milestone metadata (target date, ordering, description) keyed by
-// (project_id, name); tasks keep linking via their existing milestone column,
-// so no task row is touched. The backfill seeds one milestone row per distinct
-// non-empty Task.Milestone (per project) so existing groupings survive intact,
-// and assigns position in first-appearance order (mirrors the v5 number
-// backfill). lower(hex(randomblob(16))) matches newID()'s 32-char hex format.
+// (project_id, name); project_items keep linking via their existing milestone
+// column, so no item row is touched. The backfill seeds one milestone row per
+// distinct non-empty Milestone (per project) so existing groupings survive
+// intact, and assigns position in first-appearance order (mirrors the v5
+// number backfill). lower(hex(randomblob(16))) matches newID()'s 32-char hex.
 const schemaV8 = `
 CREATE TABLE IF NOT EXISTS milestones (
     id             TEXT PRIMARY KEY,
@@ -629,7 +711,7 @@ CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id, posi
 
 INSERT OR IGNORE INTO milestones (id, project_id, name, description, target_date, position, created_at, updated_at)
 SELECT lower(hex(randomblob(16))), project_id, milestone, '', NULL, 0, MIN(created_at), MIN(created_at)
-FROM tasks WHERE milestone != '' GROUP BY project_id, milestone;
+FROM project_items WHERE milestone != '' GROUP BY project_id, milestone;
 
 UPDATE milestones SET position = sub.rn FROM (
     SELECT id, ROW_NUMBER() OVER (
@@ -638,10 +720,11 @@ UPDATE milestones SET position = sub.rn FROM (
 ) AS sub WHERE milestones.id = sub.id;
 `
 
-// Schema v9–v11 added tasks columns (#50 verifier/review fields; #47 source and
-// user_confirm). These ALTERs now live in ensureTasksColumns, which adds them
-// idempotently regardless of user_version — see the note in migrateSchema for
-// why the version-gated form couldn't recover the v9 branch collision.
+// Schema v9–v11 added project_items columns (#50 verifier/review fields; #47
+// source and user_confirm). These ALTERs now live in ensureProjectItemsColumns,
+// which adds them idempotently regardless of user_version — see the note in
+// migrateSchema for why the version-gated form couldn't recover the v9 branch
+// collision.
 
 // schemaV13 adds the Inbox 统一信息收口层 table (#60): the most-upstream layer
 // that aggregates external context (manual capture / IM / email / RSS / misc)
@@ -668,11 +751,11 @@ CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox_items(status, created_at DE
 // schemaV14 adds the adversarial multi-verifier fields (#131): verifier_count /
 // verify_pass_threshold configure the verification panel, review_pool holds the
 // running cycle's accumulated per-verifier verdicts. DEFAULTs keep every pre-v14
-// task on the classic single-verifier flow (count 0 ⇒ 1 verifier).
+// item on the classic single-verifier flow (count 0 ⇒ 1 verifier).
 const schemaV14 = `
-ALTER TABLE tasks ADD COLUMN verifier_count        INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tasks ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tasks ADD COLUMN review_pool           TEXT    NOT NULL DEFAULT '';
+ALTER TABLE project_items ADD COLUMN verifier_count        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_items ADD COLUMN verify_pass_threshold INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_items ADD COLUMN review_pool           TEXT    NOT NULL DEFAULT '';
 `
 
 // schemaV15 adds the chat-digest value-extraction layer. digest_templates is a
@@ -808,16 +891,45 @@ CREATE INDEX IF NOT EXISTS idx_company_tenants_company ON company_tenants(compan
 `
 
 // schemaV20 (#318) adds the task kernel executor tri-state columns. All five
-// are idempotent ADD COLUMNs already handled by ensureTasksColumns; the const
-// body is intentionally empty — the version counter is what matters here.
-// (ensureTasksColumns runs unconditionally so new DBs and existing DBs both get
-// the columns regardless of which version path applies.)
+// are idempotent ADD COLUMNs already handled by ensureProjectItemsColumns; the
+// const body is intentionally empty — the version counter is what matters here.
+// (ensureProjectItemsColumns runs unconditionally so new DBs and existing DBs
+// both get the columns regardless of which version path applies.)
 const schemaV20 = ``
 
 // schemaV21 (#94) adds sessions.user_named. The column is added by
 // ensureSessionsColumns (idempotent ADD COLUMN); the const body is
 // intentionally empty — the version counter is what matters here.
 const schemaV21 = ``
+
+// schemaV22 (#187) renames table tasks → project_items. The rename itself is
+// applied unconditionally by renameTasksTableIfNeeded (so DBs already past
+// user_version 21 still migrate). The const body is intentionally empty — the
+// version counter is what marks the cutover complete.
+const schemaV22 = ``
+
+// schemaV23 (#189) remaps projects.kind assistant→workforce. The remap itself
+// is applied unconditionally by migrateAssistantKindIfNeeded; the const body is
+// intentionally empty — the version counter marks the cutover complete.
+const schemaV23 = ``
+
+// migrateAssistantKindIfNeeded rewrites legacy projects.kind='assistant' to
+// 'workforce' (Epic #184 §0.4 / #189). Idempotent; no dual-read path remains.
+func (db *DB) migrateAssistantKindIfNeeded() error {
+	has, err := db.tableExists("projects")
+	if err != nil || !has {
+		return err
+	}
+	cols, err := db.tableColumns("projects")
+	if err != nil {
+		return err
+	}
+	if !cols["kind"] {
+		return nil
+	}
+	_, err = db.sql.Exec(`UPDATE projects SET kind = ? WHERE kind = 'assistant'`, KindWorkforce)
+	return err
+}
 
 // ── shared helpers ──────────────────────────────────────────────────────────
 

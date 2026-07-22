@@ -517,3 +517,43 @@ func TestSessionDefaultNameStillAutoTitle(t *testing.T) {
 		t.Fatalf("default-named session was overwritten unexpectedly: %q", listed[0].Name)
 	}
 }
+
+func TestProjectItemsExecutorMatrix(t *testing.T) {
+	h, _ := newTestHandler(t)
+	// Seed a workspace path the handler can resolve via meta EnsureProject.
+	// Use empty resolve — create without workspace may 404; use personal path.
+	// Build create body with illegal agent+user via explicit executor.
+	body := map[string]any{
+		"workspace_id": "default",
+		"title":        "bad agent+user",
+		"executor":     "agent",
+		"assignee":     "user",
+	}
+	raw, _ := json.Marshal(body)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/project-items", bytes.NewReader(raw))
+	h.HandleTasksRoot(rr, req)
+	// Either 400 (matrix) or 404 (workspace) — matrix should win if workspace resolves.
+	// When workspace is missing we get 404 first after matrix in current code order
+	// matrix runs before workspace resolve — so expect 400.
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("agent+user: status %d body %s, want 400", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "executor=agent cannot use assignee=user") {
+		t.Fatalf("agent+user message: %s", rr.Body.String())
+	}
+
+	// function without type
+	body2 := map[string]any{
+		"workspace_id": "default",
+		"title":        "bad fn",
+		"executor":     "function",
+	}
+	raw2, _ := json.Marshal(body2)
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/api/agent/project-items", bytes.NewReader(raw2))
+	h.HandleTasksRoot(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Fatalf("function no type: status %d body %s", rr2.Code, rr2.Body.String())
+	}
+}

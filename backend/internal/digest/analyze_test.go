@@ -55,7 +55,7 @@ func TestPrepareBatchAndCreateTask(t *testing.T) {
 	if task.Status != meta.TaskStatusPending {
 		t.Fatalf("status: %q", task.Status)
 	}
-	if task.Type != meta.TaskTypeTask {
+	if task.Type != meta.ItemTypeTask {
 		t.Fatalf("type: %q", task.Type)
 	}
 	if task.ScheduleType != meta.ScheduleTypeImmediate {

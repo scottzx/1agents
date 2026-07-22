@@ -6,24 +6,26 @@
 **Scope:** `backend/internal/`（新增 store 包 + CLI 子命令）, `html/src/`, 根目录元数据库
 **Relation:** 本文档定义 [issue-model](../issue-model/design.md) 的**底座**。issue-model 的数据模型/时间线/回写设计不变，但其存储载体由本文档从 per-workspace JSON 升级为全局 SQLite。
 
+> **术语（2026-07 · 名称定义表 §0）**：主实体现称 **ProjectItem**（目标表名 **`project_items`**，**待迁移**）；`task` 仅为 ItemType 枚举值。API/类型 **Workspace** = 产品「项目」。权威入口：[名称定义表 §0](../../product/名称定义表.md)。下文 SQL 中的 **`tasks` 表**及「Task」主类型名均为**落地时历史快照**，读作 ProjectItem / 待迁移表名，不表示目标态仍叫 tasks。
+
 ---
 
 ## 1. 层级模型（已确认决策）
 
 ```
-项目 Project（= 一个 workspace 目录，全局管理）
-  └── 任务 Task（Jira 式字段 + 自带话题时间线 = issue-model 的 Task）
-        ├── Description / Replies[]（话题层，见 issue-model PRD）
-        └── 会话 Session（执行层，软关联 taskId）
+项目 Project（= Workspace；一个 workspace 目录，全局管理）
+  └── ProjectItem（原 Task；Jira 式字段 + 话题时间线 = issue-model）
+        ├── Description / Replies[]（话题层，见 issue-model）
+        └── 会话 Session（执行层，软关联 item / taskId）
 ```
 
-**三层，不是四层**：Task 即话题（Task=Issue），每个 Task 自带一条时间线。issue-model PRD 全部沿用，只在其上加"项目"一层。
+**三层，不是四层**：ProjectItem 可带话题字段；每个条目自带一条时间线。issue-model 语义全部沿用，只在其上加"项目"一层。**每条 ProjectItem 始终 `project_id` 非空**（名称定义表 §0.3）。
 
 ### 2026-06-12 确认决策
 
 | # | Dimension | Choice | Notes |
 |---|---|---|---|
-| 1 | 层级 | **Project → Task(含话题) → Session 三层** | issue-model PRD 不动，加项目层 |
+| 1 | 层级 | **Project → ProjectItem(含话题) → Session 三层**（当时称 Task） | issue-model 语义不动，加项目层；现名见名称定义表 §0 |
 | 2 | 存储 | **全量迁 SQLite，根目录全局库** | 废弃各项目 `.1agents/tasks.json` / `agent-sessions.json`，首次启动自动迁移 |
 | 3 | CLI 写入 | **直写 SQLite（WAL）** | `1agents` 二进制加子命令；服务没起也能用 |
 | 4 | 落地页主视图 | **多维表格式列表** | 行=任务，列=状态/计划/实际/依赖；看板、时间轴作为后续视图切换加入 |
@@ -224,7 +226,7 @@ Scheduler（5s tick，时间到 + 依赖满足 + 子任务全完成）
              → completed / failed（失败按 max_retries 自动重跑，失败原因随时间线注入下次执行）
 ```
 
-### tasks 表 v2 新增字段（schema user_version=2）
+### tasks 表 v2 新增字段（schema user_version=2 · **历史快照**；目标表名 `project_items`，见名称定义表 §0.2）
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
@@ -255,7 +257,7 @@ CLI 建任务（描述+验收标准）→ 调度器 5s 自动拿锁 → runner �
 |---|---|---|
 | **S0 存储底座** | `internal/meta` 包：建库/建表/PRAGMA/迁移 JSON；Task 结构加 `PlannedStart/PlannedEnd`；issue-model 的 Description/IssueState/Replies 同步建表 | `go test ./internal/meta/...`；迁移后旧数据可读 |
 | **S1 CLI** | `project`/`task` 子命令全集（§4） | CLI 增删改查 + 服务端同时读写不冲突（WAL 并发测试） |
-| **S2 API** | `/api/projects*`、tasks 表格数据接口；agent handler 的 store 替换 | `go test ./internal/agent/...` |
+| **S2 API** | `/api/projects*`、工作项表格数据接口（历史称 tasks 表接口；路径以代码为准）；agent handler 的 store 替换 | `go test ./internal/agent/...` |
 | **S3 表格 UI** | 落地页换表格主视图 + 项目切换器 | `make frontend`；手工核对排序/筛选 |
 | **S4+** | issue-model P1–P6（API/注入/回写/详情卡/徽章/E2E） | 见 issue-model §12 |
 

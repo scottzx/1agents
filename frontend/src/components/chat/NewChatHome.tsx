@@ -51,7 +51,7 @@ export function NewChatHome({
             return activeWorkspaceId;
         }
         return (
-            workspaces.find(w => (w.kind ?? 'project') === 'assistant' && !w.deviceId)?.id ||
+            workspaces.find(w => (w.kind ?? 'project') === 'workforce' && !w.deviceId)?.id ||
             workspaces.find(w => !w.deviceId)?.id ||
             activeWorkspaceId
         );
@@ -62,7 +62,7 @@ export function NewChatHome({
     const wsDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0];
-    const isAssistantWs = (w: Workspace) => (w.kind ?? 'project') === 'assistant';
+    const isAssistantWs = (w: Workspace) => (w.kind ?? 'project') === 'workforce';
 
     const pickerWorkspaces = workspaces
         .filter(ws => !ws.deviceId)

@@ -274,7 +274,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 
 	rows, err := s.db.sql.Query(`
 		SELECT `+taskCols+`
-		FROM tasks WHERE project_id = ? ORDER BY created_at, id`, projectID)
+		FROM project_items WHERE project_id = ? ORDER BY created_at, id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 	depRows, err := s.db.sql.Query(`
 		SELECT td.task_id, td.depends_on
 		FROM task_deps td
-		JOIN tasks t ON t.id = td.task_id
+		JOIN project_items t ON t.id = td.task_id
 		WHERE t.project_id = ?
 		ORDER BY td.seq`, projectID)
 	if err != nil {
@@ -330,7 +330,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 		SELECT r.task_id, r.id, r.author_kind, r.author_name, r.agent_type,
 		       r.text, r.session_ref, r.acp_session_id, r.in_reply_to, r.mode, r.created_at
 		FROM replies r
-		JOIN tasks t ON t.id = r.task_id
+		JOIN project_items t ON t.id = r.task_id
 		WHERE t.project_id = ?
 		ORDER BY r.seq, r.created_at`, projectID)
 	if err != nil {
@@ -365,7 +365,7 @@ func (s *TaskStore) Load(workspacePath string) (*TasksConfig, error) {
 	sessRows, err := s.db.sql.Query(`
 		SELECT s.task_id, s.id, s.name, s.agent_type, s.exec_status, s.exec_summary, s.created_at
 		FROM sessions s
-		JOIN tasks t ON t.id = s.task_id
+		JOIN project_items t ON t.id = s.task_id
 		WHERE t.project_id = ?
 		ORDER BY s.created_at, s.id`, projectID)
 	if err != nil {
@@ -495,7 +495,7 @@ func (s *TaskStore) Save(workspacePath string, cfg *TasksConfig) error {
 	}
 
 	// Drop tasks (and their children) that were removed from the config.
-	rows, err := tx.Query(`SELECT id FROM tasks WHERE project_id = ?`, projectID)
+	rows, err := tx.Query(`SELECT id FROM project_items WHERE project_id = ?`, projectID)
 	if err != nil {
 		return err
 	}
@@ -533,20 +533,20 @@ func upsertTaskTx(tx *sql.Tx, projectID string, t *Task) error {
 		t.CreatedBy = "user"
 	}
 	if t.Type == "" {
-		t.Type = TaskTypeTask
+		t.Type = ItemTypeTask
 	}
 	// Assign the per-project short id on first save. Runs inside the tx and
 	// after any earlier task in the same Save has been inserted, so MAX is
 	// always current and concurrent Saves can't collide.
 	if t.Number == 0 {
 		if err := tx.QueryRow(
-			`SELECT COALESCE(MAX(number), 0) + 1 FROM tasks WHERE project_id = ?`,
+			`SELECT COALESCE(MAX(number), 0) + 1 FROM project_items WHERE project_id = ?`,
 			projectID).Scan(&t.Number); err != nil {
 			return err
 		}
 	}
 	_, err := tx.Exec(`
-		INSERT INTO tasks (id, project_id, title, description, issue_state, status,
+		INSERT INTO project_items (id, project_id, title, description, issue_state, status,
 			schedule_type, scheduled_at, planned_start, planned_end, started_at,
 			completed_at, summary, created_at, updated_at,
 			priority, assignee, labels, created_by, parent_id, milestone,
@@ -699,7 +699,7 @@ func deleteTaskTx(tx *sql.Tx, taskID string) error {
 	if _, err := tx.Exec(`UPDATE sessions SET task_id = '' WHERE task_id = ?`, taskID); err != nil {
 		return err
 	}
-	_, err := tx.Exec(`DELETE FROM tasks WHERE id = ?`, taskID)
+	_, err := tx.Exec(`DELETE FROM project_items WHERE id = ?`, taskID)
 	return err
 }
 
@@ -748,7 +748,7 @@ func (s *TaskStore) AppendReply(taskID string, rp Reply) (Reply, error) {
 	defer tx.Rollback()
 
 	var exists int
-	if err := tx.QueryRow(`SELECT COUNT(1) FROM tasks WHERE id = ?`, taskID).Scan(&exists); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(1) FROM project_items WHERE id = ?`, taskID).Scan(&exists); err != nil {
 		return Reply{}, err
 	}
 	if exists == 0 {
@@ -773,7 +773,7 @@ func (s *TaskStore) AppendReply(taskID string, rp Reply) (Reply, error) {
 		timeToStr(rp.CreatedAt)); err != nil {
 		return Reply{}, err
 	}
-	if _, err := tx.Exec(`UPDATE tasks SET updated_at = ? WHERE id = ?`,
+	if _, err := tx.Exec(`UPDATE project_items SET updated_at = ? WHERE id = ?`,
 		timeToStr(time.Now().UTC()), taskID); err != nil {
 		return Reply{}, err
 	}
@@ -788,13 +788,13 @@ func (s *TaskStore) SetReplySession(replyID, sessionID string) error {
 
 // UpdateDescription replaces a task's Markdown description.
 func (s *TaskStore) UpdateDescription(taskID, description string) error {
-	return s.execOne(`UPDATE tasks SET description = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne(`UPDATE project_items SET description = ?, updated_at = ? WHERE id = ?`,
 		description, timeToStr(time.Now().UTC()), taskID)
 }
 
 // SetIssueState toggles the open/closed dimension.
 func (s *TaskStore) SetIssueState(taskID string, state IssueState) error {
-	return s.execOne(`UPDATE tasks SET issue_state = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne(`UPDATE project_items SET issue_state = ?, updated_at = ? WHERE id = ?`,
 		string(state), timeToStr(time.Now().UTC()), taskID)
 }
 
@@ -802,7 +802,7 @@ func (s *TaskStore) SetIssueState(taskID string, state IssueState) error {
 func (s *TaskStore) GetTask(taskID string) (Task, bool, error) {
 	row := s.db.sql.QueryRow(`
 		SELECT `+taskCols+`
-		FROM tasks WHERE id = ?`, taskID)
+		FROM project_items WHERE id = ?`, taskID)
 	t, err := scanTask(row)
 	if err == sql.ErrNoRows {
 		return Task{}, false, nil
@@ -812,7 +812,7 @@ func (s *TaskStore) GetTask(taskID string) (Task, bool, error) {
 	}
 	err = s.db.sql.QueryRow(`
 		SELECT COALESCE(p.workspace_path, '')
-		FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
+		FROM project_items t LEFT JOIN projects p ON p.id = t.project_id
 		WHERE t.id = ?`, taskID).Scan(&t.WorkspacePath)
 	if err != nil {
 		return Task{}, false, err
@@ -829,7 +829,7 @@ func (s *TaskStore) GetTask(taskID string) (Task, bool, error) {
 func (s *TaskStore) GetTaskByNumber(projectID string, number int) (Task, bool, error) {
 	var id string
 	err := s.db.sql.QueryRow(
-		`SELECT id FROM tasks WHERE project_id = ? AND number = ?`, projectID, number).Scan(&id)
+		`SELECT id FROM project_items WHERE project_id = ? AND number = ?`, projectID, number).Scan(&id)
 	if err == sql.ErrNoRows {
 		return Task{}, false, nil
 	}
@@ -932,7 +932,7 @@ func jsonToTaskTarget(s string) *TaskTargetSpec {
 // SetTaskResult writes the terminal result JSON and token cost for a task,
 // then bumps updated_at. Called by the runner and the function runner on finish.
 func (s *TaskStore) SetTaskResult(taskID, resultJSON string, costTokens int64) error {
-	return s.execOne(`UPDATE tasks SET result = ?, cost_tokens = ?, updated_at = ? WHERE id = ?`,
+	return s.execOne(`UPDATE project_items SET result = ?, cost_tokens = ?, updated_at = ? WHERE id = ?`,
 		resultJSON, costTokens, timeToStr(time.Now().UTC()), taskID)
 }
 
@@ -944,7 +944,7 @@ func (s *TaskStore) ListTasksByBusinessRef(ref string) ([]Task, error) {
 	}
 	rows, err := s.db.sql.Query(`
 		SELECT `+taskCols+`
-		FROM tasks WHERE business_ref = ? ORDER BY created_at, id`, ref)
+		FROM project_items WHERE business_ref = ? ORDER BY created_at, id`, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -1017,7 +1017,7 @@ func (s *TaskStore) maybeImportLegacy(workspacePath string) error {
 	}
 	var count int
 	if err := s.db.sql.QueryRow(
-		`SELECT COUNT(1) FROM tasks WHERE project_id = ?`, projectID).Scan(&count); err != nil {
+		`SELECT COUNT(1) FROM project_items WHERE project_id = ?`, projectID).Scan(&count); err != nil {
 		return err
 	}
 	// Only import into an empty project — never merge into live data.

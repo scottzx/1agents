@@ -125,7 +125,7 @@ func (s *TaskStore) resolveRefTargets(projectID, selfID, text string) ([]string,
 func (s *TaskStore) SyncRefLinks(taskID string) ([]TaskLink, error) {
 	var projectID, title, desc string
 	err := s.db.sql.QueryRow(
-		`SELECT project_id, title, description FROM tasks WHERE id = ?`, taskID,
+		`SELECT project_id, title, description FROM project_items WHERE id = ?`, taskID,
 	).Scan(&projectID, &title, &desc)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -143,7 +143,7 @@ func (s *TaskStore) SyncRefLinks(taskID string) ([]TaskLink, error) {
 	}
 
 	var linksJSON string
-	if err := s.db.sql.QueryRow(`SELECT links FROM tasks WHERE id = ?`, taskID).Scan(&linksJSON); err != nil {
+	if err := s.db.sql.QueryRow(`SELECT links FROM project_items WHERE id = ?`, taskID).Scan(&linksJSON); err != nil {
 		return nil, err
 	}
 	links := jsonToLinks(linksJSON)
@@ -165,7 +165,7 @@ func (s *TaskStore) SyncRefLinks(taskID string) ([]TaskLink, error) {
 		return nil, nil
 	}
 	if _, err := s.db.sql.Exec(
-		`UPDATE tasks SET links = ? WHERE id = ?`, linksToJSON(links), taskID); err != nil {
+		`UPDATE project_items SET links = ? WHERE id = ?`, linksToJSON(links), taskID); err != nil {
 		return nil, err
 	}
 	return added, nil
@@ -196,7 +196,7 @@ type LinkGraph struct {
 func (s *TaskStore) LinkGraphFor(taskID string) (LinkGraph, bool, error) {
 	var projectID, linksJSON string
 	err := s.db.sql.QueryRow(
-		`SELECT project_id, links FROM tasks WHERE id = ?`, taskID).Scan(&projectID, &linksJSON)
+		`SELECT project_id, links FROM project_items WHERE id = ?`, taskID).Scan(&projectID, &linksJSON)
 	if err == sql.ErrNoRows {
 		return LinkGraph{}, false, nil
 	}
@@ -221,7 +221,7 @@ func (s *TaskStore) LinkGraphFor(taskID string) (LinkGraph, bool, error) {
 	// links column is small JSON; a project scan is fine at task-board scale and
 	// the LIKE prefilter avoids decoding rows that can't match.
 	rows, err := s.db.sql.Query(
-		`SELECT `+taskCols+` FROM tasks WHERE project_id = ? AND id <> ? AND links LIKE ?`,
+		`SELECT `+taskCols+` FROM project_items WHERE project_id = ? AND id <> ? AND links LIKE ?`,
 		projectID, taskID, "%"+taskID+"%")
 	if err != nil {
 		return LinkGraph{}, false, err
@@ -249,7 +249,7 @@ func (s *TaskStore) LinkGraphFor(taskID string) (LinkGraph, bool, error) {
 // getTaskLite fetches a single task row without hydrating children — enough to
 // describe a graph peer.
 func (s *TaskStore) getTaskLite(taskID string) (Task, bool, error) {
-	row := s.db.sql.QueryRow(`SELECT `+taskCols+` FROM tasks WHERE id = ?`, taskID)
+	row := s.db.sql.QueryRow(`SELECT `+taskCols+` FROM project_items WHERE id = ?`, taskID)
 	t, err := scanTask(row)
 	if err == sql.ErrNoRows {
 		return Task{}, false, nil

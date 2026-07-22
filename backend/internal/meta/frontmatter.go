@@ -41,7 +41,7 @@ func RenderCardDoc(t Task) string {
 	if t.Milestone != "" {
 		fmt.Fprintf(&b, "milestone: %s\n", yamlScalar(t.Milestone))
 	}
-	if t.Type == TaskTypeRequirement || t.Type == TaskTypeBug {
+	if t.Type == ItemTypeRequirement || t.Type == ItemTypeBug {
 		fmt.Fprintf(&b, "userConfirm: %t\n", t.UserConfirm)
 	}
 	if acceptance != "" {

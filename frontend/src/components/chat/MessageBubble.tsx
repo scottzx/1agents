@@ -133,14 +133,6 @@ function UserBubble({
     onCancel?: (queueRequestId: string) => void;
 }) {
     const isQueued = queueStatus === 'queued';
-    const html = renderMarkdown(content, { projectName: activeProjectName() });
-    const bodyRef = useRef<HTMLDivElement>(null);
-    const currentTheme = theme.value;
-
-    useEffect(() => {
-        if (isQueued) return;
-        renderMermaidBlocks(bodyRef.current, currentTheme);
-    }, [html, isQueued, currentTheme]);
 
     return (
         <div class={`chat-bubble chat-bubble-user${isQueued ? ' chat-bubble-user-queued' : ''}`}>
@@ -148,7 +140,8 @@ function UserBubble({
                 <div class="chat-bubble-body chat-bubble-body-queued">{content}</div>
             ) : (
                 <div class="chat-bubble-body">
-                    <div ref={bodyRef} class="markdown-body md-conv" dangerouslySetInnerHTML={{ __html: html }} />
+                    {/* Reuse assistant content shell: max-height + scroll, copy, fold. */}
+                    <AssistantContent content={content} streaming={false} showActions />
                 </div>
             )}
             {isQueued && (
@@ -1128,11 +1121,7 @@ export function PermissionPrompt({
     return (
         <div class="chat-permission-prompt" role="region" aria-label="permission">
             <div key={permission.requestId} class="chat-permission-prompt-card">
-                <PermissionActionRow
-                    permission={permission}
-                    onRespond={onRespond}
-                    preview={preview}
-                />
+                <PermissionActionRow permission={permission} onRespond={onRespond} preview={preview} />
             </div>
         </div>
     );

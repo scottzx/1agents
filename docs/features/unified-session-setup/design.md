@@ -37,7 +37,7 @@
 - 后端会话 API 协议变更  
 - 创建时选 PM / executor / verifier 角色（PM 仅走 Task 专用流）  
 - 按 workspace 记忆默认（本轮全局一份）  
-- `SessionTierPicker`（#328）接入主路径  
+- 创建向导接入主路径（历史组件名 `SessionTierPicker` #328；**目标**：助理 / 项目 / **template_project**，**否决** `professional-project` 等落库三档，见[名称定义表 §0.4](../../product/名称定义表.md)） 
 - 创建时选 team expert（`agentRef`）— 记为 P2  
 
 ---

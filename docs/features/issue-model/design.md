@@ -6,9 +6,11 @@
 **Updated:** 2026-06-12 — 评审后确认决策 E–H（§5.3），agent 回写从 Stop hook 改为 Go 后端拦截（§8）
 **Scope:** `backend/internal/agent/`, `modules/1acp/bridge-server.js`, `html/src/`
 
+> **术语（2026-07 · 名称定义表 §0）**：主实体现称 **ProjectItem**（目标表名 `project_items`，**待迁移**）；`task` 仅为 **ItemType** 枚举值，不是表名/主类型名。话题语义（Description + Replies）挂在 ProjectItem 上。权威入口：[名称定义表 §0.2](../../product/名称定义表.md)。下文历史「Task / Issue」用语在语义上均指 **ProjectItem**（含话题字段），不另立实体。
+
 > **⚠️ 存储层已被 [project-model](../project-model/design.md) 取代（2026-06-12）：**
 > 本文档中所有 `tasks.json` / `agent-sessions.json` / `TasksStore` 的引用，落地时一律换成根目录 SQLite（`~/.1agents/meta.db`，`internal/meta` 包）。
-> 同时新增"项目"层（Project → Task → Session），任务表格为落地页主视图。
+> 同时新增"项目"层（Workspace/Project → **ProjectItem** → Session）；每条 ProjectItem **始终**挂一条项目行（否决「可脱离 project」）。
 > 本文档的数据模型语义、时间线、回写、注入、详情卡 UI 设计**全部继续有效**。
 
 ---

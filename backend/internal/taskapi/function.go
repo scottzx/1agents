@@ -72,10 +72,14 @@ func ExtractFunctionType(labels []string) string {
 // The store parameter is used to write back result + status; the api parameter
 // fires completion hooks. Both may be nil for unit tests.
 func RunFunction(task meta.Task, workspacePath string, store *meta.TaskStore, api *API) {
+	// Prefer Labels "fn:<type>"; fall back to Assignee (mirrored on write, #192).
 	fnType := ExtractFunctionType(task.Labels)
 	if fnType == "" {
+		fnType = strings.TrimSpace(task.Assignee)
+	}
+	if fnType == "" {
 		writeTerminal(task, workspacePath, store, api, meta.TaskStatusFailed,
-			`{"error":"no fn: label on function task"}`, 0)
+			`{"error":"no fn: label or assignee on function task"}`, 0)
 		return
 	}
 	handler := Lookup(fnType)

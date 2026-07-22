@@ -50,7 +50,18 @@ export interface Milestone {
 
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
-export type TaskType = 'task' | 'requirement' | 'bug' | 'discussion';
+/**
+ * ItemType — board-row discriminator (Epic #184 / #193 / #197).
+ * Wire values stay task|requirement|bug|discussion; only `task` is scheduler-runnable.
+ * TaskType is a transitional alias for gradual renames of call sites.
+ * Removal target: after M6 (#196) closes (tracked by #197).
+ */
+export type ItemType = 'task' | 'requirement' | 'bug' | 'discussion';
+/** @deprecated Prefer ItemType. Removal target: M6 close (#196 / #197). */
+export type TaskType = ItemType;
+
+/** Executor channel (名称定义表 §0.5). Field name stays executor — not AIWorkforce. */
+export type TaskExecutor = 'agent' | 'function' | 'human';
 
 // How a task entered the pool. '' (omitted) = normal user/PM-created task;
 // 'agent-suggested' marks an AI suggestion (issue #47) — held out of the board
@@ -86,6 +97,10 @@ export interface ChecklistItem {
     done?: boolean;
 }
 
+/**
+ * ProjectItem — primary board-row type (Epic #184 / #197 M6-1).
+ * Wire JSON field names stay stable; prefer ProjectItem / ItemType in new code.
+ */
 export interface ProjectItem {
     id: string;
     title: string;
@@ -98,12 +113,18 @@ export interface ProjectItem {
     plannedEnd?: string;
     dependsOn?: string[];
     priority?: TaskPriority;
+    /**
+     * Channel object for executor (名称定义表 §0.5):
+     * agent → AgentType; human → user; function → function name.
+     */
     assignee?: string;
+    /** Execution channel: agent | function | human (#192 / #193). */
+    executor?: TaskExecutor;
     labels?: string[];
     createdBy?: string;
     parentId?: string;
     milestone?: string;
-    type?: TaskType;
+    type?: ItemType;
     source?: TaskSource;
     // Requirement/bug only: user has confirmed the issue is ready for the PM to
     // schedule (break into executable tasks). Non-executable items stay open/closed.
@@ -142,3 +163,9 @@ export interface ProjectItem {
     workspaceId?: string;
     workspaceName?: string;
 }
+
+/**
+ * @deprecated Prefer ProjectItem. Transitional alias (Epic #197 / M6-1).
+ * Removal target: delete when M6 (#196) closes (tracked by #197).
+ */
+export type Task = ProjectItem;

@@ -41,7 +41,7 @@ func CreateAnalysisTask(ts *meta.TaskStore, workspacePath, chatName, prompt stri
 		Description:  prompt,
 		IssueState:   meta.IssueOpen,
 		Status:       meta.TaskStatusPending,
-		Type:         meta.TaskTypeTask,
+		Type:         meta.ItemTypeTask,
 		Priority:     meta.PriorityMedium,
 		ScheduleType: meta.ScheduleTypeImmediate,
 		MaxRetries:   1,

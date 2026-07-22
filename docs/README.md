@@ -1,6 +1,6 @@
 # 1Agents 文档索引
 
-本目录按用途分类。入口优先读 **[名称定义表](./product/名称定义表.md) → 产品定位 → 架构总纲 → 设计规范 → 功能 PRD**；运维与排错看 `guides/` / `tips/`。
+本目录按用途分类。入口优先读 **[名称定义表](./product/名称定义表.md)（术语权威 / §0 冲突裁决）→ 产品定位 → 架构总纲 → 设计规范 → 功能 PRD**；运维与排错看 `guides/` / `tips/`。术语与表名/kind 以名称定义表为准，专题文档若冲突应回写定义表或改专题。
 
 ```
 docs/
@@ -23,7 +23,8 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [名称定义表.md](./product/名称定义表.md) | **术语与名称总表**（产品/架构/代码/包名/废弃别名） |
+| [名称定义表.md](./product/名称定义表.md) | **术语与名称总表**（§0 冲突裁决 · ProjectItem / workforce / executor×assignee） |
+| [术语迁移引用清单-M1.md](./product/术语迁移引用清单-M1.md) | Epic #184 迁移触点盘点（代码 + docs 过时句） |
 | [roadmap.md](./product/roadmap.md) | **权威版本路线图**（1.x→4.x 里程碑与 issue 归位） |
 | [1Agents_项目介绍.md](./product/1Agents_项目介绍.md) | 对外项目介绍 / 关于我们 |
 | [1Agents_营销素材与项目定位白皮书.md](./product/1Agents_营销素材与项目定位白皮书.md) | 定位、受众、营销素材 |
@@ -37,8 +38,8 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
-| [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：任务内核 · 项目外壳 · 可装可卸应用 |
-| [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 应用 SDK 契约（北向任务 API / 三存储面） |
+| [agentsOS-架构设计.md](./architecture/agentsOS-架构设计.md) | **架构总纲**：任务内核 · 项目外壳；App Registry / 多应用为**远期** |
+| [app-sdk-contract.md](./architecture/app-sdk-contract.md) | 应用 SDK 契约草案（**远期** registry；北向任务 API / 三存储面） |
 | [ai_collaborative_workbench_design.md](./architecture/ai_collaborative_workbench_design.md) | AI 协作工作台设计（Project→Task→Session） |
 | [remote_agents和cc-connect的技术架构设计.md](./architecture/remote_agents和cc-connect的技术架构设计.md) | 工作区 ↔ cc-connect 多通道集成 |
 | [ota-architecture.md](./architecture/ota-architecture.md) | OTA 多形态分发更新架构 |
@@ -71,8 +72,8 @@ docs/
 | 功能 | 文档 | 状态侧重 |
 |------|------|----------|
 | Chat UI / 任务看板 Tab | [chat-ui/](./features/chat-ui/) | 实现计划 + 走查 |
-| 项目模型 | [project-model/](./features/project-model/) | 已落地设计 + 走查 |
-| Issue / Task 模型 | [issue-model/](./features/issue-model/) | 设计 + GitHub 字段映射 |
+| 项目模型（Workspace → ProjectItem） | [project-model/](./features/project-model/) | 已落地设计 + 走查；表名迁移见名称定义表 |
+| Issue / ProjectItem 话题模型 | [issue-model/](./features/issue-model/) | 设计 + GitHub 字段映射；主实体 = ProjectItem |
 | 可验证完成门禁 | [verification-gate/](./features/verification-gate/) | 提案中 |
 | 上下文中心 | [context-center/](./features/context-center/) | 设计 |
 | Inbox 全上下文引擎 | [inbox-context-engine/](./features/inbox-context-engine/) | RFC 定稿 |
@@ -122,6 +123,7 @@ docs/
 
 ## 约定
 
-- **权威优先级**：`product/roadmap.md`（版本）> `architecture/agentsOS-架构设计.md`（架构）> `design_rules/`（UI 规范）> 单功能 `features/*`。
+- **权威优先级**：`product/名称定义表.md`（**术语 / 实体名 / kind**）> `product/roadmap.md`（版本）> `architecture/agentsOS-架构设计.md`（架构；registry 段为远期）> `design_rules/`（UI 规范）> 单功能 `features/*`。
 - **状态字段**：功能文档文首的 Status（Implemented / Draft / RFC 等）以该文件为准；索引表只做导航。
 - **新增文档**：按上表选目录；功能级一律放 `features/<kebab-name>/`，避免继续堆在 `docs/` 根目录。
+- **过时术语**：`tasks` 表名、`kind=assistant`、`SessionTier`/`professional-project` 落库、`任务可脱离 project` 等——见名称定义表 §0 否决与 §0.0 落地状态；docs 中出现须带标注，不得当现行断言。

@@ -52,9 +52,9 @@ func (s *TaskStore) ListMilestones(workspacePath string) ([]Milestone, error) {
 	}
 	rows, err := s.db.sql.Query(`
 		SELECT `+milestoneCols+`,
-			(SELECT COUNT(1) FROM tasks t
+			(SELECT COUNT(1) FROM project_items t
 			   WHERE t.project_id = m.project_id AND t.milestone = m.name AND (t.type = 'task' OR t.type = '') AND t.status != 'cancelled') AS total,
-			(SELECT COUNT(1) FROM tasks t
+			(SELECT COUNT(1) FROM project_items t
 			   WHERE t.project_id = m.project_id AND t.milestone = m.name
 			     AND (t.type = 'task' OR t.type = '')
 			     AND t.status = 'completed') AS completed
@@ -88,7 +88,7 @@ func (s *TaskStore) ListMilestones(workspacePath string) ([]Milestone, error) {
 // the write lock (via EnsureMilestone) when there is something to backfill.
 func (s *TaskStore) healOrphanMilestones(workspacePath, projectID string) error {
 	rows, err := s.db.sql.Query(`
-		SELECT DISTINCT t.milestone FROM tasks t
+		SELECT DISTINCT t.milestone FROM project_items t
 		WHERE t.project_id = ? AND t.milestone != ''
 		  AND NOT EXISTS (
 			SELECT 1 FROM milestones m
@@ -224,7 +224,7 @@ func (s *TaskStore) UpdateMilestone(workspacePath, id string, patch MilestonePat
 			return Milestone{}, ErrMilestoneExists
 		}
 		// Cascade the rename to the denormalized label on tasks.
-		if _, err := tx.Exec(`UPDATE tasks SET milestone = ?, updated_at = ?
+		if _, err := tx.Exec(`UPDATE project_items SET milestone = ?, updated_at = ?
 			WHERE project_id = ? AND milestone = ?`,
 			*patch.Name, timeToStr(time.Now().UTC()), projectID, cur.Name); err != nil {
 			return Milestone{}, err
@@ -307,7 +307,7 @@ func (s *TaskStore) DeleteMilestone(workspacePath, id string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE tasks SET milestone = '', updated_at = ?
+	if _, err := tx.Exec(`UPDATE project_items SET milestone = '', updated_at = ?
 		WHERE project_id = ? AND milestone = ?`,
 		timeToStr(time.Now().UTC()), projectID, cur.Name); err != nil {
 		return err

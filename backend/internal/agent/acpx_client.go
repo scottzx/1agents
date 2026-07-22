@@ -791,7 +791,7 @@ func (c *AcpxClient) handleTaskSessionDone(workspacePath, taskId, sessionId, sum
 				// (stopped) likewise ends the turn without completing the task.
 				// Either way the agent's reply was already recorded by
 				// writeAgentReply; here we only mark the session idle below.
-				if task.Type != TaskTypeDiscussion && !stopped {
+				if task.Type != ItemTypeDiscussion && !stopped {
 					task.Status = TaskStatusCompleted
 					task.CompletedAt = &now
 					task.Summary = summary
@@ -836,7 +836,7 @@ func (c *AcpxClient) handleTaskSessionError(workspacePath, taskId, sessionId, er
 			if task.ID == taskId {
 				// Discussions are PM conversations, not tasks — a turn error
 				// must not mark the discussion failed.
-				if task.Type != TaskTypeDiscussion {
+				if task.Type != ItemTypeDiscussion {
 					task.Status = TaskStatusFailed
 				}
 				task.UpdatedAt = now

@@ -115,7 +115,7 @@ func buildDashboard(workspaces []workspace.Workspace, tasksStore *meta.TaskStore
 				for _, t := range tc.Tasks {
 					// Only executable tasks count toward the board rollup;
 					// requirements/bugs/discussions are issue items, not work.
-					if t.Type == meta.TaskTypeRequirement || t.Type == meta.TaskTypeBug || t.Type == meta.TaskTypeDiscussion {
+					if t.Type == meta.ItemTypeRequirement || t.Type == meta.ItemTypeBug || t.Type == meta.ItemTypeDiscussion {
 						continue
 					}
 					// AI suggestions stay out of the board until adopted.

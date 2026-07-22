@@ -127,7 +127,7 @@ export function AssistantModal(props: AssistantModalProps) {
         const match = wsStore.workspaces.value.find(w => w.name.trim().toLowerCase() === target);
         if (!match) return null;
         const kindLabel =
-            (match.kind ?? 'project') === 'assistant'
+            (match.kind ?? 'project') === 'workforce'
                 ? t('assistant.form.nameTakenAssistant', language)
                 : t('assistant.form.nameTakenProject', language);
         return t('assistant.form.nameTaken', language, { kind: kindLabel });

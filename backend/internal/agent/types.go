@@ -61,7 +61,8 @@ type (
 	ChatSessionRecord = meta.ChatSessionRecord
 	ScheduleType      = meta.ScheduleType
 	TaskStatus        = meta.TaskStatus
-	TaskType          = meta.TaskType
+	ItemType          = meta.ItemType
+	TaskType          = meta.ItemType // transitional alias; prefer ItemType
 	TaskSource        = meta.TaskSource
 	TaskExecutor      = meta.TaskExecutor
 	TaskTargetSpec    = meta.TaskTargetSpec
@@ -72,6 +73,9 @@ type (
 	Author            = meta.Author
 	ReplyMode         = meta.ReplyMode
 	Reply             = meta.Reply
+	// ProjectItem is the primary board-row type (table project_items; #197).
+	// Task is a transitional alias — prefer ProjectItem in new code.
+	ProjectItem       = meta.ProjectItem
 	Task              = meta.Task
 	TasksConfig       = meta.TasksConfig
 	Milestone         = meta.Milestone
@@ -132,10 +136,15 @@ const (
 	IssueOpen   = meta.IssueOpen
 	IssueClosed = meta.IssueClosed
 
-	TaskTypeTask        = meta.TaskTypeTask
-	TaskTypeRequirement = meta.TaskTypeRequirement
-	TaskTypeBug         = meta.TaskTypeBug
-	TaskTypeDiscussion  = meta.TaskTypeDiscussion
+	ItemTypeTask        = meta.ItemTypeTask
+	ItemTypeRequirement = meta.ItemTypeRequirement
+	ItemTypeBug         = meta.ItemTypeBug
+	ItemTypeDiscussion  = meta.ItemTypeDiscussion
+
+	TaskTypeTask        = meta.ItemTypeTask // transitional aliases
+	TaskTypeRequirement = meta.ItemTypeRequirement
+	TaskTypeBug         = meta.ItemTypeBug
+	TaskTypeDiscussion  = meta.ItemTypeDiscussion
 
 	TaskSourceAgent = meta.TaskSourceAgent
 

@@ -1,14 +1,13 @@
 /**
- * SessionTierPicker (#328) — three-tier session/project entry selector.
+ * SessionTierPicker (#328 / Epic #184 · #191) — creation-wizard entry selector.
  *
- * Tiers:
- *   助理      — default workspace, direct chat, no project management
- *   通用项目  — pick an existing folder/workspace, chat directly, no app mounted
- *   专业项目  — workspace + app template + full ProjectShell (task management)
+ * UX tiers (NOT persisted as projects.kind — see 名称定义表 §0.4):
+ *   助理           — creates kind=workforce
+ *   项目           — creates kind=project (no template scaffold)
+ *   template_project — creates kind=project + template scaffold (app/experts/…)
  *
- * This component renders the tier-selection UI as a step before creating a
- * new chat or project. It integrates into the new-chat home flow alongside
- * the existing NewChatHome component by wrapping it.
+ * Historical ids generic-project / professional-project are not used as wire
+ * values and must not be written to projects.kind.
  *
  * Usage: render at the top of the new-chat / project-creation entry flow.
  * When the user picks a tier, call the appropriate on* handler.
@@ -22,18 +21,30 @@ import * as appStore from '../../stores/appManifestStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type SessionTier = 'assistant' | 'generic-project' | 'professional-project';
+/** Creation-wizard tier ids. Never persisted as Workspace.kind. */
+export type SessionTier = 'assistant' | 'project' | 'template_project';
+
+/** @deprecated Use SessionTier. Kept so older imports type-check during rename. */
+export type CreationWizardTier = SessionTier;
 
 interface SessionTierPickerProps {
     workspaces: Workspace[];
-    /** Called when user confirms the assistant tier. */
+    /** 助理 → kind=workforce */
     onSelectAssistant: () => void;
-    /** Called when user confirms a generic project (folder already selected). */
-    onSelectGenericProject: (workspace: Workspace) => void;
-    /** Called when user confirms a professional project with an app template. */
-    onSelectProfessionalProject: (workspace: Workspace, appTemplate: AppManifest) => void;
+    /** 普通项目 → kind=project, no template */
+    onSelectProject: (workspace: Workspace) => void;
+    /** template_project → kind=project + scaffold(template) */
+    onSelectTemplateProject: (workspace: Workspace, appTemplate: AppManifest) => void;
     /** Called to open the folder/workspace picker modal. */
     onOpenFolderPicker: () => void;
+    /**
+     * @deprecated Prefer onSelectProject. Same behavior as onSelectProject.
+     */
+    onSelectGenericProject?: (workspace: Workspace) => void;
+    /**
+     * @deprecated Prefer onSelectTemplateProject.
+     */
+    onSelectProfessionalProject?: (workspace: Workspace, appTemplate: AppManifest) => void;
 }
 
 // ── Tier definitions ──────────────────────────────────────────────────────────
@@ -64,8 +75,8 @@ const TIER_DEFS: TierDef[] = [
         ),
     },
     {
-        id: 'generic-project',
-        title: '通用项目',
+        id: 'project',
+        title: '项目',
         subtitle: '选择文件夹 · 直接对话 · 轻量协作',
         icon: (
             <svg
@@ -81,9 +92,9 @@ const TIER_DEFS: TierDef[] = [
         ),
     },
     {
-        id: 'professional-project',
-        title: '专业项目',
-        subtitle: '应用模板 · 完整任务管理 · 团队协作',
+        id: 'template_project',
+        title: '模板项目',
+        subtitle: '应用模板 · 完整任务管理 · 专家注入',
         icon: (
             <svg
                 viewBox="0 0 24 24"
@@ -106,10 +117,15 @@ const TIER_DEFS: TierDef[] = [
 export function SessionTierPicker({
     workspaces,
     onSelectAssistant,
+    onSelectProject,
+    onSelectTemplateProject,
+    onOpenFolderPicker,
     onSelectGenericProject,
     onSelectProfessionalProject,
-    onOpenFolderPicker,
 }: SessionTierPickerProps) {
+    const selectProject = onSelectProject ?? onSelectGenericProject;
+    const selectTemplate = onSelectTemplateProject ?? onSelectProfessionalProject;
+
     const [tier, setTier] = useState<SessionTier>('assistant');
     const [selectedWsId, setSelectedWsId] = useState<string>(workspaces[0]?.id ?? '');
     const [selectedAppId, setSelectedAppId] = useState<string>('');
@@ -121,19 +137,19 @@ export function SessionTierPicker({
     const handleConfirm = () => {
         if (tier === 'assistant') {
             onSelectAssistant();
-        } else if (tier === 'generic-project') {
-            if (selectedWs) onSelectGenericProject(selectedWs);
-        } else {
-            if (selectedWs && selectedApp) {
-                onSelectProfessionalProject(selectedWs, selectedApp);
+        } else if (tier === 'project') {
+            if (selectedWs && selectProject) selectProject(selectedWs);
+        } else if (tier === 'template_project') {
+            if (selectedWs && selectedApp && selectTemplate) {
+                selectTemplate(selectedWs, selectedApp);
             }
         }
     };
 
     const canConfirm =
         tier === 'assistant' ||
-        (tier === 'generic-project' && !!selectedWs) ||
-        (tier === 'professional-project' && !!selectedWs && !!selectedApp);
+        (tier === 'project' && !!selectedWs && !!selectProject) ||
+        (tier === 'template_project' && !!selectedWs && !!selectedApp && !!selectTemplate);
 
     return (
         <div class="session-tier-picker">
@@ -163,8 +179,7 @@ export function SessionTierPicker({
                 ))}
             </div>
 
-            {/* Secondary config for project tiers */}
-            {(tier === 'generic-project' || tier === 'professional-project') && (
+            {(tier === 'project' || tier === 'template_project') && (
                 <div class="session-tier-config">
                     <div class="session-tier-config-row">
                         <label class="session-tier-config-label">工作区</label>
@@ -196,7 +211,7 @@ export function SessionTierPicker({
                         </div>
                     </div>
 
-                    {tier === 'professional-project' && (
+                    {tier === 'template_project' && (
                         <div class="session-tier-config-row">
                             <label class="session-tier-config-label">应用模板</label>
                             {apps.length === 0 ? (
@@ -224,7 +239,7 @@ export function SessionTierPicker({
 
             <div class="session-tier-actions">
                 <button class="session-tier-btn-confirm" onClick={handleConfirm} disabled={!canConfirm}>
-                    {tier === 'assistant' ? '开始对话' : tier === 'generic-project' ? '进入项目' : '创建专业项目'}
+                    {tier === 'assistant' ? '开始对话' : tier === 'project' ? '进入项目' : '用模板创建项目'}
                 </button>
             </div>
         </div>
