@@ -32,7 +32,7 @@ import {
 } from '../../stores/sessionStore';
 import { activeL1PageId } from '../../stores/appManifestStore';
 import { getL1NavEntries, L1NavItem } from '../platform/L1Shell';
-import { enterL1App, exitL1App, projectOverview, projectStack } from '../../stores/stageStore';
+import { enterL1App, exitL1App, layoutMode, projectOverview } from '../../stores/stageStore';
 import { projectItemService } from '@1agents/core/services/taskService';
 import { openSearch } from '../../stores/searchStore';
 import type { ChatSession } from '../types';
@@ -608,30 +608,6 @@ export function LeftSidebar({
                         </svg>
                         <span>{t('sidebar.navCtrl.assistantOverview', language)}</span>
                     </div>
-                    {showProjects && (
-                        <div
-                            class={`nav-control-item${
-                                activeDrawerTab === 'none' && projectStack.value.length === 0 ? ' active' : ''
-                            }`}
-                            onClick={() => projectOverview()}
-                        >
-                            <svg
-                                class="btn-icon"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect x="3" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" />
-                                <rect x="3" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                            <span>{t('sidebar.navCtrl.projectOverview', language)}</span>
-                        </div>
-                    )}
                     <div
                         class={`nav-control-item${activeDrawerTab === 'contacts' ? ' active' : ''}`}
                         onClick={() => toggleDrawerTab('contacts')}
@@ -820,14 +796,29 @@ export function LeftSidebar({
                                     >
                                         <FolderToggleIcon open={projectsSectionOpen} />
                                     </button>
-                                    <button type="button" class="section-header-label" onClick={toggleProjectsSection}>
+                                    <button
+                                        type="button"
+                                        class={`section-header-label${
+                                            layoutMode.value === 'project-overview' ? ' active' : ''
+                                        }`}
+                                        title={t('sidebar.navCtrl.projectOverview', language)}
+                                        onClick={() => {
+                                            projectOverview();
+                                            if (!projectsSectionOpen) {
+                                                setProjectsSectionOpen(true);
+                                                writeSectionOpen('projects', true);
+                                            }
+                                        }}
+                                    >
                                         {t('sidebar.section.projects', language)}
                                     </button>
                                     {projectsSectionOpen && (
                                         <div class="section-header-actions">
                                             <button
+                                                type="button"
                                                 class="section-search-btn"
-                                                title={t('sidebar.collapseAll', language) || '一键折叠'}
+                                                title={t('sidebar.collapseAll', language)}
+                                                aria-label={t('sidebar.collapseAll', language)}
                                                 onClick={() => {
                                                     const ids = folders
                                                         .filter(
@@ -852,8 +843,10 @@ export function LeftSidebar({
                                                 </svg>
                                             </button>
                                             <button
+                                                type="button"
                                                 class={`section-search-btn${projectSearchOpen ? ' active' : ''}`}
-                                                title="搜索项目"
+                                                title={t('sidebar.searchProjects', language)}
+                                                aria-label={t('sidebar.searchProjects', language)}
                                                 onClick={() => {
                                                     const next = !projectSearchOpen;
                                                     setProjectSearchOpen(next);
@@ -884,7 +877,7 @@ export function LeftSidebar({
                                                     ref={projectSearchRef}
                                                     class="section-search-input"
                                                     type="text"
-                                                    placeholder="搜索项目…"
+                                                    placeholder={t('sidebar.searchProjectsPlaceholder', language)}
                                                     value={projectSearch}
                                                     onInput={(e: Event) =>
                                                         setProjectSearch((e.target as HTMLInputElement).value)

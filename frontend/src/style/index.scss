@@ -905,6 +905,11 @@ body {
         &:hover {
           color: var(--text-sidebar);
         }
+
+        &.active {
+          color: var(--text-sidebar);
+          font-weight: 600;
+        }
       }
 
       .section-header-actions {
