@@ -308,9 +308,11 @@ function AssistantContent({
     const canCollapse = limitHeight && showActions && isCollapsible.value;
     const expanded = !limitHeight || !canCollapse || isExpanded.value;
     const actionsVisible = showActions && isActive.value;
+    // Limited blocks join the nested right-edge scroller (.chat-nested-scroll);
+    // latest answer stays unlimited and only rides the outer timeline.
     const contentClass = !limitHeight
         ? 'chat-assistant-content is-unlimited'
-        : `chat-assistant-content ${expanded ? 'is-expanded' : 'is-collapsed'}`;
+        : `chat-assistant-content chat-nested-scroll ${expanded ? 'is-expanded' : 'is-collapsed'}`;
 
     return (
         <div
@@ -441,7 +443,7 @@ function ThinkingBubble({ content, streaming }: { content: string; streaming: bo
             </div>
             {expanded && (
                 <div
-                    class="chat-bubble-body chat-thinking-body markdown-body"
+                    class="chat-bubble-body chat-thinking-body chat-nested-scroll markdown-body"
                     dangerouslySetInnerHTML={{ __html: html }}
                 />
             )}
@@ -598,7 +600,7 @@ function ToolGroupBubble({
                 )}
             </div>
             {expanded && (
-                <div class="chat-tool-calls-list">
+                <div class="chat-tool-calls-list chat-nested-scroll">
                     {elements.map((el, idx) => {
                         if (el.kind === 'thinking') {
                             const isLastThinking = el.content === thinkingBlocks[thinkingBlocks.length - 1];
@@ -699,7 +701,10 @@ function GroupedThinkingItem({ content, streaming }: { content: string; streamin
             </div>
             {expanded && (
                 <div class="chat-tool-row-body is-thinking">
-                    <div class="chat-thinking-body markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                    <div
+                        class="chat-thinking-body chat-nested-scroll markdown-body"
+                        dangerouslySetInnerHTML={{ __html: html }}
+                    />
                 </div>
             )}
         </div>

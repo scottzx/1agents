@@ -17583,11 +17583,14 @@ body {
   }
 }
 
-/* Two-layer scroll nest (mirrors WorkspaceScopePicker):
+/* Two-layer nested scroll (shared right-edge track):
  *   .chat-messages       — panel shell (overflow:hidden, flex fill)
- *   .chat-messages-body  — outer scroller: conversation timeline
- *   long blocks inside   — inner scroller: assistant content / tool groups
- *     (max-height + overflow-y + overscroll-behavior: contain)
+ *   .chat-messages-body  — ① outer: conversation timeline
+ *   .chat-nested-scroll   — ② inner: capped blocks (older assistant / tools / thinking)
+ *
+ * Both thumbs ride the same right edge: body keeps horizontal padding, inners
+ * break out with negative margin so their track coincides with the outer one.
+ * Wheel chains ② → ① at edges (overscroll-behavior-y: auto on inners).
  */
 .chat-messages {
   flex: 1;
@@ -17599,14 +17602,16 @@ body {
 }
 
 .chat-messages-body {
+  --chat-msg-pad-x: 24px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 20px 24px 24px;
+  padding: 20px var(--chat-msg-pad-x) 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  scrollbar-gutter: stable;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -17617,6 +17622,34 @@ body {
   }
   &::-webkit-scrollbar-track {
     background-color: transparent;
+  }
+}
+
+/* Shared nested scroller: same 6px track + right-edge alignment as outer body. */
+.chat-nested-scroll {
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  overscroll-behavior-x: none;
+  margin-right: calc(-1 * var(--chat-msg-pad-x, 24px));
+  padding-right: var(--chat-msg-pad-x, 24px);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  /* Deeper nest (e.g. thinking inside tool list): keep local track, still chain. */
+  .chat-nested-scroll {
+    margin-right: 0;
+    padding-right: 4px;
   }
 }
 
@@ -17773,8 +17806,7 @@ body {
 
 @media (max-width: 768px) {
   .chat-messages-body {
-    padding-left: 8px;
-    padding-right: 8px;
+    --chat-msg-pad-x: 8px;
   }
 
   .chat-message-row-assistant {
@@ -17795,38 +17827,20 @@ body {
   min-width: 0;
 }
 
-/* Inner scroller: older assistant answers stay nested with a height cap.
- * Latest answer uses .is-unlimited (no max-height) so it grows with the
- * outer timeline instead of folding. */
+/* Older assistant answers: nested height cap + .chat-nested-scroll (class in TSX).
+ * Latest answer (.is-unlimited) grows with the outer timeline. */
 .chat-assistant-content {
   max-height: 30em;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: var(--border-color);
-    border-radius: 3px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
 
   &.is-collapsed {
     max-height: 30em;
-    overflow-y: auto;
   }
 
   &.is-expanded {
     max-height: min(70vh, 720px);
-    overflow-y: auto;
   }
 
-  /* Newest assistant_text: full body, scroll with outer .chat-messages-body */
+  /* Newest assistant_text: full body, outer timeline only */
   &.is-unlimited {
     max-height: none;
     overflow-y: visible;
@@ -17914,24 +17928,10 @@ body {
 
 .chat-thinking-body {
   max-height: 320px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  // Scroll track via .chat-nested-scroll (shared outer edge + wheel chain)
   white-space: pre-wrap;
   word-wrap: break-word;
   margin-top: 6px;
-  padding-right: 4px;
-
-  // Slim scrollbar for the thinking body
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(var(--warning-rgb), 0.3);
-    border-radius: 3px;
-  }
-  &::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
 
   &.markdown-body {
     white-space: normal;
@@ -18175,30 +18175,18 @@ body {
   animation: chat-loading-spin 0.8s linear infinite;
 }
 
-/* Inner scroller: expanded tool group body — header stays sticky in outer flow,
- * long tool lists roll inside this pane instead of stretching the timeline. */
+/* Expanded tool group body — max-height keeps the list nested; .chat-nested-scroll
+ * aligns the thumb with the outer timeline and chains wheel at edges. */
 .chat-tool-calls-list {
   max-height: min(50vh, 480px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   // No top border / fill — header underline already separates the list.
   border-top: none;
   background: transparent;
   // Child tools indented under the group header (parent → child hierarchy).
+  // padding-right comes from .chat-nested-scroll for edge-aligned track.
   padding-left: 2ch;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background-color: var(--border-color);
-    border-radius: 3px;
-  }
-  &::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
 }
 
 .chat-tool-row {

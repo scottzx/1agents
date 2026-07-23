@@ -449,10 +449,10 @@ export function MessageList({ items, typing, emptyHint, loading, loadingHint, on
         }
     }
 
-    // Two-layer scroll (same idea as WorkspaceScopePicker):
-    //   .chat-messages       — shell, overflow hidden, fills panel
-    //   .chat-messages-body  — outer: conversation timeline
-    //   long blocks inside   — inner: max-height + overflow-y (older assistant / tools)
+    // Nested dual-scroll, same right-edge track:
+    //   .chat-messages       — shell, overflow hidden
+    //   .chat-messages-body  — ① outer timeline
+    //   .chat-nested-scroll  — ② capped blocks; wheel chains ② → ①
     return (
         <div class="chat-messages">
             <div
